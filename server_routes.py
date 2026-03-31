@@ -1,0 +1,269 @@
+import os
+import io
+import re
+import base64
+import uuid
+from server import PromptServer
+from aiohttp import web
+from PIL import Image
+import folder_paths
+
+# --- PORTABLE COMFYUI FIX ---
+# Force rembg to download and read AI models from ComfyUI/models/rembg
+# instead of the hidden C:\Users\name\.u2net folder.
+REMBG_MODELS_DIR = os.path.join(folder_paths.models_dir, "rembg")
+os.makedirs(REMBG_MODELS_DIR, exist_ok=True)
+os.environ["U2NET_HOME"] = REMBG_MODELS_DIR
+# ----------------------------
+
+PIXAROMA_ASSETS_DIR = os.path.realpath(
+    os.path.join(os.path.dirname(__file__), "assets")
+)
+
+
+@PromptServer.instance.routes.get("/pixaroma/assets/{filename}")
+async def serve_pixaroma_asset(request):
+    filename = request.match_info["filename"]
+    if not _SAFE_ID_RE.match(filename.replace(".", "").replace("-", "").replace("_", "")):
+        return web.Response(status=400)
+    file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, filename))
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+        return web.Response(status=403)
+    if not os.path.isfile(file_path):
+        return web.Response(status=404)
+    return web.FileResponse(file_path)
+
+
+PIXAROMA_INPUT_ROOT = os.path.realpath(
+    os.path.join(folder_paths.get_input_directory(), "pixaroma")
+)
+os.makedirs(PIXAROMA_INPUT_ROOT, exist_ok=True)
+
+# Max payload: 50 MB of base64 text (≈ 37 MB image)
+_MAX_B64_BYTES = 50 * 1024 * 1024
+# Only alphanumeric, hyphen, underscore allowed in caller-supplied IDs
+_SAFE_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]+$')
+_MAX_ID_LEN = 64
+
+
+def _sanitize_id(value: str, fallback: str) -> str:
+    """Return value only if it matches the safe-ID pattern, else fallback."""
+    if value and len(value) <= _MAX_ID_LEN and _SAFE_ID_RE.match(value):
+        return value
+    return fallback
+
+
+def _safe_path(filename: str) -> str | None:
+    """
+    Build an absolute path inside PIXAROMA_INPUT_ROOT.
+    Returns None if the resolved path would escape the root (path traversal guard).
+    """
+    full = os.path.realpath(os.path.join(PIXAROMA_INPUT_ROOT, filename))
+    if not full.startswith(PIXAROMA_INPUT_ROOT + os.sep) and full != PIXAROMA_INPUT_ROOT:
+        return None
+    return full
+
+
+def _decode_image(b64_data: str) -> Image.Image | None:
+    """Decode a data-URI base64 string into a PIL Image, or return None on failure."""
+    if not b64_data.startswith("data:image"):
+        return None
+    if len(b64_data) > _MAX_B64_BYTES:
+        return None
+    try:
+        _, b64_raw = b64_data.split(",", 1)
+        image_data = base64.b64decode(b64_raw)
+        return Image.open(io.BytesIO(image_data))
+    except Exception:
+        return None
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/layer/upload")
+async def upload_raw_layer(request):
+    data = await request.json()
+    b64_data = data.get("image", "")
+    raw_id = data.get("layer_id", "")
+    layer_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(b64_data)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"layer_{layer_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid layer id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/project/save")
+async def save_project(request):
+    data = await request.json()
+    merged_b64 = data.get("image_merged", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(merged_b64)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"composite_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename)
+    return web.json_response({"status": "success", "composite_path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/paint/save")
+async def save_paint_composite(request):
+    data = await request.json()
+    merged_b64 = data.get("image_merged", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(merged_b64)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"paint_composite_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "composite_path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/3d/save")
+async def save_3d_render(request):
+    data = await request.json()
+    merged_b64 = data.get("image_merged", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(merged_b64)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"3d_render_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "composite_path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/3d/bg_upload")
+async def save_3d_bg_image(request):
+    data = await request.json()
+    b64_data = data.get("image", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(b64_data)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"3d_bg_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/crop/save")
+async def save_crop_composite(request):
+    data = await request.json()
+    merged_b64 = data.get("image_merged", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(merged_b64)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"crop_composite_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "composite_path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/crop/upload_src")
+async def upload_crop_source(request):
+    data = await request.json()
+    b64_data = data.get("image", "")
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(b64_data)
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"crop_src_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/remove_bg")
+async def remove_bg(request):
+    try:
+        from rembg import remove, new_session
+    except ImportError:
+        return web.json_response(
+            {"error": "rembg is not installed.", "code": "REMBG_MISSING"},
+            status=500,
+        )
+
+    data = await request.json()
+    b64_data = data.get("image", "")
+
+    if b64_data.startswith("data:image"):
+        b64_data = b64_data.split(",", 1)[1]
+
+    if len(b64_data) > _MAX_B64_BYTES:
+        return web.json_response({"error": "Image too large"}, status=413)
+
+    try:
+        try:
+            session = new_session("birefnet-general")
+        except Exception as e:
+            print(f"[Pixaroma] birefnet not available, falling back. {e}")
+            try:
+                session = new_session("briarmbg")
+            except Exception:
+                session = new_session("u2net")
+
+        input_data = base64.b64decode(b64_data)
+        input_image = Image.open(io.BytesIO(input_data))
+        output_image = remove(input_image, session=session)
+
+        buffered = io.BytesIO()
+        output_image.save(buffered, format="PNG")
+        output_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+
+        return web.json_response(
+            {"status": "success", "image": f"data:image/png;base64,{output_b64}"}
+        )
+    except Exception:
+        return web.json_response({"error": "Background removal failed"}, status=500)
