@@ -14,6 +14,30 @@ A creative suite of visual editors for [ComfyUI](https://github.com/comfyanonymo
 | **Label Pixaroma** | Annotation label for organizing and documenting workflows |
 | **Show Text** | Utility node that displays any value (tensors, latents, strings) as readable text |
 
+## Previews
+
+### 3D Builder
+![3D Builder Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow%20Node%20Preview.png)
+![3D Builder UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow%20UI%20Preview.png)
+
+### Image Composer
+![Image Composer Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow%20Node%20Preview.png)
+![Image Composer UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow%20UI%20Preview.png)
+
+### Paint
+![Paint Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow%20Node%20Preview.png)
+![Paint UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow%20UI%20Preview.png)
+
+### Image Crop
+![Crop Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow%20Node%20Preview.png)
+![Crop UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow%20UI%20Preview.png)
+
+### Image Compare
+![Image Compare](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Compare%20Pixaroma%20Workflow%20Preview.png)
+
+### Labels
+![Labels](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Labels%20Pixaroma%20Workflow%20Preview.png)
+
 ## Installation
 
 ### Via ComfyUI Manager (Recommended)
@@ -46,6 +70,9 @@ Video tutorials and workflow examples on the Pixaroma YouTube channel:
 
 **https://www.youtube.com/@pixaroma**
 
+> 💡 **Heads up:** I'm not a developer - these nodes were created with AI help. Everything works as intended, but bugs may exist.
+>
+> 💬 Join the Discord: https://discord.gg/gggpkVgBf3
 ## License
 
 MIT
