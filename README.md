@@ -45,6 +45,7 @@ New to ComfyUI? We recommend using the easy installer:
 [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Install)
 
 ### Via ComfyUI Manager (Recommended)
+Search for **Pixaroma** in the ComfyUI Manager and click Install.
 
 ### Manual
 ```bash
