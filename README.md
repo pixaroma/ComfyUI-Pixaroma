@@ -1,6 +1,6 @@
 # ComfyUI-Pixaroma
 
-A creative suite of visual editors for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — build 3D scenes, paint textures, compose layered images, and compare results directly inside your workflow.
+A creative suite of visual editors for [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - build 3D scenes, paint textures, compose layered images, and compare results directly inside your workflow.
 
 ## Nodes
 
