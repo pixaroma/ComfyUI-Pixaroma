@@ -40,8 +40,11 @@ A creative suite of visual editors for [ComfyUI](https://github.com/comfyanonymo
 
 ## Installation
 
+### Recommended: ComfyUI Easy Install
+New to ComfyUI? We recommend using the easy installer:
+[ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Install)
+
 ### Via ComfyUI Manager (Recommended)
-Search for **Pixaroma** in the ComfyUI Manager and click Install.
 
 ### Manual
 ```bash
