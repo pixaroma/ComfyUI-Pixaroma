@@ -60,7 +60,9 @@ class Pixaroma3D:
             full_path = os.path.realpath(os.path.join(input_dir, composite_path))
 
             if not full_path.startswith(input_dir + os.sep):
-                print("[Pixaroma3D] Security: composite_path escapes input directory, blocked.")
+                print(
+                    "[Pixaroma3D] Security: composite_path escapes input directory, blocked."
+                )
                 return (empty_image, doc_w, doc_h)
 
             if not os.path.exists(full_path):
