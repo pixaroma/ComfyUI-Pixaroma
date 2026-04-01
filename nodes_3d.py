@@ -4,7 +4,7 @@ from PIL import Image
 import os
 import json
 import folder_paths
-from .pixaroma_shared import AnyType, FlexibleOptionalInputType
+from .nodes_utils import any_type, FlexibleOptionalInputType
 
 class Pixaroma3D:
     @classmethod
@@ -16,7 +16,7 @@ class Pixaroma3D:
 
     CATEGORY = "Pixaroma"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
-    RETURN_NAMES = ("IMAGE", "WIDTH", "HEIGHT")
+    RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_render"
     DESCRIPTION = "3D Builder — create 3D scenes with shapes, materials, and lighting"
     OUTPUT_NODE = True
@@ -56,7 +56,7 @@ class Pixaroma3D:
         try:
             meta = json.loads(scene_json)
             if not isinstance(meta, dict):
-                return (empty_image, 1280, 720)
+                return (empty_image, 1024, 1024)
 
             doc_w = int(meta.get("doc_w", 1024))
             doc_h = int(meta.get("doc_h", 1024))
@@ -84,7 +84,7 @@ class Pixaroma3D:
 
         except Exception as e:
             print(f"[Pixaroma3D] Load error: {e}")
-            return (empty_image, 1280, 720)
+            return (empty_image, 1024, 1024)
 
 
 NODE_CLASS_MAPPINGS = {

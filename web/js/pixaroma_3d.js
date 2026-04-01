@@ -1,6 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { Pixaroma3DEditor } from "./pixaroma_3d_core.js";
-import { allow_debug } from "./pixaroma_shared.js";
+import { allow_debug, createDummyWidget } from "./pixaroma_shared.js";
 
 app.registerExtension({
   name: "Pixaroma.3DEditor",
@@ -20,16 +20,13 @@ app.registerExtension({
   async nodeCreated(node) {
     if (node.comfyClass !== "Pixaroma3D") return;
 
-    node.size = [340, 320];
-
     // Prevent ComfyUI native image preview (we use our own DOM preview)
     node.imgs = null;
 
     // ── Container ──
     const container = document.createElement("div");
-    container.className = "p3d-node-widget";
     container.style.cssText = `
-      display: flex;
+      display: none; 
       flex-direction: column;
       align-items: center;
       justify-content: center;
@@ -44,18 +41,25 @@ app.registerExtension({
     // ── Preview image ──
     const preview = document.createElement("img");
     preview.style.cssText = `
+      display: none;
       max-width: 100%;
       max-height: 200px;
       border-radius: 4px;
-      display: none;
       object-fit: contain;
     `;
     container.appendChild(preview);
 
+    const dummy_widget = createDummyWidget(
+      "3D Builder",
+      "Pixaroma",
+      `Click 'Open 3D Builder' to start`,
+    );
+    container.appendChild(dummy_widget);
+
     // ── Info label ──
     const infoLabel = document.createElement("div");
     infoLabel.style.cssText = "color:#888;font-size:10px;text-align:center;";
-    infoLabel.textContent = "No scene — click Open to start";
+    infoLabel.textContent = "";
     container.appendChild(infoLabel);
 
     // ── State ──
@@ -69,6 +73,7 @@ app.registerExtension({
           const fn = meta.composite_path.split(/[\\/]/).pop();
           const img = new Image();
           img.onload = () => {
+            dummy_widget.style.display = "none";
             preview.src = img.src;
             preview.style.display = "block";
             infoLabel.textContent = `${meta.doc_w || "?"}×${meta.doc_h || "?"}`;
@@ -103,14 +108,11 @@ app.registerExtension({
           img.src = dataURL;
         }
 
-        if (app.graph) {
-          app.graph.setDirtyCanvas(true, true);
-          if (typeof app.graph.change === "function") app.graph.change();
-        }
+        node.setDirtyCanvas(true, true);
       };
 
       editor.onClose = () => {
-        if (app.graph) app.graph.setDirtyCanvas(true, true);
+        node.setDirtyCanvas(true, true);
       };
 
       editor.open(sceneJson);
@@ -127,25 +129,14 @@ app.registerExtension({
           tryRestorePreview(sceneJson);
         }
       },
-      getMinHeight: () => 200,
-      getMaxHeight: () => 400,
+      getMinHeight: () => 210,
       margin: 5,
       onDraw: (ctx) => {},
     });
 
-    container.style.marginTop = "0px";
-
-    // ── Cleanup ──
-    const origOnRemoved = node.onRemoved;
-    node.onRemoved = function () {
-      origOnRemoved?.apply(this, arguments);
-      if (allow_debug) console.log("Cleaning up 3D widget");
-    };
-
-    node.setDirtyCanvas(true, true);
-
-    // force redraw if the node is already visible
+    // show widget after 100ms avoid widget flickering
     setTimeout(() => {
+      container.style.display = "flex";
       node.setDirtyCanvas(true, true);
     }, 100);
   },
