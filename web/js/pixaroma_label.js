@@ -747,6 +747,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = _origCreated?.apply(this, arguments);
       setupLabel(this);
+      this.badges = [];
       return r;
     };
 
@@ -762,8 +763,8 @@ app.registerExtension({
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (_origDraw) _origDraw.call(this, ctx);
-      this.color = "#fff0";
-      this.bgcolor = "#fff0";
+      this.color = "transparent";
+      this.bgcolor = "transparent";
 
       const c = this._labelCfg || DEFAULTS;
       const m = measureLabel(c);
@@ -804,13 +805,5 @@ app.registerExtension({
       editor.open();
       return true;
     };
-  },
-
-  async nodeCreated(node) {
-    // This runs for every node created
-    if (node.comfyClass === "PixaromaLabel") {
-      node.badges = [];
-      node.setDirtyCanvas(true, true);
-    }
   },
 });
