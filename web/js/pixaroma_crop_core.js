@@ -1,6 +1,7 @@
 // ============================================================
 // Pixaroma Image Crop Editor — Core + Full UI  v2
 // ============================================================
+import { installFocusTrap } from "./pixaroma_node_utils.js";
 
 const STYLE_ID = "pixaroma-crop-styles-v2";
 const BRAND = "#f66744";
@@ -159,6 +160,7 @@ export class CropEditor {
         injectStyles();
         this._buildUI();
         document.body.appendChild(this.el.overlay);
+        installFocusTrap(this.el.overlay);
 
         let data = {};
         try { data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {}; } catch (e) {}
@@ -182,7 +184,7 @@ export class CropEditor {
         this._bindKeys();
     }
 
-    _close() { this.el.overlay?.remove(); this._unbindKeys(); }
+    _close() { this.el.overlay?.remove(); this._unbindKeys(); if (this.onClose) this.onClose(); }
 
     // ─── Build UI ────────────────────────────────────────────
     _buildUI() {
@@ -828,8 +830,8 @@ export class CropEditor {
             // Block ALL keyboard events from reaching ComfyUI while crop editor is open
             e.stopPropagation();
             e.stopImmediatePropagation();
-            const tag = document.activeElement?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            const ae = document.activeElement;
+            if ((ae?.tagName === "INPUT" || ae?.tagName === "TEXTAREA" || ae?.tagName === "SELECT") && !ae?.dataset?.pixaromaTrap) return;
             const key = e.key.toLowerCase();
             const ctrl = e.ctrlKey || e.metaKey;
 

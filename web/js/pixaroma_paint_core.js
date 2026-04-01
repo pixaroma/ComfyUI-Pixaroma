@@ -3,6 +3,7 @@
 // ============================================================
 import { BrushEngine, hexToRgb, rgbToHex, rgbToHsv, hsvToRgb, rgbToHsl, hslToRgb } from "./pixaroma_paint_engine.js";
 import { PaintAPI } from "./pixaroma_paint_api.js";
+import { installFocusTrap } from "./pixaroma_node_utils.js";
 
 const STYLE_ID = "pixaroma-paint-styles-v3";
 
@@ -312,6 +313,7 @@ export class PaintStudio {
         this._buildModal();
         document.body.appendChild(this.el.overlay);
         this._bindEvents();
+        installFocusTrap(this.el.overlay);
 
         let data = {};
         try { data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {}; } catch (e) {}
@@ -1394,12 +1396,14 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         this._onWheel      = (e) => this._handleWheel(e);
         this._onKeyDown    = (e) => this._handleKeyDown(e);
         this._onKeyUp      = (e) => this._handleKeyUp(e);
+        this._onKeyPress   = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
         ws.addEventListener("mousedown", this._onMouseDown);
         window.addEventListener("mousemove", this._onMouseMove);
         window.addEventListener("mouseup",   this._onMouseUp);
         ws.addEventListener("wheel", this._onWheel, { passive: false });
         window.addEventListener("keydown", this._onKeyDown, { capture: true });
         window.addEventListener("keyup", this._onKeyUp, { capture: true });
+        window.addEventListener("keypress", this._onKeyPress, { capture: true });
         this._bindColorCanvas();
     }
 
@@ -1413,6 +1417,7 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         window.removeEventListener("mouseup",   this._onMouseUp);
         window.removeEventListener("keydown",   this._onKeyDown, { capture: true });
         window.removeEventListener("keyup",     this._onKeyUp,   { capture: true });
+        window.removeEventListener("keypress",  this._onKeyPress, { capture: true });
         if (this._onColorMove) window.removeEventListener("mousemove", this._onColorMove);
         if (this._onColorUp)   window.removeEventListener("mouseup",   this._onColorUp);
     }
@@ -1650,14 +1655,16 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     }
 
     _handleKeyDown(e) {
-        const tag = document.activeElement?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        // Block ALL keyboard events from reaching ComfyUI while painter is open
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        const ae = document.activeElement;
+        if ((ae?.tagName === "INPUT" || ae?.tagName === "TEXTAREA" || ae?.tagName === "SELECT") && !ae?.dataset?.pixaromaTrap) return;
         const key = e.key.toLowerCase();
-        // Block ALL keyboard shortcuts from reaching ComfyUI while painter is open
-        if (key === " ") { e.preventDefault(); e.stopImmediatePropagation(); this._spaceDown = true; if (this.el.workspace) this.el.workspace.style.cursor = "grab"; return; }
+        if (key === " ") { e.preventDefault(); this._spaceDown = true; if (this.el.workspace) this.el.workspace.style.cursor = "grab"; return; }
         const handled = e.ctrlKey ? ["z","y","d","s","a"].includes(key) :
             ["b","p","e","g","i","r","v","t","u","x","d","[","]","delete","enter","escape","?"].includes(key);
-        if (handled) { e.preventDefault(); e.stopImmediatePropagation(); }
+        if (handled) e.preventDefault();
         if (e.ctrlKey) {
             if (key === "z") { if (e.shiftKey) this.redo(); else this.undo(); return; }
             if (key === "y") { this.redo(); return; }
@@ -1685,6 +1692,9 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     }
 
     _handleKeyUp(e) {
+        // Block ALL keyup events from reaching ComfyUI while painter is open
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         if (e.key === " ") {
             this._spaceDown = false;
             if (!this.isPanning && this.el.workspace) {
@@ -1957,7 +1967,13 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         if (this.historyIndex < 0) { this._setStatus("Nothing to undo"); return; }
         const entry = this.history[this.historyIndex];
         const ly = this.layers[entry.layerIdx];
-        if (ly) { ly.ctx.putImageData(entry.data, 0, 0); if (entry.transform) ly.transform = { ...entry.transform }; }
+        if (ly) {
+            // Save current state so redo can restore it
+            entry._afterData = ly.ctx.getImageData(0, 0, this.docW, this.docH);
+            entry._afterTransform = { ...ly.transform };
+            ly.ctx.putImageData(entry.data, 0, 0);
+            if (entry.transform) ly.transform = { ...entry.transform };
+        }
         this.historyIndex--;
         this._updateLayerThumb(entry.layerIdx);
         this._syncTransformPanel();
@@ -1970,7 +1986,16 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         this.historyIndex++;
         const entry = this.history[this.historyIndex];
         const ly = this.layers[entry.layerIdx];
-        if (ly) { ly.ctx.putImageData(entry.data, 0, 0); if (entry.transform) ly.transform = { ...entry.transform }; }
+        if (ly) {
+            // Restore the state that existed after the change (saved during undo)
+            if (entry._afterData) {
+                ly.ctx.putImageData(entry._afterData, 0, 0);
+                if (entry._afterTransform) ly.transform = { ...entry._afterTransform };
+            } else {
+                ly.ctx.putImageData(entry.data, 0, 0);
+                if (entry.transform) ly.transform = { ...entry.transform };
+            }
+        }
         this._updateLayerThumb(entry.layerIdx);
         this._syncTransformPanel();
         this._renderDisplay();

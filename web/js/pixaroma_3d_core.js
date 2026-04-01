@@ -2,6 +2,7 @@
 // Pixaroma 3D Editor — Three.js WebGL Scene Editor  v5
 // ============================================================
 import { ThreeDAPI } from "./pixaroma_3d_api.js";
+import { installFocusTrap } from "./pixaroma_node_utils.js";
 
 let THREE = null, OrbitControls = null, TransformControls = null;
 const ESM = "https://esm.sh/three@0.170.0";
@@ -126,6 +127,7 @@ export class Pixaroma3DEditor {
         injectStyles();
         this._buildUI();
         document.body.appendChild(this.el.overlay);
+        installFocusTrap(this.el.overlay);
         this._setStatus("Loading Three.js...");
         try { await loadThree(); } catch (e) { this._setStatus("ERROR: load failed"); return; }
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
@@ -922,17 +924,18 @@ export class Pixaroma3DEditor {
         // Check if focus is on an input element inside our overlay
         const ae = document.activeElement;
         const tag = ae?.tagName;
+        const isTrap = ae?.dataset?.pixaromaTrap;
         // For Ctrl+A: always handle it if our overlay is open (prevent selecting input text)
         const k = e.key, kl = k.toLowerCase(), ctrl = e.ctrlKey || e.metaKey;
         if (ctrl && kl === "a") {
             e.preventDefault();
             // Blur any focused input first
-            if (tag === "INPUT" || tag === "TEXTAREA") ae.blur();
+            if ((tag === "INPUT" || tag === "TEXTAREA") && !isTrap) ae.blur();
             this._selectAll();
             return;
         }
-        // For other shortcuts, skip if inside input fields
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        // For other shortcuts, skip if inside input fields (but not our focus trap)
+        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !isTrap) return;
         const handled = ctrl ? ["z","y","d","s"].includes(kl) : ["m","r","s","f","b","t","0","1","2","3","4","delete","backspace","escape"].includes(kl);
         if (handled) e.preventDefault();
         if (ctrl && kl === "z") { this._undo(); return; }

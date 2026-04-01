@@ -116,7 +116,7 @@ async def save_project(request):
         return web.json_response({"error": "Invalid project id"}, status=400)
 
     img.save(file_path, "PNG")
-    relative_path = os.path.join("pixaroma", filename)
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
     return web.json_response({"status": "success", "composite_path": relative_path})
 
 

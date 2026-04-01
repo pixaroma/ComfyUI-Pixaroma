@@ -15,6 +15,12 @@ app.registerExtension({
                 const jw = this.widgets?.find(w => w.name === "crop_json");
                 const node = this;
                 const editor = new CropEditor();
+                let savedImg = null;
+                editor.onClose = () => {
+                    // Re-apply preview and trigger canvas redraw AFTER overlay is removed
+                    if (savedImg) { node.imgs = [savedImg]; }
+                    if (app.graph) app.graph.setDirtyCanvas(true, true);
+                };
                 editor.onSave = (jsonStr, dataURL) => {
                     if (jw) {
                         jw.value = jsonStr;
@@ -28,21 +34,10 @@ app.registerExtension({
                         app.graph.setDirtyCanvas(true, true);
                         if (typeof app.graph.change === "function") app.graph.change();
                     }
-                    // Update node preview from saved composite (not dataURL which may be too large)
-                    try {
-                        const meta = JSON.parse(jsonStr);
-                        if (meta.composite_path) {
-                            const fn = meta.composite_path.split(/[\\/]/).pop();
-                            const prev = new Image();
-                            prev.onload = () => { node.imgs = [prev]; resizeNode(node, prev, app); };
-                            prev.src = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
-                        }
-                    } catch (e) {
-                        // Fallback to dataURL
-                        const img = new Image();
-                        img.onload = () => { node.imgs = [img]; resizeNode(node, img, app); };
-                        img.src = dataURL;
-                    }
+                    // Use dataURL for immediate preview (no server round-trip race condition)
+                    const img = new Image();
+                    img.onload = () => { savedImg = img; node.imgs = [img]; resizeNode(node, img, app); };
+                    img.src = dataURL;
                 };
                 editor.open(jw?.value || "{}");
             });

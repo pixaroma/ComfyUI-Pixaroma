@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget, BRAND } from "./pixaroma_node_utils.js";
+import { hideJsonWidget, BRAND, installFocusTrap } from "./pixaroma_node_utils.js";
 
 // ─── Defaults ────────────────────────────────────────────────
 const DEFAULTS = {
@@ -234,6 +234,7 @@ class LabelEditor {
         injectCSS();
         this._build();
         document.body.appendChild(this._el);
+        installFocusTrap(this._el);
         this._updatePreview();
         this._keyBlock = (e) => { e.stopImmediatePropagation(); };
         window.addEventListener("keydown", this._keyBlock, true);

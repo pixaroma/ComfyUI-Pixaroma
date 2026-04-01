@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { PixaromaUI } from "./pixaroma_composer_ui.js";
 import { PixaromaLayers } from "./pixaroma_composer_layers.js";
 import { PixaromaAPI } from "./pixaroma_composer_api.js";
+import { installFocusTrap } from "./pixaroma_node_utils.js";
 
 const BASE_WIDTH = 380;
 
@@ -45,6 +46,7 @@ export class PixaromaEditor {
         this.renderCtx = this.renderCanvas.getContext("2d");
 
         this.attachEvents();
+        installFocusTrap(this.overlay);
         this.attemptRestore();
     }
 
@@ -297,14 +299,14 @@ export class PixaromaEditor {
             // Block ALL keyboard events from reaching ComfyUI while composer is open
             e.stopPropagation(); e.stopImmediatePropagation();
             const tag = e.target?.tagName;
-            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+            if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !e.target?.dataset?.pixaromaTrap) return;
             if (e.code === "Space") { e.preventDefault(); this.spacePressed = true; }
             if (e.code === 'KeyE') { e.preventDefault(); if (this.activeMode === 'eraser') { this.setMode(null); } else if (this.selectedLayerIds.size > 0) { this.setMode('eraser'); } }
             if (e.code === 'KeyV') { e.preventDefault(); this.setMode(null); }
             if (e.ctrlKey && e.key === 'z') { e.preventDefault(); this.undo(); }
             if (e.ctrlKey && e.key === 'y') { e.preventDefault(); this.redo(); }
             if (e.ctrlKey && e.key === 's') { e.preventDefault(); if (this.saveBtn) this.saveBtn.click(); }
-            if ((e.key === 'Delete' || e.key === 'Backspace')) { this.btnDelLayer.click(); }
+            if ((e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); this.btnDelLayer.click(); }
         };
         this._composerKeyBlock = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
         this._composerKeyUp = (e) => {
@@ -552,26 +554,28 @@ export class PixaromaEditor {
                     }
 
                     if(widget.callback) widget.callback(widget.value);
-                    
+
+                    // Use dataURL for immediate preview (no server round-trip race condition)
                     const img = new Image();
-                    img.crossOrigin = "Anonymous";
-                    img.onload = () => { 
-                        this.node.imgs = [img]; 
-                        if (this.node.setSizeForImage) { this.node.setSizeForImage(true); }
+                    const node = this.node;
+                    img.onload = () => {
+                        node.imgs = [img];
                         const aspect = img.naturalWidth / img.naturalHeight;
-                        const uiPadding = Math.max(100, this.node.size[1] - (this.node.size[0] / aspect)); 
-                        this.node.size[0] = Math.max(this.node.size[0], BASE_WIDTH); 
-                        this.node.size[1] = (this.node.size[0] / aspect) + uiPadding;
-                        app.graph.setDirtyCanvas(true, true); 
+                        const uiPadding = Math.max(100, node.size[1] - (node.size[0] / aspect));
+                        node.size[0] = Math.max(node.size[0], BASE_WIDTH);
+                        node.size[1] = (node.size[0] / aspect) + uiPadding;
+                        app.graph.setDirtyCanvas(true, true);
                     };
-                    const fileNameOnly = dFin.composite_path.split(/[\\/]/).pop();
-                    img.src = `/view?filename=${encodeURIComponent(fileNameOnly)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
-                    
+                    img.src = finalDataURL;
+
                     this.saveBtn.innerText = "✅ Saved Successfully!";
                     setTimeout(() => {
                         if (this._cleanupKeys) this._cleanupKeys();
                         document.body.removeChild(this.overlay);
-                        // Re-trigger canvas redraw AFTER overlay is removed so preview is visible
+                        // Re-apply preview and trigger canvas redraw AFTER overlay is removed
+                        if (node.imgs && node.imgs[0]) {
+                            node.imgs = [node.imgs[0]];
+                        }
                         if (app.graph) app.graph.setDirtyCanvas(true, true);
                     }, 600);
                 } else { 

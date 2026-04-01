@@ -1,3 +1,5 @@
+import { app } from "/scripts/app.js";
+
 export class PixaromaUI {
     constructor(core) {
         this.core = core;
@@ -565,7 +567,7 @@ export class PixaromaUI {
         const saveGroup = document.createElement("div"); saveGroup.style.display = "flex"; saveGroup.style.flexDirection = "column"; saveGroup.style.gap = "8px";
         core.saveBtn = document.createElement("button"); core.saveBtn.className = "pix-btn-accent"; core.saveBtn.innerText = "💾 Save to Node";
         const closeBtn = document.createElement("button"); closeBtn.className = "pix-btn"; closeBtn.innerText = "✖ Close Editor"; closeBtn.style.background = "#3a3d40";
-        closeBtn.onclick = () => { if (core._cleanupKeys) core._cleanupKeys(); document.body.removeChild(core.overlay); };
+        closeBtn.onclick = () => { if (core._cleanupKeys) core._cleanupKeys(); document.body.removeChild(core.overlay); if (app.graph) app.graph.setDirtyCanvas(true, true); };
         saveGroup.append(core.saveBtn, closeBtn);
         sidebarRight.appendChild(saveGroup);
 

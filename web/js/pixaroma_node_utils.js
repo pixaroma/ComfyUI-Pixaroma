@@ -2,9 +2,67 @@
 // Pixaroma — Shared node utilities
 // ============================================================
 
+import { app } from "/scripts/app.js";
+
 const BRAND = "#f66744";
 const LOGO_URL = "/pixaroma/assets/pixaroma_logo.svg";
 const BASE_WIDTH = 380;
+
+// ─── Block ALL ComfyUI shortcuts while any Pixaroma editor is open ──
+// ComfyUI registers its keyboard handlers on window with capture:true
+// BEFORE extensions load, so stopImmediatePropagation() from our
+// handlers cannot prevent them. We use three layers of protection:
+//
+// 1) Monkey-patch app.loadGraphData — blocks undo/redo from restoring
+//    previous graph states while an editor overlay is open.
+//
+// 2) Monkey-patch LGraphCanvas.prototype.processKey — blocks LiteGraph
+//    key processing (delete nodes, copy, paste, etc.).
+//
+// 3) Focus-trap <textarea> inside each editor overlay — ComfyUI's
+//    keybinding service skips ALL shortcuts when document.activeElement
+//    is an INPUT or TEXTAREA, so keeping focus on our hidden textarea
+//    disables the remaining 30+ ComfyUI shortcuts (queue, save, toggle
+//    panels, group nodes, etc.).
+
+const EDITOR_SELECTORS = ".pix-editor, .ppx-overlay, .pcrop-overlay, .p3d-overlay, .pix-lbl-overlay";
+
+// Layer 1: Block undo/redo graph loading
+const _origLoadGraphData = app.loadGraphData.bind(app);
+app.loadGraphData = async function (...args) {
+    if (document.querySelector(EDITOR_SELECTORS)) return;
+    return _origLoadGraphData(...args);
+};
+
+// Layer 2: Block LiteGraph key processing
+if (typeof LGraphCanvas !== "undefined") {
+    const _origProcessKey = LGraphCanvas.prototype.processKey;
+    LGraphCanvas.prototype.processKey = function (e) {
+        if (document.querySelector(EDITOR_SELECTORS)) return;
+        return _origProcessKey.apply(this, arguments);
+    };
+}
+
+// Layer 3: Focus-trap helper — each editor calls this on its overlay.
+// Creates a hidden textarea that keeps focus, making ComfyUI's
+// keybinding service think the user is typing in a text field.
+export function installFocusTrap(overlay) {
+    const trap = document.createElement("textarea");
+    trap.dataset.pixaromaTrap = "1";
+    trap.setAttribute("aria-hidden", "true");
+    trap.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;z-index:-1;";
+    overlay.appendChild(trap);
+    trap.focus();
+    // Re-focus trap when user clicks on non-input areas of the overlay
+    const refocus = (e) => {
+        const tag = e.target?.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
+            requestAnimationFrame(() => trap.focus());
+        }
+    };
+    overlay.addEventListener("mouseup", refocus);
+    return trap;
+}
 
 let _logoCache = null;
 let _logoLoading = false;
