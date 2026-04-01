@@ -4,28 +4,31 @@ from PIL import Image
 import os
 import json
 import folder_paths
-
+from .pixaroma_shared import AnyType, FlexibleOptionalInputType
 
 class Pixaroma3D:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(self):
         return {
-            "required": {
-                "scene_json": ("STRING", {"default": "{}", "multiline": True}),
-            }
+            "required": {},
+            "optional": FlexibleOptionalInputType(any_type),
         }
 
+    CATEGORY = "Pixaroma"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("IMAGE", "WIDTH", "HEIGHT")
     FUNCTION = "load_render"
-    CATEGORY = "Pixaroma"
+    DESCRIPTION = "3D Builder — create 3D scenes with shapes, materials, and lighting"
+    OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, scene_json):
+    def IS_CHANGED(cls, **kwargs):
         """Force re-execution when the render file on disk changes."""
-        if not scene_json or scene_json.strip() in ("", "{}"):
+        scene_data = kwargs.get("SceneWidget")
+        if not scene_data:
             return ""
         try:
+            scene_json = scene_data.get("scene_json", "{}")
             meta = json.loads(scene_json)
             composite_path = meta.get("composite_path", "")
             if composite_path:
@@ -35,10 +38,17 @@ class Pixaroma3D:
                     return os.path.getmtime(full_path)
         except Exception:
             pass
-        return scene_json
+        return str(scene_data)
 
-    def load_render(self, scene_json):
+    def load_render(self, **kwargs):
         empty_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+
+        # Extract scene data from the DOM widget
+        scene_data = kwargs.get("SceneWidget")
+        if not scene_data:
+            return (empty_image, 1024, 1024)
+
+        scene_json = scene_data.get("scene_json", "{}") if isinstance(scene_data, dict) else str(scene_data)
 
         if not scene_json or scene_json.strip() in ("", "{}"):
             return (empty_image, 1024, 1024)
