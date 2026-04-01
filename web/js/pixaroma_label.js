@@ -111,6 +111,31 @@ function injectCSS() {
   _cssInjected = true;
   const style = document.createElement("style");
   style.textContent = `
+.pix-lbl-body {
+    max-height: 400px; 
+    overflow-y: auto;
+    padding-right: 8px; 
+}
+.pix-lbl-body::-webkit-scrollbar {
+    width: 6px;
+}
+.pix-lbl-body::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+}
+.pix-lbl-body::-webkit-scrollbar-thumb {
+    background: #555; 
+    border-radius: 10px;
+}
+/* Handle on hover */
+.pix-lbl-body::-webkit-scrollbar-thumb:hover {
+    background: #888;
+}
+/* Firefox support */
+.pix-lbl-body {
+    scrollbar-width: thin;
+    scrollbar-color: #555 rgba(0, 0, 0, 0.1);
+}
 .pix-lbl-overlay {
     position: fixed; inset: 0; z-index: 99999;
     background: rgba(0,0,0,0.55);
@@ -717,8 +742,8 @@ function setupLabel(node) {
   try {
     hideJsonWidget(node.widgets, "label_json");
     node._labelCfg = parseCfg(node);
-    node.color = "#fff0";
-    node.bgcolor = "#fff0";
+    node.color = "transparent";
+    node.bgcolor = "transparent";
     node.flags = node.flags || {};
     node.flags.no_title = true;
     // Remove input slots so no connections can be made
@@ -748,6 +773,7 @@ app.registerExtension({
       const r = _origCreated?.apply(this, arguments);
       setupLabel(this);
       this.badges = [];
+      if (allow_debug) console.log("PixaromaLabel",this)
       return r;
     };
 
