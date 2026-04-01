@@ -19,6 +19,8 @@ app.registerExtension({
   // DOM widget creation (same pattern as PixaromaTestNode)
   async nodeCreated(node) {
     if (node.comfyClass !== "Pixaroma3D") return;
+    // init size
+    node.size = [300, 300];
 
     // Prevent ComfyUI native image preview (we use our own DOM preview)
     node.imgs = null;
@@ -42,8 +44,7 @@ app.registerExtension({
     const preview = document.createElement("img");
     preview.style.cssText = `
       display: none;
-      max-width: 100%;
-      max-height: 200px;
+      width: 100%;
       border-radius: 4px;
       object-fit: contain;
     `;
@@ -131,8 +132,11 @@ app.registerExtension({
       },
       getMinHeight: () => 210,
       margin: 5,
-      onDraw: (ctx) => {},
     });
+
+    node.onResize = () => {
+      // handle resize
+    };
 
     // show widget after 100ms avoid widget flickering
     setTimeout(() => {

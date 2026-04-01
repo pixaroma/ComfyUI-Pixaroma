@@ -57,7 +57,7 @@ export function createDummyWidget(titleText, subtitleText, instructionText) {
 
     // --- Instruction Text ---
     const instruction = document.createElement("div");
-    instruction.innerText = `Click 'Open ${titleText}' to start`;
+    instruction.innerText = instructionText;
     instruction.style.cssText = `
       font-size: 10px;
       color: #555555;
