@@ -77,6 +77,10 @@ Video tutorials and workflow examples on the Pixaroma YouTube channel:
 - Fixed Labels node
 - Fixed various bugs
 
+### April 01, 2026
+- Official Release - I talk about it in [Episode 11](https://www.youtube.com/watch?v=Lmxf8pK-H1k)
+
+
 > 💡 **Heads up:** I'm not a developer - these nodes were created with AI help. Everything works as intended, but bugs may exist.
 >
 > 💬 Join the Discord: https://discord.gg/gggpkVgBf3
