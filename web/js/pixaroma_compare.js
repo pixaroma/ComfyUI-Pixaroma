@@ -384,7 +384,6 @@ app.registerExtension({
       if (_origResize) return _origResize.call(this, e);
       this.size[0] = Math.max(this.size[0], 320);
       this.size[1] = Math.max(this.size[1], 200);
-      console.log("Resize:", this.size);
     };
   },
 });
