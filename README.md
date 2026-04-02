@@ -79,4 +79,4 @@ Video tutorials and workflow examples on the Pixaroma YouTube channel:
 > 💬 Join the Discord: https://discord.gg/gggpkVgBf3
 ## License
 
-MIT
+[MIT](https://github.com/pixaroma/ComfyUI-Pixaroma/blob/main/LICENSE)
