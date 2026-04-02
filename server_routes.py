@@ -24,7 +24,9 @@ PIXAROMA_ASSETS_DIR = os.path.realpath(
 @PromptServer.instance.routes.get("/pixaroma/assets/{filename}")
 async def serve_pixaroma_asset(request):
     filename = request.match_info["filename"]
-    if not _SAFE_ID_RE.match(filename.replace(".", "").replace("-", "").replace("_", "")):
+    if not _SAFE_ID_RE.match(
+        filename.replace(".", "").replace("-", "").replace("_", "")
+    ):
         return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, filename))
     if not file_path.startswith(PIXAROMA_ASSETS_DIR):
@@ -42,7 +44,7 @@ os.makedirs(PIXAROMA_INPUT_ROOT, exist_ok=True)
 # Max payload: 50 MB of base64 text (≈ 37 MB image)
 _MAX_B64_BYTES = 50 * 1024 * 1024
 # Only alphanumeric, hyphen, underscore allowed in caller-supplied IDs
-_SAFE_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]+$')
+_SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
 _MAX_ID_LEN = 64
 
 
@@ -59,7 +61,10 @@ def _safe_path(filename: str) -> str | None:
     Returns None if the resolved path would escape the root (path traversal guard).
     """
     full = os.path.realpath(os.path.join(PIXAROMA_INPUT_ROOT, filename))
-    if not full.startswith(PIXAROMA_INPUT_ROOT + os.sep) and full != PIXAROMA_INPUT_ROOT:
+    if (
+        not full.startswith(PIXAROMA_INPUT_ROOT + os.sep)
+        and full != PIXAROMA_INPUT_ROOT
+    ):
         return None
     return full
 

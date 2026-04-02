@@ -4,15 +4,15 @@ from PIL import Image
 import os
 import json
 import folder_paths
+from .node_ref import any_type, FlexibleOptionalInputType
 
 
 class PixaromaImageComposition:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(self):
         return {
-            "required": {
-                "project_json": ("STRING", {"default": "{}", "multiline": True}),
-            }
+            "required": {},
+            "optional": FlexibleOptionalInputType(any_type),
         }
 
     # ADDED: New Width and Height INT outputs!
@@ -20,13 +20,16 @@ class PixaromaImageComposition:
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_composite"
     CATEGORY = "Pixaroma"
+    OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, project_json):
+    def IS_CHANGED(cls, **kwargs):
         """Force re-execution when the composite file on disk changes."""
-        if not project_json or project_json.strip() in ("", "{}"):
+        composition_data = kwargs.get("ComposerWidget")
+        if not composition_data:
             return ""
         try:
+            project_json = composition_data.get("project_json", "{}") if isinstance(composition_data, dict) else str(composition_data)
             meta = json.loads(project_json)
             composite_path = meta.get("composite_path", "")
             if composite_path:
@@ -36,10 +39,16 @@ class PixaromaImageComposition:
                     return os.path.getmtime(full_path)
         except Exception:
             pass
-        return project_json
+        return str(composition_data)
 
-    def load_composite(self, project_json):
+    def load_composite(self, **kwargs):
         empty_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+
+        composition_data = kwargs.get("ComposerWidget")
+        if not composition_data:
+            return (empty_image, 1024, 1024)
+
+        project_json = composition_data.get("project_json", "{}") if isinstance(composition_data, dict) else str(composition_data)
 
         if not project_json or project_json == "" or project_json == "{}":
             return (empty_image, 1024, 1024)

@@ -1,54 +1,117 @@
-import { app } from "/scripts/app.js";
+import { app } from "../../../scripts/app.js";
 import { CropEditor } from "./pixaroma_crop_core.js";
-import { createPlaceholder, resizeNode, hideJsonWidget, restorePreview } from "./pixaroma_shared.js";
+import { allow_debug, createDummyWidget } from "./pixaroma_shared.js";
 
 app.registerExtension({
-    name: "Pixaroma.Crop",
-    async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== "PixaromaCrop") return;
+  name: "Pixaroma.Crop",
 
-        const origCreated = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function () {
-            origCreated?.apply(this, arguments);
-            hideJsonWidget(this.widgets, "crop_json");
-            this.addWidget("button", "Open Crop", null, () => {
-                const jw = this.widgets?.find(w => w.name === "crop_json");
-                const node = this;
-                const editor = new CropEditor();
-                let savedImg = null;
-                editor.onClose = () => {
-                    // Re-apply preview and trigger canvas redraw AFTER overlay is removed
-                    if (savedImg) { node.imgs = [savedImg]; }
-                    if (app.graph) app.graph.setDirtyCanvas(true, true);
-                };
-                editor.onSave = (jsonStr, dataURL) => {
-                    if (jw) {
-                        jw.value = jsonStr;
-                        if (node.widgets_values) {
-                            const i = node.widgets.findIndex(w => w.name === "crop_json");
-                            if (i > -1) node.widgets_values[i] = jsonStr;
-                        }
-                        if (jw.callback) jw.callback(jw.value);
-                    }
-                    if (app.graph) {
-                        app.graph.setDirtyCanvas(true, true);
-                        if (typeof app.graph.change === "function") app.graph.change();
-                    }
-                    // Use dataURL for immediate preview (no server round-trip race condition)
-                    const img = new Image();
-                    img.onload = () => { savedImg = img; node.imgs = [img]; resizeNode(node, img, app); };
-                    img.src = dataURL;
-                };
-                editor.open(jw?.value || "{}");
-            });
-            createPlaceholder("Image Crop", "Open Crop", this, app);
-        };
+  async beforeRegisterNodeDef(nodeType, nodeData, app) {
+    if (nodeData.name !== "PixaromaCrop") return;
 
-        const origCfg = nodeType.prototype.onConfigure;
-        nodeType.prototype.onConfigure = function (data) {
-            origCfg?.apply(this, arguments);
-            hideJsonWidget(this.widgets, "crop_json");
-            restorePreview(this, "crop_json", app);
-        };
-    },
+    const originalOnExecuted = nodeType.prototype.onExecuted;
+    nodeType.prototype.onExecuted = function (message) {
+      originalOnExecuted?.apply(this, arguments);
+      if (allow_debug) console.log("PixaromaCrop executed");
+    };
+  },
+
+  async nodeCreated(node) {
+    if (node.comfyClass !== "PixaromaCrop") return;
+
+    node.size = [300, 300];
+    node.imgs = null; // suppress native ComfyUI preview
+
+    // ── Container ──
+    const container = document.createElement("div");
+    container.style.cssText = `
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0px;
+      padding: 5px;
+      background-color: #2a2a2a;
+      border-radius: 4px;
+      width: 100%;
+      overflow: hidden;
+    `;
+
+    // ── Preview image ──
+    const preview = document.createElement("img");
+    preview.style.cssText = `
+      display: none;
+      width: 100%;
+      border-radius: 4px;
+      object-fit: contain;
+    `;
+    container.appendChild(preview);
+
+    const dummy_widget = createDummyWidget(
+      "Image Crop",
+      "Pixaroma",
+      `Click 'Open Crop' to start`,
+    );
+    container.appendChild(dummy_widget);
+
+    // ── Info label ──
+    const infoLabel = document.createElement("div");
+    infoLabel.style.cssText = "color:#888;font-size:10px;text-align:center;";
+    infoLabel.textContent = "";
+    container.appendChild(infoLabel);
+
+    // ── State — mirrors the hidden crop_json widget ──
+    let cropJson = "{}";
+
+    // ── Open button ──
+    node.addWidget("button", "Open Crop", null, () => {
+      const editor = new CropEditor();
+
+      editor.onSave = (jsonStr, dataURL) => {
+        cropJson = jsonStr;
+        widget.value = { crop_json: jsonStr };
+
+        if (app.graph) {
+          app.graph.setDirtyCanvas(true, true);
+          if (typeof app.graph.change === "function") app.graph.change();
+        }
+
+        if (dataURL) {
+          const img = new Image();
+          img.onload = () => {
+            dummy_widget.style.display = "none";
+            preview.src = dataURL;
+            preview.style.display = "block";
+            infoLabel.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
+            node.setDirtyCanvas(true, true);
+          };
+          img.src = dataURL;
+        }
+      };
+
+      editor.onClose = () => {
+        node.setDirtyCanvas(true, true);
+      };
+
+      editor.open(cropJson);
+    });
+
+    // ── DOM widget ──
+    const widget = node.addDOMWidget("CropWidget", "custom", container, {
+      getValue: () => ({ crop_json: cropJson }),
+      setValue: (v) => {
+        if (v && typeof v === "object") {
+          cropJson = v.crop_json || "{}";
+        }
+      },
+      getMinHeight: () => 210,
+      margin: 5,
+    });
+
+    node.onResize = () => {};
+
+    setTimeout(() => {
+      container.style.display = "flex";
+      node.setDirtyCanvas(true, true);
+    }, 100);
+  },
 });

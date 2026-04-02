@@ -487,11 +487,6 @@ export class PixaromaEditor {
             this.saveBtn.disabled = true; 
             
             try {
-                const widget = (this.node.widgets || []).find(w => w.name === "project_json");
-                if (!widget) {
-                    throw new Error("Critical: project_json widget missing.");
-                }
-
                 const layerMeta = [];
                 for (const layer of this.layers) {
                     
@@ -540,43 +535,14 @@ export class PixaromaEditor {
                     
                     const jsonString = JSON.stringify(finalMeta);
                     
-                    // --- BUG FIX: FORCE COMFYUI TO SAVE THE WORKFLOW ---
-                    widget.value = jsonString; 
-                    if (this.node.widgets_values) {
-                        const wIndex = this.node.widgets.findIndex(w => w.name === "project_json");
-                        if(wIndex > -1) this.node.widgets_values[wIndex] = jsonString;
+                    if (this.onSave) {
+                        this.onSave(jsonString, finalDataURL);
                     }
-
-                    // This command explicitly triggers the ComfyUI background auto-save mechanism.
-                    if (app.graph) {
-                        app.graph.setDirtyCanvas(true, true);
-                        if (typeof app.graph.change === 'function') app.graph.change();
-                    }
-
-                    if(widget.callback) widget.callback(widget.value);
-
-                    // Use dataURL for immediate preview (no server round-trip race condition)
-                    const img = new Image();
-                    const node = this.node;
-                    img.onload = () => {
-                        node.imgs = [img];
-                        const aspect = img.naturalWidth / img.naturalHeight;
-                        const uiPadding = Math.max(100, node.size[1] - (node.size[0] / aspect));
-                        node.size[0] = Math.max(node.size[0], BASE_WIDTH);
-                        node.size[1] = (node.size[0] / aspect) + uiPadding;
-                        app.graph.setDirtyCanvas(true, true);
-                    };
-                    img.src = finalDataURL;
 
                     this.saveBtn.innerText = "✅ Saved Successfully!";
                     setTimeout(() => {
                         if (this._cleanupKeys) this._cleanupKeys();
                         document.body.removeChild(this.overlay);
-                        // Re-apply preview and trigger canvas redraw AFTER overlay is removed
-                        if (node.imgs && node.imgs[0]) {
-                            node.imgs = [node.imgs[0]];
-                        }
-                        if (app.graph) app.graph.setDirtyCanvas(true, true);
                     }, 600);
                 } else { 
                     alert("Server save failure: " + dFin.error); 
@@ -891,15 +857,10 @@ export class PixaromaEditor {
     }
 
     async attemptRestore() {
-        const widget = (this.node.widgets || []).find(w => w.name === "project_json");
-        
-        // BUG FIX: Secure extraction prioritizing memory value to bypass ComfyUI HTML sync lag
         let savedData = null;
-        if (widget) {
-            savedData = widget.value;
-            if (!savedData || savedData === "{}" || savedData === "") {
-                if (widget.element && widget.element.value) savedData = widget.element.value;
-            }
+        const composerWidget = (this.node.widgets || []).find(w => w.name === "ComposerWidget");
+        if (composerWidget && composerWidget.value && composerWidget.value.project_json) {
+            savedData = composerWidget.value.project_json;
         }
 
         if (!savedData || savedData === "{}" || savedData === "") return;

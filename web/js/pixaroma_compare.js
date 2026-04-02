@@ -1,6 +1,5 @@
 import { app } from "/scripts/app.js";
-
-const BRAND = "#f66744";
+import { BRAND } from "./pixaroma_shared.js";
 const MODES = ["Left Right", "Up Down", "Overlay", "Difference"];
 const SLIDER_PAD = 50; // "Opacity" label width
 const MODE_HINTS = [

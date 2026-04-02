@@ -4,28 +4,31 @@ from PIL import Image
 import os
 import json
 import folder_paths
+from .node_ref import any_type, FlexibleOptionalInputType
 
 
 class PixaromaPaint:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(self):
         return {
-            "required": {
-                "paint_json": ("STRING", {"default": "{}", "multiline": True}),
-            }
+            "required": {},
+            "optional": FlexibleOptionalInputType(any_type),
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_painting"
     CATEGORY = "Pixaroma"
+    OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, paint_json):
+    def IS_CHANGED(cls, **kwargs):
         """Force re-execution when the composite file on disk changes."""
-        if not paint_json or paint_json.strip() in ("", "{}"):
+        paint_data = kwargs.get("PaintWidget")
+        if not paint_data:
             return ""
         try:
+            paint_json = paint_data.get("paint_json", "{}") if isinstance(paint_data, dict) else str(paint_data)
             meta = json.loads(paint_json)
             composite_path = meta.get("composite_path", "")
             if composite_path:
@@ -35,14 +38,18 @@ class PixaromaPaint:
                     return os.path.getmtime(full_path)
         except Exception:
             pass
-        return paint_json
+        return str(paint_data)
 
-    def load_painting(self, paint_json):
+    def load_painting(self, **kwargs):
         empty_image = torch.ones((1, 1024, 1024, 3), dtype=torch.float32)
 
-        if not paint_json or paint_json.strip() in ("", "{}"):
+        paint_data = kwargs.get("PaintWidget")
+        if not paint_data:
             return (empty_image, 1024, 1024)
 
+        paint_json = paint_data.get("paint_json", "{}") if isinstance(paint_data, dict) else str(paint_data)
+        if not paint_json or paint_json.strip() in ("", "{}"):
+            return (empty_image, 1024, 1024)
         try:
             meta = json.loads(paint_json)
             if not isinstance(meta, dict):

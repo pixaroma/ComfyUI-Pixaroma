@@ -4,28 +4,31 @@ from PIL import Image
 import os
 import json
 import folder_paths
+from .node_ref import any_type, FlexibleOptionalInputType
 
 
 class PixaromaCrop:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(self):
         return {
-            "required": {
-                "crop_json": ("STRING", {"default": "{}", "multiline": True}),
-            }
+            "required": {},
+            "optional": FlexibleOptionalInputType(any_type),
         }
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
-    RETURN_NAMES = ("IMAGE", "WIDTH", "HEIGHT")
+    RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_crop"
     CATEGORY = "Pixaroma"
+    OUTPUT_NODE = True
 
     @classmethod
-    def IS_CHANGED(cls, crop_json):
+    def IS_CHANGED(cls, **kwargs):
         """Force re-execution when the cropped file on disk changes."""
-        if not crop_json or crop_json.strip() in ("", "{}"):
+        crop_data = kwargs.get("CropWidget")
+        if not crop_data:
             return ""
         try:
+            crop_json = crop_data.get("crop_json", "{}") if isinstance(crop_data, dict) else str(crop_data)
             meta = json.loads(crop_json)
             composite_path = meta.get("composite_path", "")
             if composite_path:
@@ -35,14 +38,18 @@ class PixaromaCrop:
                     return os.path.getmtime(full_path)
         except Exception:
             pass
-        return crop_json
+        return str(crop_data)
 
-    def load_crop(self, crop_json):
+    def load_crop(self, **kwargs):
         empty_image = torch.ones((1, 1024, 1024, 3), dtype=torch.float32)
 
-        if not crop_json or crop_json.strip() in ("", "{}"):
+        crop_data = kwargs.get("CropWidget")
+        if not crop_data:
             return (empty_image, 1024, 1024)
 
+        crop_json = crop_data.get("crop_json", "{}") if isinstance(crop_data, dict) else str(crop_data)
+        if not crop_json or crop_json.strip() in ("", "{}"):
+            return (empty_image, 1024, 1024)
         try:
             meta = json.loads(crop_json)
             if not isinstance(meta, dict):
