@@ -16,27 +16,23 @@ A creative suite of visual editors for [ComfyUI](https://github.com/comfyanonymo
 
 ## Previews
 
-### 3D Builder
-![3D Builder Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow%20Node%20Preview.webp)
-![3D Builder UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow%20UI%20Preview.webp)
+### 3D Builder Pixaroma
+![3D Builder Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
 
-### Image Composer
-![Image Composer Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow%20Node%20Preview.webp)
-![Image Composer UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow%20UI%20Preview.webp)
+### Image Composer Pixaroma
+![Image Composer Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
 
-### Paint
-![Paint Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow%20Node%20Preview.webp)
-![Paint UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow%20UI%20Preview.webp)
+### Paint Pixaroma
+![Paint Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow.jpg)
 
-### Image Crop
-![Crop Node](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow%20Node%20Preview.webp)
-![Crop UI](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow%20UI%20Preview.webp)
+### Image Crop Pixaroma
+![Image Crop Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow.jpg)
 
-### Image Compare
-![Image Compare](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Compare%20Pixaroma%20Workflow%20Preview.webp)
+### Image Compare Pixaroma
+![Image Compare Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
 
-### Labels
-![Labels](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Labels%20Pixaroma%20Workflow%20Preview.webp)
+### Label Pixaroma
+![Labels Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Labels%20Pixaroma%20Workflow.jpg)
 
 ## Installation
 
