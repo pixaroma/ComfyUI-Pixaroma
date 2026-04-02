@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { PixaromaEditor } from "./pixaroma_composer_core.js";
-import { createPlaceholder, restorePreview } from "./pixaroma_node_utils.js";
+import { createPlaceholder, restorePreview } from "./pixaroma_shared.js";
 
 const BASE_WIDTH = 380;
 

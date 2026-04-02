@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { PixaromaUI } from "./pixaroma_composer_ui.js";
 import { PixaromaLayers } from "./pixaroma_composer_layers.js";
 import { PixaromaAPI } from "./pixaroma_composer_api.js";
-import { installFocusTrap } from "./pixaroma_node_utils.js";
+import { installFocusTrap } from "./pixaroma_shared.js";
 
 const BASE_WIDTH = 380;
 

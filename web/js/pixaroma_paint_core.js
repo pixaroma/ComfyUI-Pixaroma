@@ -3,7 +3,7 @@
 // ============================================================
 import { BrushEngine, hexToRgb, rgbToHex, rgbToHsv, hsvToRgb, rgbToHsl, hslToRgb } from "./pixaroma_paint_engine.js";
 import { PaintAPI } from "./pixaroma_paint_api.js";
-import { installFocusTrap } from "./pixaroma_node_utils.js";
+import { installFocusTrap } from "./pixaroma_shared.js";
 
 const STYLE_ID = "pixaroma-paint-styles-v3";
 

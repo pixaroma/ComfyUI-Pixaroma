@@ -1,20 +1,25 @@
 import os
 from . import server_routes  # noqa: E402  (side-effect import for route registration)
-from .nodes import NODE_CLASS_MAPPINGS as _MAPS_COMPOSITION
-from .nodes import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPOSITION
-from .nodes_3d import NODE_CLASS_MAPPINGS as _MAPS_3D
-from .nodes_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_3D
-from .nodes_compare import NODE_CLASS_MAPPINGS as _MAPS_COMPARE
-from .nodes_compare import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPARE
-from .nodes_crop import NODE_CLASS_MAPPINGS as _MAPS_CROP
-from .nodes_crop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_CROP
-from .nodes_label import NODE_CLASS_MAPPINGS as _MAPS_LABEL
-from .nodes_label import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LABEL
+from .nodes.node_composition import NODE_CLASS_MAPPINGS as _MAPS_COMPOSITION
+from .nodes.node_composition import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPOSITION
+from .nodes.node_3d import NODE_CLASS_MAPPINGS as _MAPS_3D
+from .nodes.node_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_3D
+from .nodes.node_compare import NODE_CLASS_MAPPINGS as _MAPS_COMPARE
+from .nodes.node_compare import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPARE
+from .nodes.node_crop import NODE_CLASS_MAPPINGS as _MAPS_CROP
+from .nodes.node_crop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_CROP
+from .nodes.node_label import NODE_CLASS_MAPPINGS as _MAPS_LABEL
+from .nodes.node_label import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LABEL
+from .nodes.node_paint import NODE_CLASS_MAPPINGS as _MAPS_PAINT
+from .nodes.node_paint import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAINT
+from .nodes.node_show_text import NODE_CLASS_MAPPINGS as _MAPS_SHOW_TEXT
+from .nodes.node_show_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SHOW_TEXT
+
 
 dev_mode = True
 if dev_mode:
-    from .nodes_utils import NODE_CLASS_MAPPINGS as _MAPS_UTILS
-    from .nodes_utils import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_UTILS
+    from .nodes.node_ref import NODE_CLASS_MAPPINGS as _MAPS_UTILS
+    from .nodes.node_ref import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_UTILS
 else:
     _MAPS_UTILS = {}
     _NAMES_UTILS = {}
@@ -28,6 +33,8 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_CROP,
     **_MAPS_LABEL,
     **_MAPS_UTILS,
+    **_MAPS_PAINT,
+    **_MAPS_SHOW_TEXT,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -37,6 +44,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_CROP,
     **_NAMES_LABEL,
     **_NAMES_UTILS,
+    **_NAMES_PAINT,
+    **_NAMES_SHOW_TEXT,
 }
 
 

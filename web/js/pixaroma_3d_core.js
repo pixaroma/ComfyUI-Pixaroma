@@ -2,7 +2,7 @@
 // Pixaroma 3D Editor — Three.js WebGL Scene Editor  v5
 // ============================================================
 import { ThreeDAPI } from "./pixaroma_3d_api.js";
-import { installFocusTrap } from "./pixaroma_node_utils.js";
+import { installFocusTrap } from "./pixaroma_shared.js";
 
 let THREE = null, OrbitControls = null, TransformControls = null;
 const ESM = "https://esm.sh/three@0.170.0";

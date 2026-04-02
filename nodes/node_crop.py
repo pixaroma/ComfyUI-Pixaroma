@@ -4,32 +4,29 @@ from PIL import Image
 import os
 import json
 import folder_paths
-from .nodes_utils import any_type, FlexibleOptionalInputType
 
-class Pixaroma3D:
+
+class PixaromaCrop:
     @classmethod
-    def INPUT_TYPES(self):
+    def INPUT_TYPES(s):
         return {
-            "required": {},
-            "optional": FlexibleOptionalInputType(any_type),
+            "required": {
+                "crop_json": ("STRING", {"default": "{}", "multiline": True}),
+            }
         }
 
-    CATEGORY = "Pixaroma"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
-    RETURN_NAMES = ("image", "width", "height")
-    FUNCTION = "load_render"
-    DESCRIPTION = "3D Builder — create 3D scenes with shapes, materials, and lighting"
-    OUTPUT_NODE = True
+    RETURN_NAMES = ("IMAGE", "WIDTH", "HEIGHT")
+    FUNCTION = "load_crop"
+    CATEGORY = "Pixaroma"
 
     @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        """Force re-execution when the render file on disk changes."""
-        scene_data = kwargs.get("SceneWidget")
-        if not scene_data:
+    def IS_CHANGED(cls, crop_json):
+        """Force re-execution when the cropped file on disk changes."""
+        if not crop_json or crop_json.strip() in ("", "{}"):
             return ""
         try:
-            scene_json = scene_data.get("scene_json", "{}")
-            meta = json.loads(scene_json)
+            meta = json.loads(crop_json)
             composite_path = meta.get("composite_path", "")
             if composite_path:
                 input_dir = folder_paths.get_input_directory()
@@ -38,23 +35,16 @@ class Pixaroma3D:
                     return os.path.getmtime(full_path)
         except Exception:
             pass
-        return str(scene_data)
+        return crop_json
 
-    def load_render(self, **kwargs):
-        empty_image = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+    def load_crop(self, crop_json):
+        empty_image = torch.ones((1, 1024, 1024, 3), dtype=torch.float32)
 
-        # Extract scene data from the DOM widget
-        scene_data = kwargs.get("SceneWidget")
-        if not scene_data:
-            return (empty_image, 1024, 1024)
-
-        scene_json = scene_data.get("scene_json", "{}") if isinstance(scene_data, dict) else str(scene_data)
-
-        if not scene_json or scene_json.strip() in ("", "{}"):
+        if not crop_json or crop_json.strip() in ("", "{}"):
             return (empty_image, 1024, 1024)
 
         try:
-            meta = json.loads(scene_json)
+            meta = json.loads(crop_json)
             if not isinstance(meta, dict):
                 return (empty_image, 1024, 1024)
 
@@ -63,7 +53,7 @@ class Pixaroma3D:
 
             composite_path = meta.get("composite_path", "")
             if not composite_path:
-                arr = np.zeros((doc_h, doc_w, 3), dtype=np.float32)
+                arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
                 return (torch.from_numpy(arr)[None,], doc_w, doc_h)
 
             input_dir = os.path.realpath(folder_paths.get_input_directory())
@@ -71,7 +61,7 @@ class Pixaroma3D:
 
             if not full_path.startswith(input_dir + os.sep):
                 print(
-                    "[Pixaroma3D] Security: composite_path escapes input directory, blocked."
+                    "[PixaromaCrop] Security: composite_path escapes input directory, blocked."
                 )
                 return (empty_image, doc_w, doc_h)
 
@@ -83,14 +73,14 @@ class Pixaroma3D:
             return (torch.from_numpy(arr)[None,], doc_w, doc_h)
 
         except Exception as e:
-            print(f"[Pixaroma3D] Load error: {e}")
+            print(f"[PixaromaCrop] Load error: {e}")
             return (empty_image, 1024, 1024)
 
 
 NODE_CLASS_MAPPINGS = {
-    "Pixaroma3D": Pixaroma3D,
+    "PixaromaCrop": PixaromaCrop,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Pixaroma3D": "3D Builder Pixaroma",
+    "PixaromaCrop": "Image Crop Pixaroma",
 }

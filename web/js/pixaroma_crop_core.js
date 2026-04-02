@@ -1,7 +1,7 @@
 // ============================================================
 // Pixaroma Image Crop Editor — Core + Full UI  v2
 // ============================================================
-import { installFocusTrap } from "./pixaroma_node_utils.js";
+import { installFocusTrap } from "./pixaroma_shared.js";
 
 const STYLE_ID = "pixaroma-crop-styles-v2";
 const BRAND = "#f66744";

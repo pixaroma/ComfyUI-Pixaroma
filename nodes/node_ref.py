@@ -17,7 +17,7 @@ class FlexibleOptionalInputType(dict):
         return True
 
 
-class PixaromaTestNode:
+class PixaromaReferenceNode:
     @classmethod
     def INPUT_TYPES(self):
         return {
@@ -44,9 +44,9 @@ class PixaromaTestNode:
 
 
 NODE_CLASS_MAPPINGS = {
-    "PixaromaTestNode": PixaromaTestNode,
+    "PixaromaReferenceNode": PixaromaReferenceNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "PixaromaTestNode": "Test Node",
+    "PixaromaReferenceNode": "Reference Node",
 }

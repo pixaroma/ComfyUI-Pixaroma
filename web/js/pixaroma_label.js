@@ -1,10 +1,10 @@
 import { app } from "/scripts/app.js";
 import {
+  allow_debug,
   hideJsonWidget,
   BRAND,
   installFocusTrap,
-} from "./pixaroma_node_utils.js";
-import { allow_debug } from "./pixaroma_shared.js";
+} from "./pixaroma_shared.js";
 
 // ─── Defaults ────────────────────────────────────────────────
 const DEFAULTS = {
@@ -773,7 +773,7 @@ app.registerExtension({
       const r = _origCreated?.apply(this, arguments);
       setupLabel(this);
       this.badges = [];
-      if (allow_debug) console.log("PixaromaLabel",this)
+      if (allow_debug) console.log("PixaromaLabel", this);
       return r;
     };
 

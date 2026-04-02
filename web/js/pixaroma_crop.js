@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { CropEditor } from "./pixaroma_crop_core.js";
-import { createPlaceholder, resizeNode, hideJsonWidget, restorePreview } from "./pixaroma_node_utils.js";
+import { createPlaceholder, resizeNode, hideJsonWidget, restorePreview } from "./pixaroma_shared.js";
 
 app.registerExtension({
     name: "Pixaroma.Crop",
