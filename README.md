@@ -70,6 +70,13 @@ Video tutorials and workflow examples on the Pixaroma YouTube channel:
 
 **https://www.youtube.com/@pixaroma**
 
+## Changelog
+
+### April 02, 2026
+- Some nodes are now compatible with ComfyUI 2.0
+- Fixed Labels node
+- Fixed various bugs
+
 > 💡 **Heads up:** I'm not a developer - these nodes were created with AI help. Everything works as intended, but bugs may exist.
 >
 > 💬 Join the Discord: https://discord.gg/gggpkVgBf3
