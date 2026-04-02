@@ -16,7 +16,7 @@ from .nodes.node_show_text import NODE_CLASS_MAPPINGS as _MAPS_SHOW_TEXT
 from .nodes.node_show_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SHOW_TEXT
 
 
-dev_mode = True
+dev_mode = False
 if dev_mode:
     from .nodes.node_ref import NODE_CLASS_MAPPINGS as _MAPS_UTILS
     from .nodes.node_ref import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_UTILS
@@ -27,13 +27,13 @@ else:
 # Naming convention: all class keys must use the "Pixaroma" prefix
 # (e.g. "PixaromaEffectBlur") to avoid collisions with other packs.
 NODE_CLASS_MAPPINGS = {
-    **_MAPS_COMPOSITION,
     **_MAPS_3D,
+    **_MAPS_COMPOSITION,
+    **_MAPS_PAINT,
     **_MAPS_COMPARE,
     **_MAPS_CROP,
     **_MAPS_LABEL,
     **_MAPS_UTILS,
-    **_MAPS_PAINT,
     **_MAPS_SHOW_TEXT,
 }
 
@@ -53,7 +53,12 @@ WEB_DIRECTORY = "./web"
 
 
 # ─── Startup banner ──────────────────────────────────────────
-VERSION = "1.0.0"
+# use toml file version
+import toml
+
+tompl_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
+with open(tompl_path, "r") as f:
+    VERSION = toml.load(f)["project"]["version"]
 _O = "\033[38;2;246;103;68m"  # #f66744
 _W = "\033[1;37m"
 _G = "\033[0;37m"
@@ -81,7 +86,7 @@ for _ln in _node_lines:
     print(f"  {_G}{_ln}{_R}")
 print(f"  {_G}ComfyUI Tutorials: https://www.youtube.com/@pixaroma{_R}")
 print(
-    f"  {_O}⚠  Pixaroma Nodes does not support Nodes 2.0 — Turn it Off from ComfyUI Menu.{_R}"
+    f"  {_O}⚠ Some Pixaroma Nodes does not support Nodes 2.0 — Turn it Off from ComfyUI Menu.{_R}"
 )
 print(_bar)
 

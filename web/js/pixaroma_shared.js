@@ -1,4 +1,4 @@
-export const allow_debug = true;
+export const allow_debug = false;
 
 export const PIXAROMA_LOGO = `data:image/svg+xml;utf8,${encodeURIComponent(`
 <svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 64 64">
