@@ -2,7 +2,7 @@
 name = "ComfyUI-Pixaroma"
 description = "Creative suite for ComfyUI — 3D Builder, Paint Studio, Image Composer, Image Crop, Image Compare, and Label with layers, transforms, AI background removal, and more."
 version = "1.0.5"
-license = { text = "MIT" }
+license = { file = "LICENSE.txt" }
 requires-python = ">=3.9"
 keywords = ["comfyui", "image-editor", "3d", "paint", "layers", "compositor", "compare", "crop", "label", "pixaroma"]
 
