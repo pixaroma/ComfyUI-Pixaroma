@@ -323,10 +323,8 @@ export class PaintStudio extends PixaromaEditorBase {
 
   _buildTitlebarActions() {
     const frag = document.createDocumentFragment();
-    const undoBtn = this._mkBtn("↩ Undo", () => this.undo(), "ppx-btn");
-    undoBtn.style.minWidth = "64px";
-    const redoBtn = this._mkBtn("↪ Redo", () => this.redo(), "ppx-btn");
-    redoBtn.style.minWidth = "64px";
+    const undoBtn = this._mkBtn("↩ Undo", () => this.undo(), "pxb-hdr-btn");
+    const redoBtn = this._mkBtn("↪ Redo", () => this.redo(), "pxb-hdr-btn");
     this.el.undoBtn = undoBtn;
     this.el.redoBtn = redoBtn;
     frag.append(undoBtn, redoBtn);

@@ -60,17 +60,14 @@ export class PixaromaEditor extends PixaromaEditorBase {
     wrap.style.cssText = "display:flex;gap:4px;align-items:center;";
 
     this.btnUndo = document.createElement("button");
-    this.btnUndo.className = "pix-view-btn";
+    this.btnUndo.className = "pxb-hdr-btn";
     this.btnUndo.innerHTML = "↩ Undo";
-    this.btnUndo.style.background = "rgba(36,38,40,0.9)";
     this.btnRedo = document.createElement("button");
-    this.btnRedo.className = "pix-view-btn";
+    this.btnRedo.className = "pxb-hdr-btn";
     this.btnRedo.innerHTML = "↪ Redo";
-    this.btnRedo.style.background = "rgba(36,38,40,0.9)";
     this.btnHelp = document.createElement("button");
-    this.btnHelp.className = "pix-view-btn";
+    this.btnHelp.className = "pxb-hdr-btn";
     this.btnHelp.innerHTML = "❓ Help";
-    this.btnHelp.style.background = "rgba(36,38,40,0.9)";
     this.btnUndo.onclick = () => this.undo();
     this.btnRedo.onclick = () => this.redo();
 
