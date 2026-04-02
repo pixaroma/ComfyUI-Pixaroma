@@ -76,6 +76,18 @@ function injectBaseStyles() {
 }
 .pxb-hdr-btn:hover { background: rgba(255,255,255,0.07); border-color: var(--pxb-border); color: #e0e0e0; }
 .pxb-hdr-btn:active { background: rgba(255,255,255,0.04); }
+/* ── Save button (orange, before close) ── */
+.pxb-save-btn {
+    background: var(--pxb-brand); border: 1px solid transparent; color: #fff;
+    padding: 0 16px; height: 28px; border-radius: 6px;
+    font-size: 12px; font-weight: 600; font-family: inherit; cursor: pointer;
+    transition: opacity .12s, box-shadow .12s;
+    display: inline-flex; align-items: center; gap: 5px;
+    white-space: nowrap; flex-shrink: 0; margin-left: 6px;
+}
+.pxb-save-btn:hover { opacity: 0.88; box-shadow: 0 0 0 3px rgba(246,103,68,0.28); }
+.pxb-save-btn:active { opacity: 0.75; }
+.pxb-save-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 /* ── Close button (right-most, red on hover) ── */
 .pxb-close-btn {
     background: transparent; border: 1px solid transparent; color: #666;
@@ -161,6 +173,9 @@ export class PixaromaEditorBase {
   /** Called after the UI is mounted in the DOM. Put init logic here. */
   _onOpen(jsonStr) {}
 
+  /** Override in subclasses to perform the save action. */
+  _save() {}
+
   // ── Shell Assembly ─────────────────────────────────────────
 
   _buildUI() {
@@ -188,6 +203,14 @@ export class PixaromaEditorBase {
       actWrap.appendChild(titleActions);
       tb.appendChild(actWrap);
     }
+    // ── Save button — before close ──
+    const saveTbBtn = document.createElement("button");
+    saveTbBtn.className = "pxb-save-btn";
+    saveTbBtn.title = "Save";
+    saveTbBtn.textContent = "Save";
+    saveTbBtn.onclick = () => this._save();
+    this.el.headerSaveBtn = saveTbBtn;
+    tb.appendChild(saveTbBtn);
     // ── Close button — always right-most ──
     const closeTbBtn = document.createElement("button");
     closeTbBtn.className = "pxb-close-btn";
