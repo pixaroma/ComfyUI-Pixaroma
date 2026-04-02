@@ -604,6 +604,11 @@ export class PixaromaEditor extends PixaromaEditorBase {
     }, 100);
   }
 
+  _save() {
+    // Delegate to the sidebar save button which holds the full async save logic.
+    if (this.saveBtn) this.saveBtn.click();
+  }
+
   _close() {
     if (this._cleanupKeys) this._cleanupKeys();
     super._close();
