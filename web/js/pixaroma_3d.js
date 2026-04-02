@@ -26,7 +26,7 @@ app.registerExtension({
     node.imgs = null;
 
     // ── Container ──
-    const container = document.createElement("div");
+    let container = document.createElement("div");
     container.style.cssText = `
       display: none; 
       flex-direction: column;
@@ -120,7 +120,7 @@ app.registerExtension({
     });
 
     // ── DOM widget (sent to Python as kwargs["SceneWidget"]) ──
-    const widget = node.addDOMWidget("SceneWidget", "custom", container, {
+    let widget = node.addDOMWidget("SceneWidget", "custom", container, {
       getValue: () => ({
         scene_json: sceneJson,
       }),
@@ -136,6 +136,12 @@ app.registerExtension({
 
     node.onResize = () => {
       // handle resize
+    };
+
+    // cleanup when node is removed
+    node.onRemoved = () => {
+      widget = null;
+      container = null;
     };
 
     // show widget after 100ms avoid widget flickering

@@ -22,7 +22,7 @@ app.registerExtension({
     node.imgs = null; // suppress native ComfyUI preview
 
     // ── Container ──
-    const container = document.createElement("div");
+    let container = document.createElement("div");
     container.style.cssText = `
       display: none;
       flex-direction: column;
@@ -115,7 +115,7 @@ app.registerExtension({
     });
 
     // ── DOM widget ──
-    const widget = node.addDOMWidget("ComposerWidget", "custom", container, {
+    let widget = node.addDOMWidget("ComposerWidget", "custom", container, {
       getValue: () => ({ project_json: projectJson }),
       setValue: (v) => {
         if (v && typeof v === "object") {
@@ -128,6 +128,12 @@ app.registerExtension({
     });
 
     node.onResize = () => {};
+
+    // cleanup when node is removed
+    node.onRemoved = () => {
+      widget = null;
+      container = null;
+    };
 
     // Show container after short delay to avoid flicker
     setTimeout(() => {

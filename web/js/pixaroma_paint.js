@@ -22,7 +22,7 @@ app.registerExtension({
     node.imgs = null; // suppress native ComfyUI preview
 
     // ── Container ──
-    const container = document.createElement("div");
+    let container = document.createElement("div");
     container.style.cssText = `
       display: none;
       flex-direction: column;
@@ -96,7 +96,7 @@ app.registerExtension({
     });
 
     // ── DOM widget ──
-    const widget = node.addDOMWidget("PaintWidget", "custom", container, {
+    let widget = node.addDOMWidget("PaintWidget", "custom", container, {
       getValue: () => ({ paint_json: paintJson }),
       setValue: (v) => {
         if (v && typeof v === "object") {
@@ -108,6 +108,12 @@ app.registerExtension({
     });
 
     node.onResize = () => {};
+
+    // cleanup when node is removed
+    node.onRemoved = () => {
+      widget = null;
+      container = null;
+    };
 
     setTimeout(() => {
       container.style.display = "flex";
