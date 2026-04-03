@@ -159,6 +159,7 @@ export class CropEditor {
             width: this.imgW || 1024,
             height: this.imgH || 1024,
             ratioIndex: 0,
+            startCollapsed: false,
             onChange: ({ width, height, ratioIndex }) => {
                 this.ratioIdx = ratioIndex;
                 this.ratioSwapped = false;

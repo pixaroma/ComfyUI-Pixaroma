@@ -2124,12 +2124,13 @@ export function createCanvasSettings(config) {
     ratioIndex: initRatio = 0,
     minSize = 64,
     maxSize = 8192,
+    startCollapsed = true,
     onChange,
   } = config;
 
   let curW = initW, curH = initH, curRatio = initRatio;
 
-  const panel = createPanel("Canvas Settings", { collapsible: true, collapsed: true });
+  const panel = createPanel("Canvas Settings", { collapsible: true, collapsed: startCollapsed });
   const wrapper = document.createElement("div");
   wrapper.className = "pxf-canvas-settings";
 

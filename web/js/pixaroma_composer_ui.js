@@ -272,6 +272,7 @@ export class PixaromaUI {
             width: core.docWidth,
             height: core.docHeight,
             ratioIndex: 0,
+            startCollapsed: false,
             onChange: ({ width, height, ratioIndex }) => {
                 core.docWidth = width;
                 core.docHeight = height;

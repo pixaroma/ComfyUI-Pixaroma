@@ -211,6 +211,7 @@ export class Pixaroma3DEditor {
             width: this.docW,
             height: this.docH,
             ratioIndex: 1, // default 1:1
+            startCollapsed: false,
             onChange: ({ width, height, ratioIndex }) => {
                 this.docW = width;
                 this.docH = height;
