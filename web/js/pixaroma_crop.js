@@ -1,6 +1,11 @@
 import { app } from "../../../scripts/app.js";
 import { CropEditor } from "./pixaroma_crop_core.js";
-import { allow_debug, createDummyWidget } from "./pixaroma_shared.js";
+import {
+  allow_debug,
+  createNodePreview,
+  showNodePreview,
+  activateNodePreview,
+} from "./pixaroma_shared.js";
 
 app.registerExtension({
   name: "Pixaroma.Crop",
@@ -21,43 +26,12 @@ app.registerExtension({
     node.size = [300, 300];
     node.imgs = null; // suppress native ComfyUI preview
 
-    // ── Container ──
-    const container = document.createElement("div");
-    container.style.cssText = `
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 0px;
-      padding: 5px;
-      background-color: #2a2a2a;
-      border-radius: 4px;
-      width: 100%;
-      overflow: hidden;
-    `;
-
-    // ── Preview image ──
-    const preview = document.createElement("img");
-    preview.style.cssText = `
-      display: none;
-      width: 100%;
-      border-radius: 4px;
-      object-fit: contain;
-    `;
-    container.appendChild(preview);
-
-    const dummy_widget = createDummyWidget(
+    // ── Shared preview system ──
+    const parts = createNodePreview(
       "Image Crop",
       "Pixaroma",
-      `Click 'Open Crop' to start`,
+      "Click 'Open Crop' to start",
     );
-    container.appendChild(dummy_widget);
-
-    // ── Info label ──
-    const infoLabel = document.createElement("div");
-    infoLabel.style.cssText = "color:#888;font-size:10px;text-align:center;";
-    infoLabel.textContent = "";
-    container.appendChild(infoLabel);
 
     // ── State — mirrors the hidden crop_json widget ──
     let cropJson = "{}";
@@ -76,15 +50,7 @@ app.registerExtension({
         }
 
         if (dataURL) {
-          const img = new Image();
-          img.onload = () => {
-            dummy_widget.style.display = "none";
-            preview.src = dataURL;
-            preview.style.display = "block";
-            infoLabel.textContent = `${img.naturalWidth}×${img.naturalHeight}`;
-            node.setDirtyCanvas(true, true);
-          };
-          img.src = dataURL;
+          showNodePreview(parts, dataURL, null, node);
         }
       };
 
@@ -96,7 +62,7 @@ app.registerExtension({
     });
 
     // ── DOM widget ──
-    const widget = node.addDOMWidget("CropWidget", "custom", container, {
+    const widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
       getValue: () => ({ crop_json: cropJson }),
       setValue: (v) => {
         if (v && typeof v === "object") {
@@ -107,11 +73,6 @@ app.registerExtension({
       margin: 5,
     });
 
-    node.onResize = () => {};
-
-    setTimeout(() => {
-      container.style.display = "flex";
-      node.setDirtyCanvas(true, true);
-    }, 100);
+    activateNodePreview(parts, node);
   },
 });
