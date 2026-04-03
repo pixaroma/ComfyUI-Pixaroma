@@ -135,7 +135,9 @@ function injectCSS() {
     padding: 10px 14px; border-bottom: 1px solid #242424; position: sticky; top: 0;
     background: #171718; z-index: 1;
 }
-.pix-lbl-header span { color: #e0e0e0; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
+.pix-lbl-title { display: flex; align-items: center; gap: 6px; color: #e0e0e0; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
+.pix-lbl-title-logo { width: 18px; height: 18px; }
+.pix-lbl-title-brand { color: ${BRAND}; }
 .pix-lbl-close {
     background: none; border: none; color: #555; font-size: 18px;
     cursor: pointer; padding: 0 2px; line-height: 1;
@@ -321,7 +323,16 @@ class LabelEditor {
 
     // ── Header
     const header = el("div", "pix-lbl-header");
-    header.innerHTML = `<span>Label</span>`;
+    const titleSpan = el("span", "pix-lbl-title");
+    const logo = document.createElement("img");
+    logo.src = "/pixaroma/assets/pixaroma_logo.svg";
+    logo.className = "pix-lbl-title-logo";
+    titleSpan.appendChild(logo);
+    titleSpan.append(" Label Editor ");
+    const brandSpan = el("span", "pix-lbl-title-brand");
+    brandSpan.textContent = "Pixaroma";
+    titleSpan.appendChild(brandSpan);
+    header.appendChild(titleSpan);
     const closeBtn = el("button", "pix-lbl-close");
     closeBtn.textContent = "\u00d7";
     closeBtn.onclick = () => this.close();
