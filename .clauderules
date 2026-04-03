@@ -1,0 +1,17 @@
+# Performance & Token Efficiency Rules
+
+- **Critical:** Do not change `LICENSE` or `.clauderules` or `pyproject.toml` files.
+- **Context Management:** Do not read or analyze files in the `.github`, `.vscode`, or `__pycache__` directories.
+- **Lazy Loading:** If a task requires searching the whole codebase, ask for permission first to avoid heavy context usage.
+- **Be Concise:** Provide brief explanations. Only explain "why" if specifically asked.
+- **Minimal Code Changes:** Only rewrite the specific lines that need changes. Avoid rewriting the entire file unless necessary.
+- **Dry Run:** Before applying large architectural changes, provide a brief summary of the plan for approval.
+- **No Chatty Responses:** Skip pleasantries (e.g., "Sure, I can help with that"). Jump straight to the solution.
+
+# Architecture & Modularization Rules
+
+- **Modular Design:** Always prioritize modularity. If a file or a function grows too large or handles multiple responsibilities, suggest splitting it into smaller, reusable modules.
+- **Separation of Concerns (SoC):** Ensure that logic, data models, and presentation/UI are separated into distinct files or layers as per best practices for the current project.
+- **File Granularity:** Avoid "God Files." If a file exceeds a reasonable length for its purpose, proactively recommend refactoring it into a folder-based structure with specialized sub-files.
+- **Single Responsibility Principle:** Each module/class/function should have one reason to change. If you notice a violation, point it out before implementing new code.
+- **Clean Imports:** When creating new files, ensure that imports are clean and only include what is strictly necessary to keep the dependency graph lean.
