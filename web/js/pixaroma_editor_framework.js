@@ -1939,7 +1939,7 @@ export function createLayerPanel(config) {
  */
 export function createTransformPanel(config) {
   const _ui = "/pixaroma/assets/icons/ui/";
-  const panel = createPanel("Transform Properties");
+  const panel = createPanel("Transform Properties", { collapsible: true, collapsed: true });
 
   // ── Button rows: 3 per row ──
   const fitW   = createButton("Fit W",  { variant: "sm", iconSrc: _ui + "fit-width.svg",       onClick: config.onFitWidth,   title: "Fit to canvas width" });
@@ -2160,7 +2160,7 @@ export function createCanvasSettings(config) {
 
   let curW = initW, curH = initH, curRatio = initRatio;
 
-  const panel = createPanel("Canvas Settings");
+  const panel = createPanel("Canvas Settings", { collapsible: true, collapsed: true });
   const wrapper = document.createElement("div");
   wrapper.className = "pxf-canvas-settings";
 
