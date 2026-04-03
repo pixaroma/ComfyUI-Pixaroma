@@ -495,10 +495,6 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
                 this._setStatus("Reset to default");
             },
         });
-        // Keep bgPreview reference for existing code that updates it
-        this.el.bgPreview = null; // toolbar manages BG color now
-        wrapper.appendChild(this._canvasToolbar.el);
-
         // ── Transform Panel (unified, applies to selected layer) ──
         this._transformPanel = createTransformPanel({
             onFitWidth: () => {
@@ -570,8 +566,11 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
 
         // Store ref for old code that checks this.el.transformPanel
         this.el.transformPanel = this._transformPanel.el;
-        // Transform panel always visible (unified with Composer)
         wrapper.appendChild(this._transformPanel.el);
+
+        // Keep bgPreview reference for existing code that updates it
+        this.el.bgPreview = null; // toolbar manages BG color now
+        wrapper.appendChild(this._canvasToolbar.el);
 
         return wrapper;
     }

@@ -2507,14 +2507,13 @@ export function createCanvasToolbar(config) {
     onClick: () => fileInput.click(),
     title: "Browse for an image file",
   });
-  wrapper.appendChild(addBtn);
-
-  // BG Color row
+  // BG Color alongside Add Image button
   let colorInput = null;
   let _bgColor = bgColor;
   if (showBgColor) {
-    const row = document.createElement("div");
-    row.className = "pxf-canvas-toolbar-row";
+    const addRow = document.createElement("div");
+    addRow.className = "pxf-canvas-toolbar-row";
+    addBtn.style.flex = "1";
     const label = document.createElement("span");
     label.style.cssText = "font-size:10px;color:#888;flex-shrink:0;";
     label.textContent = "BG:";
@@ -2522,13 +2521,15 @@ export function createCanvasToolbar(config) {
     colorInput.type = "color";
     colorInput.value = bgColor;
     colorInput.className = "pxf-color-input";
-    colorInput.style.cssText = "flex:1;height:28px;";
+    colorInput.style.cssText = "width:36px;height:28px;flex-shrink:0;";
     colorInput.addEventListener("input", () => {
       _bgColor = colorInput.value;
       if (onBgColorChange) onBgColorChange(colorInput.value);
     });
-    row.append(label, colorInput);
-    wrapper.appendChild(row);
+    addRow.append(addBtn, label, colorInput);
+    wrapper.appendChild(addRow);
+  } else {
+    wrapper.appendChild(addBtn);
   }
 
   // Clear + Reset buttons in one row
