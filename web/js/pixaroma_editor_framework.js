@@ -898,7 +898,7 @@ export function createEditorLayout(config) {
     const zoomWrap = document.createElement("div");
     zoomWrap.className = "pxf-titlebar-zoom";
     const zoomOut = createButton("", { variant: "sm", title: "Zoom out", iconSrc: UI_ICON + "minus.svg", onClick: () => { if (onZoomOut) onZoomOut(); } });
-    const zoomFit = createButton("Fit", { variant: "sm", title: "Fit to view", onClick: () => { if (onZoomFit) onZoomFit(); } });
+    const zoomFit = createButton("⛶ Fit", { variant: "accent", title: "Fit to view", onClick: () => { if (onZoomFit) onZoomFit(); } });
     zoomLabelEl = document.createElement("span");
     zoomLabelEl.className = "pxf-zoom-label";
     zoomLabelEl.textContent = "100%";
