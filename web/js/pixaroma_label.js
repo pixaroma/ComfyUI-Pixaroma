@@ -111,31 +111,6 @@ function injectCSS() {
   _cssInjected = true;
   const style = document.createElement("style");
   style.textContent = `
-.pix-lbl-body {
-    max-height: 400px; 
-    overflow-y: auto;
-    padding-right: 8px; 
-}
-.pix-lbl-body::-webkit-scrollbar {
-    width: 6px;
-}
-.pix-lbl-body::-webkit-scrollbar-track {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
-}
-.pix-lbl-body::-webkit-scrollbar-thumb {
-    background: #555; 
-    border-radius: 10px;
-}
-/* Handle on hover */
-.pix-lbl-body::-webkit-scrollbar-thumb:hover {
-    background: #888;
-}
-/* Firefox support */
-.pix-lbl-body {
-    scrollbar-width: thin;
-    scrollbar-color: #555 rgba(0, 0, 0, 0.1);
-}
 .pix-lbl-overlay {
     position: fixed; inset: 0; z-index: 99999;
     background: rgba(0,0,0,0.55);
@@ -143,134 +118,140 @@ function injectCSS() {
     font-family: 'Segoe UI', system-ui, sans-serif;
 }
 .pix-lbl-panel {
-    background: #171718; border: 1px solid #333; border-radius: 10px;
-    width: 660px; max-height: 90vh; overflow-y: auto;
-    box-shadow: 0 12px 40px rgba(0,0,0,0.6); position: relative;
+    background: #171718; border: 1px solid #2e2e2e; border-radius: 10px;
+    width: 520px; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 16px 48px rgba(0,0,0,0.7); position: relative;
+    scrollbar-width: thin; scrollbar-color: #444 transparent;
 }
+.pix-lbl-panel::-webkit-scrollbar { width: 5px; }
+.pix-lbl-panel::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 .pix-lbl-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 18px; border-bottom: 1px solid #2a2a2a;
+    padding: 10px 14px; border-bottom: 1px solid #242424; position: sticky; top: 0;
+    background: #171718; z-index: 1;
 }
-.pix-lbl-header span { color: #fff; font-size: 15px; font-weight: 600; }
+.pix-lbl-header span { color: #e0e0e0; font-size: 13px; font-weight: 600; letter-spacing: 0.2px; }
 .pix-lbl-close {
-    background: none; border: none; color: #666; font-size: 20px;
-    cursor: pointer; padding: 0 4px; line-height: 1;
+    background: none; border: none; color: #555; font-size: 18px;
+    cursor: pointer; padding: 0 2px; line-height: 1;
 }
-.pix-lbl-close:hover { color: #fff; }
-.pix-lbl-body { padding: 16px 18px; }
-.pix-lbl-field { margin-bottom: 14px; }
-.pix-lbl-field > .pix-lbl-lbl {
-    display: block; color: #777; font-size: 10px; margin-bottom: 5px;
-    text-transform: uppercase; letter-spacing: 0.6px;
+.pix-lbl-close:hover { color: #ddd; }
+.pix-lbl-body { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+/* Section label */
+.pix-lbl-lbl {
+    display: block; color: #555; font-size: 9px; margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600;
 }
 .pix-lbl-field textarea {
     width: 100%; box-sizing: border-box;
-    background: #222; border: 1px solid #333; border-radius: 5px;
-    color: #ddd; padding: 8px 10px; font-size: 13px;
-    font-family: inherit; outline: none; resize: vertical; min-height: 56px;
+    background: #1e1e1f; border: 1px solid #2e2e2e; border-radius: 5px;
+    color: #d0d0d0; padding: 7px 9px; font-size: 13px;
+    font-family: inherit; outline: none; resize: vertical; min-height: 46px;
 }
 .pix-lbl-field textarea:focus { border-color: ${BRAND}; }
 .pix-lbl-preview {
-    margin-bottom: 14px; background: #111; border-radius: 6px;
-    padding: 12px; min-height: 36px; display: flex;
+    background: #111; border-radius: 5px; border: 1px solid #222;
+    padding: 8px; min-height: 28px; display: flex;
     align-items: center; justify-content: center; overflow: hidden;
 }
 .pix-lbl-preview canvas { max-width: 100%; height: auto; }
 /* Toggle button group */
-.pix-lbl-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.pix-lbl-btns { display: flex; gap: 3px; flex-wrap: wrap; align-items: center; }
 .pix-lbl-btn {
-    padding: 5px 12px; border: 1px solid #444; border-radius: 4px;
-    background: #2a2c2e; color: #999; font-size: 12px; cursor: pointer;
-    transition: all 0.15s;
+    padding: 4px 10px; border: 1px solid #333; border-radius: 4px;
+    background: #232325; color: #888; font-size: 11px; cursor: pointer;
+    transition: all 0.12s; line-height: 1.4;
 }
-.pix-lbl-btn:hover { border-color: #666; color: #ccc; }
-.pix-lbl-btn.active { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
-/* Bold button */
-.pix-lbl-bold { font-weight: bold; min-width: 32px; text-align: center; }
+.pix-lbl-btn:hover { border-color: #555; color: #bbb; }
+.pix-lbl-btn.active { background: ${BRAND}22; border-color: ${BRAND}; color: ${BRAND}; }
+.pix-lbl-bold { font-weight: bold; min-width: 26px; text-align: center; }
 /* Range row */
-.pix-lbl-range-wrap { display: flex; align-items: center; gap: 8px; }
-.pix-lbl-range-wrap input[type="range"] { flex: 1; accent-color: ${BRAND}; }
+.pix-lbl-range-wrap { display: flex; align-items: center; gap: 6px; }
+.pix-lbl-range-wrap input[type="range"] { flex: 1; accent-color: ${BRAND}; height: 3px; }
 .pix-lbl-range-wrap .pix-lbl-val {
-    color: #999; font-size: 12px; min-width: 32px; text-align: right;
+    color: #666; font-size: 11px; min-width: 28px; text-align: right; font-variant-numeric: tabular-nums;
 }
-/* Inline row */
-.pix-lbl-row { display: flex; gap: 12px; align-items: flex-end; }
-.pix-lbl-row > .pix-lbl-field { flex: 1; margin-bottom: 0; }
+/* Divider inside button row */
+.pix-lbl-vsep { width: 1px; height: 16px; background: #333; margin: 0 3px; flex-shrink: 0; }
+/* 2-col color grid */
+.pix-lbl-color-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.pix-lbl-color-col { min-width: 0; }
 /* Color section */
-.pix-lbl-swatches { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+.pix-lbl-swatches { display: flex; gap: 3px; flex-wrap: wrap; margin-bottom: 5px; }
 .pix-lbl-swatch {
-    width: 24px; height: 24px; border-radius: 4px; cursor: pointer;
-    border: 2px solid transparent; transition: border-color 0.15s;
+    width: 20px; height: 20px; border-radius: 3px; cursor: pointer;
+    border: 2px solid transparent; transition: border-color 0.12s;
     box-sizing: border-box;
 }
 .pix-lbl-swatch:hover { border-color: #888; }
 .pix-lbl-swatch.active { border-color: #fff; }
 .pix-lbl-swatch-transp {
-    width: 24px; height: 24px; border-radius: 4px; cursor: pointer;
+    width: 20px; height: 20px; border-radius: 3px; cursor: pointer;
     border: 2px solid transparent; box-sizing: border-box;
-    background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 50%/10px 10px;
+    background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 50%/8px 8px;
 }
 .pix-lbl-swatch-transp:hover { border-color: #888; }
 .pix-lbl-swatch-transp.active { border-color: #fff; }
-.pix-lbl-color-row { display: flex; align-items: center; gap: 6px; }
+.pix-lbl-color-row { display: flex; align-items: center; gap: 5px; }
 .pix-lbl-color-row input[type="color"] {
-    width: 30px; height: 26px; padding: 0; border: 1px solid #444;
-    border-radius: 4px; background: #222; cursor: pointer;
+    width: 26px; height: 22px; padding: 0; border: 1px solid #333;
+    border-radius: 3px; background: #1e1e1f; cursor: pointer; flex-shrink: 0;
 }
 .pix-lbl-color-row .pix-lbl-hex {
-    width: 76px; background: #222; border: 1px solid #333; border-radius: 4px;
-    color: #ddd; padding: 4px 6px; font-size: 11px; font-family: monospace;
-    outline: none;
+    flex: 1; min-width: 0; background: #1e1e1f; border: 1px solid #2e2e2e; border-radius: 3px;
+    color: #bbb; padding: 3px 5px; font-size: 11px; font-family: monospace; outline: none;
 }
 .pix-lbl-color-row .pix-lbl-hex:focus { border-color: ${BRAND}; }
+/* 4-up spacing strip */
+.pix-lbl-spacing-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 12px; }
+.pix-lbl-spacing-field { min-width: 0; }
 /* Footer */
 .pix-lbl-footer {
-    display: flex; justify-content: flex-end; gap: 8px;
-    padding: 12px 18px; border-top: 1px solid #2a2a2a;
+    display: flex; justify-content: flex-end; align-items: center; gap: 6px;
+    padding: 8px 14px; border-top: 1px solid #242424; position: sticky; bottom: 0;
+    background: #171718;
 }
 .pix-lbl-footer button {
-    padding: 8px 20px; border: none; border-radius: 5px;
-    font-size: 13px; cursor: pointer; font-weight: 500;
+    padding: 6px 16px; border: none; border-radius: 5px;
+    font-size: 12px; cursor: pointer; font-weight: 500;
 }
-.pix-lbl-btn-cancel { background: #2a2a2a; color: #ccc; }
-.pix-lbl-btn-cancel:hover { background: #363636; }
-.pix-lbl-btn-save { background: ${BRAND}; color: #fff; }
-.pix-lbl-btn-save:hover { opacity: 0.9; }
+.pix-lbl-btn-cancel { background: #252527; color: #aaa; border: 1px solid #333; }
+.pix-lbl-btn-cancel:hover { background: #2e2e30; }
+.pix-lbl-btn-save { background: ${BRAND}; color: #fff; border: 1px solid transparent; }
+.pix-lbl-btn-save:hover { opacity: 0.88; }
 /* Align icon buttons */
-.pix-lbl-align-icon { display: flex; flex-direction: column; gap: 2px; width: 14px; align-items: flex-start; }
+.pix-lbl-align-icon { display: flex; flex-direction: column; gap: 2px; width: 13px; align-items: flex-start; }
 .pix-lbl-align-icon span { display: block; height: 2px; background: currentColor; border-radius: 1px; }
-.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(1) { width: 14px; }
-.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(2) { width: 10px; }
-.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(3) { width: 12px; }
+.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(1) { width: 13px; }
+.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(2) { width: 9px; }
+.pix-lbl-align-left .pix-lbl-align-icon span:nth-child(3) { width: 11px; }
 .pix-lbl-align-center .pix-lbl-align-icon { align-items: center; }
-.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(1) { width: 14px; }
-.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(2) { width: 10px; }
-.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(3) { width: 12px; }
+.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(1) { width: 13px; }
+.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(2) { width: 9px; }
+.pix-lbl-align-center .pix-lbl-align-icon span:nth-child(3) { width: 11px; }
 .pix-lbl-align-right .pix-lbl-align-icon { align-items: flex-end; }
-.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(1) { width: 14px; }
-.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(2) { width: 10px; }
-.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(3) { width: 12px; }
+.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(1) { width: 13px; }
+.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(2) { width: 9px; }
+.pix-lbl-align-right .pix-lbl-align-icon span:nth-child(3) { width: 11px; }
 /* Help overlay */
 .pix-lbl-help-overlay {
     position: absolute; inset: 0; background: #171718;
-    border-radius: 10px; padding: 28px; overflow-y: auto;
-    color: #ccc; font-size: 13px; line-height: 1.7; z-index: 10;
+    border-radius: 10px; padding: 22px 20px; overflow-y: auto;
+    color: #bbb; font-size: 12px; line-height: 1.65; z-index: 10;
 }
-.pix-lbl-help-overlay h3 { color: ${BRAND}; margin: 0 0 12px 0; font-size: 16px; }
-.pix-lbl-help-overlay p { margin: 0 0 8px 0; }
+.pix-lbl-help-overlay h3 { color: ${BRAND}; margin: 0 0 10px 0; font-size: 14px; }
+.pix-lbl-help-overlay p { margin: 0 0 6px 0; }
 .pix-lbl-help-overlay kbd {
-    background: #333; border: 1px solid #555; border-radius: 3px;
-    padding: 1px 5px; font-size: 11px; font-family: monospace; color: #ddd;
+    background: #2a2a2a; border: 1px solid #444; border-radius: 3px;
+    padding: 1px 4px; font-size: 10px; font-family: monospace; color: #ccc;
 }
 .pix-lbl-help-close {
-    position: absolute; top: 12px; right: 16px;
-    background: none; border: none; color: #666; font-size: 20px;
-    cursor: pointer;
+    position: absolute; top: 10px; right: 14px;
+    background: none; border: none; color: #555; font-size: 18px; cursor: pointer;
 }
-.pix-lbl-help-close:hover { color: #fff; }
-/* Help button */
-.pix-lbl-btn-help { background: #2a2a2a; color: #999; font-size: 12px; padding: 8px 14px; }
-.pix-lbl-btn-help:hover { background: #363636; color: #ccc; }
+.pix-lbl-help-close:hover { color: #ddd; }
+.pix-lbl-btn-help { background: none; border: none; color: #555; font-size: 11px; padding: 6px 8px; margin-right: auto; }
+.pix-lbl-btn-help:hover { color: #999; }
 `;
   document.head.appendChild(style);
 }
@@ -324,6 +305,7 @@ class LabelEditor {
       l.textContent = text;
       return l;
     };
+    const vsep = () => el("span", "pix-lbl-vsep");
 
     const overlay = el("div", "pix-lbl-overlay");
     overlay.addEventListener("mousedown", (e) => {
@@ -332,16 +314,16 @@ class LabelEditor {
     const panel = el("div", "pix-lbl-panel");
     overlay.appendChild(panel);
 
-    // Header
+    // ── Header
     const header = el("div", "pix-lbl-header");
-    header.innerHTML = `<span>Edit Label</span>`;
+    header.innerHTML = `<span>Label</span>`;
     const closeBtn = el("button", "pix-lbl-close");
     closeBtn.textContent = "\u00d7";
     closeBtn.onclick = () => this.close();
     header.appendChild(closeBtn);
     panel.appendChild(header);
 
-    // Body
+    // ── Body
     const body = el("div", "pix-lbl-body");
     panel.appendChild(body);
 
@@ -350,7 +332,7 @@ class LabelEditor {
     textField.appendChild(lbl("Text"));
     const ta = document.createElement("textarea");
     ta.value = c.text;
-    ta.rows = 3;
+    ta.rows = 2;
     ta.addEventListener("input", () => {
       c.text = ta.value;
       this._updatePreview();
@@ -364,31 +346,11 @@ class LabelEditor {
     prevWrap.appendChild(this._previewCanvas);
     body.appendChild(prevWrap);
 
-    // ── Font Size (slider)
-    const sizeField = el("div", "pix-lbl-field");
-    sizeField.appendChild(lbl("Font Size"));
-    const sizeWrap = el("div", "pix-lbl-range-wrap");
-    const sizeRange = document.createElement("input");
-    sizeRange.type = "range";
-    sizeRange.min = 8;
-    sizeRange.max = 64;
-    sizeRange.value = c.fontSize;
-    const sizeVal = el("span", "pix-lbl-val");
-    sizeVal.textContent = c.fontSize;
-    sizeRange.addEventListener("input", () => {
-      c.fontSize = Number(sizeRange.value);
-      sizeVal.textContent = c.fontSize;
-      this._updatePreview();
-    });
-    sizeWrap.appendChild(sizeRange);
-    sizeWrap.appendChild(sizeVal);
-    sizeField.appendChild(sizeWrap);
-    body.appendChild(sizeField);
-
-    // ── Font Family (toggle buttons) + Bold + Align
-    const fontRow = el("div", "pix-lbl-field");
-    fontRow.appendChild(lbl("Font"));
+    // ── Typography: font buttons + Bold + align in one row, size below
+    const typoSection = el("div");
+    typoSection.appendChild(lbl("Typography"));
     const fontBtns = el("div", "pix-lbl-btns");
+
     const fontBtnEls = [];
     for (let i = 0; i < FONT_CHOICES.length; i++) {
       const btn = el("button", "pix-lbl-btn");
@@ -404,7 +366,9 @@ class LabelEditor {
       fontBtnEls.push(btn);
       fontBtns.appendChild(btn);
     }
-    // Bold toggle
+    fontBtns.appendChild(vsep());
+
+    // Bold
     const boldBtn = el("button", "pix-lbl-btn pix-lbl-bold");
     boldBtn.textContent = "B";
     if (c.fontWeight === "bold") boldBtn.classList.add("active");
@@ -414,11 +378,9 @@ class LabelEditor {
       this._updatePreview();
     };
     fontBtns.appendChild(boldBtn);
-    // Separator
-    const sep = el("span");
-    sep.style.cssText = "width:1px;height:20px;background:#444;margin:0 4px;";
-    fontBtns.appendChild(sep);
-    // Align buttons with CSS icons
+    fontBtns.appendChild(vsep());
+
+    // Align
     const aligns = ["left", "center", "right"];
     const alignBtnEls = [];
     for (const a of aligns) {
@@ -437,61 +399,44 @@ class LabelEditor {
       alignBtnEls.push(btn);
       fontBtns.appendChild(btn);
     }
-    fontRow.appendChild(fontBtns);
-    body.appendChild(fontRow);
+    fontBtns.appendChild(vsep());
 
-    // ── Text Color
-    const tcField = el("div", "pix-lbl-field");
-    tcField.appendChild(lbl("Text Color"));
-    const tcSwatches = el("div", "pix-lbl-swatches");
-    this._buildSwatches(
-      tcSwatches,
-      TEXT_SWATCHES,
-      c.fontColor,
-      (color, swEls) => {
-        c.fontColor = color;
-        tcPicker.value = color;
-        tcHex.value = color;
-        swEls.forEach((s) =>
-          s.classList.toggle("active", s.dataset.color === color),
-        );
-        this._updatePreview();
-      },
-    );
-    tcField.appendChild(tcSwatches);
-    const tcRow = el("div", "pix-lbl-color-row");
-    const tcPicker = document.createElement("input");
-    tcPicker.type = "color";
-    tcPicker.value = c.fontColor;
-    const tcHex = document.createElement("input");
-    tcHex.type = "text";
-    tcHex.className = "pix-lbl-hex";
-    tcHex.value = c.fontColor;
-    tcPicker.addEventListener("input", () => {
-      c.fontColor = tcPicker.value;
-      tcHex.value = tcPicker.value;
-      this._clearSwatchActive(tcSwatches, tcPicker.value);
+    // Size inline (label + slider + val)
+    const sizeRange = document.createElement("input");
+    sizeRange.type = "range";
+    sizeRange.min = 8;
+    sizeRange.max = 64;
+    sizeRange.value = c.fontSize;
+    sizeRange.style.cssText = "flex:1;accent-color:" + BRAND + ";height:3px;min-width:60px;";
+    const sizeVal = el("span", "pix-lbl-val");
+    sizeVal.textContent = c.fontSize;
+    sizeRange.addEventListener("input", () => {
+      c.fontSize = Number(sizeRange.value);
+      sizeVal.textContent = c.fontSize;
       this._updatePreview();
     });
-    tcHex.addEventListener("input", () => {
-      const v = tcHex.value.startsWith("#") ? tcHex.value : `#${tcHex.value}`;
-      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-        c.fontColor = v;
-        tcPicker.value = v;
-        this._clearSwatchActive(tcSwatches, v);
-        this._updatePreview();
-      }
-    });
-    tcRow.appendChild(tcPicker);
-    tcRow.appendChild(tcHex);
-    tcField.appendChild(tcRow);
-    body.appendChild(tcField);
+    const sizeLbl = el("span");
+    sizeLbl.textContent = "Size";
+    sizeLbl.style.cssText = "color:#555;font-size:9px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;";
+    fontBtns.appendChild(sizeLbl);
+    fontBtns.appendChild(sizeRange);
+    fontBtns.appendChild(sizeVal);
 
-    // ── Background Color
-    const bgField = el("div", "pix-lbl-field");
-    bgField.appendChild(lbl("Background"));
+    typoSection.appendChild(fontBtns);
+    body.appendChild(typoSection);
+
+    // ── Colors (2-column grid)
+    const colorSection = el("div");
+    colorSection.appendChild(lbl("Colors"));
+    const colorGrid = el("div", "pix-lbl-color-grid");
+
+    // Background column
+    const bgCol = el("div", "pix-lbl-color-col");
+    const bgColLbl = el("div", "pix-lbl-lbl");
+    bgColLbl.textContent = "Background";
+    bgColLbl.style.color = "#444";
+    bgCol.appendChild(bgColLbl);
     const bgSwatches = el("div", "pix-lbl-swatches");
-    // Add transparent swatch first
     const transpSw = el("div", "pix-lbl-swatch-transp");
     transpSw.title = "Transparent";
     if (c.backgroundColor === "transparent") transpSw.classList.add("active");
@@ -506,29 +451,21 @@ class LabelEditor {
       this._updatePreview();
     };
     bgSwatches.appendChild(transpSw);
-    this._buildSwatches(
-      bgSwatches,
-      BG_SWATCHES,
-      c.backgroundColor,
-      (color, swEls) => {
-        c.backgroundColor = color;
-        bgPicker.value = color;
-        bgPicker.disabled = false;
-        bgHex.value = color;
-        bgHex.disabled = false;
-        transpSw.classList.remove("active");
-        swEls.forEach((s) =>
-          s.classList.toggle("active", s.dataset.color === color),
-        );
-        this._updatePreview();
-      },
-    );
-    bgField.appendChild(bgSwatches);
+    this._buildSwatches(bgSwatches, BG_SWATCHES, c.backgroundColor, (color, swEls) => {
+      c.backgroundColor = color;
+      bgPicker.value = color;
+      bgPicker.disabled = false;
+      bgHex.value = color;
+      bgHex.disabled = false;
+      transpSw.classList.remove("active");
+      swEls.forEach((s) => s.classList.toggle("active", s.dataset.color === color));
+      this._updatePreview();
+    });
+    bgCol.appendChild(bgSwatches);
     const bgRow = el("div", "pix-lbl-color-row");
     const bgPicker = document.createElement("input");
     bgPicker.type = "color";
-    bgPicker.value =
-      c.backgroundColor === "transparent" ? "#333333" : c.backgroundColor;
+    bgPicker.value = c.backgroundColor === "transparent" ? "#333333" : c.backgroundColor;
     bgPicker.disabled = c.backgroundColor === "transparent";
     const bgHex = document.createElement("input");
     bgHex.type = "text";
@@ -555,43 +492,77 @@ class LabelEditor {
     });
     bgRow.appendChild(bgPicker);
     bgRow.appendChild(bgHex);
-    bgField.appendChild(bgRow);
-    body.appendChild(bgField);
+    bgCol.appendChild(bgRow);
+    colorGrid.appendChild(bgCol);
 
-    // ── Padding + Border Radius + Opacity (compact row)
-    const row4 = el("div", "pix-lbl-row");
-    row4.style.marginBottom = "14px";
-    row4.appendChild(
-      this._rangeField("Padding", c.padding, 0, 60, 1, (v) => {
-        c.padding = v;
-      }),
-    );
-    row4.appendChild(
-      this._rangeField("Radius", c.borderRadius, 0, 40, 1, (v) => {
-        c.borderRadius = v;
-      }),
-    );
-    body.appendChild(row4);
+    // Text Color column
+    const tcCol = el("div", "pix-lbl-color-col");
+    const tcColLbl = el("div", "pix-lbl-lbl");
+    tcColLbl.textContent = "Text";
+    tcColLbl.style.color = "#444";
+    tcCol.appendChild(tcColLbl);
+    const tcSwatches = el("div", "pix-lbl-swatches");
+    this._buildSwatches(tcSwatches, TEXT_SWATCHES, c.fontColor, (color, swEls) => {
+      c.fontColor = color;
+      tcPicker.value = color;
+      tcHex.value = color;
+      swEls.forEach((s) => s.classList.toggle("active", s.dataset.color === color));
+      this._updatePreview();
+    });
+    tcCol.appendChild(tcSwatches);
+    const tcRow = el("div", "pix-lbl-color-row");
+    const tcPicker = document.createElement("input");
+    tcPicker.type = "color";
+    tcPicker.value = c.fontColor;
+    const tcHex = document.createElement("input");
+    tcHex.type = "text";
+    tcHex.className = "pix-lbl-hex";
+    tcHex.value = c.fontColor;
+    tcPicker.addEventListener("input", () => {
+      c.fontColor = tcPicker.value;
+      tcHex.value = tcPicker.value;
+      this._clearSwatchActive(tcSwatches, tcPicker.value);
+      this._updatePreview();
+    });
+    tcHex.addEventListener("input", () => {
+      const v = tcHex.value.startsWith("#") ? tcHex.value : `#${tcHex.value}`;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        c.fontColor = v;
+        tcPicker.value = v;
+        this._clearSwatchActive(tcSwatches, v);
+        this._updatePreview();
+      }
+    });
+    tcRow.appendChild(tcPicker);
+    tcRow.appendChild(tcHex);
+    tcCol.appendChild(tcRow);
+    colorGrid.appendChild(tcCol);
 
-    const row5 = el("div", "pix-lbl-row");
-    row5.style.marginBottom = "0";
-    row5.appendChild(
-      this._rangeField("Opacity", c.opacity, 0, 1, 0.05, (v) => {
-        c.opacity = v;
-      }),
-    );
-    row5.appendChild(
-      this._rangeField("Line Height", c.lineHeight, 1, 3, 0.1, (v) => {
-        c.lineHeight = v;
-      }),
-    );
-    body.appendChild(row5);
+    colorSection.appendChild(colorGrid);
+    body.appendChild(colorSection);
 
-    // Footer
+    // ── Spacing (2×2 grid)
+    const spacingSection = el("div");
+    spacingSection.appendChild(lbl("Spacing & Style"));
+    const spacingGrid = el("div", "pix-lbl-spacing-grid");
+    const spacingFields = [
+      ["Padding", c.padding, 0, 60, 1, (v) => { c.padding = v; }],
+      ["Radius", c.borderRadius, 0, 40, 1, (v) => { c.borderRadius = v; }],
+      ["Opacity", c.opacity, 0, 1, 0.05, (v) => { c.opacity = v; }],
+      ["Line Height", c.lineHeight, 1, 3, 0.1, (v) => { c.lineHeight = v; }],
+    ];
+    for (const [label, val, min, max, step, onChange] of spacingFields) {
+      const f = this._rangeField(label, val, min, max, step, onChange);
+      f.className = "pix-lbl-spacing-field";
+      spacingGrid.appendChild(f);
+    }
+    spacingSection.appendChild(spacingGrid);
+    body.appendChild(spacingSection);
+
+    // ── Footer
     const footer = el("div", "pix-lbl-footer");
     const helpBtn = el("button", "pix-lbl-btn-help");
-    helpBtn.textContent = "Help";
-    helpBtn.style.marginRight = "auto";
+    helpBtn.textContent = "? Help";
     helpBtn.onclick = () => this._showHelp(panel);
     const cancelBtn = el("button", "pix-lbl-btn-cancel");
     cancelBtn.textContent = "Cancel";
