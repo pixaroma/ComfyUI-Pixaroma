@@ -289,21 +289,22 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         const toolPanel = createPanel("Tools");
         const toolbox = document.createElement("div");
         toolbox.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:4px;";
+        const UI_ICON = "/pixaroma/assets/icons/ui/";
         const TOOLS = [
-            { id:"transform", icon:"\u2725",   label:"Move",     tip:"Move/Transform (V or T) \u2014 Move, scale, rotate layer\nDrag = move \u00b7 Corner = scale \u00b7 Top = rotate\nEnter = Apply \u00b7 Esc = Reset" },
-            { id:"brush",     icon:"\ud83d\udd8c",  label:"Brush",    tip:"Brush (B) \u2014 Soft-edge paint brush" },
-            { id:"pencil",    icon:"\u270f\ufe0f",  label:"Pencil",   tip:"Pencil (P) \u2014 Hard-edge precise drawing" },
-            { id:"eraser",    icon:"\u25d3",   label:"Eraser",   tip:"Eraser (E) \u2014 Erase pixels on active layer" },
-            { id:"smudge",    icon:"\ud83d\udca7",  label:"Smudge",   tip:"Smudge (R) \u2014 Smudge/blend brush" },
-            { id:"fill",      icon:"\u2b1b",  label:"Fill",     tip:"Fill (G) \u2014 Flood fill with foreground color" },
-            { id:"shape",     icon:"\u25ad",   label:"Shape",    tip:"Shape (U) \u2014 Draw shapes: Rectangle, Ellipse, Line, Triangle" },
-            { id:"pick",      icon:"\u25ce",   label:"Eyedrop",  tip:"Eyedropper (I) \u2014 Sample color from canvas (Alt+brush for temp)" },
+            { id:"transform", icon:"move.svg",        label:"Move",     tip:"Move/Transform (V or T) \u2014 Move, scale, rotate layer\nDrag = move \u00b7 Corner = scale \u00b7 Top = rotate\nEnter = Apply \u00b7 Esc = Reset" },
+            { id:"brush",     icon:"brush.svg",       label:"Brush",    tip:"Brush (B) \u2014 Soft-edge paint brush" },
+            { id:"pencil",    icon:"pencil.svg",      label:"Pencil",   tip:"Pencil (P) \u2014 Hard-edge precise drawing" },
+            { id:"eraser",    icon:"eraser.svg",      label:"Eraser",   tip:"Eraser (E) \u2014 Erase pixels on active layer" },
+            { id:"smudge",    icon:"smudge.svg",      label:"Smudge",   tip:"Smudge (R) \u2014 Smudge/blend brush" },
+            { id:"fill",      icon:"fill.svg",        label:"Fill",     tip:"Fill (G) \u2014 Flood fill with foreground color" },
+            { id:"shape",     icon:"shape.svg",       label:"Shape",    tip:"Shape (U) \u2014 Draw shapes: Rectangle, Ellipse, Line, Triangle" },
+            { id:"pick",      icon:"eyedropper.svg",  label:"Eyedrop",  tip:"Eyedropper (I) \u2014 Sample color from canvas (Alt+brush for temp)" },
         ];
         TOOLS.forEach(t => {
             const btn = document.createElement("div");
             btn.className = "pxf-tool-btn" + (this.tool === t.id ? " active" : "");
             btn.title = t.tip;
-            btn.innerHTML = `<span class="pxf-tool-btn-icon">${t.icon}</span><span class="pxf-tool-btn-label">${t.label}</span>`;
+            btn.innerHTML = `<span class="pxf-tool-btn-icon"><img src="${UI_ICON}${t.icon}" style="width:18px;height:18px;pointer-events:none;filter:brightness(0) invert(1);"></span><span class="pxf-tool-btn-label">${t.label}</span>`;
             btn.addEventListener("click", () => this._setTool(t.id));
             this.el[`toolBtn_${t.id}`] = btn;
             toolbox.appendChild(btn);
