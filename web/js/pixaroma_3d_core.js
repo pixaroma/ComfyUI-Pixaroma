@@ -168,6 +168,7 @@ export class Pixaroma3DEditor {
             helpContent: helpHTML,
         });
         this._layout = layout;
+        layout.onSaveToDisk = () => { this._diskSavePending = true; this._save(); };
         layout.onCleanup = () => {
             window.removeEventListener("keydown", this._onKey, { capture: true });
             window.removeEventListener("keyup", this._onKeyUp, { capture: true });
@@ -1177,6 +1178,7 @@ export class Pixaroma3DEditor {
             if(res.status==="success"){
                 const sd=this._serializeScene();sd.composite_path=res.composite_path;
                 if(this.onSave)this.onSave(JSON.stringify(sd),dataURL);
+                if(this._diskSavePending){this._diskSavePending=false;if(this.onSaveToDisk)this.onSaveToDisk(dataURL);}
                 this._layout.setSaved();
             } else this._layout.setSaveError("Save failed");
         } catch(e){console.error("[P3D]",e);this._layout.setSaveError("Save error");}

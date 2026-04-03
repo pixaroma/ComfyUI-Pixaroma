@@ -257,6 +257,7 @@ export class PixaromaUI {
         });
 
         core._layout = layout;
+        layout.onSaveToDisk = () => { core._diskSavePending = true; core.saveBtn?.click(); };
         layout.onCleanup = () => {
             if (core._cleanupKeys) core._cleanupKeys();
         };

@@ -254,6 +254,7 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         });
 
         this._layout = layout;
+        layout.onSaveToDisk = () => { this._diskSavePending = true; this._save(); };
         layout.onCleanup = () => this._unbindEvents();
         this.el.overlay = layout.overlay;
         this.el.undoBtn = layout.undoBtn;
@@ -2334,6 +2335,7 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
 
             const meta = { doc_w:this.docW, doc_h:this.docH, background_color:this.bgColor, project_id:this.projectId, layers:layersMeta, composite_path:compositePath, session_ver:3.0 };
             if (this.onSave) this.onSave(JSON.stringify(meta), compositeDataURL);
+            if (this._diskSavePending) { this._diskSavePending = false; if (this.onSaveToDisk) this.onSaveToDisk(compositeDataURL); }
             this._layout.setSaved();
         } catch (err) {
             console.error("[Paint] Save error:", err);

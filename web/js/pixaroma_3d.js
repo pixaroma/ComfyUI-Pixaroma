@@ -6,6 +6,7 @@ import {
   showNodePreview,
   restoreNodePreview,
   activateNodePreview,
+  downloadDataURL,
 } from "./pixaroma_shared.js";
 
 app.registerExtension({
@@ -58,6 +59,8 @@ app.registerExtension({
 
         node.setDirtyCanvas(true, true);
       };
+
+      editor.onSaveToDisk = (dataURL) => downloadDataURL(dataURL, "pixaroma_3d");
 
       editor.onClose = () => {
         node.setDirtyCanvas(true, true);

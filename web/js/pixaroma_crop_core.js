@@ -123,6 +123,7 @@ export class CropEditor {
             `,
         });
         this.layout = layout;
+        layout.onSaveToDisk = () => { this._diskSavePending = true; this._save(); };
         layout.onCleanup = () => this._unbindKeys();
         this.el.overlay = layout.overlay;
         this.el.workspace = layout.workspace;
@@ -748,6 +749,7 @@ export class CropEditor {
                 project_id: this.projectId, composite_path: compositePath, src_path: this._srcPath,
             };
             if (this.onSave) this.onSave(JSON.stringify(meta), dataURL);
+            if (this._diskSavePending) { this._diskSavePending = false; if (this.onSaveToDisk) this.onSaveToDisk(dataURL); }
             this.layout.setSaved();
         } catch (err) {
             console.error("[Crop] Save error:", err);

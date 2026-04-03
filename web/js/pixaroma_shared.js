@@ -514,3 +514,39 @@ export function injectLabelCSS() {
 `;
   document.head.appendChild(style);
 }
+
+/**
+ * Prompts the user with a Save File picker and writes a dataURL as a PNG.
+ * Falls back to a standard <a> download if the File System Access API is unavailable.
+ * @param {string} dataURL - The data URL to save (image/png or image/jpeg)
+ * @param {string} [suggestedName="pixaroma_export.png"] - Default filename
+ */
+export async function downloadDataURL(dataURL, suggestedName = "pixaroma_export.png") {
+  if (!dataURL) return;
+  const mimeMatch = dataURL.match(/^data:([^;]+);/);
+  const mime = mimeMatch ? mimeMatch[1] : "image/png";
+  const ext = mime === "image/jpeg" ? "jpg" : "png";
+  const name = suggestedName.endsWith(`.${ext}`) ? suggestedName : `${suggestedName}.${ext}`;
+
+  if (window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: name,
+        types: [{ description: "Image", accept: { [mime]: [`.${ext}`] } }],
+      });
+      const blob = await (await fetch(dataURL)).blob();
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (e) {
+      if (e.name === "AbortError") return; // user cancelled
+      console.warn("[Pixaroma] showSaveFilePicker failed, falling back:", e);
+    }
+  }
+  // Fallback: trigger browser download
+  const a = document.createElement("a");
+  a.href = dataURL;
+  a.download = name;
+  a.click();
+}

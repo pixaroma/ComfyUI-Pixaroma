@@ -5,6 +5,7 @@ import {
   createNodePreview,
   showNodePreview,
   activateNodePreview,
+  downloadDataURL,
 } from "./pixaroma_shared.js";
 
 app.registerExtension({
@@ -53,6 +54,8 @@ app.registerExtension({
           showNodePreview(parts, dataURL, null, node);
         }
       };
+
+      studio.onSaveToDisk = (dataURL) => downloadDataURL(dataURL, "pixaroma_paint");
 
       studio.onClose = () => {
         node.setDirtyCanvas(true, true);

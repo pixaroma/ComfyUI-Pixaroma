@@ -596,6 +596,7 @@ export class PixaromaEditor {
                     if (this.onSave) {
                         this.onSave(jsonString, finalDataURL);
                     }
+                    if (this._diskSavePending) { this._diskSavePending = false; if (this.onSaveToDisk) this.onSaveToDisk(finalDataURL); }
 
                     this._layout.setSaved();
                 } else { 

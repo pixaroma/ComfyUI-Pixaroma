@@ -1003,7 +1003,7 @@ export function createEditorLayout(config) {
 
   const saveBtn = createButton("Save", { variant: "accent", iconSrc: UI_ICON + "save.svg", onClick: onSave });
   saveBtn.style.flex = "1";
-  const closeBtn = createButton("Close", { variant: "standard", iconSrc: UI_ICON + "close.svg", onClick: onClose });
+  const closeBtn = createButton("Save to Disk", { variant: "standard", iconSrc: UI_ICON + "download.svg", title: "Save image to disk", onClick: () => { if (layout.onSaveToDisk) layout.onSaveToDisk(); } });
   closeBtn.style.flex = "1";
 
   footerBtnRow.append(saveBtn, closeBtn);
@@ -1053,6 +1053,8 @@ export function createEditorLayout(config) {
     },
     /** Editor cleanup callback — editors register this so unmount() cleans up keys/listeners. */
     onCleanup: null,
+    /** Set this to a function(dataURL) to handle "Save to Disk" button clicks. */
+    onSaveToDisk: null,
     /** Update the floating status text in the workspace.
      *  @param {string} text - message to display
      *  @param {"info"|"warn"|"error"} [type="info"] - style type
