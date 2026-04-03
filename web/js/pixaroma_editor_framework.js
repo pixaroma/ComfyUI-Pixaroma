@@ -901,7 +901,7 @@ export function createEditorLayout(config) {
     // Separator between zoom and undo/redo
     const sep = document.createElement("div");
     sep.className = "pxf-titlebar-sep";
-    sep.style.cssText = "margin-left: 35px; margin-right: 35px;";
+    sep.style.cssText = "margin-left: 15px; margin-right: 15px;";
     actions.appendChild(sep);
   }
 
