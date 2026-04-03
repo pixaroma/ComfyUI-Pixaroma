@@ -29,13 +29,18 @@ const TEXT_SWATCHES = [
   "#ffffff",
   "#cccccc",
   "#999999",
-  "#333333",
+  "#555555",
   "#000000",
   "#f66744",
   "#cc3333",
   "#33aa33",
   "#3388dd",
   "#ddaa00",
+  "#ff99bb",
+  "#99ddff",
+  "#aaffaa",
+  "#ffeeaa",
+  "#cc88ff",
 ];
 const BG_SWATCHES = [
   "#333333",
@@ -341,10 +346,13 @@ class LabelEditor {
     body.appendChild(textField);
 
     // ── Preview
+    const prevSection = el("div");
+    prevSection.appendChild(lbl("Preview"));
     const prevWrap = el("div", "pix-lbl-preview");
     this._previewCanvas = document.createElement("canvas");
     prevWrap.appendChild(this._previewCanvas);
-    body.appendChild(prevWrap);
+    prevSection.appendChild(prevWrap);
+    body.appendChild(prevSection);
 
     // ── Typography: font buttons + Bold + align in one row, size below
     const typoSection = el("div");
