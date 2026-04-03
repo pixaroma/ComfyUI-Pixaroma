@@ -281,14 +281,12 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     // ─── Left Sidebar: Canvas Settings + Tools + Color ──────────
 
     _buildLeftContent(container) {
-        // Canvas section
-        container.appendChild(this._buildCanvasSection());
-        container.appendChild(createDivider());
+
 
         // Tools section
         const toolPanel = createPanel("Tools");
         const toolbox = document.createElement("div");
-        toolbox.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:4px;";
+        toolbox.style.cssText = "display:grid;grid-template-columns:repeat(4,1fr);gap:4px;";
         const UI_ICON = "/pixaroma/assets/icons/ui/";
         const TOOLS = [
             { id:"transform", icon:"move.svg",        label:"Move",     tip:"Move/Transform (V or T) \u2014 Move, scale, rotate layer\nDrag = move \u00b7 Corner = scale \u00b7 Top = rotate\nEnter = Apply \u00b7 Esc = Reset" },
@@ -311,6 +309,10 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
         });
         toolPanel.content.appendChild(toolbox);
         container.appendChild(toolPanel.el);
+        container.appendChild(createDivider());
+
+        // Canvas section
+        container.appendChild(this._buildCanvasSection());
         container.appendChild(createDivider());
 
         // Color section

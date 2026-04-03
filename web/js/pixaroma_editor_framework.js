@@ -369,7 +369,7 @@ function injectFrameworkStyles() {
 
 /* Small square button (layer actions, toolbar) */
 .pxf-btn-sm {
-  width: 28px; height: 28px; padding: 0; flex-shrink: 0;
+  min-width: 28px; height: 28px; padding: 0 4px; flex-shrink: 0;
   background: var(--pxf-bg-panel); color: #ccc; font-size: 13px;
 }
 .pxf-btn-sm:hover { background: #2e3033; color: var(--pxf-accent); border-color: var(--pxf-accent); }
@@ -1941,23 +1941,20 @@ export function createTransformPanel(config) {
   const _ui = "/pixaroma/assets/icons/ui/";
   const panel = createPanel("Transform Properties");
 
-  // ── Button rows: Fit, Flip, Rotate ──
-  const fitW = createButton("Fit Width", { variant: "standard", iconSrc: _ui + "fit-width.svg", onClick: config.onFitWidth, title: "Fit to canvas width" });
-  const fitH = createButton("Fit Height", { variant: "standard", iconSrc: _ui + "fit-height.svg", onClick: config.onFitHeight, title: "Fit to canvas height" });
-  fitW.style.flex = "1"; fitH.style.flex = "1";
-  panel.content.appendChild(createButtonRow([fitW, fitH]));
+  // ── Button rows: 3 per row ──
+  const fitW   = createButton("Fit W",  { variant: "sm", iconSrc: _ui + "fit-width.svg",       onClick: config.onFitWidth,   title: "Fit to canvas width" });
+  const fitH   = createButton("Fit H",  { variant: "sm", iconSrc: _ui + "fit-height.svg",      onClick: config.onFitHeight,  title: "Fit to canvas height" });
+  const flipH  = createButton("Flip H", { variant: "sm", iconSrc: _ui + "flip-horizontal.svg", onClick: config.onFlipH,      title: "Flip horizontally" });
+  const flipV  = createButton("Flip V", { variant: "sm", iconSrc: _ui + "flip-vertical.svg",   onClick: config.onFlipV,      title: "Flip vertically" });
+  const rotCCW = createButton("-90°",   { variant: "sm", iconSrc: _ui + "rotate-ccw.svg",      onClick: config.onRotateCCW,  title: "Rotate -90°" });
+  const rotCW  = createButton("+90°",   { variant: "sm", iconSrc: _ui + "rotate-cw.svg",       onClick: config.onRotateCW,   title: "Rotate +90°" });
 
-  const flipH = createButton("Flip H", { variant: "standard", iconSrc: _ui + "flip-horizontal.svg", onClick: config.onFlipH, title: "Flip horizontally" });
-  const flipV = createButton("Flip V", { variant: "standard", iconSrc: _ui + "flip-vertical.svg", onClick: config.onFlipV, title: "Flip vertically" });
-  flipH.style.flex = "1"; flipV.style.flex = "1";
-  const flipRow = createButtonRow([flipH, flipV]); flipRow.style.marginTop = "4px";
-  panel.content.appendChild(flipRow);
+  [fitW, fitH, flipH, flipV, rotCCW, rotCW].forEach(b => b.style.flex = "1");
 
-  const rotCCW = createButton("-90°", { variant: "standard", iconSrc: _ui + "rotate-ccw.svg", onClick: config.onRotateCCW, title: "Rotate -90°" });
-  const rotCW = createButton("+90°", { variant: "standard", iconSrc: _ui + "rotate-cw.svg", onClick: config.onRotateCW, title: "Rotate +90°" });
-  rotCCW.style.flex = "1"; rotCW.style.flex = "1";
-  const rotRow = createButtonRow([rotCCW, rotCW]); rotRow.style.marginTop = "4px";
-  panel.content.appendChild(rotRow);
+  const row1 = createButtonRow([fitW, fitH, flipH]);
+  const row2 = createButtonRow([flipV, rotCCW, rotCW]); row2.style.marginTop = "4px";
+  panel.content.appendChild(row1);
+  panel.content.appendChild(row2);
 
   // ── Reset Transform (danger style with inline SVG icon) ──
   // Uses _dangerIcon() which creates an inline SVG colored #999 that
