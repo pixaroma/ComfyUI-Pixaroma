@@ -14,12 +14,13 @@ const BTN_GAP = 3;
 const BTN_H = 18;
 const BTN_W = 56;
 const BTN_X = 80; // start X (right of input labels)
+const TOGGLE_SEP = 10; // visual gap separating toggle from mode group
 const ROW1_Y = 10;
 const ROW2_Y = 30;
 const IMG_Y = 54; // image area starts here
-const INIT_W = 400;
+const INIT_W = 390;
 const INIT_H = INIT_W + IMG_Y; // square preview area
-const MIN_W = BTN_X + BTN_W * 4 + BTN_GAP * 3 + 6;
+const MIN_W = BTN_X + BTN_W * 5 + BTN_GAP * 4 + TOGGLE_SEP + 6;
 const MIN_H = IMG_Y + 100;
 
 // Button rect helpers
@@ -28,6 +29,10 @@ function modeRect(i) {
 }
 function hintRect() {
   return { x: BTN_X, y: ROW2_Y, w: BTN_W * 4 + BTN_GAP * 3, h: BTN_H };
+}
+function toggleRect() {
+  const x = BTN_X + 4 * (BTN_W + BTN_GAP) + TOGGLE_SEP;
+  return { x, y: ROW1_Y, w: BTN_W, h: BTN_H };
 }
 function inside(pos, r) {
   return (
@@ -65,6 +70,7 @@ app.registerExtension({
       this._cmpOpacity = 0.5;
       this._cmpImg1 = null;
       this._cmpImg2 = null;
+      this._cmpShowWhich = 0; // 0=compare, 1=img1 only, 2=img2 only
       this.size[0] = INIT_W;
       this.size[1] = INIT_H;
     };
@@ -107,10 +113,12 @@ app.registerExtension({
       const w = this.size[0],
         h = this.size[1];
 
-      // ── Row 1: mode buttons ──
+      // ── Row 1: mode buttons + toggle ──
       ctx.save();
       for (let i = 0; i < 4; i++)
         paintBtn(ctx, modeRect(i), MODES[i], this._cmpMode === i);
+      const toggleLabel = this._cmpShowWhich === 0 ? "Show 1" : this._cmpShowWhich === 1 ? "Show 2" : "Compare";
+      paintBtn(ctx, toggleRect(), toggleLabel, this._cmpShowWhich !== 0);
       ctx.restore();
 
       // ── Row 2: opacity slider or hint text (same height) ──
@@ -220,6 +228,15 @@ app.registerExtension({
       ctx.clip();
       ctx.fillStyle = "#111";
       ctx.fillRect(0, IMG_Y, w, imgH);
+
+      // ── Single image override ──
+      if (this._cmpShowWhich !== 0) {
+        const img = this._cmpShowWhich === 1 ? this._cmpImg1 : this._cmpImg2;
+        if (img) ctx.drawImage(img, fit(img).x, fit(img).y, fit(img).w, fit(img).h);
+        ctx.restore();
+        return;
+      }
+
       const m = this._cmpMode;
       if (m === 0) {
         const sx = w * this._cmpSplitX;
@@ -304,6 +321,13 @@ app.registerExtension({
           return true;
         }
 
+      // Show 1 / Show 2 toggle
+      if (inside(pos, toggleRect())) {
+        this._cmpShowWhich = (this._cmpShowWhich + 1) % 3;
+        app.graph.setDirtyCanvas(true, true);
+        return true;
+      }
+
       // Opacity slider drag start
       if (this._cmpMode === 2 && this._cmpSliderGeo) {
         const sg = this._cmpSliderGeo;
@@ -382,8 +406,8 @@ app.registerExtension({
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (e) {
       if (_origResize) return _origResize.call(this, e);
-      this.size[0] = Math.max(this.size[0], 320);
-      this.size[1] = Math.max(this.size[1], 200);
+      this.size[0] = Math.max(this.size[0], 390);
+      this.size[1] = Math.max(this.size[1], 390);
     };
   },
 });
