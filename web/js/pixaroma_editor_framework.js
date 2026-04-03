@@ -915,6 +915,11 @@ export function createEditorLayout(config) {
     actions.append(undoBtn, redoBtn);
   }
 
+  // Header close button (save + close)
+  const headerCloseBtn = createButton("✕", { variant: "standard", title: "Save & Close", onClick: () => { if (onSave) onSave(); if (onClose) onClose(); } });
+  headerCloseBtn.style.cssText = "padding:5px 10px;font-size:13px;";
+  actions.appendChild(headerCloseBtn);
+
   titlebar.appendChild(actions);
   overlay.appendChild(titlebar);
 
