@@ -252,7 +252,7 @@ function injectFrameworkStyles() {
   position: relative; z-index: 5;
 }
 .pxf-sidebar-left { border-right: 1px solid var(--pxf-border-subtle); }
-.pxf-sidebar-right { border-left: 1px solid var(--pxf-border-subtle); }
+.pxf-sidebar-right { border-left: 1px solid var(--pxf-border-subtle); overflow-y: hidden; }
 
 /* Sidebar scrollbar */
 .pxf-sidebar::-webkit-scrollbar { width: 5px; }
@@ -506,7 +506,7 @@ function injectFrameworkStyles() {
 
 /* ── Layer Panel (unified Photoshop-style) ──────────── */
 .pxf-layer-panel {
-  display: flex; flex-direction: column; min-height: 0;
+  display: flex; flex-direction: column; min-height: 0; flex: 1;
 }
 .pxf-layer-blend-row {
   display: flex; align-items: center; gap: 6px;
@@ -536,22 +536,13 @@ function injectFrameworkStyles() {
 
 /* Layer list */
 .pxf-layers-list {
-  overflow-y: auto; min-height: 40px; max-height: 250px;
+  overflow-y: auto; min-height: 40px; flex: 1;
   padding: 2px 0;
 }
-/* Resize handle for layer list */
+/* Resize handle for layer list (kept as subtle separator) */
 .pxf-layers-resize {
-  height: 6px; cursor: ns-resize;
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
+  height: 1px; background: var(--pxf-border-subtle); flex-shrink: 0;
 }
-.pxf-layers-resize::after {
-  content: ""; display: block;
-  width: 32px; height: 3px;
-  background: var(--pxf-border); border-radius: 2px;
-  transition: background .15s;
-}
-.pxf-layers-resize:hover::after { background: var(--pxf-accent); }
 .pxf-layers-list::-webkit-scrollbar { width: 4px; }
 .pxf-layers-list::-webkit-scrollbar-track { background: transparent; }
 .pxf-layers-list::-webkit-scrollbar-thumb { background: var(--pxf-border); border-radius: 2px; }
@@ -1861,28 +1852,6 @@ export function createLayerPanel(config) {
   resizeHandle.title = "Drag to resize layer list";
   wrapper.appendChild(resizeHandle);
 
-  let _resizing = false, _startY = 0, _startH = 0;
-  resizeHandle.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    _resizing = true;
-    _startY = e.clientY;
-    _startH = list.offsetHeight;
-    document.body.style.cursor = "ns-resize";
-    document.body.style.userSelect = "none";
-  });
-  window.addEventListener("mousemove", (e) => {
-    if (!_resizing) return;
-    const dy = e.clientY - _startY;
-    const newH = Math.max(40, _startH + dy);
-    list.style.maxHeight = newH + "px";
-  });
-  window.addEventListener("mouseup", () => {
-    if (_resizing) {
-      _resizing = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    }
-  });
 
   // Action buttons
   const actionsEl = layersList.el.querySelector(".pxf-layers-actions");
