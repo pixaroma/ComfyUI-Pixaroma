@@ -36,6 +36,39 @@ async def serve_pixaroma_asset(request):
     return web.FileResponse(file_path)
 
 
+@PromptServer.instance.routes.get("/pixaroma/assets/{subdir}/{filename}")
+async def serve_pixaroma_asset_sub(request):
+    subdir = request.match_info["subdir"]
+    filename = request.match_info["filename"]
+    for part in (subdir, filename.replace(".", "").replace("-", "").replace("_", "")):
+        if not _SAFE_ID_RE.match(part):
+            return web.Response(status=400)
+    file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, subdir, filename))
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+        return web.Response(status=403)
+    if not os.path.isfile(file_path):
+        return web.Response(status=404)
+    return web.FileResponse(file_path)
+
+
+@PromptServer.instance.routes.get("/pixaroma/assets/{subdir}/{subdir2}/{filename}")
+async def serve_pixaroma_asset_sub2(request):
+    subdir = request.match_info["subdir"]
+    subdir2 = request.match_info["subdir2"]
+    filename = request.match_info["filename"]
+    for part in (subdir, subdir2, filename.replace(".", "").replace("-", "").replace("_", "")):
+        if not _SAFE_ID_RE.match(part):
+            return web.Response(status=400)
+    file_path = os.path.realpath(
+        os.path.join(PIXAROMA_ASSETS_DIR, subdir, subdir2, filename)
+    )
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+        return web.Response(status=403)
+    if not os.path.isfile(file_path):
+        return web.Response(status=404)
+    return web.FileResponse(file_path)
+
+
 PIXAROMA_INPUT_ROOT = os.path.realpath(
     os.path.join(folder_paths.get_input_directory(), "pixaroma")
 )
@@ -261,14 +294,17 @@ async def remove_bg(request):
 
         input_data = base64.b64decode(b64_data)
         input_image = Image.open(io.BytesIO(input_data))
+        print(f"[Pixaroma] AI Remove Background: processing {input_image.size[0]}x{input_image.size[1]} image...")
         output_image = remove(input_image, session=session)
 
         buffered = io.BytesIO()
         output_image.save(buffered, format="PNG")
         output_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        print(f"[Pixaroma] AI Remove Background: done")
 
         return web.json_response(
             {"status": "success", "image": f"data:image/png;base64,{output_b64}"}
         )
-    except Exception:
+    except Exception as e:
+        print(f"[Pixaroma] AI Remove Background: failed - {e}")
         return web.json_response({"error": "Background removal failed"}, status=500)
