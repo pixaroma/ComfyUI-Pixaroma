@@ -53,6 +53,9 @@ Each editor follows the same pattern:
 - `pixaroma_shared.js` — Shared utilities
 - `pixaroma_node_utils.js` — ComfyUI node integration helpers
 
+### Editor Isolation
+Each editor is a self-contained sub-project. When working on a specific editor, **only read and modify files belonging to that editor** (`pixaroma_<name>*.js` and `nodes/node_<name>.py`). The only shared dependency across all editors is `PixaromaEditorBase` in `web/js/pixaroma_base_editor.js` — read it for context but be cautious modifying it as changes affect every editor.
+
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
@@ -65,4 +68,4 @@ Each editor follows the same pattern:
 4. If it needs backend routes: add to `server_routes.py` and register in `__init__.py`
 
 ## Publishing
-CI/CD auto-publishes to the ComfyUI registry when `pyproject.toml` is pushed to `main`. Do not modify `pyproject.toml`, `LICENSE`, or `.clauderules`.
+CI/CD auto-publishes to the ComfyUI registry when `pyproject.toml` is pushed to `main`. Do not modify `pyproject.toml`, `LICENSE`, or `.clauderules` or `.github/workflows/publish.yml`.
