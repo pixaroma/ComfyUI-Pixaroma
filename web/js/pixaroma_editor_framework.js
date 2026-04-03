@@ -2212,17 +2212,14 @@ export function createCanvasSettings(config) {
   hInput.min = minSize;
   hInput.max = maxSize;
 
-  sizeRow.append(wLabel, wInput, xSign, hLabel, hInput);
-  wrapper.appendChild(sizeRow);
-
-  // ── Swap button ──
-  const swapBtn = createButton("Swap Width/Height", {
-    variant: "full",
+  const swapBtn = createButton("", {
+    variant: "icon",
     iconSrc: UI_ICON + "swap.svg",
     onClick: () => _swap(),
     title: "Swap width and height",
   });
-  wrapper.appendChild(swapBtn);
+  sizeRow.append(wLabel, wInput, xSign, hLabel, hInput, swapBtn);
+  wrapper.appendChild(sizeRow);
 
   panel.content.appendChild(wrapper);
 
@@ -2537,28 +2534,37 @@ export function createCanvasToolbar(config) {
     wrapper.appendChild(row);
   }
 
-  // Clear Canvas button (danger style with inline colored SVG trash icon)
-  if (showClear && onClear) {
-    const clearBtn = createButton(clearLabel, {
-      variant: "full",
-      onClick: onClear,
-      title: "Clear all content",
-    });
-    clearBtn.classList.add("pxf-btn-danger");
-    clearBtn.insertBefore(_dangerIcon("M11.4,21.4h41.2l-5.1,38.2c-.3,1.9-1.9,3.3-3.9,3.3h-23.2c-1.9,0-3.6-1.4-3.9-3.3l-5.1-38.2ZM50.1,6.9h-13v-2.9c0-1.2-1-2.1-2.1-2.1h-6c-1.2,0-2.1,1-2.1,2.1v2.9h-13c-3.9.2-7,3.5-7,7.4v3h50.3v-3c0-3.9-3.1-7.2-7-7.4Z"), clearBtn.firstChild);
-    wrapper.appendChild(clearBtn);
-  }
+  // Clear + Reset buttons in one row
+  if ((showClear && onClear) || (showReset && onReset)) {
+    const dangerRow = document.createElement("div");
+    dangerRow.className = "pxf-canvas-toolbar-row";
+    dangerRow.style.cssText = "gap:4px;";
 
-  // Reset to Default button (danger style with inline colored SVG reset icon)
-  if (showReset && onReset) {
-    const resetBtn = createButton(resetLabel, {
-      variant: "full",
-      onClick: onReset,
-      title: "Reset all settings to default",
-    });
-    resetBtn.classList.add("pxf-btn-danger");
-    resetBtn.insertBefore(_dangerIcon("M5.1,36.2h8c-.1,8,5.1,15,12.2,17.7,7.8,2.9,16.4.6,21.5-5.8,3.3-4.1,4.6-9.2,4-14.4-1-8.6-7.8-15.3-16.4-16.4v6.5c0,.6-.6,1.3-1.1,1.4-.5.2-1.5.2-1.9-.2l-12-10.2c-.6-.5-.8-1.1-.8-1.9,0-.7.4-1.3,1-1.8l11.6-9.9c.6-.5,1.4-.6,2.1-.3.5.2,1,.9,1,1.6v6.4c4.6.5,9,1.9,12.8,4.5,6.5,4.5,10.6,11.2,11.6,19,.3,2.7.4,5,0,7.6-.9,6.2-3.9,12-8.4,16.2-12.2,11.1-30.9,8.9-40.4-4.6-3.1-4.4-4.8-9.7-4.8-15.5ZM38.7,41.7v-9.2c0-1.1-.7-1.9-1.7-2.2h-10.1c-1,.2-1.7,1.1-1.7,2.1v9.3c0,1.2.9,2.1,2.1,2.1h9.1c1.2,0,2.3-1,2.3-2.2Z"), resetBtn.firstChild);
-    wrapper.appendChild(resetBtn);
+    if (showClear && onClear) {
+      const clearBtn = createButton(clearLabel, {
+        variant: "full",
+        onClick: onClear,
+        title: "Clear all content",
+      });
+      clearBtn.classList.add("pxf-btn-danger");
+      clearBtn.style.flex = "1";
+      clearBtn.insertBefore(_dangerIcon("M11.4,21.4h41.2l-5.1,38.2c-.3,1.9-1.9,3.3-3.9,3.3h-23.2c-1.9,0-3.6-1.4-3.9-3.3l-5.1-38.2ZM50.1,6.9h-13v-2.9c0-1.2-1-2.1-2.1-2.1h-6c-1.2,0-2.1,1-2.1,2.1v2.9h-13c-3.9.2-7,3.5-7,7.4v3h50.3v-3c0-3.9-3.1-7.2-7-7.4Z"), clearBtn.firstChild);
+      dangerRow.appendChild(clearBtn);
+    }
+
+    if (showReset && onReset) {
+      const resetBtn = createButton(resetLabel, {
+        variant: "full",
+        onClick: onReset,
+        title: "Reset all settings to default",
+      });
+      resetBtn.classList.add("pxf-btn-danger");
+      resetBtn.style.flex = "1";
+      resetBtn.insertBefore(_dangerIcon("M5.1,36.2h8c-.1,8,5.1,15,12.2,17.7,7.8,2.9,16.4.6,21.5-5.8,3.3-4.1,4.6-9.2,4-14.4-1-8.6-7.8-15.3-16.4-16.4v6.5c0,.6-.6,1.3-1.1,1.4-.5.2-1.5.2-1.9-.2l-12-10.2c-.6-.5-.8-1.1-.8-1.9,0-.7.4-1.3,1-1.8l11.6-9.9c.6-.5,1.4-.6,2.1-.3.5.2,1,.9,1,1.6v6.4c4.6.5,9,1.9,12.8,4.5,6.5,4.5,10.6,11.2,11.6,19,.3,2.7.4,5,0,7.6-.9,6.2-3.9,12-8.4,16.2-12.2,11.1-30.9,8.9-40.4-4.6-3.1-4.4-4.8-9.7-4.8-15.5ZM38.7,41.7v-9.2c0-1.1-.7-1.9-1.7-2.2h-10.1c-1,.2-1.7,1.1-1.7,2.1v9.3c0,1.2.9,2.1,2.1,2.1h9.1c1.2,0,2.3-1,2.3-2.2Z"), resetBtn.firstChild);
+      dangerRow.appendChild(resetBtn);
+    }
+
+    wrapper.appendChild(dangerRow);
   }
 
   // ── Drag & drop setup ──
