@@ -21,7 +21,7 @@ No test suite or linting configuration exists in this project.
 - `__init__.py` — Aggregates all node classes, registers routes, exports `WEB_DIRECTORY = "./web"`
 - `server_routes.py` — 9 aiohttp HTTP routes for file I/O and AI features
 - `nodes/*.py` — Individual node implementations
-- `web/js/pixaroma_base_editor.js` — Frontend UI base (Template Method pattern); all editors extend this
+- `web/js/pixaroma_editor_framework.js` — Frontend UI base (Template Method pattern); all editors extend this
 
 ### Node → ComfyUI Integration
 Each node file exports `NODE_CLASS_MAPPINGS` and `NODE_DISPLAY_NAME_MAPPINGS`. `__init__.py` merges them all.
@@ -54,7 +54,7 @@ Each editor follows the same pattern:
 - `pixaroma_node_utils.js` — ComfyUI node integration helpers
 
 ### Editor Isolation
-Each editor is a self-contained sub-project. When working on a specific editor, **only read and modify files belonging to that editor** (`pixaroma_<name>*.js` and `nodes/node_<name>.py`). The only shared dependency across all editors is `PixaromaEditorBase` in `web/js/pixaroma_base_editor.js` — read it for context but be cautious modifying it as changes affect every editor.
+Each editor is a self-contained sub-project. When working on a specific editor, **only read and modify files belonging to that editor** (`pixaroma_<name>*.js` and `nodes/node_<name>.py`). The only shared dependency across all editors is `PixaromaEditorFramework` in `web/js/pixaroma_editor_framework.js` — read it for context but be cautious modifying it as changes affect every editor.
 
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
