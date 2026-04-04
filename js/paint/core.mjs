@@ -40,6 +40,7 @@ function injectPaintExtraStyles() {
 .ppx-canvas-viewport canvas:first-child { box-shadow:0 4px 32px rgba(0,0,0,.7); border:2px solid rgba(249,115,22,0.45); }
 .ppx-cursor-canvas { position:absolute; top:0; left:0; pointer-events:none; }
 /* (zoom bar now provided by editor framework) */
+.ppx-color-area { display:flex; flex-direction:column; gap:6px; }
 /* Paint-specific: SV/Hue color picker canvases */
 .ppx-sv-canvas { width:100%; cursor:crosshair; border-radius:3px; display:block; border:1px solid #333; flex-shrink:0; }
 .ppx-hue-canvas { width:100%; height:14px; cursor:crosshair; border-radius:3px; display:block; border:1px solid #333; flex-shrink:0; }
@@ -446,9 +447,9 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     container.appendChild(createDivider());
 
     // Color section
-    const colorPanel = createPanel("Color");
+    const colorPanel = createPanel("Color", { collapsible: true });
     const colorArea = colorPanel.content;
-    colorArea.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+    colorArea.classList.add("ppx-color-area");
 
     const svCvs = document.createElement("canvas");
     svCvs.className = "ppx-sv-canvas";
