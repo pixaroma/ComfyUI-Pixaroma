@@ -194,7 +194,6 @@ export function createEditorLayout(config) {
       <div class="pxf-help-footer">
         Designed by <a href="https://www.youtube.com/@pixaroma" target="_blank">Pixaroma</a>
         · <a href="https://github.com/pixaroma/ComfyUI-Pixaroma" target="_blank">GitHub</a><br>
-        Collaborator: <a href="https://github.com/MohammadAboulEla" target="_blank">Makadi</a>
       </div>
     `;
     helpPanel
