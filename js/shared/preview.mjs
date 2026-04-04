@@ -129,6 +129,5 @@ export function activateNodePreview(parts, node) {
 
   setTimeout(() => {
     parts.container.style.display = "flex";
-    node.setDirtyCanvas(true, true);
   }, 100);
 }
