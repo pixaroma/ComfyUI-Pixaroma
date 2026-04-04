@@ -916,7 +916,7 @@ export function createEditorLayout(config) {
   }
 
   // Header close button (save + close)
-  const headerCloseBtn = createButton("✕", { variant: "standard", title: "Save & Close", onClick: () => { if (onSave) onSave(); if (onClose) onClose(); } });
+  const headerCloseBtn = createButton("✕", { variant: "standard", title: "Save & Close", onClick: async () => { if (onSave) await onSave(); if (onClose) onClose(); } });
   headerCloseBtn.style.cssText = "padding:5px 10px;font-size:13px;";
   actions.appendChild(headerCloseBtn);
 
