@@ -89,19 +89,35 @@ export class CropEditor {
       const fn = this._srcPath.split(/[\\/]/).pop();
       const url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
       this._loadImageFromURL(url, () => {
+        // Restore ratio & snap FIRST (silently, without triggering onChange)
+        if (data.ratio_idx != null) {
+          this.ratioIdx = data.ratio_idx;
+        }
+        if (data.snap_idx != null) {
+          this.snapIdx = data.snap_idx;
+          this._snapGrid.setActive(data.snap_idx);
+        }
+        // Restore crop coordinates AFTER ratio is set so onChange won't overwrite them
         if (data.crop_x != null) {
           this.cropX = data.crop_x;
           this.cropY = data.crop_y;
           this.cropW = data.crop_w;
           this.cropH = data.crop_h;
         }
+        // Now update UI to reflect restored state (setRatio triggers onChange,
+        // but we re-apply crop values after it)
+        const savedCrop = data.crop_x != null
+          ? { x: data.crop_x, y: data.crop_y, w: data.crop_w, h: data.crop_h }
+          : null;
         if (data.ratio_idx != null) {
-          this.ratioIdx = data.ratio_idx;
           this._canvasSettings.setRatio(data.ratio_idx);
         }
-        if (data.snap_idx != null) {
-          this.snapIdx = data.snap_idx;
-          this._snapGrid.setActive(data.snap_idx);
+        // Re-apply saved crop after setRatio's onChange may have overwritten it
+        if (savedCrop) {
+          this.cropX = savedCrop.x;
+          this.cropY = savedCrop.y;
+          this.cropW = savedCrop.w;
+          this.cropH = savedCrop.h;
         }
         this._draw();
         this._updateInfo();
