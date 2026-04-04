@@ -212,7 +212,11 @@ proto._zoomAt = function (center, delta) {
 
 proto._applyViewTransform = function () {
   this.el.viewport.style.transform = `translate(${this.panX}px,${this.panY}px) scale(${this.zoom})`;
-  if (this.el.dimLabel) this.el.dimLabel.style.transform = `scale(${1 / this.zoom})`;
+  if (this.el.dimLabel) {
+    const inv = 1 / this.zoom;
+    this.el.dimLabel.style.transform = `scale(${inv})`;
+    this.el.dimLabel.style.bottom = `${-18 * inv}px`;
+  }
   const label = Math.round(this.zoom * 100) + "%";
   if (this.el.zoomLabel) this.el.zoomLabel.textContent = label;
   if (this._layout) this._layout.setZoomLabel(label);
