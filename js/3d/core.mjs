@@ -422,7 +422,10 @@ export class Pixaroma3DEditor {
       showOpacitySlider: false,
     });
     const bgTitleEl = bgTP.el.querySelector(".pxf-panel-title");
-    if (bgTitleEl) bgTitleEl.textContent = "BACKGROUND IMAGE";
+    if (bgTitleEl) {
+      const textNode = [...bgTitleEl.childNodes].find(n => n.nodeType === Node.TEXT_NODE);
+      if (textNode) textNode.textContent = "BACKGROUND IMAGE";
+    }
 
     // X/Y/Scale/Rotate/Opacity sliders
     const bgXR = createSliderRow("X", -100, 100, 0, (v) => {
