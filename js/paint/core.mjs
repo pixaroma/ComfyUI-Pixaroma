@@ -36,7 +36,8 @@ function injectPaintExtraStyles() {
 /* Paint workspace — same dark bg as Composer (unified) */
 /* Paint-specific: canvas viewport */
 .ppx-canvas-viewport { position:absolute; top:0; left:0; transform-origin:0 0; }
-.ppx-canvas-viewport canvas { display:block; box-shadow:0 4px 32px rgba(0,0,0,.7); border:2px solid rgba(249,115,22,0.45); }
+.ppx-canvas-viewport canvas { display:block; }
+.ppx-canvas-viewport canvas:first-child { box-shadow:0 4px 32px rgba(0,0,0,.7); border:2px solid rgba(249,115,22,0.45); }
 .ppx-cursor-canvas { position:absolute; top:0; left:0; pointer-events:none; }
 /* (zoom bar now provided by editor framework) */
 /* Paint-specific: SV/Hue color picker canvases */
