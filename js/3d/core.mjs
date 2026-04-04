@@ -442,6 +442,7 @@ export class Pixaroma3DEditor {
     }
 
     _buildRight(right, footer) {
+        right.style.overflowY = "auto";
         // 1) Layers (unified layer panel from framework, no blend/opacity for 3D)
         this._layerPanel = createLayerPanel({
             showBlendMode: false,
@@ -458,7 +459,7 @@ export class Pixaroma3DEditor {
         right.insertBefore(this._layerPanel.el, footer);
 
         // 2) Object Color + HSL
-        const colSec = createPanel("Object Color");
+        const colSec = createPanel("Object Color", { collapsible: true, collapsed: true });
         const colorIn = createColorInput({ value: "#c4a882", onChange: (v) => this._setObjColor(v) });
         colorIn.style.cssText = "width:100%;height:28px;";
         this.el.objColor = colorIn; colSec.content.appendChild(colorIn);
@@ -482,7 +483,7 @@ export class Pixaroma3DEditor {
         right.insertBefore(colSec.el, footer);
 
         // 3) Materials
-        const mats = createPanel("Materials");
+        const mats = createPanel("Materials", { collapsible: true, collapsed: true });
         const mg = document.createElement("div"); mg.className = "p3d-mat-grid";
         [{id:"clay",l:"Clay",c:"#c4a882",r:0.85,m:0},{id:"matte",l:"Matte",c:"#888",r:0.95,m:0},
          {id:"glossy",l:"Glossy",c:"#6688cc",r:0.08,m:0.15},{id:"metal",l:"Metal",c:"#b0b0cc",r:0.12,m:1}].forEach(p => {
@@ -503,7 +504,7 @@ export class Pixaroma3DEditor {
         right.insertBefore(mats.el, footer);
 
         // 4) Lighting
-        const lp = createPanel("Lighting");
+        const lp = createPanel("Lighting", { collapsible: true, collapsed: true });
         const lcIn = createColorInput({ value: "#ffffff", onChange: (v) => { if (this.light) this.light.color.set(v); } });
         this.el.lightColor = lcIn; lp.content.appendChild(createRow("Color", lcIn));
         const iR = createSliderRow("Intensity", 0, 200, 85, v => { if (this.light) this.light.intensity = v/100*2; });
