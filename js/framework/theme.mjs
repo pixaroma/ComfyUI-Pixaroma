@@ -595,8 +595,8 @@ export function injectFrameworkStyles() {
   border: 2px solid rgba(249, 115, 22, 0.45);
 }
 .pxf-canvas-frame-label {
-  position: absolute; bottom: -18px; right: 0;
-  font-size: 9px; color: rgba(249, 115, 22, 0.6);
+  position: absolute; bottom: -26px; right: 0;
+  font-size: 18px; color: rgba(249, 115, 22, 0.6);
   font-family: var(--pxf-font-mono); white-space: nowrap;
 }
 .pxf-canvas-mask {
