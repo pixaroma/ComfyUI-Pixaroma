@@ -115,6 +115,7 @@ export class PixaromaEditor {
 
   updateViewTransform() {
     this.canvasContainer.style.transform = `translate(calc(-50% + ${this.viewPanX}px), calc(-50% + ${this.viewPanY}px)) scale(${this.viewZoom})`;
+    if (this._dimLabel) this._dimLabel.style.transform = `scale(${1 / this.viewZoom})`;
   }
 
   fitViewToWorkspace() {
