@@ -49,16 +49,25 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 
-WEB_DIRECTORY = "./js"
+WEB_DIRECTORY = "./web"
 
 
 # ─── Startup banner ──────────────────────────────────────────
 # use toml file version
-import toml
+def get_toml_version():
+    try:
+        import toml
 
-tompl_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
-with open(tompl_path, "r") as f:
-    VERSION = toml.load(f)["project"]["version"]
+        tompl_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
+        with open(tompl_path, "r", encoding="utf-8") as f:
+            return toml.load(f)["project"]["version"]
+    except Exception as e:
+        # For debugging: print(f"Error finding version: {e}")
+        pass
+    return "Unknown"
+
+
+VERSION = get_toml_version()
 _O = "\033[38;2;246;103;68m"  # #f66744
 _W = "\033[1;37m"
 _G = "\033[0;37m"
