@@ -305,82 +305,117 @@ export class Pixaroma3DEditor {
         this._updateFrame();
       },
     });
+    // Add BG color, Clear Scene, Reset to Default into Canvas Settings panel
+    const csContent = this._canvasSettings.el.querySelector(".pxf-panel-content");
+    if (csContent) {
+      // BG color + Clear Scene + Reset to Default in one row
+      const bgColorInput = document.createElement("input");
+      bgColorInput.type = "color";
+      bgColorInput.value = "#000000";
+      bgColorInput.className = "pxf-color-input";
+      bgColorInput.style.cssText = "width:36px;height:28px;flex-shrink:0;";
+      bgColorInput.addEventListener("input", () => {
+        this.bgColor = bgColorInput.value;
+        if (this.el.viewport) this.el.viewport.style.backgroundColor = bgColorInput.value;
+        if (this.scene && !this.el.bgImgEl)
+          this.scene.background = new THREE.Color(bgColorInput.value);
+      });
+
+      const clearBtn = createButton("Clear Scene", {
+        variant: "full",
+        onClick: () => {
+          this.objects.forEach((o) => {
+            o.geometry?.dispose();
+            o.material?.dispose();
+            this.scene.remove(o);
+          });
+          this.objects = [];
+          this.selectedObjs.clear();
+          this.activeObj = null;
+          this._updateLayers();
+        },
+      });
+      clearBtn.classList.add("pxf-btn-danger");
+      clearBtn.style.flex = "1";
+
+      const resetBtn = createButton("Reset", {
+        variant: "full",
+        onClick: () => {
+          this.objects.forEach((o) => {
+            o.geometry?.dispose();
+            o.material?.dispose();
+            this.scene?.remove(o);
+          });
+          this.objects = [];
+          this.selectedObjs.clear();
+          this.activeObj = null;
+          this._removeBgImage();
+          this.docW = 1024;
+          this.docH = 1024;
+          if (this._canvasSettings) this._canvasSettings.setSize(1024, 1024);
+          if (this._canvasSettings) this._canvasSettings.setRatio(0);
+          bgColorInput.value = "#000000";
+          this.bgColor = "#000000";
+          if (this.scene) this.scene.background = new THREE.Color("#000000");
+          this._updateFrame();
+          this._updateLayers();
+          this._setStatus("Reset to default");
+        },
+      });
+      resetBtn.classList.add("pxf-btn-danger");
+      resetBtn.style.flex = "1";
+
+      const actionRow = document.createElement("div");
+      actionRow.style.cssText = "display:flex;gap:4px;align-items:center;margin-top:8px;";
+      const bgLabel = document.createElement("span");
+      bgLabel.style.cssText = "font-size:10px;color:#888;flex-shrink:0;";
+      bgLabel.textContent = "BG:";
+      actionRow.append(bgLabel, bgColorInput, clearBtn, resetBtn);
+      csContent.appendChild(actionRow);
+
+      // Store ref so persistence can update the color input
+      this._bgColorInput = bgColorInput;
+      this.el.bgColor = bgColorInput;
+    }
     left.appendChild(this._canvasSettings.el);
 
-    // Canvas Toolbar (BG color + Add Image + Clear Scene)
-    this._canvasToolbar = createCanvasToolbar({
-      onAddImage: (file) => {
-        const reader = new FileReader();
-        reader.onload = async (ev) => {
-          const dataURL = ev.target.result;
-          this._setStatus("Uploading background...");
-          try {
-            const res = await ThreeDAPI.uploadBgImage(this.projectId, dataURL);
-            if (res.status === "success" && res.path) {
-              this._bgImg.path = res.path;
-              this._showBgImage(dataURL, true);
-              this._setStatus("Background loaded");
-            } else {
-              this._setStatus("Upload failed");
-            }
-          } catch (e) {
-            console.warn("[P3D] bg upload", e);
-            this._setStatus("Upload error");
-          }
-        };
-        reader.readAsDataURL(file);
-      },
-      onBgColorChange: (hex) => {
-        this.bgColor = hex;
-        // Always update workspace background so color is visible behind/around bg image
-        if (this.el.viewport) this.el.viewport.style.backgroundColor = hex;
-        if (this.scene && !this.el.bgImgEl)
-          this.scene.background = new THREE.Color(hex);
-      },
-      onClear: () => {
-        this.objects.forEach((o) => {
-          o.geometry?.dispose();
-          o.material?.dispose();
-          this.scene.remove(o);
-        });
-        this.objects = [];
-        this.selectedObjs.clear();
-        this.activeObj = null;
-        this._updateLayers();
-      },
-      bgColor: "#000000",
-      addImageLabel: "Background Image",
-      clearLabel: "Clear Scene",
-      onReset: () => {
-        // Clear all objects
-        this.objects.forEach((o) => {
-          o.geometry?.dispose();
-          o.material?.dispose();
-          this.scene?.remove(o);
-        });
-        this.objects = [];
-        this.selectedObjs.clear();
-        this.activeObj = null;
-        // Remove bg image
-        this._removeBgImage();
-        // Reset canvas size
-        this.docW = 1024;
-        this.docH = 1024;
-        if (this._canvasSettings) this._canvasSettings.setSize(1024, 1024);
-        if (this._canvasSettings) this._canvasSettings.setRatio(0);
-        this._canvasToolbar.setBgColor("#000000");
-        this.bgColor = "#000000";
-        if (this.scene) this.scene.background = new THREE.Color("#000000");
-        this._updateFrame();
-        this._updateLayers();
-        this._setStatus("Reset to default");
-      },
-    });
-    left.appendChild(this._canvasToolbar.el);
-
-    // Background Image Transform (unified transform panel)
+    // Background Image (collapsible, starts collapsed, NOT disabled)
     if (!this._bgImg._flipH) this._bgImg._flipH = false;
     if (!this._bgImg._flipV) this._bgImg._flipV = false;
+
+    // onAddImage handler for upload button and drag/drop
+    const _onAddImage = (file) => {
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataURL = ev.target.result;
+        this._setStatus("Uploading background...");
+        try {
+          const res = await ThreeDAPI.uploadBgImage(this.projectId, dataURL);
+          if (res.status === "success" && res.path) {
+            this._bgImg.path = res.path;
+            this._showBgImage(dataURL, true);
+            this._setStatus("Background loaded");
+          } else {
+            this._setStatus("Upload failed");
+          }
+        } catch (e) {
+          console.warn("[P3D] bg upload", e);
+          this._setStatus("Upload error");
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+
+    // Create a canvas toolbar just for drag/drop setup (hidden, no visible UI)
+    this._canvasToolbar = createCanvasToolbar({
+      onAddImage: _onAddImage,
+      showBgColor: false,
+      showClear: false,
+      showReset: false,
+    });
+    this._canvasToolbar.el.style.display = "none";
+    left.appendChild(this._canvasToolbar.el);
+
     const bgTP = createTransformPanel({
       onFitWidth: () => this._fitBg("width"),
       onFitHeight: () => this._fitBg("height"),
@@ -475,7 +510,6 @@ export class Pixaroma3DEditor {
       variant: "standard",
       onClick: () => {
         this._removeBgImage();
-        _updateBgPanelState();
       },
     });
     hideBtn.style.flex = "1";
@@ -484,6 +518,26 @@ export class Pixaroma3DEditor {
 
     const pc = bgTP.content || bgTP.el.querySelector(".pxf-panel-content");
     if (pc) {
+      // Upload button at the top of the panel
+      const bgFileInput = document.createElement("input");
+      bgFileInput.type = "file";
+      bgFileInput.accept = "image/*";
+      bgFileInput.style.display = "none";
+      bgFileInput.addEventListener("change", () => {
+        const file = bgFileInput.files?.[0];
+        if (file) _onAddImage(file);
+        bgFileInput.value = "";
+      });
+      pc.appendChild(bgFileInput);
+      const uploadBtn = createButton("Upload Background Image", {
+        variant: "full",
+        iconSrc: "/pixaroma/assets/icons/ui/upload.svg",
+        onClick: () => bgFileInput.click(),
+        title: "Browse for a background image",
+      });
+      uploadBtn.style.cssText = "width:100%;margin-bottom:8px;";
+      pc.appendChild(uploadBtn);
+
       pc.append(bgXR.el, bgYR.el, bgScR.el, bgRotR.el, bgOpR.el);
       const actRow = createButtonRow([hideBtn, removeBtn]);
       actRow.style.marginTop = "6px";
@@ -491,17 +545,8 @@ export class Pixaroma3DEditor {
     }
     left.appendChild(bgTP.el);
 
-    // Gray out BG panel when no background image
-    const _updateBgPanelState = () => {
-      const hasBg = !!this.el.bgImgEl;
-      bgTP.el.style.opacity = hasBg ? "1" : "0.3";
-      bgTP.el.style.pointerEvents = hasBg ? "auto" : "none";
-    };
-    this._updateBgPanelState = _updateBgPanelState;
-    _updateBgPanelState();
-
     // 3D Objects — select shape, configure, then add
-    const obs = createPanel("3D Objects");
+    const obs = createPanel("3D Objects", { collapsible: true });
     const og = document.createElement("div");
     og.className = "p3d-grid3";
     og.style.cssText =
@@ -561,7 +606,7 @@ export class Pixaroma3DEditor {
     this._updateShapeParams();
 
     // Transform Tools
-    const tt = createPanel("Transform Tools");
+    const tt = createPanel("Transform Tools", { collapsible: true });
     const tg = document.createElement("div");
     tg.style.cssText =
       "display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;";
@@ -601,7 +646,7 @@ export class Pixaroma3DEditor {
     left.appendChild(tt.el);
 
     // Camera
-    const cam = createPanel("Camera");
+    const cam = createPanel("Camera", { collapsible: true });
     const cRow1 = document.createElement("div");
     cRow1.style.cssText =
       "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;";
