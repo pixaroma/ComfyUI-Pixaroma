@@ -9,6 +9,7 @@ import {
   allow_debug,
   createNodePreview,
   showNodePreview,
+  restoreNodePreview,
   activateNodePreview,
   downloadDataURL,
 } from "../shared/index.mjs";
@@ -76,6 +77,7 @@ app.registerExtension({
       setValue: (v) => {
         if (v && typeof v === "object") {
           cropJson = v.crop_json || "{}";
+          restoreNodePreview(parts, cropJson, node);
         }
       },
       getMinHeight: () => 210,

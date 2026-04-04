@@ -17,6 +17,7 @@ import {
   allow_debug,
   createNodePreview,
   showNodePreview,
+  restoreNodePreview,
   activateNodePreview,
   downloadDataURL,
 } from "../shared/index.mjs";
@@ -84,6 +85,7 @@ app.registerExtension({
       setValue: (v) => {
         if (v && typeof v === "object") {
           paintJson = v.paint_json || "{}";
+          restoreNodePreview(parts, paintJson, node);
         }
       },
       getMinHeight: () => 210,
