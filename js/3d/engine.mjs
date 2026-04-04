@@ -29,6 +29,7 @@ Pixaroma3DEditor.prototype._initThree = function() {
     this.transformCtrl.setMode("translate"); this.transformCtrl.setSize(0.85);
     this.transformCtrl.addEventListener("dragging-changed", e => {
         this.orbitCtrl.enabled = !e.value; this._gizmoDragging = e.value;
+        if (e.value) this._pushUndo(); // snapshot before transform
         if (e.value && this.activeObj && this.selectedObjs.size > 1) {
             // Starting drag — record initial positions/rotations/scales of all selected
             this._multiDragStart = new Map();
@@ -69,7 +70,7 @@ Pixaroma3DEditor.prototype._initThree = function() {
             }
         }
     });
-    this.transformCtrl.addEventListener("mouseUp", () => this._pushUndo());
+    this.transformCtrl.addEventListener("mouseUp", () => { this._syncProps(); this._updateLayers(); });
     const helper = typeof this.transformCtrl.getHelper === "function" ? this.transformCtrl.getHelper() : this.transformCtrl;
     this.scene.add(helper); this._gizmoHelper = helper;
 
