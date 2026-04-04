@@ -104,7 +104,7 @@ export class Pixaroma3DEditor {
         this.projectId = "p3d_" + Date.now();
         this.el = {};
         this._id = 0;
-        this._lightDir = { theta: 0.8, phi: 1.0 };
+        this._lightDir = { theta: 81 * Math.PI / 180, phi: 65 * Math.PI / 180 };
         this._gizmoHelper = null;
         this._gizmoDragging = false;
         this._multiDragStart = null;
@@ -507,24 +507,28 @@ export class Pixaroma3DEditor {
         const lp = createPanel("Lighting", { collapsible: true, collapsed: true });
         const lcIn = createColorInput({ value: "#ffffff", onChange: (v) => { if (this.light) this.light.color.set(v); } });
         this.el.lightColor = lcIn; lp.content.appendChild(createRow("Color", lcIn));
-        const iR = createSliderRow("Intensity", 0, 200, 85, v => { if (this.light) this.light.intensity = v/100*2; });
-        const sR = createSliderRow("Ambient", 0, 100, 60, v => { if (this.ambientLight) this.ambientLight.intensity = v/100; });
+        const iR = createSliderRow("Intensity", 0, 200, 70, v => { if (this.light) this.light.intensity = v/100*2; });
+        const sR = createSliderRow("Ambient", 0, 100, 0, v => { if (this.ambientLight) this.ambientLight.intensity = v/100; });
+        this.el.lightIntS = iR.slider; this.el.lightIntV = iR.numInput;
+        this.el.lightAmbS = sR.slider; this.el.lightAmbV = sR.numInput;
         lp.content.append(iR.el, sR.el);
         const dirLabel = document.createElement("div"); dirLabel.style.cssText = "font-size:9px;color:#888;margin-top:4px;margin-bottom:3px;";
         dirLabel.textContent = "Light Direction"; lp.content.appendChild(dirLabel);
-        const angR = createSliderRow("Angle", 0, 360, 45, v => { this._lightDir.theta = v * Math.PI / 180; this._applyLightDir(); });
-        const hgtR = createSliderRow("Height", 5, 90, 55, v => { this._lightDir.phi = (90 - v) * Math.PI / 180; this._applyLightDir(); });
+        const angR = createSliderRow("Angle", 0, 360, 81, v => { this._lightDir.theta = v * Math.PI / 180; this._applyLightDir(); });
+        const hgtR = createSliderRow("Height", 5, 90, 25, v => { this._lightDir.phi = (90 - v) * Math.PI / 180; this._applyLightDir(); });
         this.el.lightAngle = angR.slider; this.el.lightAngleVal = angR.numInput;
         this.el.lightHeight = hgtR.slider; this.el.lightHeightVal = hgtR.numInput;
         lp.content.append(angR.el, hgtR.el);
         const resetLightBtn = createButton("Reset Light", { variant: "standard", onClick: () => {
-            this._lightDir = { theta: 0.8, phi: 1.0 };
+            this._lightDir = { theta: 81 * Math.PI / 180, phi: 65 * Math.PI / 180 };
             this._applyLightDir();
-            if (this.el.lightAngle) { this.el.lightAngle.value = 45; this.el.lightAngleVal.value = 45; }
-            if (this.el.lightHeight) { this.el.lightHeight.value = 55; this.el.lightHeightVal.value = 55; }
-            if (this.light) { this.light.color.set("#ffffff"); this.light.intensity = 1.7; }
+            if (this.el.lightAngle) { this.el.lightAngle.value = 81; this.el.lightAngleVal.value = 81; }
+            if (this.el.lightHeight) { this.el.lightHeight.value = 25; this.el.lightHeightVal.value = 25; }
+            if (this.light) { this.light.color.set("#ffffff"); this.light.intensity = 1.4; }
             if (this.el.lightColor) this.el.lightColor.value = "#ffffff";
-            if (this.ambientLight) this.ambientLight.intensity = 0.6;
+            if (this.ambientLight) this.ambientLight.intensity = 0;
+            if (this.el.lightIntS) { this.el.lightIntS.value = 70; this.el.lightIntV.value = 70; }
+            if (this.el.lightAmbS) { this.el.lightAmbS.value = 0; this.el.lightAmbV.value = 0; }
         }, title: "Reset lighting to defaults" });
         resetLightBtn.style.cssText = "width:100%;margin-top:5px;";
         lp.content.appendChild(resetLightBtn);

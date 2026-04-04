@@ -82,8 +82,8 @@ Pixaroma3DEditor.prototype._initThree = function() {
     this._canvasFrame.update(this.docW, this.docH);
 
     // Lights
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.6); this.scene.add(this.ambientLight);
-    this.light = new THREE.DirectionalLight(0xffffff, 1.7);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0); this.scene.add(this.ambientLight);
+    this.light = new THREE.DirectionalLight(0xffffff, 1.4);
     this.light.position.set(3, 5, 4); this.light.castShadow = true;
     this.light.shadow.mapSize.set(1024, 1024);
     this.light.shadow.camera.near=0.1; this.light.shadow.camera.far=50;

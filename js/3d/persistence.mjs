@@ -13,7 +13,7 @@ Pixaroma3DEditor.prototype._serializeScene = function() {
             position:{x:o.position.x,y:o.position.y,z:o.position.z},rotation:{x:o.rotation.x,y:o.rotation.y,z:o.rotation.z},
             scale:{x:o.scale.x,y:o.scale.y,z:o.scale.z},roughness:o.material.roughness,metalness:o.material.metalness,opacity:o.material.opacity,visible:o.visible})),
         camera: this.camera ? {position:{x:this.camera.position.x,y:this.camera.position.y,z:this.camera.position.z},target:{x:this.orbitCtrl.target.x,y:this.orbitCtrl.target.y,z:this.orbitCtrl.target.z}} : null,
-        light:{color:this.el.lightColor?.value||"#fff",intensity:this.light?.intensity||1.7,ambient:this.ambientLight?.intensity||0.6,dir:{...this._lightDir}},
+        light:{color:this.el.lightColor?.value||"#fff",intensity:this.light?.intensity??1.4,ambient:this.ambientLight?.intensity??0,dir:{...this._lightDir}},
         showGrid:this._showGrid,showGizmo:this._showGizmo,
         bgImage: this._bgImg.path ? { path: this._bgImg.path, x: this._bgImg.x, y: this._bgImg.y, scale: this._bgImg.scale, rotation: this._bgImg.rotation, opacity: this._bgImg.opacity } : null,
     };
@@ -41,11 +41,19 @@ Pixaroma3DEditor.prototype._restoreScene = function(jsonStr) {
         if(d.camera){if(d.camera.position)this.camera.position.set(d.camera.position.x,d.camera.position.y,d.camera.position.z);if(d.camera.target)this.orbitCtrl.target.set(d.camera.target.x,d.camera.target.y,d.camera.target.z);this.orbitCtrl.update();}
         if(d.light){
             if(d.light.color&&this.el.lightColor){this.el.lightColor.value=d.light.color;this.light.color.set(d.light.color);}
-            if(d.light.intensity)this.light.intensity=d.light.intensity;
-            if(d.light.ambient)this.ambientLight.intensity=d.light.ambient;
+            if(d.light.intensity!=null){this.light.intensity=d.light.intensity;
+                const sv=Math.round(d.light.intensity/2*100);
+                if(this.el.lightIntS){this.el.lightIntS.value=sv;this.el.lightIntV.value=sv;}
+            }
+            if(d.light.ambient!=null){this.ambientLight.intensity=d.light.ambient;
+                const sv=Math.round(d.light.ambient*100);
+                if(this.el.lightAmbS){this.el.lightAmbS.value=sv;this.el.lightAmbV.value=sv;}
+            }
             if(d.light.dir){this._lightDir={...d.light.dir};this._applyLightDir();
-                if(this.el.lightAngle)this.el.lightAngle.value=Math.round(this._lightDir.theta*180/Math.PI);
-                if(this.el.lightHeight)this.el.lightHeight.value=Math.round(90-this._lightDir.phi*180/Math.PI);
+                const angVal=Math.round(this._lightDir.theta*180/Math.PI);
+                const hgtVal=Math.round(90-this._lightDir.phi*180/Math.PI);
+                if(this.el.lightAngle){this.el.lightAngle.value=angVal;this.el.lightAngleVal.value=angVal;}
+                if(this.el.lightHeight){this.el.lightHeight.value=hgtVal;this.el.lightHeightVal.value=hgtVal;}
             }
         }
         if(d.showGrid!==undefined){this._showGrid=d.showGrid;if(this.el.gridCheck)this.el.gridCheck.checked=d.showGrid;if(this.gridHelper)this.gridHelper.visible=d.showGrid;}
