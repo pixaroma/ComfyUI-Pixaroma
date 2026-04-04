@@ -137,8 +137,6 @@ proto._resizeByHandle = function(handle, dx, dy, sc) {
 // --- Keyboard ---
 proto._bindKeys = function() {
     this._keyHandler = (e) => {
-        e.stopPropagation();
-        e.stopImmediatePropagation();
         const ae = document.activeElement;
         if ((ae?.tagName === "INPUT" || ae?.tagName === "TEXTAREA" || ae?.tagName === "SELECT") && !ae?.dataset?.pixaromaTrap) return;
         const key = e.key.toLowerCase();
@@ -150,16 +148,9 @@ proto._bindKeys = function() {
         if (key === "f" && !ctrl) { e.preventDefault(); this.ratioIdx = 0; this._canvasSettings.setRatio(0); this._draw(); this._updateInfo(); return; }
         if (ctrl && key === "s") { e.preventDefault(); this._save(); return; }
     };
-    this._keyBlocker = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
     window.addEventListener("keydown", this._keyHandler, { capture: true });
-    window.addEventListener("keyup", this._keyBlocker, { capture: true });
-    window.addEventListener("keypress", this._keyBlocker, { capture: true });
 };
 
 proto._unbindKeys = function() {
     if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });
-    if (this._keyBlocker) {
-        window.removeEventListener("keyup", this._keyBlocker, { capture: true });
-        window.removeEventListener("keypress", this._keyBlocker, { capture: true });
-    }
 };

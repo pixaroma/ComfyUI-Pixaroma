@@ -65,9 +65,6 @@ Pixaroma3DEditor.prototype._onClick = function(e) {
 
 Pixaroma3DEditor.prototype._handleKey = function(e) {
     if (!this.el.overlay?.parentNode) return;
-    // Block ALL key events from reaching ComfyUI while overlay is open
-    e.stopPropagation();
-    e.stopImmediatePropagation();
     // Check if focus is on an input element inside our overlay
     const ae = document.activeElement;
     const tag = ae?.tagName;

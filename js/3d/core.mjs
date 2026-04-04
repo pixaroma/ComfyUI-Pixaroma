@@ -185,8 +185,6 @@ export class Pixaroma3DEditor {
         layout.onSaveToDisk = () => { this._diskSavePending = true; this._save(); };
         layout.onCleanup = () => {
             window.removeEventListener("keydown", this._onKey, { capture: true });
-            window.removeEventListener("keyup", this._onKeyUp, { capture: true });
-            window.removeEventListener("keypress", this._onKeyUp, { capture: true });
             if (this._resizeObs) this._resizeObs.disconnect();
             if (this._animId) { cancelAnimationFrame(this._animId); this._animId = null; }
             if (this.transformCtrl) { this.transformCtrl.detach(); this.transformCtrl.dispose(); }

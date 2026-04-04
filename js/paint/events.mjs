@@ -15,14 +15,12 @@ proto._bindEvents = function() {
     this._onWheel      = (e) => this._handleWheel(e);
     this._onKeyDown    = (e) => this._handleKeyDown(e);
     this._onKeyUp      = (e) => this._handleKeyUp(e);
-    this._onKeyPress   = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
     ws.addEventListener("mousedown", this._onMouseDown);
     window.addEventListener("mousemove", this._onMouseMove);
     window.addEventListener("mouseup",   this._onMouseUp);
     ws.addEventListener("wheel", this._onWheel, { passive: false });
     window.addEventListener("keydown", this._onKeyDown, { capture: true });
     window.addEventListener("keyup", this._onKeyUp, { capture: true });
-    window.addEventListener("keypress", this._onKeyPress, { capture: true });
     this._bindColorCanvas();
 };
 
@@ -36,7 +34,6 @@ proto._unbindEvents = function() {
     window.removeEventListener("mouseup",   this._onMouseUp);
     window.removeEventListener("keydown",   this._onKeyDown, { capture: true });
     window.removeEventListener("keyup",     this._onKeyUp,   { capture: true });
-    window.removeEventListener("keypress",  this._onKeyPress, { capture: true });
     if (this._onColorMove) window.removeEventListener("mousemove", this._onColorMove);
     if (this._onColorUp)   window.removeEventListener("mouseup",   this._onColorUp);
 };
@@ -285,9 +282,6 @@ proto._handleWheel = function(e) {
 };
 
 proto._handleKeyDown = function(e) {
-    // Block ALL keyboard events from reaching ComfyUI while painter is open
-    e.stopPropagation();
-    e.stopImmediatePropagation();
     const ae = document.activeElement;
     if ((ae?.tagName === "INPUT" || ae?.tagName === "TEXTAREA" || ae?.tagName === "SELECT") && !ae?.dataset?.pixaromaTrap) return;
     const key = e.key.toLowerCase();
@@ -326,9 +320,6 @@ proto._handleKeyDown = function(e) {
 };
 
 proto._handleKeyUp = function(e) {
-    // Block ALL keyup events from reaching ComfyUI while painter is open
-    e.stopPropagation();
-    e.stopImmediatePropagation();
     if (e.key === " ") {
         this._spaceDown = false;
         if (!this.isPanning && this.el.workspace) {

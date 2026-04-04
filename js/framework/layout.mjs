@@ -234,6 +234,13 @@ export function createEditorLayout(config) {
     mount() {
       document.body.appendChild(overlay);
       installFocusTrap(overlay);
+      // Block ALL keyboard events from reaching ComfyUI while editor is open
+      layout._kbBlock = (e) => {
+        e.stopPropagation();
+      };
+      window.addEventListener("keydown", layout._kbBlock, { capture: true });
+      window.addEventListener("keyup", layout._kbBlock, { capture: true });
+      window.addEventListener("keypress", layout._kbBlock, { capture: true });
       requestAnimationFrame(() => {
         overlay.querySelectorAll('input[type=range]').forEach(s => {
           if (window._pxfUpdateFill) window._pxfUpdateFill(s);
@@ -241,6 +248,11 @@ export function createEditorLayout(config) {
       });
     },
     unmount() {
+      if (layout._kbBlock) {
+        window.removeEventListener("keydown", layout._kbBlock, { capture: true });
+        window.removeEventListener("keyup", layout._kbBlock, { capture: true });
+        window.removeEventListener("keypress", layout._kbBlock, { capture: true });
+      }
       if (layout.onCleanup) layout.onCleanup();
       overlay.remove();
     },

@@ -104,10 +104,7 @@ Pixaroma3DEditor.prototype._initThree = function() {
     });
 
     this._onKey = e => this._handleKey(e);
-    this._onKeyUp = e => { if (this.el.overlay?.parentNode) { e.stopPropagation(); e.stopImmediatePropagation(); } };
     window.addEventListener("keydown", this._onKey, { capture: true });
-    window.addEventListener("keyup", this._onKeyUp, { capture: true });
-    window.addEventListener("keypress", this._onKeyUp, { capture: true });
     this._resizeObs = new ResizeObserver(() => this._onResize());
     this._resizeObs.observe(vp);
     this._applyLightDir();

@@ -76,10 +76,6 @@ PixaromaEditor.prototype.attachEvents = function() {
     this.workspace.addEventListener("wheel", (e) => { e.preventDefault(); this.viewZoom *= e.deltaY > 0 ? 0.9 : 1.1; this.updateViewTransform(); });
 
     this._composerKeyDown = (e) => {
-        // Block keyboard events from reaching ComfyUI, but let Ctrl+V through for paste
-        const isCtrlV = (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v';
-        if (!isCtrlV) { e.stopPropagation(); e.stopImmediatePropagation(); }
-        else { e.stopPropagation(); }
         const tag = e.target?.tagName;
         if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !e.target?.dataset?.pixaromaTrap) return;
         if (e.code === "Space") { e.preventDefault(); this.spacePressed = true; }
@@ -97,14 +93,11 @@ PixaromaEditor.prototype.attachEvents = function() {
         }
         if ((e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); this.btnDelLayer.click(); }
     };
-    this._composerKeyBlock = (e) => { e.stopPropagation(); e.stopImmediatePropagation(); };
     this._composerKeyUp = (e) => {
-        e.stopPropagation(); e.stopImmediatePropagation();
         if (e.code === "Space") { this.spacePressed = false; this.workspace.classList.remove("panning"); }
     };
     window.addEventListener("keydown", this._composerKeyDown, { capture: true });
     window.addEventListener("keyup", this._composerKeyUp, { capture: true });
-    window.addEventListener("keypress", this._composerKeyBlock, { capture: true });
 
     this._composerMouseMove = null;
     this._composerMouseUp = null;
@@ -113,7 +106,6 @@ PixaromaEditor.prototype.attachEvents = function() {
     this._cleanupKeys = () => {
         window.removeEventListener("keydown", this._composerKeyDown, { capture: true });
         window.removeEventListener("keyup", this._composerKeyUp, { capture: true });
-        window.removeEventListener("keypress", this._composerKeyBlock, { capture: true });
         if (this._composerMouseMove) window.removeEventListener("mousemove", this._composerMouseMove);
         if (this._composerMouseUp) window.removeEventListener("mouseup", this._composerMouseUp);
         if (this._composerBlur) window.removeEventListener("blur", this._composerBlur);

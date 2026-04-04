@@ -165,8 +165,6 @@ Pixaroma3DEditor.prototype._close = function() {
     this._closed = true;
     if(this._animId)cancelAnimationFrame(this._animId);this._animId=null;
     window.removeEventListener("keydown",this._onKey,{capture:true});
-    window.removeEventListener("keyup",this._onKeyUp,{capture:true});
-    window.removeEventListener("keypress",this._onKeyUp,{capture:true});
     if(this._resizeObs)this._resizeObs.disconnect();
     if(this.transformCtrl){this.transformCtrl.detach();this.transformCtrl.dispose();}
     if(this.orbitCtrl)this.orbitCtrl.dispose();
