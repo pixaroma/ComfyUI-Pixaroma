@@ -45,70 +45,70 @@ The frontend is organized into **directory-per-editor** modules under `js/`. Eac
 
 ```
 js/
-├── framework/       # Shared UI toolkit (all editors depend on this)
-│   ├── index.mjs    # Barrel re-export (import from here)
-│   ├── theme.mjs    # CSS injection, brand colors, _uiIcon helper
-│   ├── layout.mjs   # createEditorLayout() — fullscreen overlay shell
-│   ├── components.mjs# Buttons, panels, sliders, inputs, tool grids, zoom, transform
-│   ├── layers.mjs   # Photoshop-style layer panel with drag reorder
-│   └── canvas.mjs   # Canvas settings, frame overlay, toolbar + drag-drop
+├── framework/          # Shared UI toolkit (all editors depend on this)
+│   ├── index.mjs       # Barrel re-export (import from here)
+│   ├── theme.mjs       # CSS injection, brand colors, _uiIcon helper
+│   ├── layout.mjs      # createEditorLayout() — fullscreen overlay shell
+│   ├── components.mjs  # Buttons, panels, sliders, inputs, tool grids, zoom, transform
+│   ├── layers.mjs      # Photoshop-style layer panel with drag reorder
+│   └── canvas.mjs      # Canvas settings, frame overlay, toolbar + drag-drop
 │
-├── shared/          # Shared utilities (constants, node preview, helpers)
-│   ├── index.mjs    # Barrel re-export
-│   ├── utils.mjs    # BRAND, installFocusTrap, hideJsonWidget, downloadDataURL
-│   ├── preview.mjs  # createNodePreview, showNodePreview, restoreNodePreview
-│   └── label_css.mjs# injectLabelCSS() for label editor
+├── shared/             # Shared utilities (constants, node preview, helpers)
+│   ├── index.mjs       # Barrel re-export
+│   ├── utils.mjs       # BRAND, installFocusTrap, hideJsonWidget, downloadDataURL
+│   ├── preview.mjs     # createNodePreview, showNodePreview, restoreNodePreview
+│   └── label_css.mjs   # injectLabelCSS() for label editor
 │
-├── paint/           # Paint Studio (PaintStudio class, mixin pattern)
-│   ├── index.js     # Entry: ComfyUI extension registration
-│   ├── core.mjs     # Class shell: constructor, open/close, UI building
-│   ├── canvas.mjs   # Canvas init, layer CRUD (add/delete/merge/flatten)
-│   ├── render.mjs   # Layer rendering with transforms, grid
-│   ├── transform.mjs# Transform handles, hit-test, zoom/pan
-│   ├── events.mjs   # Mouse/keyboard event binding & routing
-│   ├── tools.mjs    # Brush, pencil, eraser, smudge, fill, pick, shape
-│   ├── history.mjs  # Undo/redo snapshots
-│   ├── ui.mjs       # Color picker, tool options, layer panel sync
-│   ├── engine.mjs   # BrushEngine class, color conversion utils
-│   └── api.mjs      # PaintAPI backend calls
+├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
+│   ├── index.js        # Entry: ComfyUI extension registration
+│   ├── core.mjs        # Class shell: constructor, open/close, UI building
+│   ├── canvas.mjs      # Canvas init, layer CRUD (add/delete/merge/flatten)
+│   ├── render.mjs      # Layer rendering with transforms, grid
+│   ├── transform.mjs   # Transform handles, hit-test, zoom/pan
+│   ├── events.mjs      # Mouse/keyboard event binding & routing
+│   ├── tools.mjs       # Brush, pencil, eraser, smudge, fill, pick, shape
+│   ├── history.mjs     # Undo/redo snapshots
+│   ├── ui.mjs          # Color picker, tool options, layer panel sync
+│   ├── engine.mjs      # BrushEngine class, color conversion utils
+│   └── api.mjs         # PaintAPI backend calls
 │
-├── 3d/              # 3D Builder (Pixaroma3DEditor class, mixin pattern)
-│   ├── index.js     # Entry: ComfyUI extension registration
-│   ├── core.mjs     # Class shell, UI building, Three.js lazy loading
-│   ├── engine.mjs   # Three.js scene/renderer/camera init, animation
-│   ├── objects.mjs  # Object CRUD, selection, geometry, materials
-│   ├── interaction.mjs# Tools, camera views, keyboard, undo/redo
-│   ├── persistence.mjs# Save/restore scene JSON, background image
-│   └── api.mjs      # ThreeDAPI backend calls
+├── 3d/                 # 3D Builder (Pixaroma3DEditor class, mixin pattern)
+│   ├── index.js        # Entry: ComfyUI extension registration
+│   ├── core.mjs        # Class shell, UI building, Three.js lazy loading
+│   ├── engine.mjs      # Three.js scene/renderer/camera init, animation
+│   ├── objects.mjs     # Object CRUD, selection, geometry, materials
+│   ├── interaction.mjs # Tools, camera views, keyboard, undo/redo
+│   ├── persistence.mjs # Save/restore scene JSON, background image
+│   └── api.mjs         # ThreeDAPI backend calls
 │
-├── composer/        # Image Composer (PixaromaEditor class, mixin pattern)
-│   ├── index.js     # Entry: ComfyUI extension registration
-│   ├── core.mjs     # Class shell, state management
-│   ├── eraser.mjs   # Eraser mode, mask creation/loading
-│   ├── interaction.mjs# Events, alignment, keyboard, transforms
-│   ├── render.mjs   # Rendering, history/undo
-│   ├── ui.mjs       # Sidebar panel builder
-│   ├── layers.mjs   # Layer helper module
-│   └── api.mjs      # PixaromaAPI backend calls
+├── composer/           # Image Composer (PixaromaEditor class, mixin pattern)
+│   ├── index.js        # Entry: ComfyUI extension registration
+│   ├── core.mjs        # Class shell, state management
+│   ├── eraser.mjs      # Eraser mode, mask creation/loading
+│   ├── interaction.mjs # Events, alignment, keyboard, transforms
+│   ├── render.mjs      # Rendering, history/undo
+│   ├── ui.mjs          # Sidebar panel builder
+│   ├── layers.mjs      # Layer helper module
+│   └── api.mjs         # PixaromaAPI backend calls
 │
-├── crop/            # Image Crop (CropEditor class, mixin pattern)
-│   ├── index.js     # Entry: ComfyUI extension registration
-│   ├── core.mjs     # Class shell, UI building
-│   ├── interaction.mjs# Mouse/keyboard, crop handle dragging
-│   └── render.mjs   # Canvas rendering, aspect ratio logic, save
+├── crop/               # Image Crop (CropEditor class, mixin pattern)
+│   ├── index.js        # Entry: ComfyUI extension registration
+│   ├── core.mjs        # Class shell, UI building
+│   ├── interaction.mjs # Mouse/keyboard, crop handle dragging
+│   └── render.mjs      # Canvas rendering, aspect ratio logic, save
 │
-├── label/           # Label Editor (function-based, not a class)
-│   ├── index.js     # Entry: ComfyUI extension registration
-│   ├── core.mjs     # LabelEditor class, UI building
-│   └── render.mjs   # Canvas text rendering, typography helpers
+├── label/              # Label Editor (function-based, not a class)
+│   ├── index.js        # Entry: ComfyUI extension registration
+│   ├── core.mjs        # LabelEditor class, UI building
+│   └── render.mjs      # Canvas text rendering, typography helpers
 │
-├── compare/         # Compare Viewer (single file, 413 lines)
-│   └── index.js     # Full compare widget (LiteGraph node drawing)
+├── compare/            # Compare Viewer (single file, 413 lines)
+│   └── index.js        # Full compare widget (LiteGraph node drawing)
 │
-├── showtext/        # Show Text node (single file, 97 lines)
+├── showtext/           # Show Text node (single file, 97 lines)
 │   └── index.js
 │
-├── reference/       # Reference node (single file, 140 lines)
+├── reference/          # Reference node (single file, 140 lines)
     └── index.js
 ```
 

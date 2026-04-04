@@ -49,7 +49,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 
-WEB_DIRECTORY = "./web"
+WEB_DIRECTORY = "./js"
 
 
 # ─── Startup banner ──────────────────────────────────────────
@@ -64,7 +64,7 @@ def get_toml_version():
     except Exception as e:
         # For debugging: print(f"Error finding version: {e}")
         pass
-    return "Unknown"
+    return ""
 
 
 VERSION = get_toml_version()

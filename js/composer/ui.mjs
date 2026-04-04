@@ -339,6 +339,7 @@ export class PixaromaUI {
             showScaleSlider: true,
             showStretchSliders: true,
             showOpacitySlider: true,
+            startCollapsed: false,
         });
 
         core.toolsPanel = tp.el;

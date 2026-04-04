@@ -320,7 +320,8 @@ export function createZoomControls(onZoomIn, onZoomOut, onFit) {
 // ── Transform Panel ──────────────────────────────────────────
 export function createTransformPanel(config) {
   const _ui = "/pixaroma/assets/icons/ui/";
-  const panel = createPanel("Transform Properties", { collapsible: true, collapsed: true });
+  const collapsed = config.startCollapsed !== undefined ? config.startCollapsed : true;
+  const panel = createPanel("Transform Properties", { collapsible: true, collapsed });
 
   const fitW   = createButton("Fit W",  { variant: "sm", iconSrc: _ui + "fit-width.svg",       onClick: config.onFitWidth,   title: "Fit to canvas width" });
   const fitH   = createButton("Fit H",  { variant: "sm", iconSrc: _ui + "fit-height.svg",      onClick: config.onFitHeight,  title: "Fit to canvas height" });
