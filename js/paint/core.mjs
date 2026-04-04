@@ -374,7 +374,7 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
 
   _buildLeftContent(container) {
     // Tools section
-    const toolPanel = createPanel("Tools");
+    const toolPanel = createPanel("Tools", { collapsible: true });
     const toolbox = document.createElement("div");
     toolbox.style.cssText =
       "display:grid;grid-template-columns:repeat(4,1fr);gap:4px;";
