@@ -528,17 +528,22 @@ export class Pixaroma3DEditor {
         if (file) _onAddImage(file);
         bgFileInput.value = "";
       });
-      pc.appendChild(bgFileInput);
+      pc.insertBefore(bgFileInput, pc.firstChild);
       const uploadBtn = createButton("Upload Background Image", {
         variant: "full",
         iconSrc: "/pixaroma/assets/icons/ui/upload.svg",
         onClick: () => bgFileInput.click(),
         title: "Browse for a background image",
       });
-      uploadBtn.style.cssText = "width:100%;margin-bottom:8px;";
-      pc.appendChild(uploadBtn);
+      uploadBtn.style.cssText = "width:100%;margin-bottom:6px;";
+      pc.insertBefore(uploadBtn, bgFileInput.nextSibling);
 
-      pc.append(bgXR.el, bgYR.el, bgScR.el, bgRotR.el, bgOpR.el);
+      // Sliders with consistent spacing
+      const sliderGroup = document.createElement("div");
+      sliderGroup.style.cssText = "margin-top:6px;display:flex;flex-direction:column;gap:2px;";
+      sliderGroup.append(bgXR.el, bgYR.el, bgScR.el, bgRotR.el, bgOpR.el);
+      pc.appendChild(sliderGroup);
+
       const actRow = createButtonRow([hideBtn, removeBtn]);
       actRow.style.marginTop = "6px";
       pc.appendChild(actRow);
