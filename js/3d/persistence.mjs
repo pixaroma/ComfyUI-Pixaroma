@@ -38,7 +38,7 @@ Pixaroma3DEditor.prototype._restoreScene = function(jsonStr) {
         if(d.project_id)this.projectId=d.project_id;
         this._updateFrame();
         if(d.objects)d.objects.forEach(od=>this._addObjFromData(od));
-        if(d.camera){if(d.camera.position)this.camera.position.set(d.camera.position.x,d.camera.position.y,d.camera.position.z);if(d.camera.target)this.orbitCtrl.target.set(d.camera.target.x,d.camera.target.y,d.camera.target.z);}
+        if(d.camera){if(d.camera.position)this.camera.position.set(d.camera.position.x,d.camera.position.y,d.camera.position.z);if(d.camera.target)this.orbitCtrl.target.set(d.camera.target.x,d.camera.target.y,d.camera.target.z);this.orbitCtrl.update();}
         if(d.light){
             if(d.light.color&&this.el.lightColor){this.el.lightColor.value=d.light.color;this.light.color.set(d.light.color);}
             if(d.light.intensity)this.light.intensity=d.light.intensity;
