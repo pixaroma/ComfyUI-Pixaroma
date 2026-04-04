@@ -31,7 +31,7 @@ function injectComposerStyles() {
         .pix-view-btn { background: transparent; border: none; color: white; cursor: pointer; font-size: 16px; padding: 5px 10px; border-radius: 4px; transition: 0.2s; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 5px; }
         .pix-view-btn:hover { background: #3a3d40; color: #f66744; }
         .pix-view-btn:disabled { opacity: 0.3 !important; cursor: not-allowed; }
-        .pxf-workspace.panning { cursor: grabbing !important; }
+        .pxf-workspace.panning, .pxf-workspace.panning * { cursor: grabbing !important; }
     `;
     document.head.appendChild(s);
 }

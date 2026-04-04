@@ -111,8 +111,30 @@ PixaromaEditor.prototype.attachEvents = function() {
         if (this._composerBlur) window.removeEventListener("blur", this._composerBlur);
     };
 
-    // Handle clicks on the extended hit area outside canvas bounds
+    // Handle hover cursor + clicks on the extended hit area outside canvas bounds
     if (this.selHitArea) {
+        this.selHitArea.addEventListener("mousemove", (e) => {
+            if (this.isMouseDown || this.selectedLayerIds.size !== 1 || this.activeMode === 'eraser') {
+                this.selHitArea.style.cursor = 'default'; return;
+            }
+            const coords = this.getCanvasCoordinates(e);
+            const layer = this.layers.find(l => l.id === Array.from(this.selectedLayerIds)[0]);
+            if (layer && !layer.locked) {
+                const pts = PixaromaLayers.getTransformedPoints(layer);
+                if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) { this.selHitArea.style.cursor = 'crosshair'; return; }
+                for (let i = 0; i < 4; i++) {
+                    if (Math.hypot(coords.x - pts[i].x, coords.y - pts[i].y) <= 15) {
+                        this.selHitArea.style.cursor = (layer.rotation + 45) % 180 < 90 ? 'nwse-resize' : 'nesw-resize'; return;
+                    }
+                }
+                if (Math.hypot(coords.x - pts[4].x, coords.y - pts[4].y) <= 12) { this.selHitArea.style.cursor = 'w-resize'; return; }
+                if (Math.hypot(coords.x - pts[5].x, coords.y - pts[5].y) <= 12) { this.selHitArea.style.cursor = 'e-resize'; return; }
+                if (Math.hypot(coords.x - pts[6].x, coords.y - pts[6].y) <= 12) { this.selHitArea.style.cursor = 'n-resize'; return; }
+                if (Math.hypot(coords.x - pts[7].x, coords.y - pts[7].y) <= 12) { this.selHitArea.style.cursor = 's-resize'; return; }
+            }
+            this.selHitArea.style.cursor = 'default';
+        });
+
         this.selHitArea.addEventListener("mousedown", (e) => {
             if (e.button === 1 || this.spacePressed) return; // let it bubble for pan
             // Check for handle grab
