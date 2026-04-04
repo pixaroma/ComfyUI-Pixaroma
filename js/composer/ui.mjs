@@ -25,7 +25,7 @@ function injectComposerStyles() {
     s.textContent = `
         /* Layer styles now provided by the editor framework (pxf-layer-*) */
         .pix-canvas-container { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) scale(1); transform-origin: center center; box-shadow: 0 10px 50px rgba(0,0,0,0.8); }
-        .pix-canvas { width: 100%; height: 100%; display: block; background-color: #1e1e1e; }
+        .pix-canvas { width: 100%; height: 100%; display: block; background-color: #1e1e1e; position: relative; z-index: 1; }
         /* align bar now in titlebar center */
         /* zoom controls now provided by editor framework */
         .pix-view-btn { background: transparent; border: none; color: white; cursor: pointer; font-size: 16px; padding: 5px 10px; border-radius: 4px; transition: 0.2s; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 5px; }
@@ -279,6 +279,8 @@ export class PixaromaUI {
                 core.canvasContainer.style.height = core.docHeight + "px";
                 core.canvas.width = core.docWidth;
                 core.canvas.height = core.docHeight;
+                if (core.selCanvas) { core.selCanvas.width = width + 2 * core.selPad; core.selCanvas.height = height + 2 * core.selPad; }
+                if (core.selHitArea) { core.selHitArea.style.width = (width + 2 * core.selPad) + "px"; core.selHitArea.style.height = (height + 2 * core.selPad) + "px"; }
                 if (core._dimLabel) core._dimLabel.textContent = `${core.docWidth}\u00d7${core.docHeight}`;
                 core.fitViewToWorkspace();
                 core.draw();
@@ -321,6 +323,8 @@ export class PixaromaUI {
                 core.docWidth = 1024; core.docHeight = 1024;
                 core.canvasContainer.style.width = "1024px"; core.canvasContainer.style.height = "1024px";
                 core.canvas.width = 1024; core.canvas.height = 1024;
+                if (core.selCanvas) { core.selCanvas.width = 1024 + 2 * core.selPad; core.selCanvas.height = 1024 + 2 * core.selPad; }
+                if (core.selHitArea) { core.selHitArea.style.width = (1024 + 2 * core.selPad) + "px"; core.selHitArea.style.height = (1024 + 2 * core.selPad) + "px"; }
                 core._bgColor = "#1e1e1e";
                 if (core._canvasSettings) core._canvasSettings.setSize(1024, 1024);
                 if (core._canvasSettings) core._canvasSettings.setRatio(0);
@@ -381,6 +385,22 @@ export class PixaromaUI {
         core.canvas.width = core.docWidth; core.canvas.height = core.docHeight;
         core.ctx = core.canvas.getContext("2d");
         core.canvasContainer.appendChild(core.canvas);
+
+        // Selection overlay — extends beyond main canvas so resize border/handles stay visible outside bounds
+        core.selPad = 500;
+        // Hit-area div captures mouse events in the extended area (behind canvas, in front of workspace)
+        core.selHitArea = document.createElement("div");
+        core.selHitArea.className = "pix-sel-hitarea";
+        core.selHitArea.style.cssText = `position:absolute;left:${-core.selPad}px;top:${-core.selPad}px;width:${core.docWidth + 2 * core.selPad}px;height:${core.docHeight + 2 * core.selPad}px;z-index:0;`;
+        core.canvasContainer.insertBefore(core.selHitArea, core.canvas);
+        // Overlay canvas renders selection UI (no pointer events — clicks go to hitarea/canvas)
+        core.selCanvas = document.createElement("canvas");
+        core.selCanvas.style.cssText = `position:absolute;left:${-core.selPad}px;top:${-core.selPad}px;pointer-events:none;z-index:2;`;
+        core.selCanvas.width = core.docWidth + 2 * core.selPad;
+        core.selCanvas.height = core.docHeight + 2 * core.selPad;
+        core.selCtx = core.selCanvas.getContext("2d");
+        core.canvasContainer.style.overflow = "visible";
+        core.canvasContainer.appendChild(core.selCanvas);
 
         // Orange frame border + dimension label on the canvas container
         core.canvasContainer.style.border = "2px solid rgba(249,115,22,0.45)";

@@ -111,6 +111,38 @@ PixaromaEditor.prototype.attachEvents = function() {
         if (this._composerBlur) window.removeEventListener("blur", this._composerBlur);
     };
 
+    // Handle clicks on the extended hit area outside canvas bounds
+    if (this.selHitArea) {
+        this.selHitArea.addEventListener("mousedown", (e) => {
+            if (e.button === 1 || this.spacePressed) return; // let it bubble for pan
+            // Check for handle grab
+            if (e.button === 0 && this.selectedLayerIds.size === 1 && this.activeMode !== 'eraser') {
+                const coords = this.getCanvasCoordinates(e);
+                const layer = this.layers.find(l => l.id === Array.from(this.selectedLayerIds)[0]);
+                if (layer && !layer.locked) {
+                    const pts = PixaromaLayers.getTransformedPoints(layer);
+                    let hitHandle = false;
+                    if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) hitHandle = true;
+                    for (let i = 0; i < 4; i++) if (Math.hypot(coords.x - pts[i].x, coords.y - pts[i].y) <= 15) hitHandle = true;
+                    for (let i = 4; i < 8; i++) if (Math.hypot(coords.x - pts[i].x, coords.y - pts[i].y) <= 12) hitHandle = true;
+                    if (hitHandle) {
+                        e.preventDefault(); e.stopPropagation();
+                        this.isMouseDown = true; this.startX = coords.x; this.startY = coords.y; this.lastX = coords.x; this.lastY = coords.y;
+                        this.interactionMode = null; this.canvas.style.cursor = 'default';
+                        this.onSelectMouseDown(e, coords);
+                        this.draw();
+                        return;
+                    }
+                }
+            }
+            // No handle — act like workspace click (deselect + pan)
+            e.preventDefault(); e.stopPropagation();
+            this.isPanning = true; this.panStartX = e.clientX - this.viewPanX; this.panStartY = e.clientY - this.viewPanY; this.workspace.classList.add("panning");
+            this.selectedLayerIds.clear();
+            this.syncActiveLayerIndex(); this.ui.updateActiveLayerUI(); this.draw();
+        });
+    }
+
     this.workspace.addEventListener("mousedown", (e) => {
         if (e.button === 1 || this.spacePressed || e.target === this.workspace) {
             e.preventDefault(); this.isPanning = true; this.panStartX = e.clientX - this.viewPanX; this.panStartY = e.clientY - this.viewPanY; this.workspace.classList.add("panning");

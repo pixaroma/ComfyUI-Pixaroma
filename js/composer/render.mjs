@@ -31,15 +31,17 @@ PixaromaEditor.prototype.redo = function() {
 
 PixaromaEditor.prototype.draw = function(cleanRender = false) {
     const bg = this._bgColor || "#1e1e1e";
-    if (cleanRender) {
-         this.ctx.fillStyle = bg;
-         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    } else {
-         this.ctx.fillStyle = bg;
-         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    }
+    this.ctx.fillStyle = bg;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
     this.ctx.imageSmoothingEnabled = true; this.ctx.imageSmoothingQuality = 'high';
+
+    // Clear selection overlay
+    const oc = this.selCtx;
+    const pad = this.selPad || 0;
+    if (oc && !cleanRender) {
+        oc.clearRect(0, 0, this.selCanvas.width, this.selCanvas.height);
+    }
 
     this.layers.forEach((layer) => {
         if (!layer.visible) return;
@@ -73,36 +75,42 @@ PixaromaEditor.prototype.draw = function(cleanRender = false) {
         }
 
         this.ctx.restore();
+        this.ctx.restore();
 
-        if (!cleanRender && isSelected) {
-            this.ctx.strokeStyle = layer.locked ? '#888' : (this.selectedLayerIds.size > 1 ? '#0ea5e9' : '#f66744');
-            this.ctx.lineWidth = 1.5;
-            this.ctx.strokeRect(-w/2, -h/2, w, h);
+        // Draw selection border & handles on overlay canvas (not clipped by main canvas)
+        if (!cleanRender && isSelected && oc) {
+            oc.save();
+            oc.translate(layer.cx + pad, layer.cy + pad);
+            oc.rotate(layer.rotation * Math.PI / 180);
+
+            oc.strokeStyle = layer.locked ? '#888' : (this.selectedLayerIds.size > 1 ? '#0ea5e9' : '#f66744');
+            oc.lineWidth = 1.5;
+            oc.strokeRect(-w/2, -h/2, w, h);
 
             if (!layer.locked && this.selectedLayerIds.size === 1 && this.activeMode !== 'eraser') {
                 const sz = this.handleSize;
-                this.ctx.fillStyle = '#fff'; this.ctx.strokeStyle = '#f66744'; this.ctx.lineWidth = 1;
+                oc.fillStyle = '#fff'; oc.strokeStyle = '#f66744'; oc.lineWidth = 1;
 
                 const corners = [ {x:-w/2, y:-h/2}, {x:w/2, y:-h/2}, {x:w/2, y:h/2}, {x:-w/2, y:h/2} ];
                 corners.forEach(p => {
-                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, sz/2, 0, Math.PI * 2); this.ctx.fill(); this.ctx.stroke();
+                    oc.beginPath(); oc.arc(p.x, p.y, sz/2, 0, Math.PI * 2); oc.fill(); oc.stroke();
                 });
 
-                this.ctx.fillStyle = '#fff'; this.ctx.lineWidth = 1;
-                this.ctx.beginPath(); this.ctx.moveTo(0, -h/2); this.ctx.lineTo(0, -h/2 - 30); this.ctx.stroke();
-                this.ctx.beginPath(); this.ctx.arc(0, -h/2 - 30, sz/1.2, 0, Math.PI * 2);
-                this.ctx.fillStyle = '#f66744'; this.ctx.fill(); this.ctx.stroke();
-                this.ctx.fillStyle = '#fff'; this.ctx.font = '12px Arial'; this.ctx.textAlign = 'center'; this.ctx.textBaseline = 'middle';
-                this.ctx.fillText('\u21bb', 0, -h/2 - 29);
+                oc.fillStyle = '#fff'; oc.lineWidth = 1;
+                oc.beginPath(); oc.moveTo(0, -h/2); oc.lineTo(0, -h/2 - 30); oc.stroke();
+                oc.beginPath(); oc.arc(0, -h/2 - 30, sz/1.2, 0, Math.PI * 2);
+                oc.fillStyle = '#f66744'; oc.fill(); oc.stroke();
+                oc.fillStyle = '#fff'; oc.font = '12px Arial'; oc.textAlign = 'center'; oc.textBaseline = 'middle';
+                oc.fillText('\u21bb', 0, -h/2 - 29);
 
-                this.ctx.fillStyle = '#f66744'; this.ctx.strokeStyle = '#fff'; this.ctx.lineWidth = 1;
+                oc.fillStyle = '#f66744'; oc.strokeStyle = '#fff'; oc.lineWidth = 1;
                 const sides = [ {x:-w/2, y:0}, {x:w/2, y:0}, {x:0, y:-h/2}, {x:0, y:h/2} ];
                 sides.forEach(p => {
-                    this.ctx.beginPath(); this.ctx.arc(p.x, p.y, sz/2, 0, Math.PI * 2); this.ctx.fill(); this.ctx.stroke();
+                    oc.beginPath(); oc.arc(p.x, p.y, sz/2, 0, Math.PI * 2); oc.fill(); oc.stroke();
                 });
             }
+            oc.restore();
         }
-        this.ctx.restore();
     });
     this.ctx.globalAlpha = 1.0;
 };
@@ -129,6 +137,8 @@ PixaromaEditor.prototype.attemptRestore = async function() {
         this.canvasContainer.style.width = this.docWidth + "px";
         this.canvasContainer.style.height = this.docHeight + "px";
         this.canvas.width = this.docWidth; this.canvas.height = this.docHeight;
+        if (this.selCanvas) { this.selCanvas.width = this.docWidth + 2 * this.selPad; this.selCanvas.height = this.docHeight + 2 * this.selPad; }
+        if (this.selHitArea) { this.selHitArea.style.width = (this.docWidth + 2 * this.selPad) + "px"; this.selHitArea.style.height = (this.docHeight + 2 * this.selPad) + "px"; }
 
         const layersToLoad = meta.layers;
         let loadedCount = 0;
