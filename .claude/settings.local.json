@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"import.*from\" /e/StableDiffusion/ComfyUI/ComfyUI_dev_12/ComfyUI/custom_nodes/ComfyUI-Manager/js/*.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://127.0.0.1:8188/extensions/ComfyUI-Pixaroma/3d/index.js\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://127.0.0.1:8188/extensions/ComfyUI-Pixaroma/paint/core.js\")",
+      "Bash(curl -s \"http://127.0.0.1:8188/extensions\")",
+      "Bash(python -c \"import sys,json; exts=json.load\\(sys.stdin\\); [print\\(e\\) for e in exts if 'Pixaroma' in e]\")"
+    ]
+  }
+}
