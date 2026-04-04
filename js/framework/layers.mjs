@@ -11,7 +11,8 @@ const LAYER_ICON_BASE = "/pixaroma/assets/icons/layers/";
 function _layerIcon(name, size = 12) {
   const img = document.createElement("img");
   img.src = LAYER_ICON_BASE + name + ".svg";
-  img.width = size; img.height = size;
+  img.width = size;
+  img.height = size;
   img.draggable = false;
   return img;
 }
@@ -64,7 +65,8 @@ export function createLayerItem(config) {
     nameEl.parentNode.insertBefore(input, nameEl);
     let done = false;
     const finish = () => {
-      if (done) return; done = true;
+      if (done) return;
+      done = true;
       const newName = input.value.trim() || currentName;
       nameEl.textContent = newName;
       nameEl.style.display = "";
@@ -72,9 +74,15 @@ export function createLayerItem(config) {
       if (config.onRename) config.onRename(newName);
     };
     input.addEventListener("keydown", (ke) => {
-      ke.stopPropagation(); ke.stopImmediatePropagation();
-      if (ke.key === "Enter") { finish(); }
-      if (ke.key === "Escape") { input.value = currentName; finish(); }
+      ke.stopPropagation();
+      ke.stopImmediatePropagation();
+      if (ke.key === "Enter") {
+        finish();
+      }
+      if (ke.key === "Escape") {
+        input.value = currentName;
+        finish();
+      }
     });
     setTimeout(() => {
       input.focus();
@@ -83,7 +91,10 @@ export function createLayerItem(config) {
     }, 60);
   }
   if (config.onRename) {
-    nameEl.addEventListener("dblclick", (e) => { e.stopPropagation(); startRename(); });
+    nameEl.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      startRename();
+    });
   }
 
   // Edit icon button
@@ -93,7 +104,10 @@ export function createLayerItem(config) {
     editBtn.className = "pxf-layer-icon";
     editBtn.title = "Rename layer";
     editBtn.appendChild(_layerIcon("edit"));
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); startRename(); });
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRename();
+    });
   }
 
   // Lock toggle
@@ -115,11 +129,25 @@ export function createLayerItem(config) {
 
   return {
     el,
-    setName(s) { nameEl.textContent = s; },
-    setActive(b) { el.classList.toggle("active", b); },
-    setMulti(b) { el.classList.toggle("multi-selected", b); },
-    setVisible(b) { _visible = b; vis.innerHTML = ""; vis.appendChild(_layerIcon(b ? "eye-visible" : "eye-hidden")); },
-    setLocked(b) { _locked = b; lock.innerHTML = ""; lock.appendChild(_layerIcon(b ? "lock-locked" : "lock-unlocked")); },
+    setName(s) {
+      nameEl.textContent = s;
+    },
+    setActive(b) {
+      el.classList.toggle("active", b);
+    },
+    setMulti(b) {
+      el.classList.toggle("multi-selected", b);
+    },
+    setVisible(b) {
+      _visible = b;
+      vis.innerHTML = "";
+      vis.appendChild(_layerIcon(b ? "eye-visible" : "eye-hidden"));
+    },
+    setLocked(b) {
+      _locked = b;
+      lock.innerHTML = "";
+      lock.appendChild(_layerIcon(b ? "lock-locked" : "lock-unlocked"));
+    },
   };
 }
 
@@ -181,13 +209,36 @@ export function createLayersList(config) {
   // Action buttons
   const actions = document.createElement("div");
   actions.className = "pxf-layers-actions";
-  if (config.onAdd) actions.appendChild(_layerActionBtn(config.addIcon || "add", config.addTitle || "Add layer", config.onAdd));
-  if (config.onDuplicate) actions.appendChild(_layerActionBtn("duplicate", "Duplicate layer", config.onDuplicate));
-  if (config.onDelete) actions.appendChild(_layerActionBtn("delete", "Delete layer", config.onDelete, "danger"));
-  if (config.onMoveUp) actions.appendChild(_layerActionBtn("move-up", "Move up", config.onMoveUp));
-  if (config.onMoveDown) actions.appendChild(_layerActionBtn("move-down", "Move down", config.onMoveDown));
-  if (config.onMerge) actions.appendChild(_layerActionBtn("merge-down", "Merge down", config.onMerge));
-  if (config.onFlatten) actions.appendChild(_layerActionBtn("flatten", "Flatten all", config.onFlatten));
+  if (config.onAdd)
+    actions.appendChild(
+      _layerActionBtn(
+        config.addIcon || "add",
+        config.addTitle || "Add layer",
+        config.onAdd,
+      ),
+    );
+  if (config.onDuplicate)
+    actions.appendChild(
+      _layerActionBtn("duplicate", "Duplicate layer", config.onDuplicate),
+    );
+  if (config.onDelete)
+    actions.appendChild(
+      _layerActionBtn("delete", "Delete layer", config.onDelete, "danger"),
+    );
+  if (config.onMoveUp)
+    actions.appendChild(_layerActionBtn("move-up", "Move up", config.onMoveUp));
+  if (config.onMoveDown)
+    actions.appendChild(
+      _layerActionBtn("move-down", "Move down", config.onMoveDown),
+    );
+  if (config.onMerge)
+    actions.appendChild(
+      _layerActionBtn("merge-down", "Merge down", config.onMerge),
+    );
+  if (config.onFlatten)
+    actions.appendChild(
+      _layerActionBtn("flatten", "Flatten all", config.onFlatten),
+    );
   panel.content.appendChild(actions);
 
   return {
@@ -205,7 +256,9 @@ export function createLayerPanel(config) {
   const wrapper = document.createElement("div");
   wrapper.className = "pxf-layer-panel";
 
-  let blendSelect = null, opacitySlider = null, opacityNum = null;
+  let blendSelect = null,
+    opacitySlider = null,
+    opacityNum = null;
 
   // ── Blend Mode row ──
   if (config.showBlendMode !== false) {
@@ -231,9 +284,10 @@ export function createLayerPanel(config) {
     ];
     blendSelect = document.createElement("select");
     blendSelect.className = "pxf-layer-blend-select";
-    (config.blendModes || defaultModes).forEach(m => {
+    (config.blendModes || defaultModes).forEach((m) => {
       const opt = document.createElement("option");
-      opt.value = m.value; opt.textContent = m.label;
+      opt.value = m.value;
+      opt.textContent = m.label;
       blendSelect.appendChild(opt);
     });
     blendSelect.addEventListener("change", () => {
@@ -251,9 +305,15 @@ export function createLayerPanel(config) {
     opLabel.className = "pxf-layer-opacity-label";
     opLabel.textContent = "Opacity";
     opacitySlider = document.createElement("input");
-    opacitySlider.type = "range"; opacitySlider.min = 0; opacitySlider.max = 100; opacitySlider.value = 100;
+    opacitySlider.type = "range";
+    opacitySlider.min = 0;
+    opacitySlider.max = 100;
+    opacitySlider.value = 100;
     opacityNum = document.createElement("input");
-    opacityNum.type = "number"; opacityNum.min = 0; opacityNum.max = 100; opacityNum.value = 100;
+    opacityNum.type = "number";
+    opacityNum.min = 0;
+    opacityNum.max = 100;
+    opacityNum.value = 100;
     function _syncOpFill() {
       if (window._pxfUpdateFill) window._pxfUpdateFill(opacitySlider);
     }
@@ -293,8 +353,12 @@ export function createLayerPanel(config) {
     blendSelect,
     opacitySlider,
     opacityNum,
-    refresh(items) { layersList.refresh(items); },
-    setBlend(v) { if (blendSelect) blendSelect.value = v; },
+    refresh(items) {
+      layersList.refresh(items);
+    },
+    setBlend(v) {
+      if (blendSelect) blendSelect.value = v;
+    },
     setOpacity(v) {
       if (opacitySlider) {
         opacitySlider.value = v;

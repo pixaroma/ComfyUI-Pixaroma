@@ -68,7 +68,8 @@ app.registerExtension({
         }
       };
 
-      studio.onSaveToDisk = (dataURL) => downloadDataURL(dataURL, "pixaroma_paint");
+      studio.onSaveToDisk = (dataURL) =>
+        downloadDataURL(dataURL, "pixaroma_paint");
 
       studio.onClose = () => {
         node.setDirtyCanvas(true, true);

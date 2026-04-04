@@ -117,7 +117,12 @@ app.registerExtension({
       ctx.save();
       for (let i = 0; i < 4; i++)
         paintBtn(ctx, modeRect(i), MODES[i], this._cmpMode === i);
-      const toggleLabel = this._cmpShowWhich === 0 ? "Show 1" : this._cmpShowWhich === 1 ? "Show 2" : "Compare";
+      const toggleLabel =
+        this._cmpShowWhich === 0
+          ? "Show 1"
+          : this._cmpShowWhich === 1
+            ? "Show 2"
+            : "Compare";
       paintBtn(ctx, toggleRect(), toggleLabel, this._cmpShowWhich !== 0);
       ctx.restore();
 
@@ -232,7 +237,8 @@ app.registerExtension({
       // ── Single image override ──
       if (this._cmpShowWhich !== 0) {
         const img = this._cmpShowWhich === 1 ? this._cmpImg1 : this._cmpImg2;
-        if (img) ctx.drawImage(img, fit(img).x, fit(img).y, fit(img).w, fit(img).h);
+        if (img)
+          ctx.drawImage(img, fit(img).x, fit(img).y, fit(img).w, fit(img).h);
         ctx.restore();
         return;
       }

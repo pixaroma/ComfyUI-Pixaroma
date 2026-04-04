@@ -202,12 +202,17 @@ export function createPlaceholder(name, buttonLabel, node, app) {
   });
 }
 
-export async function downloadDataURL(dataURL, suggestedName = "pixaroma_export.png") {
+export async function downloadDataURL(
+  dataURL,
+  suggestedName = "pixaroma_export.png",
+) {
   if (!dataURL) return;
   const mimeMatch = dataURL.match(/^data:([^;]+);/);
   const mime = mimeMatch ? mimeMatch[1] : "image/png";
   const ext = mime === "image/jpeg" ? "jpg" : "png";
-  const name = suggestedName.endsWith(`.${ext}`) ? suggestedName : `${suggestedName}.${ext}`;
+  const name = suggestedName.endsWith(`.${ext}`)
+    ? suggestedName
+    : `${suggestedName}.${ext}`;
 
   if (window.showSaveFilePicker) {
     try {

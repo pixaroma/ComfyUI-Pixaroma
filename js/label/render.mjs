@@ -15,7 +15,12 @@ export const DEFAULTS = {
   lineHeight: 1,
 };
 
-export const FONT_CHOICES = ["Arial", "Times New Roman", "Courier New", "Impact"];
+export const FONT_CHOICES = [
+  "Arial",
+  "Times New Roman",
+  "Courier New",
+  "Impact",
+];
 export const FONT_SHORT = ["Arial", "Times", "Courier", "Impact"];
 
 // Color swatches

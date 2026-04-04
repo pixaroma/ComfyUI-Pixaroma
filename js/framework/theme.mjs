@@ -3,8 +3,6 @@
 // ║  Brand colors, CSS custom properties, and shared stylesheet  ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
-import { installFocusTrap, PIXAROMA_LOGO } from "../shared/utils.mjs";
-
 /** Brand accent color hex — re-exported for editor-specific use. */
 export const BRAND = "#f66744";
 
@@ -27,7 +25,6 @@ export function _uiIcon(name, size = 14) {
 
 /** ID used for the injected <style> element — prevents duplicate injection. */
 const STYLE_ID = "pixaroma-framework-v1";
-
 
 // ═════════════════════════════════════════════════════════════════
 //  CSS Injection
@@ -643,19 +640,28 @@ export function injectFrameworkStyles() {
   // ── Slider Fill System ──────────────────────────────────────
   if (!window._pxfSliderFillInit) {
     window._pxfSliderFillInit = true;
-    window._pxfUpdateFill = function(input) {
-      const mn = parseFloat(input.min) || 0, mx = parseFloat(input.max) || 100;
+    window._pxfUpdateFill = function (input) {
+      const mn = parseFloat(input.min) || 0,
+        mx = parseFloat(input.max) || 100;
       const v = parseFloat(input.value) || 0;
-      input.style.setProperty("--pxf-fill", Math.max(0, Math.min(100, ((v - mn) / (mx - mn)) * 100)) + "%");
+      input.style.setProperty(
+        "--pxf-fill",
+        Math.max(0, Math.min(100, ((v - mn) / (mx - mn)) * 100)) + "%",
+      );
     };
     document.addEventListener("input", (e) => {
-      if (e.target.type === "range" && e.target.closest(".pxf-overlay")) window._pxfUpdateFill(e.target);
+      if (e.target.type === "range" && e.target.closest(".pxf-overlay"))
+        window._pxfUpdateFill(e.target);
     });
-    const desc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+    const desc = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    );
     const origSet = desc.set;
-    desc.set = function(v) {
+    desc.set = function (v) {
       origSet.call(this, v);
-      if (this.type === "range" && this.closest(".pxf-overlay")) window._pxfUpdateFill(this);
+      if (this.type === "range" && this.closest(".pxf-overlay"))
+        window._pxfUpdateFill(this);
     };
     Object.defineProperty(HTMLInputElement.prototype, "value", desc);
   }

@@ -3,18 +3,18 @@
 // ║  Reusable UI building blocks (buttons, panels, sliders, etc) ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
-
 // ── Button ───────────────────────────────────────────────────
 export function createButton(text, opts = {}) {
   const btn = document.createElement("button");
-  const variantClass = {
-    standard: "pxf-btn",
-    accent: "pxf-btn pxf-btn-accent",
-    danger: "pxf-btn pxf-btn-danger",
-    sm: "pxf-btn-sm",
-    icon: "pxf-btn-icon",
-    full: "pxf-btn-full",
-  }[opts.variant || "standard"] || "pxf-btn";
+  const variantClass =
+    {
+      standard: "pxf-btn",
+      accent: "pxf-btn pxf-btn-accent",
+      danger: "pxf-btn pxf-btn-danger",
+      sm: "pxf-btn-sm",
+      icon: "pxf-btn-icon",
+      full: "pxf-btn-full",
+    }[opts.variant || "standard"] || "pxf-btn";
 
   btn.className = variantClass;
   if (opts.iconSrc) {
@@ -35,7 +35,8 @@ export function createPanel(title, opts = {}) {
   el.className = "pxf-panel" + (opts.collapsed ? " collapsed" : "");
 
   const titleEl = document.createElement("div");
-  titleEl.className = "pxf-panel-title" + (opts.collapsible ? " clickable" : "");
+  titleEl.className =
+    "pxf-panel-title" + (opts.collapsible ? " clickable" : "");
 
   if (opts.collapsible) {
     const arrow = document.createElement("span");
@@ -61,7 +62,9 @@ export function createPanel(title, opts = {}) {
   return {
     el,
     content,
-    setCollapsed(b) { el.classList.toggle("collapsed", b); },
+    setCollapsed(b) {
+      el.classList.toggle("collapsed", b);
+    },
   };
 }
 
@@ -78,16 +81,21 @@ export function createSliderRow(label, min, max, value, onChange, opts = {}) {
 
   const slider = document.createElement("input");
   slider.type = "range";
-  slider.min = min; slider.max = max; slider.value = value;
+  slider.min = min;
+  slider.max = max;
+  slider.value = value;
   if (opts.step) slider.step = opts.step;
 
   const numInput = document.createElement("input");
   numInput.type = "number";
-  numInput.min = min; numInput.max = max; numInput.value = value;
+  numInput.min = min;
+  numInput.max = max;
+  numInput.value = value;
   if (opts.step) numInput.step = opts.step;
 
   function _syncFill() {
-    const mn = parseFloat(slider.min) || 0, mx = parseFloat(slider.max) || 100;
+    const mn = parseFloat(slider.min) || 0,
+      mx = parseFloat(slider.max) || 100;
     const v = parseFloat(slider.value) || 0;
     slider.style.setProperty("--pxf-fill", ((v - mn) / (mx - mn)) * 100 + "%");
   }
@@ -117,8 +125,10 @@ export function createSliderRow(label, min, max, value, onChange, opts = {}) {
       _syncFill();
     },
     setRange(newMin, newMax) {
-      slider.min = newMin; slider.max = newMax;
-      numInput.min = newMin; numInput.max = newMax;
+      slider.min = newMin;
+      slider.max = newMax;
+      numInput.min = newMin;
+      numInput.max = newMax;
       _syncFill();
     },
   };
@@ -134,7 +144,10 @@ export function createNumberInput(opts = {}) {
   if (opts.max != null) input.max = opts.max;
   if (opts.step != null) input.step = opts.step;
   if (opts.width) input.style.width = opts.width;
-  if (opts.onChange) input.addEventListener("input", () => opts.onChange(parseFloat(input.value)));
+  if (opts.onChange)
+    input.addEventListener("input", () =>
+      opts.onChange(parseFloat(input.value)),
+    );
   return input;
 }
 
@@ -149,7 +162,8 @@ export function createSelectInput(opts = {}) {
     select.appendChild(opt);
   });
   if (opts.value) select.value = opts.value;
-  if (opts.onChange) select.addEventListener("change", () => opts.onChange(select.value));
+  if (opts.onChange)
+    select.addEventListener("change", () => opts.onChange(select.value));
   return select;
 }
 
@@ -159,7 +173,8 @@ export function createColorInput(opts = {}) {
   input.type = "color";
   input.className = "pxf-color-input";
   input.value = opts.value || "#ffffff";
-  if (opts.onChange) input.addEventListener("input", () => opts.onChange(input.value));
+  if (opts.onChange)
+    input.addEventListener("input", () => opts.onChange(input.value));
   return input;
 }
 
@@ -205,7 +220,9 @@ export function createPillGrid(options, columns, onChange, opts = {}) {
     pill.textContent = opt.label;
     pill.addEventListener("click", () => {
       activeValue = opt.value;
-      pills.forEach((p, i) => p.classList.toggle("active", options[i].value === activeValue));
+      pills.forEach((p, i) =>
+        p.classList.toggle("active", options[i].value === activeValue),
+      );
       if (onChange) onChange(activeValue);
     });
     grid.appendChild(pill);
@@ -217,7 +234,9 @@ export function createPillGrid(options, columns, onChange, opts = {}) {
     pills,
     setActive(value) {
       activeValue = value;
-      pills.forEach((p, i) => p.classList.toggle("active", options[i].value === activeValue));
+      pills.forEach((p, i) =>
+        p.classList.toggle("active", options[i].value === activeValue),
+      );
     },
   };
 }
@@ -241,7 +260,9 @@ export function createToolButton(icon, label, onClick, opts = {}) {
 
   return {
     el: btn,
-    setActive(b) { btn.classList.toggle("active", b); },
+    setActive(b) {
+      btn.classList.toggle("active", b);
+    },
   };
 }
 
@@ -253,7 +274,9 @@ export function createToolGrid(columns, tools) {
 
   const buttons = {};
   tools.forEach((tool) => {
-    const tb = createToolButton(tool.icon, tool.label, tool.onClick, { title: tool.title });
+    const tb = createToolButton(tool.icon, tool.label, tool.onClick, {
+      title: tool.title,
+    });
     buttons[tool.id] = tb;
     grid.appendChild(tb.el);
   });
@@ -293,7 +316,9 @@ export function createInfo(html = "") {
   el.innerHTML = html;
   return {
     el,
-    setHTML(s) { el.innerHTML = s; },
+    setHTML(s) {
+      el.innerHTML = s;
+    },
   };
 }
 
@@ -306,34 +331,87 @@ export function createZoomControls(onZoomIn, onZoomOut, onFit) {
   label.className = "pxf-zoom-label";
   label.textContent = "100%";
 
-  bar.appendChild(createButton("\u2212", { variant: "sm", title: "Zoom out", onClick: onZoomOut }));
-  bar.appendChild(createButton("Fit", { variant: "sm", title: "Fit to view", onClick: onFit }));
+  bar.appendChild(
+    createButton("\u2212", {
+      variant: "sm",
+      title: "Zoom out",
+      onClick: onZoomOut,
+    }),
+  );
+  bar.appendChild(
+    createButton("Fit", {
+      variant: "sm",
+      title: "Fit to view",
+      onClick: onFit,
+    }),
+  );
   bar.appendChild(label);
-  bar.appendChild(createButton("+", { variant: "sm", title: "Zoom in", onClick: onZoomIn }));
+  bar.appendChild(
+    createButton("+", { variant: "sm", title: "Zoom in", onClick: onZoomIn }),
+  );
 
   return {
     el: bar,
-    setZoomLabel(text) { label.textContent = text; },
+    setZoomLabel(text) {
+      label.textContent = text;
+    },
   };
 }
 
 // ── Transform Panel ──────────────────────────────────────────
 export function createTransformPanel(config) {
   const _ui = "/pixaroma/assets/icons/ui/";
-  const collapsed = config.startCollapsed !== undefined ? config.startCollapsed : true;
-  const panel = createPanel("Transform Properties", { collapsible: true, collapsed });
+  const collapsed =
+    config.startCollapsed !== undefined ? config.startCollapsed : true;
+  const panel = createPanel("Transform Properties", {
+    collapsible: true,
+    collapsed,
+  });
 
-  const fitW   = createButton("Fit W",  { variant: "sm", iconSrc: _ui + "fit-width.svg",       onClick: config.onFitWidth,   title: "Fit to canvas width" });
-  const fitH   = createButton("Fit H",  { variant: "sm", iconSrc: _ui + "fit-height.svg",      onClick: config.onFitHeight,  title: "Fit to canvas height" });
-  const flipH  = createButton("Flip H", { variant: "sm", iconSrc: _ui + "flip-horizontal.svg", onClick: config.onFlipH,      title: "Flip horizontally" });
-  const flipV  = createButton("Flip V", { variant: "sm", iconSrc: _ui + "flip-vertical.svg",   onClick: config.onFlipV,      title: "Flip vertically" });
-  const rotCCW = createButton("-90°",   { variant: "sm", iconSrc: _ui + "rotate-ccw.svg",      onClick: config.onRotateCCW,  title: "Rotate -90°" });
-  const rotCW  = createButton("+90°",   { variant: "sm", iconSrc: _ui + "rotate-cw.svg",       onClick: config.onRotateCW,   title: "Rotate +90°" });
+  const fitW = createButton("Fit W", {
+    variant: "sm",
+    iconSrc: _ui + "fit-width.svg",
+    onClick: config.onFitWidth,
+    title: "Fit to canvas width",
+  });
+  const fitH = createButton("Fit H", {
+    variant: "sm",
+    iconSrc: _ui + "fit-height.svg",
+    onClick: config.onFitHeight,
+    title: "Fit to canvas height",
+  });
+  const flipH = createButton("Flip H", {
+    variant: "sm",
+    iconSrc: _ui + "flip-horizontal.svg",
+    onClick: config.onFlipH,
+    title: "Flip horizontally",
+  });
+  const flipV = createButton("Flip V", {
+    variant: "sm",
+    iconSrc: _ui + "flip-vertical.svg",
+    onClick: config.onFlipV,
+    title: "Flip vertically",
+  });
+  const rotCCW = createButton("-90°", {
+    variant: "sm",
+    iconSrc: _ui + "rotate-ccw.svg",
+    onClick: config.onRotateCCW,
+    title: "Rotate -90°",
+  });
+  const rotCW = createButton("+90°", {
+    variant: "sm",
+    iconSrc: _ui + "rotate-cw.svg",
+    onClick: config.onRotateCW,
+    title: "Rotate +90°",
+  });
 
-  [fitW, fitH, flipH, flipV, rotCCW, rotCW].forEach(b => b.style.flex = "1");
+  [fitW, fitH, flipH, flipV, rotCCW, rotCW].forEach(
+    (b) => (b.style.flex = "1"),
+  );
 
   const row1 = createButtonRow([fitW, fitH, flipH]);
-  const row2 = createButtonRow([flipV, rotCCW, rotCW]); row2.style.marginTop = "4px";
+  const row2 = createButtonRow([flipV, rotCCW, rotCW]);
+  row2.style.marginTop = "4px";
   panel.content.appendChild(row1);
   panel.content.appendChild(row2);
 
@@ -345,7 +423,12 @@ export function createTransformPanel(config) {
       title: "Reset all transforms to default",
     });
     resetBtn.classList.add("pxf-btn-danger");
-    resetBtn.insertBefore(_dangerIcon("M5.1,36.2h8c-.1,8,5.1,15,12.2,17.7,7.8,2.9,16.4.6,21.5-5.8,3.3-4.1,4.6-9.2,4-14.4-1-8.6-7.8-15.3-16.4-16.4v6.5c0,.6-.6,1.3-1.1,1.4-.5.2-1.5.2-1.9-.2l-12-10.2c-.6-.5-.8-1.1-.8-1.9,0-.7.4-1.3,1-1.8l11.6-9.9c.6-.5,1.4-.6,2.1-.3.5.2,1,.9,1,1.6v6.4c4.6.5,9,1.9,12.8,4.5,6.5,4.5,10.6,11.2,11.6,19,.3,2.7.4,5,0,7.6-.9,6.2-3.9,12-8.4,16.2-12.2,11.1-30.9,8.9-40.4-4.6-3.1-4.4-4.8-9.7-4.8-15.5ZM38.7,41.7v-9.2c0-1.1-.7-1.9-1.7-2.2h-10.1c-1,.2-1.7,1.1-1.7,2.1v9.3c0,1.2.9,2.1,2.1,2.1h9.1c1.2,0,2.3-1,2.3-2.2Z"), resetBtn.firstChild);
+    resetBtn.insertBefore(
+      _dangerIcon(
+        "M5.1,36.2h8c-.1,8,5.1,15,12.2,17.7,7.8,2.9,16.4.6,21.5-5.8,3.3-4.1,4.6-9.2,4-14.4-1-8.6-7.8-15.3-16.4-16.4v6.5c0,.6-.6,1.3-1.1,1.4-.5.2-1.5.2-1.9-.2l-12-10.2c-.6-.5-.8-1.1-.8-1.9,0-.7.4-1.3,1-1.8l11.6-9.9c.6-.5,1.4-.6,2.1-.3.5.2,1,.9,1,1.6v6.4c4.6.5,9,1.9,12.8,4.5,6.5,4.5,10.6,11.2,11.6,19,.3,2.7.4,5,0,7.6-.9,6.2-3.9,12-8.4,16.2-12.2,11.1-30.9,8.9-40.4-4.6-3.1-4.4-4.8-9.7-4.8-15.5ZM38.7,41.7v-9.2c0-1.1-.7-1.9-1.7-2.2h-10.1c-1,.2-1.7,1.1-1.7,2.1v9.3c0,1.2.9,2.1,2.1,2.1h9.1c1.2,0,2.3-1,2.3-2.2Z",
+      ),
+      resetBtn.firstChild,
+    );
     resetBtn.style.marginTop = "6px";
     panel.content.appendChild(resetBtn);
   }
@@ -355,30 +438,50 @@ export function createTransformPanel(config) {
   const sliders = {};
 
   if (config.showRotateSlider !== false) {
-    const s = createSliderRow("Rotate", 0, 360, 0, config.onRotateChange, { step: 1 });
+    const s = createSliderRow("Rotate", 0, 360, 0, config.onRotateChange, {
+      step: 1,
+    });
     sliderWrap.appendChild(s.el);
-    sliders.rotateSlider = s.slider; sliders.rotateNum = s.numInput;
+    sliders.rotateSlider = s.slider;
+    sliders.rotateNum = s.numInput;
     sliders.setRotate = (v) => s.setValue(v);
   }
   if (config.showScaleSlider !== false) {
-    const s = createSliderRow("Scale %", 5, 300, 100, config.onScaleChange, { step: 1 });
+    const s = createSliderRow("Scale %", 5, 300, 100, config.onScaleChange, {
+      step: 1,
+    });
     sliderWrap.appendChild(s.el);
-    sliders.scaleSlider = s.slider; sliders.scaleNum = s.numInput;
+    sliders.scaleSlider = s.slider;
+    sliders.scaleNum = s.numInput;
     sliders.setScale = (v) => s.setValue(v);
   }
   if (config.showStretchSliders !== false) {
-    const sh = createSliderRow("Horiz %", 5, 300, 100, config.onStretchHChange, { step: 1 });
-    const sv = createSliderRow("Vert %", 5, 300, 100, config.onStretchVChange, { step: 1 });
+    const sh = createSliderRow(
+      "Horiz %",
+      5,
+      300,
+      100,
+      config.onStretchHChange,
+      { step: 1 },
+    );
+    const sv = createSliderRow("Vert %", 5, 300, 100, config.onStretchVChange, {
+      step: 1,
+    });
     sliderWrap.append(sh.el, sv.el);
-    sliders.stretchHSlider = sh.slider; sliders.stretchHNum = sh.numInput;
-    sliders.stretchVSlider = sv.slider; sliders.stretchVNum = sv.numInput;
+    sliders.stretchHSlider = sh.slider;
+    sliders.stretchHNum = sh.numInput;
+    sliders.stretchVSlider = sv.slider;
+    sliders.stretchVNum = sv.numInput;
     sliders.setStretchH = (v) => sh.setValue(v);
     sliders.setStretchV = (v) => sv.setValue(v);
   }
   if (config.showOpacitySlider !== false) {
-    const s = createSliderRow("Opacity", 0, 100, 100, config.onOpacityChange, { step: 1 });
+    const s = createSliderRow("Opacity", 0, 100, 100, config.onOpacityChange, {
+      step: 1,
+    });
     sliderWrap.appendChild(s.el);
-    sliders.opacitySlider = s.slider; sliders.opacityNum = s.numInput;
+    sliders.opacitySlider = s.slider;
+    sliders.opacityNum = s.numInput;
     sliders.setOpacity = (v) => s.setValue(v);
   }
   if (sliderWrap.children.length > 0) panel.content.appendChild(sliderWrap);
@@ -386,7 +489,13 @@ export function createTransformPanel(config) {
   return {
     el: panel.el,
     content: panel.content,
-    fitW, fitH, flipH, flipV, rotCCW, rotCW, resetBtn,
+    fitW,
+    fitH,
+    flipH,
+    flipV,
+    rotCCW,
+    rotCW,
+    resetBtn,
     ...sliders,
   };
 }
@@ -395,7 +504,8 @@ export function createTransformPanel(config) {
 function _dangerIcon(pathD) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 64 64");
-  svg.style.cssText = "width:14px;height:14px;flex-shrink:0;transition:fill .15s;";
+  svg.style.cssText =
+    "width:14px;height:14px;flex-shrink:0;transition:fill .15s;";
   const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
   path.setAttribute("d", pathD);
   path.setAttribute("fill", "#999");
@@ -403,8 +513,12 @@ function _dangerIcon(pathD) {
   requestAnimationFrame(() => {
     const btn = svg.closest("button");
     if (btn) {
-      btn.addEventListener("mouseenter", () => path.setAttribute("fill", "#ffffff"));
-      btn.addEventListener("mouseleave", () => path.setAttribute("fill", "#999"));
+      btn.addEventListener("mouseenter", () =>
+        path.setAttribute("fill", "#ffffff"),
+      );
+      btn.addEventListener("mouseleave", () =>
+        path.setAttribute("fill", "#999"),
+      );
     }
   });
   return svg;

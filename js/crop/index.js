@@ -3,8 +3,8 @@
 // ============================================================
 import { app } from "/scripts/app.js";
 import { CropEditor } from "./core.mjs";
-import "./interaction.mjs";   // mixin: mouse/keyboard events
-import "./render.mjs";        // mixin: canvas rendering, ratio, save
+import "./interaction.mjs"; // mixin: mouse/keyboard events
+import "./render.mjs"; // mixin: canvas rendering, ratio, save
 import {
   allow_debug,
   createNodePreview,
@@ -60,7 +60,8 @@ app.registerExtension({
         }
       };
 
-      editor.onSaveToDisk = (dataURL) => downloadDataURL(dataURL, "pixaroma_crop");
+      editor.onSaveToDisk = (dataURL) =>
+        downloadDataURL(dataURL, "pixaroma_crop");
 
       editor.onClose = () => {
         node.setDirtyCanvas(true, true);

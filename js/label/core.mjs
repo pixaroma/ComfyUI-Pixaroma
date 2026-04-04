@@ -204,7 +204,8 @@ export class LabelEditor {
     sizeRange.min = 8;
     sizeRange.max = 64;
     sizeRange.value = c.fontSize;
-    sizeRange.style.cssText = "flex:1;accent-color:" + BRAND + ";height:3px;min-width:60px;";
+    sizeRange.style.cssText =
+      "flex:1;accent-color:" + BRAND + ";height:3px;min-width:60px;";
     const sizeVal = el("span", "pix-lbl-val");
     sizeVal.textContent = c.fontSize;
     sizeRange.addEventListener("input", () => {
@@ -214,7 +215,8 @@ export class LabelEditor {
     });
     const sizeLbl = el("span");
     sizeLbl.textContent = "Size";
-    sizeLbl.style.cssText = "color:#555;font-size:9px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;";
+    sizeLbl.style.cssText =
+      "color:#555;font-size:9px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;";
     fontBtns.appendChild(sizeLbl);
     fontBtns.appendChild(sizeRange);
     fontBtns.appendChild(sizeVal);
@@ -248,21 +250,29 @@ export class LabelEditor {
       this._updatePreview();
     };
     bgSwatches.appendChild(transpSw);
-    this._buildSwatches(bgSwatches, BG_SWATCHES, c.backgroundColor, (color, swEls) => {
-      c.backgroundColor = color;
-      bgPicker.value = color;
-      bgPicker.disabled = false;
-      bgHex.value = color;
-      bgHex.disabled = false;
-      transpSw.classList.remove("active");
-      swEls.forEach((s) => s.classList.toggle("active", s.dataset.color === color));
-      this._updatePreview();
-    });
+    this._buildSwatches(
+      bgSwatches,
+      BG_SWATCHES,
+      c.backgroundColor,
+      (color, swEls) => {
+        c.backgroundColor = color;
+        bgPicker.value = color;
+        bgPicker.disabled = false;
+        bgHex.value = color;
+        bgHex.disabled = false;
+        transpSw.classList.remove("active");
+        swEls.forEach((s) =>
+          s.classList.toggle("active", s.dataset.color === color),
+        );
+        this._updatePreview();
+      },
+    );
     bgCol.appendChild(bgSwatches);
     const bgRow = el("div", "pix-lbl-color-row");
     const bgPicker = document.createElement("input");
     bgPicker.type = "color";
-    bgPicker.value = c.backgroundColor === "transparent" ? "#333333" : c.backgroundColor;
+    bgPicker.value =
+      c.backgroundColor === "transparent" ? "#333333" : c.backgroundColor;
     bgPicker.disabled = c.backgroundColor === "transparent";
     const bgHex = document.createElement("input");
     bgHex.type = "text";
@@ -299,13 +309,20 @@ export class LabelEditor {
     tcColLbl.style.color = "#444";
     tcCol.appendChild(tcColLbl);
     const tcSwatches = el("div", "pix-lbl-swatches");
-    this._buildSwatches(tcSwatches, TEXT_SWATCHES, c.fontColor, (color, swEls) => {
-      c.fontColor = color;
-      tcPicker.value = color;
-      tcHex.value = color;
-      swEls.forEach((s) => s.classList.toggle("active", s.dataset.color === color));
-      this._updatePreview();
-    });
+    this._buildSwatches(
+      tcSwatches,
+      TEXT_SWATCHES,
+      c.fontColor,
+      (color, swEls) => {
+        c.fontColor = color;
+        tcPicker.value = color;
+        tcHex.value = color;
+        swEls.forEach((s) =>
+          s.classList.toggle("active", s.dataset.color === color),
+        );
+        this._updatePreview();
+      },
+    );
     tcCol.appendChild(tcSwatches);
     const tcRow = el("div", "pix-lbl-color-row");
     const tcPicker = document.createElement("input");
@@ -343,10 +360,46 @@ export class LabelEditor {
     spacingSection.appendChild(lbl("Spacing & Style"));
     const spacingGrid = el("div", "pix-lbl-spacing-grid");
     const spacingFields = [
-      ["Padding", c.padding, 0, 60, 1, (v) => { c.padding = v; }],
-      ["Radius", c.borderRadius, 0, 40, 1, (v) => { c.borderRadius = v; }],
-      ["Opacity", c.opacity, 0, 1, 0.05, (v) => { c.opacity = v; }],
-      ["Line Height", c.lineHeight, 1, 3, 0.1, (v) => { c.lineHeight = v; }],
+      [
+        "Padding",
+        c.padding,
+        0,
+        60,
+        1,
+        (v) => {
+          c.padding = v;
+        },
+      ],
+      [
+        "Radius",
+        c.borderRadius,
+        0,
+        40,
+        1,
+        (v) => {
+          c.borderRadius = v;
+        },
+      ],
+      [
+        "Opacity",
+        c.opacity,
+        0,
+        1,
+        0.05,
+        (v) => {
+          c.opacity = v;
+        },
+      ],
+      [
+        "Line Height",
+        c.lineHeight,
+        1,
+        3,
+        0.1,
+        (v) => {
+          c.lineHeight = v;
+        },
+      ],
     ];
     for (const [label, val, min, max, step, onChange] of spacingFields) {
       const f = this._rangeField(label, val, min, max, step, onChange);

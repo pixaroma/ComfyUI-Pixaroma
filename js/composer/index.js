@@ -66,7 +66,8 @@ app.registerExtension({
         node.setDirtyCanvas(true, true);
       };
 
-      editor.onSaveToDisk = (dataURL) => downloadDataURL(dataURL, "pixaroma_composer");
+      editor.onSaveToDisk = (dataURL) =>
+        downloadDataURL(dataURL, "pixaroma_composer");
 
       editor.onClose = () => {
         node.setDirtyCanvas(true, true);
