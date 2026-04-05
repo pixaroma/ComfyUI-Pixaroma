@@ -481,16 +481,23 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.btnDupLayer.onclick = () => {
     if (this.selectedLayerIds.size === 0) return;
+    const usedPH = new Set(this.layers.filter((l) => l.isPlaceholder).map((l) => l.inputIndex));
+    const nextPHIdx = () => { let i = 1; while (usedPH.has(i)) i++; usedPH.add(i); return i; };
     const newLayers = [];
     this.layers.forEach((layer) => {
-      if (this.selectedLayerIds.has(layer.id))
-        newLayers.push({
-          ...layer,
-          id: Date.now().toString() + Math.random(),
-          name: layer.name + " copy",
-          cx: layer.cx + 20,
-          cy: layer.cy + 20,
-        });
+      if (this.selectedLayerIds.has(layer.id)) {
+        const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+        if (layer.isPlaceholder) {
+          const newIdx = nextPHIdx();
+          const newName = `image_${newIdx}`;
+          dup.inputIndex = newIdx;
+          dup.name = newName;
+          dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName);
+        } else {
+          dup.name = layer.name + " copy";
+        }
+        newLayers.push(dup);
+      }
     });
     this.layers.push(...newLayers);
     this.selectedLayerIds.clear();
@@ -638,7 +645,7 @@ PixaromaEditor.prototype.attachEvents = function () {
           layer.savedMaskPath_internal = finalMaskPath;
         }
 
-        layerMeta.push({
+        const layerEntry = {
           id: layer.id,
           name: layer.name,
           cx: layer.cx,
@@ -653,7 +660,16 @@ PixaromaEditor.prototype.attachEvents = function () {
           flippedY: layer.flippedY,
           src: finalSrcPath,
           maskSrc: finalMaskPath,
-        });
+        };
+        if (layer.isPlaceholder) {
+          layerEntry.isPlaceholder = true;
+          layerEntry.placeholderColor = layer.placeholderColor;
+          layerEntry.inputIndex = layer.inputIndex;
+          layerEntry.fillMode = layer.fillMode || "cover";
+          layerEntry.naturalWidth = layer.img.width;
+          layerEntry.naturalHeight = layer.img.height;
+        }
+        layerMeta.push(layerEntry);
       }
 
       this.draw(true);
@@ -672,7 +688,7 @@ PixaromaEditor.prototype.attachEvents = function () {
         doc_h: this.docHeight,
         layers: layerMeta,
         composite_path: null,
-        session_ver: 5.0,
+        session_ver: 6.0,
       };
       const dFin = await PixaromaAPI.saveProject(this.projectID, finalDataURL);
 
@@ -684,6 +700,7 @@ PixaromaEditor.prototype.attachEvents = function () {
         if (this.onSave) {
           this.onSave(jsonString, finalDataURL);
         }
+        this.syncNodeInputs();
         if (this._diskSavePending) {
           this._diskSavePending = false;
           if (this.onSaveToDisk) this.onSaveToDisk(finalDataURL);
@@ -915,16 +932,23 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
         this.selectedLayerIds.clear();
         this.selectedLayerIds.add(clickedLayer.id);
       }
+      const usedPH2 = new Set(this.layers.filter((l) => l.isPlaceholder).map((l) => l.inputIndex));
+      const nextPHIdx2 = () => { let i = 1; while (usedPH2.has(i)) i++; usedPH2.add(i); return i; };
       const newLayers = [];
       this.layers.forEach((layer) => {
-        if (this.selectedLayerIds.has(layer.id))
-          newLayers.push({
-            ...layer,
-            id: Date.now().toString() + Math.random(),
-            name: layer.name + " copy",
-            cx: layer.cx + 20,
-            cy: layer.cy + 20,
-          });
+        if (this.selectedLayerIds.has(layer.id)) {
+          const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+          if (layer.isPlaceholder) {
+            const newIdx = nextPHIdx2();
+            const newName = `image_${newIdx}`;
+            dup.inputIndex = newIdx;
+            dup.name = newName;
+            dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName);
+          } else {
+            dup.name = layer.name + " copy";
+          }
+          newLayers.push(dup);
+        }
       });
       this.layers.push(...newLayers);
       this.selectedLayerIds.clear();

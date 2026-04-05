@@ -7,6 +7,96 @@ import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
 
 
+# ── Helpers for placeholder compositing ──────────────────────────────────────
+
+def _hex_to_rgba(hex_str):
+    hex_str = hex_str.lstrip("#")
+    r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
+    return (r, g, b, 255)
+
+
+def _tensor_to_pil(tensor):
+    """Convert ComfyUI IMAGE tensor [B,H,W,C] float32 0-1 → PIL RGBA."""
+    arr = tensor[0].cpu().numpy()
+    arr = (arr * 255).clip(0, 255).astype(np.uint8)
+    img = Image.fromarray(arr, "RGB" if arr.shape[2] == 3 else "RGBA")
+    return img.convert("RGBA")
+
+
+def _pil_to_tensor(img):
+    """Convert PIL RGB image → ComfyUI IMAGE tensor [1,H,W,3] float32 0-1."""
+    arr = np.array(img.convert("RGB")).astype(np.float32) / 255.0
+    return torch.from_numpy(arr)[None,]
+
+
+def _load_server_image(src, input_dir):
+    """Load a layer image from the ComfyUI input directory (path-safe)."""
+    real_input = os.path.realpath(input_dir)
+    full_path = os.path.realpath(os.path.join(input_dir, src))
+    if not full_path.startswith(real_input + os.sep):
+        return None
+    if not os.path.exists(full_path):
+        return None
+    return Image.open(full_path).convert("RGBA")
+
+
+def _fit_to_placeholder(img, ph_w, ph_h, mode="cover"):
+    """Resize and crop/pad img to fit placeholder dimensions using the given mode."""
+    src_w, src_h = img.size
+    if mode == "fill":
+        return img.resize((ph_w, ph_h), Image.LANCZOS)
+    elif mode == "contain":
+        scale = min(ph_w / src_w, ph_h / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        result = Image.new("RGBA", (ph_w, ph_h), (0, 0, 0, 0))
+        result.paste(resized, ((ph_w - new_w) // 2, (ph_h - new_h) // 2))
+        return result
+    else:  # cover
+        scale = max(ph_w / src_w, ph_h / src_h)
+        new_w = max(1, int(src_w * scale))
+        new_h = max(1, int(src_h * scale))
+        resized = img.resize((new_w, new_h), Image.LANCZOS)
+        left = (new_w - ph_w) // 2
+        top = (new_h - ph_h) // 2
+        return resized.crop((left, top, left + ph_w, top + ph_h))
+
+
+def _apply_layer_transform(img, layer, doc_w, doc_h):
+    """Apply layer transforms and return a doc-sized RGBA canvas."""
+    nat_w, nat_h = img.size
+    scale_x = abs(layer.get("scaleX", 1.0))
+    scale_y = abs(layer.get("scaleY", 1.0))
+    new_w = max(1, int(nat_w * scale_x))
+    new_h = max(1, int(nat_h * scale_y))
+    img = img.resize((new_w, new_h), Image.LANCZOS)
+
+    if layer.get("flippedX"):
+        img = img.transpose(Image.FLIP_LEFT_RIGHT)
+    if layer.get("flippedY"):
+        img = img.transpose(Image.FLIP_TOP_BOTTOM)
+
+    rotation = layer.get("rotation", 0)
+    if rotation:
+        img = img.rotate(-rotation, expand=True, resample=Image.BICUBIC)
+
+    opacity = layer.get("opacity", 1.0)
+    if opacity < 1.0:
+        r, g, b, a = img.split()
+        a = a.point(lambda x: int(x * opacity))
+        img = Image.merge("RGBA", (r, g, b, a))
+
+    cx = layer.get("cx", doc_w / 2)
+    cy = layer.get("cy", doc_h / 2)
+    paste_x = int(cx - img.width / 2)
+    paste_y = int(cy - img.height / 2)
+
+    canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
+    canvas.paste(img, (paste_x, paste_y), img)
+    return canvas
+
+
 class PixaromaImageComposition:
     @classmethod
     def INPUT_TYPES(self):
@@ -62,11 +152,42 @@ class PixaromaImageComposition:
             doc_w = int(meta.get("doc_w", 1024))
             doc_h = int(meta.get("doc_h", 1024))
 
+            layers = meta.get("layers", [])
+            input_dir = os.path.realpath(folder_paths.get_input_directory())
+            has_placeholders = any(l.get("isPlaceholder") for l in layers)
+
+            if has_placeholders:
+                # Composite from scratch so placeholder slots are filled with real images
+                canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
+                for layer in layers:
+                    if not layer.get("visible", True):
+                        continue
+                    if layer.get("isPlaceholder"):
+                        ph_w = layer.get("naturalWidth", 512)
+                        ph_h = layer.get("naturalHeight", 512)
+                        img_input = kwargs.get(f"image_{layer['inputIndex']}")
+                        if img_input is not None:
+                            layer_img = _tensor_to_pil(img_input)
+                            layer_img = _fit_to_placeholder(layer_img, ph_w, ph_h, layer.get("fillMode", "cover"))
+                        else:
+                            color = _hex_to_rgba(layer.get("placeholderColor", "#808080"))
+                            layer_img = Image.new("RGBA", (ph_w, ph_h), color)
+                    else:
+                        src = layer.get("src") or ""
+                        if not src or src == "__placeholder__":
+                            continue
+                        layer_img = _load_server_image(src, input_dir)
+                        if layer_img is None:
+                            continue
+                    composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
+                    canvas = Image.alpha_composite(canvas, composed)
+                return (_pil_to_tensor(canvas), doc_w, doc_h)
+
+            # Fast path: load the pre-rendered composite PNG
             composite_path = meta.get("composite_path")
             if not composite_path:
                 return (empty_image, doc_w, doc_h)
 
-            input_dir = os.path.realpath(folder_paths.get_input_directory())
             full_path = os.path.realpath(os.path.join(input_dir, composite_path))
 
             # Security: block path traversal — path must stay inside input_dir

@@ -10,6 +10,8 @@ import {
   createLayerItem,
   createCanvasToolbar,
   createTransformPanel,
+  createSelectInput,
+  createRow,
 } from "../framework/index.mjs";
 
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
@@ -97,6 +99,7 @@ export class PixaromaUI {
       core.btnDupLayer.style.opacity = "0.3";
       core.removeBgBtn.style.opacity = "0.3";
       core.removeBgBtn.style.pointerEvents = "none";
+      if (core._phPanel) core._phPanel.el.style.display = "none";
 
       // Dim eraser panel and force eraser off
       if (core.eraserPanel) {
@@ -151,6 +154,16 @@ export class PixaromaUI {
           core.btnResetEraser.style.opacity = anyMask ? "1" : "0.3";
           core.btnResetEraser.disabled = !anyMask;
         }
+
+        // Show/hide placeholder settings panel
+        if (core._phPanel) {
+          if (layer.isPlaceholder) {
+            core._phPanel.el.style.display = "";
+            core._phFillSelect.value = layer.fillMode || "cover";
+          } else {
+            core._phPanel.el.style.display = "none";
+          }
+        }
       }
     }
     this.refreshLayersPanel();
@@ -181,7 +194,7 @@ export class PixaromaUI {
         }
       }
 
-      return createLayerItem({
+      const layerItem = createLayerItem({
         name: layer.name,
         visible: layer.visible,
         locked: layer.locked,
@@ -218,7 +231,38 @@ export class PixaromaUI {
           layer.name = newName;
           core.pushHistory();
         },
-      }).el;
+      });
+
+      const itemEl = layerItem.el;
+
+      if (layer.isPlaceholder) {
+        // Badge showing which input socket this placeholder maps to
+        const badge = document.createElement("div");
+        badge.textContent = `image_${layer.inputIndex}`;
+        badge.title = `Connected to node input: image_${layer.inputIndex}`;
+        badge.style.cssText =
+          "font-size:9px;padding:1px 5px;border-radius:3px;background:" +
+          layer.placeholderColor +
+          ";color:#fff;margin:2px 6px 4px;text-align:center;opacity:0.9;pointer-events:none;";
+        itemEl.appendChild(badge);
+      } else {
+        // Convert-to-placeholder button
+        const phBtn = document.createElement("button");
+        phBtn.textContent = "→ PH";
+        phBtn.title = "Convert this layer to a placeholder input";
+        phBtn.style.cssText =
+          "font-size:9px;padding:1px 6px;border-radius:3px;border:1px solid #555;" +
+          "background:#2a2a2a;color:#aaa;cursor:pointer;margin:2px 6px 4px;display:block;width:calc(100% - 12px);";
+        phBtn.onmouseenter = () => { phBtn.style.background = "#3a3d40"; phBtn.style.color = "#fff"; };
+        phBtn.onmouseleave = () => { phBtn.style.background = "#2a2a2a"; phBtn.style.color = "#aaa"; };
+        phBtn.onclick = (e) => {
+          e.stopPropagation();
+          core.convertLayerToPlaceholder(layer.id);
+        };
+        itemEl.appendChild(phBtn);
+      }
+
+      return itemEl;
     });
     core._layerPanel.refresh(items);
   }
@@ -442,6 +486,38 @@ export class PixaromaUI {
       },
     });
     layout.leftSidebar.appendChild(this._canvasToolbar.el);
+
+    // Add Placeholder button
+    const addPhBtn = createButton("Add Placeholder", { variant: "full" });
+    addPhBtn.style.margin = "4px 10px 0";
+    addPhBtn.title = "Add a placeholder layer — connect an image input at workflow execution";
+    addPhBtn.onclick = () => core.addPlaceholderLayer();
+    layout.leftSidebar.appendChild(addPhBtn);
+
+    // Placeholder settings panel (visible only when a placeholder layer is selected)
+    const phPanel = createPanel("Placeholder Settings", { collapsible: true });
+    const fillSelect = createSelectInput({
+      options: [
+        { value: "cover", label: "Cover" },
+        { value: "contain", label: "Contain" },
+        { value: "fill", label: "Fill (stretch)" },
+      ],
+      value: "cover",
+      onChange: (val) => {
+        const firstId = Array.from(core.selectedLayerIds)[0];
+        const layer = core.layers.find((l) => l.id === firstId);
+        if (layer && layer.isPlaceholder) {
+          layer.fillMode = val;
+          core.pushHistory();
+        }
+      },
+    });
+    fillSelect.style.width = "100%";
+    phPanel.content.appendChild(createRow("Fill Mode", fillSelect));
+    phPanel.el.style.display = "none";
+    core._phPanel = phPanel;
+    core._phFillSelect = fillSelect;
+    layout.leftSidebar.appendChild(phPanel.el);
 
     // --- 3. Transform Properties (unified framework component) ---
     const tp = createTransformPanel({

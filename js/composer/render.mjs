@@ -122,7 +122,9 @@ PixaromaEditor.prototype.draw = function (cleanRender = false) {
           ? "#0ea5e9"
           : "#f66744";
       oc.lineWidth = 1.5;
+      if (layer.isPlaceholder) oc.setLineDash([6, 4]);
       oc.strokeRect(-w / 2, -h / 2, w, h);
+      oc.setLineDash([]);
 
       if (
         !layer.locked &&
@@ -238,6 +240,42 @@ PixaromaEditor.prototype.attemptRestore = async function () {
     this.layers = new Array(layersToLoad.length);
 
     layersToLoad.forEach((mLayer, i) => {
+      // Placeholder layers don't need image loading — build canvas immediately
+      if (mLayer.isPlaceholder) {
+        const color = mLayer.placeholderColor || "#808080";
+        const w = mLayer.naturalWidth || Math.round(this.docWidth / 2);
+        const h = mLayer.naturalHeight || Math.round(this.docHeight / 2);
+        this.layers[i] = {
+          id: mLayer.id,
+          name: mLayer.name,
+          isPlaceholder: true,
+          placeholderColor: color,
+          inputIndex: mLayer.inputIndex || 1,
+          fillMode: mLayer.fillMode || "cover",
+          img: this._makePlaceholderImage(w, h, color, mLayer.name),
+          cx: mLayer.cx,
+          cy: mLayer.cy,
+          scaleX: mLayer.scaleX,
+          scaleY: mLayer.scaleY,
+          rotation: mLayer.rotation,
+          opacity: mLayer.opacity,
+          visible: mLayer.visible,
+          locked: mLayer.locked,
+          flippedX: mLayer.flippedX,
+          flippedY: mLayer.flippedY,
+          rawB64_internal: null,
+          rawServerPath: "__placeholder__",
+          savedOnServer: true,
+          eraserMaskCanvas_internal: null,
+          eraserMaskCtx_internal: null,
+          hasMask_internal: false,
+          savedMaskPath_internal: null,
+        };
+        loadedCount++;
+        if (loadedCount === layersToLoad.length) this.finishRestore();
+        return;
+      }
+
       const img = new Image();
       img.crossOrigin = "Anonymous";
       const fileNameOnly = mLayer.src ? mLayer.src.split(/[\\/]/).pop() : "";
@@ -321,6 +359,8 @@ PixaromaEditor.prototype.finishRestore = function (hadError = false) {
       this.prepareLayerMask(l, maskUrl);
     }
   });
+
+  this.syncNodeInputs();
 
   this.overlay.style.pointerEvents = "auto";
   this.overlay.style.opacity = "1";

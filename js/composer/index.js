@@ -13,6 +13,7 @@ import { PixaromaEditor } from "./core.mjs";
 import "./eraser.mjs";
 import "./render.mjs";
 import "./interaction.mjs";
+import "./placeholder.mjs";
 
 // Re-export so other modules can import from index
 export { PixaromaEditor };
@@ -70,6 +71,7 @@ app.registerExtension({
         downloadDataURL(dataURL, "pixaroma_composer");
 
       editor.onClose = () => {
+        editor.syncNodeInputs();
         node.setDirtyCanvas(true, true);
       };
     });
