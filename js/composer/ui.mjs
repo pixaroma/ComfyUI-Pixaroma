@@ -381,108 +381,69 @@ export class PixaromaUI {
     });
     layout.leftSidebar.appendChild(core._canvasSettings.el);
 
-    // --- 2. Canvas Toolbar (Add Image + BG Color + Clear) ---
-    core.uploadBtn = document.createElement("input");
-    core.uploadBtn.type = "file";
-    core.uploadBtn.accept = "image/*";
-    core.uploadBtn.style.display = "none";
-    layout.leftSidebar.appendChild(core.uploadBtn);
-
-    this._canvasToolbar = createCanvasToolbar({
-      onAddImage: (file) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.crossOrigin = "Anonymous";
-          img.onload = async () => {
-            const { PixaromaLayers } = await import("./layers.mjs");
-            const layerObj = {
-              id: Date.now().toString(),
-              name: `Layer ${core.layers.length + 1} (${file.name})`,
-              img: img,
-              cx: core.docWidth / 2,
-              cy: core.docHeight / 2,
-              scaleX: 1,
-              scaleY: 1,
-              rotation: 0,
-              opacity: 1,
-              visible: true,
-              locked: false,
-              flippedX: false,
-              flippedY: false,
-              rawB64_internal: event.target.result,
-              rawServerPath: "",
-              savedOnServer: false,
-            };
-            PixaromaLayers.fitLayerToCanvas(
-              layerObj,
-              core.docWidth,
-              core.docHeight,
-              "width",
-            );
-            core.layers.push(layerObj);
-            core.selectedLayerIds.clear();
-            core.selectedLayerIds.add(layerObj.id);
-            core.syncActiveLayerIndex();
-            this.updateActiveLayerUI();
-            core.draw();
-            core.pushHistory();
+    // --- 2. Images panel (Add Image + Convert to Placeholder) ---
+    const _onAddImage = (file) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = async () => {
+          const { PixaromaLayers } = await import("./layers.mjs");
+          const layerObj = {
+            id: Date.now().toString(),
+            name: `Layer ${core.layers.length + 1} (${file.name})`,
+            img: img,
+            cx: core.docWidth / 2,
+            cy: core.docHeight / 2,
+            scaleX: 1,
+            scaleY: 1,
+            rotation: 0,
+            opacity: 1,
+            visible: true,
+            locked: false,
+            flippedX: false,
+            flippedY: false,
+            rawB64_internal: event.target.result,
+            rawServerPath: "",
+            savedOnServer: false,
           };
-          img.src = event.target.result;
+          PixaromaLayers.fitLayerToCanvas(
+            layerObj,
+            core.docWidth,
+            core.docHeight,
+            "width",
+          );
+          core.layers.push(layerObj);
+          core.selectedLayerIds.clear();
+          core.selectedLayerIds.add(layerObj.id);
+          core.syncActiveLayerIndex();
+          this.updateActiveLayerUI();
+          core.draw();
+          core.pushHistory();
         };
-        reader.readAsDataURL(file);
-      },
-      onBgColorChange: (hex) => {
-        core._bgColor = hex;
-        core.draw();
-      },
-      onClear: () => {
-        core.layers = [];
-        core.selectedLayerIds.clear();
-        core.syncActiveLayerIndex();
-        this.updateActiveLayerUI();
-        core.draw();
-        core.pushHistory();
-      },
-      bgColor: "#1e1e1e",
-      onReset: () => {
-        core.pushHistory();
-        core.layers = [];
-        core.selectedLayerIds.clear();
-        core.docWidth = 1024;
-        core.docHeight = 1024;
-        core.canvasContainer.style.width = "1024px";
-        core.canvasContainer.style.height = "1024px";
-        core.canvas.width = 1024;
-        core.canvas.height = 1024;
-        if (core.selCanvas) {
-          core.selCanvas.width = 1024 + 2 * core.selPad;
-          core.selCanvas.height = 1024 + 2 * core.selPad;
-        }
-        if (core.selHitArea) {
-          core.selHitArea.style.width = 1024 + 2 * core.selPad + "px";
-          core.selHitArea.style.height = 1024 + 2 * core.selPad + "px";
-        }
-        core._bgColor = "#1e1e1e";
-        if (core._canvasSettings) core._canvasSettings.setSize(1024, 1024);
-        if (core._canvasSettings) core._canvasSettings.setRatio(0);
-        if (this._canvasToolbar) this._canvasToolbar.setBgColor("#1e1e1e");
-        if (core._dimLabel) core._dimLabel.textContent = "1024\u00d71024";
-        core.syncActiveLayerIndex();
-        this.updateActiveLayerUI();
-        core.draw();
-        core.fitViewToWorkspace();
-      },
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    // Hidden canvas toolbar for file input + drop zone + paste handling
+    this._canvasToolbar = createCanvasToolbar({
+      onAddImage: _onAddImage,
+      showBgColor: false,
+      showClear: false,
+      showReset: false,
     });
+    this._canvasToolbar.el.style.display = "none";
     layout.leftSidebar.appendChild(this._canvasToolbar.el);
 
-    // --- Placeholder panel (add, convert, fill mode) ---
-    const phPanel = createPanel("Placeholder", { collapsible: true, collapsed: false });
+    core.uploadBtn = this._canvasToolbar.fileInput;
 
-    const addPhBtn = createButton("Add Placeholder", { variant: "full" });
-    addPhBtn.title = "Add a placeholder layer — connect an image input at workflow execution";
-    addPhBtn.onclick = () => core.addPlaceholderLayer();
-    phPanel.content.appendChild(addPhBtn);
+    const imagesPanel = createPanel("Images", { collapsible: true, collapsed: false });
+
+    const addImgBtn = createButton("Add Image", { variant: "full" });
+    addImgBtn.title = "Browse for an image file";
+    addImgBtn.onclick = () => this._canvasToolbar.fileInput.click();
+    imagesPanel.content.appendChild(addImgBtn);
 
     const convertPhBtn = createButton("Convert to Placeholder", { variant: "full" });
     convertPhBtn.title = "Convert the selected layer to a placeholder input";
@@ -492,7 +453,83 @@ export class PixaromaUI {
       if (firstId) core.convertLayerToPlaceholder(firstId);
     };
     core._convertPhBtn = convertPhBtn;
-    phPanel.content.appendChild(convertPhBtn);
+    imagesPanel.content.appendChild(convertPhBtn);
+
+    layout.leftSidebar.appendChild(imagesPanel.el);
+
+    // --- BG Color + Clear/Reset in Canvas Settings ---
+    const canvasActionsRow = document.createElement("div");
+    canvasActionsRow.className = "pxf-canvas-toolbar-row";
+    canvasActionsRow.style.cssText = "margin-top:6px;";
+
+    const bgLabel = document.createElement("span");
+    bgLabel.style.cssText = "font-size:10px;color:#888;flex-shrink:0;";
+    bgLabel.textContent = "BG:";
+    const bgColorInput = document.createElement("input");
+    bgColorInput.type = "color";
+    bgColorInput.value = "#1e1e1e";
+    bgColorInput.className = "pxf-color-input";
+    bgColorInput.style.cssText = "width:36px;height:28px;flex-shrink:0;";
+    bgColorInput.addEventListener("input", () => {
+      core._bgColor = bgColorInput.value;
+      core.draw();
+    });
+    this._bgColorInput = bgColorInput;
+
+    const clearBtn = createButton("Clear Canvas", { variant: "full" });
+    clearBtn.classList.add("pxf-btn-danger");
+    clearBtn.style.flex = "1";
+    clearBtn.onclick = () => {
+      core.layers = [];
+      core.selectedLayerIds.clear();
+      core.syncActiveLayerIndex();
+      this.updateActiveLayerUI();
+      core.draw();
+      core.pushHistory();
+    };
+
+    const resetBtn = createButton("Reset", { variant: "full" });
+    resetBtn.classList.add("pxf-btn-danger");
+    resetBtn.style.flex = "1";
+    resetBtn.onclick = () => {
+      core.pushHistory();
+      core.layers = [];
+      core.selectedLayerIds.clear();
+      core.docWidth = 1024;
+      core.docHeight = 1024;
+      core.canvasContainer.style.width = "1024px";
+      core.canvasContainer.style.height = "1024px";
+      core.canvas.width = 1024;
+      core.canvas.height = 1024;
+      if (core.selCanvas) {
+        core.selCanvas.width = 1024 + 2 * core.selPad;
+        core.selCanvas.height = 1024 + 2 * core.selPad;
+      }
+      if (core.selHitArea) {
+        core.selHitArea.style.width = 1024 + 2 * core.selPad + "px";
+        core.selHitArea.style.height = 1024 + 2 * core.selPad + "px";
+      }
+      core._bgColor = "#1e1e1e";
+      if (core._canvasSettings) core._canvasSettings.setSize(1024, 1024);
+      if (core._canvasSettings) core._canvasSettings.setRatio(0);
+      bgColorInput.value = "#1e1e1e";
+      if (core._dimLabel) core._dimLabel.textContent = "1024\u00d71024";
+      core.syncActiveLayerIndex();
+      this.updateActiveLayerUI();
+      core.draw();
+      core.fitViewToWorkspace();
+    };
+
+    canvasActionsRow.append(bgLabel, bgColorInput, clearBtn, resetBtn);
+    core._canvasSettings.el.querySelector(".pxf-panel-content").appendChild(canvasActionsRow);
+
+    // --- Placeholders panel (add, fill mode, preview) ---
+    const phPanel = createPanel("Placeholders", { collapsible: true, collapsed: false });
+
+    const addPhBtn = createButton("Add Placeholder", { variant: "full" });
+    addPhBtn.title = "Add a placeholder layer — connect an image input at workflow execution";
+    addPhBtn.onclick = () => core.addPlaceholderLayer();
+    phPanel.content.appendChild(addPhBtn);
 
     const fillSelect = createSelectInput({
       options: [
@@ -519,7 +556,7 @@ export class PixaromaUI {
     phPanel.content.appendChild(fillRow);
 
     // Load Now button
-    const previewBtn = createButton("Load Now", { variant: "full" });
+    const previewBtn = createButton("Preview Now", { variant: "full" });
     previewBtn.title = "Load the connected image into the placeholder";
     previewBtn.style.marginTop = "4px";
     previewBtn.style.display = "none";
