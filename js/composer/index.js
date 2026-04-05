@@ -124,7 +124,11 @@ app.registerExtension({
         const url = getUpstreamImageUrlForNode(node, name);
         if (url) toLoad.push({ ph, url });
       }
-      if (toLoad.length === 0) return;
+      if (toLoad.length === 0) {
+        // No connected placeholders — restore original saved composite
+        restoreNodePreview(parts, projectJson, node);
+        return;
+      }
 
       // Load saved composite as base
       const fn = meta.composite_path.split(/[\\/]/).pop();
@@ -217,8 +221,8 @@ app.registerExtension({
         }
       }
 
-      // Rebuild node preview composite with connected images
-      if (connected && node._pixaromaAutoPreview) {
+      // Rebuild node preview composite (on connect: add image, on disconnect: remove it)
+      if (node._pixaromaAutoPreview) {
         rebuildPreview();
       }
     };
