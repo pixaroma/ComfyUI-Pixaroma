@@ -530,27 +530,6 @@ export class PixaromaUI {
     core._phPreviewBtn = previewBtn;
     phPanel.content.appendChild(previewBtn);
 
-    // Auto Preview checkbox
-    const autoRow = document.createElement("div");
-    autoRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:6px;";
-    const autoCb = document.createElement("input");
-    autoCb.type = "checkbox";
-    autoCb.id = "pxf-auto-preview";
-    autoCb.style.cssText = "accent-color:var(--pxf-accent);";
-    if (core.node._pixaromaAutoPreview === undefined) core.node._pixaromaAutoPreview = true;
-    autoCb.checked = core.node._pixaromaAutoPreview;
-    autoCb.addEventListener("change", () => {
-      core.node._pixaromaAutoPreview = autoCb.checked;
-    });
-    const autoLabel = document.createElement("label");
-    autoLabel.htmlFor = "pxf-auto-preview";
-    autoLabel.textContent = "Auto load on connect";
-    autoLabel.style.cssText = "font-size:10px;color:#aaa;cursor:pointer;user-select:none;";
-    autoRow.append(autoCb, autoLabel);
-    core._phAutoPreview = autoCb;
-    core._phAutoRow = autoRow;
-    phPanel.content.appendChild(autoRow);
-
     core._phPanel = phPanel;
     layout.leftSidebar.appendChild(phPanel.el);
 

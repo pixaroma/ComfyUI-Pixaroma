@@ -12,7 +12,7 @@ PixaromaEditor.prototype._nextPlaceholderIndex = function () {
   return i;
 };
 
-PixaromaEditor.prototype._makePlaceholderImage = function (w, h, color, inputName) {
+PixaromaEditor.prototype._makePlaceholderImage = function (w, h, color, inputName, callback) {
   const c = document.createElement("canvas");
   c.width = Math.max(w, 1);
   c.height = Math.max(h, 1);
@@ -25,6 +25,11 @@ PixaromaEditor.prototype._makePlaceholderImage = function (w, h, color, inputNam
   ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(255,255,255,0.85)";
   ctx.fillText(inputName, c.width / 2, c.height / 2);
+  // Convert canvas to Image for faster drawImage during interactions
+  const img = new Image();
+  img.onload = () => { if (callback) callback(img); };
+  img.src = c.toDataURL();
+  // Return canvas as immediate fallback until Image loads
   return c;
 };
 
@@ -42,7 +47,9 @@ PixaromaEditor.prototype.addPlaceholderLayer = function () {
     placeholderColor: color,
     inputIndex: idx,
     fillMode: "cover",
-    img: this._makePlaceholderImage(w, h, color, inputName),
+    img: this._makePlaceholderImage(w, h, color, inputName, (bitmapImg) => {
+      layer.img = bitmapImg;
+    }),
     cx: this.docWidth / 2,
     cy: this.docHeight / 2,
     scaleX: 1,
@@ -87,7 +94,9 @@ PixaromaEditor.prototype.convertLayerToPlaceholder = function (layerId) {
   layer.inputIndex = idx;
   layer.fillMode = "cover";
   layer.name = inputName;
-  layer.img = this._makePlaceholderImage(w, h, color, inputName);
+  layer.img = this._makePlaceholderImage(w, h, color, inputName, (bitmapImg) => {
+    layer.img = bitmapImg;
+  });
   layer.rawB64_internal = null;
   layer.rawServerPath = "__placeholder__";
   layer.savedOnServer = true;
@@ -150,7 +159,7 @@ PixaromaEditor.prototype._getUpstreamImageUrl = function (layer) {
   return null;
 };
 
-PixaromaEditor.prototype._applyFillMode = function (srcImg, phW, phH, mode) {
+PixaromaEditor.prototype._applyFillMode = function (srcImg, phW, phH, mode, callback) {
   const c = document.createElement("canvas");
   c.width = phW;
   c.height = phH;
@@ -170,6 +179,10 @@ PixaromaEditor.prototype._applyFillMode = function (srcImg, phW, phH, mode) {
     const dw = sw * scale, dh = sh * scale;
     ctx.drawImage(srcImg, (phW - dw) / 2, (phH - dh) / 2, dw, dh);
   }
+  // Convert to Image for faster drawImage
+  const img = new Image();
+  img.onload = () => { if (callback) callback(img); };
+  img.src = c.toDataURL();
   return c;
 };
 
@@ -186,7 +199,9 @@ PixaromaEditor.prototype.previewPlaceholderInput = function (layerId) {
     const phW = layer.img.width;
     const phH = layer.img.height;
     layer._previewImg = img;
-    layer.img = this._applyFillMode(img, phW, phH, layer.fillMode || "cover");
+    layer.img = this._applyFillMode(img, phW, phH, layer.fillMode || "cover", (bitmapImg) => {
+      layer.img = bitmapImg;
+    });
     this.ui.updateActiveLayerUI();
     this.draw();
     this.pushHistory();

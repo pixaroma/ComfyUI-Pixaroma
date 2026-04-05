@@ -492,7 +492,9 @@ PixaromaEditor.prototype.attachEvents = function () {
           const newName = `image_${newIdx}`;
           dup.inputIndex = newIdx;
           dup.name = newName;
-          dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName);
+          dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName, (bitmapImg) => {
+            dup.img = bitmapImg;
+          });
         } else {
           dup.name = layer.name + " copy";
         }
@@ -943,7 +945,9 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
             const newName = `image_${newIdx}`;
             dup.inputIndex = newIdx;
             dup.name = newName;
-            dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName);
+            dup.img = this._makePlaceholderImage(layer.img.width, layer.img.height, layer.placeholderColor, newName, (bitmapImg) => {
+              dup.img = bitmapImg;
+            });
           } else {
             dup.name = layer.name + " copy";
           }
