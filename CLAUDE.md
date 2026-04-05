@@ -177,5 +177,8 @@ Follow the existing directory structure:
 ### 5. Do not read framework CSS
 `js/framework/theme.mjs` is ~660 lines but ~580 are a CSS string literal. You almost never need to read it. Only read it if you're adding a new CSS class or changing the color theme.
 
+## Important Note
+After major changes, please update this file (@CLUADE.me). Keep this file up-to-date with the project's status.
+
 ## Publishing
 CI/CD auto-publishes to the ComfyUI registry when `pyproject.toml` is pushed to `main`. Do not modify `pyproject.toml`, `LICENSE`, or `.clauderules` or `.github/workflows/publish.yml`.
