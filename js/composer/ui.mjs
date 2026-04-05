@@ -100,6 +100,7 @@ export class PixaromaUI {
       core.removeBgBtn.style.opacity = "0.3";
       core.removeBgBtn.style.pointerEvents = "none";
       if (core._phFillRow) core._phFillRow.style.display = "none";
+      if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
       if (core._convertPhBtn) {
         core._convertPhBtn.style.opacity = "0.3";
         core._convertPhBtn.style.pointerEvents = "none";
@@ -159,16 +160,23 @@ export class PixaromaUI {
           core.btnResetEraser.disabled = !anyMask;
         }
 
-        // Show/hide placeholder fill mode + convert button
+        // Show/hide placeholder fill mode, preview, convert button
         if (layer.isPlaceholder) {
           if (core._phFillRow) core._phFillRow.style.display = "";
           if (core._phFillSelect) core._phFillSelect.value = layer.fillMode || "cover";
+          const connected = core.isPlaceholderConnected(layer);
+          if (core._phPreviewBtn) {
+            core._phPreviewBtn.style.display = "";
+            core._phPreviewBtn.disabled = !connected;
+            core._phPreviewBtn.style.opacity = connected ? "1" : "0.3";
+          }
           if (core._convertPhBtn) {
             core._convertPhBtn.style.opacity = "0.3";
             core._convertPhBtn.style.pointerEvents = "none";
           }
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
+          if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
           if (core._convertPhBtn) {
             core._convertPhBtn.style.opacity = "1";
             core._convertPhBtn.style.pointerEvents = "auto";
@@ -469,7 +477,7 @@ export class PixaromaUI {
     layout.leftSidebar.appendChild(this._canvasToolbar.el);
 
     // --- Placeholder panel (add, convert, fill mode) ---
-    const phPanel = createPanel("Placeholder", { collapsible: true, collapsed: true });
+    const phPanel = createPanel("Placeholder", { collapsible: true, collapsed: false });
 
     const addPhBtn = createButton("Add Placeholder", { variant: "full" });
     addPhBtn.title = "Add a placeholder layer — connect an image input at workflow execution";
@@ -509,6 +517,39 @@ export class PixaromaUI {
     core._phFillRow = fillRow;
     core._phFillSelect = fillSelect;
     phPanel.content.appendChild(fillRow);
+
+    // Load Now button
+    const previewBtn = createButton("Load Now", { variant: "full" });
+    previewBtn.title = "Load the connected image into the placeholder";
+    previewBtn.style.marginTop = "4px";
+    previewBtn.style.display = "none";
+    previewBtn.onclick = () => {
+      const firstId = Array.from(core.selectedLayerIds)[0];
+      if (firstId) core.previewPlaceholderInput(firstId);
+    };
+    core._phPreviewBtn = previewBtn;
+    phPanel.content.appendChild(previewBtn);
+
+    // Auto Preview checkbox
+    const autoRow = document.createElement("div");
+    autoRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:6px;";
+    const autoCb = document.createElement("input");
+    autoCb.type = "checkbox";
+    autoCb.id = "pxf-auto-preview";
+    autoCb.style.cssText = "accent-color:var(--pxf-accent);";
+    if (core.node._pixaromaAutoPreview === undefined) core.node._pixaromaAutoPreview = true;
+    autoCb.checked = core.node._pixaromaAutoPreview;
+    autoCb.addEventListener("change", () => {
+      core.node._pixaromaAutoPreview = autoCb.checked;
+    });
+    const autoLabel = document.createElement("label");
+    autoLabel.htmlFor = "pxf-auto-preview";
+    autoLabel.textContent = "Auto load on connect";
+    autoLabel.style.cssText = "font-size:10px;color:#aaa;cursor:pointer;user-select:none;";
+    autoRow.append(autoCb, autoLabel);
+    core._phAutoPreview = autoCb;
+    core._phAutoRow = autoRow;
+    phPanel.content.appendChild(autoRow);
 
     core._phPanel = phPanel;
     layout.leftSidebar.appendChild(phPanel.el);

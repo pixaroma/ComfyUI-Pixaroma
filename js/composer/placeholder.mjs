@@ -102,6 +102,140 @@ PixaromaEditor.prototype.convertLayerToPlaceholder = function (layerId) {
   this.syncNodeInputs();
 };
 
+PixaromaEditor.prototype._getInputSlotIndex = function (inputName) {
+  const inputs = this.node?.inputs || [];
+  for (let i = 0; i < inputs.length; i++) {
+    if (inputs[i].name === inputName) return i;
+  }
+  return -1;
+};
+
+PixaromaEditor.prototype.isPlaceholderConnected = function (layer) {
+  if (!layer?.isPlaceholder || !this.node) return false;
+  const slotIdx = this._getInputSlotIndex(`image_${layer.inputIndex}`);
+  if (slotIdx < 0) return false;
+  const input = this.node.inputs[slotIdx];
+  return !!(input && input.link != null);
+};
+
+PixaromaEditor.prototype._getUpstreamImageUrl = function (layer) {
+  if (!this.node) return null;
+  const slotIdx = this._getInputSlotIndex(`image_${layer.inputIndex}`);
+  if (slotIdx < 0) return null;
+  const input = this.node.inputs[slotIdx];
+  if (!input || input.link == null) return null;
+
+  const graph = this.node.graph;
+  if (!graph) return null;
+  const link = graph.links[input.link];
+  if (!link) return null;
+  const srcNode = graph.getNodeById(link.origin_id);
+  if (!srcNode) return null;
+
+  // LoadImage node: get filename from its "image" widget
+  if (srcNode.comfyClass === "LoadImage" || srcNode.type === "LoadImage") {
+    const imgWidget = (srcNode.widgets || []).find((w) => w.name === "image");
+    if (imgWidget && imgWidget.value) {
+      return `/view?filename=${encodeURIComponent(imgWidget.value)}&type=input&t=${Date.now()}`;
+    }
+  }
+
+  // Any node with preview images (post-execution)
+  if (srcNode.imgs && srcNode.imgs.length > 0) {
+    const img = srcNode.imgs[link.origin_slot] || srcNode.imgs[0];
+    if (typeof img === "string") return img;
+    if (img && img.src) return img.src;
+  }
+
+  return null;
+};
+
+PixaromaEditor.prototype._applyFillMode = function (srcImg, phW, phH, mode) {
+  const c = document.createElement("canvas");
+  c.width = phW;
+  c.height = phH;
+  const ctx = c.getContext("2d");
+  const sw = srcImg.naturalWidth || srcImg.width;
+  const sh = srcImg.naturalHeight || srcImg.height;
+
+  if (mode === "fill") {
+    ctx.drawImage(srcImg, 0, 0, phW, phH);
+  } else if (mode === "contain") {
+    const scale = Math.min(phW / sw, phH / sh);
+    const dw = sw * scale, dh = sh * scale;
+    ctx.drawImage(srcImg, (phW - dw) / 2, (phH - dh) / 2, dw, dh);
+  } else {
+    // cover
+    const scale = Math.max(phW / sw, phH / sh);
+    const dw = sw * scale, dh = sh * scale;
+    ctx.drawImage(srcImg, (phW - dw) / 2, (phH - dh) / 2, dw, dh);
+  }
+  return c;
+};
+
+PixaromaEditor.prototype.previewPlaceholderInput = function (layerId) {
+  const layer = this.layers.find((l) => l.id === layerId);
+  if (!layer || !layer.isPlaceholder) return;
+
+  const url = this._getUpstreamImageUrl(layer);
+  if (!url) return;
+
+  const img = new Image();
+  img.crossOrigin = "Anonymous";
+  img.onload = () => {
+    const phW = layer.img.width;
+    const phH = layer.img.height;
+    layer._previewImg = img;
+    layer.img = this._applyFillMode(img, phW, phH, layer.fillMode || "cover");
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  };
+  img.onerror = () => {
+    console.warn("[Pixaroma] Failed to load preview for", layer.name);
+  };
+  img.src = url;
+};
+
+PixaromaEditor.prototype.previewAllConnectedPlaceholders = function () {
+  this.layers.forEach((l) => {
+    if (l.isPlaceholder && this.isPlaceholderConnected(l)) {
+      this.previewPlaceholderInput(l.id);
+    }
+  });
+};
+
+/**
+ * Get upstream image URL for a given image_N input on a node (no editor needed).
+ * Used by onConnectionsChange when editor is closed.
+ */
+export function getUpstreamImageUrlForNode(node, inputName) {
+  const inputs = node.inputs || [];
+  const input = inputs.find((inp) => inp.name === inputName);
+  if (!input || input.link == null) return null;
+  const graph = node.graph;
+  if (!graph) return null;
+  const link = graph.links[input.link];
+  if (!link) return null;
+  const srcNode = graph.getNodeById(link.origin_id);
+  if (!srcNode) return null;
+
+  if (srcNode.comfyClass === "LoadImage" || srcNode.type === "LoadImage") {
+    const imgWidget = (srcNode.widgets || []).find((w) => w.name === "image");
+    if (imgWidget && imgWidget.value) {
+      return `/view?filename=${encodeURIComponent(imgWidget.value)}&type=input&t=${Date.now()}`;
+    }
+  }
+
+  if (srcNode.imgs && srcNode.imgs.length > 0) {
+    const img = srcNode.imgs[link.origin_slot] || srcNode.imgs[0];
+    if (typeof img === "string") return img;
+    if (img && img.src) return img.src;
+  }
+
+  return null;
+}
+
 PixaromaEditor.prototype.syncNodeInputs = function () {
   const node = this.node;
   if (!node) return;
