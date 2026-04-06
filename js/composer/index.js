@@ -102,8 +102,8 @@ app.registerExtension({
       widget = null;
     };
 
-    // Default auto-preview to true
-    node._pixaromaAutoPreview = true;
+    // Default auto-preview (Bugged on some cases like erase mask)
+    node._pixaromaAutoPreview = false;
 
     // Full re-composite: render all layers in z-order, replacing connected
     // placeholders with their upstream image (respecting fill mode).

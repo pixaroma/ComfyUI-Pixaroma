@@ -33,7 +33,21 @@ proto._drawLayerWithTransform = function (ctx, ly) {
   }
 };
 
-proto._renderDisplay = function () {
+// Batched render: coalesces multiple _renderDisplay() calls into one per frame.
+// Pass true for immediate synchronous render (e.g. before canvas export).
+proto._renderDisplay = function (immediate) {
+  if (immediate) {
+    this._renderDisplayImpl();
+    return;
+  }
+  if (this._renderRAF) return;
+  this._renderRAF = requestAnimationFrame(() => {
+    this._renderRAF = null;
+    this._renderDisplayImpl();
+  });
+};
+
+proto._renderDisplayImpl = function () {
   const ctx = this.el.displayCanvas.getContext("2d");
   ctx.clearRect(0, 0, this.docW, this.docH);
   ctx.fillStyle = this.bgColor;

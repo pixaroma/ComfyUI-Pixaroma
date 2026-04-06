@@ -796,12 +796,21 @@ proto._updateToolOptions = function () {
 
 proto._updateLayersPanel = function () {
   if (!this._layerPanel) return;
+  // Reuse a shared offscreen canvas for thumbnail generation
+  if (!this._thumbCanvas) {
+    this._thumbCanvas = document.createElement("canvas");
+    this._thumbCanvas.width = 26;
+    this._thumbCanvas.height = 26;
+    this._thumbCtx = this._thumbCanvas.getContext("2d");
+  }
   const items = this.layers.map((ly, i) => {
-    // Build thumbnail canvas
+    // Build thumbnail: render into shared canvas, copy to per-item canvas
+    this._thumbCtx.clearRect(0, 0, 26, 26);
+    this._thumbCtx.drawImage(ly.canvas, 0, 0, 26, 26);
     const tCvs = document.createElement("canvas");
     tCvs.width = 26;
     tCvs.height = 26;
-    tCvs.getContext("2d").drawImage(ly.canvas, 0, 0, 26, 26);
+    tCvs.getContext("2d").drawImage(this._thumbCanvas, 0, 0);
 
     return createLayerItem({
       name: ly.name,
@@ -937,8 +946,8 @@ proto._save = async function () {
     }
     const compositeDataURL = finalCvs.toDataURL("image/png");
 
-    const layersMeta = [];
-    for (const ly of this.layers) {
+    // Upload all layers in parallel
+    const layersMeta = await Promise.all(this.layers.map(async (ly) => {
       let src = "";
       try {
         const res = await PaintAPI.uploadLayer(
@@ -949,7 +958,7 @@ proto._save = async function () {
       } catch (e) {
         console.warn("[Paint] Layer upload failed:", e);
       }
-      layersMeta.push({
+      return {
         id: ly.id,
         name: ly.name,
         visible: ly.visible,
@@ -958,8 +967,8 @@ proto._save = async function () {
         blend_mode: ly.blendMode,
         transform: ly.transform,
         src,
-      });
-    }
+      };
+    }));
 
     let compositePath = "";
     try {

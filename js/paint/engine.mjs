@@ -156,17 +156,27 @@ export class BrushEngine {
     ctx.fill();
   }
 
-  // ─── Color tinting ───────────────────────────────────────
+  // ─── Color tinting (cached) ──────────────────────────────
 
   tintStamp(stampCvs, hexColor) {
-    const t = document.createElement("canvas");
+    // Cache tinted stamp to avoid creating a canvas per dab
+    const key = this._stampKey + "|" + hexColor;
+    if (key === this._tintKey && this._tintCache) return this._tintCache;
+    this._tintKey = key;
+    if (!this._tintCanvas) {
+      this._tintCanvas = document.createElement("canvas");
+      this._tintCtx = this._tintCanvas.getContext("2d");
+    }
+    const t = this._tintCanvas;
+    const ctx = this._tintCtx;
     t.width = stampCvs.width;
     t.height = stampCvs.height;
-    const ctx = t.getContext("2d");
     ctx.fillStyle = hexColor;
     ctx.fillRect(0, 0, t.width, t.height);
     ctx.globalCompositeOperation = "destination-in";
     ctx.drawImage(stampCvs, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    this._tintCache = t;
     return t;
   }
 

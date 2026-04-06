@@ -293,26 +293,48 @@ proto._getContentBounds = function (ly) {
     h = this.docH;
   try {
     const data = ly.ctx.getImageData(0, 0, w, h).data;
-    let minX = w,
-      minY = h,
-      maxX = 0,
-      maxY = 0,
-      found = false;
-    // Scan every pixel for accuracy (alpha > 0 catches all visible content)
+    let minY = -1, maxY = -1;
+
+    // Scan top-down for first non-transparent row
     for (let y = 0; y < h; y++) {
+      const rowOff = y * w * 4;
       for (let x = 0; x < w; x++) {
-        if (data[(y * w + x) * 4 + 3] > 0) {
-          if (x < minX) minX = x;
-          if (y < minY) minY = y;
-          if (x > maxX) maxX = x;
-          if (y > maxY) maxY = y;
-          found = true;
-        }
+        if (data[rowOff + x * 4 + 3] > 0) { minY = y; break; }
       }
+      if (minY >= 0) break;
     }
-    const bounds = found
-      ? { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
-      : { x: 0, y: 0, w, h };
+    if (minY < 0) {
+      const bounds = { x: 0, y: 0, w, h };
+      this._contentBoundsCache.set(ly.id, bounds);
+      return bounds;
+    }
+
+    // Scan bottom-up for last non-transparent row
+    for (let y = h - 1; y >= minY; y--) {
+      const rowOff = y * w * 4;
+      for (let x = 0; x < w; x++) {
+        if (data[rowOff + x * 4 + 3] > 0) { maxY = y; break; }
+      }
+      if (maxY >= 0) break;
+    }
+
+    // Scan only the relevant rows for X bounds
+    let minX = w, maxX = 0;
+    for (let y = minY; y <= maxY; y++) {
+      const rowOff = y * w * 4;
+      // Scan from left for this row's minX
+      for (let x = 0; x < minX; x++) {
+        if (data[rowOff + x * 4 + 3] > 0) { minX = x; break; }
+      }
+      // Scan from right for this row's maxX
+      for (let x = w - 1; x > maxX; x--) {
+        if (data[rowOff + x * 4 + 3] > 0) { maxX = x; break; }
+      }
+      // Early exit: can't improve further
+      if (minX === 0 && maxX === w - 1) break;
+    }
+
+    const bounds = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
     this._contentBoundsCache.set(ly.id, bounds);
     return bounds;
   } catch (e) {

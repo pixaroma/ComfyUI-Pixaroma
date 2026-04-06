@@ -21,7 +21,8 @@ proto._pushHistory = function () {
 };
 
 // Full snapshot for destructive ops (flatten, merge, delete layer)
-// Saves ALL layers' pixel data so the entire state can be restored
+// Saves ALL layers' pixel data so the entire state can be restored.
+// Capped at MAX_FULL_SNAPSHOTS to limit memory (each stores all layers' ImageData).
 proto._pushFullSnapshot = function () {
   const snapshot = this.layers.map((ly) => ({
     name: ly.name,
@@ -38,6 +39,17 @@ proto._pushFullSnapshot = function () {
   this.history.push({ type: "full", activeIdx: this.activeIdx, snapshot });
   if (this.history.length > this.MAX_HISTORY) this.history.shift();
   this.historyIndex = this.history.length - 1;
+  // Evict oldest full snapshots when there are too many (memory-heavy)
+  const MAX_FULL = 10;
+  let fullCount = 0;
+  for (let i = this.history.length - 1; i >= 0; i--) {
+    if (this.history[i].type === "full") fullCount++;
+    if (fullCount > MAX_FULL) {
+      this.history.splice(i, 1);
+      this.historyIndex = Math.min(this.historyIndex, this.history.length - 1);
+      break;
+    }
+  }
 };
 
 proto.undo = function () {
