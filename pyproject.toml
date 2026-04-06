@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUI-Pixaroma"
 description = "Creative suite for ComfyUI — 3D Builder, Paint Studio, Image Composer, Image Crop, Image Compare, and Label with layers, transforms, AI background removal, and more."
-version = "1.0.7"
+version = "1.0.8"
 license = { file = "LICENSE.txt" }
 
 keywords = ["comfyui", "image-editor", "3d", "paint", "layers", "compositor", "compare", "crop", "label", "pixaroma"]
