@@ -43,7 +43,7 @@ app.registerExtension({
     const onDrawForeground = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (onDrawForeground) onDrawForeground.call(this, ctx);
-
+      if (this.collapsed) return;
       // Show a dim placeholder before first run
       const text =
         this._pixText !== undefined && this._pixText !== null
