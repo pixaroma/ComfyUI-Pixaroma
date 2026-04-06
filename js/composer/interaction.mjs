@@ -568,6 +568,7 @@ PixaromaEditor.prototype.attachEvents = function () {
     try {
       const data = await PixaromaAPI.removeBg(
         tempCanvas.toDataURL("image/png"),
+        layer.bgRemovalQuality || this._bgRemovalQuality || "normal",
       );
       if (data.code === "REMBG_MISSING") {
         if (this._layout)
@@ -664,6 +665,7 @@ PixaromaEditor.prototype.attachEvents = function () {
           maskSrc: finalMaskPath,
         };
         if (layer.removeBgOnExec) layerEntry.removeBgOnExec = true;
+        if (layer.bgRemovalQuality && layer.bgRemovalQuality !== "normal") layerEntry.bgRemovalQuality = layer.bgRemovalQuality;
         if (layer.isPlaceholder) {
           layerEntry.isPlaceholder = true;
           layerEntry.placeholderColor = layer.placeholderColor;

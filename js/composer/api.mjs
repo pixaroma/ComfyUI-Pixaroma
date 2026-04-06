@@ -1,11 +1,11 @@
 import { api } from "/scripts/api.js";
 
 export const PixaromaAPI = {
-  async removeBg(b64) {
+  async removeBg(b64, quality = "normal") {
     const res = await api.fetchApi("/pixaroma/remove_bg", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: b64 }),
+      body: JSON.stringify({ image: b64, quality }),
     });
     return await res.json();
   },

@@ -40,12 +40,18 @@ def _load_server_image(src, input_dir):
     return Image.open(full_path).convert("RGBA")
 
 
-def _remove_background(img):
+def _remove_background(img, quality="normal"):
     """Remove background from a PIL RGBA image using rembg (returns RGBA)."""
     try:
         from rembg import remove, new_session
         import io
-        session = new_session("u2net")
+        if quality == "high":
+            try:
+                session = new_session("briarmbg")
+            except Exception:
+                session = new_session("u2net")
+        else:
+            session = new_session("u2net")
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         result_bytes = remove(buf.getvalue(), session=session)
@@ -188,7 +194,7 @@ class PixaromaImageComposition:
                         if img_input is not None:
                             layer_img = _tensor_to_pil(img_input)
                             if layer.get("removeBgOnExec"):
-                                layer_img = _remove_background(layer_img)
+                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                             layer_img = _fit_to_placeholder(layer_img, ph_w, ph_h, layer.get("fillMode", "cover"))
                         else:
                             color = _hex_to_rgba(layer.get("placeholderColor", "#808080"))
@@ -201,7 +207,7 @@ class PixaromaImageComposition:
                         if layer_img is None:
                             continue
                         if layer.get("removeBgOnExec"):
-                            layer_img = _remove_background(layer_img)
+                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
                     canvas = Image.alpha_composite(canvas, composed)
                 return (_pil_to_tensor(canvas), doc_w, doc_h)

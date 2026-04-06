@@ -183,6 +183,7 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
+          if (core._bgQualitySelect) core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
           if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
@@ -195,6 +196,7 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
+          if (core._bgQualitySelect) core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
         }
       }
     }
@@ -921,6 +923,29 @@ export class PixaromaUI {
     // --- 3. Background Removal panel ---
     const bgRemovalPanel = createPanel("Background Removal", { collapsible: true, collapsed: false });
 
+    // Quality dropdown
+    const bgQualitySelect = createSelectInput({
+      options: [
+        { value: "normal", label: "Normal" },
+        { value: "high", label: "High" },
+      ],
+      value: "normal",
+      onChange: (val) => {
+        core._bgRemovalQuality = val;
+        const firstId = Array.from(core.selectedLayerIds)[0];
+        const layer = core.layers.find((l) => l.id === firstId);
+        if (layer) {
+          layer.bgRemovalQuality = val;
+          core.pushHistory();
+        }
+      },
+    });
+    bgQualitySelect.style.width = "100%";
+    const bgQualityRow = createRow("Quality", bgQualitySelect);
+    core._bgQualityRow = bgQualityRow;
+    core._bgQualitySelect = bgQualitySelect;
+    bgRemovalPanel.content.appendChild(bgQualityRow);
+
     core.removeBgBtn = createButton("AI Remove Background", {
       variant: "accent",
     });
@@ -928,7 +953,7 @@ export class PixaromaUI {
     core.removeBgBtn.style.pointerEvents = "none";
     bgRemovalPanel.content.appendChild(core.removeBgBtn);
 
-    // Auto Remove BG checkbox (per-placeholder flag for execution time)
+    // Auto Remove BG checkbox
     const autoBgRow = document.createElement("label");
     autoBgRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#aaa;cursor:pointer;user-select:none;opacity:0.3;pointer-events:none;";
     const autoBgCheck = document.createElement("input");

@@ -275,6 +275,7 @@ async def remove_bg(request):
 
     data = await request.json()
     b64_data = data.get("image", "")
+    quality = data.get("quality", "normal")
 
     if b64_data.startswith("data:image"):
         b64_data = b64_data.split(",", 1)[1]
@@ -283,14 +284,14 @@ async def remove_bg(request):
         return web.json_response({"error": "Image too large"}, status=413)
 
     try:
-        try:
-            session = new_session("birefnet-general")
-        except Exception as e:
-            print(f"[Pixaroma] birefnet not available, falling back. {e}")
+        if quality == "high":
             try:
                 session = new_session("briarmbg")
-            except Exception:
+            except Exception as e:
+                print(f"[Pixaroma] briarmbg not available, falling back to u2net. {e}")
                 session = new_session("u2net")
+        else:
+            session = new_session("u2net")
 
         input_data = base64.b64decode(b64_data)
         input_image = Image.open(io.BytesIO(input_data))
