@@ -167,7 +167,8 @@ export class PixaromaUI {
         // Show/hide placeholder fill mode, preview, convert button
         if (layer.isPlaceholder) {
           if (core._phFillRow) core._phFillRow.style.display = "";
-          if (core._phFillSelect) core._phFillSelect.value = layer.fillMode || "cover";
+          if (core._phFillSelect)
+            core._phFillSelect.value = layer.fillMode || "cover";
           const connected = core.isPlaceholderConnected(layer);
           if (core._phPreviewBtn) {
             core._phPreviewBtn.style.display = "";
@@ -183,7 +184,8 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
-          if (core._bgQualitySelect) core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
+          if (core._bgQualitySelect)
+            core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
           if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
@@ -196,7 +198,8 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
-          if (core._bgQualitySelect) core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
+          if (core._bgQualitySelect)
+            core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
         }
       }
     }
@@ -454,14 +457,19 @@ export class PixaromaUI {
 
     core.uploadBtn = this._canvasToolbar.fileInput;
 
-    const imagesPanel = createPanel("Images", { collapsible: true, collapsed: false });
+    const imagesPanel = createPanel("Images", {
+      collapsible: true,
+      collapsed: false,
+    });
 
     const addImgBtn = createButton("Add Image", { variant: "full" });
     addImgBtn.title = "Browse for an image file";
     addImgBtn.onclick = () => this._canvasToolbar.fileInput.click();
     imagesPanel.content.appendChild(addImgBtn);
 
-    const convertPhBtn = createButton("Convert to Placeholder", { variant: "full" });
+    const convertPhBtn = createButton("Convert to Placeholder", {
+      variant: "full",
+    });
     convertPhBtn.title = "Convert the selected layer to a placeholder input";
     convertPhBtn.style.marginTop = "4px";
     convertPhBtn.onclick = () => {
@@ -537,13 +545,19 @@ export class PixaromaUI {
     };
 
     canvasActionsRow.append(bgLabel, bgColorInput, clearBtn, resetBtn);
-    core._canvasSettings.el.querySelector(".pxf-panel-content").appendChild(canvasActionsRow);
+    core._canvasSettings.el
+      .querySelector(".pxf-panel-content")
+      .appendChild(canvasActionsRow);
 
     // --- Placeholders panel (add, fill mode, preview) ---
-    const phPanel = createPanel("Placeholders", { collapsible: true, collapsed: false });
+    const phPanel = createPanel("Placeholders", {
+      collapsible: true,
+      collapsed: false,
+    });
 
     const addPhBtn = createButton("Add Placeholder", { variant: "full" });
-    addPhBtn.title = "Add a placeholder layer — connect an image input at workflow execution";
+    addPhBtn.title =
+      "Add a placeholder layer — connect an image input at workflow execution";
     addPhBtn.onclick = () => core.addPlaceholderLayer();
     phPanel.content.appendChild(addPhBtn);
 
@@ -848,7 +862,10 @@ export class PixaromaUI {
     layout.rightSidebar.insertBefore(core._layerPanel.el, layout.sidebarFooter);
 
     // --- 2. Eraser Panel ---
-    const eraserPanel = createPanel("Eraser", { collapsible: true, collapsed: true });
+    const eraserPanel = createPanel("Eraser", {
+      collapsible: true,
+      collapsed: true,
+    });
     core.eraserPanel = eraserPanel.el;
     core.eraserPanel.style.opacity = "0.3";
     core.eraserPanel.style.pointerEvents = "none";
@@ -921,7 +938,19 @@ export class PixaromaUI {
     layout.rightSidebar.insertBefore(core.eraserPanel, layout.sidebarFooter);
 
     // --- 3. Background Removal panel ---
-    const bgRemovalPanel = createPanel("Background Removal", { collapsible: true, collapsed: false });
+    const bgRemovalPanel = createPanel("AI Background Removal", {
+      collapsible: true,
+      collapsed: false,
+    });
+
+    core.removeBgBtn = createButton("Remove Background", {
+      variant: "accent",
+    });
+    core.removeBgBtn.style.opacity = "0.3";
+    core.removeBgBtn.style.width = "100%";
+    core.removeBgBtn.style.marginBottom = "8px";
+    core.removeBgBtn.style.pointerEvents = "none";
+    bgRemovalPanel.content.appendChild(core.removeBgBtn);
 
     // Quality dropdown
     const bgQualitySelect = createSelectInput({
@@ -941,21 +970,15 @@ export class PixaromaUI {
       },
     });
     bgQualitySelect.style.width = "100%";
-    const bgQualityRow = createRow("Quality", bgQualitySelect);
+    const bgQualityRow = createRow("AI Quality", bgQualitySelect, { labelWidth: "80px" });
     core._bgQualityRow = bgQualityRow;
     core._bgQualitySelect = bgQualitySelect;
     bgRemovalPanel.content.appendChild(bgQualityRow);
 
-    core.removeBgBtn = createButton("AI Remove Background", {
-      variant: "accent",
-    });
-    core.removeBgBtn.style.opacity = "0.3";
-    core.removeBgBtn.style.pointerEvents = "none";
-    bgRemovalPanel.content.appendChild(core.removeBgBtn);
-
     // Auto Remove BG checkbox
     const autoBgRow = document.createElement("label");
-    autoBgRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#aaa;cursor:pointer;user-select:none;opacity:0.3;pointer-events:none;";
+    autoBgRow.style.cssText =
+      "display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#aaa;cursor:pointer;user-select:none;opacity:0.3;pointer-events:none;";
     const autoBgCheck = document.createElement("input");
     autoBgCheck.type = "checkbox";
     autoBgCheck.style.cssText = "accent-color:#f66744;cursor:pointer;";
@@ -968,7 +991,7 @@ export class PixaromaUI {
       }
     });
     autoBgRow.appendChild(autoBgCheck);
-    autoBgRow.appendChild(document.createTextNode("Auto Remove BG on Execute"));
+    autoBgRow.appendChild(document.createTextNode("Auto Remove on Execute"));
     core._autoBgRow = autoBgRow;
     core._autoBgCheck = autoBgCheck;
     bgRemovalPanel.content.appendChild(autoBgRow);
