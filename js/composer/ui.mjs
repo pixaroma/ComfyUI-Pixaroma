@@ -596,7 +596,7 @@ export class PixaromaUI {
     phPanel.content.appendChild(fillRow);
 
     // Load Now button
-    const previewBtn = createButton("Preview Now", { variant: "full" });
+    const previewBtn = createButton("Update Preview", { variant: "full" });
     previewBtn.title = "Load the connected image into the placeholder";
     previewBtn.style.marginTop = "4px";
     previewBtn.style.display = "none";

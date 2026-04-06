@@ -302,7 +302,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           eraserMaskCanvas_internal: null,
           eraserMaskCtx_internal: null,
           hasMask_internal: false,
-          savedMaskPath_internal: null,
+          savedMaskPath_internal: mLayer.maskSrc || null,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -410,4 +410,7 @@ PixaromaEditor.prototype.finishRestore = function (hadError = false) {
   this.history = [];
   this.historyIndex = -1;
   this.pushHistory();
+
+  // Auto-preview any placeholders that are already connected
+  this.previewAllConnectedPlaceholders();
 };
