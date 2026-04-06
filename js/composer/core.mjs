@@ -106,11 +106,25 @@ export class PixaromaEditor {
 
   syncActiveLayerIndex() {
     if (this.selectedLayerIds.size === 1) {
-      const id = Array.from(this.selectedLayerIds)[0];
+      const id = this.selectedLayerIds.values().next().value;
       this.activeLayerIndex = this.layers.findIndex((l) => l.id === id);
+      this._cachedActiveLayer = this.activeLayerIndex >= 0 ? this.layers[this.activeLayerIndex] : null;
     } else {
       this.activeLayerIndex = -1;
+      this._cachedActiveLayer = null;
     }
+  }
+
+  // Fast path: returns the single selected layer (or null)
+  getActiveLayer() {
+    if (this.selectedLayerIds.size !== 1) return null;
+    if (this._cachedActiveLayer && this.selectedLayerIds.has(this._cachedActiveLayer.id)) {
+      return this._cachedActiveLayer;
+    }
+    // Cache miss — rebuild
+    const id = this.selectedLayerIds.values().next().value;
+    this._cachedActiveLayer = this.layers.find((l) => l.id === id) || null;
+    return this._cachedActiveLayer;
   }
 
   updateViewTransform() {

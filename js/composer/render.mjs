@@ -6,6 +6,13 @@ PixaromaEditor.prototype.pushHistory = function () {
   this.history = this.history.slice(0, this.historyIndex + 1);
   this.history.push(this.captureState());
   this.historyIndex++;
+  // Cap history to prevent unbounded memory growth
+  const MAX_HISTORY = 50;
+  if (this.history.length > MAX_HISTORY) {
+    const excess = this.history.length - MAX_HISTORY;
+    this.history = this.history.slice(excess);
+    this.historyIndex -= excess;
+  }
   this.ui.updateHistoryUI();
 };
 
@@ -35,7 +42,47 @@ PixaromaEditor.prototype.redo = function () {
   }
 };
 
+// Blend mode map — defined once, reused every frame
+const BLEND_MAP = {
+  Normal: "source-over",
+  Multiply: "multiply",
+  Screen: "screen",
+  Overlay: "overlay",
+  Darken: "darken",
+  Lighten: "lighten",
+  "Color Dodge": "color-dodge",
+  "Color Burn": "color-burn",
+  "Hard Light": "hard-light",
+  "Soft Light": "soft-light",
+  Difference: "difference",
+  Exclusion: "exclusion",
+  Hue: "hue",
+  Saturation: "saturation",
+  Color: "color",
+  Luminosity: "luminosity",
+};
+
+// draw() batches calls via rAF so multiple per frame collapse into one render.
+// Pass cleanRender=true (save) for synchronous rendering.
 PixaromaEditor.prototype.draw = function (cleanRender = false) {
+  if (cleanRender) {
+    this._drawImpl(true);
+    return;
+  }
+  if (this._drawPending) return;
+  this._drawPending = true;
+  requestAnimationFrame(() => {
+    this._drawPending = false;
+    this._drawImpl(false);
+    // If eraser preview was pending, draw it after the main render
+    if (this._pendingEraserPreview) {
+      this.drawEraserPreview(this._pendingEraserPreview);
+      this._pendingEraserPreview = null;
+    }
+  });
+};
+
+PixaromaEditor.prototype._drawImpl = function (cleanRender) {
   const bg = this._bgColor || "#1e1e1e";
   this.ctx.fillStyle = bg;
   this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
@@ -57,26 +104,8 @@ PixaromaEditor.prototype.draw = function (cleanRender = false) {
     this.ctx.save();
     this.ctx.globalAlpha = layer.opacity;
     // Blend mode support (maps to canvas globalCompositeOperation)
-    const blendMap = {
-      Normal: "source-over",
-      Multiply: "multiply",
-      Screen: "screen",
-      Overlay: "overlay",
-      Darken: "darken",
-      Lighten: "lighten",
-      "Color Dodge": "color-dodge",
-      "Color Burn": "color-burn",
-      "Hard Light": "hard-light",
-      "Soft Light": "soft-light",
-      Difference: "difference",
-      Exclusion: "exclusion",
-      Hue: "hue",
-      Saturation: "saturation",
-      Color: "color",
-      Luminosity: "luminosity",
-    };
-    if (layer.blendMode && blendMap[layer.blendMode])
-      this.ctx.globalCompositeOperation = blendMap[layer.blendMode];
+    if (layer.blendMode && BLEND_MAP[layer.blendMode])
+      this.ctx.globalCompositeOperation = BLEND_MAP[layer.blendMode];
 
     this.ctx.translate(layer.cx, layer.cy);
     this.ctx.rotate((layer.rotation * Math.PI) / 180);

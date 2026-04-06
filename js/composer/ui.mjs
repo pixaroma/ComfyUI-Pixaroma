@@ -140,8 +140,7 @@ export class PixaromaUI {
       }
 
       // Sync transform sliders to the first selected layer
-      const firstId = Array.from(core.selectedLayerIds)[0];
-      const layer = core.layers.find((l) => l.id === firstId);
+      const layer = core.getActiveLayer();
       if (layer) {
         core.opacitySlider.value = Math.round(layer.opacity * 100);
         core.opacityNum.value = Math.round(layer.opacity * 100);
@@ -208,26 +207,34 @@ export class PixaromaUI {
 
   refreshLayersPanel() {
     const core = this.core;
+    // Reuse a single offscreen canvas for thumbnail generation
+    if (!this._thumbCanvas) {
+      this._thumbCanvas = document.createElement("canvas");
+      this._thumbCanvas.width = 26;
+      this._thumbCanvas.height = 26;
+      this._thumbCtx = this._thumbCanvas.getContext("2d");
+    }
+    const firstSelectedId = core.selectedLayerIds.size > 0
+      ? core.selectedLayerIds.values().next().value : null;
     // Display layers top-to-bottom (reversed from array order, since last = top)
-    const items = [...core.layers].reverse().map((layer, visualIndex) => {
+    const items = [...core.layers].reverse().map((layer) => {
       const isSelected = core.selectedLayerIds.has(layer.id);
-      const isFirst =
-        core.selectedLayerIds.size > 0 &&
-        Array.from(core.selectedLayerIds)[0] === layer.id;
+      const isFirst = layer.id === firstSelectedId;
 
-      // Build thumbnail canvas
+      // Build thumbnail: draw into shared canvas, then copy to a per-item canvas
       const tCvs = document.createElement("canvas");
       tCvs.width = 26;
       tCvs.height = 26;
       if (layer.img) {
-        const tCtx = tCvs.getContext("2d");
+        this._thumbCtx.clearRect(0, 0, 26, 26);
         const iw = layer.img.naturalWidth || layer.img.width;
         const ih = layer.img.naturalHeight || layer.img.height;
         if (iw && ih) {
           const scale = Math.min(26 / iw, 26 / ih);
           const dw = iw * scale,
             dh = ih * scale;
-          tCtx.drawImage(layer.img, (26 - dw) / 2, (26 - dh) / 2, dw, dh);
+          this._thumbCtx.drawImage(layer.img, (26 - dw) / 2, (26 - dh) / 2, dw, dh);
+          tCvs.getContext("2d").drawImage(this._thumbCanvas, 0, 0);
         }
       }
 
@@ -472,6 +479,8 @@ export class PixaromaUI {
     });
     convertPhBtn.title = "Convert the selected layer to a placeholder input";
     convertPhBtn.style.marginTop = "4px";
+    convertPhBtn.style.opacity = "0.3";
+    convertPhBtn.style.pointerEvents = "none";
     convertPhBtn.onclick = () => {
       const firstId = Array.from(core.selectedLayerIds)[0];
       if (firstId) core.convertLayerToPlaceholder(firstId);

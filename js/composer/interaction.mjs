@@ -108,7 +108,13 @@ PixaromaEditor.prototype.attachEvents = function () {
   this.workspace.addEventListener("wheel", (e) => {
     e.preventDefault();
     this.viewZoom *= e.deltaY > 0 ? 0.9 : 1.1;
-    this.updateViewTransform();
+    // Throttle transform updates to once per frame
+    if (!this._wheelRAF) {
+      this._wheelRAF = requestAnimationFrame(() => {
+        this._wheelRAF = null;
+        this.updateViewTransform();
+      });
+    }
   });
 
   this._composerKeyDown = (e) => {
@@ -205,9 +211,7 @@ PixaromaEditor.prototype.attachEvents = function () {
         return;
       }
       const coords = this.getCanvasCoordinates(e);
-      const layer = this.layers.find(
-        (l) => l.id === Array.from(this.selectedLayerIds)[0],
-      );
+      const layer = this.getActiveLayer();
       if (layer && !layer.locked) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {
@@ -250,9 +254,7 @@ PixaromaEditor.prototype.attachEvents = function () {
         this.activeMode !== "eraser"
       ) {
         const coords = this.getCanvasCoordinates(e);
-        const layer = this.layers.find(
-          (l) => l.id === Array.from(this.selectedLayerIds)[0],
-        );
+        const layer = this.getActiveLayer();
         if (layer && !layer.locked) {
           const pts = PixaromaLayers.getTransformedPoints(layer);
           let hitHandle = false;
@@ -522,8 +524,7 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.removeBgBtn.addEventListener("click", async () => {
     if (this.selectedLayerIds.size === 0) return;
-    const targetId = Array.from(this.selectedLayerIds)[0];
-    const layer = this.layers.find((l) => l.id === targetId);
+    const layer = this.getActiveLayer();
     if (!layer || !layer.img) {
       if (this._layout)
         this._layout.setStatus("Cannot remove background: no layer selected");
@@ -623,8 +624,8 @@ PixaromaEditor.prototype.attachEvents = function () {
     this._layout.setSaving();
 
     try {
-      const layerMeta = [];
-      for (const layer of this.layers) {
+      // Upload all unsaved layers and masks in parallel
+      const uploadPromises = this.layers.map(async (layer) => {
         let finalSrcPath = layer.rawServerPath || null;
         if (!layer.savedOnServer && layer.rawB64_internal) {
           const dRaw = await PixaromaAPI.uploadLayer(
@@ -674,8 +675,9 @@ PixaromaEditor.prototype.attachEvents = function () {
           layerEntry.naturalWidth = layer.img.width;
           layerEntry.naturalHeight = layer.img.height;
         }
-        layerMeta.push(layerEntry);
-      }
+        return layerEntry;
+      });
+      const layerMeta = await Promise.all(uploadPromises);
 
       this.draw(true);
       const finalRenderCanvas = document.createElement("canvas");
@@ -794,10 +796,6 @@ PixaromaEditor.prototype.attachEvents = function () {
       const coords = this.getCanvasCoordinates(e);
 
       if (this.activeMode === "eraser") {
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.draw();
-        this.drawEraserPreview(coords);
-
         if (this.isMouseDown && this.selectedLayerIds.size === 1) {
           const canvasRect = this.canvas.getBoundingClientRect();
           const isOverCanvas =
@@ -806,9 +804,7 @@ PixaromaEditor.prototype.attachEvents = function () {
             e.clientY >= canvasRect.top &&
             e.clientY <= canvasRect.bottom;
           if (isOverCanvas) {
-            const layer = this.layers.find(
-              (l) => l.id === Array.from(this.selectedLayerIds)[0],
-            );
+            const layer = this.getActiveLayer();
             const startLayerCoords = this.getCoordinatesInLayerImage(
               layer,
               this.lastX,
@@ -820,7 +816,6 @@ PixaromaEditor.prototype.attachEvents = function () {
               coords.y,
             );
             this.drawEraserLine(layer, startLayerCoords, endLayerCoords);
-            this.draw();
             this.lastX = coords.x;
             this.lastY = coords.y;
           }
@@ -828,6 +823,9 @@ PixaromaEditor.prototype.attachEvents = function () {
           this.lastX = coords.x;
           this.lastY = coords.y;
         }
+        // Single draw + eraser preview per frame (batched via rAF)
+        this._pendingEraserPreview = coords;
+        this.draw();
       } else {
         this.onSelectMouseMove(e, coords);
       }
@@ -872,9 +870,7 @@ PixaromaEditor.prototype.attachEvents = function () {
 
 PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
   if (this.selectedLayerIds.size === 1) {
-    const layer = this.layers.find(
-      (l) => l.id === Array.from(this.selectedLayerIds)[0],
-    );
+    const layer = this.getActiveLayer();
     if (layer && !layer.locked) {
       const pts = PixaromaLayers.getTransformedPoints(layer);
       if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15)
@@ -986,9 +982,7 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
 PixaromaEditor.prototype.onSelectMouseMove = function (e, coords) {
   if (!this.isMouseDown) {
     if (this.selectedLayerIds.size === 1) {
-      const layer = this.layers.find(
-        (l) => l.id === Array.from(this.selectedLayerIds)[0],
-      );
+      const layer = this.getActiveLayer();
       if (layer && !layer.locked) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {

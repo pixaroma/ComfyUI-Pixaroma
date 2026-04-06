@@ -2,8 +2,7 @@
 import { PixaromaEditor } from "./core.mjs";
 
 PixaromaEditor.prototype.setupEraserOnSelection = function () {
-  const targetId = Array.from(this.selectedLayerIds)[0];
-  const layer = this.layers.find((l) => l.id === targetId);
+  const layer = this.getActiveLayer();
   if (layer && !layer.eraserMaskCanvas_internal) {
     this.prepareLayerMask(layer);
   }
