@@ -40,6 +40,24 @@ def _load_server_image(src, input_dir):
     return Image.open(full_path).convert("RGBA")
 
 
+def _remove_background(img):
+    """Remove background from a PIL RGBA image using rembg (returns RGBA)."""
+    try:
+        from rembg import remove, new_session
+        import io
+        session = new_session("u2net")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        result_bytes = remove(buf.getvalue(), session=session)
+        return Image.open(io.BytesIO(result_bytes)).convert("RGBA")
+    except ImportError:
+        print("[Pixaroma] rembg not installed — skipping auto remove BG")
+        return img
+    except Exception as e:
+        print(f"[Pixaroma] Auto remove BG failed: {e}")
+        return img
+
+
 def _fit_to_placeholder(img, ph_w, ph_h, mode="cover"):
     """Resize and crop/pad img to fit placeholder dimensions using the given mode."""
     src_w, src_h = img.size
@@ -155,9 +173,10 @@ class PixaromaImageComposition:
             layers = meta.get("layers", [])
             input_dir = os.path.realpath(folder_paths.get_input_directory())
             has_placeholders = any(l.get("isPlaceholder") for l in layers)
+            has_auto_rembg = any(l.get("removeBgOnExec") for l in layers)
 
-            if has_placeholders:
-                # Composite from scratch so placeholder slots are filled with real images
+            if has_placeholders or has_auto_rembg:
+                # Composite from scratch so placeholder slots are filled and rembg is applied
                 canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
                 for layer in layers:
                     if not layer.get("visible", True):
@@ -168,6 +187,8 @@ class PixaromaImageComposition:
                         img_input = kwargs.get(f"image_{layer['inputIndex']}")
                         if img_input is not None:
                             layer_img = _tensor_to_pil(img_input)
+                            if layer.get("removeBgOnExec"):
+                                layer_img = _remove_background(layer_img)
                             layer_img = _fit_to_placeholder(layer_img, ph_w, ph_h, layer.get("fillMode", "cover"))
                         else:
                             color = _hex_to_rgba(layer.get("placeholderColor", "#808080"))
@@ -179,6 +200,8 @@ class PixaromaImageComposition:
                         layer_img = _load_server_image(src, input_dir)
                         if layer_img is None:
                             continue
+                        if layer.get("removeBgOnExec"):
+                            layer_img = _remove_background(layer_img)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
                     canvas = Image.alpha_composite(canvas, composed)
                 return (_pil_to_tensor(canvas), doc_w, doc_h)

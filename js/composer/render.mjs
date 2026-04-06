@@ -252,6 +252,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           placeholderColor: color,
           inputIndex: mLayer.inputIndex || 1,
           fillMode: mLayer.fillMode || "cover",
+          removeBgOnExec: !!mLayer.removeBgOnExec,
           img: this._makePlaceholderImage(w, h, color, mLayer.name, (bitmapImg) => {
             this.layers[i].img = bitmapImg;
           }),
@@ -297,6 +298,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           locked: mLayer.locked,
           flippedX: mLayer.flippedX,
           flippedY: mLayer.flippedY,
+          removeBgOnExec: !!mLayer.removeBgOnExec,
           rawB64_internal: null,
           rawServerPath: mLayer.src,
           savedOnServer: true,

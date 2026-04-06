@@ -105,6 +105,10 @@ export class PixaromaUI {
         core._convertPhBtn.style.opacity = "0.3";
         core._convertPhBtn.style.pointerEvents = "none";
       }
+      if (core._autoBgRow) {
+        core._autoBgRow.style.opacity = "0.3";
+        core._autoBgRow.style.pointerEvents = "none";
+      }
 
       // Dim eraser panel and force eraser off
       if (core.eraserPanel) {
@@ -174,12 +178,22 @@ export class PixaromaUI {
             core._convertPhBtn.style.opacity = "0.3";
             core._convertPhBtn.style.pointerEvents = "none";
           }
+          if (core._autoBgRow) {
+            core._autoBgRow.style.opacity = "1";
+            core._autoBgRow.style.pointerEvents = "auto";
+            core._autoBgCheck.checked = !!layer.removeBgOnExec;
+          }
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
           if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
           if (core._convertPhBtn) {
             core._convertPhBtn.style.opacity = "1";
             core._convertPhBtn.style.pointerEvents = "auto";
+          }
+          if (core._autoBgRow) {
+            core._autoBgRow.style.opacity = "1";
+            core._autoBgRow.style.pointerEvents = "auto";
+            core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
         }
       }
@@ -832,7 +846,7 @@ export class PixaromaUI {
     layout.rightSidebar.insertBefore(core._layerPanel.el, layout.sidebarFooter);
 
     // --- 2. Eraser Panel ---
-    const eraserPanel = createPanel("Eraser");
+    const eraserPanel = createPanel("Eraser", { collapsible: true, collapsed: true });
     core.eraserPanel = eraserPanel.el;
     core.eraserPanel.style.opacity = "0.3";
     core.eraserPanel.style.pointerEvents = "none";
@@ -904,24 +918,42 @@ export class PixaromaUI {
 
     layout.rightSidebar.insertBefore(core.eraserPanel, layout.sidebarFooter);
 
-    // Separator
-    const sep1 = createDivider();
-    sep1.style.margin = "8px 10px";
-    layout.rightSidebar.insertBefore(sep1, layout.sidebarFooter);
+    // --- 3. Background Removal panel ---
+    const bgRemovalPanel = createPanel("Background Removal", { collapsible: true, collapsed: false });
 
-    // --- 3. AI Remove Background ---
     core.removeBgBtn = createButton("AI Remove Background", {
       variant: "accent",
     });
     core.removeBgBtn.style.opacity = "0.3";
     core.removeBgBtn.style.pointerEvents = "none";
-    core.removeBgBtn.style.margin = "0 10px";
-    layout.rightSidebar.insertBefore(core.removeBgBtn, layout.sidebarFooter);
+    bgRemovalPanel.content.appendChild(core.removeBgBtn);
+
+    // Auto Remove BG checkbox (per-placeholder flag for execution time)
+    const autoBgRow = document.createElement("label");
+    autoBgRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:#aaa;cursor:pointer;user-select:none;opacity:0.3;pointer-events:none;";
+    const autoBgCheck = document.createElement("input");
+    autoBgCheck.type = "checkbox";
+    autoBgCheck.style.cssText = "accent-color:#f66744;cursor:pointer;";
+    autoBgCheck.addEventListener("change", () => {
+      const firstId = Array.from(core.selectedLayerIds)[0];
+      const layer = core.layers.find((l) => l.id === firstId);
+      if (layer) {
+        layer.removeBgOnExec = autoBgCheck.checked;
+        core.pushHistory();
+      }
+    });
+    autoBgRow.appendChild(autoBgCheck);
+    autoBgRow.appendChild(document.createTextNode("Auto Remove BG on Execute"));
+    core._autoBgRow = autoBgRow;
+    core._autoBgCheck = autoBgCheck;
+    bgRemovalPanel.content.appendChild(autoBgRow);
+
+    layout.rightSidebar.insertBefore(bgRemovalPanel.el, layout.sidebarFooter);
 
     // Separator before footer
-    const sep2 = createDivider();
-    sep2.style.margin = "8px 10px";
-    layout.rightSidebar.insertBefore(sep2, layout.sidebarFooter);
+    const sep1 = createDivider();
+    sep1.style.margin = "8px 10px";
+    layout.rightSidebar.insertBefore(sep1, layout.sidebarFooter);
 
     // --- Save button ref for the onSave delegate ---
     core.saveBtn = layout.saveBtn;

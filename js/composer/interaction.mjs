@@ -663,6 +663,7 @@ PixaromaEditor.prototype.attachEvents = function () {
           src: finalSrcPath,
           maskSrc: finalMaskPath,
         };
+        if (layer.removeBgOnExec) layerEntry.removeBgOnExec = true;
         if (layer.isPlaceholder) {
           layerEntry.isPlaceholder = true;
           layerEntry.placeholderColor = layer.placeholderColor;
