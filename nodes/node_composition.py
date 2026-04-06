@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageChops
 import os
 import json
 import folder_paths
@@ -85,6 +85,21 @@ def _fit_to_placeholder(img, ph_w, ph_h, mode="cover"):
         left = (new_w - ph_w) // 2
         top = (new_h - ph_h) // 2
         return resized.crop((left, top, left + ph_w, top + ph_h))
+
+
+def _apply_eraser_mask(img, mask_path, input_dir):
+    """Apply eraser mask to image alpha. Mask white pixels = erased."""
+    mask_img = _load_server_image(mask_path, input_dir)
+    if mask_img is None:
+        return img
+    mask_img = mask_img.resize(img.size, Image.LANCZOS)
+    # Mask uses destination-out: opaque pixels in mask = erased
+    # So we subtract mask alpha from image alpha
+    r, g, b, a = img.split()
+    mask_a = mask_img.split()[3]  # alpha channel of mask
+    # Where mask is opaque, set image alpha to 0
+    a = ImageChops.subtract(a, mask_a)
+    return Image.merge("RGBA", (r, g, b, a))
 
 
 def _apply_layer_transform(img, layer, doc_w, doc_h):
@@ -181,8 +196,10 @@ class PixaromaImageComposition:
             has_placeholders = any(l.get("isPlaceholder") for l in layers)
             has_auto_rembg = any(l.get("removeBgOnExec") for l in layers)
 
-            if has_placeholders or has_auto_rembg:
-                # Composite from scratch so placeholder slots are filled and rembg is applied
+            has_masks = any(l.get("maskSrc") for l in layers)
+
+            if has_placeholders or has_auto_rembg or has_masks:
+                # Composite from scratch so placeholder slots are filled, rembg and masks applied
                 canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
                 for layer in layers:
                     if not layer.get("visible", True):
@@ -208,6 +225,10 @@ class PixaromaImageComposition:
                             continue
                         if layer.get("removeBgOnExec"):
                             layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
+                    # Apply eraser mask if present (mask white = erased)
+                    mask_src = layer.get("maskSrc")
+                    if mask_src:
+                        layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
                     canvas = Image.alpha_composite(canvas, composed)
                 return (_pil_to_tensor(canvas), doc_w, doc_h)
