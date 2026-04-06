@@ -318,6 +318,7 @@ export class PixaromaUI {
       onClose: () => {
         if (core._cleanupKeys) core._cleanupKeys();
         core._layout.unmount();
+        if (core.onClose) core.onClose();
         if (app.graph) app.graph.setDirtyCanvas(true, true);
       },
       onUndo: () => core.undo(),

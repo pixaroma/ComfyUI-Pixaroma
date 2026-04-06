@@ -103,7 +103,7 @@ app.registerExtension({
     };
 
     // Default auto-preview to true
-    node._pixaromaAutoPreview = false;
+    node._pixaromaAutoPreview = true;
 
     // Full re-composite: render all layers in z-order, replacing connected
     // placeholders with their upstream image (respecting fill mode).
