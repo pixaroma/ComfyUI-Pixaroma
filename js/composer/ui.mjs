@@ -950,11 +950,6 @@ export class PixaromaUI {
 
     layout.rightSidebar.insertBefore(bgRemovalPanel.el, layout.sidebarFooter);
 
-    // Separator before footer
-    const sep1 = createDivider();
-    sep1.style.margin = "8px 10px";
-    layout.rightSidebar.insertBefore(sep1, layout.sidebarFooter);
-
     // --- Save button ref for the onSave delegate ---
     core.saveBtn = layout.saveBtn;
 
