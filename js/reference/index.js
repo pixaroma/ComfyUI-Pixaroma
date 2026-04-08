@@ -4,57 +4,66 @@ import { allow_debug } from "../shared/index.mjs";
 app.registerExtension({
   name: "Pixaroma.referenceNode",
 
-  async nodeCreated(node) {
-    if (node.comfyClass !== "PixaromaReferenceNode") {
-      return;
-    }
-    // init size
-    node.size = [200, 230];
+  beforeRegisterNodeDef(nodeType, nodeData) {
+    if (nodeData.name !== "PixaromaReferenceNode") return;
 
-    // Get all elements from the helper function
-    const elements = create_widget_elements();
+    const origOnNodeCreated = nodeType.prototype.onNodeCreated;
+    nodeType.prototype.onNodeCreated = function () {
+      origOnNodeCreated?.apply(this, arguments);
 
-    // Create the widget using the container from elements
-    let widget = node.addDOMWidget(
-      "CounterWidget",
-      "custom",
-      elements.container,
-      {
-        getValue: () => ({
+      this.size = [200, 230];
+
+      const elements = create_widget_elements();
+
+      let widget = this.addDOMWidget(
+        "CounterWidget",
+        "custom",
+        elements.container,
+        {
+          getValue: () => ({
+            count: parseInt(elements.counterValue.textContent),
+            text: elements.textarea.value,
+          }),
+          setValue: (v) => {
+            if (v && typeof v === "object") {
+              elements.counterValue.textContent = v.count?.toString() || "0";
+              elements.textarea.value = v.text || "";
+            }
+          },
+          getMinHeight: () => 200,
+          getMaxHeight: () => 400,
+          margin: 5,
+        },
+      );
+
+      // add slider
+      let slider = this.addWidget("slider", "strength", 1.0, (v) => {}, {
+        min: 0,
+        max: 2,
+        step: 0.1,
+      });
+
+      elements.updateCallback = () => {
+        widget.value = {
           count: parseInt(elements.counterValue.textContent),
           text: elements.textarea.value,
-        }),
-        setValue: (v) => {
-          if (v && typeof v === "object") {
-            elements.counterValue.textContent = v.count?.toString() || "0";
-            elements.textarea.value = v.text || "";
-          }
-        },
-        getMinHeight: () => 200,
-        getMaxHeight: () => 400,
-        margin: 5,
-      },
-    );
-
-    // Link event handlers to the widget after it's created
-    elements.updateCallback = () => {
-      widget.value = {
-        count: parseInt(elements.counterValue.textContent),
-        text: elements.textarea.value,
+        };
       };
-    };
 
-    // cleanup when node is removed
-    node.onRemoved = () => {
-      widget = null;
-      if (allow_debug) console.log("PixaromaReferenceNode removed");
-    };
+      // chain existing onRemoved to avoid overwriting other handlers
+      const origOnRemoved = this.onRemoved?.bind(this);
+      this.onRemoved = () => {
+        origOnRemoved?.();
+        widget = null;
+        if (allow_debug) console.log("PixaromaReferenceNode removed");
+      };
 
-    // show widget after 100ms avoid widget flickering
-    setTimeout(() => {
-      elements.container.style.display = "flex";
-      node.setDirtyCanvas(true, true);
-    }, 100);
+      // show widget after 100ms to avoid flickering
+      setTimeout(() => {
+        elements.container.style.display = "flex";
+        this.setDirtyCanvas(true, true);
+      }, 100);
+    };
   },
 });
 

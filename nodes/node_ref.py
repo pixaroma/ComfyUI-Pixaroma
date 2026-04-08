@@ -43,10 +43,46 @@ class PixaromaReferenceNode:
         return (str(text + " " + counter),)
 
 
+from comfy_api.latest import io
+
+PixaromaData = io.Custom("PIXAROMA_DATA")
+
+
+class PixaromaVueReferenceNode(io.ComfyNode):
+
+    @classmethod
+    def define_schema(cls) -> io.Schema:
+        return io.Schema(
+            node_id="Pixaroma_VueReferenceNode",  # unique, use a prefix!
+            display_name="Pixaroma Vue Reference Node",
+            category="Pixaroma",
+            description="new Pixaroma Vue Reference Node compatible with Nodes 2.0",
+            inputs=[
+                io.Image.Input("image"),
+                io.Int.Input("count", default=1, min=0, max=100),
+                io.String.Input("prompt", multiline=True),
+                io.Combo.Input("mode", options=["option1", "option2"]),
+                io.Mask.Input("mask", optional=True),
+                PixaromaData.Input("pixaroma_data", optional=True),
+            ],
+            outputs=[
+                io.Image.Output(display_name="result"),
+                PixaromaData.Output(display_name="pixaroma_data"),
+            ],
+        )
+
+    @classmethod
+    def execute(cls, image, count, prompt, mode, mask=None) -> io.NodeOutput:
+        result = 1.0 - image  # example: invert
+        return io.NodeOutput(result)
+
+
 NODE_CLASS_MAPPINGS = {
     "PixaromaReferenceNode": PixaromaReferenceNode,
+    "Pixaroma_VueReferenceNode": PixaromaVueReferenceNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PixaromaReferenceNode": "Reference Node",
+    "Pixaroma_VueReferenceNode": "Pixaroma Vue Reference Node",
 }
