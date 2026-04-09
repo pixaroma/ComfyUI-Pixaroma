@@ -117,16 +117,6 @@ app.registerExtension({
       const layers = meta.layers || [];
       if (layers.length === 0) return;
 
-      // Check if any placeholder is connected
-      const hasConnected = layers.some((l) => {
-        if (!l.isPlaceholder) return false;
-        return !!getUpstreamImageUrlForNode(node, `image_${l.inputIndex}`);
-      });
-      if (!hasConnected) {
-        restoreNodePreview(parts, projectJson, node);
-        return;
-      }
-
       // Build load list for every visible layer
       const loadList = [];
       for (const layer of layers) {
@@ -234,14 +224,14 @@ app.registerExtension({
 
           if (item.isPlaceholder) {
             if (img) {
-              const phW = item.layer.naturalWidth || 512;
-              const phH = item.layer.naturalHeight || 512;
+              const phW = item.layer.naturalWidth || Math.round(docW / 2);
+              const phH = item.layer.naturalHeight || Math.round(docH / 2);
               const fitted = applyFillMode(img, phW, phH, item.layer.fillMode || "cover");
               drawLayer(ctx, item.layer, fitted, mask);
             } else {
               // No connection — draw solid color placeholder with label
-              const phW = item.layer.naturalWidth || 512;
-              const phH = item.layer.naturalHeight || 512;
+              const phW = item.layer.naturalWidth || Math.round(docW / 2);
+              const phH = item.layer.naturalHeight || Math.round(docH / 2);
               const color = item.layer.placeholderColor || "#808080";
               const pc = document.createElement("canvas");
               pc.width = phW; pc.height = phH;
