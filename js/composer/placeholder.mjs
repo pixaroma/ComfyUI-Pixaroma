@@ -251,6 +251,30 @@ export function getUpstreamImageUrlForNode(node, inputName) {
   return null;
 }
 
+PixaromaEditor.prototype.changePlaceholderRatio = function (layer, ratioKey) {
+  layer.phRatio = ratioKey;
+
+  // Determine new w/h — preserve area comparable to half the canvas
+  const area = (this.docWidth / 2) * (this.docHeight / 2);
+  let w, h;
+  if (ratioKey === "canvas" || !ratioKey) {
+    w = Math.round(this.docWidth / 2);
+    h = Math.round(this.docHeight / 2);
+  } else {
+    const [rw, rh] = ratioKey.split(":").map(Number);
+    // Keep width same as default half-canvas width, adjust height
+    w = Math.round(this.docWidth / 2);
+    h = Math.round(w * (rh / rw));
+  }
+
+  layer.img = this._makePlaceholderImage(w, h, layer.placeholderColor, layer.name, (bitmapImg) => {
+    layer.img = bitmapImg;
+    this.draw();
+  });
+  this.draw();
+  this.pushHistory();
+};
+
 PixaromaEditor.prototype.syncNodeInputs = function () {
   const node = this.node;
   if (!node) return;

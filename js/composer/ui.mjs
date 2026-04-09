@@ -163,11 +163,14 @@ export class PixaromaUI {
           core.btnResetEraser.disabled = !anyMask;
         }
 
-        // Show/hide placeholder fill mode, preview, convert button
+        // Show/hide placeholder fill mode, ratio, preview, convert button
         if (layer.isPlaceholder) {
           if (core._phFillRow) core._phFillRow.style.display = "";
           if (core._phFillSelect)
             core._phFillSelect.value = layer.fillMode || "cover";
+          if (core._phRatioRow) core._phRatioRow.style.display = "";
+          if (core._phRatioSelect)
+            core._phRatioSelect.value = layer.phRatio || "canvas";
           const connected = core.isPlaceholderConnected(layer);
           if (core._phPreviewBtn) {
             core._phPreviewBtn.style.display = "";
@@ -187,6 +190,7 @@ export class PixaromaUI {
             core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
+          if (core._phRatioRow) core._phRatioRow.style.display = "none";
           if (core._phPreviewBtn) core._phPreviewBtn.style.display = "none";
           if (core._convertPhBtn) {
             core._convertPhBtn.style.opacity = "1";
@@ -594,6 +598,37 @@ export class PixaromaUI {
     core._phFillRow = fillRow;
     core._phFillSelect = fillSelect;
     phPanel.content.appendChild(fillRow);
+
+    const ratioSelect = createSelectInput({
+      options: [
+        { value: "canvas", label: "Canvas ratio" },
+        { value: "1:1",    label: "1:1 Square" },
+        { value: "4:3",    label: "4:3" },
+        { value: "3:4",    label: "3:4" },
+        { value: "16:9",   label: "16:9 Wide" },
+        { value: "9:16",   label: "9:16 Tall" },
+        { value: "3:2",    label: "3:2" },
+        { value: "2:3",    label: "2:3" },
+        { value: "2:1",    label: "2:1" },
+        { value: "1:2",    label: "1:2" },
+        { value: "21:9",   label: "21:9 Ultra" },
+      ],
+      value: "canvas",
+      onChange: (val) => {
+        const firstId = Array.from(core.selectedLayerIds)[0];
+        const layer = core.layers.find((l) => l.id === firstId);
+        if (layer && layer.isPlaceholder) {
+          core.changePlaceholderRatio(layer, val);
+        }
+      },
+    });
+    ratioSelect.style.width = "100%";
+    const ratioRow = createRow("Ratio", ratioSelect);
+    ratioRow.style.marginTop = "4px";
+    ratioRow.style.display = "none";
+    core._phRatioRow = ratioRow;
+    core._phRatioSelect = ratioSelect;
+    phPanel.content.appendChild(ratioRow);
 
     // Load Now button
     const previewBtn = createButton("Update Preview", { variant: "full" });
