@@ -575,30 +575,6 @@ export class PixaromaUI {
     addPhBtn.onclick = () => core.addPlaceholderLayer();
     phPanel.content.appendChild(addPhBtn);
 
-    const fillSelect = createSelectInput({
-      options: [
-        { value: "cover", label: "Cover" },
-        { value: "contain", label: "Contain" },
-        { value: "fill", label: "Fill (stretch)" },
-      ],
-      value: "cover",
-      onChange: (val) => {
-        const firstId = Array.from(core.selectedLayerIds)[0];
-        const layer = core.layers.find((l) => l.id === firstId);
-        if (layer && layer.isPlaceholder) {
-          layer.fillMode = val;
-          core.pushHistory();
-        }
-      },
-    });
-    fillSelect.style.width = "100%";
-    const fillRow = createRow("Fill Mode", fillSelect);
-    fillRow.style.marginTop = "4px";
-    fillRow.style.display = "none";
-    core._phFillRow = fillRow;
-    core._phFillSelect = fillSelect;
-    phPanel.content.appendChild(fillRow);
-
     const ratioSelect = createSelectInput({
       options: [
         { value: "canvas", label: "Canvas ratio" },
@@ -629,6 +605,30 @@ export class PixaromaUI {
     core._phRatioRow = ratioRow;
     core._phRatioSelect = ratioSelect;
     phPanel.content.appendChild(ratioRow);
+
+    const fillSelect = createSelectInput({
+      options: [
+        { value: "cover", label: "Cover" },
+        { value: "contain", label: "Contain" },
+        { value: "fill", label: "Fill (stretch)" },
+      ],
+      value: "cover",
+      onChange: (val) => {
+        const firstId = Array.from(core.selectedLayerIds)[0];
+        const layer = core.layers.find((l) => l.id === firstId);
+        if (layer && layer.isPlaceholder) {
+          layer.fillMode = val;
+          core.pushHistory();
+        }
+      },
+    });
+    fillSelect.style.width = "100%";
+    const fillRow = createRow("Fill Mode", fillSelect);
+    fillRow.style.marginTop = "4px";
+    fillRow.style.display = "none";
+    core._phFillRow = fillRow;
+    core._phFillSelect = fillSelect;
+    phPanel.content.appendChild(fillRow);
 
     // Load Now button
     const previewBtn = createButton("Update Preview", { variant: "full" });
