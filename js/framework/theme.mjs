@@ -130,6 +130,7 @@ export function injectFrameworkStyles() {
   flex-shrink: 0; background: var(--pxf-bg-sidebar);
   display: flex; flex-direction: column;
   overflow-y: auto; overflow-x: hidden;
+  scrollbar-gutter: stable;
   position: relative; z-index: 5;
 }
 .pxf-sidebar-left { border-right: 1px solid var(--pxf-border-subtle); }
