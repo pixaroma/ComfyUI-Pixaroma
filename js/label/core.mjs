@@ -196,16 +196,21 @@ export class LabelEditor {
       alignBtnEls.push(btn);
       fontBtns.appendChild(btn);
     }
-    fontBtns.appendChild(vsep());
 
-    // Size inline (label + slider + val)
+    typoSection.appendChild(fontBtns);
+
+    // Size on its own row (label + slider + value inline)
+    const sizeRow = el("div", "pix-lbl-range-wrap");
+    sizeRow.style.marginTop = "8px";
+    const sizeLbl = el("span");
+    sizeLbl.textContent = "Font Size";
+    sizeLbl.style.cssText = "color:#777;font-size:10px;text-transform:uppercase;letter-spacing:0.6px;white-space:nowrap;";
     const sizeRange = document.createElement("input");
     sizeRange.type = "range";
     sizeRange.min = 8;
     sizeRange.max = 64;
     sizeRange.value = c.fontSize;
-    sizeRange.style.cssText =
-      "flex:1;accent-color:" + BRAND + ";height:3px;min-width:60px;";
+    sizeRange.style.cssText = "flex:1;accent-color:" + BRAND + ";";
     const sizeVal = el("span", "pix-lbl-val");
     sizeVal.textContent = c.fontSize;
     sizeRange.addEventListener("input", () => {
@@ -213,15 +218,10 @@ export class LabelEditor {
       sizeVal.textContent = c.fontSize;
       this._updatePreview();
     });
-    const sizeLbl = el("span");
-    sizeLbl.textContent = "Size";
-    sizeLbl.style.cssText =
-      "color:#555;font-size:9px;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap;";
-    fontBtns.appendChild(sizeLbl);
-    fontBtns.appendChild(sizeRange);
-    fontBtns.appendChild(sizeVal);
-
-    typoSection.appendChild(fontBtns);
+    sizeRow.appendChild(sizeLbl);
+    sizeRow.appendChild(sizeRange);
+    sizeRow.appendChild(sizeVal);
+    typoSection.appendChild(sizeRow);
     body.appendChild(typoSection);
 
     // ── Colors (2-column grid)
