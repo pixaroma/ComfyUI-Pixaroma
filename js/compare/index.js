@@ -1,12 +1,19 @@
 import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
-const MODES = ["Left Right", "Up Down", "Overlay", "Difference"];
+// Buttons: Show 1 | Left Right | Up Down | Overlay | Difference
+// "Show 1" toggles: Show 1 → Show 2 → back to compare (deselects)
+const MODES = ["Left Right", "Right Left", "Up Down", "Overlay", "Difference"];
 const SLIDER_PAD = 50; // "Opacity" label width
 const MODE_HINTS = [
   "↔  Hover image to slide left / right",
+  "↔  Hover image to slide right / left",
   "↕  Hover image to slide up / down",
   "",
   "Shows pixel differences between images",
+];
+const SHOW_HINTS = [
+  "Showing image 1  ·  Click again to switch",
+  "Showing image 2  ·  Click again to switch",
 ];
 
 // Layout constants
@@ -14,25 +21,23 @@ const BTN_GAP = 3;
 const BTN_H = 18;
 const BTN_W = 56;
 const BTN_X = 80; // start X (right of input labels)
-const TOGGLE_SEP = 10; // visual gap separating toggle from mode group
 const ROW1_Y = 10;
 const ROW2_Y = 30;
 const IMG_Y = 54; // image area starts here
-const INIT_W = 390;
+const INIT_W = 440;
 const INIT_H = INIT_W + IMG_Y; // square preview area
-const MIN_W = BTN_X + BTN_W * 5 + BTN_GAP * 4 + TOGGLE_SEP + 6;
+const MIN_W = BTN_X + BTN_W * 6 + BTN_GAP * 5 + 6;
 const MIN_H = IMG_Y + 100;
 
-// Button rect helpers
+// Button rect helpers — Show toggle is first, then 4 mode buttons
+function showRect() {
+  return { x: BTN_X, y: ROW1_Y, w: BTN_W, h: BTN_H };
+}
 function modeRect(i) {
-  return { x: BTN_X + i * (BTN_W + BTN_GAP), y: ROW1_Y, w: BTN_W, h: BTN_H };
+  return { x: BTN_X + (i + 1) * (BTN_W + BTN_GAP), y: ROW1_Y, w: BTN_W, h: BTN_H };
 }
 function hintRect() {
-  return { x: BTN_X, y: ROW2_Y, w: BTN_W * 4 + BTN_GAP * 3, h: BTN_H };
-}
-function toggleRect() {
-  const x = BTN_X + 4 * (BTN_W + BTN_GAP) + TOGGLE_SEP;
-  return { x, y: ROW1_Y, w: BTN_W, h: BTN_H };
+  return { x: BTN_X, y: ROW2_Y, w: BTN_W * 6 + BTN_GAP * 5, h: BTN_H };
 }
 function inside(pos, r) {
   return (
@@ -70,7 +75,7 @@ app.registerExtension({
       this._cmpOpacity = 0.5;
       this._cmpImg1 = null;
       this._cmpImg2 = null;
-      this._cmpShowWhich = 0; // 0=compare, 1=img1 only, 2=img2 only
+      this._cmpShowWhich = 2; // 0=compare, 1=img1 only, 2=img2 only
       this.size[0] = INIT_W;
       this.size[1] = INIT_H;
     };
@@ -113,23 +118,18 @@ app.registerExtension({
       const w = this.size[0],
         h = this.size[1];
 
-      // ── Row 1: mode buttons + toggle ──
+      // ── Row 1: Show toggle + mode buttons ──
       ctx.save();
-      for (let i = 0; i < 4; i++)
-        paintBtn(ctx, modeRect(i), MODES[i], this._cmpMode === i);
-      const toggleLabel =
-        this._cmpShowWhich === 0
-          ? "Show 1"
-          : this._cmpShowWhich === 1
-            ? "Show 2"
-            : "Compare";
-      paintBtn(ctx, toggleRect(), toggleLabel, this._cmpShowWhich !== 0);
+      const showLabel = this._cmpShowWhich === 1 ? "Show 1" : this._cmpShowWhich === 2 ? "Show 2" : "Show 1";
+      paintBtn(ctx, showRect(), showLabel, this._cmpShowWhich !== 0);
+      for (let i = 0; i < 5; i++)
+        paintBtn(ctx, modeRect(i), MODES[i], this._cmpShowWhich === 0 && this._cmpMode === i);
       ctx.restore();
 
       // ── Row 2: opacity slider or hint text (same height) ──
       ctx.save();
       const r2 = hintRect();
-      if (this._cmpMode === 2) {
+      if (this._cmpShowWhich === 0 && this._cmpMode === 3) {
         // Slider track
         const trackX = r2.x + SLIDER_PAD;
         const trackW = r2.w - SLIDER_PAD - 36;
@@ -193,7 +193,10 @@ app.registerExtension({
         ctx.font = "9px 'Segoe UI',sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "middle";
-        ctx.fillText(MODE_HINTS[this._cmpMode] || "", r2.x, r2.y + r2.h / 2);
+        const hint = this._cmpShowWhich !== 0
+          ? SHOW_HINTS[this._cmpShowWhich - 1]
+          : (MODE_HINTS[this._cmpMode] || "");
+        ctx.fillText(hint, r2.x, r2.y + r2.h / 2);
       }
       ctx.restore();
 
@@ -244,22 +247,27 @@ app.registerExtension({
       }
 
       const m = this._cmpMode;
-      if (m === 0) {
+      if (m === 0 || m === 1) {
+        // Left Right (0) and Right Left (1) — swap which image is on which side
+        const imgL = m === 0 ? this._cmpImg2 : this._cmpImg1;
+        const imgR = m === 0 ? this._cmpImg1 : this._cmpImg2;
+        const frL = m === 0 ? fr2 : fr1;
+        const frR = m === 0 ? fr1 : fr2;
         const sx = w * this._cmpSplitX;
-        if (this._cmpImg1) {
+        if (imgR) {
           ctx.save();
           ctx.beginPath();
           ctx.rect(sx, IMG_Y, w - sx, imgH);
           ctx.clip();
-          ctx.drawImage(this._cmpImg1, fr1.x, fr1.y, fr1.w, fr1.h);
+          ctx.drawImage(imgR, frR.x, frR.y, frR.w, frR.h);
           ctx.restore();
         }
-        if (this._cmpImg2) {
+        if (imgL) {
           ctx.save();
           ctx.beginPath();
           ctx.rect(0, IMG_Y, sx, imgH);
           ctx.clip();
-          ctx.drawImage(this._cmpImg2, fr2.x, fr2.y, fr2.w, fr2.h);
+          ctx.drawImage(imgL, frL.x, frL.y, frL.w, frL.h);
           ctx.restore();
         }
         if (this._cmpSplitX > 0.01 && this._cmpSplitX < 0.99) {
@@ -270,7 +278,7 @@ app.registerExtension({
           ctx.lineTo(sx, IMG_Y + imgH);
           ctx.stroke();
         }
-      } else if (m === 1) {
+      } else if (m === 2) {
         const sy = IMG_Y + imgH * this._cmpSplitY;
         if (this._cmpImg1) {
           ctx.save();
@@ -296,7 +304,7 @@ app.registerExtension({
           ctx.lineTo(w, sy);
           ctx.stroke();
         }
-      } else if (m === 2) {
+      } else if (m === 3) {
         if (this._cmpImg1)
           ctx.drawImage(this._cmpImg1, fr1.x, fr1.y, fr1.w, fr1.h);
         if (this._cmpImg2) {
@@ -319,23 +327,24 @@ app.registerExtension({
     // ── Mouse ────────────────────────────────────────────
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
-      // Mode buttons
-      for (let i = 0; i < 4; i++)
-        if (inside(pos, modeRect(i))) {
-          this._cmpMode = i;
-          app.graph.setDirtyCanvas(true, true);
-          return true;
-        }
-
-      // Show 1 / Show 2 toggle
-      if (inside(pos, toggleRect())) {
-        this._cmpShowWhich = (this._cmpShowWhich + 1) % 3;
+      // Show toggle: toggles between Show 1 and Show 2
+      if (inside(pos, showRect())) {
+        this._cmpShowWhich = this._cmpShowWhich === 2 ? 1 : 2;
         app.graph.setDirtyCanvas(true, true);
         return true;
       }
 
+      // Mode buttons — clicking one deselects Show mode
+      for (let i = 0; i < 5; i++)
+        if (inside(pos, modeRect(i))) {
+          this._cmpMode = i;
+          this._cmpShowWhich = 0;
+          app.graph.setDirtyCanvas(true, true);
+          return true;
+        }
+
       // Opacity slider drag start
-      if (this._cmpMode === 2 && this._cmpSliderGeo) {
+      if (this._cmpMode === 3 && this._cmpSliderGeo) {
         const sg = this._cmpSliderGeo;
         if (
           pos[0] >= sg.x - 8 &&
@@ -362,12 +371,13 @@ app.registerExtension({
         return;
       }
       if (
-        (this._cmpMode === 0 || this._cmpMode === 1) &&
+        this._cmpShowWhich === 0 &&
+        (this._cmpMode <= 2) &&
         (this._cmpImg1 || this._cmpImg2)
       ) {
         const imgW = this.size[0],
           imgH = this.size[1] - IMG_Y;
-        if (this._cmpMode === 0)
+        if (this._cmpMode <= 1)
           this._cmpSplitX = Math.max(0, Math.min(1, pos[0] / imgW));
         else
           this._cmpSplitY = Math.max(0, Math.min(1, (pos[1] - IMG_Y) / imgH));
@@ -384,7 +394,7 @@ app.registerExtension({
 
     const _origWheel = nodeType.prototype.onMouseWheel;
     nodeType.prototype.onMouseWheel = function (e, pos) {
-      if (this._cmpMode === 2 && pos[1] > ROW1_Y) {
+      if (this._cmpMode === 3 && pos[1] > ROW1_Y) {
         this._cmpOpacity = Math.max(
           0,
           Math.min(1, this._cmpOpacity + (e.deltaY > 0 ? -0.05 : 0.05)),
@@ -398,10 +408,10 @@ app.registerExtension({
     const _origLeave = nodeType.prototype.onMouseLeave;
     nodeType.prototype.onMouseLeave = function (e) {
       this._cmpDragging = false;
-      if (this._cmpMode === 0) {
+      if (this._cmpMode <= 1) {
         this._cmpSplitX = 0;
         app.graph.setDirtyCanvas(true, true);
-      } else if (this._cmpMode === 1) {
+      } else if (this._cmpMode === 2) {
         this._cmpSplitY = 0;
         app.graph.setDirtyCanvas(true, true);
       }
