@@ -60,8 +60,26 @@ function paintBtn(ctx, r, label, on) {
   ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
 }
 
+// Setting ID and option list
+const SETTING_DEFAULT_MODE = "Pixaroma.Compare.DefaultMode";
+const DEFAULT_MODE_OPTIONS = [
+  "Show 2", "Show 1", "Left Right", "Right Left",
+  "Up Down", "Overlay", "Difference",
+];
+
 app.registerExtension({
   name: "Pixaroma.Compare",
+  settings: [
+    {
+      id: SETTING_DEFAULT_MODE,
+      name: "Default Compare Mode",
+      type: "combo",
+      defaultValue: "Show 2",
+      options: DEFAULT_MODE_OPTIONS,
+      tooltip: "The initial view mode when a new Compare node is created",
+      category: ["👑 Pixaroma", "Image Compare"],
+    },
+  ],
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaCompare") return;
 
@@ -69,13 +87,27 @@ app.registerExtension({
     const _origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       _origCreated?.apply(this, arguments);
-      this._cmpMode = 0;
+
+      // Read user's preferred default mode from settings
+      const pref = app.ui?.settings?.getSettingValue?.(SETTING_DEFAULT_MODE) || "Show 2";
+      const modeIdx = MODES.indexOf(pref);
+      if (modeIdx !== -1) {
+        this._cmpMode = modeIdx;
+        this._cmpShowWhich = 0;
+      } else if (pref === "Show 1") {
+        this._cmpMode = 0;
+        this._cmpShowWhich = 1;
+      } else {
+        // "Show 2" (default)
+        this._cmpMode = 0;
+        this._cmpShowWhich = 2;
+      }
+
       this._cmpSplitX = 0;
       this._cmpSplitY = 0;
       this._cmpOpacity = 0.5;
       this._cmpImg1 = null;
       this._cmpImg2 = null;
-      this._cmpShowWhich = 2; // 0=compare, 1=img1 only, 2=img2 only
       this.size[0] = INIT_W;
       this.size[1] = INIT_H;
     };

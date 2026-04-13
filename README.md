@@ -94,6 +94,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - 🛠 **Keyboard Shortcuts:** Fixed shortcuts being blocked after interacting with sidebar sliders. Alt/Space/bracket keys now work reliably.
 - 🛠 **Composer — Duplicate Layer Fix:** Duplicated layers with eraser masks no longer share the same mask canvas.
 - 🌓 **Image Compare — Redesigned Controls:** New button order: Show 1 → Left Right → Right Left → Up Down → Overlay → Difference. Show button toggles between image 1 and image 2 solo view. Added Right Left mode for reversed split comparison. Default view shows image 2.
+- ⚙️ **ComfyUI Settings Panel:** Pixaroma now has its own section in ComfyUI Settings (👑 Pixaroma). First setting: choose the default compare mode (Show 1, Show 2, Left Right, Right Left, Up Down, Overlay, Difference).
 - 🔄 **Image Composer Preview Auto-Update:** Node preview now updates automatically after workflow execution when placeholders are connected — no need to open the editor and save manually.
 - 🔧 **Placeholder Ratio Reset:** Changing a placeholder's aspect ratio now properly resets any previous stretching.
 - 🛠 **Vue Frontend Compatibility:** Fixed stale editor references, `graph.links` Map support, and replaced `onDrawForeground` with polling for reliable upstream change detection.

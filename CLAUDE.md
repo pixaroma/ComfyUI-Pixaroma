@@ -154,6 +154,37 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
 
 4. **Execution detection** — Use ComfyUI API events (`execution_start`, `executing` with `null` detail = finished) imported from `/scripts/api.js`. These are the reliable way to detect workflow execution completion.
 
+### ComfyUI Settings Integration
+Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
+
+**How to add a new setting:**
+1. Add a setting object to the `settings` array in the relevant `index.js` entry point:
+   ```js
+   app.registerExtension({
+     name: "Pixaroma.SomeEditor",
+     settings: [
+       {
+         id: "Pixaroma.SomeEditor.SettingName",
+         name: "Human-readable label",
+         type: "combo",              // types: boolean, combo, slider, number, text, color
+         defaultValue: "Option A",
+         options: ["Option A", "Option B"],  // combo only
+         tooltip: "Shown on hover",
+         category: ["👑 Pixaroma", "Sub-category"],
+       },
+     ],
+     // ...
+   });
+   ```
+2. Read the value at runtime: `app.ui.settings.getSettingValue("Pixaroma.SomeEditor.SettingName")`
+3. **No custom icons** — categories only support text/emoji, not SVG or images.
+4. All Pixaroma settings use the `["👑 Pixaroma", "..."]` category prefix for consistency.
+
+**Current settings:**
+| Setting ID | Type | Location | Purpose |
+|------------|------|----------|---------|
+| `Pixaroma.Compare.DefaultMode` | combo | `js/compare/index.js` | Default view mode for new Compare nodes |
+
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
