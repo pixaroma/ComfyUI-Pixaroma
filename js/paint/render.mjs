@@ -83,29 +83,38 @@ proto._renderDisplayImpl = function () {
     ctx.restore();
   }
 
-  // Transform handles + multi-select outlines
+  // Transform handles + multi-select outlines — draw on overlay canvas (not clipped by main canvas)
   if (this.tool === "transform") {
-    // Draw blue outlines for other selected layers
-    this.selectedIndices.forEach((idx) => {
-      if (idx === this.activeIdx) return;
-      const sl = this.layers[idx];
-      if (!sl) return;
-      const corners = this._getLayerCorners(sl);
-      ctx.save();
-      ctx.strokeStyle = "#0ea5e9";
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4, 3]);
-      ctx.beginPath();
-      ctx.moveTo(corners[0].x, corners[0].y);
-      for (let i = 1; i < 4; i++) ctx.lineTo(corners[i].x, corners[i].y);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    });
-    // Draw full handles for the active layer
-    const ly = this.layers[this.activeIdx];
-    if (ly) this._drawTransformHandles(ctx, ly);
+    const oc = this.el.overlayCvs;
+    if (oc) {
+      const octx = oc.getContext("2d");
+      octx.clearRect(0, 0, oc.width, oc.height);
+      const pad = this._overlayPad || 0;
+      octx.save();
+      octx.translate(pad, pad);
+      // Draw blue outlines for other selected layers
+      this.selectedIndices.forEach((idx) => {
+        if (idx === this.activeIdx) return;
+        const sl = this.layers[idx];
+        if (!sl) return;
+        const corners = this._getLayerCorners(sl);
+        octx.save();
+        octx.strokeStyle = "#0ea5e9";
+        octx.lineWidth = 1.5;
+        octx.setLineDash([4, 3]);
+        octx.beginPath();
+        octx.moveTo(corners[0].x, corners[0].y);
+        for (let i = 1; i < 4; i++) octx.lineTo(corners[i].x, corners[i].y);
+        octx.closePath();
+        octx.stroke();
+        octx.setLineDash([]);
+        octx.restore();
+      });
+      // Draw full handles for the active layer
+      const ly = this.layers[this.activeIdx];
+      if (ly) this._drawTransformHandles(octx, ly);
+      octx.restore();
+    }
   }
 
   if (this.showGrid) this._drawGrid(ctx);

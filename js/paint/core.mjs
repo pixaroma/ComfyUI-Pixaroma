@@ -35,7 +35,7 @@ function injectPaintExtraStyles() {
   s.textContent = `
 /* Paint workspace — same dark bg as Composer (unified) */
 /* Paint-specific: canvas viewport */
-.ppx-canvas-viewport { position:absolute; top:0; left:0; transform-origin:0 0; }
+.ppx-canvas-viewport { position:absolute; top:0; left:0; transform-origin:0 0; overflow:visible; }
 .ppx-canvas-viewport canvas { display:block; }
 .ppx-canvas-viewport canvas:first-child { box-shadow:0 4px 32px rgba(0,0,0,.7); border:2px solid rgba(249,115,22,0.45); }
 .ppx-cursor-canvas { position:absolute; top:0; left:0; pointer-events:none; }
@@ -137,10 +137,14 @@ export class PaintStudio {
       hardness: 80,
       shape: "round",
       angle: 0,
-      spacing: 25,
+      spacing: 10,
       scatter: 0,
     };
-    this.fillTol = 30;
+    this.fillTol = 170;
+    // Pen pressure toggles (like Photoshop)
+    this.pressureSize = true;     // pen pressure → brush size
+    this.pressureOpacity = false; // pen pressure → opacity/flow
+    this._currentPointerType = "mouse";
     this.fgColor = "#000000";
     this.bgColor2 = "#ffffff";
     this.colorMode = "fg";
@@ -453,14 +457,14 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
 
     const svCvs = document.createElement("canvas");
     svCvs.className = "ppx-sv-canvas";
-    svCvs.width = 160;
-    svCvs.height = 100;
+    svCvs.width = 260;
+    svCvs.height = 160;
     this.el.svCvs = svCvs;
     colorArea.appendChild(svCvs);
 
     const hCvs = document.createElement("canvas");
     hCvs.className = "ppx-hue-canvas";
-    hCvs.width = 160;
+    hCvs.width = 260;
     hCvs.height = 14;
     this.el.hCvs = hCvs;
     colorArea.appendChild(hCvs);
@@ -493,7 +497,7 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     const resetColorBtn = document.createElement("button");
     resetColorBtn.className = "ppx-swap-btn";
     resetColorBtn.title = "Reset to Black/White (D)";
-    resetColorBtn.textContent = "\u2b1b";
+    resetColorBtn.innerHTML = `<img src="/pixaroma/assets/icons/ui/reset.svg" style="width:14px;height:14px;filter:brightness(0) invert(1);vertical-align:middle;margin-right:2px;"><span style="vertical-align:middle;font-size:11px;">Reset to BW</span>`;
     resetColorBtn.addEventListener("click", () => {
       this.fgColor = "#000000";
       this.bgColor2 = "#ffffff";
@@ -533,6 +537,17 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     hslLbl.textContent = "HSL Adjust";
     colorArea.appendChild(hslLbl);
 
+    // Store base color for HSL adjustments — sliders apply deltas from this base
+    this._hslBaseColor = this.fgColor;
+
+    const captureBase = () => {
+      this._hslBaseColor = this.colorMode === "fg" ? this.fgColor : this.bgColor2;
+      // Reset all sliders to 0 so deltas start fresh from current color
+      if (this.el.hsl_h) { this.el.hsl_h.slider.value = 0; this.el.hsl_h.num.value = 0; }
+      if (this.el.hsl_s) { this.el.hsl_s.slider.value = 0; this.el.hsl_s.num.value = 0; }
+      if (this.el.hsl_l) { this.el.hsl_l.slider.value = 0; this.el.hsl_l.num.value = 0; }
+    };
+
     const mkHslRow = (label, min, max, field) => {
       const row = document.createElement("div");
       row.className = "ppx-hsl-row";
@@ -551,10 +566,14 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
       const update = (v) => {
         slider.value = v;
         num.value = v;
-        this._applyHSLAdjust(field, parseFloat(v));
+        this._applyHSLAdjust();
       };
+      slider.addEventListener("pointerdown", captureBase);
       slider.addEventListener("input", () => update(slider.value));
-      num.addEventListener("change", () => update(num.value));
+      num.addEventListener("change", () => {
+        captureBase();
+        update(num.value);
+      });
       row.append(lbl, slider, num);
       colorArea.appendChild(row);
       this.el[`hsl_${field}`] = { slider, num };
@@ -563,24 +582,50 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     mkHslRow("S", -100, 100, "s");
     mkHslRow("L", -100, 100, "l");
 
-    const swatchLbl = document.createElement("div");
-    swatchLbl.style.cssText =
+    // ── Recent colors (1 row of 8) ──
+    const recentLbl = document.createElement("div");
+    recentLbl.style.cssText =
       "font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;";
-    swatchLbl.textContent = "Recent";
-    colorArea.appendChild(swatchLbl);
-    const swatchGrid = document.createElement("div");
-    swatchGrid.className = "ppx-swatches-grid";
-    this.el.swatchGrid = swatchGrid;
-    for (let i = 0; i < 16; i++) {
+    recentLbl.textContent = "Recent";
+    colorArea.appendChild(recentLbl);
+    const recentGrid = document.createElement("div");
+    recentGrid.className = "ppx-swatches-grid";
+    this.el.swatchGrid = recentGrid;
+    for (let i = 0; i < 8; i++) {
       const sw = document.createElement("div");
       sw.className = "ppx-swatch";
       sw.addEventListener("click", () => {
         if (sw.dataset.color) this._setColorFromHex(sw.dataset.color);
       });
-      swatchGrid.appendChild(sw);
+      recentGrid.appendChild(sw);
     }
-    this._initDefaultSwatches();
-    colorArea.appendChild(swatchGrid);
+    colorArea.appendChild(recentGrid);
+
+    // ── Fixed popular colors (2 rows of 8) ──
+    const paletteLbl = document.createElement("div");
+    paletteLbl.style.cssText =
+      "font-size:9px;color:#666;text-transform:uppercase;letter-spacing:.06em;margin-top:2px;";
+    paletteLbl.textContent = "Palette";
+    colorArea.appendChild(paletteLbl);
+    const paletteColors = [
+      "#000000", "#434343", "#666666", "#999999", "#b7b7b7", "#cccccc", "#d9d9d9", "#ffffff",
+      "#f44336", "#e91e63", "#9c27b0", "#673ab7", "#3f51b5", "#2196f3", "#00bcd4", "#009688",
+      "#4caf50", "#8bc34a", "#cddc39", "#ffeb3b", "#ffc107", "#ff9800", "#ff5722", "#795548",
+      "#ef9a9a", "#ce93d8", "#90caf9", "#80deea", "#a5d6a7", "#fff59d", "#ffcc80", "#bcaaa4",
+    ];
+    const paletteGrid = document.createElement("div");
+    paletteGrid.className = "ppx-swatches-grid";
+    paletteColors.forEach((c) => {
+      const sw = document.createElement("div");
+      sw.className = "ppx-swatch";
+      sw.style.background = c;
+      sw.dataset.color = c;
+      sw.addEventListener("click", () => this._setColorFromHex(c));
+      paletteGrid.appendChild(sw);
+    });
+    colorArea.appendChild(paletteGrid);
+
+    this.swatchHistory = [];
 
     container.appendChild(colorPanel.el);
   }
@@ -851,6 +896,17 @@ Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Bur
     cursorCvs.height = this.docH;
     this.el.cursorCvs = cursorCvs;
     vp.appendChild(cursorCvs);
+
+    // Separate overlay canvas for transform handles (padded so handles extend beyond canvas)
+    this._overlayPad = 500;
+    const overlayCvs = document.createElement("canvas");
+    overlayCvs.className = "ppx-cursor-canvas";
+    overlayCvs.width = this.docW + 2 * this._overlayPad;
+    overlayCvs.height = this.docH + 2 * this._overlayPad;
+    overlayCvs.style.left = -this._overlayPad + "px";
+    overlayCvs.style.top = -this._overlayPad + "px";
+    this.el.overlayCvs = overlayCvs;
+    vp.appendChild(overlayCvs);
 
     // Dimension label (bottom-right of viewport, like other editors)
     const dimLabel = document.createElement("div");

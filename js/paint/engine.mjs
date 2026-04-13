@@ -182,41 +182,69 @@ export class BrushEngine {
 
   // ─── Stroke interpolation ────────────────────────────────
 
-  beginStroke(x, y) {
+  beginStroke(x, y, penPressure) {
     this._strokeRemainder = 0;
-    this._lastPt = { x, y };
     this._velocity = 0;
-    return [{ x, y, pressure: 1.0 }];
+    this._usePenPressure = penPressure != null;
+    const pressure = this._usePenPressure ? penPressure : 1.0;
+    // Smoothing state — removes jitter for natural flow
+    this._smoothX = x;
+    this._smoothY = y;
+    this._smoothPressure = pressure;
+    this._lastPt = { x, y, pressure };
+    return [{ x, y, pressure }];
   }
 
-  continueStroke(x, y, spacingPx) {
+  continueStroke(x, y, spacingPx, penPressure) {
     if (!this._lastPt) return [];
+
+    let rawPressure;
+    if (penPressure != null) {
+      this._usePenPressure = true;
+      rawPressure = penPressure;
+    } else if (this._usePenPressure) {
+      rawPressure = this._smoothPressure;
+    } else {
+      // Mouse: constant pressure (pen toggles handle variation)
+      rawPressure = 1.0;
+    }
+
+    // Use raw position for responsiveness on fast curves
+    // Only smooth pressure — gradual transitions for natural tapering
+    this._smoothPressure += (rawPressure - this._smoothPressure) * 0.25;
+
+    const sx = x;
+    const sy = y;
+    const sp = this._smoothPressure;
     const prev = this._lastPt;
-    const dx = x - prev.x;
-    const dy = y - prev.y;
+    const dx = sx - prev.x;
+    const dy = sy - prev.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    // Velocity-based pressure (slow = more, fast = less)
-    this._velocity = this._velocity * 0.7 + dist * 0.3;
-    const pressure = Math.max(0.2, Math.min(1.0, 1.0 - this._velocity * 0.015));
+    if (dist < 0.5) return [];
 
-    if (dist === 0) return [];
-
+    const prevP = prev.pressure || sp;
     const stamps = [];
-    let offset = Math.max(1, spacingPx) - this._strokeRemainder;
+    const step = Math.max(1, spacingPx);
+    let offset = step - this._strokeRemainder;
     while (offset <= dist) {
       const t = offset / dist;
-      stamps.push({ x: prev.x + dx * t, y: prev.y + dy * t, pressure });
-      offset += Math.max(1, spacingPx);
+      // Interpolate pressure along the segment for smooth tapering
+      const ip = prevP + (sp - prevP) * t;
+      stamps.push({ x: prev.x + dx * t, y: prev.y + dy * t, pressure: ip });
+      offset += step;
     }
-    this._strokeRemainder = dist - (offset - Math.max(1, spacingPx));
-    this._lastPt = { x, y };
+    this._strokeRemainder = dist - (offset - step);
+    this._lastPt = { x: sx, y: sy, pressure: sp };
     return stamps;
   }
 
   endStroke() {
     this._lastPt = null;
     this._strokeRemainder = 0;
+    this._smoothX = 0;
+    this._smoothY = 0;
+    this._smoothPressure = 1;
   }
 
   // ─── Apply stamp to layer ────────────────────────────────
@@ -233,7 +261,10 @@ export class BrushEngine {
     scatter,
     scatterAmt,
   ) {
-    const half = stamp.width / 2;
+    // Pad ratio: stamp canvas includes padding around the brush
+    const pad = Math.ceil(size * 0.15) + 2;
+    const drawDim = size + pad * 2;
+    const half = drawDim / 2;
     const sx =
       scatterAmt > 0 ? x + (Math.random() - 0.5) * scatterAmt * size : x;
     const sy =
@@ -241,15 +272,10 @@ export class BrushEngine {
 
     ctx.save();
     ctx.globalAlpha = flowAlpha;
-    if (isEraser) {
-      ctx.globalCompositeOperation = "destination-out";
-      const tinted = this.tintStamp(stamp, "#000");
-      ctx.drawImage(tinted, sx - half, sy - half);
-    } else {
-      ctx.globalCompositeOperation = "source-over";
-      const tinted = this.tintStamp(stamp, color);
-      ctx.drawImage(tinted, sx - half, sy - half);
-    }
+    const tinted = this.tintStamp(stamp, isEraser ? "#000" : color);
+    if (isEraser) ctx.globalCompositeOperation = "destination-out";
+    // Draw stamp scaled to pressure-adjusted size
+    ctx.drawImage(tinted, sx - half, sy - half, drawDim, drawDim);
     ctx.restore();
   }
 
@@ -360,49 +386,96 @@ export class BrushEngine {
   // ─── Smudge ──────────────────────────────────────────────
 
   smudgeBegin(ctx, x, y, size) {
-    // Sample initial patch at stroke start
+    // Carry-buffer smudge: pick up pixels under the brush and drag them along.
     const r = Math.ceil(size / 2);
-    const sx = Math.max(0, Math.round(x) - r);
-    const sy = Math.max(0, Math.round(y) - r);
-    const sw = Math.min(ctx.canvas.width - sx, size * 2);
-    const sh = Math.min(ctx.canvas.height - sy, size * 2);
-    if (sw <= 0 || sh <= 0) {
-      this._smudgePatch = null;
-      return;
+    const d = r * 2;
+
+    // Create/resize canvases
+    const ensure = (prop) => {
+      if (!this[prop] || this[prop].width !== d) {
+        this[prop] = document.createElement("canvas");
+        this[prop].width = d;
+        this[prop].height = d;
+      }
+    };
+    ensure("_smudgeCarry");
+    ensure("_smudgeTmp");
+
+    // Create/resize soft radial mask
+    if (!this._smudgeMask || this._smudgeMask.width !== d) {
+      this._smudgeMask = document.createElement("canvas");
+      this._smudgeMask.width = d;
+      this._smudgeMask.height = d;
+      const mctx = this._smudgeMask.getContext("2d");
+      const grad = mctx.createRadialGradient(r, r, 0, r, r, r);
+      grad.addColorStop(0, "rgba(0,0,0,1)");
+      grad.addColorStop(0.6, "rgba(0,0,0,0.5)");
+      grad.addColorStop(1, "rgba(0,0,0,0)");
+      mctx.fillStyle = grad;
+      mctx.fillRect(0, 0, d, d);
     }
-    const id = ctx.getImageData(sx, sy, sw, sh);
-    this._smudgePatch = { id, x: sx, y: sy, w: sw, h: sh, brushR: r };
+
+    // Sample initial pixels into carry buffer (masked to brush shape)
+    const cctx = this._smudgeCarry.getContext("2d");
+    cctx.clearRect(0, 0, d, d);
+    const sx = Math.round(x) - r;
+    const sy = Math.round(y) - r;
+    cctx.drawImage(ctx.canvas, sx, sy, d, d, 0, 0, d, d);
+    cctx.globalCompositeOperation = "destination-in";
+    cctx.drawImage(this._smudgeMask, 0, 0);
+    cctx.globalCompositeOperation = "source-over";
+
+    this._smudgeD = d;
+    this._smudgeR = r;
   }
 
   smudge(ctx, x, y, lastX, lastY, size, strength) {
-    const r = Math.ceil(size / 2);
-    // Sample from lastX/lastY (source of smear)
-    const srcX = Math.max(0, Math.round(lastX) - r);
-    const srcY = Math.max(0, Math.round(lastY) - r);
-    const sw = Math.min(ctx.canvas.width - srcX, size);
-    const sh = Math.min(ctx.canvas.height - srcY, size);
-    if (sw <= 0 || sh <= 0) return;
+    const carry = this._smudgeCarry;
+    if (!carry) return;
+    const d = this._smudgeD;
+    const r = this._smudgeR;
+    if (!d) return;
 
-    const patch = ctx.getImageData(srcX, srcY, sw, sh);
-    const tmp = document.createElement("canvas");
-    tmp.width = sw;
-    tmp.height = sh;
-    tmp.getContext("2d").putImageData(patch, 0, 0);
-
-    // Deposit at current position with round mask
+    const str = strength / 100;
     const dstX = Math.round(x) - r;
     const dstY = Math.round(y) - r;
-    const alpha = Math.max(0.05, Math.min(0.95, (strength / 100) * 0.65));
 
+    // Paint the carry buffer onto the canvas (strength controls opacity)
     ctx.save();
-    // Circular clipping mask so smudge is brush-shaped
-    ctx.beginPath();
-    ctx.arc(Math.round(x), Math.round(y), r, 0, Math.PI * 2);
-    ctx.clip();
-    ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = "source-over";
-    ctx.drawImage(tmp, dstX, dstY);
+    ctx.globalAlpha = str;
+    ctx.drawImage(carry, dstX, dstY);
     ctx.restore();
+
+    // Update carry buffer: lerp between old carry and what's now on canvas
+    // carry = oldCarry * keep + canvasSample * (1 - keep)
+    // Higher strength = keep more of the carried paint
+    const keep = 0.5 + str * 0.45; // range: 0.5 (low str) to 0.95 (high str)
+    const tctx = this._smudgeTmp.getContext("2d");
+    const cctx = carry.getContext("2d");
+
+    // Save old carry into tmp
+    tctx.clearRect(0, 0, d, d);
+    tctx.globalAlpha = 1;
+    tctx.globalCompositeOperation = "source-over";
+    tctx.drawImage(carry, 0, 0);
+
+    // Rebuild carry: old carry faded + new canvas sample
+    cctx.clearRect(0, 0, d, d);
+    // Draw old carry at keep ratio
+    cctx.globalAlpha = keep;
+    cctx.globalCompositeOperation = "source-over";
+    cctx.drawImage(this._smudgeTmp, 0, 0);
+    // Draw current canvas at (1-keep) ratio, masked to brush shape
+    tctx.clearRect(0, 0, d, d);
+    tctx.globalAlpha = 1;
+    tctx.globalCompositeOperation = "source-over";
+    tctx.drawImage(ctx.canvas, dstX, dstY, d, d, 0, 0, d, d);
+    tctx.globalCompositeOperation = "destination-in";
+    tctx.drawImage(this._smudgeMask, 0, 0);
+    tctx.globalCompositeOperation = "source-over";
+    cctx.globalAlpha = 1 - keep;
+    cctx.drawImage(this._smudgeTmp, 0, 0);
+    cctx.globalAlpha = 1;
   }
 }
 

@@ -24,11 +24,11 @@ proto._bindColorCanvas = function () {
   this._drawHueBar();
   let dragSV = false,
     dragH = false;
-  this.el.svCvs.addEventListener("mousedown", (e) => {
+  this.el.svCvs.addEventListener("pointerdown", (e) => {
     dragSV = true;
     this._pickSV(e);
   });
-  this.el.hCvs.addEventListener("mousedown", (e) => {
+  this.el.hCvs.addEventListener("pointerdown", (e) => {
     dragH = true;
     this._pickHue(e);
   });
@@ -40,8 +40,8 @@ proto._bindColorCanvas = function () {
     dragSV = false;
     dragH = false;
   };
-  window.addEventListener("mousemove", this._onColorMove);
-  window.addEventListener("mouseup", this._onColorUp);
+  window.addEventListener("pointermove", this._onColorMove);
+  window.addEventListener("pointerup", this._onColorUp);
 };
 
 proto._drawSVGradient = function () {
@@ -133,20 +133,23 @@ proto._setColorFromHex = function (hex, noHsvUpdate) {
   this._addToSwatchHistory(hex);
 };
 
-proto._applyHSLAdjust = function (field, val) {
-  const hex = this.colorMode === "fg" ? this.fgColor : this.bgColor2;
-  const { r, g, b } = hexToRgb(hex);
+proto._applyHSLAdjust = function () {
+  if (!this._hslBaseColor) return;
+  const { r, g, b } = hexToRgb(this._hslBaseColor);
   let { h, s, l } = rgbToHsl(r, g, b);
-  if (field === "h") h = (h + val + 360) % 360;
-  else if (field === "s") s = Math.max(0, Math.min(1, s + val / 100));
-  else if (field === "l") l = Math.max(0, Math.min(1, l + val / 100));
+  const dh = parseFloat(this.el.hsl_h?.slider.value || 0);
+  const ds = parseFloat(this.el.hsl_s?.slider.value || 0);
+  const dl = parseFloat(this.el.hsl_l?.slider.value || 0);
+  h = (h + dh + 360) % 360;
+  s = Math.max(0, Math.min(1, s + ds / 100));
+  l = Math.max(0, Math.min(1, l + dl / 100));
   const { r: nr, g: ng, b: nb } = hslToRgb(h, s, l);
   const newHex = rgbToHex(nr, ng, nb);
   if (this.colorMode === "fg") this.fgColor = newHex;
   else this.bgColor2 = newHex;
   const { r: r2, g: g2, b: b2 } = hexToRgb(newHex);
   this.hsv = rgbToHsv(r2, g2, b2);
-  this._updateColorUI();
+  this._updateColorUI(true);
 };
 
 proto._updateColorUI = function (preserveHSV) {
@@ -163,6 +166,11 @@ proto._updateColorUI = function (preserveHSV) {
   if (!preserveHSV) {
     const { r, g, b } = hexToRgb(hex);
     this.hsv = rgbToHsv(r, g, b);
+    // Reset HSL sliders when color changes from a non-HSL source
+    this._hslBaseColor = hex;
+    if (this.el.hsl_h) { this.el.hsl_h.slider.value = 0; this.el.hsl_h.num.value = 0; }
+    if (this.el.hsl_s) { this.el.hsl_s.slider.value = 0; this.el.hsl_s.num.value = 0; }
+    if (this.el.hsl_l) { this.el.hsl_l.slider.value = 0; this.el.hsl_l.num.value = 0; }
   }
   this._drawSVGradient();
   this._drawHueBar();
@@ -174,33 +182,7 @@ proto._swapColors = function () {
 };
 
 proto._initDefaultSwatches = function () {
-  const defaults = [
-    "#000000",
-    "#333333",
-    "#666666",
-    "#999999",
-    "#cccccc",
-    "#ffffff",
-    "#f66744",
-    "#dc2626",
-    "#16a34a",
-    "#2563eb",
-    "#7c3aed",
-    "#db2777",
-    "#ca8a04",
-    "#fed7aa",
-    "#fecdd3",
-    "#bbf7d0",
-  ];
-  const swatches = this.el.swatchGrid?.children;
-  if (!swatches) return;
-  defaults.forEach((c, i) => {
-    if (swatches[i]) {
-      swatches[i].style.background = c;
-      swatches[i].dataset.color = c.startsWith("#") ? c : "#" + c;
-    }
-  });
-  this.swatchHistory = [...defaults];
+  // Recent swatches start empty — they fill as the user picks colors
 };
 
 proto._addToSwatchHistory = function (hex) {
@@ -208,7 +190,7 @@ proto._addToSwatchHistory = function (hex) {
   this.swatchHistory = [
     hex,
     ...this.swatchHistory.filter((c) => c !== hex),
-  ].slice(0, 16);
+  ].slice(0, 8);
   const swatches = this.el.swatchGrid?.children;
   if (!swatches) return;
   this.swatchHistory.forEach((c, i) => {
@@ -315,15 +297,28 @@ proto._setTool = function (tool) {
     });
 
   // Cursor style per tool
-  const noCursor = ["brush", "pencil", "eraser", "smudge"];
+  // Drawing tools hide OS cursor on the canvas only (custom overlay drawn instead)
+  // Workspace always shows a cursor so it doesn't disappear outside the canvas
+  // Tools that draw their own cursor overlay on the canvas — hide OS cursor there
+  const overlayTools = ["brush", "pencil", "eraser", "smudge"];
+  const fillSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 64 64'><path fill='white' stroke='black' stroke-width='2' d='M43.221,27.554c-4.543-3.009-8.089-6.117-11.744-10.108-1.217-1.329-2.28-2.705-3.211-4.226-.911-1.489-2.389-4.058-1.551-4.962.183-.197.724-.426,1.037-.388,3.849.471,8.306,3.402,11.345,5.864l3.066,2.484c.46.373.803.318,1.33.307l5.494-.119c-1.859-2.25-3.909-3.863-6.024-5.64-3.931-3.302-9.837-7.082-14.873-7.583-2.71-.27-4.751,1.047-6.328,3.104l-3.542,4.619c-1.168.301-2.363.137-3.554.273l-2.884.331-1.813.331c-2.473.452-4.89,1.28-6.869,2.823C.889,16.391-.067,19.241.795,21.957c.833,2.625,2.898,3.557,4.731,5.188l-3.572,4.466c-1.375,1.719-2.036,3.825-1.23,6.02.991,2.698,2.654,4.988,4.573,7.183,4.359,4.985,9.412,9.218,15.063,12.679,3.135,1.92,7.05,3.924,10.609,3.211,1.403-.281,2.441-1.346,3.312-2.455l11.797-14.905,2.122-2.908c.154-3.072.293-6.684-1.134-9.322-.875-1.617-2.368-2.581-3.847-3.561Z'/><path fill='white' stroke='black' stroke-width='2' d='M63.495,35.496c-.023-2.331-.919-4.339-1.938-6.371-1.034-2.062-2.612-3.701-4.433-5.16-2.129-1.706-4.693-2.594-7.391-3.082h-7.236l-.386.146c-.08.03-.06.257-.049.395l5.17,3.559c2.599,1.767,4.224,4.335,4.863,7.418.54,2.602.696,5.224.507,7.887v9.518c.134,2.406,1.568,4.419,3.665,5.124,2.368.797,4.634.056,6.179-1.869,1.083-1.35,1.195-2.985,1.178-4.727l-.129-12.837Z'/></svg>`;
+  const fillCursor = `url("data:image/svg+xml,${encodeURIComponent(fillSvg)}") 2 20, crosshair`;
+  const eyedropperSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 64 64'><path fill='white' stroke='black' stroke-width='2' d='M44.344,34.025l-8.3-8.371c-2.259-2.279-4.562-4.364-6.612-6.83-1.947-2.342-1.195-5.903,1.032-7.668,2.424-1.92,5.755-1.59,7.857.732.463-.189.666-.577.987-.896l7.088-7.039c2.095-2.08,5.11-2.749,8.081-2.168,4.555.891,7.864,5.37,7.496,9.833-.176,2.134-.749,4.229-2.278,5.781l-7.874,7.99c1.699,1.471,2.425,3.306,2.185,5.49-.27,2.459-2.329,4.584-4.806,4.814-1.869.174-3.496-.298-4.856-1.669Z'/><path fill='white' stroke='black' stroke-width='2' d='M33.173,38.938l5.163-5.211,3.029,2.982-17.675,18.008c-4.818,4.894-8.077,2.493-10.576,3.721-1.095.538-1.823,1.506-2.627,2.318-1.936,1.953-4.665,2.244-6.73.545-1.978-1.627-2.426-4.755-.633-6.755l1.307-1.458c.724-.807,1.527-1.67,1.585-2.829l.131-2.64c.115-2.306.807-4.496,2.469-6.181l16.783-17.013c.66-.669,1.124-1.33,1.969-1.874l2.856,3.12-17.271,17.482c-.761.769-1.543,1.502-1.976,2.479-1.358,3.064.972,5.329-2.818,9.838l-1.738,2.068c-.079.094.151.431.238.406l.526-.15c1.002-1.042,1.977-1.977,3.112-2.862,1.685-1.045,3.578-1.426,5.587-1.31,1.596.092,3.099-.296,4.267-1.48l13.023-13.204Z'/></svg>`;
+  const pickCursor = `url("data:image/svg+xml,${encodeURIComponent(eyedropperSvg)}") 1 23, crosshair`;
   const cursorMap = {
-    fill: "copy",
-    pick: "none",
+    fill: fillCursor,
+    pick: pickCursor,
     transform: "move",
     shape: "crosshair",
   };
-  const cur = noCursor.includes(tool) ? "none" : cursorMap[tool] || "crosshair";
-  if (this.el.workspace) this.el.workspace.style.cursor = cur;
+  if (this.el.workspace) {
+    this.el.workspace.style.cursor = cursorMap[tool] || "default";
+  }
+  if (this.el.displayCanvas) {
+    this.el.displayCanvas.style.cursor = overlayTools.includes(tool)
+      ? "none"
+      : "";
+  }
   // Transform panel always visible (no toggle needed)
 
   // Auto-apply transform when switching to any drawing tool
@@ -333,6 +328,11 @@ proto._setTool = function (tool) {
     if (ly && this._hasTransform(ly)) {
       this._applyLayerTransform();
     }
+  }
+
+  // Clear overlay canvas when leaving transform (handles are drawn there)
+  if (prevTool === "transform" && tool !== "transform" && this.el.overlayCvs) {
+    this.el.overlayCvs.getContext("2d").clearRect(0, 0, this.el.overlayCvs.width, this.el.overlayCvs.height);
   }
 
   // When entering transform mode, auto-set pivot to content center
@@ -385,6 +385,20 @@ proto._updateTransformWarn = function () {
     this.el.transformWarn.style.display = pending ? "block" : "none";
 };
 
+proto._syncBrushSizeUI = function () {
+  const v = this.brush.size;
+  if (this.el._sizeRange) {
+    this.el._sizeRange.value = v;
+    if (window._pxfUpdateFill) window._pxfUpdateFill(this.el._sizeRange);
+  }
+  if (this.el._sizeNum) this.el._sizeNum.value = v;
+  // Immediately redraw cursor circle at last known position
+  if (this._lastCursorDoc) {
+    this._updateCursorOverlay(this._lastCursorDoc.x, this._lastCursorDoc.y);
+  }
+  this._setStatus(`Size: ${v}`);
+};
+
 proto._updateToolOptions = function () {
   const bar = this.el.topOpts;
   if (!bar) return;
@@ -410,6 +424,7 @@ proto._updateToolOptions = function () {
     inp.min = min;
     inp.max = max;
     inp.value = val;
+    inp.style.cssText = "width:100px;max-width:100px;flex:0 0 auto;";
     const numEl = document.createElement("input");
     numEl.type = "number";
     numEl.min = min;
@@ -440,54 +455,72 @@ proto._updateToolOptions = function () {
     this.tool === "eraser" ||
     this.tool === "smudge"
   ) {
+    const UI = "/pixaroma/assets/icons/ui/";
+
+    // Helper: create an SVG icon button (white when inactive, white-on-orange when active)
+    const mkIconBtn = (svgName, title, active, extraClass) => {
+      const btn = document.createElement("div");
+      btn.className = "ppx-shape-btn " + (extraClass || "") + (active ? " active" : "");
+      btn.title = title;
+      btn.style.cssText += "padding:3px;user-select:none;";
+      const img = document.createElement("img");
+      img.src = UI + svgName;
+      img.style.cssText = "width:100%;height:100%;filter:invert(1);";
+      btn.appendChild(img);
+      return btn;
+    };
+
+    // ── Brush shapes (left) ──
+    if (this.tool === "brush" || this.tool === "pencil") {
+      const SHAPES = [
+        { id: "round", svg: "round.svg" },
+        { id: "square", svg: "square.svg" },
+        { id: "triangle", svg: "triangle.svg" },
+        { id: "diamond", svg: "diamond.svg" },
+        { id: "star", svg: "star.svg" },
+        { id: "flat", svg: "flat.svg" },
+      ];
+      SHAPES.forEach((sh) => {
+        const btn = mkIconBtn(sh.svg, sh.id, this.brush.shape === sh.id, "ppx-brush-shape");
+        btn.addEventListener("click", () => {
+          this.brush.shape = sh.id;
+          this.engine._stampKey = "";
+          bar.querySelectorAll(".ppx-brush-shape").forEach((b) => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+        bar.appendChild(btn);
+      });
+    }
+
+    // ── Pen pressure toggles ──
+    if (["brush", "pencil", "eraser"].includes(this.tool)) {
+      sep();
+      const mkPenToggle = (svgName, title, active, onToggle) => {
+        const btn = mkIconBtn(svgName, title, active, "ppx-pen-toggle");
+        btn.addEventListener("click", () => {
+          const newVal = !btn.classList.contains("active");
+          btn.classList.toggle("active", newVal);
+          onToggle(newVal);
+        });
+        return btn;
+      };
+      bar.appendChild(mkPenToggle("pen-size.svg", "Pen pressure \u2192 Size", this.pressureSize, (v) => { this.pressureSize = v; }));
+      bar.appendChild(mkPenToggle("pen-opacity.svg", "Pen pressure \u2192 Opacity", this.pressureOpacity, (v) => { this.pressureOpacity = v; }));
+    }
+
+    // ── Reset button ──
+    sep();
     const resetBtn = document.createElement("button");
     resetBtn.className = "pxf-btn-sm";
     resetBtn.title = "Reset brush to defaults";
     resetBtn.textContent = "\u21ba";
-    resetBtn.style.cssText =
-      "width:24px;height:22px;font-size:13px;flex-shrink:0;";
+    resetBtn.style.cssText = "width:24px;height:22px;font-size:13px;flex-shrink:0;";
     resetBtn.addEventListener("click", () => {
       const defaults = {
-        brush: {
-          size: 20,
-          opacity: 100,
-          flow: 80,
-          hardness: 80,
-          shape: "round",
-          angle: 0,
-          spacing: 25,
-          scatter: 0,
-        },
-        pencil: {
-          size: 4,
-          opacity: 100,
-          flow: 100,
-          hardness: 100,
-          shape: "square",
-          angle: 0,
-          spacing: 5,
-          scatter: 0,
-        },
-        eraser: {
-          size: 30,
-          opacity: 100,
-          flow: 100,
-          hardness: 80,
-          shape: "round",
-          angle: 0,
-          spacing: 10,
-          scatter: 0,
-        },
-        smudge: {
-          size: 20,
-          opacity: 100,
-          flow: 50,
-          hardness: 80,
-          shape: "round",
-          angle: 0,
-          spacing: 10,
-          scatter: 0,
-        },
+        brush: { size: 20, opacity: 100, flow: 80, hardness: 80, shape: "round", angle: 0, spacing: 10, scatter: 0 },
+        pencil: { size: 4, opacity: 100, flow: 100, hardness: 100, shape: "square", angle: 0, spacing: 5, scatter: 0 },
+        eraser: { size: 30, opacity: 100, flow: 100, hardness: 80, shape: "round", angle: 0, spacing: 10, scatter: 0 },
+        smudge: { size: 20, opacity: 100, flow: 50, hardness: 80, shape: "round", angle: 0, spacing: 10, scatter: 0 },
       };
       this.brush = { ...(defaults[this.tool] || defaults.brush) };
       if (this.tool === "smudge") this.smudgeStrength = 50;
@@ -496,20 +529,18 @@ proto._updateToolOptions = function () {
     });
     bar.appendChild(resetBtn);
     sep();
+
+    // ── Sliders ──
     const sz = mkRange(1, 500, this.brush.size, (v) => {
       this.brush.size = v;
       this.engine._stampKey = "";
     });
+    this.el._sizeRange = sz.range;
+    this.el._sizeNum = sz.num;
     add("Size", sz.range);
     bar.appendChild(sz.num);
-    // Opacity shown for brush/pencil/eraser only (not smudge)
     if (this.tool !== "smudge") {
-      const op = mkRange(
-        0,
-        100,
-        this.brush.opacity,
-        (v) => (this.brush.opacity = v),
-      );
+      const op = mkRange(0, 100, this.brush.opacity, (v) => (this.brush.opacity = v));
       add("Opacity%", op.range);
       bar.appendChild(op.num);
       const fl = mkRange(0, 100, this.brush.flow, (v) => (this.brush.flow = v));
@@ -524,20 +555,10 @@ proto._updateToolOptions = function () {
     }
 
     if (this.tool === "brush" || this.tool === "pencil") {
-      const sp = mkRange(
-        1,
-        200,
-        this.brush.spacing,
-        (v) => (this.brush.spacing = v),
-      );
+      const sp = mkRange(1, 200, this.brush.spacing, (v) => (this.brush.spacing = v));
       add("Spacing%", sp.range);
       bar.appendChild(sp.num);
-      const sc = mkRange(
-        0,
-        100,
-        this.brush.scatter,
-        (v) => (this.brush.scatter = v),
-      );
+      const sc = mkRange(0, 100, this.brush.scatter, (v) => (this.brush.scatter = v));
       add("Scatter", sc.range);
       bar.appendChild(sc.num);
       const angSlide = document.createElement("input");
@@ -561,32 +582,6 @@ proto._updateToolOptions = function () {
       angN.addEventListener("change", () => angUpdate(angN.value));
       add("Angle\u00b0", angSlide);
       bar.appendChild(angN);
-      sep();
-      const SHAPES = [
-        { id: "round", sym: "\u25cf" },
-        { id: "square", sym: "\u25a0" },
-        { id: "triangle", sym: "\u25b2" },
-        { id: "diamond", sym: "\u25c6" },
-        { id: "star", sym: "\u2605" },
-        { id: "flat", sym: "\u2b2c" },
-        { id: "leaf", sym: "\ud83c\udf43" },
-      ];
-      SHAPES.forEach((sh) => {
-        const btn = document.createElement("div");
-        btn.className =
-          "ppx-shape-btn" + (this.brush.shape === sh.id ? " active" : "");
-        btn.title = sh.id;
-        btn.textContent = sh.sym;
-        btn.addEventListener("click", () => {
-          this.brush.shape = sh.id;
-          this.engine._stampKey = "";
-          bar
-            .querySelectorAll(".ppx-shape-btn")
-            .forEach((b) => b.classList.remove("active"));
-          btn.classList.add("active");
-        });
-        bar.appendChild(btn);
-      });
     }
   }
 
@@ -765,6 +760,14 @@ proto._updateToolOptions = function () {
         });
         strokeArea.append(swLbl, swSlide, swNum);
       }
+      // Refresh slider fills for dynamically created sliders
+      requestAnimationFrame(() => {
+        [fillStrokeArea, polyArea, strokeArea].forEach((area) => {
+          area.querySelectorAll("input[type=range]").forEach((s) => {
+            if (window._pxfUpdateFill) window._pxfUpdateFill(s);
+          });
+        });
+      });
     };
     updateShapeOptions();
   }
@@ -1008,17 +1011,11 @@ proto._updateCursorOverlay = function (docX, docY) {
   const cvs = this.el.cursorCvs;
   if (!cvs) return;
   const ctx = cvs.getContext("2d");
+
   ctx.clearRect(0, 0, cvs.width, cvs.height);
 
-  // Only draw within canvas bounds (with margin)
-  const margin = this.brush.size;
-  if (
-    docX < -margin ||
-    docX > this.docW + margin ||
-    docY < -margin ||
-    docY > this.docH + margin
-  )
-    return;
+  // Hide brush cursor while Alt is held (eyedropper mode)
+  if (this._altDown) return;
 
   const lw = Math.max(0.4, 1 / this.zoom); // 1 screen-pixel line
 
@@ -1068,29 +1065,8 @@ proto._updateCursorOverlay = function (docX, docY) {
     ctx.fillStyle = "rgba(200,200,200,0.8)";
     ctx.fill();
     ctx.restore();
-  } else if (this.tool === "pick") {
-    const cl = 8 / this.zoom;
-    ctx.save();
-    ctx.strokeStyle = "#f66744";
-    ctx.lineWidth = lw * 1.5;
-    // Crosshair
-    ctx.beginPath();
-    ctx.moveTo(docX - cl, docY);
-    ctx.lineTo(docX + cl, docY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(docX, docY - cl);
-    ctx.lineTo(docX, docY + cl);
-    ctx.stroke();
-    // Small circle
-    ctx.beginPath();
-    ctx.arc(docX, docY, 3 / this.zoom, 0, Math.PI * 2);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = lw;
-    ctx.stroke();
-    ctx.restore();
   }
-  // For fill, transform, etc. — use OS cursor, no overlay needed
+  // For pick, fill, transform, etc. — use OS/SVG cursor, no overlay needed
 };
 
 proto._drawCursorShape = function (

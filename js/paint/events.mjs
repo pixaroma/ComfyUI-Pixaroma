@@ -9,34 +9,79 @@ const proto = PaintStudio.prototype;
 
 proto._bindEvents = function () {
   const ws = this.el.workspace;
-  this._onMouseDown = (e) => this._handleMouseDown(e);
-  this._onMouseMove = (e) => this._handleMouseMove(e);
-  this._onMouseUp = (e) => this._handleMouseUp(e);
+  // Prevent browser from intercepting pen/touch gestures
+  ws.style.touchAction = "none";
+  if (this.el.viewport) this.el.viewport.style.touchAction = "none";
+  if (this.el.displayCanvas) this.el.displayCanvas.style.touchAction = "none";
+
+  this._onPointerDown = (e) => {
+    // Don't capture pointer if clicking inside help overlay or other UI panels
+    if (e.target.closest(".pxf-help-overlay")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    // Blur any focused input so keyboard shortcuts work immediately
+    if (document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "SELECT")
+      document.activeElement.blur();
+    // Safety: clear Alt-eyedropper if it got stuck (missed keyup)
+    if (this._altDown && !e.altKey) {
+      this._altDown = false;
+      this._restoreToolCursor();
+    }
+    ws.setPointerCapture(e.pointerId);
+    this._handleMouseDown(e);
+  };
+  this._onPointerMove = (e) => {
+    // Use coalesced events for higher-resolution input (smoother fast strokes)
+    if (this.isDrawing && e.getCoalescedEvents) {
+      const coalesced = e.getCoalescedEvents();
+      if (coalesced.length > 1) {
+        for (const ce of coalesced) {
+          this._handleMouseMove(ce);
+        }
+        return;
+      }
+    }
+    this._handleMouseMove(e);
+  };
+  this._onPointerUp = (e) => {
+    try { ws.releasePointerCapture(e.pointerId); } catch {}
+    this._handleMouseUp(e);
+  };
   this._onWheel = (e) => this._handleWheel(e);
   this._onKeyDown = (e) => this._handleKeyDown(e);
   this._onKeyUp = (e) => this._handleKeyUp(e);
-  ws.addEventListener("mousedown", this._onMouseDown);
-  window.addEventListener("mousemove", this._onMouseMove);
-  window.addEventListener("mouseup", this._onMouseUp);
+  // Reset modifier states when window loses focus (e.g. Alt+Tab)
+  this._onWindowBlur = () => {
+    if (this._altDown) {
+      this._altDown = false;
+      this._restoreToolCursor();
+    }
+    this._spaceDown = false;
+  };
+  ws.addEventListener("pointerdown", this._onPointerDown);
+  window.addEventListener("pointermove", this._onPointerMove);
+  window.addEventListener("pointerup", this._onPointerUp);
   ws.addEventListener("wheel", this._onWheel, { passive: false });
   window.addEventListener("keydown", this._onKeyDown, { capture: true });
   window.addEventListener("keyup", this._onKeyUp, { capture: true });
+  window.addEventListener("blur", this._onWindowBlur);
   this._bindColorCanvas();
 };
 
 proto._unbindEvents = function () {
   const ws = this.el.workspace;
   if (ws) {
-    ws.removeEventListener("mousedown", this._onMouseDown);
+    ws.removeEventListener("pointerdown", this._onPointerDown);
     ws.removeEventListener("wheel", this._onWheel);
   }
-  window.removeEventListener("mousemove", this._onMouseMove);
-  window.removeEventListener("mouseup", this._onMouseUp);
+  window.removeEventListener("pointermove", this._onPointerMove);
+  window.removeEventListener("pointerup", this._onPointerUp);
   window.removeEventListener("keydown", this._onKeyDown, { capture: true });
   window.removeEventListener("keyup", this._onKeyUp, { capture: true });
+  if (this._onWindowBlur) window.removeEventListener("blur", this._onWindowBlur);
   if (this._onColorMove)
-    window.removeEventListener("mousemove", this._onColorMove);
-  if (this._onColorUp) window.removeEventListener("mouseup", this._onColorUp);
+    window.removeEventListener("pointermove", this._onColorMove);
+  if (this._onColorUp) window.removeEventListener("pointerup", this._onColorUp);
 };
 
 proto._handleMouseDown = function (e) {
@@ -78,6 +123,10 @@ proto._handleMouseDown = function (e) {
     if (ly) {
       const hit = this._hitTestHandle(x, y, ly);
       if (hit) {
+        if (ly.locked) {
+          this._setStatus("Layer is locked");
+          return;
+        }
         this._pushHistory();
         this.isDrawing = true;
         const t = ly.transform;
@@ -232,6 +281,7 @@ proto._handleMouseMove = function (e) {
   // Always update cursor overlay
   if (this.el.displayCanvas) {
     const docPt = this._screenToDoc(e.clientX, e.clientY);
+    this._lastCursorDoc = docPt;
     this._updateCursorOverlay(docPt.x, docPt.y);
   }
 
@@ -317,14 +367,14 @@ proto._handleMouseMove = function (e) {
 
   if (!this.isDrawing) return;
   const { x, y } = this._screenToDoc(e.clientX, e.clientY);
-  this._toolMouseMove(x, y);
+  this._toolMouseMove(x, y, e);
 };
 
 proto._handleMouseUp = function (e) {
   this._altPicking = false;
   if (this.isPanning) {
     this.isPanning = false;
-    this.el.workspace.style.cursor = "";
+    this._restoreToolCursor();
   }
   if (this.isDrawing) {
     if (this._handleMode) {
@@ -362,18 +412,36 @@ proto._handleWheel = function (e) {
 
 proto._handleKeyDown = function (e) {
   const ae = document.activeElement;
+  const key = e.key.toLowerCase();
+  // Allow shortcuts even when an input is focused (blur it first to prevent typing)
+  const alwaysAllow = ["alt", " ", "[", "]"];
   if (
     (ae?.tagName === "INPUT" ||
       ae?.tagName === "TEXTAREA" ||
       ae?.tagName === "SELECT") &&
     !ae?.dataset?.pixaromaTrap
-  )
-    return;
-  const key = e.key.toLowerCase();
+  ) {
+    if (alwaysAllow.includes(key)) {
+      ae.blur();
+    } else {
+      return;
+    }
+  }
   if (key === " ") {
     e.preventDefault();
     this._spaceDown = true;
     if (this.el.workspace) this.el.workspace.style.cursor = "grab";
+    return;
+  }
+  if (key === "alt") {
+    e.preventDefault();
+    if (["brush", "pencil", "eraser", "smudge"].includes(this.tool)) {
+      this._altDown = true;
+      const eyedropperSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 64 64'><path fill='white' stroke='black' stroke-width='2' d='M44.344,34.025l-8.3-8.371c-2.259-2.279-4.562-4.364-6.612-6.83-1.947-2.342-1.195-5.903,1.032-7.668,2.424-1.92,5.755-1.59,7.857.732.463-.189.666-.577.987-.896l7.088-7.039c2.095-2.08,5.11-2.749,8.081-2.168,4.555.891,7.864,5.37,7.496,9.833-.176,2.134-.749,4.229-2.278,5.781l-7.874,7.99c1.699,1.471,2.425,3.306,2.185,5.49-.27,2.459-2.329,4.584-4.806,4.814-1.869.174-3.496-.298-4.856-1.669Z'/><path fill='white' stroke='black' stroke-width='2' d='M33.173,38.938l5.163-5.211,3.029,2.982-17.675,18.008c-4.818,4.894-8.077,2.493-10.576,3.721-1.095.538-1.823,1.506-2.627,2.318-1.936,1.953-4.665,2.244-6.73.545-1.978-1.627-2.426-4.755-.633-6.755l1.307-1.458c.724-.807,1.527-1.67,1.585-2.829l.131-2.64c.115-2.306.807-4.496,2.469-6.181l16.783-17.013c.66-.669,1.124-1.33,1.969-1.874l2.856,3.12-17.271,17.482c-.761.769-1.543,1.502-1.976,2.479-1.358,3.064.972,5.329-2.818,9.838l-1.738,2.068c-.079.094.151.431.238.406l.526-.15c1.002-1.042,1.977-1.977,3.112-2.862,1.685-1.045,3.578-1.426,5.587-1.31,1.596.092,3.099-.296,4.267-1.48l13.023-13.204Z'/></svg>`;
+      const pickCursor = `url("data:image/svg+xml,${encodeURIComponent(eyedropperSvg)}") 1 23, crosshair`;
+      if (this.el.workspace) this.el.workspace.style.cursor = pickCursor;
+      if (this.el.displayCanvas) this.el.displayCanvas.style.cursor = pickCursor;
+    }
     return;
   }
   const handled = e.ctrlKey
@@ -468,11 +536,13 @@ proto._handleKeyDown = function (e) {
   } else if (key === "[") {
     e.preventDefault();
     this.brush.size = Math.max(1, this.brush.size - (e.shiftKey ? 10 : 2));
-    this._updateToolOptions();
+    this.engine._stampKey = "";
+    this._syncBrushSizeUI();
   } else if (key === "]") {
     e.preventDefault();
     this.brush.size = Math.min(500, this.brush.size + (e.shiftKey ? 10 : 2));
-    this._updateToolOptions();
+    this.engine._stampKey = "";
+    this._syncBrushSizeUI();
   } else if (key === "delete") {
     // If multiple layers selected, delete them; otherwise clear active layer pixels
     if (this.selectedIndices.size > 1) this._deleteLayer();
@@ -484,17 +554,33 @@ proto._handleKeyUp = function (e) {
   if (e.key === " ") {
     this._spaceDown = false;
     if (!this.isPanning && this.el.workspace) {
-      const noCursor = ["brush", "pencil", "eraser", "smudge"];
-      const cursorMap = {
-        fill: "copy",
-        pick: "none",
-        transform: "move",
-        shape: "crosshair",
-      };
-      const cur = noCursor.includes(this.tool)
-        ? "none"
-        : cursorMap[this.tool] || "crosshair";
-      this.el.workspace.style.cursor = cur;
+      this._restoreToolCursor();
     }
+  }
+  if (e.key === "Alt") {
+    this._altDown = false;
+    this._restoreToolCursor();
+  }
+};
+
+proto._restoreToolCursor = function () {
+  const overlayTools = ["brush", "pencil", "eraser", "smudge"];
+  const fillSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 64 64'><path fill='white' stroke='black' stroke-width='2' d='M43.221,27.554c-4.543-3.009-8.089-6.117-11.744-10.108-1.217-1.329-2.28-2.705-3.211-4.226-.911-1.489-2.389-4.058-1.551-4.962.183-.197.724-.426,1.037-.388,3.849.471,8.306,3.402,11.345,5.864l3.066,2.484c.46.373.803.318,1.33.307l5.494-.119c-1.859-2.25-3.909-3.863-6.024-5.64-3.931-3.302-9.837-7.082-14.873-7.583-2.71-.27-4.751,1.047-6.328,3.104l-3.542,4.619c-1.168.301-2.363.137-3.554.273l-2.884.331-1.813.331c-2.473.452-4.89,1.28-6.869,2.823C.889,16.391-.067,19.241.795,21.957c.833,2.625,2.898,3.557,4.731,5.188l-3.572,4.466c-1.375,1.719-2.036,3.825-1.23,6.02.991,2.698,2.654,4.988,4.573,7.183,4.359,4.985,9.412,9.218,15.063,12.679,3.135,1.92,7.05,3.924,10.609,3.211,1.403-.281,2.441-1.346,3.312-2.455l11.797-14.905,2.122-2.908c.154-3.072.293-6.684-1.134-9.322-.875-1.617-2.368-2.581-3.847-3.561Z'/><path fill='white' stroke='black' stroke-width='2' d='M63.495,35.496c-.023-2.331-.919-4.339-1.938-6.371-1.034-2.062-2.612-3.701-4.433-5.16-2.129-1.706-4.693-2.594-7.391-3.082h-7.236l-.386.146c-.08.03-.06.257-.049.395l5.17,3.559c2.599,1.767,4.224,4.335,4.863,7.418.54,2.602.696,5.224.507,7.887v9.518c.134,2.406,1.568,4.419,3.665,5.124,2.368.797,4.634.056,6.179-1.869,1.083-1.35,1.195-2.985,1.178-4.727l-.129-12.837Z'/></svg>`;
+  const fillCursor = `url("data:image/svg+xml,${encodeURIComponent(fillSvg)}") 2 20, crosshair`;
+  const eyedropperSvg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 64 64'><path fill='white' stroke='black' stroke-width='2' d='M44.344,34.025l-8.3-8.371c-2.259-2.279-4.562-4.364-6.612-6.83-1.947-2.342-1.195-5.903,1.032-7.668,2.424-1.92,5.755-1.59,7.857.732.463-.189.666-.577.987-.896l7.088-7.039c2.095-2.08,5.11-2.749,8.081-2.168,4.555.891,7.864,5.37,7.496,9.833-.176,2.134-.749,4.229-2.278,5.781l-7.874,7.99c1.699,1.471,2.425,3.306,2.185,5.49-.27,2.459-2.329,4.584-4.806,4.814-1.869.174-3.496-.298-4.856-1.669Z'/><path fill='white' stroke='black' stroke-width='2' d='M33.173,38.938l5.163-5.211,3.029,2.982-17.675,18.008c-4.818,4.894-8.077,2.493-10.576,3.721-1.095.538-1.823,1.506-2.627,2.318-1.936,1.953-4.665,2.244-6.73.545-1.978-1.627-2.426-4.755-.633-6.755l1.307-1.458c.724-.807,1.527-1.67,1.585-2.829l.131-2.64c.115-2.306.807-4.496,2.469-6.181l16.783-17.013c.66-.669,1.124-1.33,1.969-1.874l2.856,3.12-17.271,17.482c-.761.769-1.543,1.502-1.976,2.479-1.358,3.064.972,5.329-2.818,9.838l-1.738,2.068c-.079.094.151.431.238.406l.526-.15c1.002-1.042,1.977-1.977,3.112-2.862,1.685-1.045,3.578-1.426,5.587-1.31,1.596.092,3.099-.296,4.267-1.48l13.023-13.204Z'/></svg>`;
+  const pickCursor = `url("data:image/svg+xml,${encodeURIComponent(eyedropperSvg)}") 1 23, crosshair`;
+  const cursorMap = {
+    fill: fillCursor,
+    pick: pickCursor,
+    transform: "move",
+    shape: "crosshair",
+  };
+  if (this.el.workspace) {
+    this.el.workspace.style.cursor = cursorMap[this.tool] || "default";
+  }
+  if (this.el.displayCanvas) {
+    this.el.displayCanvas.style.cursor = overlayTools.includes(this.tool)
+      ? "none"
+      : "";
   }
 };

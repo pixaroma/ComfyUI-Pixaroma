@@ -489,6 +489,16 @@ PixaromaEditor.prototype.attachEvents = function () {
     this.layers.forEach((layer) => {
       if (this.selectedLayerIds.has(layer.id)) {
         const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+        // Deep-copy eraser mask so edits don't affect the original
+        if (layer.eraserMaskCanvas_internal) {
+          const mc = document.createElement("canvas");
+          mc.width = layer.eraserMaskCanvas_internal.width;
+          mc.height = layer.eraserMaskCanvas_internal.height;
+          const mctx = mc.getContext("2d");
+          mctx.drawImage(layer.eraserMaskCanvas_internal, 0, 0);
+          dup.eraserMaskCanvas_internal = mc;
+          dup.eraserMaskCtx_internal = mctx;
+        }
         if (layer.isPlaceholder) {
           const newIdx = nextPHIdx();
           const newName = `image_${newIdx}`;
@@ -939,6 +949,16 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
       this.layers.forEach((layer) => {
         if (this.selectedLayerIds.has(layer.id)) {
           const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+          // Deep-copy eraser mask so edits don't affect the original
+          if (layer.eraserMaskCanvas_internal) {
+            const mc = document.createElement("canvas");
+            mc.width = layer.eraserMaskCanvas_internal.width;
+            mc.height = layer.eraserMaskCanvas_internal.height;
+            const mctx = mc.getContext("2d");
+            mctx.drawImage(layer.eraserMaskCanvas_internal, 0, 0);
+            dup.eraserMaskCanvas_internal = mc;
+            dup.eraserMaskCtx_internal = mctx;
+          }
           if (layer.isPlaceholder) {
             const newIdx = nextPHIdx2();
             const newName = `image_${newIdx}`;

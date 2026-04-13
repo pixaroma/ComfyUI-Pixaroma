@@ -85,6 +85,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 ### **April 13, 2026**
+- 🎨 **Paint Studio — Custom Tool Cursors:** Fill and eyedropper tools now show their actual SVG icons as cursors. Alt+drag eyedropper in brush mode shows the eyedropper cursor.
+- 🎨 **Paint Studio — Color Picker Improvements:** HSL adjust sliders fixed (no more color jumps). Swatch panel redesigned: 1 row of recent colors + 4 rows of fixed palette colors.
+- 🎨 **Paint Studio — Brush Resize (`[`/`]`):** Now responds instantly without delay or jumpiness, cursor updates in real-time.
+- 🎨 **Paint Studio — Layer Lock Enforcement:** Locked layers now block transform, delete, and all drawing tools. Lock icon displays in orange for visibility.
+- 🔧 **Close Button Fix:** X button now closes without saving across all editors (Paint, Composer, 3D Builder).
+- 🔧 **Reset to BW Button:** Redesigned with reset icon and label for clarity.
+- 🛠 **Keyboard Shortcuts:** Fixed shortcuts being blocked after interacting with sidebar sliders. Alt/Space/bracket keys now work reliably.
+- 🛠 **Composer — Duplicate Layer Fix:** Duplicated layers with eraser masks no longer share the same mask canvas.
 - 🔄 **Image Composer Preview Auto-Update:** Node preview now updates automatically after workflow execution when placeholders are connected — no need to open the editor and save manually.
 - 🔧 **Placeholder Ratio Reset:** Changing a placeholder's aspect ratio now properly resets any previous stretching.
 - 🛠 **Vue Frontend Compatibility:** Fixed stale editor references, `graph.links` Map support, and replaced `onDrawForeground` with polling for reliable upstream change detection.

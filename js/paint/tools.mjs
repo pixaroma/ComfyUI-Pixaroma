@@ -9,6 +9,12 @@ proto._toolMouseDown = function (x, y, e) {
   const ly = this.layers[this.activeIdx];
   if (!ly) return;
 
+  // Auto-apply any pending transform before drawing on the layer
+  const drawTools = ["brush", "pencil", "eraser", "smudge", "fill", "shape"];
+  if (drawTools.includes(this.tool) && this._hasTransform(ly)) {
+    this._applyLayerTransform();
+  }
+
   if (this.tool === "pick") {
     this.isDrawing = true;
     const color = this.engine.sampleColor(this.el.displayCanvas, x, y);
@@ -63,7 +69,9 @@ proto._toolMouseDown = function (x, y, e) {
     }
     this._pushHistory();
     this._lineStart = { x, y };
-    const pts = this.engine.beginStroke(x, y);
+    this._currentPointerType = e.pointerType || "mouse";
+    const penPressure = e.pointerType === "pen" ? e.pressure : null;
+    const pts = this.engine.beginStroke(x, y, penPressure);
     pts.forEach((pt) => this._applyBrushStamp(pt.x, pt.y, pt.pressure || 1));
     this._renderDisplay();
     return;
@@ -78,7 +86,7 @@ proto._toolMouseDown = function (x, y, e) {
   }
 };
 
-proto._toolMouseMove = function (x, y) {
+proto._toolMouseMove = function (x, y, e) {
   const ly = this.layers[this.activeIdx];
   if (!ly || !this.isDrawing) return;
 
@@ -93,8 +101,17 @@ proto._toolMouseMove = function (x, y) {
     this.tool === "pencil" ||
     this.tool === "eraser"
   ) {
-    const spacing = Math.max(1, this.brush.size * (this.brush.spacing / 100));
-    const pts = this.engine.continueStroke(x, y, spacing);
+    const penPressure = e?.pointerType === "pen" ? e.pressure : null;
+    // Adaptive spacing: scale with pressure-adjusted size for smooth strokes
+    const isPen = this._currentPointerType === "pen";
+    const sp = this.brush.spacing / 100;
+    let estSize = this.brush.size;
+    if (isPen && this.pressureSize) {
+      const ep = this.engine._smoothPressure || 1;
+      estSize = Math.max(1, this.brush.size * (0.15 + 0.85 * ep));
+    }
+    const spacing = Math.max(1, estSize * sp);
+    const pts = this.engine.continueStroke(x, y, spacing, penPressure);
     pts.forEach((pt) => this._applyBrushStamp(pt.x, pt.y, pt.pressure || 1));
     this._renderDisplay();
     this._setStatus(`X: ${Math.round(x)}  Y: ${Math.round(y)}`);
@@ -103,7 +120,24 @@ proto._toolMouseMove = function (x, y) {
 
   if (this.tool === "smudge") {
     if (this._lastSmudgePt) {
-      this._applySmudge(x, y, this._lastSmudgePt.x, this._lastSmudgePt.y);
+      // Interpolate between last point and current for smooth smudging
+      const lx = this._lastSmudgePt.x, ly2 = this._lastSmudgePt.y;
+      const dist = Math.hypot(x - lx, y - ly2);
+      const step = Math.max(2, this.brush.size * 0.3);
+      if (dist > step) {
+        const steps = Math.ceil(dist / step);
+        let px = lx, py = ly2;
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          const nx = lx + (x - lx) * t;
+          const ny = ly2 + (y - ly2) * t;
+          this._applySmudge(nx, ny, px, py);
+          px = nx;
+          py = ny;
+        }
+      } else {
+        this._applySmudge(x, y, lx, ly2);
+      }
       this._renderDisplay();
     }
     this._lastSmudgePt = { x, y };
@@ -195,7 +229,7 @@ proto._toolMouseUp = function (x, y) {
     this._shapeStart = null;
     // Clear cursor canvas preview
     if (this.el.cursorCvs)
-      this.el.cursorCvs.getContext("2d").clearRect(0, 0, this.docW, this.docH);
+      this.el.cursorCvs.getContext("2d").clearRect(0, 0, this.el.cursorCvs.width, this.el.cursorCvs.height);
   }
 
   this.engine.endStroke();
@@ -209,15 +243,30 @@ proto._applyBrushStamp = function (x, y, pressure) {
   const s = this.brush;
   const hard = this.tool === "pencil" ? 100 : s.hardness;
   const stamp = this.engine.getStamp(s.size, hard, s.shape, s.angle);
-  const flow = (s.flow / 100) * (pressure || 1);
 
-  // Both brush/pencil and eraser accumulate to strokeCanvas; eraser uses black (destination-out on commit)
+  // Only apply pressure from pen strokes, not mouse
+  const isPen = this._currentPointerType === "pen";
+  let drawSize = s.size;
+  let flow = s.flow / 100;
+
+  if (isPen && pressure != null) {
+    const p = pressure;
+    if (this.pressureSize) {
+      drawSize = Math.max(1, s.size * (0.15 + 0.85 * p));
+    }
+    if (this.pressureOpacity) {
+      // Scale flow by pressure squared for visible variation
+      // (linear pressure builds up too fast with overlapping stamps)
+      flow *= p * p;
+    }
+  }
+
   this.engine.applyStampToCtx(
     this.strokeCtx,
     stamp,
     x,
     y,
-    s.size,
+    drawSize,
     this.fgColor,
     flow,
     false,

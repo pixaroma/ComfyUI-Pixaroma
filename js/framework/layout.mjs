@@ -144,12 +144,11 @@ export function createEditorLayout(config) {
     actions.append(undoBtn, redoBtn);
   }
 
-  // Header close button (save + close)
+  // Header close button (close without saving)
   const headerCloseBtn = createButton("✕", {
     variant: "standard",
-    title: "Save & Close",
-    onClick: async () => {
-      if (onSave) await onSave();
+    title: "Close",
+    onClick: () => {
       if (onClose) onClose();
     },
   });

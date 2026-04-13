@@ -115,7 +115,9 @@ export function createLayerItem(config) {
   lock.className = "pxf-layer-icon";
   lock.title = "Toggle lock";
   let _locked = config.locked;
-  lock.appendChild(_layerIcon(_locked ? "lock-locked" : "lock-unlocked"));
+  const lockIcon = _layerIcon(_locked ? "lock-locked" : "lock-unlocked");
+  if (_locked) lockIcon.style.filter = "invert(50%) sepia(100%) saturate(500%) hue-rotate(345deg) brightness(1.1)";
+  lock.appendChild(lockIcon);
   lock.addEventListener("click", (e) => {
     e.stopPropagation();
     config.onLockToggle();
@@ -146,7 +148,9 @@ export function createLayerItem(config) {
     setLocked(b) {
       _locked = b;
       lock.innerHTML = "";
-      lock.appendChild(_layerIcon(b ? "lock-locked" : "lock-unlocked"));
+      const ico = _layerIcon(b ? "lock-locked" : "lock-unlocked");
+      if (b) ico.style.filter = "invert(50%) sepia(100%) saturate(500%) hue-rotate(345deg) brightness(1.1)";
+      lock.appendChild(ico);
     },
   };
 }

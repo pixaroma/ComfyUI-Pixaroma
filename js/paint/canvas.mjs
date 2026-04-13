@@ -23,6 +23,11 @@ proto._applyDocSize = function () {
     this.el.cursorCvs.width = this.docW;
     this.el.cursorCvs.height = this.docH;
   }
+  if (this.el.overlayCvs) {
+    const op = this._overlayPad || 0;
+    this.el.overlayCvs.width = this.docW + 2 * op;
+    this.el.overlayCvs.height = this.docH + 2 * op;
+  }
   if (this.strokeCanvas) {
     this.strokeCanvas.width = this.docW;
     this.strokeCanvas.height = this.docH;
@@ -77,12 +82,18 @@ proto._deleteLayer = function () {
     this._setStatus("Cannot delete last layer");
     return;
   }
-  this._pushFullSnapshot();
   // Delete all selected layers (or just active if no multi-select)
   const toDelete =
     this.selectedIndices.size > 0
       ? [...this.selectedIndices].sort((a, b) => b - a)
       : [this.activeIdx];
+  // Block if any selected layer is locked
+  const lockedName = toDelete.map(i => this.layers[i]).find(l => l?.locked)?.name;
+  if (lockedName) {
+    this._setStatus(`Cannot delete locked layer "${lockedName}"`);
+    return;
+  }
+  this._pushFullSnapshot();
   if (toDelete.length >= this.layers.length) {
     // Delete all but create a fresh empty layer
     this.layers = [];
