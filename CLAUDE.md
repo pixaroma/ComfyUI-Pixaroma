@@ -128,6 +128,32 @@ Editor classes (PaintStudio, Pixaroma3DEditor, PixaromaEditor, CropEditor) use a
 ### Editor Isolation
 Each editor directory is a self-contained sub-project. When working on a specific editor, **only read and modify files in that editor's directory** (e.g. `js/paint/*.mjs` and `nodes/node_paint.py`). The only shared dependencies across all editors are `js/framework/` and `js/shared/` — be cautious modifying these as changes affect every editor.
 
+### ComfyUI Vue Frontend Compatibility
+ComfyUI's new Vue 3 frontend introduces several behavioral differences from the legacy LiteGraph frontend. These patterns were discovered during debugging and must be followed:
+
+1. **`onDrawForeground` does not fire** — The Vue frontend does not call LiteGraph rendering hooks. Use `setInterval` polling instead for detecting upstream changes (see `js/composer/index.js` for the polling pattern).
+
+2. **Editor overlay removal** — Vue may remove editor overlay elements from the DOM without triggering close callbacks. Always use the `isEditorOpen(node)` pattern that checks `overlay.isConnected` rather than trusting `node._pixaromaEditor` references:
+   ```js
+   function isEditorOpen(node) {
+     if (!node._pixaromaEditor) return false;
+     const overlay = node._pixaromaEditor.overlay;
+     if (!overlay || !overlay.isConnected) {
+       node._pixaromaEditor = null;
+       return false;
+     }
+     return true;
+   }
+   ```
+
+3. **`graph.links` may be a Map** — In newer ComfyUI versions, `graph.links` can be a `Map` instead of a plain object. Always try both access patterns:
+   ```js
+   let link = graph.links?.[linkId];
+   if (!link && typeof graph.links?.get === "function") link = graph.links.get(linkId);
+   ```
+
+4. **Execution detection** — Use ComfyUI API events (`execution_start`, `executing` with `null` detail = finished) imported from `/scripts/api.js`. These are the reliable way to detect workflow execution completion.
+
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)

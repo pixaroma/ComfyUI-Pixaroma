@@ -230,7 +230,11 @@ export function getUpstreamImageUrlForNode(node, inputName) {
   if (!input || input.link == null) return null;
   const graph = node.graph;
   if (!graph) return null;
-  const link = graph.links[input.link];
+
+  // Support both plain object and Map for graph.links
+  const linkId = input.link;
+  let link = graph.links?.[linkId];
+  if (!link && typeof graph.links?.get === "function") link = graph.links.get(linkId);
   if (!link) return null;
   const srcNode = graph.getNodeById(link.origin_id);
   if (!srcNode) return null;
@@ -267,10 +271,15 @@ PixaromaEditor.prototype.changePlaceholderRatio = function (layer, ratioKey) {
     h = Math.round(w * (rh / rw));
   }
 
+  // Reset scale so the new ratio isn't distorted by previous stretching
+  layer.scaleX = 1;
+  layer.scaleY = 1;
+
   layer.img = this._makePlaceholderImage(w, h, layer.placeholderColor, layer.name, (bitmapImg) => {
     layer.img = bitmapImg;
     this.draw();
   });
+  this.ui.updateActiveLayerUI();
   this.draw();
   this.pushHistory();
 };

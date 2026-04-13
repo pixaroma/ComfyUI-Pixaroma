@@ -84,6 +84,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **April 13, 2026**
+- 🔄 **Image Composer Preview Auto-Update:** Node preview now updates automatically after workflow execution when placeholders are connected — no need to open the editor and save manually.
+- 🔧 **Placeholder Ratio Reset:** Changing a placeholder's aspect ratio now properly resets any previous stretching.
+- 🛠 **Vue Frontend Compatibility:** Fixed stale editor references, `graph.links` Map support, and replaced `onDrawForeground` with polling for reliable upstream change detection.
+
 ### **April 02, 2026**
 - 🔄 **ComfyUI 2.0 Compatibility:** Core nodes updated for the latest engine.
 - 🏷 **Labels Node:** Stability fixes and performance improvements.
