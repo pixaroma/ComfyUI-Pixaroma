@@ -120,15 +120,16 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
   this._outlinePass.downSampleRatio = 1;
-  // Use the SAME Pixaroma orange for both visible and hidden passes.
-  // hiddenEdgeColor = black was causing parts of the silhouette to
-  // vanish whenever a pixel was even slightly occluded (contact edges
-  // with the ground plane, edges near the gizmo handles, or shallow-
-  // angle facets on pyramid-like shapes where the depth-test briefly
-  // flipped). Same colour both ways means the silhouette never
-  // disappears regardless of what's in front.
+  // Visible outline = Pixaroma orange. Hidden (occluded) outline =
+  // black so it disappears against the scene background. With the
+  // ground at y=-0.002 the bottom of every object is above ground
+  // plane, so the "visible" pass catches the full silhouette — we no
+  // longer need to colour the hidden pass too. Keeping hidden black
+  // also means the silhouette can't bleed through gizmo arrows (they
+  // show up on top, depth-occluding the outline, which then falls
+  // into hiddenEdgeColor = invisible).
   this._outlinePass.visibleEdgeColor.set(0xf66744);
-  this._outlinePass.hiddenEdgeColor.set(0xf66744);
+  this._outlinePass.hiddenEdgeColor.set(0x000000);
   this._composer.addPass(this._outlinePass);
   this._composer.addPass(new pp.OutputPass());
 
