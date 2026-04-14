@@ -115,13 +115,20 @@ Pixaroma3DEditor.prototype._initThree = function () {
   // 1.0 in the shader and, after sRGB encoding, shifted from the
   // intended Pixaroma red-orange toward yellow. 3 keeps the colour
   // true at the cost of a slightly softer AA rim.
-  this._outlinePass.edgeStrength = 3;
+  this._outlinePass.edgeStrength = 4;
   this._outlinePass.edgeGlow = 0;
   this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
   this._outlinePass.downSampleRatio = 1;
+  // Use the SAME Pixaroma orange for both visible and hidden passes.
+  // hiddenEdgeColor = black was causing parts of the silhouette to
+  // vanish whenever a pixel was even slightly occluded (contact edges
+  // with the ground plane, edges near the gizmo handles, or shallow-
+  // angle facets on pyramid-like shapes where the depth-test briefly
+  // flipped). Same colour both ways means the silhouette never
+  // disappears regardless of what's in front.
   this._outlinePass.visibleEdgeColor.set(0xf66744);
-  this._outlinePass.hiddenEdgeColor.set(0x000000);
+  this._outlinePass.hiddenEdgeColor.set(0xf66744);
   this._composer.addPass(this._outlinePass);
   this._composer.addPass(new pp.OutputPass());
 
