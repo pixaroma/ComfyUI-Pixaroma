@@ -299,6 +299,14 @@ Pixaroma3DEditor.prototype._applySnap = function (state) {
           );
           const idx = this.objects.indexOf(ph);
           if (idx === -1) return;
+          // Detach the gizmo from the placeholder BEFORE removing it
+          // from the scene. TransformControls keeps a direct object
+          // reference and logs "must be part of the scene graph" if
+          // we remove without detaching first.
+          const wasAttached = this.transformCtrl?.object === ph;
+          const wasSelected = this.selectedObjs.has(ph);
+          const wasActive = this.activeObj === ph;
+          if (wasAttached) this.transformCtrl.detach();
           this.scene.remove(ph);
           disposeObject(ph);
           group.traverse((c) => {
@@ -314,6 +322,14 @@ Pixaroma3DEditor.prototype._applySnap = function (state) {
           group.userData = { ...ph.userData, keepOriginalMaterials: true };
           this.objects[idx] = group;
           this.scene.add(group);
+          if (wasSelected) {
+            this.selectedObjs.delete(ph);
+            this.selectedObjs.add(group);
+          }
+          if (wasActive) this.activeObj = group;
+          if (wasAttached && !group.userData.locked)
+            this.transformCtrl.attach(group);
+          if (this._syncOutlineSelection) this._syncOutlineSelection();
           this._updateLayers();
           this._updateShadowFrustum?.();
         } catch (e) {

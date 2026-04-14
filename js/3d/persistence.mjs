@@ -272,6 +272,12 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         // object ordering don't shuffle.
         const idx = this.objects.indexOf(placeholder);
         if (idx === -1) return; // placeholder was deleted mid-load
+        // Detach gizmo before removing the placeholder from the scene —
+        // TransformControls errors otherwise.
+        const wasAttached = this.transformCtrl?.object === placeholder;
+        const wasSelected = this.selectedObjs.has(placeholder);
+        const wasActive = this.activeObj === placeholder;
+        if (wasAttached) this.transformCtrl.detach();
         this.scene.remove(placeholder);
         placeholder.geometry?.dispose();
         placeholder.material?.dispose();
@@ -284,15 +290,14 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         group.userData.keepOriginalMaterials = true;
         this.objects[idx] = group;
         this.scene.add(group);
-        if (this.activeObj === placeholder) {
-          this.activeObj = group;
-          if (this.selectedObjs.has(placeholder)) {
-            this.selectedObjs.delete(placeholder);
-            this.selectedObjs.add(group);
-          }
-          if (this._syncOutlineSelection) this._syncOutlineSelection();
-          if (!group.userData.locked) this.transformCtrl?.attach(group);
+        if (wasSelected) {
+          this.selectedObjs.delete(placeholder);
+          this.selectedObjs.add(group);
         }
+        if (wasActive) this.activeObj = group;
+        if (wasAttached && !group.userData.locked)
+          this.transformCtrl.attach(group);
+        if (this._syncOutlineSelection) this._syncOutlineSelection();
         this._updateLayers();
         this._updateShadowFrustum?.();
       } catch (e) {

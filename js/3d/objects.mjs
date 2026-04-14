@@ -33,11 +33,11 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
   this._id++;
   if (!gp) gp = this._defaultGeoParams(type);
   const geo = this._makeGeo(type, gp);
-  const color = new THREE.Color().setHSL(
-    Math.random() * 0.1 + 0.06,
-    0.45,
-    0.62,
-  );
+  // Fixed Pixaroma clay/cream colour across every new primitive so
+  // objects added sequentially match each other. Same hex as the
+  // imported-group default (bunny, future imports) so there's a
+  // single consistent "default shape colour" throughout the editor.
+  const color = new THREE.Color("#c4a882");
   const mat = new THREE.MeshStandardMaterial({
     color,
     roughness: 0.55,

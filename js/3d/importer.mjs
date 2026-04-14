@@ -50,13 +50,27 @@ export async function smoothGroupNormals(group) {
   group.traverse((o) => {
     if (!o.isMesh || !o.geometry) return;
     try {
-      const merged = mergeVertices(o.geometry, 1e-4);
+      // Drop the baked normal attribute FIRST — otherwise mergeVertices
+      // uses the existing (flat, per-face) normals as part of its
+      // vertex-equality test and keeps every face vertex separate, so
+      // the mesh merges nothing and stays flat-shaded.
+      const src = o.geometry;
+      if (src.attributes.normal) src.deleteAttribute("normal");
+      // Loose tolerance so numerically-close positions from GLB export
+      // rounding still collapse into shared vertices.
+      const merged = mergeVertices(src, 1e-3);
       merged.computeVertexNormals();
       o.geometry.dispose();
       o.geometry = merged;
+      // Belt-and-braces: also force the material to use vertex normals.
+      if (o.material && "flatShading" in o.material) {
+        o.material.flatShading = false;
+        o.material.needsUpdate = true;
+      }
     } catch {
       // If mergeVertices chokes on unusual attribute layouts, fall
       // back to a plain recompute so we at least don't crash.
+      if (o.geometry.attributes.normal) o.geometry.deleteAttribute("normal");
       o.geometry.computeVertexNormals();
     }
   });
