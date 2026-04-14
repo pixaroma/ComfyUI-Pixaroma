@@ -258,14 +258,14 @@ Pixaroma3DEditor.prototype._initThree = function () {
       new THREE.Vector3(-500, 0, 0),
       new THREE.Vector3( 500, 0, 0),
     ]),
-    // Dark gray reads as "subtle but visible" against the mid-gray
-    // scene background. Lighter grays blended with the bg and were
-    // easy to miss. 70% opacity keeps it from competing with the
-    // gizmo arrows while still being obvious during drag.
+    // White drag indicator per the user's mockup — reads cleanly on
+    // both the light top face and the dark shadowed sides of a cube,
+    // and unambiguously signals "this is the axis you're moving
+    // along" without being confused for an outline.
     new THREE.LineBasicMaterial({
-      color: 0x333333,
+      color: 0xffffff,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.85,
       depthTest: false,
     }),
   );
