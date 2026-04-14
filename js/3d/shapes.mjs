@@ -273,6 +273,114 @@ export const SHAPES = {
       return g;
     },
   },
+  ring: {
+    icon: "ring.svg",
+    label: "Ring",
+    category: "toroidal",
+    live: true,
+    params: [
+      { key: "innerRadius", label: "Inner R",  min: 0.05, max: 2.8, step: 0.05 },
+      { key: "outerRadius", label: "Outer R",  min: 0.1,  max: 3,   step: 0.05 },
+      { key: "segments",    label: "Segments", min: 8,    max: 128, step: 1 },
+    ],
+    defaults: { innerRadius: 0.3, outerRadius: 0.5, segments: 32 },
+    // Same constraint as tube — keep Inner R below Outer R, no collapse.
+    constraint: (p, key, v) => {
+      if (key === "outerRadius") return Math.max(v, p.innerRadius + 0.01);
+      if (key === "innerRadius") return Math.min(v, p.outerRadius - 0.01);
+      return v;
+    },
+    build: (THREE, p) => {
+      // Flat annulus on the XZ plane. Three's RingGeometry sits on the
+      // XY plane by default — rotate so it lies flat on the floor.
+      const innerR = Math.min(p.innerRadius, p.outerRadius - 0.01);
+      const outerR = Math.max(p.outerRadius, p.innerRadius + 0.01);
+      const g = new THREE.RingGeometry(innerR, outerR, p.segments);
+      g.rotateX(-Math.PI / 2);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
+  gear: {
+    icon: "gear.svg",
+    label: "Gear",
+    category: "toroidal",
+    live: false, // toothed ExtrudeGeometry is expensive — debounce
+    params: [
+      { key: "outerRadius", label: "Outer R",     min: 0.3,  max: 3,   step: 0.05 },
+      { key: "innerRadius", label: "Inner Hole",  min: 0.05, max: 2,   step: 0.05 },
+      { key: "teeth",       label: "Teeth",       min: 4,    max: 48,  step: 1 },
+      { key: "thickness",   label: "Thickness",   min: 0.05, max: 2,   step: 0.05 },
+      { key: "toothDepth",  label: "Tooth Depth", min: 0.02, max: 0.5, step: 0.01 },
+    ],
+    defaults: { outerRadius: 0.8, innerRadius: 0.2, teeth: 12, thickness: 0.3, toothDepth: 0.12 },
+    // Three constraints to keep the gear geometrically valid:
+    //   - Tooth Depth must leave room for the inner hole and a wall.
+    //   - Inner Hole must fit inside the tooth-base radius.
+    //   - Outer R must be wide enough to host the current teeth + hole.
+    // Without these, dragging any one slider can produce overlapping
+    // outer/inner contours and the ExtrudeGeometry collapses to nothing.
+    constraint: (p, key, v) => {
+      if (key === "innerRadius") {
+        const maxInner = p.outerRadius - p.toothDepth - 0.04;
+        return Math.min(v, Math.max(0.05, maxInner));
+      }
+      if (key === "toothDepth") {
+        const maxDepth = p.outerRadius - p.innerRadius - 0.04;
+        return Math.min(v, Math.max(0.02, maxDepth));
+      }
+      if (key === "outerRadius") {
+        const minOuter = p.innerRadius + p.toothDepth + 0.04;
+        return Math.max(v, minOuter);
+      }
+      return v;
+    },
+    build: (THREE, p) => {
+      // Build a flat 2D gear silhouette as a Shape: walk N teeth around
+      // the rim, alternating between the base radius (gap between teeth)
+      // and the tip radius (top of tooth). Punch a circular hole in the
+      // middle, then extrude on Z and rotate so the gear stands flat
+      // (axis on Y). Bevel softens the edges so reflections catch.
+      const teeth = Math.max(4, Math.round(p.teeth));
+      const tipR  = p.outerRadius;
+      const baseR = Math.max(p.outerRadius - p.toothDepth, p.innerRadius + 0.02);
+      const shape = new THREE.Shape();
+      const stepAngle = (Math.PI * 2) / teeth;
+      for (let i = 0; i < teeth; i++) {
+        const a0 = i * stepAngle;
+        const a1 = a0 + stepAngle * 0.25;
+        const a2 = a0 + stepAngle * 0.55;
+        const a3 = a0 + stepAngle * 0.8;
+        const pts = [
+          [baseR, a0], [tipR, a1], [tipR, a2], [baseR, a3],
+        ];
+        pts.forEach(([r, a], idx) => {
+          const x = Math.cos(a) * r, y = Math.sin(a) * r;
+          if (i === 0 && idx === 0) shape.moveTo(x, y);
+          else shape.lineTo(x, y);
+        });
+      }
+      shape.closePath();
+      const holeR = Math.min(p.innerRadius, baseR - 0.02);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      const g = new THREE.ExtrudeGeometry(shape, {
+        depth: p.thickness,
+        bevelEnabled: true,
+        bevelThickness: p.thickness * 0.08,
+        bevelSize: p.thickness * 0.06,
+        bevelSegments: 2,
+        curveSegments: 4,
+      });
+      // Stand the gear flat (axis on Y), centered around origin so the
+      // bounding-box snap in _addObject lands the lowest face at y=0.
+      g.rotateX(-Math.PI / 2);
+      g.translate(0, -p.thickness / 2, 0);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
   plane: {
     icon: "plane.svg",
     label: "Plane",
