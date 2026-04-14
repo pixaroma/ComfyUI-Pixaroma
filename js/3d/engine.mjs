@@ -99,24 +99,21 @@ Pixaroma3DEditor.prototype._initThree = function () {
   // this.renderer.render() directly, so the exported PNG never has the
   // selection outline baked in — no need to toggle outline visibility.
   const pp = getPostprocessing();
-  // Multisample render target so the composer keeps the renderer's
-  // antialias quality through the post pipeline. Without `samples`
-  // composer outputs to a non-MSAA buffer and silhouette edges
-  // (especially the OutlinePass orange) read as jagged staircase.
-  const composerRT = new THREE.WebGLRenderTarget(w, h, {
-    samples: 4,
-    type: THREE.HalfFloatType,
-  });
-  this._composer = new pp.EffectComposer(this.renderer, composerRT);
+  this._composer = new pp.EffectComposer(this.renderer);
   this._composer.setSize(w, h);
   this._composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   this._composer.addPass(new pp.RenderPass(this.scene, this.camera));
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  this._outlinePass.edgeStrength = 6;
+  // edgeStrength scales how strongly the outline is mixed over the
+  // scene; high values make the colour read as solid Pixaroma orange
+  // instead of a faint pink fade. edgeThickness 2 gives the silhouette
+  // enough body to read uniformly around the object instead of the
+  // patchy "incomplete contour" look of a thin 1px line.
+  this._outlinePass.edgeStrength = 10;
   this._outlinePass.edgeGlow = 0;
-  this._outlinePass.edgeThickness = 1.5;
+  this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
   // Full-resolution edge detection — the default half-res produced
   // "ray" streaks extending from sharp silhouettes.
@@ -218,16 +215,19 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
-  // TransformControls' helper subgroup includes long dashed AXIS lines
-  // that appear during hover/drag, extending across the scene from the
+  // TransformControls' helper subgroup includes long AXIS lines that
+  // appear during hover/drag, extending across the scene from the
   // gizmo origin. They're rendered as Line / LineSegments primitives
-  // (the gizmo arrows themselves are Mesh objects), so hiding all
-  // Line-type children kills the cross-scene indicators while keeping
-  // arrows, balls, and pickers intact. Also keeps OutlinePass from
-  // catching them as part of the visible scene.
+  // (gizmo arrows themselves are Mesh). Setting o.visible = false
+  // doesn't stick — TransformControls flips visibility back on hover.
+  // Permanent removal is the only reliable way: collect line objects
+  // in a first pass (mutating the tree mid-traverse breaks iteration)
+  // and detach them from their parents in a second pass.
+  const linesToRemove = [];
   helper.traverse((o) => {
-    if (o.isLine || o.isLineSegments) o.visible = false;
+    if (o.isLine || o.isLineSegments || o.isLineLoop) linesToRemove.push(o);
   });
+  linesToRemove.forEach((o) => o.parent?.remove(o));
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
