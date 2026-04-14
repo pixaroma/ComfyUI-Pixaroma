@@ -259,7 +259,13 @@ export const SHAPES = {
     ],
     defaults: { radius: 0.5, height: 1.2, sides: 16 },
     build: (THREE, p) => {
+      // Same trick as pyramid: ConeGeometry centers on the origin so its
+      // base sits at y=-h/2. _rebuildObjectGeometry swaps geometry but
+      // doesn't re-snap position, so when Height changes mid-edit the
+      // base would drift down. Translate the geometry up by h/2 so the
+      // base is at local y=0 — the apex is the only thing that grows.
       const g = new THREE.ConeGeometry(p.radius, p.height, p.sides);
+      g.translate(0, p.height / 2, 0);
       g.computeVertexNormals();
       return g;
     },

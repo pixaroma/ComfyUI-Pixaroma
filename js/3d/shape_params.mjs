@@ -273,11 +273,31 @@ Pixaroma3DEditor.prototype._buildShapeParamRow = function (obj, shape, f, locked
 
 // Swap the mesh's geometry using the registry builder.
 // Preserves transform, material, userData. Disposes old geometry.
+//
+// When a shape param changes (e.g. cone Height, sphere Radius), the new
+// geometry typically has a different local bb.min.y than the old one.
+// Without compensation, the world-space "bottom" of the mesh drifts and
+// the object appears to float / sink as the user drags a slider.
+//
+// The fix preserves the world-space bottom by shifting position.y by
+// the delta in local bb.min.y (scaled by the current Y scale to handle
+// non-uniform scaling). Plane has special positioning in _addObject and
+// is excluded.
 Pixaroma3DEditor.prototype._rebuildObjectGeometry = function (obj) {
   const THREE = getTHREE();
   const type = obj.userData.type;
   const gp = obj.userData.geoParams;
+  let oldMinY = 0;
+  if (type !== "plane" && obj.geometry) {
+    obj.geometry.computeBoundingBox();
+    oldMinY = obj.geometry.boundingBox?.min.y ?? 0;
+  }
   const newGeo = buildGeometry(THREE, type, gp);
   obj.geometry?.dispose();
   obj.geometry = newGeo;
+  if (type !== "plane") {
+    newGeo.computeBoundingBox();
+    const newMinY = newGeo.boundingBox?.min.y ?? 0;
+    obj.position.y += (oldMinY - newMinY) * (obj.scale.y || 1);
+  }
 };
