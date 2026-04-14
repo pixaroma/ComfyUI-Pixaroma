@@ -5,48 +5,19 @@ import { Pixaroma3DEditor, getTHREE, createLayerItem } from "./core.mjs";
 import { buildGeometry, getShapeDefaults } from "./shapes.mjs";
 
 // ─── Selection outline ────────────────────────────────────
-// Blender-style orange outline — rendered as a slightly larger copy of
-// the mesh using BackSide material (inverted-hull trick). Only the back
-// faces are visible at silhouette edges, so we see a crisp orange
-// contour without tinting the object's actual color. Much less visually
-// disruptive than the old emissive-tint approach — the user's chosen
-// color stays exactly what it looks like when deselected.
+// Blender-style orange outline rendered via OutlinePass postprocessing
+// (screen-space). The outline has uniform thickness in screen pixels
+// regardless of object scale, stretch, or geometry — so a flat plane,
+// a squashed blob, and a tall box all get the same crisp 1-pixel
+// outline. Much cleaner than the inverted-hull approach, which scales
+// with the mesh and reads as "fat" on stretched objects.
+//
+// Sync point: any code that mutates this.selectedObjs should call
+// _syncOutlineSelection() at the end so the pass picks up the new set.
 
-const OUTLINE_COLOR = 0xff6a00; // Pixaroma orange
-const OUTLINE_SCALE = 1.04;
-
-Pixaroma3DEditor.prototype._addOutline = function (mesh) {
-  const THREE = getTHREE();
-  if (mesh._p3dOutline) return;
-  const outlineMat = new THREE.MeshBasicMaterial({
-    color: OUTLINE_COLOR,
-    side: THREE.BackSide,
-    depthWrite: false,
-  });
-  const outline = new THREE.Mesh(mesh.geometry, outlineMat);
-  outline.scale.setScalar(OUTLINE_SCALE);
-  outline.castShadow = false;
-  outline.receiveShadow = false;
-  outline.userData._isOutline = true;
-  // Ignore raycasts so clicks pass through to the real mesh underneath.
-  outline.raycast = () => {};
-  mesh.add(outline);
-  mesh._p3dOutline = outline;
-};
-
-Pixaroma3DEditor.prototype._removeOutline = function (mesh) {
-  if (!mesh._p3dOutline) return;
-  mesh.remove(mesh._p3dOutline);
-  mesh._p3dOutline.material.dispose();
-  mesh._p3dOutline = null;
-};
-
-// Hide all outlines (used by save render so the PNG doesn't show the
-// selection highlight baked in). Returns list of outlines that were
-// visible so callers can restore them.
-Pixaroma3DEditor.prototype._setOutlinesVisible = function (visible) {
-  for (const m of this.objects) {
-    if (m._p3dOutline) m._p3dOutline.visible = visible;
+Pixaroma3DEditor.prototype._syncOutlineSelection = function () {
+  if (this._outlinePass) {
+    this._outlinePass.selectedObjects = [...this.selectedObjs];
   }
 };
 
@@ -126,7 +97,6 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this._pushUndo();
   this.transformCtrl.detach();
   for (const o of this.selectedObjs) {
-    this._removeOutline(o);
     this.scene.remove(o);
     o.geometry.dispose();
     o.material.dispose();
@@ -136,6 +106,7 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this.activeObj = null;
   this._updateLayers();
   this._syncProps();
+  this._syncOutlineSelection();
   // Shape panel sliders reference the deleted object's geoParams — wipe
   // them so the right sidebar shows the "Select an object…" placeholder
   // immediately instead of lingering until the next click.
@@ -169,19 +140,14 @@ Pixaroma3DEditor.prototype._dupSelected = function () {
 };
 
 Pixaroma3DEditor.prototype._select = function (mesh, additive) {
-  if (!additive) {
-    for (const o of this.selectedObjs) this._removeOutline(o);
-    this.selectedObjs.clear();
-  }
+  if (!additive) this.selectedObjs.clear();
   if (mesh) {
     if (this.selectedObjs.has(mesh) && additive) {
-      this._removeOutline(mesh);
       this.selectedObjs.delete(mesh);
       this.activeObj =
         this.selectedObjs.size > 0 ? [...this.selectedObjs][0] : null;
     } else {
       this.selectedObjs.add(mesh);
-      this._addOutline(mesh);
       this.activeObj = mesh;
     }
   } else {
@@ -192,6 +158,7 @@ Pixaroma3DEditor.prototype._select = function (mesh, additive) {
   else this.transformCtrl.detach();
   this._syncProps();
   this._updateLayers();
+  this._syncOutlineSelection();
   if (this._rebuildShapePanel) this._rebuildShapePanel();
 };
 

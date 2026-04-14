@@ -26,7 +26,11 @@ import {
 // Shared Three.js module references — populated by loadThree()
 export let THREE = null,
   OrbitControls = null,
-  TransformControls = null;
+  TransformControls = null,
+  EffectComposer = null,
+  RenderPass = null,
+  OutlinePass = null,
+  OutputPass = null;
 const ESM = "https://esm.sh/three@0.170.0";
 export async function loadThree() {
   if (THREE) return;
@@ -37,6 +41,18 @@ export async function loadThree() {
   TransformControls = (
     await import(ESM + "/examples/jsm/controls/TransformControls.js")
   ).TransformControls;
+  EffectComposer = (
+    await import(ESM + "/examples/jsm/postprocessing/EffectComposer.js")
+  ).EffectComposer;
+  RenderPass = (
+    await import(ESM + "/examples/jsm/postprocessing/RenderPass.js")
+  ).RenderPass;
+  OutlinePass = (
+    await import(ESM + "/examples/jsm/postprocessing/OutlinePass.js")
+  ).OutlinePass;
+  OutputPass = (
+    await import(ESM + "/examples/jsm/postprocessing/OutputPass.js")
+  ).OutputPass;
 }
 // Allow other modules to access the lazy-loaded THREE refs
 export function getTHREE() {
@@ -47,6 +63,9 @@ export function getOrbitControls() {
 }
 export function getTransformControls() {
   return TransformControls;
+}
+export function getPostprocessing() {
+  return { EffectComposer, RenderPass, OutlinePass, OutputPass };
 }
 
 // Editor-specific CSS for 3D viewport elements not covered by framework
