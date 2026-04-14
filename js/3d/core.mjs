@@ -71,10 +71,11 @@ function injectExtraStyles() {
 .p3d-bg-container img{position:absolute;top:50%;left:50%;transform-origin:center center;image-rendering:auto;pointer-events:none;}
 /* p3d-frame, p3d-frame-label, p3d-frame-mask — removed, now using shared createCanvasFrame */
 /* p3d-tool-info — removed, now using shared pxf-tool-info from framework */
-.p3d-obj-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;cursor:pointer;border:1px solid #3a3d40;background:#242628;color:#ccc;border-radius:5px;font-size:10px;gap:3px;transition:all .12s;}
-.p3d-obj-btn:hover{background:#2a2c2e;border-color:#f66744;}
-.p3d-obj-btn.selected{background:#2a1800;border-color:#f66744;color:#fff;}
-.p3d-obj-btn .icon{font-size:18px;}
+.p3d-shape-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;cursor:pointer;border:1px solid #3a3d40;background:#242628;color:#ccc;border-radius:5px;font-size:10px;gap:3px;transition:all .12s;padding:4px;}
+.p3d-shape-btn:hover{background:#2a2c2e;border-color:#f66744;transform:scale(1.05);}
+.p3d-shape-btn.selected{background:#2a1800;border-color:#f66744;color:#fff;}
+.p3d-shape-btn img{width:22px;height:22px;filter:invert(90%);transition:filter .12s;}
+.p3d-shape-btn:hover img,.p3d-shape-btn.selected img{filter:invert(56%) sepia(67%) saturate(900%) hue-rotate(340deg) brightness(100%) contrast(95%);}
 .p3d-shape-params{margin-top:8px;padding:6px 0;border-top:1px solid #2a2c2e;}
 .p3d-mat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
 .p3d-mat-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;cursor:pointer;border:1px solid #3a3d40;background:#242628;border-radius:5px;font-size:9px;color:#999;transition:all .12s;}
@@ -576,12 +577,17 @@ export class Pixaroma3DEditor {
     this._selectedShape = "cube";
     shapes.forEach((sh) => {
       const b = document.createElement("div");
-      b.className = "p3d-obj-btn" + (sh.id === "cube" ? " selected" : "");
+      b.className = "p3d-shape-btn" + (sh.id === "cube" ? " selected" : "");
       b.title = "Select " + sh.l;
-      b.innerHTML = `<span class="icon">${sh.icon}</span>${sh.l}`;
+      const img = document.createElement("img");
+      img.src = `/pixaroma/assets/icons/3D/${SHAPES[sh.id].icon}`;
+      img.alt = sh.l;
+      const lbl = document.createElement("span");
+      lbl.textContent = sh.l;
+      b.append(img, lbl);
       b.addEventListener("click", () => {
         this._selectedShape = sh.id;
-        og.querySelectorAll(".p3d-obj-btn").forEach((x) =>
+        og.querySelectorAll(".p3d-shape-btn").forEach((x) =>
           x.classList.remove("selected"),
         );
         b.classList.add("selected");
