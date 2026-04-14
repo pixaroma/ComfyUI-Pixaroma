@@ -618,12 +618,16 @@ export class Pixaroma3DEditor {
       lbl.textContent = sh.label;
       b.append(ico, lbl);
       b.addEventListener("click", () => {
-        // Fall back to cube defaults for placeholder shapes so the object
-        // has valid geoParams (Shape panel sliders otherwise show empty).
-        const defaults = sh.implemented
-          ? SHAPES[sh.id].defaults
-          : SHAPES.cube.defaults;
-        this._addObject(sh.id, { ...defaults });
+        if (sh.implemented) {
+          this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
+        } else {
+          // Placeholder button: log and spawn an honest-to-goodness cube
+          // (type "cube") so the Shape panel + sliders all work. Keeps
+          // UX consistent while the real shape is still being migrated.
+          console.warn(
+            `[P3D] shape "${sh.id}" not yet implemented — adding a cube.`);
+          this._addObject("cube", { ...SHAPES.cube.defaults });
+        }
       });
       og.appendChild(b);
     });

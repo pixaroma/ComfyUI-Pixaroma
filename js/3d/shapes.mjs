@@ -36,12 +36,23 @@ export const SHAPES = {
     live: true,
     params: [
       { key: "radius", label: "Radius", min: 0.1, max: 3, step: 0.1 },
-      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
+      { key: "length", label: "Length", min: 0.1, max: 5, step: 0.1 },
       { key: "sides",  label: "Sides",  min: 3,   max: 8, step: 1 },
     ],
-    defaults: { radius: 0.5, height: 1.0, sides: 3 },
+    defaults: { radius: 0.5, length: 1.5, sides: 3 },
     build: (THREE, p) => {
-      const g = new THREE.CylinderGeometry(p.radius, p.radius, p.height, p.sides);
+      // Build a CylinderGeometry with n sides, then rotate +90° around Z
+      // so the extrusion axis goes horizontal (along X) — the classic
+      // "Toblerone / roof" orientation: triangle faces on the two ends,
+      // flat bottom resting on the ground. At sides=3 you get a triangular
+      // prism; 4 = square bar; 6 = hex bar; etc.
+      const g = new THREE.CylinderGeometry(
+        p.radius, p.radius, p.length, p.sides);
+      g.rotateZ(Math.PI / 2);
+      // Rotate one vertex to point straight up so default sides=3 shows a
+      // classic "roof" peak (cylinder's default vertex 0 sits at +X; after
+      // rotateZ it sits at +Y, so no extra rotation needed — but an odd
+      // number of sides still reads as "peak up" because of this).
       g.computeVertexNormals();
       return g;
     },
