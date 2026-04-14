@@ -276,8 +276,26 @@ export const SHAPES = {
       { key: "tubeSegs",   label: "Tube Segs",   min: 3,    max: 128, step: 1 },
     ],
     defaults: { radius: 0.5, tube: 0.2, radialSegs: 12, tubeSegs: 32 },
+    // Standard torus rule: tube radius < ring radius. Once tube >= radius
+    // the geometry self-intersects through the centre — reads as a sphere
+    // with an internal funnel rather than a donut. Clamp so the user
+    // can't drag past that visual cliff. (For sphere-like shapes the
+    // user has the actual Sphere primitive.)
+    constraint: (p, key, v) => {
+      if (key === "tube")   return Math.min(v, p.radius - 0.01);
+      if (key === "radius") return Math.max(v, p.tube + 0.01);
+      return v;
+    },
+    bounds: (p, key) => {
+      if (key === "tube")   return { max: p.radius - 0.01 };
+      if (key === "radius") return { min: p.tube + 0.01 };
+      return {};
+    },
     build: (THREE, p) => {
-      const g = new THREE.TorusGeometry(p.radius, p.tube, p.radialSegs, p.tubeSegs);
+      // Defensive clamp in case params arrive from persistence/undo
+      // without passing through the constraint hook.
+      const tube = Math.min(p.tube, p.radius - 0.01);
+      const g = new THREE.TorusGeometry(p.radius, tube, p.radialSegs, p.tubeSegs);
       g.computeVertexNormals();
       return g;
     },

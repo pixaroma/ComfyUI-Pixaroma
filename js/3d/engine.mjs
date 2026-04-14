@@ -154,6 +154,11 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.transformCtrl.addEventListener("mouseUp", () => {
     this._syncProps();
     this._updateLayers();
+    // Snap the shadow frustum to the new scene bounds right now —
+    // otherwise the frustum stays at its pre-drag size for up to a
+    // second (until the setInterval below fires) and the shadow
+    // visibly "jumps" into place after the user releases the gizmo.
+    this._updateShadowFrustum?.();
   });
   const helper =
     typeof this.transformCtrl.getHelper === "function"
