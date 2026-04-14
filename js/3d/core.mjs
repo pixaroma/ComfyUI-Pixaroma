@@ -249,6 +249,11 @@ export class Pixaroma3DEditor {
         clearInterval(this._shadowFitInterval);
         this._shadowFitInterval = null;
       }
+      if (this._studioEnvTexture) {
+        this._studioEnvTexture.dispose();
+        this._studioEnvTexture = null;
+      }
+      if (this.scene) this.scene.environment = null;
       window.removeEventListener("keydown", this._onKey, { capture: true });
       if (this._resizeObs) this._resizeObs.disconnect();
       if (this._animId) {

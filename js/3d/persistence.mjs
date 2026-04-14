@@ -360,6 +360,11 @@ Pixaroma3DEditor.prototype._close = function () {
     clearInterval(this._shadowFitInterval);
     this._shadowFitInterval = null;
   }
+  if (this._studioEnvTexture) {
+    this._studioEnvTexture.dispose();
+    this._studioEnvTexture = null;
+  }
+  if (this.scene) this.scene.environment = null;
   this._closed = true;
   if (this._animId) cancelAnimationFrame(this._animId);
   this._animId = null;

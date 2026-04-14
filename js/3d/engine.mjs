@@ -207,6 +207,14 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._applyLightDir();
 
   this._shadowFitInterval = setInterval(() => {
+    // Vue frontend can remove the overlay without firing close callbacks —
+    // self-terminate if the overlay is detached (see CLAUDE.md).
+    const overlay = this.el?.overlay;
+    if (!overlay || !overlay.isConnected) {
+      clearInterval(this._shadowFitInterval);
+      this._shadowFitInterval = null;
+      return;
+    }
     if (!this._gizmoDragging && !this._ptr) this._updateShadowFrustum();
   }, 1000);
 };
@@ -260,6 +268,12 @@ Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
   if (box.isEmpty()) return;
   const size = new THREE.Vector3();
   box.getSize(size);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  // Re-center the light's target on the scene center so the symmetric
+  // frustum below actually covers all objects regardless of where they sit.
+  this.light.target.position.copy(center);
+  this.light.target.updateMatrixWorld();
   const halfMax = Math.max(size.x, size.y, size.z) * 0.75 + 2;
   const sc = this.light.shadow.camera;
   sc.left = -halfMax;
