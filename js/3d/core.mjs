@@ -2,7 +2,7 @@
 // Pixaroma 3D Editor — Core class, constructor, UI building
 // ============================================================
 import { ThreeDAPI } from "./api.mjs";
-import { SHAPES, SHAPE_GRID } from "./shapes.mjs";
+import { SHAPES, SHAPE_GRID, loadTeapotGeometry } from "./shapes.mjs";
 import {
   createEditorLayout,
   createPanel,
@@ -642,8 +642,13 @@ export class Pixaroma3DEditor {
       const lbl = document.createElement("span");
       lbl.textContent = sh.label;
       b.append(ico, lbl);
-      b.addEventListener("click", () => {
+      b.addEventListener("click", async () => {
         if (sh.implemented) {
+          // Teapot geometry is fetched from a separate ESM module on
+          // first use so the editor's first-open stays fast. Await it
+          // before calling _addObject so the mesh appears with the
+          // real geometry rather than the placeholder-sphere fallback.
+          if (sh.id === "teapot") await loadTeapotGeometry();
           this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
         } else {
           // Placeholder button: log and spawn an honest-to-goodness cube

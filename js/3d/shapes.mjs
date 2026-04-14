@@ -11,6 +11,20 @@
 // `live: true` = rebuild on every slider tick (cheap shapes).
 // `live: false` = rebuild debounced 60 ms (heavy shapes).
 
+// ─── Lazy-loaded Teapot geometry ──────────────────────────────
+// TeapotGeometry lives in three/examples and weighs ~20KB. We fetch
+// it only when the user clicks Teapot (or reopens a scene that
+// already contains a teapot) so first-editor-open stays fast.
+let _TeapotGeometry = null;
+export async function loadTeapotGeometry() {
+  if (_TeapotGeometry) return _TeapotGeometry;
+  const mod = await import(
+    "https://esm.sh/three@0.170.0/examples/jsm/geometries/TeapotGeometry.js"
+  );
+  _TeapotGeometry = mod.TeapotGeometry;
+  return _TeapotGeometry;
+}
+
 // ─── Seeded 3D simplex noise (public-domain, compact) ──────────────
 // Adapted from Stefan Gustavson's reference implementation, seeded via
 // a deterministic permutation shuffle so the same Seed param always
@@ -660,6 +674,35 @@ export const SHAPES = {
         pos.setXYZ(i, v.x, v.y * p.stretchY, v.z);
       }
       // Intentionally skip computeVertexNormals — flat shading reads as "rock"
+      return g;
+    },
+  },
+  teapot: {
+    icon: "teapot.svg",
+    label: "Teapot",
+    category: "complex",
+    live: false,
+    params: [
+      { key: "size",     label: "Size",     min: 0.2, max: 2,  step: 0.05 },
+      { key: "segments", label: "Segments", min: 3,   max: 16, step: 1 },
+      { key: "lid",      label: "Lid",      min: 0,   max: 1,  step: 1 },
+      { key: "body",     label: "Body",     min: 0,   max: 1,  step: 1 },
+      { key: "spout",    label: "Spout",    min: 0,   max: 1,  step: 1 },
+      { key: "bottom",   label: "Bottom",   min: 0,   max: 1,  step: 1 },
+    ],
+    defaults: { size: 0.5, segments: 8, lid: 1, body: 1, spout: 1, bottom: 1 },
+    build: (THREE, p) => {
+      // If the TeapotGeometry module hasn't resolved yet, fall back to
+      // a placeholder sphere. core.mjs preloads the module before the
+      // first _addObject('teapot'), and persistence.mjs preloads it
+      // before _restoreScene rebuilds saved teapots — so this fallback
+      // is only a safety net for edge cases.
+      if (!_TeapotGeometry) return new THREE.SphereGeometry(p.size, 16, 16);
+      const g = new _TeapotGeometry(
+        p.size, p.segments,
+        !!p.bottom, !!p.lid, !!p.body, false, !!p.spout,
+      );
+      g.computeVertexNormals();
       return g;
     },
   },

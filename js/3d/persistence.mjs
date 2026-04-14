@@ -2,6 +2,7 @@
 // Pixaroma 3D Editor — Save/restore, background image mgmt
 // ============================================================
 import { Pixaroma3DEditor, getTHREE, ThreeDAPI } from "./core.mjs";
+import { loadTeapotGeometry } from "./shapes.mjs";
 
 // ─── Save / Restore ───────────────────────────────────────
 
@@ -202,6 +203,20 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
     // the 1s setInterval fires, producing a visible "shadow jump" when
     // a saved scene is reopened.
     this._updateShadowFrustum?.();
+    // If the saved scene contains any teapots, the first _addObject
+    // calls above built them as placeholder spheres (TeapotGeometry
+    // loads asynchronously). Kick off the load now and rebuild every
+    // teapot mesh with the real geometry once the module resolves.
+    if (d.objects?.some((od) => od.type === "teapot")) {
+      loadTeapotGeometry().then(() => {
+        if (this._closed) return;
+        for (const m of this.objects) {
+          if (m.userData.type === "teapot" && this._rebuildObjectGeometry) {
+            this._rebuildObjectGeometry(m);
+          }
+        }
+      });
+    }
     this._isRestoring = false;
     this._undoStack = [];
     this._redoStack = [];
