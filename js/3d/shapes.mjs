@@ -120,6 +120,55 @@ export const SHAPES = {
       return g;
     },
   },
+  capsule: {
+    icon: "capsule.svg",
+    label: "Capsule",
+    category: "rounded",
+    live: true,
+    params: [
+      { key: "radius",     label: "Radius",       min: 0.1, max: 2,  step: 0.05 },
+      { key: "length",     label: "Length",       min: 0.1, max: 5,  step: 0.1 },
+      { key: "capSegs",    label: "Cap Segments", min: 2,   max: 32, step: 1 },
+      { key: "radialSegs", label: "Radial Segs",  min: 3,   max: 64, step: 1 },
+    ],
+    defaults: { radius: 0.3, length: 0.8, capSegs: 6, radialSegs: 16 },
+    build: (THREE, p) => {
+      // CapsuleGeometry is centered on origin; bottom cap ends up at
+      // y = -(radius + length/2). _addObject re-snaps to the floor via
+      // bounding box, so no translate needed here.
+      const g = new THREE.CapsuleGeometry(
+        p.radius, p.length, p.capSegs, p.radialSegs);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
+  crystal: {
+    icon: "crystal.svg",
+    label: "Crystal",
+    category: "rounded",
+    live: true,
+    params: [
+      { key: "radius",  label: "Radius",    min: 0.1, max: 2,  step: 0.05 },
+      { key: "topH",    label: "Top H",     min: 0.1, max: 3,  step: 0.05 },
+      { key: "bottomH", label: "Bottom H",  min: 0.1, max: 3,  step: 0.05 },
+      { key: "sides",   label: "Sides",     min: 4,   max: 16, step: 1 },
+    ],
+    defaults: { radius: 0.4, topH: 0.9, bottomH: 0.4, sides: 6 },
+    build: (THREE, p) => {
+      // LatheGeometry revolves a 2D profile around the +Y axis. Using
+      // 3 points (bottom tip → middle ring → top tip) yields a bipyramid
+      // a.k.a. a faceted crystal / gemstone shape. `sides` controls the
+      // facet count around the revolution.
+      const pts = [
+        new THREE.Vector2(0,        -p.bottomH),
+        new THREE.Vector2(p.radius,  0),
+        new THREE.Vector2(0,         p.topH),
+      ];
+      const g = new THREE.LatheGeometry(pts, p.sides);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
   cylinder: {
     icon: "cylinder.svg",
     label: "Cylinder",
