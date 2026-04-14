@@ -106,14 +106,17 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  // Bold ~2-3 px solid Pixaroma orange. edgeStrength saturates the
-  // mix so the colour reads as the buttons' #f66744 instead of a
-  // faded pink. edgeThickness gives the line body so the silhouette
-  // stays uniform around the object at any zoom (OutlinePass measures
-  // thickness in screen pixels, so it stays the same as you zoom).
-  this._outlinePass.edgeStrength = 8;
+  // OutlinePass mixes outline colour with scene proportional to edge
+  // intensity × edgeStrength. Anti-aliased edges have fractional
+  // intensity, so bumping edgeStrength well past 1 forces the full
+  // width of the outline to clamp at the outline colour (solid) and
+  // stops the colour reading as faded-orange instead of Pixaroma
+  // orange. edgeThickness widens the detection kernel — 2 gives a
+  // uniform solid band at any zoom level without blooming past the
+  // silhouette.
+  this._outlinePass.edgeStrength = 20;
   this._outlinePass.edgeGlow = 0;
-  this._outlinePass.edgeThickness = 3;
+  this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
   // Full-resolution edge detection — the default half-res produced
   // "ray" streaks extending from sharp silhouettes.
@@ -255,10 +258,14 @@ Pixaroma3DEditor.prototype._initThree = function () {
       new THREE.Vector3(-500, 0, 0),
       new THREE.Vector3( 500, 0, 0),
     ]),
+    // Dark gray reads as "subtle but visible" against the mid-gray
+    // scene background. Lighter grays blended with the bg and were
+    // easy to miss. 70% opacity keeps it from competing with the
+    // gizmo arrows while still being obvious during drag.
     new THREE.LineBasicMaterial({
-      color: 0x999999,
+      color: 0x333333,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.7,
       depthTest: false,
     }),
   );
