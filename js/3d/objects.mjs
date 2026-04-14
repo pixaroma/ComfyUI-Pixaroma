@@ -103,8 +103,21 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this.transformCtrl.detach();
   for (const o of this.selectedObjs) {
     this.scene.remove(o);
-    o.geometry.dispose();
-    o.material.dispose();
+    // Dispose works for both Mesh (geometry + material directly) and
+    // imported Groups (walk the hierarchy). Without the traverse path
+    // bunnies leaked GPU resources on delete and crashed the Shape /
+    // undo machinery on the next add.
+    if (o.isGroup) {
+      o.traverse((c) => {
+        if (c.isMesh) {
+          c.geometry?.dispose();
+          c.material?.dispose();
+        }
+      });
+    } else {
+      o.geometry?.dispose();
+      o.material?.dispose();
+    }
     this.objects = this.objects.filter((x) => x !== o);
   }
   this.selectedObjs.clear();
@@ -170,12 +183,47 @@ Pixaroma3DEditor.prototype._select = function (mesh, additive) {
 Pixaroma3DEditor.prototype._setObjColor = function (hex) {
   if (!this.activeObj) return;
   for (const o of this.selectedObjs) {
-    o.material.color.set(hex);
+    // Mesh: set its own material. Group (imported bunny / future
+    // user imports): traverse and set colour on every mesh inside.
+    if (o.material && o.material.color) {
+      o.material.color.set(hex);
+    } else if (o.isGroup) {
+      o.traverse((c) => {
+        if (c.isMesh && c.material && c.material.color) {
+          c.material.color.set(hex);
+        }
+      });
+    }
     o.userData.colorHex = hex;
   }
   this._syncHSLFromColor();
   this._updateLayers();
 };
+
+// Helpers — an imported Group has no top-level .material, so the
+// Object Color / Material / HSL panels (which operate on a single
+// material) need to reach into the first mesh in the hierarchy for
+// reads and walk every mesh for writes.
+function firstMeshMaterial(o) {
+  if (o.material) return o.material;
+  if (o.isGroup) {
+    let found = null;
+    o.traverse((c) => {
+      if (!found && c.isMesh && c.material) found = c.material;
+    });
+    return found;
+  }
+  return null;
+}
+function applyToMaterials(o, fn) {
+  if (o.material) {
+    fn(o.material);
+  } else if (o.isGroup) {
+    o.traverse((c) => {
+      if (c.isMesh && c.material) fn(c.material);
+    });
+  }
+}
 
 Pixaroma3DEditor.prototype._hslToColor = function () {
   const THREE = getTHREE();
@@ -186,7 +234,7 @@ Pixaroma3DEditor.prototype._hslToColor = function () {
   const c = new THREE.Color().setHSL(h, s, l);
   const hex = "#" + c.getHexString();
   for (const o of this.selectedObjs) {
-    o.material.color.copy(c);
+    applyToMaterials(o, (m) => m.color?.copy(c));
     o.userData.colorHex = hex;
   }
   if (this.el.objColor) this.el.objColor.value = hex;
@@ -195,8 +243,10 @@ Pixaroma3DEditor.prototype._hslToColor = function () {
 
 Pixaroma3DEditor.prototype._syncHSLFromColor = function () {
   if (!this.activeObj) return;
+  const mat = firstMeshMaterial(this.activeObj);
+  if (!mat || !mat.color) return;
   const hsl = {};
-  this.activeObj.material.color.getHSL(hsl);
+  mat.color.getHSL(hsl);
   if (this.el.hslH) {
     this.el.hslH.value = Math.round(hsl.h * 360);
     this.el.hslHV.textContent = Math.round(hsl.h * 360);
@@ -216,9 +266,11 @@ Pixaroma3DEditor.prototype._syncHSLFromColor = function () {
 Pixaroma3DEditor.prototype._applyMat = function (p) {
   if (!this.activeObj) return;
   for (const o of this.selectedObjs) {
-    o.material.color.set(p.c);
-    o.material.roughness = p.r;
-    o.material.metalness = p.m;
+    applyToMaterials(o, (m) => {
+      m.color?.set(p.c);
+      if ("roughness" in m) m.roughness = p.r;
+      if ("metalness" in m) m.metalness = p.m;
+    });
     o.userData.colorHex = p.c;
   }
   this._syncProps();
@@ -233,22 +285,27 @@ Pixaroma3DEditor.prototype._syncProps = function () {
     if (this.el.objName) this.el.objName.value = "";
     return;
   }
+  // Look up the material for panel reads — imported groups' first
+  // mesh, otherwise the object's own .material.
+  const mat = firstMeshMaterial(o);
   if (this.el.objColor)
     this.el.objColor.value =
-      o.userData.colorHex || "#" + o.material.color.getHexString();
+      o.userData.colorHex ||
+      (mat?.color ? "#" + mat.color.getHexString() : "#888888");
   if (this.el.objName) this.el.objName.value = o.userData.name || "";
+  const rough = mat?.roughness ?? 0.55;
   if (this.el.roughS) {
-    const v = Math.round(o.material.roughness * 100);
+    const v = Math.round(rough * 100);
     this.el.roughS.value = v;
     this.el.roughV.value = v;
   }
   if (this.el.glossS) {
-    const v = Math.round((1 - o.material.roughness) * 100);
+    const v = Math.round((1 - rough) * 100);
     this.el.glossS.value = v;
     this.el.glossV.value = v;
   }
   if (this.el.opacS) {
-    const v = Math.round(o.material.opacity * 100);
+    const v = Math.round((mat?.opacity ?? 1) * 100);
     this.el.opacS.value = v;
     this.el.opacV.value = v;
   }

@@ -921,8 +921,20 @@ export class Pixaroma3DEditor {
       mg.appendChild(b);
     });
     mats.content.appendChild(mg);
+    // Helper: imported Groups don't have a top-level .material, so
+    // material tweaks have to reach into every mesh in the hierarchy.
+    const forEachMat = (o, fn) => {
+      if (o.material) fn(o.material);
+      else if (o.isGroup) {
+        o.traverse((c) => {
+          if (c.isMesh && c.material) fn(c.material);
+        });
+      }
+    };
     const rR = createSliderRow("Rough", 0, 100, 85, (v) => {
-      for (const o of this.selectedObjs) o.material.roughness = v / 100;
+      for (const o of this.selectedObjs) {
+        forEachMat(o, (m) => { if ("roughness" in m) m.roughness = v / 100; });
+      }
       if (this.el.glossS) {
         const g = 100 - v;
         this.el.glossS.value = g;
@@ -930,7 +942,9 @@ export class Pixaroma3DEditor {
       }
     });
     const gR = createSliderRow("Gloss", 0, 100, 15, (v) => {
-      for (const o of this.selectedObjs) o.material.roughness = 1 - v / 100;
+      for (const o of this.selectedObjs) {
+        forEachMat(o, (m) => { if ("roughness" in m) m.roughness = 1 - v / 100; });
+      }
       if (this.el.roughS) {
         const r = 100 - v;
         this.el.roughS.value = r;
@@ -939,8 +953,10 @@ export class Pixaroma3DEditor {
     });
     const oR = createSliderRow("Opacity", 0, 100, 100, (v) => {
       for (const o of this.selectedObjs) {
-        o.material.opacity = v / 100;
-        o.material.transparent = v < 100;
+        forEachMat(o, (m) => {
+          m.opacity = v / 100;
+          m.transparent = v < 100;
+        });
       }
     });
     this.el.roughS = rR.slider;

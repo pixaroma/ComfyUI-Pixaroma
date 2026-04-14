@@ -10,6 +10,7 @@ const ESM = "https://esm.sh/three@0.170.0";
 
 let _GLTFLoader = null;
 let _OBJLoader = null;
+let _mergeVertices = null;
 const _assetCache = new Map(); // url → cached Group
 
 async function getGLTFLoader() {
@@ -26,13 +27,38 @@ async function getOBJLoader() {
   return _OBJLoader;
 }
 
+async function getMergeVertices() {
+  if (_mergeVertices) return _mergeVertices;
+  const mod = await import(
+    ESM + "/examples/jsm/utils/BufferGeometryUtils.js"
+  );
+  _mergeVertices = mod.mergeVertices;
+  return _mergeVertices;
+}
+
 // Recompute smooth vertex normals on every Mesh in a Group. GLB/OBJ
-// files often ship with flat-shaded or missing normals; smoothing
-// here gives the built-in Bunny and user imports a consistent look.
-export function smoothGroupNormals(group) {
+// exports often ship with DUPLICATED vertices at face boundaries
+// (one vertex per face instead of one shared across all adjacent
+// faces) — computeVertexNormals on that data produces flat shading
+// because each vertex only knows about its own face's normal.
+//
+// mergeVertices collapses duplicate positions into shared vertices
+// first, so the following computeVertexNormals averages across all
+// incident faces and gives true smooth shading.
+export async function smoothGroupNormals(group) {
+  const mergeVertices = await getMergeVertices();
   group.traverse((o) => {
     if (!o.isMesh || !o.geometry) return;
-    o.geometry.computeVertexNormals();
+    try {
+      const merged = mergeVertices(o.geometry, 1e-4);
+      merged.computeVertexNormals();
+      o.geometry.dispose();
+      o.geometry = merged;
+    } catch {
+      // If mergeVertices chokes on unusual attribute layouts, fall
+      // back to a plain recompute so we at least don't crash.
+      o.geometry.computeVertexNormals();
+    }
   });
 }
 
@@ -48,7 +74,7 @@ export async function loadGLBFromURL(url) {
   const loader = new Loader();
   const gltf = await loader.loadAsync(url);
   const group = gltf.scene || new THREE.Group();
-  smoothGroupNormals(group);
+  await smoothGroupNormals(group);
   _assetCache.set(url, group.clone(true));
   return group;
 }
@@ -59,7 +85,7 @@ export async function loadOBJFromURL(url) {
   const Loader = await getOBJLoader();
   const loader = new Loader();
   const group = await loader.loadAsync(url);
-  smoothGroupNormals(group);
+  await smoothGroupNormals(group);
   return group;
 }
 
@@ -70,16 +96,32 @@ export async function loadOBJFromURL(url) {
 // bunny, "import" for user uploads (Task 8). The Shape panel uses
 // this to show the "No shape parameters for imported models." empty
 // state rather than parametric sliders.
+// Default cream/clay colour applied to bunny + user imports so they
+// match the look of the parametric shapes (which randomise around
+// this hue). Without this, GLBs came out the dull neutral gray that
+// three.js GLTFLoader uses when the file ships without a baseColor.
+const IMPORTED_DEFAULT_COLOR = "#c4a882";
+
 Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUserData = {}) {
   const THREE = getTHREE();
   this._pushUndo();
   this._id++;
 
-  // Shadow flags on every mesh in the hierarchy.
+  // Shadow flags + default clay colour on every mesh in the hierarchy.
+  // We override the GLB's materials (the bundled bunny.glb has plain
+  // unlit materials) so imported objects look consistent with the rest
+  // of the scene. The user can still recolour via the Object Color
+  // panel; keepOriginalMaterials is stored for future "restore GLB
+  // materials" toggle.
   group.traverse((o) => {
     if (o.isMesh) {
       o.castShadow = true;
       o.receiveShadow = true;
+      if (o.material && o.material.color) {
+        o.material.color.set(IMPORTED_DEFAULT_COLOR);
+        o.material.roughness = 0.55;
+        o.material.metalness = 0;
+      }
     }
   });
 
@@ -93,10 +135,10 @@ Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUs
     id: this._id,
     name: (extraUserData.name || typeTag).replace(/\.[^.]+$/, ""),
     type: typeTag,
-    colorHex: "#ffffff",
+    colorHex: IMPORTED_DEFAULT_COLOR,
     locked: false,
     geoParams: null, // no parametric shape
-    keepOriginalMaterials: true, // Task 8 may expose a toggle
+    keepOriginalMaterials: false,
     ...extraUserData,
   };
 

@@ -191,21 +191,27 @@ Pixaroma3DEditor.prototype._selectAll = function () {
 // ─── Undo ─────────────────────────────────────────────────
 
 Pixaroma3DEditor.prototype._snap = function () {
-  return this.objects.map((o) => ({
-    id: o.userData.id,
-    name: o.userData.name,
-    type: o.userData.type,
-    colorHex: o.userData.colorHex,
-    locked: o.userData.locked,
-    gp: o.userData.geoParams ? { ...o.userData.geoParams } : null,
-    pos: o.position.toArray(),
-    rot: [o.rotation.x, o.rotation.y, o.rotation.z],
-    scl: o.scale.toArray(),
-    rough: o.material.roughness,
-    metal: o.material.metalness,
-    opac: o.material.opacity,
-    vis: o.visible,
-  }));
+  return this.objects.map((o) => {
+    // Imported Groups (type:"bunny", future "import") don't have a
+    // single .material — skip material fields, restore will recreate
+    // via the GLB loader.
+    const mat = o.material;
+    return {
+      id: o.userData.id,
+      name: o.userData.name,
+      type: o.userData.type,
+      colorHex: o.userData.colorHex,
+      locked: o.userData.locked,
+      gp: o.userData.geoParams ? { ...o.userData.geoParams } : null,
+      pos: o.position.toArray(),
+      rot: [o.rotation.x, o.rotation.y, o.rotation.z],
+      scl: o.scale.toArray(),
+      rough: mat?.roughness,
+      metal: mat?.metalness,
+      opac: mat?.opacity,
+      vis: o.visible,
+    };
+  });
 };
 
 Pixaroma3DEditor.prototype._pushUndo = function () {
@@ -227,18 +233,95 @@ Pixaroma3DEditor.prototype._redo = function () {
   this._applySnap(this._redoStack.pop());
 };
 
+// Dispose helper — Mesh has .geometry / .material at the top level,
+// imported Groups have them scattered across descendants. Walk the
+// whole subtree so nothing leaks.
+function disposeObject(o) {
+  o.traverse?.((c) => {
+    if (c.isMesh) {
+      c.geometry?.dispose();
+      c.material?.dispose();
+    }
+  });
+  // Covers top-level Mesh (traverse visits self too in three.js) but
+  // defensive in case of plain Object3D wrappers.
+  o.geometry?.dispose?.();
+  o.material?.dispose?.();
+}
+
 Pixaroma3DEditor.prototype._applySnap = function (state) {
   const THREE = getTHREE();
   this.transformCtrl.detach();
   this.objects.forEach((o) => {
     this.scene.remove(o);
-    o.geometry.dispose();
-    o.material.dispose();
+    disposeObject(o);
   });
   this.objects = [];
   this.selectedObjs.clear();
   this.activeObj = null;
   state.forEach((d) => {
+    if (d.type === "bunny") {
+      // Imported group — can't rebuild from the parametric pipeline.
+      // Insert a placeholder sphere so object order stays stable, then
+      // async-swap to the real GLB once the importer resolves.
+      const ph = new THREE.Mesh(
+        new THREE.SphereGeometry(0.5, 16, 16),
+        new THREE.MeshStandardMaterial({
+          color: d.colorHex || "#c4a882",
+          roughness: d.rough ?? 0.55,
+          metalness: d.metal ?? 0,
+          transparent: true,
+          opacity: d.opac ?? 1,
+        }),
+      );
+      ph.castShadow = true;
+      ph.receiveShadow = true;
+      if (d.pos) ph.position.fromArray(d.pos);
+      if (d.rot) ph.rotation.set(d.rot[0], d.rot[1], d.rot[2]);
+      if (d.scl) ph.scale.fromArray(d.scl);
+      ph.visible = d.vis !== false;
+      ph.userData = {
+        id: d.id,
+        name: d.name,
+        type: "bunny",
+        colorHex: d.colorHex,
+        locked: d.locked || false,
+        geoParams: null,
+      };
+      if (d.id > this._id) this._id = d.id;
+      this.scene.add(ph);
+      this.objects.push(ph);
+      import("./importer.mjs").then(async ({ loadGLBFromURL }) => {
+        if (this._closed) return;
+        try {
+          const group = await loadGLBFromURL(
+            "/pixaroma/assets/models/bunny.glb",
+          );
+          const idx = this.objects.indexOf(ph);
+          if (idx === -1) return;
+          this.scene.remove(ph);
+          disposeObject(ph);
+          group.traverse((c) => {
+            if (c.isMesh) {
+              c.castShadow = true;
+              c.receiveShadow = true;
+            }
+          });
+          group.position.copy(ph.position);
+          group.rotation.copy(ph.rotation);
+          group.scale.copy(ph.scale);
+          group.visible = ph.visible;
+          group.userData = { ...ph.userData, keepOriginalMaterials: true };
+          this.objects[idx] = group;
+          this.scene.add(group);
+          this._updateLayers();
+          this._updateShadowFrustum?.();
+        } catch (e) {
+          console.warn("[P3D] bunny undo restore failed, sphere kept", e);
+        }
+      });
+      return;
+    }
     const gp = d.gp || this._defaultGeoParams(d.type);
     const g = this._makeGeo(d.type, gp);
     const mat = new THREE.MeshStandardMaterial({
