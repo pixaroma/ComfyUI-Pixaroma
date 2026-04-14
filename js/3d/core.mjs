@@ -127,7 +127,8 @@ export class Pixaroma3DEditor {
     this.onClose = null;
     this.docW = 1024;
     this.docH = 1024;
-    this.bgColor = "#000000";
+    this.bgColor = "#6e6e6e";
+    this._defaultBgColor = this.bgColor;
     this.objects = [];
     this.selectedObjs = new Set();
     this.activeObj = null;
@@ -283,7 +284,7 @@ export class Pixaroma3DEditor {
 
     // Viewport: use framework workspace but add 3D-specific elements
     const vp = layout.workspace;
-    vp.style.background = "#000";
+    vp.style.background = "#6e6e6e";
     this.el.viewport = vp;
 
     // Background image container (behind canvas)
@@ -324,7 +325,7 @@ export class Pixaroma3DEditor {
       // BG color + Clear Scene + Reset to Default in one row
       const bgColorInput = document.createElement("input");
       bgColorInput.type = "color";
-      bgColorInput.value = "#000000";
+      bgColorInput.value = this.bgColor;
       bgColorInput.className = "pxf-color-input";
       bgColorInput.style.cssText = "width:36px;height:28px;flex-shrink:0;";
       bgColorInput.addEventListener("input", () => {
@@ -367,9 +368,11 @@ export class Pixaroma3DEditor {
           this.docH = 1024;
           if (this._canvasSettings) this._canvasSettings.setSize(1024, 1024);
           if (this._canvasSettings) this._canvasSettings.setRatio(0);
-          bgColorInput.value = "#000000";
-          this.bgColor = "#000000";
-          if (this.scene) this.scene.background = new THREE.Color("#000000");
+          const dbg = this._defaultBgColor || "#6e6e6e";
+          bgColorInput.value = dbg;
+          this.bgColor = dbg;
+          if (this.scene) this.scene.background = new THREE.Color(dbg);
+          if (this.el.viewport) this.el.viewport.style.backgroundColor = dbg;
           this._updateFrame();
           this._updateLayers();
           this._setStatus("Reset to default");
@@ -684,8 +687,9 @@ export class Pixaroma3DEditor {
     const perspRow = createButtonRow([perspBtn, isoBtn]);
     perspRow.style.marginTop = "5px";
     cam.content.appendChild(perspRow);
-    const focusBtn = createButton("\ud83d\udd0d Focus Selected (0)", {
+    const focusBtn = createButton("Focus Selected (0)", {
       variant: "standard",
+      iconSrc: "/pixaroma/assets/icons/3D/focus.svg",
       onClick: () => this._camView("focus"),
       title: "Center camera on selected object",
     });
