@@ -203,11 +203,13 @@ export const SHAPES = {
     build: (THREE, p) => {
       // Hollow pipe: draw a filled outer disc with an inner circular hole
       // as a Shape, then extrude along the shape's normal (Z by default)
-      // and rotate so the extrusion axis ends up on Y. Clamp inner < outer
-      // so the slider combos can't invert (which would make an empty or
-      // self-intersecting geometry).
-      const outerR = Math.max(p.outerRadius, p.innerRadius + 0.01);
-      const innerR = Math.min(p.innerRadius, p.outerRadius - 0.01);
+      // and rotate so the extrusion axis ends up on Y. Outer R is taken
+      // exactly as set; Inner R is clamped below Outer R so the hole
+      // always fits inside the wall (sliders can't produce an empty /
+      // self-intersecting mesh, and — importantly — dragging Inner R past
+      // Outer R doesn't *expand* Outer R behind the user's back).
+      const outerR = p.outerRadius;
+      const innerR = Math.min(p.innerRadius, outerR - 0.01);
       const outer = new THREE.Shape();
       outer.absarc(0, 0, outerR, 0, Math.PI * 2, false);
       const hole = new THREE.Path();
