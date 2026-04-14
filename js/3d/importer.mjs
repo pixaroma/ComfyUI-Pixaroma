@@ -139,9 +139,23 @@ Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUs
     }
   });
 
-  // Sit the group on the floor by its axis-aligned bounding box,
-  // same convention as parametric shapes. Box3.setFromObject walks
-  // the group hierarchy and accounts for mesh transforms.
+  // Normalise the imported group's size so it comes in at a sensible
+  // scale next to the parametric shapes. Imported GLBs are often
+  // authored in very different unit systems (bunny ships at ~0.2 m
+  // tall, user uploads can be huge). Compute the group's bounding
+  // box, then uniformly scale so the longest axis is ~1.5 world
+  // units — roughly the size of a default cube.
+  const bbPre = new THREE.Box3().setFromObject(group);
+  const size = new THREE.Vector3();
+  bbPre.getSize(size);
+  const maxExtent = Math.max(size.x, size.y, size.z);
+  if (maxExtent > 0) {
+    const target = 1.5;
+    const s = target / maxExtent;
+    group.scale.setScalar(s);
+    group.updateMatrixWorld(true);
+  }
+  // Now sit the (rescaled) group on the floor.
   const box = new THREE.Box3().setFromObject(group);
   group.position.y = -box.min.y;
 
