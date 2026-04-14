@@ -106,6 +106,28 @@ Pixaroma3DEditor.prototype._rebuildShapePanel = function () {
     for (const r of this._shapePanelRows) r.refreshBounds();
   }
 
+  // Re-roll Seed (only for shapes with a "seed" param — Terrain, Blob, Rock)
+  if (shape.params.some((pp) => pp.key === "seed")) {
+    const reroll = document.createElement("button");
+    reroll.className = "p3d-btn";
+    reroll.style.cssText =
+      "width:100%;margin-top:4px;font-size:10px;padding:4px 8px;";
+    reroll.textContent = "\ud83c\udfb2 Re-roll Seed";
+    reroll.disabled = locked;
+    reroll.addEventListener("click", () => {
+      if (locked) return;
+      this._pushUndo();
+      const newSeed = Math.floor(Math.random() * 9999) + 1;
+      for (const o of this.selectedObjs) {
+        if (o.userData.type !== type) continue;
+        o.userData.geoParams.seed = newSeed;
+        this._rebuildObjectGeometry(o);
+      }
+      this._rebuildShapePanel();
+    });
+    body.appendChild(reroll);
+  }
+
   // Reset defaults button
   const reset = document.createElement("button");
   reset.className = "p3d-btn";
