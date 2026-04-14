@@ -215,19 +215,6 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
-  // TransformControls' helper subgroup includes long AXIS lines that
-  // appear during hover/drag, extending across the scene from the
-  // gizmo origin. They're rendered as Line / LineSegments primitives
-  // (gizmo arrows themselves are Mesh). Setting o.visible = false
-  // doesn't stick — TransformControls flips visibility back on hover.
-  // Permanent removal is the only reliable way: collect line objects
-  // in a first pass (mutating the tree mid-traverse breaks iteration)
-  // and detach them from their parents in a second pass.
-  const linesToRemove = [];
-  helper.traverse((o) => {
-    if (o.isLine || o.isLineSegments || o.isLineLoop) linesToRemove.push(o);
-  });
-  linesToRemove.forEach((o) => o.parent?.remove(o));
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
