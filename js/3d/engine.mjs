@@ -145,13 +145,23 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.transformCtrl.addEventListener("dragging-changed", (e) => {
     this.orbitCtrl.enabled = !e.value;
     this._gizmoDragging = e.value;
-    // Flip helper drag-indicator lines visible only while dragging,
-    // so the user sees a subtle gray axis hint during the drag and
-    // nothing during normal hover. On the next frame TransformControls
-    // may overwrite these flags for hover state — we re-apply in the
-    // animate loop too, but doing it here makes drag-start instant.
-    if (this._gizmoHelperLines) {
-      for (const l of this._gizmoHelperLines) l.visible = e.value;
+    // Show the custom gray drag indicator line during drag only.
+    // Orient it along the axis currently being manipulated.
+    if (this._dragIndicator) {
+      if (e.value && this.activeObj) {
+        const axis = this.transformCtrl.axis; // 'X' | 'Y' | 'Z' | 'XY' | ...
+        this._dragIndicator.position.copy(this.activeObj.position);
+        if (axis === "Y")      this._dragIndicator.rotation.set(0, 0, Math.PI / 2);
+        else if (axis === "Z") this._dragIndicator.rotation.set(0, Math.PI / 2, 0);
+        else                    this._dragIndicator.rotation.set(0, 0, 0); // X default
+        // Only show for single-axis translate drags; hide for rotate/
+        // scale and multi-axis pulls (no single line represents them).
+        const mode = this.transformCtrl.getMode();
+        this._dragIndicator.visible =
+          mode === "translate" && (axis === "X" || axis === "Y" || axis === "Z");
+      } else {
+        this._dragIndicator.visible = false;
+      }
     }
     if (e.value) this._pushUndo(); // snapshot before transform
     if (e.value && this.activeObj && this.selectedObjs.size > 1) {
@@ -223,30 +233,38 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
-  // TransformControls' helper subgroup contains line objects for two
-  // purposes:
-  //   1. Long bright axis-hover indicators (red/green/blue/yellow)
-  //      that streak across the scene when you hover an arrow.
-  //   2. A subtle drag indicator that appears along the active axis
-  //      while the user is dragging.
-  // The user only wants (2). Two-step strategy:
-  //   - Override every helper line material to a subtle gray so the
-  //     bright axis colours never appear on screen.
-  //   - Hide all helper lines by default; flip them visible only
-  //     while the gizmo is being dragged (toggled below by the
-  //     dragging-changed listener). On hover the lines stay hidden;
-  //     on release they hide again.
-  this._gizmoHelperLines = [];
+  // Kill every line object inside the TransformControls helper —
+  // these are the bright axis-hover / axis-drag indicators that
+  // streak across the scene. Material / visibility overrides don't
+  // stick (TransformControls reasserts them on hover), so permanent
+  // detachment is the only reliable fix. The arrow handles, plane
+  // handles, balls, and pickers are all Mesh objects and stay intact.
+  const linesToRemove = [];
   helper.traverse((o) => {
-    if ((o.isLine || o.isLineSegments) && o.material) {
-      if (o.material.color) o.material.color.set(0x999999);
-      o.material.opacity = 0.45;
-      o.material.transparent = true;
-      o.material.depthTest = false;
-      o.visible = false;
-      this._gizmoHelperLines.push(o);
-    }
+    if (o.isLine || o.isLineSegments || o.isLineLoop) linesToRemove.push(o);
   });
+  linesToRemove.forEach((o) => o.parent?.remove(o));
+
+  // Custom drag indicator — a single subtle gray line that we own.
+  // Hidden by default; made visible + oriented along the active axis
+  // while the user drags the gizmo. Gives the "I'm moving along X"
+  // visual feedback the user asked for without bringing back the
+  // bright built-in indicators.
+  this._dragIndicator = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-500, 0, 0),
+      new THREE.Vector3( 500, 0, 0),
+    ]),
+    new THREE.LineBasicMaterial({
+      color: 0x999999,
+      transparent: true,
+      opacity: 0.35,
+      depthTest: false,
+    }),
+  );
+  this._dragIndicator.renderOrder = 999;
+  this._dragIndicator.visible = false;
+  this.scene.add(this._dragIndicator);
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
@@ -338,16 +356,6 @@ Pixaroma3DEditor.prototype._animate = function () {
   if (!this.renderer) return;
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
-  // Re-enforce helper-line visibility every frame because
-  // TransformControls' own update() flips visible=true on hover. We
-  // want them visible only during active drag (tracked via
-  // _gizmoDragging from dragging-changed).
-  if (this._gizmoHelperLines) {
-    const want = !!this._gizmoDragging;
-    for (const l of this._gizmoHelperLines) {
-      if (l.visible !== want) l.visible = want;
-    }
-  }
   // Use the composer for live preview so OutlinePass renders the
   // selection highlight. The save path bypasses this and calls
   // renderer.render() directly for a clean export.
