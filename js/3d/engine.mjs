@@ -121,6 +121,12 @@ Pixaroma3DEditor.prototype._initThree = function () {
     if (!e.value) this._multiDragStart = null;
   });
   this.transformCtrl.addEventListener("objectChange", () => {
+    // Recompute the shadow frustum on EVERY drag tick — without this the
+    // frustum stays at its pre-drag size, so the visible shadow gets
+    // truncated as the object moves out of the old frustum and only
+    // snaps back to correct on mouseUp. Cost: one Box3 union per object
+    // per frame, negligible for typical scene sizes.
+    this._updateShadowFrustum?.();
     // Multi-select: apply delta from activeObj to all selected objects
     if (!this._multiDragStart || !this.activeObj) return;
     const mode = this.transformCtrl.getMode();

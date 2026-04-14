@@ -40,6 +40,14 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
   if (type === "plane") {
     mesh.position.y = 0.01;
     mesh.rotation.x = -Math.PI / 2;
+  } else if (type === "terrain") {
+    // Terrain is a thin displaced plane — its lowest vertex sits exactly
+    // at y=0 after bounding-box snap, which z-fights the ground. Lift by
+    // 0.005 and double-side the material so the underside is visible
+    // when the camera dips below the terrain.
+    geo.computeBoundingBox();
+    mesh.position.y = -geo.boundingBox.min.y + 0.005;
+    mat.side = THREE.DoubleSide;
   } else {
     geo.computeBoundingBox();
     mesh.position.y = -geo.boundingBox.min.y;

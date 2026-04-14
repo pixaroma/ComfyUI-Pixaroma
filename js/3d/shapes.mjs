@@ -549,13 +549,13 @@ export const SHAPES = {
     category: "flat",
     live: false, // PlaneGeometry with up to 128² verts is heavy — debounce
     params: [
-      { key: "size",        label: "Size",      min: 1,   max: 10,   step: 0.5 },
-      { key: "detail",      label: "Detail",    min: 8,   max: 128,  step: 1 },
-      { key: "heightScale", label: "Height",    min: 0,   max: 3,    step: 0.05 },
-      { key: "roughness",   label: "Roughness", min: 0.1, max: 3,    step: 0.1 },
-      { key: "seed",        label: "Seed",      min: 1,   max: 9999, step: 1 },
+      { key: "size",        label: "Size",      min: 1,    max: 10,   step: 0.5 },
+      { key: "detail",      label: "Detail",    min: 8,    max: 128,  step: 1 },
+      { key: "heightScale", label: "Height",    min: 0.02, max: 3,    step: 0.02 },
+      { key: "roughness",   label: "Roughness", min: 0.1,  max: 3,    step: 0.1 },
+      { key: "seed",        label: "Seed",      min: 1,    max: 9999, step: 1 },
     ],
-    defaults: { size: 4, detail: 64, heightScale: 0.4, roughness: 1.0, seed: 42 },
+    defaults: { size: 4, detail: 64, heightScale: 0.15, roughness: 1.0, seed: 42 },
     build: (THREE, p) => {
       // Subdivided plane displaced on Z by layered simplex noise (3 octaves
       // for richer hills/valleys), then rotated to lie on XZ. Same Seed
@@ -583,26 +583,39 @@ export const SHAPES = {
     params: [
       { key: "radius",     label: "Radius",     min: 0.2, max: 2,    step: 0.05 },
       { key: "detail",     label: "Detail",     min: 1,   max: 5,    step: 1 },
-      { key: "strength",   label: "Strength",   min: 0,   max: 0.6,  step: 0.01 },
+      { key: "strength",   label: "Strength",   min: 0,   max: 0.8,  step: 0.01 },
       { key: "smoothness", label: "Smoothness", min: 0.5, max: 4,    step: 0.1 },
+      { key: "octaves",    label: "Octaves",    min: 1,   max: 4,    step: 1 },
+      { key: "stretchY",   label: "Stretch Y",  min: 0.3, max: 2.5,  step: 0.05 },
       { key: "seed",       label: "Seed",       min: 1,   max: 9999, step: 1 },
     ],
-    defaults: { radius: 0.6, detail: 3, strength: 0.2, smoothness: 1.5, seed: 7 },
+    defaults: { radius: 0.6, detail: 3, strength: 0.25, smoothness: 1.5, octaves: 2, stretchY: 1.0, seed: 7 },
     build: (THREE, p) => {
       // Icosahedron sphere with each vertex pushed in/out along its
-      // radial direction by simplex noise — produces an organic lumpy
-      // shape. Detail subdivides the icosahedron (1=lo-poly, 5=smooth).
-      // Smoothness scales the noise input (higher = larger lobes).
+      // radial direction by N octaves of simplex noise — produces an
+      // organic lumpy shape. Higher octaves add finer detail on top of
+      // the base lobes. Stretch Y scales the final mesh vertically so
+      // the user can squash it (mushroom) or elongate it (gourd).
       const noise = makeNoise(p.seed);
       const g = new THREE.IcosahedronGeometry(p.radius, p.detail);
       const pos = g.attributes.position;
       const v = new THREE.Vector3();
+      const octs = Math.max(1, Math.min(4, Math.round(p.octaves)));
       for (let i = 0; i < pos.count; i++) {
         v.set(pos.getX(i), pos.getY(i), pos.getZ(i));
         const len = v.length();
-        const n = noise(v.x / p.smoothness, v.y / p.smoothness, v.z / p.smoothness);
+        let n = 0, amp = 1, freq = 1, norm = 0;
+        for (let k = 0; k < octs; k++) {
+          const sx = (v.x / p.smoothness) * freq;
+          const sy = (v.y / p.smoothness) * freq;
+          const sz = (v.z / p.smoothness) * freq;
+          n += noise(sx, sy, sz) * amp;
+          norm += amp;
+          amp *= 0.5; freq *= 2;
+        }
+        n /= norm; // normalize so adding octaves doesn't blow up displacement
         v.setLength(len * (1 + n * p.strength));
-        pos.setXYZ(i, v.x, v.y, v.z);
+        pos.setXYZ(i, v.x, v.y * p.stretchY, v.z);
       }
       g.computeVertexNormals();
       return g;
@@ -616,14 +629,18 @@ export const SHAPES = {
     params: [
       { key: "size",      label: "Size",      min: 0.2, max: 2,    step: 0.05 },
       { key: "detail",    label: "Detail",    min: 1,   max: 4,    step: 1 },
-      { key: "roughness", label: "Roughness", min: 0.1, max: 0.6,  step: 0.02 },
+      { key: "roughness", label: "Roughness", min: 0.1, max: 0.7,  step: 0.02 },
+      { key: "sharpness", label: "Sharpness", min: 0.5, max: 3,    step: 0.1 },
+      { key: "stretchY",  label: "Stretch Y", min: 0.3, max: 2.5,  step: 0.05 },
       { key: "seed",      label: "Seed",      min: 1,   max: 9999, step: 1 },
     ],
-    defaults: { size: 0.6, detail: 2, roughness: 0.35, seed: 99 },
+    defaults: { size: 0.6, detail: 2, roughness: 0.35, sharpness: 1.6, stretchY: 0.85, seed: 99 },
     build: (THREE, p) => {
       // Like Blob but at lower detail and with two octaves of noise for
       // jagged angular silhouette. Skip computeVertexNormals so the mesh
       // renders flat-shaded — the visible facets read as "rock".
+      // Sharpness applies an exponential curve to the noise so values
+      // bias toward extremes, giving more pronounced flats and ridges.
       const noise = makeNoise(p.seed);
       const g = new THREE.IcosahedronGeometry(p.size, p.detail);
       const pos = g.attributes.position;
@@ -633,11 +650,14 @@ export const SHAPES = {
         const len = v.length();
         const n1 = noise(v.x * 2, v.y * 2, v.z * 2);
         const n2 = noise(v.x * 5, v.y * 5, v.z * 5) * 0.3;
-        const newLen = len * (1 + (n1 + n2) * p.roughness);
+        let n = n1 + n2;
+        // Sharpen / soften: |n|^(1/sharp) preserves sign, biases magnitudes.
+        n = Math.sign(n) * Math.pow(Math.abs(n), 1 / p.sharpness);
+        const newLen = len * (1 + n * p.roughness);
         // Floor at 50% of original length so the rock can't collapse
         // into a needle on aggressive noise.
         v.setLength(Math.max(newLen, len * 0.5));
-        pos.setXYZ(i, v.x, v.y, v.z);
+        pos.setXYZ(i, v.x, v.y * p.stretchY, v.z);
       }
       // Intentionally skip computeVertexNormals — flat shading reads as "rock"
       return g;
