@@ -8,6 +8,7 @@ import {
   getTransformControls,
   createCanvasFrame,
 } from "./core.mjs";
+import { SHAPES } from "./shapes.mjs";
 
 // ─── Three.js ─────────────────────────────────────────────
 
@@ -195,47 +196,9 @@ Pixaroma3DEditor.prototype._updateShapeParams = function () {
   const p = this._shapeParams[type];
   if (!p) return;
 
-  const defs = {
-    cube: [
-      { key: "width", label: "Width", min: 0.1, max: 5, step: 0.1 },
-      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
-      { key: "depth", label: "Depth", min: 0.1, max: 5, step: 0.1 },
-    ],
-    sphere: [
-      { key: "radius", label: "Radius", min: 0.1, max: 3, step: 0.1 },
-      { key: "widthSegs", label: "Sides", min: 3, max: 64, step: 1 },
-      { key: "heightSegs", label: "Rings", min: 2, max: 64, step: 1 },
-    ],
-    cylinder: [
-      { key: "radiusTop", label: "Top Radius", min: 0, max: 3, step: 0.05 },
-      {
-        key: "radiusBottom",
-        label: "Btm Radius",
-        min: 0.05,
-        max: 3,
-        step: 0.05,
-      },
-      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
-      { key: "sides", label: "Sides", min: 3, max: 64, step: 1 },
-    ],
-    cone: [
-      { key: "radius", label: "Radius", min: 0.1, max: 3, step: 0.1 },
-      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
-      { key: "sides", label: "Sides", min: 3, max: 64, step: 1 },
-    ],
-    torus: [
-      { key: "radius", label: "Radius", min: 0.1, max: 3, step: 0.1 },
-      { key: "tube", label: "Tube", min: 0.01, max: 1.5, step: 0.01 },
-      { key: "radialSegs", label: "Radial Segs", min: 3, max: 32, step: 1 },
-      { key: "tubeSegs", label: "Tube Segs", min: 3, max: 64, step: 1 },
-    ],
-    plane: [
-      { key: "width", label: "Width", min: 0.1, max: 10, step: 0.1 },
-      { key: "height", label: "Height", min: 0.1, max: 10, step: 0.1 },
-    ],
-  };
-
-  const fields = defs[type] || [];
+  // Pull param defs from registry (single source of truth)
+  const shape = SHAPES[type];
+  const fields = shape ? shape.params : [];
   fields.forEach((f) => {
     const row = document.createElement("div");
     row.className = "p3d-row";

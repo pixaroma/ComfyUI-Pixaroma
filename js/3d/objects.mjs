@@ -2,49 +2,13 @@
 // Pixaroma 3D Editor — Object CRUD, selection, color, materials
 // ============================================================
 import { Pixaroma3DEditor, getTHREE, createLayerItem } from "./core.mjs";
+import { buildGeometry, getShapeDefaults } from "./shapes.mjs";
 
 // ─── Objects ──────────────────────────────────────────────
 
 Pixaroma3DEditor.prototype._makeGeo = function (type, gp) {
   const THREE = getTHREE();
-  switch (type) {
-    case "cube":
-      return new THREE.BoxGeometry(
-        gp.width || 1,
-        gp.height || 1,
-        gp.depth || 1,
-      );
-    case "sphere":
-      return new THREE.SphereGeometry(
-        gp.radius || 0.6,
-        gp.widthSegs || 16,
-        gp.heightSegs || 16,
-      );
-    case "cylinder":
-      return new THREE.CylinderGeometry(
-        gp.radiusTop ?? 0.5,
-        gp.radiusBottom ?? 0.5,
-        gp.height || 1.2,
-        gp.sides || 16,
-      );
-    case "cone":
-      return new THREE.ConeGeometry(
-        gp.radius || 0.5,
-        gp.height || 1.2,
-        gp.sides || 16,
-      );
-    case "torus":
-      return new THREE.TorusGeometry(
-        gp.radius || 0.5,
-        gp.tube || 0.2,
-        gp.radialSegs || 12,
-        gp.tubeSegs || 32,
-      );
-    case "plane":
-      return new THREE.PlaneGeometry(gp.width || 2, gp.height || 2);
-    default:
-      return new THREE.BoxGeometry(1, 1, 1);
-  }
+  return buildGeometry(THREE, type, gp);
 };
 
 Pixaroma3DEditor.prototype._addObject = function (type, gp) {
@@ -85,15 +49,7 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
 };
 
 Pixaroma3DEditor.prototype._defaultGeoParams = function (type) {
-  const d = {
-    cube: { width: 1, height: 1, depth: 1 },
-    sphere: { radius: 0.6, widthSegs: 16, heightSegs: 16 },
-    cylinder: { radiusTop: 0.5, radiusBottom: 0.5, height: 1.2, sides: 16 },
-    cone: { radius: 0.5, height: 1.2, sides: 16 },
-    torus: { radius: 0.5, tube: 0.2, radialSegs: 12, tubeSegs: 32 },
-    plane: { width: 2, height: 2 },
-  };
-  return d[type] || { width: 1, height: 1, depth: 1 };
+  return getShapeDefaults(type);
 };
 
 Pixaroma3DEditor.prototype._deleteSelected = function () {

@@ -2,6 +2,7 @@
 // Pixaroma 3D Editor — Core class, constructor, UI building
 // ============================================================
 import { ThreeDAPI } from "./api.mjs";
+import { SHAPES, SHAPE_GRID_V1 } from "./shapes.mjs";
 import {
   createEditorLayout,
   createPanel,
@@ -567,14 +568,11 @@ export class Pixaroma3DEditor {
     og.className = "p3d-grid3";
     og.style.cssText =
       "display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;";
-    const shapes = [
-      { id: "cube", icon: "\u25a3", l: "Cube" },
-      { id: "sphere", icon: "\u25cf", l: "Sphere" },
-      { id: "cylinder", icon: "\u25ae", l: "Cylinder" },
-      { id: "cone", icon: "\u25b2", l: "Cone" },
-      { id: "torus", icon: "\u25ef", l: "Torus" },
-      { id: "plane", icon: "\u25ad", l: "Plane" },
-    ];
+    const shapes = SHAPE_GRID_V1.map((id) => ({
+      id,
+      icon: SHAPES[id].label.charAt(0), // placeholder glyph — Task 2 replaces with SVG
+      l: SHAPES[id].label,
+    }));
     this._selectedShape = "cube";
     shapes.forEach((sh) => {
       const b = document.createElement("div");
@@ -608,14 +606,10 @@ export class Pixaroma3DEditor {
     left.appendChild(obs.el);
 
     // Initialize shape params for default (cube)
-    this._shapeDefaults = {
-      cube: { width: 1, height: 1, depth: 1 },
-      sphere: { radius: 0.6, widthSegs: 16, heightSegs: 16 },
-      cylinder: { radiusTop: 0.5, radiusBottom: 0.5, height: 1.2, sides: 16 },
-      cone: { radius: 0.5, height: 1.2, sides: 16 },
-      torus: { radius: 0.5, tube: 0.2, radialSegs: 12, tubeSegs: 32 },
-      plane: { width: 2, height: 2 },
-    };
+    this._shapeDefaults = {};
+    for (const id of SHAPE_GRID_V1) {
+      this._shapeDefaults[id] = { ...SHAPES[id].defaults };
+    }
     this._shapeParams = {};
     for (const [k, v] of Object.entries(this._shapeDefaults))
       this._shapeParams[k] = { ...v };

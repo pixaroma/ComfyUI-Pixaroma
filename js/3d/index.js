@@ -6,6 +6,7 @@ import { app } from "../../../../scripts/app.js";
 // Import core class first, then mixin files (side-effect imports add methods to prototype)
 import { Pixaroma3DEditor } from "./core.mjs";
 import "./engine.mjs";
+import "./shapes.mjs";  // shape registry (pure data module, no mixins)
 import "./objects.mjs";
 import "./interaction.mjs";
 import "./persistence.mjs";
