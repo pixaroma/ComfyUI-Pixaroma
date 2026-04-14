@@ -156,9 +156,18 @@ Pixaroma3DEditor.prototype._buildShapeParamRow = function (obj, shape, f, locked
       this._pushUndo();
       draggingSnapshot = true;
     }
+    // Optional per-shape constraint (e.g. tube: innerR < outerR). Runs
+    // against the ACTIVE object's geoParams so cross-slider invariants
+    // stay consistent. If the constraint clamps the value, sync the UI
+    // so the slider visually sticks at the boundary.
+    let val = +v;
+    if (shape.constraint) {
+      val = shape.constraint(obj.userData.geoParams, f.key, val);
+      if (val !== +v) sync(val);
+    }
     for (const o of this.selectedObjs) {
       if (o.userData.type !== obj.userData.type) continue;
-      o.userData.geoParams[f.key] = +v;
+      o.userData.geoParams[f.key] = val;
       if (shape.live) {
         this._rebuildObjectGeometry(o);
       } else {

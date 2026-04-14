@@ -200,15 +200,24 @@ export const SHAPES = {
       { key: "sides",       label: "Sides",   min: 8,    max: 96,  step: 1 },
     ],
     defaults: { outerRadius: 0.5, innerRadius: 0.35, height: 1.0, sides: 32 },
+    // Slider-input constraint: the param panel calls this BEFORE writing
+    // the new value to geoParams, so Outer R is held above Inner R and
+    // Inner R is held below Outer R. Prevents both the "tube collapses
+    // when Outer R dragged below Inner R" and the "Outer R expands when
+    // Inner R dragged past it" failure modes. The slider visually sticks
+    // at the boundary, communicating the limit to the user.
+    constraint: (p, key, v) => {
+      if (key === "outerRadius") return Math.max(v, p.innerRadius + 0.01);
+      if (key === "innerRadius") return Math.min(v, p.outerRadius - 0.01);
+      return v;
+    },
     build: (THREE, p) => {
       // Hollow pipe: draw a filled outer disc with an inner circular hole
       // as a Shape, then extrude along the shape's normal (Z by default)
-      // and rotate so the extrusion axis ends up on Y. Outer R is taken
-      // exactly as set; Inner R is clamped below Outer R so the hole
-      // always fits inside the wall (sliders can't produce an empty /
-      // self-intersecting mesh, and — importantly — dragging Inner R past
-      // Outer R doesn't *expand* Outer R behind the user's back).
-      const outerR = p.outerRadius;
+      // and rotate so the extrusion axis ends up on Y. A defensive clamp
+      // still enforces innerR < outerR in case params arrive from
+      // persistence/undo without passing through the constraint hook.
+      const outerR = Math.max(p.outerRadius, p.innerRadius + 0.01);
       const innerR = Math.min(p.innerRadius, outerR - 0.01);
       const outer = new THREE.Shape();
       outer.absarc(0, 0, outerR, 0, Math.PI * 2, false);

@@ -196,6 +196,12 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
     }
     if (this.objects.length) this._select(this.objects[0], false);
     this._updateLayers();
+    // Snap the directional-light shadow frustum to the just-restored
+    // scene bounds so the very first shadow frame is correct. Without
+    // this the shadow renders with the default (wider) frustum until
+    // the 1s setInterval fires, producing a visible "shadow jump" when
+    // a saved scene is reopened.
+    this._updateShadowFrustum?.();
     this._isRestoring = false;
     this._undoStack = [];
     this._redoStack = [];
