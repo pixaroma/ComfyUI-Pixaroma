@@ -894,6 +894,7 @@ export class Pixaroma3DEditor {
       title: "Delete selected",
     });
     delBtn.style.width = "100%";
+    this.el.delBtn = delBtn;
     colSec.content.appendChild(delBtn);
     right.insertBefore(colSec.el, footer);
 
@@ -904,6 +905,7 @@ export class Pixaroma3DEditor {
     });
     const mg = document.createElement("div");
     mg.className = "p3d-mat-grid";
+    this.el.matBtns = [];
     [
       { id: "clay", l: "Clay", c: "#c4a882", r: 0.85, m: 0 },
       { id: "matte", l: "Matte", c: "#888", r: 0.95, m: 0 },
@@ -917,8 +919,12 @@ export class Pixaroma3DEditor {
       pv.className = "p3d-mat-preview";
       pv.style.background = `radial-gradient(circle at 35% 35%, ${p.c}, #1a1a1a)`;
       b.append(pv, document.createTextNode(p.l));
-      b.addEventListener("click", () => this._applyMat(p));
+      b.addEventListener("click", () => {
+        if (!this.activeObj) return; // no-op when disabled
+        this._applyMat(p);
+      });
       mg.appendChild(b);
+      this.el.matBtns.push(b);
     });
     mats.content.appendChild(mg);
     // Helper: imported Groups don't have a top-level .material, so

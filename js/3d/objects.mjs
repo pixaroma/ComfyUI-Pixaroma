@@ -278,13 +278,41 @@ Pixaroma3DEditor.prototype._applyMat = function (p) {
 
 // ─── Panels ───────────────────────────────────────────────
 
+// Flip the Object Color + Materials panels' interactivity based on
+// whether there's an active object. When nothing is selected the
+// inputs render grayed out and can't be edited — matches the Shape
+// panel's "Select an object…" placeholder behaviour and avoids the
+// confusing state where a color-picker change would silently apply
+// to nothing.
+Pixaroma3DEditor.prototype._setObjectPanelsEnabled = function (enabled) {
+  const el = this.el;
+  const opacity = enabled ? "1" : "0.4";
+  const pointer = enabled ? "" : "none";
+  const toggle = (node) => {
+    if (!node) return;
+    node.disabled = !enabled;
+    node.style.opacity = opacity;
+    node.style.pointerEvents = pointer;
+  };
+  toggle(el.objColor);
+  toggle(el.objName);
+  toggle(el.hslH); toggle(el.hslS); toggle(el.hslL);
+  toggle(el.roughS); toggle(el.roughV);
+  toggle(el.glossS); toggle(el.glossV);
+  toggle(el.opacS);  toggle(el.opacV);
+  toggle(el.delBtn);
+  if (el.matBtns) for (const b of el.matBtns) toggle(b);
+};
+
 Pixaroma3DEditor.prototype._syncProps = function () {
   const o = this.activeObj;
   if (!o) {
     if (this.el.objColor) this.el.objColor.value = "#888";
     if (this.el.objName) this.el.objName.value = "";
+    this._setObjectPanelsEnabled(false);
     return;
   }
+  this._setObjectPanelsEnabled(true);
   // Look up the material for panel reads — imported groups' first
   // mesh, otherwise the object's own .material.
   const mat = firstMeshMaterial(o);
