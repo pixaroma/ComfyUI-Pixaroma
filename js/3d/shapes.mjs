@@ -398,16 +398,21 @@ export const SHAPES = {
       // Polygonal inner hole. holeSides=32 reads as a smooth circle;
       // smaller values (6=hex, 4=square, 3=triangle) give faceted holes.
       // Holes must wind opposite to the outer shape for ExtrudeGeometry,
-      // so we walk angles in the negative direction.
+      // so we walk angles in the negative direction. We stop one short
+      // of holeSides and call closePath() — closing with an explicit
+      // duplicate point produces a zero-length segment that confuses
+      // ExtrudeGeometry's triangulator and shows up as a sharp visual
+      // glitch on the front face.
       const holeSides = Math.max(3, Math.round(p.holeSides ?? 32));
       const holeR = Math.min(p.innerRadius, baseR - 0.02);
       const hole = new THREE.Path();
-      for (let i = 0; i <= holeSides; i++) {
+      for (let i = 0; i < holeSides; i++) {
         const a = -i * (Math.PI * 2) / holeSides;
         const x = Math.cos(a) * holeR, y = Math.sin(a) * holeR;
         if (i === 0) hole.moveTo(x, y);
         else hole.lineTo(x, y);
       }
+      hole.closePath();
       shape.holes.push(hole);
       // Bevel sizes are decoupled from thickness so the tooth silhouette
       // stays put when the user changes Thickness. Both are clamped to a
