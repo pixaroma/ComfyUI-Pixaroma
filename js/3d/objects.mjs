@@ -32,8 +32,18 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
   const mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = true;
   mesh.receiveShadow = true;
-  mesh.position.y = type === "plane" ? 0.01 : 0.6;
-  if (type === "plane") mesh.rotation.x = -Math.PI / 2;
+  // Sit on the floor: compute the geometry's bounding box and offset the
+  // mesh so its bottom rests at world y=0. Works for every shape —
+  // including prism/pyramid which already translate their own bottom to
+  // local y=0 (bb.min.y becomes 0, so position.y = 0), and shapes like
+  // cube/sphere/cylinder whose geometries are centered on origin.
+  if (type === "plane") {
+    mesh.position.y = 0.01;
+    mesh.rotation.x = -Math.PI / 2;
+  } else {
+    geo.computeBoundingBox();
+    mesh.position.y = -geo.boundingBox.min.y;
+  }
   mesh.userData = {
     id: this._id,
     name: type.charAt(0).toUpperCase() + type.slice(1) + " " + this._id,
