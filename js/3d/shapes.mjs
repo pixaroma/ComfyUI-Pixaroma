@@ -188,6 +188,45 @@ export const SHAPES = {
       return g;
     },
   },
+  tube: {
+    icon: "tube.svg",
+    label: "Tube",
+    category: "cylindrical",
+    live: true,
+    params: [
+      { key: "outerRadius", label: "Outer R", min: 0.15, max: 3,   step: 0.05 },
+      { key: "innerRadius", label: "Inner R", min: 0.05, max: 2.8, step: 0.05 },
+      { key: "height",      label: "Height",  min: 0.1,  max: 5,   step: 0.1 },
+      { key: "sides",       label: "Sides",   min: 8,    max: 96,  step: 1 },
+    ],
+    defaults: { outerRadius: 0.5, innerRadius: 0.35, height: 1.0, sides: 32 },
+    build: (THREE, p) => {
+      // Hollow pipe: draw a filled outer disc with an inner circular hole
+      // as a Shape, then extrude along the shape's normal (Z by default)
+      // and rotate so the extrusion axis ends up on Y. Clamp inner < outer
+      // so the slider combos can't invert (which would make an empty or
+      // self-intersecting geometry).
+      const outerR = Math.max(p.outerRadius, p.innerRadius + 0.01);
+      const innerR = Math.min(p.innerRadius, p.outerRadius - 0.01);
+      const outer = new THREE.Shape();
+      outer.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, innerR, 0, Math.PI * 2, true);
+      outer.holes.push(hole);
+      const g = new THREE.ExtrudeGeometry(outer, {
+        depth: p.height,
+        bevelEnabled: false,
+        curveSegments: p.sides,
+      });
+      // Re-orient: Y becomes the height axis, and centre the tube on the
+      // origin so _addObject's bounding-box snap lands it neatly on the
+      // floor (and shape resizes don't drag the mesh around).
+      g.rotateX(-Math.PI / 2);
+      g.translate(0, -p.height / 2, 0);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
   cone: {
     icon: "cone.svg",
     label: "Cone",
