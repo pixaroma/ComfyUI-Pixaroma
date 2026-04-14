@@ -256,7 +256,7 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = false;
     if (this._gizmoHelper) this._gizmoHelper.visible = false;
     if (this._canvasFrame) this._canvasFrame.setVisible(false);
-    this.objects.forEach((o) => o.material.emissive?.setHex(0x000000));
+    this._setOutlinesVisible(false);
 
     // For save render: temporarily restore scene bg if no bg image
     const hadBgImage = this.el.bgImgEl && this._bgImg.path;
@@ -339,7 +339,7 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = this._showGrid;
     if (this._gizmoHelper) this._gizmoHelper.visible = this._showGizmo;
     if (this._canvasFrame) this._canvasFrame.setVisible(true);
-    if (this.activeObj) this.activeObj.material.emissive?.setHex(0x3a1f00);
+    this._setOutlinesVisible(true);
     this.renderer.setPixelRatio(pr);
     this._onResize();
 

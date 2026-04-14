@@ -87,7 +87,7 @@ Pixaroma3DEditor.prototype._onClick = function (e) {
   const hits = ray.intersectObjects(this.objects);
   if (hits.length > 0) this._select(hits[0].object, e.shiftKey);
   else {
-    for (const o of this.selectedObjs) o.material.emissive?.setHex(0x000000);
+    for (const o of this.selectedObjs) this._removeOutline(o);
     this.selectedObjs.clear();
     this.activeObj = null;
     this.transformCtrl.detach();
@@ -174,17 +174,16 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
 };
 
 Pixaroma3DEditor.prototype._selectAll = function () {
-  for (const o of this.selectedObjs) o.material.emissive?.setHex(0x000000);
+  for (const o of this.selectedObjs) this._removeOutline(o);
   this.selectedObjs.clear();
   this.objects.forEach((o) => {
     this.selectedObjs.add(o);
-    o.material.emissive?.setHex(0x3a1f00);
+    this._addOutline(o);
   });
   // Set active to first unlocked object for gizmo
   this.activeObj =
     this.objects.find((o) => !o.userData.locked) || this.objects[0] || null;
   if (this.activeObj) {
-    this.activeObj.material.emissive?.setHex(0x4a2800);
     this.transformCtrl.attach(this.activeObj);
   }
   this._updateLayers();

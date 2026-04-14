@@ -322,4 +322,12 @@ Pixaroma3DEditor.prototype._rebuildObjectGeometry = function (obj) {
     const newMinY = newGeo.boundingBox?.min.y ?? 0;
     obj.position.y += (oldMinY - newMinY) * (obj.scale.y || 1);
   }
+  // The selection-outline mesh is a child of `obj` that shares the main
+  // geometry. After a rebuild it still points at the just-disposed old
+  // geometry; re-point it at the new one so outlines stay correct.
+  if (obj._p3dOutline) obj._p3dOutline.geometry = newGeo;
+  // Recompute shadow frustum — the new geometry may be larger or
+  // smaller than the old, and without this the shadow visibly lags
+  // behind the slider until the 1s setInterval fires.
+  this._updateShadowFrustum?.();
 };

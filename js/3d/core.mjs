@@ -791,7 +791,7 @@ export class Pixaroma3DEditor {
     // 2) Object Color + HSL
     const colSec = createPanel("Object Color", {
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
     });
     const colorIn = createColorInput({
       value: "#c4a882",
