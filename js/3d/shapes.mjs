@@ -702,6 +702,9 @@ export const SHAPES = {
         p.size, p.segments,
         !!p.bottom, !!p.lid, !!p.body, false, !!p.spout,
       );
+      // Rotate 180° on Y so the spout points the same way as the
+      // shape-grid icon (handle on the right, spout on the left).
+      g.rotateY(Math.PI);
       g.computeVertexNormals();
       return g;
     },

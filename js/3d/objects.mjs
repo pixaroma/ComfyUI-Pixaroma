@@ -64,6 +64,12 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
     geo.computeBoundingBox();
     mesh.position.y = -geo.boundingBox.min.y + 0.005;
     mat.side = THREE.DoubleSide;
+  } else if (type === "teapot") {
+    // Teapot is a hollow shell — looking down through the lid hole or
+    // into the spout, the interior is invisible without DoubleSide.
+    geo.computeBoundingBox();
+    mesh.position.y = -geo.boundingBox.min.y;
+    mat.side = THREE.DoubleSide;
   } else {
     geo.computeBoundingBox();
     mesh.position.y = -geo.boundingBox.min.y;
