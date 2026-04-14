@@ -235,6 +235,7 @@ Pixaroma3DEditor.prototype._updateLayers = function () {
         if (obj.userData.locked && obj === this.activeObj)
           this.transformCtrl.detach();
         this._updateLayers();
+        if (this._rebuildShapePanel) this._rebuildShapePanel();
       },
       onClick: (e) => {
         if (e.detail > 1) return;

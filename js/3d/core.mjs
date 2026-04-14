@@ -75,6 +75,8 @@ function injectExtraStyles() {
 .p3d-shape-btn:hover{background:#2a2c2e;border-color:#f66744;transform:scale(1.05);}
 .p3d-shape-btn .p3d-shape-ico{width:22px;height:22px;background-color:#ccc;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;transition:background-color .12s;}
 .p3d-shape-btn:hover .p3d-shape-ico{background-color:#f66744;}
+.p3d-range:disabled,.p3d-input:disabled{opacity:0.4;cursor:not-allowed;}
+.p3d-row:has(> .p3d-range:disabled) .p3d-label{opacity:0.5;}
 .p3d-shape-params{margin-top:8px;padding:6px 0;border-top:1px solid #2a2c2e;}
 .p3d-mat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
 .p3d-mat-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;cursor:pointer;border:1px solid #3a3d40;background:#242628;border-radius:5px;font-size:9px;color:#999;transition:all .12s;}

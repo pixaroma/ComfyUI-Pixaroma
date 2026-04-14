@@ -93,6 +93,7 @@ Pixaroma3DEditor.prototype._onClick = function (e) {
     this.transformCtrl.detach();
     this._syncProps();
     this._updateLayers();
+    if (this._rebuildShapePanel) this._rebuildShapePanel();
   }
 };
 
@@ -113,11 +114,21 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
     this._selectAll();
     return;
   }
+  // Undo/Redo: always handle even when a slider / number input has focus.
+  // Range inputs have no native Ctrl+Z, and for the Shape panel sliders the
+  // user expects Ctrl+Z to revert the geometry change regardless of focus.
+  if (ctrl && (kl === "z" || kl === "y")) {
+    e.preventDefault();
+    if ((tag === "INPUT" || tag === "TEXTAREA") && !isTrap) ae.blur();
+    if (kl === "z") this._undo();
+    else this._redo();
+    return;
+  }
   // For other shortcuts, skip if inside input fields (but not our focus trap)
   if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && !isTrap)
     return;
   const handled = ctrl
-    ? ["z", "y", "d", "s"].includes(kl)
+    ? ["d", "s"].includes(kl)
     : [
         "m",
         "r",
@@ -135,14 +146,6 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
         "escape",
       ].includes(kl);
   if (handled) e.preventDefault();
-  if (ctrl && kl === "z") {
-    this._undo();
-    return;
-  }
-  if (ctrl && kl === "y") {
-    this._redo();
-    return;
-  }
   if (ctrl && kl === "d") {
     this._dupSelected();
     return;
