@@ -106,14 +106,14 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  // edgeStrength scales how strongly the outline is mixed over the
-  // scene; high values make the colour read as solid Pixaroma orange
-  // instead of a faint pink fade. edgeThickness 2 gives the silhouette
-  // enough body to read uniformly around the object instead of the
-  // patchy "incomplete contour" look of a thin 1px line.
-  this._outlinePass.edgeStrength = 10;
+  // Bold ~2-3 px solid Pixaroma orange. edgeStrength saturates the
+  // mix so the colour reads as the buttons' #f66744 instead of a
+  // faded pink. edgeThickness gives the line body so the silhouette
+  // stays uniform around the object at any zoom (OutlinePass measures
+  // thickness in screen pixels, so it stays the same as you zoom).
+  this._outlinePass.edgeStrength = 8;
   this._outlinePass.edgeGlow = 0;
-  this._outlinePass.edgeThickness = 2;
+  this._outlinePass.edgeThickness = 3;
   this._outlinePass.pulsePeriod = 0;
   // Full-resolution edge detection — the default half-res produced
   // "ray" streaks extending from sharp silhouettes.
@@ -145,6 +145,14 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.transformCtrl.addEventListener("dragging-changed", (e) => {
     this.orbitCtrl.enabled = !e.value;
     this._gizmoDragging = e.value;
+    // Flip helper drag-indicator lines visible only while dragging,
+    // so the user sees a subtle gray axis hint during the drag and
+    // nothing during normal hover. On the next frame TransformControls
+    // may overwrite these flags for hover state — we re-apply in the
+    // animate loop too, but doing it here makes drag-start instant.
+    if (this._gizmoHelperLines) {
+      for (const l of this._gizmoHelperLines) l.visible = e.value;
+    }
     if (e.value) this._pushUndo(); // snapshot before transform
     if (e.value && this.activeObj && this.selectedObjs.size > 1) {
       // Starting drag — record initial positions/rotations/scales of all selected
@@ -215,6 +223,30 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
+  // TransformControls' helper subgroup contains line objects for two
+  // purposes:
+  //   1. Long bright axis-hover indicators (red/green/blue/yellow)
+  //      that streak across the scene when you hover an arrow.
+  //   2. A subtle drag indicator that appears along the active axis
+  //      while the user is dragging.
+  // The user only wants (2). Two-step strategy:
+  //   - Override every helper line material to a subtle gray so the
+  //     bright axis colours never appear on screen.
+  //   - Hide all helper lines by default; flip them visible only
+  //     while the gizmo is being dragged (toggled below by the
+  //     dragging-changed listener). On hover the lines stay hidden;
+  //     on release they hide again.
+  this._gizmoHelperLines = [];
+  helper.traverse((o) => {
+    if ((o.isLine || o.isLineSegments) && o.material) {
+      if (o.material.color) o.material.color.set(0x999999);
+      o.material.opacity = 0.45;
+      o.material.transparent = true;
+      o.material.depthTest = false;
+      o.visible = false;
+      this._gizmoHelperLines.push(o);
+    }
+  });
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
@@ -306,6 +338,16 @@ Pixaroma3DEditor.prototype._animate = function () {
   if (!this.renderer) return;
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
+  // Re-enforce helper-line visibility every frame because
+  // TransformControls' own update() flips visible=true on hover. We
+  // want them visible only during active drag (tracked via
+  // _gizmoDragging from dragging-changed).
+  if (this._gizmoHelperLines) {
+    const want = !!this._gizmoDragging;
+    for (const l of this._gizmoHelperLines) {
+      if (l.visible !== want) l.visible = want;
+    }
+  }
   // Use the composer for live preview so OutlinePass renders the
   // selection highlight. The save path bypasses this and calls
   // renderer.render() directly for a clean export.
