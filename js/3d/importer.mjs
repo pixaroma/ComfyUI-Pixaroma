@@ -110,11 +110,11 @@ export async function loadOBJFromURL(url) {
 // bunny, "import" for user uploads (Task 8). The Shape panel uses
 // this to show the "No shape parameters for imported models." empty
 // state rather than parametric sliders.
-// Default cream/clay colour applied to bunny + user imports so they
-// match the look of the parametric shapes (which randomise around
-// this hue). Without this, GLBs came out the dull neutral gray that
-// three.js GLTFLoader uses when the file ships without a baseColor.
-const IMPORTED_DEFAULT_COLOR = "#c4a882";
+// Default warm off-white applied to bunny + user imports so they
+// match the parametric-shape default. Without this, GLBs came out
+// the dull neutral gray that three.js GLTFLoader uses when the file
+// ships without a baseColor.
+const IMPORTED_DEFAULT_COLOR = "#f3e8d8";
 
 Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUserData = {}) {
   const THREE = getTHREE();
