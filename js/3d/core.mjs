@@ -26,35 +26,20 @@ import {
 // Shared Three.js module references — populated by loadThree()
 export let THREE = null,
   OrbitControls = null,
-  TransformControls = null,
-  EffectComposer = null,
-  RenderPass = null,
-  OutlinePass = null,
-  OutputPass = null;
+  TransformControls = null;
 const ESM = "https://esm.sh/three@0.170.0";
 export async function loadThree() {
   if (THREE) return;
-  // Load all seven modules in parallel instead of serially. Previously
-  // each await blocked the next fetch, adding 6 round-trips of latency
-  // to the first-open experience (visible as a gray flash before the
-  // canvas appears). Promise.all cuts that to a single round-trip.
-  const [threeMod, orbitMod, transformMod, composerMod, renderMod, outlineMod, outputMod] =
-    await Promise.all([
-      import(ESM),
-      import(ESM + "/examples/jsm/controls/OrbitControls.js"),
-      import(ESM + "/examples/jsm/controls/TransformControls.js"),
-      import(ESM + "/examples/jsm/postprocessing/EffectComposer.js"),
-      import(ESM + "/examples/jsm/postprocessing/RenderPass.js"),
-      import(ESM + "/examples/jsm/postprocessing/OutlinePass.js"),
-      import(ESM + "/examples/jsm/postprocessing/OutputPass.js"),
-    ]);
+  // Parallel module loads — serial awaits added round-trip latency
+  // that showed as a gray flash when the editor first opened.
+  const [threeMod, orbitMod, transformMod] = await Promise.all([
+    import(ESM),
+    import(ESM + "/examples/jsm/controls/OrbitControls.js"),
+    import(ESM + "/examples/jsm/controls/TransformControls.js"),
+  ]);
   THREE = threeMod;
   OrbitControls = orbitMod.OrbitControls;
   TransformControls = transformMod.TransformControls;
-  EffectComposer = composerMod.EffectComposer;
-  RenderPass = renderMod.RenderPass;
-  OutlinePass = outlineMod.OutlinePass;
-  OutputPass = outputMod.OutputPass;
 }
 // Allow other modules to access the lazy-loaded THREE refs
 export function getTHREE() {
@@ -65,9 +50,6 @@ export function getOrbitControls() {
 }
 export function getTransformControls() {
   return TransformControls;
-}
-export function getPostprocessing() {
-  return { EffectComposer, RenderPass, OutlinePass, OutputPass };
 }
 
 // Editor-specific CSS for 3D viewport elements not covered by framework

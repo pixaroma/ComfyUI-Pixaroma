@@ -5,19 +5,42 @@ import { Pixaroma3DEditor, getTHREE, createLayerItem } from "./core.mjs";
 import { buildGeometry, getShapeDefaults } from "./shapes.mjs";
 
 // ─── Selection outline ────────────────────────────────────
-// Blender-style orange outline rendered via OutlinePass postprocessing
-// (screen-space). The outline has uniform thickness in screen pixels
-// regardless of object scale, stretch, or geometry — so a flat plane,
-// a squashed blob, and a tall box all get the same crisp 1-pixel
-// outline. Much cleaner than the inverted-hull approach, which scales
-// with the mesh and reads as "fat" on stretched objects.
+// Orange BoxHelper wireframe around the selected object's bounding box.
+// Unlike OutlinePass this is a real 3D object attached to the mesh —
+// it moves / rotates / scales with the mesh automatically and renders
+// in a predictable Pixaroma-orange colour without any compositor bugs
+// or zoom-dependent artefacts. Line thickness is 1 CSS pixel (WebGL
+// limitation) but reads as a crisp orange wireframe.
 //
 // Sync point: any code that mutates this.selectedObjs should call
-// _syncOutlineSelection() at the end so the pass picks up the new set.
+// _syncOutlineSelection() at the end so the boxes match the set.
 
 Pixaroma3DEditor.prototype._syncOutlineSelection = function () {
-  if (this._outlinePass) {
-    this._outlinePass.selectedObjects = [...this.selectedObjs];
+  const THREE = getTHREE();
+  // Remove outlines from meshes that are no longer selected.
+  for (const m of this.objects) {
+    if (m._selectionBox && !this.selectedObjs.has(m)) {
+      this.scene.remove(m._selectionBox);
+      m._selectionBox.geometry?.dispose();
+      m._selectionBox.material?.dispose();
+      m._selectionBox = null;
+    }
+  }
+  // Add outline for newly selected meshes. BoxHelper auto-tracks its
+  // target mesh's world transform, so the wireframe stays glued to the
+  // object through move / rotate / scale. renderOrder + depthTest:false
+  // keeps the outline visible through the gizmo and any other object
+  // that might sit in front — the classic "always on top" selection
+  // behaviour Blender uses.
+  for (const m of this.selectedObjs) {
+    if (m._selectionBox) continue;
+    const box = new THREE.BoxHelper(m, 0xf66744);
+    box.material.depthTest = false;
+    box.material.transparent = true;
+    box.material.opacity = 1;
+    box.renderOrder = 999;
+    this.scene.add(box);
+    m._selectionBox = box;
   }
 };
 
@@ -97,6 +120,14 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this._pushUndo();
   this.transformCtrl.detach();
   for (const o of this.selectedObjs) {
+    // Remove the selection box too so we don't leak a dangling helper
+    // pointing at a disposed geometry.
+    if (o._selectionBox) {
+      this.scene.remove(o._selectionBox);
+      o._selectionBox.geometry?.dispose();
+      o._selectionBox.material?.dispose();
+      o._selectionBox = null;
+    }
     this.scene.remove(o);
     o.geometry.dispose();
     o.material.dispose();

@@ -256,9 +256,15 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = false;
     if (this._gizmoHelper) this._gizmoHelper.visible = false;
     if (this._canvasFrame) this._canvasFrame.setVisible(false);
-    // Selection outline is rendered by OutlinePass via the composer;
-    // the save render below calls renderer.render() directly so the
-    // outline never reaches the exported PNG — no toggling needed.
+    // Hide selection boxes during save render so the exported PNG
+    // doesn't contain the orange wireframe. Restored below.
+    const hiddenBoxes = [];
+    for (const m of this.objects) {
+      if (m._selectionBox && m._selectionBox.visible) {
+        m._selectionBox.visible = false;
+        hiddenBoxes.push(m._selectionBox);
+      }
+    }
 
     // For save render: temporarily restore scene bg if no bg image
     const hadBgImage = this.el.bgImgEl && this._bgImg.path;
@@ -341,6 +347,8 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = this._showGrid;
     if (this._gizmoHelper) this._gizmoHelper.visible = this._showGizmo;
     if (this._canvasFrame) this._canvasFrame.setVisible(true);
+    // Restore the selection boxes hidden above.
+    for (const b of hiddenBoxes) b.visible = true;
     this.renderer.setPixelRatio(pr);
     this._onResize();
 
@@ -382,15 +390,6 @@ Pixaroma3DEditor.prototype._close = function () {
     this.transformCtrl.dispose();
   }
   if (this.orbitCtrl) this.orbitCtrl.dispose();
-  // Dispose postprocessing passes + composer render targets so GPU
-  // memory is released when the editor closes.
-  if (this._composer) {
-    this._composer.passes.forEach((p) => p.dispose?.());
-    this._composer.renderTarget1?.dispose();
-    this._composer.renderTarget2?.dispose();
-    this._composer = null;
-    this._outlinePass = null;
-  }
   if (this.renderer) {
     this.renderer.dispose();
     this.renderer.forceContextLoss();
