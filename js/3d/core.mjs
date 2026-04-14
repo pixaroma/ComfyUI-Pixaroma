@@ -589,15 +589,14 @@ export class Pixaroma3DEditor {
       "display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;";
     // Placeholder metadata for shapes not yet implemented — allows the
     // full 18-button grid to render during migration. Clicking one of
-    // these falls back to cube geometry via buildGeometry().
-    const _placeholderLabel = (id) =>
-      id.charAt(0).toUpperCase() + id.slice(1);
+    // these adds a cube (using cube defaults so the Shape/Transform
+    // panels stay fully functional) and logs a warning.
     const shapes = SHAPE_GRID.map((id) => {
       const s = SHAPES[id];
       return {
         id,
         icon: s ? s.icon : "cube.svg",
-        l: s ? s.label : _placeholderLabel(id),
+        label: s ? s.label : id.charAt(0).toUpperCase() + id.slice(1),
         implemented: !!s,
       };
     });
@@ -605,20 +604,26 @@ export class Pixaroma3DEditor {
       const b = document.createElement("div");
       b.className = "p3d-shape-btn";
       if (!sh.implemented) b.classList.add("p3d-shape-todo");
-      b.title = sh.implemented ? "Add " + sh.l : sh.l + " (coming soon)";
+      b.title = sh.implemented
+        ? "Add " + sh.label
+        : sh.label + " (coming soon)";
       const ico = document.createElement("span");
       ico.className = "p3d-shape-ico";
       ico.setAttribute("role", "img");
-      ico.setAttribute("aria-label", sh.l);
+      ico.setAttribute("aria-label", sh.label);
       const iconUrl = `url("/pixaroma/assets/icons/3D/${sh.icon}")`;
       ico.style.webkitMaskImage = iconUrl;
       ico.style.maskImage = iconUrl;
       const lbl = document.createElement("span");
-      lbl.textContent = sh.l;
+      lbl.textContent = sh.label;
       b.append(ico, lbl);
       b.addEventListener("click", () => {
-        const def = SHAPES[sh.id] ? { ...SHAPES[sh.id].defaults } : {};
-        this._addObject(sh.id, def);
+        // Fall back to cube defaults for placeholder shapes so the object
+        // has valid geoParams (Shape panel sliders otherwise show empty).
+        const defaults = sh.implemented
+          ? SHAPES[sh.id].defaults
+          : SHAPES.cube.defaults;
+        this._addObject(sh.id, { ...defaults });
       });
       og.appendChild(b);
     });
