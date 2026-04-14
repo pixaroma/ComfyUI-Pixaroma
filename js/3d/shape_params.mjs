@@ -87,8 +87,12 @@ Pixaroma3DEditor.prototype._rebuildShapePanel = function () {
   head.append(icon, name);
   body.appendChild(head);
 
-  // Sliders
+  // Sliders. _shapePanelRows is a per-panel registry of refreshBounds()
+  // callbacks so any apply() can shrink/expand sibling slider tracks
+  // when a related geoParam changes (e.g. dragging gear's Inner Hole
+  // shrinks Tooth Depth's max).
   const locked = !!obj.userData.locked;
+  this._shapePanelRows = [];
   shape.params.forEach((f) => {
     const row = this._buildShapeParamRow(obj, shape, f, locked);
     body.appendChild(row);
@@ -96,6 +100,11 @@ Pixaroma3DEditor.prototype._rebuildShapePanel = function () {
     const slider = row.querySelector("input[type=range]");
     if (slider) refreshFill(slider);
   });
+  // Initial bounds pass so dynamic-bound sliders show the correct
+  // track range on selection (not just after the first interaction).
+  if (shape.bounds) {
+    for (const r of this._shapePanelRows) r.refreshBounds();
+  }
 
   // Reset defaults button
   const reset = document.createElement("button");
@@ -165,9 +174,25 @@ Pixaroma3DEditor.prototype._buildShapeParamRow = function (obj, shape, f, locked
       val = shape.constraint(obj.userData.geoParams, f.key, val);
       if (val !== +v) sync(val);
     }
+    // Stage 1: write new value into geoParams for every selected obj
+    // of the same type. Done BEFORE refreshing sibling bounds so the
+    // bounds() function reads the just-updated value.
     for (const o of this.selectedObjs) {
       if (o.userData.type !== obj.userData.type) continue;
       o.userData.geoParams[f.key] = val;
+    }
+    // Stage 2: refresh sibling slider bounds so their tracks resize to
+    // reflect the new constraint envelope. May clamp a sibling value
+    // into geoParams if the new max is below its current value — the
+    // build call below will then use the clamped value.
+    if (shape.bounds && this._shapePanelRows) {
+      for (const r of this._shapePanelRows) {
+        if (r.key !== f.key) r.refreshBounds();
+      }
+    }
+    // Stage 3: rebuild geometry (live or debounced).
+    for (const o of this.selectedObjs) {
+      if (o.userData.type !== obj.userData.type) continue;
       if (shape.live) {
         this._rebuildObjectGeometry(o);
       } else {
@@ -196,6 +221,36 @@ Pixaroma3DEditor.prototype._buildShapeParamRow = function (obj, shape, f, locked
     numIn.value = fmt(v);
     refreshFill(slider);
   };
+
+  // Recompute the slider's min/max from shape.bounds (clamped to the
+  // static f.min/f.max) and clamp the current value into the new
+  // envelope. Mutates geoParams[f.key] if the value got clamped, so a
+  // subsequent geometry rebuild reflects reality. Pushed onto the
+  // panel-wide registry so apply() can call siblings.
+  const refreshBounds = () => {
+    let minV = f.min, maxV = f.max;
+    if (shape.bounds) {
+      const b = shape.bounds(obj.userData.geoParams, f.key) || {};
+      if (b.min !== undefined) minV = Math.max(minV, b.min);
+      if (b.max !== undefined) maxV = Math.min(maxV, b.max);
+    }
+    if (minV > maxV) minV = maxV;
+    slider.min = minV;
+    numIn.min = minV;
+    slider.max = maxV;
+    numIn.max = maxV;
+    const cur = +slider.value;
+    let clamped = cur;
+    if (cur > maxV) clamped = maxV;
+    else if (cur < minV) clamped = minV;
+    if (clamped !== cur) {
+      slider.value = clamped;
+      numIn.value = fmt(clamped);
+      obj.userData.geoParams[f.key] = clamped;
+    }
+    refreshFill(slider);
+  };
+  this._shapePanelRows.push({ key: f.key, refreshBounds });
 
   slider.addEventListener("input", () => {
     sync(slider.value);

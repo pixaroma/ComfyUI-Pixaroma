@@ -211,6 +211,15 @@ export const SHAPES = {
       if (key === "innerRadius") return Math.min(v, p.outerRadius - 0.01);
       return v;
     },
+    // Dynamic slider bounds — the param panel uses this to shrink each
+    // slider's track to the current valid envelope. Without it the
+    // sliders show their full static range while the constraint silently
+    // clamps drag, which feels like the slider is "stuck".
+    bounds: (p, key) => {
+      if (key === "outerRadius") return { min: p.innerRadius + 0.01 };
+      if (key === "innerRadius") return { max: p.outerRadius - 0.01 };
+      return {};
+    },
     build: (THREE, p) => {
       // Hollow pipe: draw a filled outer disc with an inner circular hole
       // as a Shape, then extrude along the shape's normal (Z by default)
@@ -291,6 +300,11 @@ export const SHAPES = {
       if (key === "innerRadius") return Math.min(v, p.outerRadius - 0.01);
       return v;
     },
+    bounds: (p, key) => {
+      if (key === "outerRadius") return { min: p.innerRadius + 0.01 };
+      if (key === "innerRadius") return { max: p.outerRadius - 0.01 };
+      return {};
+    },
     build: (THREE, p) => {
       // Annulus extruded along Y by a small thickness. Using Extrude
       // (instead of THREE.RingGeometry) gives us a proper two-sided 3D
@@ -356,6 +370,21 @@ export const SHAPES = {
         return Math.max(v, minOuter);
       }
       return v;
+    },
+    // Dynamic slider tracks shrink to match the constraint envelope, so
+    // the user sees Tooth Depth's max move when they drag Inner Hole or
+    // Outer R, instead of the slider visibly running past its real limit.
+    bounds: (p, key) => {
+      if (key === "innerRadius") {
+        return { max: Math.max(0.05, p.outerRadius - p.toothDepth - 0.04) };
+      }
+      if (key === "toothDepth") {
+        return { max: Math.max(0.02, p.outerRadius - p.innerRadius - 0.04) };
+      }
+      if (key === "outerRadius") {
+        return { min: p.innerRadius + p.toothDepth + 0.04 };
+      }
+      return {};
     },
     build: (THREE, p) => {
       // Build a flat 2D gear silhouette as a Shape: walk N teeth around
