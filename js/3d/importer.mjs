@@ -173,22 +173,26 @@ Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUs
   this._pushUndo();
   this._id++;
 
-  // Shadow flags + default clay colour on every mesh in the hierarchy.
-  // We override the GLB's materials (the bundled bunny.glb has plain
-  // unlit materials) so imported objects look consistent with the rest
-  // of the scene. The user can still recolour via the Object Color
-  // panel; keepOriginalMaterials is stored for future "restore GLB
-  // materials" toggle.
+  // Shadow flags + uniform MeshStandardMaterial on every mesh. We
+  // rebuild the material (rather than mutating in place) because
+  // different loaders produce different types — GLBs give us
+  // MeshStandardMaterial, OBJLoader gives MeshPhongMaterial by
+  // default — and the same scene lights render them very
+  // differently. Forcing a StandardMaterial with the Pixaroma clay
+  // default makes GLB and OBJ imports look identical under our PBR
+  // pipeline.
   group.traverse((o) => {
-    if (o.isMesh) {
-      o.castShadow = true;
-      o.receiveShadow = true;
-      if (o.material && o.material.color) {
-        o.material.color.set(IMPORTED_DEFAULT_COLOR);
-        o.material.roughness = 0.55;
-        o.material.metalness = 0;
-      }
-    }
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    o.material?.dispose?.();
+    o.material = new THREE.MeshStandardMaterial({
+      color: IMPORTED_DEFAULT_COLOR,
+      roughness: 0.55,
+      metalness: 0,
+      transparent: true,
+      opacity: 1,
+    });
   });
 
   // Normalise the imported group's size so it comes in at a sensible
