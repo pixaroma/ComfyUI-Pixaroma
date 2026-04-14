@@ -117,11 +117,11 @@ Pixaroma3DEditor.prototype._initThree = function () {
   // multiplying the linear colour gives a visibly saturated orange
   // on screen instead of the washed-out tan a bare #f66744 produces.
   this._outlinePass.visibleEdgeColor.set(0xf66744).multiplyScalar(2.4);
-  // Hide the "occluded edge" pass completely — otherwise the outline
-  // bleeds through the transform gizmo arrows when they sit in front
-  // of the selected object. The gizmo also gets a separate render pass
-  // on its own layer below, but turning this off is a belt-and-braces
-  // measure and keeps non-gizmo occluders clean too.
+  // Hide the "occluded edge" pass — where the gizmo (or any other
+  // object) sits in front of the selected mesh, the outline would
+  // otherwise bleed through as an orange "x-ray" line. Setting the
+  // hidden colour to black makes those occluded edge pixels disappear
+  // against the dark scene background, so gizmo arrows stay clean.
   this._outlinePass.hiddenEdgeColor.set(0x000000);
   this._composer.addPass(this._outlinePass);
   this._composer.addPass(new pp.OutputPass());
@@ -210,12 +210,6 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
-  // Move the gizmo to layer 1 so the main composer pass (camera layer
-  // 0) never sees it. OutlinePass can't paint over gizmo arrows that
-  // aren't in its source image, so the gizmo stays crisp. A second
-  // plain render pass below draws just layer 1 on top of the composed
-  // result. Layers are inherited through traverse().
-  helper.traverse((o) => { o.layers.set(1); });
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
@@ -307,25 +301,11 @@ Pixaroma3DEditor.prototype._animate = function () {
   if (!this.renderer) return;
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
-  // Two-pass render:
-  //  1. Layer 0 (scene objects) → composer → OutlinePass draws the
-  //     selection highlight. The gizmo isn't visible in this pass, so
-  //     the outline can't smear over it.
-  //  2. Layer 1 (gizmo helper) → plain renderer with autoClear off so
-  //     the composed image is preserved; clearDepth so the gizmo
-  //     always sits on top. This restores the pre-composer behaviour
-  //     where gizmo arrows stayed crisp over selected objects.
-  this.camera.layers.set(0);
+  // Use the composer for live preview so OutlinePass renders the
+  // selection highlight. The save path bypasses this and calls
+  // renderer.render() directly for a clean export.
   if (this._composer) this._composer.render();
   else this.renderer.render(this.scene, this.camera);
-  if (this._gizmoHelper && this._gizmoHelper.visible) {
-    this.camera.layers.set(1);
-    this.renderer.autoClear = false;
-    this.renderer.clearDepth();
-    this.renderer.render(this.scene, this.camera);
-    this.renderer.autoClear = true;
-  }
-  this.camera.layers.set(0);
 };
 
 // ─── Lighting ─────────────────────────────────────────────
