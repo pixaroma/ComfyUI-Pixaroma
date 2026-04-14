@@ -996,7 +996,26 @@ proto._save = async function () {
     if (this.onSave) this.onSave(JSON.stringify(meta), compositeDataURL);
     if (this._diskSavePending) {
       this._diskSavePending = false;
-      if (this.onSaveToDisk) this.onSaveToDisk(compositeDataURL);
+      if (this.onSaveToDisk) {
+        if (this._canvasToolbar?.transparentBg) {
+          const transCvs = document.createElement("canvas");
+          transCvs.width = this.docW;
+          transCvs.height = this.docH;
+          const tCtx = transCvs.getContext("2d");
+          for (let i = this.layers.length - 1; i >= 0; i--) {
+            const ly = this.layers[i];
+            if (!ly.visible) continue;
+            tCtx.save();
+            tCtx.globalAlpha = ly.opacity / 100;
+            tCtx.globalCompositeOperation = ly.blendMode;
+            this._drawLayerWithTransform(tCtx, ly);
+            tCtx.restore();
+          }
+          this.onSaveToDisk(transCvs.toDataURL("image/png"));
+        } else {
+          this.onSaveToDisk(compositeDataURL);
+        }
+      }
     }
     this._layout.setSaved();
   } catch (err) {

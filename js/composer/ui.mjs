@@ -563,6 +563,19 @@ export class PixaromaUI {
       .querySelector(".pxf-panel-content")
       .appendChild(canvasActionsRow);
 
+    const transpRow = document.createElement("label");
+    transpRow.className = "pxf-check-row";
+    transpRow.title = "Save to Disk with transparent background (no background color)";
+    transpRow.style.cssText = "margin:4px 0 0 2px;font-size:11px;opacity:0.85;";
+    const transpCb = document.createElement("input");
+    transpCb.type = "checkbox";
+    transpCb.addEventListener("change", () => { core._transparentBg = transpCb.checked; });
+    transpRow.appendChild(transpCb);
+    transpRow.append("Transparent BG (Save to Disk)");
+    core._canvasSettings.el
+      .querySelector(".pxf-panel-content")
+      .appendChild(transpRow);
+
     // --- Placeholders panel (add, fill mode, preview) ---
     const phPanel = createPanel("Placeholders", {
       collapsible: true,

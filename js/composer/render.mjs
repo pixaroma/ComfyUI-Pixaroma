@@ -83,9 +83,13 @@ PixaromaEditor.prototype.draw = function (cleanRender = false) {
 };
 
 PixaromaEditor.prototype._drawImpl = function (cleanRender) {
-  const bg = this._bgColor || "#1e1e1e";
-  this.ctx.fillStyle = bg;
-  this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  if (this._transparentExport) {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+  } else {
+    const bg = this._bgColor || "#1e1e1e";
+    this.ctx.fillStyle = bg;
+    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+  }
 
   this.ctx.imageSmoothingEnabled = true;
   this.ctx.imageSmoothingQuality = "high";

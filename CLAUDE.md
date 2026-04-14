@@ -185,6 +185,13 @@ Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `s
 |------------|------|----------|---------|
 | `Pixaroma.Compare.DefaultMode` | combo | `js/compare/index.js` | Default view mode for new Compare nodes |
 
+### Transparent Background Save-to-Disk
+Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" checkbox next to their BG color picker. It only affects **Save to Disk** — the workflow "Save" path is untouched so existing workflows stay compatible (Python nodes still output RGB tensors).
+
+- Paint: checkbox is inside `createCanvasToolbar` (`js/framework/canvas.mjs`), state on `this._canvasToolbar.transparentBg`. When saving, `js/paint/ui.mjs` `_save()` builds a second canvas without the `fillRect` for the disk PNG.
+- Composer: checkbox in `js/composer/ui.mjs` (Canvas Settings panel), state on `this._transparentBg`. `_drawImpl` in `render.mjs` checks `this._transparentExport` flag to skip bg fill; save handler in `interaction.mjs` toggles the flag and re-renders for the disk PNG.
+- 3D Builder: checkbox in `js/3d/core.mjs` (Canvas Settings panel), state on `this._transparentBg`. `persistence.mjs` `_save()` does a second Three.js render with `scene.background = null` + `renderer.setClearColor(0x000000, 0)` (renderer already has `alpha: true`).
+
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)

@@ -288,6 +288,40 @@ Pixaroma3DEditor.prototype._save = async function () {
     } else {
       dataURL = this.renderer.domElement.toDataURL("image/png");
     }
+
+    // If transparent disk save requested, do a second render without bg
+    let transDataURL = null;
+    if (this._diskSavePending && this._transparentBg) {
+      this.scene.background = null;
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.render(this.scene, this.camera);
+      if (hadBgImage) {
+        const tCvs = document.createElement("canvas");
+        tCvs.width = this.docW;
+        tCvs.height = this.docH;
+        const tCtx = tCvs.getContext("2d");
+        const img = this.el.bgImgEl;
+        const aspect = this._bgImg._natW / this._bgImg._natH;
+        const baseW = this.docW;
+        const baseH = baseW / aspect;
+        const sc = this._bgImg.scale / 100;
+        const iw = baseW * sc,
+          ih = baseH * sc;
+        const cx = this.docW / 2 + (this._bgImg.x / 100) * this.docW;
+        const cy = this.docH / 2 + (this._bgImg.y / 100) * this.docH;
+        tCtx.save();
+        tCtx.globalAlpha = this._bgImg.opacity / 100;
+        tCtx.translate(cx, cy);
+        tCtx.rotate((this._bgImg.rotation * Math.PI) / 180);
+        tCtx.drawImage(img, -iw / 2, -ih / 2, iw, ih);
+        tCtx.restore();
+        tCtx.drawImage(this.renderer.domElement, 0, 0);
+        transDataURL = tCvs.toDataURL("image/png");
+      } else {
+        transDataURL = this.renderer.domElement.toDataURL("image/png");
+      }
+    }
+
     // Restore transparent bg for live preview if bg image active
     if (hadBgImage) {
       this.scene.background = null;
@@ -310,7 +344,7 @@ Pixaroma3DEditor.prototype._save = async function () {
       if (this.onSave) this.onSave(JSON.stringify(sd), dataURL);
       if (this._diskSavePending) {
         this._diskSavePending = false;
-        if (this.onSaveToDisk) this.onSaveToDisk(dataURL);
+        if (this.onSaveToDisk) this.onSaveToDisk(transDataURL || dataURL);
       }
       this._layout.setSaved();
     } else this._layout.setSaveError("Save failed");

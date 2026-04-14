@@ -373,6 +373,17 @@ export class Pixaroma3DEditor {
       actionRow.append(bgLabel, bgColorInput, clearBtn, resetBtn);
       csContent.appendChild(actionRow);
 
+      const transpRow = document.createElement("label");
+      transpRow.className = "pxf-check-row";
+      transpRow.title = "Save to Disk with transparent background (no background color)";
+      transpRow.style.cssText = "margin:4px 0 0 2px;font-size:11px;opacity:0.85;";
+      const transpCb = document.createElement("input");
+      transpCb.type = "checkbox";
+      transpCb.addEventListener("change", () => { this._transparentBg = transpCb.checked; });
+      transpRow.appendChild(transpCb);
+      transpRow.append("Transparent BG (Save to Disk)");
+      csContent.appendChild(transpRow);
+
       // Store ref so persistence can update the color input
       this._bgColorInput = bgColorInput;
       this.el.bgColor = bgColorInput;

@@ -355,6 +355,7 @@ export function createCanvasToolbar(config) {
 
   let colorInput = null;
   let _bgColor = bgColor;
+  let _transparentBg = false;
   if (showBgColor) {
     const addRow = document.createElement("div");
     addRow.className = "pxf-canvas-toolbar-row";
@@ -373,6 +374,17 @@ export function createCanvasToolbar(config) {
     });
     addRow.append(addBtn, label, colorInput);
     wrapper.appendChild(addRow);
+
+    const transpRow = document.createElement("label");
+    transpRow.className = "pxf-check-row";
+    transpRow.title = "Save to Disk with transparent background (no background color)";
+    transpRow.style.cssText = "margin:4px 0 0 2px;font-size:11px;opacity:0.85;";
+    const transpCb = document.createElement("input");
+    transpCb.type = "checkbox";
+    transpCb.addEventListener("change", () => { _transparentBg = transpCb.checked; });
+    transpRow.appendChild(transpCb);
+    transpRow.append("Transparent BG (Save to Disk)");
+    wrapper.appendChild(transpRow);
   } else {
     wrapper.appendChild(addBtn);
   }
@@ -491,6 +503,7 @@ export function createCanvasToolbar(config) {
   return {
     el: wrapper,
     fileInput,
+    get transparentBg() { return _transparentBg; },
     setBgColor(hex) {
       _bgColor = hex;
       if (colorInput) colorInput.value = hex;

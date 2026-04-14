@@ -720,7 +720,18 @@ PixaromaEditor.prototype.attachEvents = function () {
         this.syncNodeInputs();
         if (this._diskSavePending) {
           this._diskSavePending = false;
-          if (this.onSaveToDisk) this.onSaveToDisk(finalDataURL);
+          if (this.onSaveToDisk) {
+            if (this._transparentBg) {
+              this._transparentExport = true;
+              this._drawImpl(true);
+              this._transparentExport = false;
+              const transDataURL = this.canvas.toDataURL("image/png");
+              this.draw(true);
+              this.onSaveToDisk(transDataURL);
+            } else {
+              this.onSaveToDisk(finalDataURL);
+            }
+          }
         }
 
         this._layout.setSaved();

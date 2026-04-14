@@ -84,20 +84,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **April 14, 2026**
+- 🖼️ **Transparent Background Save:** Paint Studio, Image Composer, and 3D Builder now have a "Transparent BG (Save to Disk)" checkbox next to the BG color picker. When enabled, "Save to Disk" exports a PNG with transparent background. The regular "Save" (workflow) is unchanged — existing workflows stay fully compatible.
+
 ### **April 13, 2026**
-- 🎨 **Paint Studio — Custom Tool Cursors:** Fill and eyedropper tools now show their actual SVG icons as cursors. Alt+drag eyedropper in brush mode shows the eyedropper cursor.
-- 🎨 **Paint Studio — Color Picker Improvements:** HSL adjust sliders fixed (no more color jumps). Swatch panel redesigned: 1 row of recent colors + 4 rows of fixed palette colors.
-- 🎨 **Paint Studio — Brush Resize (`[`/`]`):** Now responds instantly without delay or jumpiness, cursor updates in real-time.
-- 🎨 **Paint Studio — Layer Lock Enforcement:** Locked layers now block transform, delete, and all drawing tools. Lock icon displays in orange for visibility.
-- 🔧 **Close Button Fix:** X button now closes without saving across all editors (Paint, Composer, 3D Builder).
-- 🔧 **Reset to BW Button:** Redesigned with reset icon and label for clarity.
-- 🛠 **Keyboard Shortcuts:** Fixed shortcuts being blocked after interacting with sidebar sliders. Alt/Space/bracket keys now work reliably.
-- 🛠 **Composer — Duplicate Layer Fix:** Duplicated layers with eraser masks no longer share the same mask canvas.
-- 🌓 **Image Compare — Redesigned Controls:** New button order: Show 1 → Left Right → Right Left → Up Down → Overlay → Difference. Show button toggles between image 1 and image 2 solo view. Added Right Left mode for reversed split comparison. Default view shows image 2.
-- ⚙️ **ComfyUI Settings Panel:** Pixaroma now has its own section in ComfyUI Settings (👑 Pixaroma). First setting: choose the default compare mode (Show 1, Show 2, Left Right, Right Left, Up Down, Overlay, Difference).
-- 🔄 **Image Composer Preview Auto-Update:** Node preview now updates automatically after workflow execution when placeholders are connected — no need to open the editor and save manually.
-- 🔧 **Placeholder Ratio Reset:** Changing a placeholder's aspect ratio now properly resets any previous stretching.
-- 🛠 **Vue Frontend Compatibility:** Fixed stale editor references, `graph.links` Map support, and replaced `onDrawForeground` with polling for reliable upstream change detection.
+- 🎨 **Paint Studio Overhaul:** Custom tool cursors, smoother color picker (fixed HSL sliders, redesigned swatches), instant brush resize, locked layers enforced across all tools.
+- 🌓 **Image Compare Redesign:** New control order with Right Left mode and solo-image toggle.
+- ⚙️ **ComfyUI Settings Panel:** Pixaroma now has its own section (👑 Pixaroma) — first setting lets you pick the default compare mode.
+- 🔄 **Composer Auto-Update & Fixes:** Preview refreshes automatically after execution, duplicate-layer mask bug fixed, placeholder ratio reset fixed.
+- 🛠 **General:** X button closes without saving, keyboard shortcuts no longer blocked after slider use, Vue frontend compatibility fixes.
 
 ### **April 02, 2026**
 - 🔄 **ComfyUI 2.0 Compatibility:** Core nodes updated for the latest engine.
