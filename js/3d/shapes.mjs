@@ -29,6 +29,40 @@ export const SHAPES = {
       return g;
     },
   },
+  prism: {
+    icon: "prism.svg",
+    label: "Prism",
+    category: "boxy",
+    live: true,
+    params: [
+      { key: "radius", label: "Radius", min: 0.1, max: 3, step: 0.1 },
+      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
+      { key: "sides",  label: "Sides",  min: 3,   max: 8, step: 1 },
+    ],
+    defaults: { radius: 0.5, height: 1.0, sides: 3 },
+    build: (THREE, p) => {
+      const g = new THREE.CylinderGeometry(p.radius, p.radius, p.height, p.sides);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
+  pyramid: {
+    icon: "pyramid.svg",
+    label: "Pyramid",
+    category: "boxy",
+    live: true,
+    params: [
+      { key: "base",   label: "Base",   min: 0.1, max: 3, step: 0.1 },
+      { key: "height", label: "Height", min: 0.1, max: 5, step: 0.1 },
+    ],
+    defaults: { base: 0.7, height: 1.0 },
+    build: (THREE, p) => {
+      // ConeGeometry with 4 sides = square pyramid
+      const g = new THREE.ConeGeometry(p.base, p.height, 4);
+      g.computeVertexNormals();
+      return g;
+    },
+  },
   sphere: {
     icon: "sphere.svg",
     label: "Sphere",
@@ -118,9 +152,16 @@ export const SHAPES = {
   },
 };
 
-// During Task 1 we keep the original 6 only. Task 6 replaces this with
-// the full 18-shape order.
-export const SHAPE_GRID_V1 = ["cube", "sphere", "cylinder", "cone", "torus", "plane"];
+// Full 18-shape grid order (6 rows x 3 columns). Shapes not yet
+// implemented fall back to cube + console warning via buildGeometry().
+export const SHAPE_GRID = [
+  "cube",     "prism",    "pyramid",
+  "sphere",   "capsule",  "crystal",
+  "cylinder", "tube",     "cone",
+  "torus",    "ring",     "gear",
+  "plane",    "terrain",  "blob",
+  "rock",     "teapot",   "bunny",
+];
 
 export function getShape(id) {
   return SHAPES[id] || SHAPES.cube;

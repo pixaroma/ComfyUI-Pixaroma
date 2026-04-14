@@ -2,7 +2,7 @@
 // Pixaroma 3D Editor — Core class, constructor, UI building
 // ============================================================
 import { ThreeDAPI } from "./api.mjs";
-import { SHAPES, SHAPE_GRID_V1 } from "./shapes.mjs";
+import { SHAPES, SHAPE_GRID } from "./shapes.mjs";
 import {
   createEditorLayout,
   createPanel,
@@ -75,6 +75,8 @@ function injectExtraStyles() {
 .p3d-shape-btn:hover{background:#2a2c2e;border-color:#f66744;transform:scale(1.05);}
 .p3d-shape-btn .p3d-shape-ico{width:22px;height:22px;background-color:#ccc;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;transition:background-color .12s;}
 .p3d-shape-btn:hover .p3d-shape-ico{background-color:#f66744;}
+.p3d-shape-btn.p3d-shape-todo{opacity:0.45;}
+.p3d-shape-btn.p3d-shape-todo:hover{opacity:0.7;}
 .p3d-range:disabled,.p3d-input:disabled{opacity:0.4;cursor:not-allowed;}
 .p3d-row:has(> .p3d-range:disabled) .p3d-label{opacity:0.5;}
 .p3d-shape-params{margin-top:8px;padding:6px 0;border-top:1px solid #2a2c2e;}
@@ -585,27 +587,38 @@ export class Pixaroma3DEditor {
     og.className = "p3d-grid3";
     og.style.cssText =
       "display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;";
-    const shapes = SHAPE_GRID_V1.map((id) => ({
-      id,
-      icon: SHAPES[id].label.charAt(0), // placeholder glyph — Task 2 replaces with SVG
-      l: SHAPES[id].label,
-    }));
+    // Placeholder metadata for shapes not yet implemented — allows the
+    // full 18-button grid to render during migration. Clicking one of
+    // these falls back to cube geometry via buildGeometry().
+    const _placeholderLabel = (id) =>
+      id.charAt(0).toUpperCase() + id.slice(1);
+    const shapes = SHAPE_GRID.map((id) => {
+      const s = SHAPES[id];
+      return {
+        id,
+        icon: s ? s.icon : "cube.svg",
+        l: s ? s.label : _placeholderLabel(id),
+        implemented: !!s,
+      };
+    });
     shapes.forEach((sh) => {
       const b = document.createElement("div");
       b.className = "p3d-shape-btn";
-      b.title = "Add " + sh.l;
+      if (!sh.implemented) b.classList.add("p3d-shape-todo");
+      b.title = sh.implemented ? "Add " + sh.l : sh.l + " (coming soon)";
       const ico = document.createElement("span");
       ico.className = "p3d-shape-ico";
       ico.setAttribute("role", "img");
       ico.setAttribute("aria-label", sh.l);
-      const iconUrl = `url("/pixaroma/assets/icons/3D/${SHAPES[sh.id].icon}")`;
+      const iconUrl = `url("/pixaroma/assets/icons/3D/${sh.icon}")`;
       ico.style.webkitMaskImage = iconUrl;
       ico.style.maskImage = iconUrl;
       const lbl = document.createElement("span");
       lbl.textContent = sh.l;
       b.append(ico, lbl);
       b.addEventListener("click", () => {
-        this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
+        const def = SHAPES[sh.id] ? { ...SHAPES[sh.id].defaults } : {};
+        this._addObject(sh.id, def);
       });
       og.appendChild(b);
     });
