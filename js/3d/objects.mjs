@@ -66,6 +66,10 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this.activeObj = null;
   this._updateLayers();
   this._syncProps();
+  // Shape panel sliders reference the deleted object's geoParams — wipe
+  // them so the right sidebar shows the "Select an object…" placeholder
+  // immediately instead of lingering until the next click.
+  if (this._rebuildShapePanel) this._rebuildShapePanel();
 };
 
 Pixaroma3DEditor.prototype._dupSelected = function () {

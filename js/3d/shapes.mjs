@@ -41,18 +41,19 @@ export const SHAPES = {
     ],
     defaults: { radius: 0.5, length: 1.5, sides: 3 },
     build: (THREE, p) => {
-      // Build a CylinderGeometry with n sides, then rotate +90° around Z
-      // so the extrusion axis goes horizontal (along X) — the classic
-      // "Toblerone / roof" orientation: triangle faces on the two ends,
-      // flat bottom resting on the ground. At sides=3 you get a triangular
-      // prism; 4 = square bar; 6 = hex bar; etc.
+      // Build a CylinderGeometry with n sides, then reorient to the
+      // classic "house roof" pose:
+      //   - extrusion axis along Z (front-back), so the triangular gable
+      //     faces the default camera
+      //   - triangle peak at +Y (up), flat rectangular face on the floor
+      // We also translate the geometry so its flat bottom sits at local
+      // y = 0 — this way the bottom stays planted on the ground plane
+      // regardless of radius, and the "roof ridge" lifts as radius grows.
       const g = new THREE.CylinderGeometry(
         p.radius, p.radius, p.length, p.sides);
-      g.rotateZ(Math.PI / 2);
-      // Rotate one vertex to point straight up so default sides=3 shows a
-      // classic "roof" peak (cylinder's default vertex 0 sits at +X; after
-      // rotateZ it sits at +Y, so no extra rotation needed — but an odd
-      // number of sides still reads as "peak up" because of this).
+      g.rotateX(Math.PI / 2); // cylinder axis Y → Z (extrude front-back)
+      g.rotateZ(Math.PI / 2); // first vertex (+X) → +Y (peak up)
+      g.translate(0, p.radius / 2, 0); // flat bottom at y=0
       g.computeVertexNormals();
       return g;
     },
@@ -68,8 +69,13 @@ export const SHAPES = {
     ],
     defaults: { base: 0.7, height: 1.0 },
     build: (THREE, p) => {
-      // ConeGeometry with 4 sides = square pyramid
+      // ConeGeometry with 4 sides = square pyramid. By default the cone
+      // is centered on origin (base at y=-h/2, apex at y=+h/2), which
+      // means the base moves DOWN as height grows. Translate so the base
+      // sits at local y=0 and only the apex rises — the base stays
+      // planted on the ground.
       const g = new THREE.ConeGeometry(p.base, p.height, 4);
+      g.translate(0, p.height / 2, 0);
       g.computeVertexNormals();
       return g;
     },

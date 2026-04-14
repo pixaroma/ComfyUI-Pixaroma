@@ -350,7 +350,10 @@ export class Pixaroma3DEditor {
           this.objects = [];
           this.selectedObjs.clear();
           this.activeObj = null;
+          this.transformCtrl?.detach();
           this._updateLayers();
+          if (this._rebuildShapePanel) this._rebuildShapePanel();
+          this._syncProps?.();
         },
       });
       clearBtn.classList.add("pxf-btn-danger");
@@ -367,6 +370,7 @@ export class Pixaroma3DEditor {
           this.objects = [];
           this.selectedObjs.clear();
           this.activeObj = null;
+          this.transformCtrl?.detach();
           this._removeBgImage();
           this.docW = 1024;
           this.docH = 1024;
@@ -379,6 +383,8 @@ export class Pixaroma3DEditor {
           if (this.el.viewport) this.el.viewport.style.backgroundColor = dbg;
           this._updateFrame();
           this._updateLayers();
+          if (this._rebuildShapePanel) this._rebuildShapePanel();
+          this._syncProps?.();
           this._setStatus("Reset to default");
         },
       });
