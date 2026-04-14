@@ -30,7 +30,7 @@ app.registerExtension({
       name: "Default Background Color — 3D Builder (default #6e6e6e)",
       type: "color",
       defaultValue: "#6e6e6e",
-      tooltip: "Color used as the background for new 3D scenes. Default is #6e6e6e (neutral gray). To reset: right-click the field (if your ComfyUI version supports it) or type 6e6e6e into the picker.",
+      tooltip: "Color used as the background for new 3D scenes. Default is #6e6e6e (neutral gray). NOTE: ComfyUI's color field shows saved values without '#' but requires '#' when typing — enter '#6e6e6e' to reset, or use the color picker.",
       category: ["👑 Pixaroma", "3D Builder"],
     },
   ],
