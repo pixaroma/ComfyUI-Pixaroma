@@ -111,9 +111,18 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  this._outlinePass.edgeStrength = 3;
+  // OutlinePass mixes outline colour with the scene proportional to
+  // (edge detection intensity × edgeStrength). AA-soft pixels on the
+  // outer rim of the line have fractional intensity, which reads as
+  // a faded pink if edgeStrength is low. Bumping to 10 makes the full
+  // width clamp to the outline colour so it displays as solid #f66744
+  // like the buttons — matching the brand orange the user wants.
+  //
+  // edgeThickness 2 = ~2 screen-px silhouette. This IS screen-space —
+  // stays the same pixel width at any camera zoom.
+  this._outlinePass.edgeStrength = 10;
   this._outlinePass.edgeGlow = 0;
-  this._outlinePass.edgeThickness = 1;
+  this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
   this._outlinePass.downSampleRatio = 1;
   this._outlinePass.visibleEdgeColor.set(0xf66744);
