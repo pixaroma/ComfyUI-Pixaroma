@@ -111,16 +111,11 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  // OutlinePass mixes outline colour with the scene proportional to
-  // (edge detection intensity × edgeStrength). AA-soft pixels on the
-  // outer rim of the line have fractional intensity, which reads as
-  // a faded pink if edgeStrength is low. Bumping to 10 makes the full
-  // width clamp to the outline colour so it displays as solid #f66744
-  // like the buttons — matching the brand orange the user wants.
-  //
-  // edgeThickness 2 = ~2 screen-px silhouette. This IS screen-space —
-  // stays the same pixel width at any camera zoom.
-  this._outlinePass.edgeStrength = 10;
+  // edgeStrength much above ~5 pushes the outline colour brighter than
+  // 1.0 in the shader and, after sRGB encoding, shifted from the
+  // intended Pixaroma red-orange toward yellow. 3 keeps the colour
+  // true at the cost of a slightly softer AA rim.
+  this._outlinePass.edgeStrength = 3;
   this._outlinePass.edgeGlow = 0;
   this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
@@ -299,6 +294,11 @@ Pixaroma3DEditor.prototype._initThree = function () {
     new THREE.ShadowMaterial({ opacity: 0.35 }),
   );
   this._groundMesh.rotation.x = -Math.PI / 2;
+  // Shadow catcher sits just below y=0 so it doesn't share depth with
+  // object bases. Otherwise OutlinePass treats the bottom edge as
+  // "occluded by ground" and renders it as hiddenEdgeColor (black),
+  // giving the "outline missing on bottom" look.
+  this._groundMesh.position.y = -0.002;
   this._groundMesh.receiveShadow = true;
   this.scene.add(this._groundMesh);
 
