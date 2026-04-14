@@ -105,10 +105,16 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  this._outlinePass.edgeStrength = 4;
+  this._outlinePass.edgeStrength = 3;
   this._outlinePass.edgeGlow = 0;
   this._outlinePass.edgeThickness = 1.0;
   this._outlinePass.pulsePeriod = 0;
+  // Default downSampleRatio of 2 uses a half-resolution buffer for
+  // edge detection, which produces "ray" artifacts — wide streaks
+  // extending from the silhouette — especially on sharp geometry.
+  // Full-resolution costs one extra fullscreen pass but the outline
+  // becomes a clean silhouette with no bleed.
+  this._outlinePass.downSampleRatio = 1;
   this._outlinePass.visibleEdgeColor.set(0xff6a00);
   this._outlinePass.hiddenEdgeColor.set(0xff6a00);
   this._composer.addPass(this._outlinePass);
@@ -319,15 +325,23 @@ Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
     box.union(b);
   });
   if (box.isEmpty()) return;
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  // Re-center the light's target on the scene center so the symmetric
-  // frustum below actually covers all objects regardless of where they sit.
-  this.light.target.position.copy(center);
+  // Keep the light's target fixed at world origin. Previously we moved
+  // it to the scene's centre, which meant the light direction itself
+  // changed whenever any object moved — so dragging one cube visibly
+  // re-angled the shadows of every other object. With the target fixed,
+  // the light direction stays constant and only the frustum extent
+  // grows/shrinks to cover the scene.
+  this.light.target.position.set(0, 0, 0);
   this.light.target.updateMatrixWorld();
-  const halfMax = Math.max(size.x, size.y, size.z) * 0.75 + 2;
+  // Frustum sized to cover every object from the origin outward (not
+  // from the moving centre). Take the max extent on any axis relative
+  // to origin, plus a small margin so shadows don't clip at the edge.
+  const halfMax = Math.max(
+    Math.abs(box.min.x), Math.abs(box.max.x),
+    Math.abs(box.min.z), Math.abs(box.max.z),
+    Math.abs(box.max.y),
+    2,
+  ) * 1.2 + 2;
   const sc = this.light.shadow.camera;
   sc.left = -halfMax;
   sc.right = halfMax;

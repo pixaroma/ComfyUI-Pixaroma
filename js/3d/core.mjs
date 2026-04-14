@@ -34,25 +34,27 @@ export let THREE = null,
 const ESM = "https://esm.sh/three@0.170.0";
 export async function loadThree() {
   if (THREE) return;
-  THREE = await import(ESM);
-  OrbitControls = (
-    await import(ESM + "/examples/jsm/controls/OrbitControls.js")
-  ).OrbitControls;
-  TransformControls = (
-    await import(ESM + "/examples/jsm/controls/TransformControls.js")
-  ).TransformControls;
-  EffectComposer = (
-    await import(ESM + "/examples/jsm/postprocessing/EffectComposer.js")
-  ).EffectComposer;
-  RenderPass = (
-    await import(ESM + "/examples/jsm/postprocessing/RenderPass.js")
-  ).RenderPass;
-  OutlinePass = (
-    await import(ESM + "/examples/jsm/postprocessing/OutlinePass.js")
-  ).OutlinePass;
-  OutputPass = (
-    await import(ESM + "/examples/jsm/postprocessing/OutputPass.js")
-  ).OutputPass;
+  // Load all seven modules in parallel instead of serially. Previously
+  // each await blocked the next fetch, adding 6 round-trips of latency
+  // to the first-open experience (visible as a gray flash before the
+  // canvas appears). Promise.all cuts that to a single round-trip.
+  const [threeMod, orbitMod, transformMod, composerMod, renderMod, outlineMod, outputMod] =
+    await Promise.all([
+      import(ESM),
+      import(ESM + "/examples/jsm/controls/OrbitControls.js"),
+      import(ESM + "/examples/jsm/controls/TransformControls.js"),
+      import(ESM + "/examples/jsm/postprocessing/EffectComposer.js"),
+      import(ESM + "/examples/jsm/postprocessing/RenderPass.js"),
+      import(ESM + "/examples/jsm/postprocessing/OutlinePass.js"),
+      import(ESM + "/examples/jsm/postprocessing/OutputPass.js"),
+    ]);
+  THREE = threeMod;
+  OrbitControls = orbitMod.OrbitControls;
+  TransformControls = transformMod.TransformControls;
+  EffectComposer = composerMod.EffectComposer;
+  RenderPass = renderMod.RenderPass;
+  OutlinePass = outlineMod.OutlinePass;
+  OutputPass = outputMod.OutputPass;
 }
 // Allow other modules to access the lazy-loaded THREE refs
 export function getTHREE() {
