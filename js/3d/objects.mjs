@@ -5,42 +5,72 @@ import { Pixaroma3DEditor, getTHREE, createLayerItem } from "./core.mjs";
 import { buildGeometry, getShapeDefaults } from "./shapes.mjs";
 
 // ─── Selection outline ────────────────────────────────────
-// Orange BoxHelper wireframe around the selected object's bounding box.
-// Unlike OutlinePass this is a real 3D object attached to the mesh —
-// it moves / rotates / scales with the mesh automatically and renders
-// in a predictable Pixaroma-orange colour without any compositor bugs
-// or zoom-dependent artefacts. Line thickness is 1 CSS pixel (WebGL
-// limitation) but reads as a crisp orange wireframe.
+// Silhouette outline via the classic inverted-hull trick — a back-face
+// clone of the mesh with vertices pushed outward along their normals.
+// The ShaderMaterial vertex shader scales the push by view distance,
+// which makes the outline thickness read as roughly constant screen
+// pixels at any zoom level (the effect most people recognise from
+// Blender's selection highlight).
 //
-// Sync point: any code that mutates this.selectedObjs should call
-// _syncOutlineSelection() at the end so the boxes match the set.
+// The outline mesh is added as a child of the selected mesh, so it
+// inherits transform updates automatically — no per-frame sync needed.
+
+const OUTLINE_COLOR = 0xf66744;
+
+function makeOutlineMaterial(THREE) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      outlineColor: { value: new THREE.Color(OUTLINE_COLOR) },
+      // Controls how fat the silhouette is in world units per unit of
+      // view distance. 0.015 reads as ~2-3 px on screen at typical FOV.
+      thickness: { value: 0.015 },
+    },
+    vertexShader: /* glsl */ `
+      uniform float thickness;
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        vec3 viewNormal = normalize(normalMatrix * normal);
+        // distance from camera along -Z; larger => offset grows so the
+        // silhouette stays the same pixel thickness on screen.
+        float dist = -mvPosition.z;
+        mvPosition.xyz += viewNormal * dist * thickness;
+        gl_Position = projectionMatrix * mvPosition;
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform vec3 outlineColor;
+      void main() {
+        gl_FragColor = vec4(outlineColor, 1.0);
+      }
+    `,
+    side: THREE.BackSide,
+    depthWrite: false,
+  });
+}
 
 Pixaroma3DEditor.prototype._syncOutlineSelection = function () {
   const THREE = getTHREE();
   // Remove outlines from meshes that are no longer selected.
   for (const m of this.objects) {
-    if (m._selectionBox && !this.selectedObjs.has(m)) {
-      this.scene.remove(m._selectionBox);
-      m._selectionBox.geometry?.dispose();
-      m._selectionBox.material?.dispose();
-      m._selectionBox = null;
+    if (m._selectionOutline && !this.selectedObjs.has(m)) {
+      m.remove(m._selectionOutline);
+      m._selectionOutline.material?.dispose();
+      m._selectionOutline = null;
     }
   }
-  // Add outline for newly selected meshes. BoxHelper auto-tracks its
-  // target mesh's world transform, so the wireframe stays glued to the
-  // object through move / rotate / scale. renderOrder + depthTest:false
-  // keeps the outline visible through the gizmo and any other object
-  // that might sit in front — the classic "always on top" selection
-  // behaviour Blender uses.
+  // Add outline for newly selected meshes. The outline shares the
+  // mesh's geometry (no clone) and is parented to the mesh so it
+  // inherits the mesh's world transform automatically.
   for (const m of this.selectedObjs) {
-    if (m._selectionBox) continue;
-    const box = new THREE.BoxHelper(m, 0xf66744);
-    box.material.depthTest = false;
-    box.material.transparent = true;
-    box.material.opacity = 1;
-    box.renderOrder = 999;
-    this.scene.add(box);
-    m._selectionBox = box;
+    if (m._selectionOutline) continue;
+    const outline = new THREE.Mesh(m.geometry, makeOutlineMaterial(THREE));
+    outline.castShadow = false;
+    outline.receiveShadow = false;
+    // Raycast noop so clicks pass through to the underlying mesh.
+    outline.raycast = () => {};
+    outline.userData._isOutline = true;
+    m.add(outline);
+    m._selectionOutline = outline;
   }
 };
 
@@ -120,13 +150,13 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   this._pushUndo();
   this.transformCtrl.detach();
   for (const o of this.selectedObjs) {
-    // Remove the selection box too so we don't leak a dangling helper
-    // pointing at a disposed geometry.
-    if (o._selectionBox) {
-      this.scene.remove(o._selectionBox);
-      o._selectionBox.geometry?.dispose();
-      o._selectionBox.material?.dispose();
-      o._selectionBox = null;
+    // Outline is a child mesh sharing the object's geometry; remove
+    // it before disposing the geometry so nothing lingers pointing
+    // at a disposed buffer.
+    if (o._selectionOutline) {
+      o.remove(o._selectionOutline);
+      o._selectionOutline.material?.dispose();
+      o._selectionOutline = null;
     }
     this.scene.remove(o);
     o.geometry.dispose();

@@ -322,6 +322,10 @@ Pixaroma3DEditor.prototype._rebuildObjectGeometry = function (obj) {
     const newMinY = newGeo.boundingBox?.min.y ?? 0;
     obj.position.y += (oldMinY - newMinY) * (obj.scale.y || 1);
   }
+  // The selection outline shares the main geometry. After a swap it
+  // still points at the just-disposed old one; re-point it so the
+  // silhouette hugs the new shape in the very next frame.
+  if (obj._selectionOutline) obj._selectionOutline.geometry = newGeo;
   // Recompute shadow frustum — the new geometry may be larger or
   // smaller than the old, and without this the shadow visibly lags
   // behind the slider until the 1s setInterval fires.

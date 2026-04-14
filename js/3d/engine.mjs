@@ -316,13 +316,6 @@ Pixaroma3DEditor.prototype._animate = function () {
   if (!this.renderer) return;
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
-  // Keep the selection BoxHelpers aligned with their targets — cheap
-  // (12 line segments) and picks up any transform / geometry change
-  // from the last frame. Without this the box would lag behind a
-  // dragged object by a frame.
-  for (const m of this.selectedObjs) {
-    if (m._selectionBox) m._selectionBox.update();
-  }
   this.renderer.render(this.scene, this.camera);
 };
 

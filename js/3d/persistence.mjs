@@ -256,13 +256,13 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = false;
     if (this._gizmoHelper) this._gizmoHelper.visible = false;
     if (this._canvasFrame) this._canvasFrame.setVisible(false);
-    // Hide selection boxes during save render so the exported PNG
-    // doesn't contain the orange wireframe. Restored below.
-    const hiddenBoxes = [];
+    // Hide selection outlines during save render so the exported PNG
+    // doesn't contain the orange silhouette. Restored below.
+    const hiddenOutlines = [];
     for (const m of this.objects) {
-      if (m._selectionBox && m._selectionBox.visible) {
-        m._selectionBox.visible = false;
-        hiddenBoxes.push(m._selectionBox);
+      if (m._selectionOutline && m._selectionOutline.visible) {
+        m._selectionOutline.visible = false;
+        hiddenOutlines.push(m._selectionOutline);
       }
     }
 
@@ -347,8 +347,8 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = this._showGrid;
     if (this._gizmoHelper) this._gizmoHelper.visible = this._showGizmo;
     if (this._canvasFrame) this._canvasFrame.setVisible(true);
-    // Restore the selection boxes hidden above.
-    for (const b of hiddenBoxes) b.visible = true;
+    // Restore the selection outlines hidden above.
+    for (const o of hiddenOutlines) o.visible = true;
     this.renderer.setPixelRatio(pr);
     this._onResize();
 
