@@ -148,6 +148,7 @@ export class Pixaroma3DEditor {
     this._gizmoDragging = false;
     this._multiDragStart = null;
     this._ptr = null;
+    this._shadowFitInterval = null;
     this._undoStack = [];
     this._redoStack = [];
     this.MAX_UNDO = 30;
@@ -244,6 +245,10 @@ export class Pixaroma3DEditor {
       this._save();
     };
     layout.onCleanup = () => {
+      if (this._shadowFitInterval) {
+        clearInterval(this._shadowFitInterval);
+        this._shadowFitInterval = null;
+      }
       window.removeEventListener("keydown", this._onKey, { capture: true });
       if (this._resizeObs) this._resizeObs.disconnect();
       if (this._animId) {
@@ -867,10 +872,20 @@ export class Pixaroma3DEditor {
     });
     this.el.lightColor = lcIn;
     lp.content.appendChild(createRow("Color", lcIn));
-    const iR = createSliderRow("Intensity", 0, 200, 70, (v) => {
+    const studioCb = createCheckbox("Studio Lighting", true, (v) => {
+      this._studioEnvOn = v;
+      if (this.scene) {
+        this.scene.environment = v ? this._studioEnvTexture : null;
+      }
+    });
+    this.el.studioCheck = studioCb.checkbox;
+    studioCb.el.style.marginTop = "4px";
+    studioCb.el.style.marginBottom = "4px";
+    lp.content.appendChild(studioCb.el);
+    const iR = createSliderRow("Intensity", 0, 200, 50, (v) => {
       if (this.light) this.light.intensity = (v / 100) * 2;
     });
-    const sR = createSliderRow("Ambient", 0, 100, 0, (v) => {
+    const sR = createSliderRow("Ambient", 0, 100, 15, (v) => {
       if (this.ambientLight) this.ambientLight.intensity = v / 100;
     });
     this.el.lightIntS = iR.slider;
@@ -914,17 +929,17 @@ export class Pixaroma3DEditor {
         }
         if (this.light) {
           this.light.color.set("#ffffff");
-          this.light.intensity = 1.4;
+          this.light.intensity = 1.0;
         }
         if (this.el.lightColor) this.el.lightColor.value = "#ffffff";
-        if (this.ambientLight) this.ambientLight.intensity = 0;
+        if (this.ambientLight) this.ambientLight.intensity = 0.15;
         if (this.el.lightIntS) {
-          this.el.lightIntS.value = 70;
-          this.el.lightIntV.value = 70;
+          this.el.lightIntS.value = 50;
+          this.el.lightIntV.value = 50;
         }
         if (this.el.lightAmbS) {
-          this.el.lightAmbS.value = 0;
-          this.el.lightAmbV.value = 0;
+          this.el.lightAmbS.value = 15;
+          this.el.lightAmbV.value = 15;
         }
       },
       title: "Reset lighting to defaults",

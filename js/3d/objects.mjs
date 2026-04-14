@@ -24,7 +24,7 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
   );
   const mat = new THREE.MeshStandardMaterial({
     color,
-    roughness: 0.85,
+    roughness: 0.55,
     metalness: 0,
     transparent: true,
     opacity: 1,

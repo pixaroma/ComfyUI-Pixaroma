@@ -20,6 +20,38 @@ Pixaroma3DEditor.prototype._initThree = function () {
     h = vp.clientHeight || 600;
   this.scene = new THREE.Scene();
   this.scene.background = new THREE.Color(this.bgColor);
+
+  // Procedural neutral studio environment (no external HDRI file)
+  // Generates a gradient-lit cube scene, PMREMs it into a usable envMap.
+  this._studioEnvOn = true; // default ON; toggled by Studio Lighting checkbox
+
+  const buildStudioEnv = () => {
+    const envScene = new THREE.Scene();
+    const topColor = new THREE.Color("#fff2e0");
+    const midColor = new THREE.Color("#8a8a8a");
+    const botColor = new THREE.Color("#202028");
+    const mkPlane = (w, h, color, pos, rot) => {
+      const m = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, h),
+        new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
+      );
+      m.position.copy(pos);
+      if (rot) m.rotation.copy(rot);
+      envScene.add(m);
+    };
+    mkPlane(40, 40, topColor, new THREE.Vector3(0,  20, 0), new THREE.Euler(Math.PI / 2, 0, 0));
+    mkPlane(40, 40, botColor, new THREE.Vector3(0, -20, 0), new THREE.Euler(-Math.PI / 2, 0, 0));
+    mkPlane(40, 40, midColor, new THREE.Vector3(0, 0,  20), new THREE.Euler(0, Math.PI, 0));
+    mkPlane(40, 40, midColor, new THREE.Vector3(0, 0, -20));
+    mkPlane(40, 40, midColor, new THREE.Vector3( 20, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0));
+    mkPlane(40, 40, midColor, new THREE.Vector3(-20, 0, 0), new THREE.Euler(0,  Math.PI / 2, 0));
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const rt = pmrem.fromScene(envScene);
+    pmrem.dispose();
+    envScene.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
+    return rt.texture;
+  };
+
   this.camera = new THREE.PerspectiveCamera(this._fov, w / h, 0.1, 1000);
   this.camera.position.set(4, 3, 5);
 
@@ -31,9 +63,20 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.renderer.setSize(w, h);
   this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   this.renderer.shadowMap.enabled = true;
-  this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  this.renderer.shadowMap.type = THREE.VSMShadowMap;
+  // AgX is softer on highlights than ACES; available in three 0.170+.
+  // Fallback to ACESFilmic if the runtime build doesn't export AgX.
+  this.renderer.toneMapping =
+    THREE.AgXToneMapping !== undefined
+      ? THREE.AgXToneMapping
+      : THREE.ACESFilmicToneMapping;
+  this.renderer.toneMappingExposure = 1.0;
+  this.renderer.outputColorSpace = THREE.SRGBColorSpace;
   vp.insertBefore(this.renderer.domElement, vp.firstChild);
+
+  // After renderer is created and attached
+  this._studioEnvTexture = buildStudioEnv();
+  if (this._studioEnvOn) this.scene.environment = this._studioEnvTexture;
 
   this.orbitCtrl = new OrbitControls(this.camera, this.renderer.domElement);
   this.orbitCtrl.enableDamping = true;
@@ -117,12 +160,15 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._canvasFrame.update(this.docW, this.docH);
 
   // Lights
-  this.ambientLight = new THREE.AmbientLight(0xffffff, 0);
+  this.ambientLight = new THREE.AmbientLight(0xffffff, 0.15);
   this.scene.add(this.ambientLight);
-  this.light = new THREE.DirectionalLight(0xffffff, 1.4);
+  this.light = new THREE.DirectionalLight(0xffffff, 1.0);
   this.light.position.set(3, 5, 4);
   this.light.castShadow = true;
-  this.light.shadow.mapSize.set(1024, 1024);
+  this.light.shadow.mapSize.set(2048, 2048);
+  this.light.shadow.radius = 4;
+  this.light.shadow.blurSamples = 12;
+  this.light.shadow.bias = -0.0005;
   this.light.shadow.camera.near = 0.1;
   this.light.shadow.camera.far = 50;
   this.light.shadow.camera.left = -10;
@@ -159,6 +205,10 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._resizeObs = new ResizeObserver(() => this._onResize());
   this._resizeObs.observe(vp);
   this._applyLightDir();
+
+  this._shadowFitInterval = setInterval(() => {
+    if (!this._gizmoDragging && !this._ptr) this._updateShadowFrustum();
+  }, 1000);
 };
 
 Pixaroma3DEditor.prototype._updateFrame = function () {
@@ -196,4 +246,27 @@ Pixaroma3DEditor.prototype._applyLightDir = function () {
     d * Math.cos(phi),
     d * Math.sin(phi) * Math.cos(theta),
   );
+};
+
+Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
+  const THREE = getTHREE();
+  if (!this.light || !this.objects.length) return;
+  const box = new THREE.Box3();
+  this.objects.forEach((o) => {
+    if (!o.visible) return;
+    const b = new THREE.Box3().setFromObject(o);
+    box.union(b);
+  });
+  if (box.isEmpty()) return;
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const halfMax = Math.max(size.x, size.y, size.z) * 0.75 + 2;
+  const sc = this.light.shadow.camera;
+  sc.left = -halfMax;
+  sc.right = halfMax;
+  sc.top = halfMax;
+  sc.bottom = -halfMax;
+  sc.near = 0.1;
+  sc.far = halfMax * 4 + 10;
+  sc.updateProjectionMatrix();
 };

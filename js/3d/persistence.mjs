@@ -356,6 +356,10 @@ Pixaroma3DEditor.prototype._save = async function () {
 
 Pixaroma3DEditor.prototype._close = function () {
   if (this._closed) return;
+  if (this._shadowFitInterval) {
+    clearInterval(this._shadowFitInterval);
+    this._shadowFitInterval = null;
+  }
   this._closed = true;
   if (this._animId) cancelAnimationFrame(this._animId);
   this._animId = null;
