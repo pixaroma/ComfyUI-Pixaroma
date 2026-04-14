@@ -28,9 +28,9 @@ app.registerExtension({
     {
       id: "Pixaroma.3D.DefaultBgColor",
       name: "Default Background Color (3D Builder)",
-      type: "text",
+      type: "color",
       defaultValue: "#6e6e6e",
-      tooltip: "Hex color used as the background for new 3D scenes (e.g. #6e6e6e)",
+      tooltip: "Color used as the background for new 3D scenes",
       category: ["👑 Pixaroma", "3D Builder"],
     },
   ],

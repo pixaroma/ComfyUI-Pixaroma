@@ -26,10 +26,15 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._studioEnvOn = true; // default ON; toggled by Studio Lighting checkbox
 
   const buildStudioEnv = () => {
+    // Simple 3-point softbox rig baked into a cube env. Higher contrast
+    // than a flat gradient so metal reflections show clear bright/dark bands.
     const envScene = new THREE.Scene();
-    const topColor = new THREE.Color("#fff2e0");
-    const midColor = new THREE.Color("#8a8a8a");
-    const botColor = new THREE.Color("#202028");
+    const topColor = new THREE.Color("#ffffff"); // bright overhead fill
+    const sideHi = new THREE.Color("#7c7c82");   // mid sides (main reflection horizon)
+    const sideLo = new THREE.Color("#3a3a42");   // darker sides for contrast
+    const botColor = new THREE.Color("#161620"); // dark floor
+    const keyColor = new THREE.Color("#ffffff"); // key softbox (punchy highlight)
+    const fillColor = new THREE.Color("#c8d0ff"); // cool fill softbox
     const mkPlane = (w, h, color, pos, rot) => {
       const m = new THREE.Mesh(
         new THREE.PlaneGeometry(w, h),
@@ -39,12 +44,17 @@ Pixaroma3DEditor.prototype._initThree = function () {
       if (rot) m.rotation.copy(rot);
       envScene.add(m);
     };
+    // Cube walls
     mkPlane(40, 40, topColor, new THREE.Vector3(0,  20, 0), new THREE.Euler(Math.PI / 2, 0, 0));
     mkPlane(40, 40, botColor, new THREE.Vector3(0, -20, 0), new THREE.Euler(-Math.PI / 2, 0, 0));
-    mkPlane(40, 40, midColor, new THREE.Vector3(0, 0,  20), new THREE.Euler(0, Math.PI, 0));
-    mkPlane(40, 40, midColor, new THREE.Vector3(0, 0, -20));
-    mkPlane(40, 40, midColor, new THREE.Vector3( 20, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0));
-    mkPlane(40, 40, midColor, new THREE.Vector3(-20, 0, 0), new THREE.Euler(0,  Math.PI / 2, 0));
+    mkPlane(40, 40, sideHi, new THREE.Vector3(0, 0,  20), new THREE.Euler(0, Math.PI, 0));
+    mkPlane(40, 40, sideLo, new THREE.Vector3(0, 0, -20));
+    mkPlane(40, 40, sideHi, new THREE.Vector3( 20, 0, 0), new THREE.Euler(0, -Math.PI / 2, 0));
+    mkPlane(40, 40, sideLo, new THREE.Vector3(-20, 0, 0), new THREE.Euler(0,  Math.PI / 2, 0));
+    // Key softbox (front-right, white, big) — punchy main highlight
+    mkPlane(14, 14, keyColor, new THREE.Vector3(10, 14, 12), new THREE.Euler(-Math.PI / 4, Math.PI / 6, 0));
+    // Fill softbox (left, cool tint, smaller) — secondary highlight
+    mkPlane(10, 10, fillColor, new THREE.Vector3(-14, 8, -4), new THREE.Euler(0, Math.PI / 2, 0));
     const pmrem = new THREE.PMREMGenerator(this.renderer);
     const rt = pmrem.fromScene(envScene);
     pmrem.dispose();
