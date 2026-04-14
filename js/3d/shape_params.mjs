@@ -62,9 +62,46 @@ Pixaroma3DEditor.prototype._rebuildShapePanel = function () {
     }
   }
 
-  // Imported models have no parametric shape (Task 7/8 territory)
+  // Imported models — no parametric shape, but show a "Use Original
+  // Material" checkbox so the user can flip between the loader's
+  // original materials (GLB textures / OBJ MTL) and the unified
+  // Pixaroma clay override.
   if (type === "import" || type === "bunny") {
-    this._showShapePanelEmpty("No shape parameters for imported models.");
+    body.innerHTML = "";
+    const head = document.createElement("div");
+    head.style.cssText =
+      "font-size:11px;color:#ccc;margin-bottom:6px;font-weight:600;";
+    head.textContent = type === "bunny"
+      ? "Bunny"
+      : (obj.userData.name || "Imported Model");
+    body.appendChild(head);
+    const info = document.createElement("div");
+    info.style.cssText = "font-size:10px;color:#888;margin-bottom:8px;";
+    info.textContent = "No shape parameters for imported models.";
+    body.appendChild(info);
+    // Only offer the toggle if we have the original materials stashed
+    // (bunny loaded in this session, user import). Restored sessions
+    // without the stash just get the info line.
+    if (obj.userData._origMaterials && obj.userData._overrideMat) {
+      const row = document.createElement("label");
+      row.style.cssText =
+        "display:flex;align-items:center;gap:6px;font-size:11px;color:#ccc;margin:4px 0;cursor:pointer;";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.checked = !!obj.userData.keepOriginalMaterials;
+      cb.disabled = !!obj.userData.locked;
+      cb.addEventListener("change", () => {
+        this._pushUndo();
+        for (const o of this.selectedObjs) {
+          if (o.userData.type !== type) continue;
+          o.userData.keepOriginalMaterials = cb.checked;
+          this._applyImportMaterialMode(o);
+        }
+        this._syncProps();
+      });
+      row.append(cb, document.createTextNode(" Use Original Material"));
+      body.appendChild(row);
+    }
     return;
   }
 
@@ -291,6 +328,23 @@ Pixaroma3DEditor.prototype._buildShapeParamRow = function (obj, shape, f, locked
 
   row.append(lbl, slider, numIn);
   return row;
+};
+
+// Flip an imported group between its original materials (as loaded
+// by GLTFLoader / OBJLoader) and the unified Pixaroma clay override.
+// Called from the Shape panel "Use Original Material" checkbox and
+// from the persistence restore path after re-loading a saved model.
+Pixaroma3DEditor.prototype._applyImportMaterialMode = function (group) {
+  const keep = !!group.userData.keepOriginalMaterials;
+  const override = group.userData._overrideMat;
+  const origs = group.userData._origMaterials;
+  if (!override || !origs) return;
+  let i = 0;
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = keep ? (origs[i] || override) : override;
+    i++;
+  });
 };
 
 // Swap the mesh's geometry using the registry builder.

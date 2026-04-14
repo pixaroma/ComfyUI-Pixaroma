@@ -33,16 +33,24 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
       if (o.userData.type === "import") {
         base.importPath = o.userData.importPath || null;
         base.importExt = o.userData.importExt || null;
-        base.keepOriginalMaterials = o.userData.keepOriginalMaterials !== false;
+        base.keepOriginalMaterials = !!o.userData.keepOriginalMaterials;
       } else if (o.userData.type === "bunny") {
-        base.keepOriginalMaterials = o.userData.keepOriginalMaterials !== false;
+        base.keepOriginalMaterials = !!o.userData.keepOriginalMaterials;
       }
-      // Material fields only apply to parametric meshes (Group imports
-      // have per-mesh materials and no top-level .material).
+      // Material fields for parametric meshes straight from o.material.
+      // For imported groups pull them from the stashed override material
+      // so the user's colour / rough / metal / opacity tweaks survive
+      // the save/restore round-trip even though the loader's originals
+      // are re-loaded fresh from disk.
       if (o.material) {
         base.roughness = o.material.roughness;
         base.metalness = o.material.metalness;
         base.opacity = o.material.opacity;
+      } else if (o.userData._overrideMat) {
+        const om = o.userData._overrideMat;
+        base.roughness = om.roughness;
+        base.metalness = om.metalness;
+        base.opacity = om.opacity;
       }
       return base;
     }),
@@ -254,8 +262,7 @@ function applyObjectData(m, od) {
   if (od.position) m.position.set(od.position.x, od.position.y, od.position.z);
   if (od.rotation) m.rotation.set(od.rotation.x, od.rotation.y, od.rotation.z);
   if (od.scale) m.scale.set(od.scale.x, od.scale.y, od.scale.z);
-  // Material fields only apply to meshes with a material — imported
-  // groups keep their original materials.
+  // Parametric mesh — write through its single material.
   if (m.material) {
     if (od.colorHex) m.material.color.set(od.colorHex);
     if (od.roughness !== undefined) m.material.roughness = od.roughness;
@@ -263,6 +270,19 @@ function applyObjectData(m, od) {
     if (od.opacity !== undefined) {
       m.material.opacity = od.opacity;
       m.material.transparent = od.opacity < 1;
+    }
+  } else if (m.userData?._overrideMat) {
+    // Imported group — apply saved tweaks to the stashed override
+    // material so the next _applyImportMaterialMode swap shows the
+    // right colour / PBR values, and the Object Color panel reflects
+    // what the user picked before saving.
+    const om = m.userData._overrideMat;
+    if (od.colorHex) om.color.set(od.colorHex);
+    if (od.roughness !== undefined) om.roughness = od.roughness;
+    if (od.metalness !== undefined) om.metalness = od.metalness;
+    if (od.opacity !== undefined) {
+      om.opacity = od.opacity;
+      om.transparent = od.opacity < 1;
     }
   }
   m.visible = od.visible !== false;
@@ -282,7 +302,7 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
     const placeholder = this.objects[this.objects.length - 1];
     placeholder.userData.type = "import";
     applyObjectData(placeholder, od);
-    import("./importer.mjs").then(async ({ loadGLBFromURL, loadOBJFromURL }) => {
+    import("./importer.mjs").then(async ({ loadGLBFromURL, loadOBJFromURL, prepareImportedGroup }) => {
       if (this._closed) return;
       const parts = od.importPath.split("/");
       const fname = parts.pop();
@@ -303,14 +323,19 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         this.scene.remove(placeholder);
         placeholder.geometry?.dispose();
         placeholder.material?.dispose();
-        group.traverse((c) => {
-          if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
-        });
+        // Shared material prep so the Shape-panel toggle round-trips.
+        const { origMaterials, overrideMat } =
+          prepareImportedGroup(group, od.colorHex);
+        group.userData = {
+          type: "import",
+          importPath: od.importPath,
+          importExt: od.importExt,
+          _origMaterials: origMaterials,
+          _overrideMat: overrideMat,
+          keepOriginalMaterials: !!od.keepOriginalMaterials,
+        };
         applyObjectData(group, od);
-        group.userData.type = "import";
-        group.userData.importPath = od.importPath;
-        group.userData.importExt = od.importExt;
-        group.userData.keepOriginalMaterials = od.keepOriginalMaterials !== false;
+        this._applyImportMaterialMode?.(group);
         this.objects[idx] = group;
         this.scene.add(group);
         if (wasSelected) {
@@ -357,13 +382,21 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         this.scene.remove(placeholder);
         placeholder.geometry?.dispose();
         placeholder.material?.dispose();
-        group.traverse((o) => {
-          if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
-        });
-        // Re-apply the saved transform + userData to the group.
+        // Prep the loaded group: shadow flags + material stash/override
+        // so _applyImportMaterialMode can toggle later, and
+        // applyObjectData can write the saved colour/rough/etc through
+        // to the override material.
+        const { prepareImportedGroup } = await import("./importer.mjs");
+        const { origMaterials, overrideMat } =
+          prepareImportedGroup(group, od.colorHex);
+        group.userData = {
+          type: "bunny",
+          _origMaterials: origMaterials,
+          _overrideMat: overrideMat,
+          keepOriginalMaterials: !!od.keepOriginalMaterials,
+        };
         applyObjectData(group, od);
-        group.userData.type = "bunny";
-        group.userData.keepOriginalMaterials = true;
+        this._applyImportMaterialMode?.(group);
         this.objects[idx] = group;
         this.scene.add(group);
         if (wasSelected) {

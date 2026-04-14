@@ -300,7 +300,7 @@ Pixaroma3DEditor.prototype._applySnap = function (state) {
       if (d.id > this._id) this._id = d.id;
       this.scene.add(ph);
       this.objects.push(ph);
-      import("./importer.mjs").then(async ({ loadGLBFromURL }) => {
+      import("./importer.mjs").then(async ({ loadGLBFromURL, prepareImportedGroup }) => {
         if (this._closed) return;
         try {
           const group = await loadGLBFromURL(
@@ -318,17 +318,19 @@ Pixaroma3DEditor.prototype._applySnap = function (state) {
           if (wasAttached) this.transformCtrl.detach();
           this.scene.remove(ph);
           disposeObject(ph);
-          group.traverse((c) => {
-            if (c.isMesh) {
-              c.castShadow = true;
-              c.receiveShadow = true;
-            }
-          });
+          // Stash original materials + build override so the Shape-
+          // panel toggle still works after undo re-creates the bunny.
+          const { origMaterials, overrideMat } =
+            prepareImportedGroup(group, ph.userData.colorHex);
           group.position.copy(ph.position);
           group.rotation.copy(ph.rotation);
           group.scale.copy(ph.scale);
           group.visible = ph.visible;
-          group.userData = { ...ph.userData, keepOriginalMaterials: true };
+          group.userData = {
+            ...ph.userData,
+            _origMaterials: origMaterials,
+            _overrideMat: overrideMat,
+          };
           this.objects[idx] = group;
           this.scene.add(group);
           if (wasSelected) {

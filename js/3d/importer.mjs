@@ -168,32 +168,41 @@ export async function importFromFile(editor, file) {
 // ships without a baseColor.
 const IMPORTED_DEFAULT_COLOR = "#f3e8d8";
 
+// Shared prep for any imported Group — parametric shadow flags, stash
+// original materials so the "Use Original Material" toggle can switch
+// back to them, and build a single shared override MeshStandardMaterial
+// so GLB/OBJ imports shade identically under our PBR pipeline.
+// Returns { origMaterials, overrideMat } for storing on userData.
+// Called both from _addImportedGroup (fresh adds) and from the
+// persistence restore path (re-load from disk).
+export function prepareImportedGroup(group, colorHex) {
+  const THREE = getTHREE();
+  const origMaterials = [];
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    o.castShadow = true;
+    o.receiveShadow = true;
+    origMaterials.push(o.material || null);
+  });
+  const overrideMat = new THREE.MeshStandardMaterial({
+    color: colorHex || IMPORTED_DEFAULT_COLOR,
+    roughness: 0.55,
+    metalness: 0,
+    transparent: true,
+    opacity: 1,
+  });
+  group.traverse((o) => {
+    if (o.isMesh) o.material = overrideMat;
+  });
+  return { origMaterials, overrideMat };
+}
+
 Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUserData = {}) {
   const THREE = getTHREE();
   this._pushUndo();
   this._id++;
 
-  // Shadow flags + uniform MeshStandardMaterial on every mesh. We
-  // rebuild the material (rather than mutating in place) because
-  // different loaders produce different types — GLBs give us
-  // MeshStandardMaterial, OBJLoader gives MeshPhongMaterial by
-  // default — and the same scene lights render them very
-  // differently. Forcing a StandardMaterial with the Pixaroma clay
-  // default makes GLB and OBJ imports look identical under our PBR
-  // pipeline.
-  group.traverse((o) => {
-    if (!o.isMesh) return;
-    o.castShadow = true;
-    o.receiveShadow = true;
-    o.material?.dispose?.();
-    o.material = new THREE.MeshStandardMaterial({
-      color: IMPORTED_DEFAULT_COLOR,
-      roughness: 0.55,
-      metalness: 0,
-      transparent: true,
-      opacity: 1,
-    });
-  });
+  const { origMaterials, overrideMat } = prepareImportedGroup(group);
 
   // Normalise the imported group's size so it comes in at a sensible
   // scale next to the parametric shapes. Imported GLBs are often
@@ -223,6 +232,8 @@ Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUs
     locked: false,
     geoParams: null, // no parametric shape
     keepOriginalMaterials: false,
+    _origMaterials: origMaterials,
+    _overrideMat: overrideMat,
     ...extraUserData,
   };
 
