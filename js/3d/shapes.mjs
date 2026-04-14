@@ -41,19 +41,42 @@ export const SHAPES = {
     ],
     defaults: { radius: 0.5, length: 1.5, sides: 3 },
     build: (THREE, p) => {
-      // Build a CylinderGeometry with n sides, then reorient to the
-      // classic "house roof" pose:
-      //   - extrusion axis along Z (front-back), so the triangular gable
-      //     faces the default camera
-      //   - triangle peak at +Y (up), flat rectangular face on the floor
-      // We also translate the geometry so its flat bottom sits at local
-      // y = 0 — this way the bottom stays planted on the ground plane
-      // regardless of radius, and the "roof ridge" lifts as radius grows.
-      const g = new THREE.CylinderGeometry(
-        p.radius, p.radius, p.length, p.sides);
-      g.rotateX(Math.PI / 2); // cylinder axis Y → Z (extrude front-back)
-      g.rotateZ(Math.PI / 2); // first vertex (+X) → +Y (peak up)
-      g.translate(0, p.radius / 2, 0); // flat bottom at y=0
+      // Build the prism as an explicit 2D n-gon in the XY plane, then
+      // extrude along Z. This gives us full control over the cross-
+      // section orientation regardless of Three.js's internal cylinder
+      // conventions.
+      //
+      //   - Odd sides (3, 5, 7): one vertex at +Y (peak up) → classic
+      //     triangular-prism "house roof" silhouette.
+      //   - Even sides (4, 6, 8): one flat edge at top AND one flat
+      //     edge at bottom → square bar, hex bar, etc.
+      //
+      // In both cases we translate after extrusion so the lowest vertex
+      // sits at local y=0 — the prism's flat bottom stays planted on
+      // the floor when the params panel changes radius.
+      const r = p.radius, h = p.length, n = p.sides | 0;
+      const startAngle = (n % 2 === 0)
+        ? (Math.PI / 2 - Math.PI / n) // flat top+bottom
+        : (Math.PI / 2);              // peak up
+      const shape = new THREE.Shape();
+      for (let i = 0; i < n; i++) {
+        const a = startAngle + (i * 2 * Math.PI) / n;
+        const x = r * Math.cos(a);
+        const y = r * Math.sin(a);
+        if (i === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+      const g = new THREE.ExtrudeGeometry(shape, {
+        depth: h,
+        bevelEnabled: false,
+      });
+      // ExtrudeGeometry lays the shape at z=0 and extrudes to z=+h.
+      // Re-center along Z so the prism straddles the origin front-back.
+      g.translate(0, 0, -h / 2);
+      // Flat bottom at y=0.
+      g.computeBoundingBox();
+      g.translate(0, -g.boundingBox.min.y, 0);
       g.computeVertexNormals();
       return g;
     },
