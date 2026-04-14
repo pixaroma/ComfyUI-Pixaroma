@@ -284,7 +284,9 @@ export class Pixaroma3DEditor {
 
     // Viewport: use framework workspace but add 3D-specific elements
     const vp = layout.workspace;
-    vp.style.background = "#6e6e6e";
+    // Seed the viewport with the final bgColor so we don't flash the
+    // hardcoded default gray before Three.js sets scene.background.
+    vp.style.background = this.bgColor;
     this.el.viewport = vp;
 
     // Background image container (behind canvas)

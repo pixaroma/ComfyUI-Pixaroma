@@ -27,31 +27,11 @@ app.registerExtension({
   settings: [
     {
       id: "Pixaroma.3D.DefaultBgColor",
-      name: "Default Background Color (3D Builder)",
+      name: "Default Background Color — 3D Builder (default #6e6e6e)",
       type: "color",
       defaultValue: "#6e6e6e",
-      tooltip: "Color used as the background for new 3D scenes. Default is #6e6e6e (neutral gray).",
+      tooltip: "Color used as the background for new 3D scenes. Default is #6e6e6e (neutral gray). To reset: right-click the field (if your ComfyUI version supports it) or type 6e6e6e into the picker.",
       category: ["👑 Pixaroma", "3D Builder"],
-    },
-    {
-      id: "Pixaroma.3D.ResetDefaultBgColor",
-      name: "Reset Background Color to default (#6e6e6e)",
-      type: "boolean",
-      defaultValue: false,
-      tooltip: "Toggle on to reset the Default Background Color above to #6e6e6e. It will snap back off automatically.",
-      category: ["👑 Pixaroma", "3D Builder"],
-      onChange: (newValue) => {
-        if (newValue !== true) return;
-        try {
-          app.ui.settings.setSettingValue("Pixaroma.3D.DefaultBgColor", "#6e6e6e");
-        } catch {}
-        // Snap the toggle back off so it behaves like a momentary button.
-        setTimeout(() => {
-          try {
-            app.ui.settings.setSettingValue("Pixaroma.3D.ResetDefaultBgColor", false);
-          } catch {}
-        }, 0);
-      },
     },
   ],
 
