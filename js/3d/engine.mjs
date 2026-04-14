@@ -6,6 +6,7 @@ import {
   getTHREE,
   getOrbitControls,
   getTransformControls,
+  getPostprocessing,
   createCanvasFrame,
 } from "./core.mjs";
 
@@ -88,6 +89,37 @@ Pixaroma3DEditor.prototype._initThree = function () {
   // After renderer is created and attached
   this._studioEnvTexture = buildStudioEnv();
   if (this._studioEnvOn) this.scene.environment = this._studioEnvTexture;
+
+  // Screen-space selection outline via three.js OutlinePass — same
+  // approach Blender / Unity / Unreal use. Gives a clean silhouette
+  // for any shape (subdivided, flat-shaded, concave) that bolts its
+  // on-screen width regardless of zoom.
+  //
+  // Conservative settings this time:
+  //   - edgeStrength 3: line reads orange without the over-saturated
+  //     bloom we had at 20.
+  //   - edgeThickness 1, edgeGlow 0, pulsePeriod 0: crisp 1px line.
+  //   - downSampleRatio 1: full-res edge detection, no ray artifacts.
+  //   - hiddenEdgeColor black: outline that's occluded by the gizmo
+  //     (or any object in front) disappears against the scene bg
+  //     rather than bleeding through as orange.
+  const pp = getPostprocessing();
+  this._composer = new pp.EffectComposer(this.renderer);
+  this._composer.setSize(w, h);
+  this._composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  this._composer.addPass(new pp.RenderPass(this.scene, this.camera));
+  this._outlinePass = new pp.OutlinePass(
+    new THREE.Vector2(w, h), this.scene, this.camera,
+  );
+  this._outlinePass.edgeStrength = 3;
+  this._outlinePass.edgeGlow = 0;
+  this._outlinePass.edgeThickness = 1;
+  this._outlinePass.pulsePeriod = 0;
+  this._outlinePass.downSampleRatio = 1;
+  this._outlinePass.visibleEdgeColor.set(0xf66744);
+  this._outlinePass.hiddenEdgeColor.set(0x000000);
+  this._composer.addPass(this._outlinePass);
+  this._composer.addPass(new pp.OutputPass());
 
   this.orbitCtrl = new OrbitControls(this.camera, this.renderer.domElement);
   this.orbitCtrl.enableDamping = true;
@@ -308,6 +340,8 @@ Pixaroma3DEditor.prototype._onResize = function () {
   this.camera.aspect = w / h;
   this.camera.updateProjectionMatrix();
   this.renderer.setSize(w, h);
+  if (this._composer) this._composer.setSize(w, h);
+  if (this._outlinePass) this._outlinePass.setSize(w, h);
   this._updateFrame();
   this._updateBgCSS();
 };
@@ -316,7 +350,11 @@ Pixaroma3DEditor.prototype._animate = function () {
   if (!this.renderer) return;
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
-  this.renderer.render(this.scene, this.camera);
+  // Composer renders scene + OutlinePass for live preview. Save path
+  // bypasses this and calls renderer.render() directly so exported
+  // PNGs don't have the selection highlight baked in.
+  if (this._composer) this._composer.render();
+  else this.renderer.render(this.scene, this.camera);
 };
 
 // ─── Lighting ─────────────────────────────────────────────

@@ -256,15 +256,9 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = false;
     if (this._gizmoHelper) this._gizmoHelper.visible = false;
     if (this._canvasFrame) this._canvasFrame.setVisible(false);
-    // Hide selection outlines during save render so the exported PNG
-    // doesn't contain the orange silhouette. Restored below.
-    const hiddenOutlines = [];
-    for (const m of this.objects) {
-      if (m._selectionOutline && m._selectionOutline.visible) {
-        m._selectionOutline.visible = false;
-        hiddenOutlines.push(m._selectionOutline);
-      }
-    }
+    // Selection outline is drawn by OutlinePass via the composer; the
+    // save render below calls renderer.render() directly so it never
+    // reaches the exported PNG — no toggling needed.
 
     // For save render: temporarily restore scene bg if no bg image
     const hadBgImage = this.el.bgImgEl && this._bgImg.path;
@@ -347,8 +341,6 @@ Pixaroma3DEditor.prototype._save = async function () {
     if (this.gridHelper) this.gridHelper.visible = this._showGrid;
     if (this._gizmoHelper) this._gizmoHelper.visible = this._showGizmo;
     if (this._canvasFrame) this._canvasFrame.setVisible(true);
-    // Restore the selection outlines hidden above.
-    for (const o of hiddenOutlines) o.visible = true;
     this.renderer.setPixelRatio(pr);
     this._onResize();
 
@@ -390,6 +382,13 @@ Pixaroma3DEditor.prototype._close = function () {
     this.transformCtrl.dispose();
   }
   if (this.orbitCtrl) this.orbitCtrl.dispose();
+  if (this._composer) {
+    this._composer.passes.forEach((p) => p.dispose?.());
+    this._composer.renderTarget1?.dispose();
+    this._composer.renderTarget2?.dispose();
+    this._composer = null;
+    this._outlinePass = null;
+  }
   if (this.renderer) {
     this.renderer.dispose();
     this.renderer.forceContextLoss();
