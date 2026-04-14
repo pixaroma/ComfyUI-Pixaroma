@@ -75,12 +75,13 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   this.renderer.shadowMap.enabled = true;
   this.renderer.shadowMap.type = THREE.VSMShadowMap;
-  // AgX is softer on highlights than ACES; available in three 0.170+.
-  // Fallback to ACESFilmic if the runtime build doesn't export AgX.
-  this.renderer.toneMapping =
-    THREE.AgXToneMapping !== undefined
-      ? THREE.AgXToneMapping
-      : THREE.ACESFilmicToneMapping;
+  // No tonemapping — earlier we used AgX for a softer "cinematic"
+  // look, but it desaturated user-picked object colours and the
+  // selection outline (Pixaroma orange came out as washed-out tan).
+  // For an editor, WYSIWYG colour fidelity matters more than filmic
+  // highlight rolloff — use linear sRGB output and let the picker
+  // colour be exactly what's drawn.
+  this.renderer.toneMapping = THREE.NoToneMapping;
   this.renderer.toneMappingExposure = 1.0;
   this.renderer.outputColorSpace = THREE.SRGBColorSpace;
   vp.insertBefore(this.renderer.domElement, vp.firstChild);
@@ -105,18 +106,17 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  this._outlinePass.edgeStrength = 4;
+  this._outlinePass.edgeStrength = 5;
   this._outlinePass.edgeGlow = 0;
   this._outlinePass.edgeThickness = 1.0;
   this._outlinePass.pulsePeriod = 0;
   // Full-resolution edge detection — the default half-res produced
   // "ray" streaks extending from sharp silhouettes.
   this._outlinePass.downSampleRatio = 1;
-  // Pixaroma brand orange. The colour passes through AgX tonemapping
-  // downstream in OutputPass, which compresses bright values; pre-
-  // multiplying the linear colour gives a visibly saturated orange
-  // on screen instead of the washed-out tan a bare #f66744 produces.
-  this._outlinePass.visibleEdgeColor.set(0xf66744).multiplyScalar(2.4);
+  // True Pixaroma brand orange. With NoToneMapping above, the colour
+  // round-trips sRGB → linear → sRGB without compression, so it
+  // displays exactly as #f66744 on screen.
+  this._outlinePass.visibleEdgeColor.set(0xf66744);
   // Hide the "occluded edge" pass — where the gizmo (or any other
   // object) sits in front of the selected mesh, the outline would
   // otherwise bleed through as an orange "x-ray" line. Setting the
