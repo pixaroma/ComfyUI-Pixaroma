@@ -1,5 +1,5 @@
 // ============================================================
-// Pixaroma 3D Editor — Three.js init, shape params, lighting
+// Pixaroma 3D Editor — Three.js init, lighting
 // ============================================================
 import {
   Pixaroma3DEditor,
@@ -8,7 +8,6 @@ import {
   getTransformControls,
   createCanvasFrame,
 } from "./core.mjs";
-import { SHAPES } from "./shapes.mjs";
 
 // ─── Three.js ─────────────────────────────────────────────
 
@@ -184,84 +183,6 @@ Pixaroma3DEditor.prototype._animate = function () {
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
   this.renderer.render(this.scene, this.camera);
-};
-
-// ─── Shape Parameter UI ─────────────────────────────────
-
-Pixaroma3DEditor.prototype._updateShapeParams = function () {
-  const box = this.el.shapeParams;
-  if (!box) return;
-  box.innerHTML = "";
-  const type = this._selectedShape;
-  const p = this._shapeParams[type];
-  if (!p) return;
-
-  // Pull param defs from registry (single source of truth)
-  const shape = SHAPES[type];
-  const fields = shape ? shape.params : [];
-  fields.forEach((f) => {
-    const row = document.createElement("div");
-    row.className = "p3d-row";
-    const lbl = document.createElement("div");
-    lbl.className = "p3d-label";
-    lbl.textContent = f.label;
-    const slider = document.createElement("input");
-    slider.type = "range";
-    slider.className = "p3d-range";
-    slider.min = f.min;
-    slider.max = f.max;
-    slider.step = f.step;
-    slider.value = p[f.key];
-    const numIn = document.createElement("input");
-    numIn.type = "number";
-    numIn.className = "p3d-input";
-    numIn.style.cssText =
-      "width:50px;text-align:center;font-size:10px;padding:3px 4px;flex:none;border-radius:3px;";
-    numIn.min = f.min;
-    numIn.max = f.max;
-    numIn.step = f.step;
-    numIn.value = Number.isInteger(f.step) ? p[f.key] : p[f.key].toFixed(1);
-    const sync = (v) => {
-      p[f.key] = +v;
-      slider.value = v;
-      numIn.value = Number.isInteger(f.step) ? v : (+v).toFixed(1);
-      if (window._pxfUpdateFill) window._pxfUpdateFill(slider);
-    };
-    slider.addEventListener("input", () => sync(slider.value));
-    numIn.addEventListener("change", () => {
-      const v = Math.max(f.min, Math.min(f.max, +numIn.value || f.min));
-      sync(v);
-    });
-    row.append(lbl, slider, numIn);
-    box.appendChild(row);
-    // After mounting, refresh the --pxf-fill CSS var so the orange track
-    // fill aligns with the thumb. The framework's patched value-setter only
-    // updates the fill when the input is already in the DOM; we just added it.
-    if (window._pxfUpdateFill) window._pxfUpdateFill(slider);
-  });
-
-  // Reset to defaults button
-  const resetBtn = document.createElement("button");
-  resetBtn.className = "p3d-btn";
-  resetBtn.style.cssText =
-    "width:100%;margin-top:4px;font-size:10px;padding:4px 8px;";
-  resetBtn.textContent =
-    "\u21ba Reset " +
-    type.charAt(0).toUpperCase() +
-    type.slice(1) +
-    " Defaults";
-  resetBtn.title = "Reset parameters to default values";
-  resetBtn.addEventListener("click", () => {
-    this._shapeParams[type] = { ...this._shapeDefaults[type] };
-    this._updateShapeParams();
-  });
-  box.appendChild(resetBtn);
-};
-
-Pixaroma3DEditor.prototype._addObjectWithParams = function () {
-  const type = this._selectedShape;
-  const p = this._shapeParams[type] ? { ...this._shapeParams[type] } : {};
-  this._addObject(type, p);
 };
 
 // ─── Lighting ─────────────────────────────────────────────

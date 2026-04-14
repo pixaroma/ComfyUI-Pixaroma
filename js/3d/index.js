@@ -8,6 +8,7 @@ import { Pixaroma3DEditor } from "./core.mjs";
 import "./engine.mjs";
 import "./shapes.mjs";  // shape registry (pure data module, no mixins)
 import "./objects.mjs";
+import "./shape_params.mjs";
 import "./interaction.mjs";
 import "./persistence.mjs";
 

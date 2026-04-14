@@ -117,6 +117,7 @@ Pixaroma3DEditor.prototype._select = function (mesh, additive) {
   else this.transformCtrl.detach();
   this._syncProps();
   this._updateLayers();
+  if (this._rebuildShapePanel) this._rebuildShapePanel();
 };
 
 Pixaroma3DEditor.prototype._setObjColor = function (hex) {

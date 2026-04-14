@@ -73,9 +73,8 @@ function injectExtraStyles() {
 /* p3d-tool-info — removed, now using shared pxf-tool-info from framework */
 .p3d-shape-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;cursor:pointer;border:1px solid #3a3d40;background:#242628;color:#ccc;border-radius:5px;font-size:10px;gap:3px;transition:all .12s;padding:4px;}
 .p3d-shape-btn:hover{background:#2a2c2e;border-color:#f66744;transform:scale(1.05);}
-.p3d-shape-btn.selected{background:#2a1800;border-color:#f66744;color:#fff;}
 .p3d-shape-btn .p3d-shape-ico{width:22px;height:22px;background-color:#ccc;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;transition:background-color .12s;}
-.p3d-shape-btn:hover .p3d-shape-ico,.p3d-shape-btn.selected .p3d-shape-ico{background-color:#f66744;}
+.p3d-shape-btn:hover .p3d-shape-ico{background-color:#f66744;}
 .p3d-shape-params{margin-top:8px;padding:6px 0;border-top:1px solid #2a2c2e;}
 .p3d-mat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
 .p3d-mat-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;cursor:pointer;border:1px solid #3a3d40;background:#242628;border-radius:5px;font-size:9px;color:#999;transition:all .12s;}
@@ -563,7 +562,7 @@ export class Pixaroma3DEditor {
     }
     left.appendChild(bgTP.el);
 
-    // 3D Objects — select shape, configure, then add
+    // 3D Objects — click a shape to add it instantly (params editable on right sidebar)
     const obs = createPanel("3D Objects", { collapsible: true });
     const og = document.createElement("div");
     og.className = "p3d-grid3";
@@ -574,11 +573,10 @@ export class Pixaroma3DEditor {
       icon: SHAPES[id].label.charAt(0), // placeholder glyph — Task 2 replaces with SVG
       l: SHAPES[id].label,
     }));
-    this._selectedShape = "cube";
     shapes.forEach((sh) => {
       const b = document.createElement("div");
-      b.className = "p3d-shape-btn" + (sh.id === "cube" ? " selected" : "");
-      b.title = "Select " + sh.l;
+      b.className = "p3d-shape-btn";
+      b.title = "Add " + sh.l;
       const ico = document.createElement("span");
       ico.className = "p3d-shape-ico";
       ico.setAttribute("role", "img");
@@ -590,40 +588,12 @@ export class Pixaroma3DEditor {
       lbl.textContent = sh.l;
       b.append(ico, lbl);
       b.addEventListener("click", () => {
-        this._selectedShape = sh.id;
-        og.querySelectorAll(".p3d-shape-btn").forEach((x) =>
-          x.classList.remove("selected"),
-        );
-        b.classList.add("selected");
-        this._updateShapeParams();
+        this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
       });
       og.appendChild(b);
     });
     obs.content.appendChild(og);
-
-    const paramBox = document.createElement("div");
-    paramBox.className = "p3d-shape-params";
-    this.el.shapeParams = paramBox;
-    obs.content.appendChild(paramBox);
-
-    const addBtn = createButton("+ Add to Scene", {
-      variant: "accent",
-      onClick: () => this._addObjectWithParams(),
-      title: "Add the selected shape",
-    });
-    addBtn.style.cssText = "width:100%;margin-top:8px;";
-    obs.content.appendChild(addBtn);
     left.appendChild(obs.el);
-
-    // Initialize shape params for default (cube)
-    this._shapeDefaults = {};
-    for (const id of SHAPE_GRID_V1) {
-      this._shapeDefaults[id] = { ...SHAPES[id].defaults };
-    }
-    this._shapeParams = {};
-    for (const [k, v] of Object.entries(this._shapeDefaults))
-      this._shapeParams[k] = { ...v };
-    this._updateShapeParams();
 
     // Transform Tools
     const tt = createPanel("Transform Tools", { collapsible: true });
@@ -768,6 +738,9 @@ export class Pixaroma3DEditor {
     });
     this.el.layerList = this._layerPanel.list;
     right.insertBefore(this._layerPanel.el, footer);
+
+    // 1.5) Shape — per-object geometry parameters (mixin from shape_params.mjs)
+    right.insertBefore(this._createShapePanel(createPanel), footer);
 
     // 2) Object Color + HSL
     const colSec = createPanel("Object Color", {
