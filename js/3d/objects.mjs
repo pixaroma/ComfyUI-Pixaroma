@@ -307,7 +307,9 @@ Pixaroma3DEditor.prototype._setObjectPanelsEnabled = function (enabled) {
 Pixaroma3DEditor.prototype._syncProps = function () {
   const o = this.activeObj;
   if (!o) {
-    if (this.el.objColor) this.el.objColor.value = "#888";
+    // Browser <input type=color> requires "#rrggbb" — the shorthand
+    // "#888" triggers a console warning even though it renders fine.
+    if (this.el.objColor) this.el.objColor.value = "#888888";
     if (this.el.objName) this.el.objName.value = "";
     this._setObjectPanelsEnabled(false);
     return;
