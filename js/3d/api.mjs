@@ -35,6 +35,25 @@ export class ThreeDAPI {
         data: dataURL,
       }),
     });
-    return res.json();
+    // The backend route is registered at server start; if ComfyUI was
+    // running when this plugin was updated the route may not exist yet
+    // (HTTP 405 "Method Not Allowed") and the response body will be a
+    // non-JSON error page. Surface a friendly message in that case
+    // instead of letting res.json() throw "Unexpected non-whitespace
+    // character after JSON" deep in the import pipeline.
+    if (!res.ok) {
+      if (res.status === 405 || res.status === 404) {
+        return {
+          status: "error",
+          msg: "Backend route not registered — restart ComfyUI to load the new model-upload endpoint.",
+        };
+      }
+      return { status: "error", msg: `HTTP ${res.status}` };
+    }
+    try {
+      return await res.json();
+    } catch {
+      return { status: "error", msg: "Invalid JSON response from server" };
+    }
   }
 }

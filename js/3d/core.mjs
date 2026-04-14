@@ -710,10 +710,10 @@ export class Pixaroma3DEditor {
       }
     });
     obs.content.appendChild(importInput);
-    const importBtn = createButton("Import 3D Model (.glb / .obj)", {
+    const importBtn = createButton("Import 3D Model (.glb / .obj, max 50 MB)", {
       variant: "standard",
       onClick: () => importInput.click(),
-      title: "Import a local GLB, GLTF, or OBJ file",
+      title: "Import a local GLB, GLTF, or OBJ file (max 50 MB)",
     });
     importBtn.style.cssText = "width:100%;margin-top:8px;";
     obs.content.appendChild(importBtn);
