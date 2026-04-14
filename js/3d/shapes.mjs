@@ -279,11 +279,12 @@ export const SHAPES = {
     category: "toroidal",
     live: true,
     params: [
-      { key: "innerRadius", label: "Inner R",  min: 0.05, max: 2.8, step: 0.05 },
-      { key: "outerRadius", label: "Outer R",  min: 0.1,  max: 3,   step: 0.05 },
-      { key: "segments",    label: "Segments", min: 8,    max: 128, step: 1 },
+      { key: "outerRadius", label: "Outer R",   min: 0.1,  max: 3,   step: 0.05 },
+      { key: "innerRadius", label: "Inner R",   min: 0.05, max: 2.8, step: 0.05 },
+      { key: "thickness",   label: "Thickness", min: 0.01, max: 1,   step: 0.01 },
+      { key: "segments",    label: "Segments",  min: 8,    max: 128, step: 1 },
     ],
-    defaults: { innerRadius: 0.3, outerRadius: 0.5, segments: 32 },
+    defaults: { outerRadius: 0.5, innerRadius: 0.3, thickness: 0.05, segments: 32 },
     // Same constraint as tube — keep Inner R below Outer R, no collapse.
     constraint: (p, key, v) => {
       if (key === "outerRadius") return Math.max(v, p.innerRadius + 0.01);
@@ -291,12 +292,27 @@ export const SHAPES = {
       return v;
     },
     build: (THREE, p) => {
-      // Flat annulus on the XZ plane. Three's RingGeometry sits on the
-      // XY plane by default — rotate so it lies flat on the floor.
-      const innerR = Math.min(p.innerRadius, p.outerRadius - 0.01);
+      // Annulus extruded along Y by a small thickness. Using Extrude
+      // (instead of THREE.RingGeometry) gives us a proper two-sided 3D
+      // ring that doesn't z-fight with the floor and looks correct from
+      // any angle. Default thickness of 0.05 reads as a thin band; user
+      // can crank it up to make it a flat washer.
       const outerR = Math.max(p.outerRadius, p.innerRadius + 0.01);
-      const g = new THREE.RingGeometry(innerR, outerR, p.segments);
+      const innerR = Math.min(p.innerRadius, outerR - 0.01);
+      const outer = new THREE.Shape();
+      outer.absarc(0, 0, outerR, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, innerR, 0, Math.PI * 2, true);
+      outer.holes.push(hole);
+      const g = new THREE.ExtrudeGeometry(outer, {
+        depth: p.thickness,
+        bevelEnabled: false,
+        curveSegments: p.segments,
+      });
+      // Lay flat on the floor (Y becomes height) and centre on origin
+      // so _addObject's bounding-box snap parks the bottom face at y=0.
       g.rotateX(-Math.PI / 2);
+      g.translate(0, -p.thickness / 2, 0);
       g.computeVertexNormals();
       return g;
     },
@@ -307,13 +323,19 @@ export const SHAPES = {
     category: "toroidal",
     live: false, // toothed ExtrudeGeometry is expensive — debounce
     params: [
-      { key: "outerRadius", label: "Outer R",     min: 0.3,  max: 3,   step: 0.05 },
-      { key: "innerRadius", label: "Inner Hole",  min: 0.05, max: 2,   step: 0.05 },
-      { key: "teeth",       label: "Teeth",       min: 4,    max: 48,  step: 1 },
-      { key: "thickness",   label: "Thickness",   min: 0.05, max: 2,   step: 0.05 },
-      { key: "toothDepth",  label: "Tooth Depth", min: 0.02, max: 0.5, step: 0.01 },
+      { key: "outerRadius", label: "Outer R",     min: 0.3,  max: 3,    step: 0.05 },
+      { key: "innerRadius", label: "Inner Hole",  min: 0.05, max: 2,    step: 0.05 },
+      { key: "teeth",       label: "Teeth",       min: 4,    max: 48,   step: 1 },
+      { key: "gap",         label: "Gap",         min: 0.1,  max: 0.7,  step: 0.05 },
+      { key: "holeSides",   label: "Hole Sides",  min: 3,    max: 32,   step: 1 },
+      { key: "thickness",   label: "Thickness",   min: 0.05, max: 2,    step: 0.05 },
+      { key: "toothDepth",  label: "Tooth Depth", min: 0.02, max: 0.5,  step: 0.01 },
     ],
-    defaults: { outerRadius: 0.8, innerRadius: 0.2, teeth: 12, thickness: 0.3, toothDepth: 0.12 },
+    defaults: {
+      outerRadius: 0.8, innerRadius: 0.2, teeth: 12,
+      gap: 0.4, holeSides: 32,
+      thickness: 0.3, toothDepth: 0.12,
+    },
     // Three constraints to keep the gear geometrically valid:
     //   - Tooth Depth must leave room for the inner hole and a wall.
     //   - Inner Hole must fit inside the tooth-base radius.
@@ -338,21 +360,33 @@ export const SHAPES = {
     build: (THREE, p) => {
       // Build a flat 2D gear silhouette as a Shape: walk N teeth around
       // the rim, alternating between the base radius (gap between teeth)
-      // and the tip radius (top of tooth). Punch a circular hole in the
+      // and the tip radius (top of tooth). Punch a polygonal hole in the
       // middle, then extrude on Z and rotate so the gear stands flat
       // (axis on Y). Bevel softens the edges so reflections catch.
+      //
+      // `gap` (0..1) is the fraction of each tooth-step taken up by the
+      // empty space between teeth. With gap=0 the teeth are touching;
+      // with gap=0.7 the teeth become narrow spikes far apart. The tooth
+      // itself uses the remaining (1-gap) of the step, with two short
+      // ramps (base→tip→tip→base) shaping its profile.
       const teeth = Math.max(4, Math.round(p.teeth));
       const tipR  = p.outerRadius;
       const baseR = Math.max(p.outerRadius - p.toothDepth, p.innerRadius + 0.02);
       const shape = new THREE.Shape();
       const stepAngle = (Math.PI * 2) / teeth;
+      const gap = Math.max(0, Math.min(0.9, p.gap ?? 0.4));
+      const toothFrac = 1 - gap;
+      // Tooth profile within its step: ramp up, plateau, ramp down.
+      const f1 = toothFrac * 0.3;     // base → tip ramp end
+      const f2 = toothFrac * 0.7;     // tip plateau end
+      const f3 = toothFrac;           // tip → base ramp end
       for (let i = 0; i < teeth; i++) {
         const a0 = i * stepAngle;
-        const a1 = a0 + stepAngle * 0.25;
-        const a2 = a0 + stepAngle * 0.55;
-        const a3 = a0 + stepAngle * 0.8;
         const pts = [
-          [baseR, a0], [tipR, a1], [tipR, a2], [baseR, a3],
+          [baseR, a0],
+          [tipR,  a0 + stepAngle * f1],
+          [tipR,  a0 + stepAngle * f2],
+          [baseR, a0 + stepAngle * f3],
         ];
         pts.forEach(([r, a], idx) => {
           const x = Math.cos(a) * r, y = Math.sin(a) * r;
@@ -361,15 +395,30 @@ export const SHAPES = {
         });
       }
       shape.closePath();
+      // Polygonal inner hole. holeSides=32 reads as a smooth circle;
+      // smaller values (6=hex, 4=square, 3=triangle) give faceted holes.
+      // Holes must wind opposite to the outer shape for ExtrudeGeometry,
+      // so we walk angles in the negative direction.
+      const holeSides = Math.max(3, Math.round(p.holeSides ?? 32));
       const holeR = Math.min(p.innerRadius, baseR - 0.02);
       const hole = new THREE.Path();
-      hole.absarc(0, 0, holeR, 0, Math.PI * 2, true);
+      for (let i = 0; i <= holeSides; i++) {
+        const a = -i * (Math.PI * 2) / holeSides;
+        const x = Math.cos(a) * holeR, y = Math.sin(a) * holeR;
+        if (i === 0) hole.moveTo(x, y);
+        else hole.lineTo(x, y);
+      }
       shape.holes.push(hole);
+      // Bevel sizes are decoupled from thickness so the tooth silhouette
+      // stays put when the user changes Thickness. Both are clamped to a
+      // small fraction of toothDepth so the bevel never eats into the
+      // tooth gap (which would visually merge teeth at high thickness).
+      const bev = Math.min(0.025, p.toothDepth * 0.18);
       const g = new THREE.ExtrudeGeometry(shape, {
         depth: p.thickness,
         bevelEnabled: true,
-        bevelThickness: p.thickness * 0.08,
-        bevelSize: p.thickness * 0.06,
+        bevelThickness: bev,
+        bevelSize: bev,
         bevelSegments: 2,
         curveSegments: 4,
       });
