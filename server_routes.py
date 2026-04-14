@@ -200,6 +200,59 @@ async def save_3d_render(request):
     return web.json_response({"status": "success", "composite_path": relative_path})
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/3d/model_upload")
+async def save_3d_model_upload(request):
+    """Accepts a base64 GLB/GLTF/OBJ upload and stores it under
+    input/pixaroma/<project_id>/models/<sha1>.<ext>. Returns the
+    relative path (under the pixaroma input root) so the frontend
+    can serve it via /view?type=input&subfolder=…."""
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"status": "error", "msg": "bad_json"}, status=400)
+
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+    filename = data.get("filename", "")
+    b64 = data.get("data", "")
+
+    if not re.match(r"^[a-zA-Z0-9_\-. ]+\.(glb|gltf|obj)$", filename, re.IGNORECASE):
+        return web.json_response(
+            {"status": "error", "msg": "bad_filename"}, status=400,
+        )
+    if len(b64) > _MAX_B64_BYTES:
+        return web.json_response(
+            {"status": "error", "msg": "too_large"}, status=413,
+        )
+
+    # Strip optional data URL prefix (the frontend sends `readAsDataURL`).
+    if "," in b64:
+        b64 = b64.split(",", 1)[1]
+    try:
+        raw = base64.b64decode(b64)
+    except Exception:
+        return web.json_response({"status": "error", "msg": "bad_base64"}, status=400)
+
+    # Write under input/pixaroma/<project_id>/models/<sha1>.<ext>.
+    # Hashing lets repeat uploads of the same file dedupe on disk.
+    import hashlib
+    h = hashlib.sha1(raw).hexdigest()[:12]
+    ext = filename.rsplit(".", 1)[-1].lower()
+    rel_subpath = os.path.join(project_id, "models", f"{h}.{ext}")
+    full_path = _safe_path(rel_subpath)
+    if full_path is None:
+        return web.json_response({"status": "error", "msg": "bad_path"}, status=400)
+
+    os.makedirs(os.path.dirname(full_path), exist_ok=True)
+    with open(full_path, "wb") as f:
+        f.write(raw)
+
+    rel = os.path.join("pixaroma", rel_subpath).replace("\\", "/")
+    return web.json_response(
+        {"status": "success", "path": rel, "filename": f"{h}.{ext}"},
+    )
+
+
 @PromptServer.instance.routes.post("/pixaroma/api/3d/bg_upload")
 async def save_3d_bg_image(request):
     data = await request.json()

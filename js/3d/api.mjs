@@ -19,4 +19,22 @@ export class ThreeDAPI {
     });
     return res.json();
   }
+
+  // Upload a user-supplied 3D model file (GLB / GLTF / OBJ) as a
+  // base64 data URL. Backend hashes contents, stores under
+  // input/pixaroma/<project>/models/, and returns { status, path }
+  // where `path` is the `pixaroma/...` subfolder-relative URL suitable
+  // for /view?type=input&subfolder=...&filename=...
+  static async uploadModel(projectId, filename, dataURL) {
+    const res = await api.fetchApi("/pixaroma/api/3d/model_upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: projectId,
+        filename,
+        data: dataURL,
+      }),
+    });
+    return res.json();
+  }
 }

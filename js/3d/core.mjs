@@ -689,6 +689,35 @@ export class Pixaroma3DEditor {
       og.appendChild(b);
     });
     obs.content.appendChild(og);
+
+    // Import 3D Model button — opens a native file picker, then the
+    // importer module uploads to the backend and loads the resulting
+    // model into the scene.
+    const importInput = document.createElement("input");
+    importInput.type = "file";
+    importInput.accept = ".glb,.gltf,.obj";
+    importInput.style.display = "none";
+    importInput.addEventListener("change", async () => {
+      const file = importInput.files?.[0];
+      importInput.value = "";
+      if (!file) return;
+      try {
+        const { importFromFile } = await import("./importer.mjs");
+        await importFromFile(this, file);
+      } catch (e) {
+        console.error("[P3D] import failed", e);
+        this._setStatus?.("Import error: " + (e.message || e));
+      }
+    });
+    obs.content.appendChild(importInput);
+    const importBtn = createButton("Import 3D Model (.glb / .obj)", {
+      variant: "standard",
+      onClick: () => importInput.click(),
+      title: "Import a local GLB, GLTF, or OBJ file",
+    });
+    importBtn.style.cssText = "width:100%;margin-top:8px;";
+    obs.content.appendChild(importBtn);
+
     left.appendChild(obs.el);
 
     // Transform Tools

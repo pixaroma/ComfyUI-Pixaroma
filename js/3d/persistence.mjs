@@ -15,21 +15,37 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
     fov: this._fov,
     shadows: this._shadows,
     isOrtho: this._isOrtho,
-    objects: this.objects.map((o) => ({
-      id: o.userData.id,
-      name: o.userData.name,
-      type: o.userData.type,
-      colorHex: o.userData.colorHex,
-      locked: o.userData.locked,
-      geoParams: o.userData.geoParams || null,
-      position: { x: o.position.x, y: o.position.y, z: o.position.z },
-      rotation: { x: o.rotation.x, y: o.rotation.y, z: o.rotation.z },
-      scale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
-      roughness: o.material.roughness,
-      metalness: o.material.metalness,
-      opacity: o.material.opacity,
-      visible: o.visible,
-    })),
+    objects: this.objects.map((o) => {
+      const base = {
+        id: o.userData.id,
+        name: o.userData.name,
+        type: o.userData.type,
+        colorHex: o.userData.colorHex,
+        locked: o.userData.locked,
+        geoParams: o.userData.geoParams || null,
+        position: { x: o.position.x, y: o.position.y, z: o.position.z },
+        rotation: { x: o.rotation.x, y: o.rotation.y, z: o.rotation.z },
+        scale: { x: o.scale.x, y: o.scale.y, z: o.scale.z },
+        visible: o.visible,
+      };
+      // Imported-model bookkeeping — only user uploads carry path/ext.
+      // Bunny is rebuilt from the bundled asset so needs no importPath.
+      if (o.userData.type === "import") {
+        base.importPath = o.userData.importPath || null;
+        base.importExt = o.userData.importExt || null;
+        base.keepOriginalMaterials = o.userData.keepOriginalMaterials !== false;
+      } else if (o.userData.type === "bunny") {
+        base.keepOriginalMaterials = o.userData.keepOriginalMaterials !== false;
+      }
+      // Material fields only apply to parametric meshes (Group imports
+      // have per-mesh materials and no top-level .material).
+      if (o.material) {
+        base.roughness = o.material.roughness;
+        base.metalness = o.material.metalness;
+        base.opacity = o.material.opacity;
+      }
+      return base;
+    }),
     camera: this.camera
       ? {
           position: {
@@ -253,6 +269,66 @@ function applyObjectData(m, od) {
 }
 
 Pixaroma3DEditor.prototype._addObjFromData = function (od) {
+  if (od.type === "import") {
+    // User-uploaded model. The GLB/OBJ lives on disk under the path
+    // we saved at upload time — rebuild the ComfyUI /view URL from it
+    // and load asynchronously. Placeholder sphere keeps the object
+    // slot stable during the async load, same pattern as bunny.
+    if (!od.importPath) {
+      console.warn("[P3D] import missing path, skipping:", od);
+      return;
+    }
+    this._addObject("sphere", { radius: 0.5, widthSegs: 16, heightSegs: 16 });
+    const placeholder = this.objects[this.objects.length - 1];
+    placeholder.userData.type = "import";
+    applyObjectData(placeholder, od);
+    import("./importer.mjs").then(async ({ loadGLBFromURL, loadOBJFromURL }) => {
+      if (this._closed) return;
+      const parts = od.importPath.split("/");
+      const fname = parts.pop();
+      const subfolder = parts.join("/");
+      const url = "/view?filename=" + encodeURIComponent(fname)
+                + "&type=input&subfolder=" + encodeURIComponent(subfolder)
+                + "&t=" + Date.now();
+      try {
+        const group = od.importExt === "obj"
+          ? await loadOBJFromURL(url)
+          : await loadGLBFromURL(url);
+        const idx = this.objects.indexOf(placeholder);
+        if (idx === -1) return;
+        const wasAttached = this.transformCtrl?.object === placeholder;
+        const wasSelected = this.selectedObjs.has(placeholder);
+        const wasActive = this.activeObj === placeholder;
+        if (wasAttached) this.transformCtrl.detach();
+        this.scene.remove(placeholder);
+        placeholder.geometry?.dispose();
+        placeholder.material?.dispose();
+        group.traverse((c) => {
+          if (c.isMesh) { c.castShadow = true; c.receiveShadow = true; }
+        });
+        applyObjectData(group, od);
+        group.userData.type = "import";
+        group.userData.importPath = od.importPath;
+        group.userData.importExt = od.importExt;
+        group.userData.keepOriginalMaterials = od.keepOriginalMaterials !== false;
+        this.objects[idx] = group;
+        this.scene.add(group);
+        if (wasSelected) {
+          this.selectedObjs.delete(placeholder);
+          this.selectedObjs.add(group);
+        }
+        if (wasActive) this.activeObj = group;
+        if (wasAttached && !group.userData.locked)
+          this.transformCtrl.attach(group);
+        if (this._syncOutlineSelection) this._syncOutlineSelection();
+        this._updateLayers();
+        this._updateShadowFrustum?.();
+      } catch (e) {
+        console.warn("[P3D] import restore failed, placeholder kept", e);
+      }
+    });
+    return;
+  }
   if (od.type === "bunny") {
     // Bunny ships as a GLB and must be fetched through the importer.
     // Add a placeholder sphere right away so the object order / index

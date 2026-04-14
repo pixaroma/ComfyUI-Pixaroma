@@ -5,6 +5,7 @@
 // bunny) so repeat Bunny clicks don't refetch / re-parse.
 // ============================================================
 import { Pixaroma3DEditor, getTHREE } from "./core.mjs";
+import { ThreeDAPI } from "./api.mjs";
 
 const ESM = "https://esm.sh/three@0.170.0";
 
@@ -101,6 +102,57 @@ export async function loadOBJFromURL(url) {
   const group = await loader.loadAsync(url);
   await smoothGroupNormals(group);
   return group;
+}
+
+// Full upload + load + add pipeline for a user-picked File. Uploads
+// via ThreeDAPI, constructs the ComfyUI /view URL from the returned
+// relative path, loads via GLB or OBJ depending on extension, and
+// drops the resulting Group into the editor with type:"import" plus
+// the saved path/ext so _serializeScene can restore it later.
+export async function importFromFile(editor, file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  if (!["glb", "gltf", "obj"].includes(ext)) {
+    throw new Error(`Unsupported extension: ${ext}`);
+  }
+  if (file.size > 50 * 1024 * 1024) {
+    throw new Error("File too large (max 50 MB)");
+  }
+
+  editor._setStatus?.("Uploading model…");
+  const dataURL = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const res = await ThreeDAPI.uploadModel(
+    editor.projectId, file.name, dataURL,
+  );
+  if (res.status !== "success") {
+    throw new Error(`Upload failed: ${res.msg || "unknown"}`);
+  }
+
+  // res.path = "pixaroma/<project>/models/<hash>.<ext>".
+  // Build /view URL with filename + subfolder so ComfyUI serves it.
+  const parts = res.path.split("/");
+  const fname = parts.pop();
+  const subfolder = parts.join("/");
+  const url = "/view?filename=" + encodeURIComponent(fname)
+            + "&type=input&subfolder=" + encodeURIComponent(subfolder)
+            + "&t=" + Date.now();
+
+  editor._setStatus?.("Loading model…");
+  const group = ext === "obj"
+    ? await loadOBJFromURL(url)
+    : await loadGLBFromURL(url);
+
+  editor._addImportedGroup(group, "import", {
+    name: file.name,
+    importPath: res.path,
+    importExt: ext,
+  });
+  editor._setStatus?.("Model imported");
 }
 
 // Mixin — add an imported Group to the scene using the same plumbing

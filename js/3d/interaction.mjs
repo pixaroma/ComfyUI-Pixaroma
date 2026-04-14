@@ -84,9 +84,18 @@ Pixaroma3DEditor.prototype._onClick = function (e) {
   );
   const ray = new THREE.Raycaster();
   ray.setFromCamera(mouse, this.camera);
-  const hits = ray.intersectObjects(this.objects);
-  if (hits.length > 0) this._select(hits[0].object, e.shiftKey);
-  else {
+  const hits = ray.intersectObjects(this.objects, true);
+  if (hits.length > 0) {
+    // Imported Groups (bunny, user imports) have child meshes; a
+    // raycast returns the child, but only the Group is tracked in
+    // this.objects. Walk the ancestry up until we find the node that
+    // actually lives in our object list — that's the selectable
+    // target. Parametric meshes are their own match on the first
+    // iteration.
+    let target = hits[0].object;
+    while (target && !this.objects.includes(target)) target = target.parent;
+    if (target) this._select(target, e.shiftKey);
+  } else {
     this.selectedObjs.clear();
     this.activeObj = null;
     this.transformCtrl.detach();
