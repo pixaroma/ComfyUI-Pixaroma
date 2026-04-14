@@ -17,6 +17,29 @@ function _layerIcon(name, size = 12) {
   return img;
 }
 
+/**
+ * Returns a <span> that renders the SVG via CSS mask-image so its color
+ * can be set exactly (vs. approximating via filter: hue-rotate).
+ * Used for the "locked" state so the icon matches Pixaroma brand orange.
+ */
+function _layerIconColored(name, color, size = 12) {
+  const span = document.createElement("span");
+  const url = LAYER_ICON_BASE + name + ".svg";
+  span.style.display = "inline-block";
+  span.style.width = size + "px";
+  span.style.height = size + "px";
+  span.style.backgroundColor = color;
+  span.style.webkitMaskImage = `url(${url})`;
+  span.style.maskImage = `url(${url})`;
+  span.style.webkitMaskRepeat = "no-repeat";
+  span.style.maskRepeat = "no-repeat";
+  span.style.webkitMaskSize = "contain";
+  span.style.maskSize = "contain";
+  span.style.webkitMaskPosition = "center";
+  span.style.maskPosition = "center";
+  return span;
+}
+
 function _layerActionBtn(iconName, title, onClick, cls = "") {
   const btn = document.createElement("button");
   btn.className = "pxf-layer-action-btn" + (cls ? " " + cls : "");
@@ -115,8 +138,9 @@ export function createLayerItem(config) {
   lock.className = "pxf-layer-icon";
   lock.title = "Toggle lock";
   let _locked = config.locked;
-  const lockIcon = _layerIcon(_locked ? "lock-locked" : "lock-unlocked");
-  if (_locked) lockIcon.style.filter = "invert(50%) sepia(100%) saturate(500%) hue-rotate(345deg) brightness(1.1)";
+  const lockIcon = _locked
+    ? _layerIconColored("lock-locked", "var(--pxf-accent)")
+    : _layerIcon("lock-unlocked");
   lock.appendChild(lockIcon);
   lock.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -148,8 +172,9 @@ export function createLayerItem(config) {
     setLocked(b) {
       _locked = b;
       lock.innerHTML = "";
-      const ico = _layerIcon(b ? "lock-locked" : "lock-unlocked");
-      if (b) ico.style.filter = "invert(50%) sepia(100%) saturate(500%) hue-rotate(345deg) brightness(1.1)";
+      const ico = b
+        ? _layerIconColored("lock-locked", "var(--pxf-accent)")
+        : _layerIcon("lock-unlocked");
       lock.appendChild(ico);
     },
   };
