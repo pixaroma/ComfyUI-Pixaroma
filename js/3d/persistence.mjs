@@ -227,25 +227,84 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
   }
 };
 
-Pixaroma3DEditor.prototype._addObjFromData = function (od) {
-  const gp = od.geoParams || this._defaultGeoParams(od.type || "cube");
-  this._addObject(od.type || "cube", gp);
-  const m = this.objects[this.objects.length - 1];
+// Apply a saved object-data record to the most-recently-added object.
+// Shared between parametric shapes (Mesh with .material) and imported
+// groups (Group — .material doesn't exist so we skip those fields).
+function applyObjectData(m, od) {
   m.userData.name = od.name || m.userData.name;
   m.userData.id = od.id || m.userData.id;
   m.userData.colorHex = od.colorHex;
   m.userData.locked = od.locked || false;
-  if (od.colorHex) m.material.color.set(od.colorHex);
   if (od.position) m.position.set(od.position.x, od.position.y, od.position.z);
   if (od.rotation) m.rotation.set(od.rotation.x, od.rotation.y, od.rotation.z);
   if (od.scale) m.scale.set(od.scale.x, od.scale.y, od.scale.z);
-  if (od.roughness !== undefined) m.material.roughness = od.roughness;
-  if (od.metalness !== undefined) m.material.metalness = od.metalness;
-  if (od.opacity !== undefined) {
-    m.material.opacity = od.opacity;
-    m.material.transparent = od.opacity < 1;
+  // Material fields only apply to meshes with a material — imported
+  // groups keep their original materials.
+  if (m.material) {
+    if (od.colorHex) m.material.color.set(od.colorHex);
+    if (od.roughness !== undefined) m.material.roughness = od.roughness;
+    if (od.metalness !== undefined) m.material.metalness = od.metalness;
+    if (od.opacity !== undefined) {
+      m.material.opacity = od.opacity;
+      m.material.transparent = od.opacity < 1;
+    }
   }
   m.visible = od.visible !== false;
+}
+
+Pixaroma3DEditor.prototype._addObjFromData = function (od) {
+  if (od.type === "bunny") {
+    // Bunny ships as a GLB and must be fetched through the importer.
+    // Add a placeholder sphere right away so the object order / index
+    // stays stable in the sync restore pass, then async-swap for the
+    // real GLB group once it resolves. If the fetch fails we keep
+    // the sphere and just relabel its type so the user doesn't
+    // silently lose the object.
+    this._addObject("sphere", { radius: 0.5, widthSegs: 16, heightSegs: 16 });
+    const placeholder = this.objects[this.objects.length - 1];
+    placeholder.userData.type = "bunny";
+    applyObjectData(placeholder, od);
+    import("./importer.mjs").then(async ({ loadGLBFromURL }) => {
+      if (this._closed) return;
+      try {
+        const group = await loadGLBFromURL("/pixaroma/assets/models/bunny.glb");
+        // Replace placeholder in-place so the layer panel entry and
+        // object ordering don't shuffle.
+        const idx = this.objects.indexOf(placeholder);
+        if (idx === -1) return; // placeholder was deleted mid-load
+        this.scene.remove(placeholder);
+        placeholder.geometry?.dispose();
+        placeholder.material?.dispose();
+        group.traverse((o) => {
+          if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; }
+        });
+        // Re-apply the saved transform + userData to the group.
+        applyObjectData(group, od);
+        group.userData.type = "bunny";
+        group.userData.keepOriginalMaterials = true;
+        this.objects[idx] = group;
+        this.scene.add(group);
+        if (this.activeObj === placeholder) {
+          this.activeObj = group;
+          if (this.selectedObjs.has(placeholder)) {
+            this.selectedObjs.delete(placeholder);
+            this.selectedObjs.add(group);
+          }
+          if (this._syncOutlineSelection) this._syncOutlineSelection();
+          if (!group.userData.locked) this.transformCtrl?.attach(group);
+        }
+        this._updateLayers();
+        this._updateShadowFrustum?.();
+      } catch (e) {
+        console.warn("[P3D] bunny restore failed, keeping placeholder sphere", e);
+      }
+    });
+    return;
+  }
+  const gp = od.geoParams || this._defaultGeoParams(od.type || "cube");
+  this._addObject(od.type || "cube", gp);
+  const m = this.objects[this.objects.length - 1];
+  applyObjectData(m, od);
 };
 
 Pixaroma3DEditor.prototype._save = async function () {

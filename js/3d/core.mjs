@@ -616,13 +616,18 @@ export class Pixaroma3DEditor {
     // full 18-button grid to render during migration. Clicking one of
     // these adds a cube (using cube defaults so the Shape/Transform
     // panels stay fully functional) and logs a warning.
+    // Types that aren't in the parametric SHAPES registry but are
+    // still real buttons in the grid — loaded via the importer
+    // module (bunny ships as GLB; user imports handled in Task 8).
+    const IMPORTED = { bunny: { icon: "bunny.svg", label: "Bunny" } };
     const shapes = SHAPE_GRID.map((id) => {
       const s = SHAPES[id];
+      const imp = IMPORTED[id];
       return {
         id,
-        icon: s ? s.icon : "cube.svg",
-        label: s ? s.label : id.charAt(0).toUpperCase() + id.slice(1),
-        implemented: !!s,
+        icon: s ? s.icon : imp ? imp.icon : "cube.svg",
+        label: s ? s.label : imp ? imp.label : id.charAt(0).toUpperCase() + id.slice(1),
+        implemented: !!s || !!imp,
       };
     });
     shapes.forEach((sh) => {
@@ -648,7 +653,29 @@ export class Pixaroma3DEditor {
           // first use so the editor's first-open stays fast. Await it
           // before calling _addObject so the mesh appears with the
           // real geometry rather than the placeholder-sphere fallback.
-          if (sh.id === "teapot") await loadTeapotGeometry();
+          if (sh.id === "teapot") {
+            await loadTeapotGeometry();
+            this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
+            return;
+          }
+          // Bunny ships as a GLB asset. Load through the importer
+          // module (cached after first call) and add via the common
+          // imported-group plumbing.
+          if (sh.id === "bunny") {
+            const { loadGLBFromURL } = await import("./importer.mjs");
+            try {
+              const group = await loadGLBFromURL(
+                "/pixaroma/assets/models/bunny.glb",
+              );
+              this._addImportedGroup(group, "bunny", { name: "Bunny" });
+            } catch (e) {
+              console.error("[P3D] bunny load failed", e);
+              this._setStatus?.("Bunny file missing — added placeholder sphere");
+              this._addObject("sphere", { radius: 0.5, widthSegs: 32, heightSegs: 32 });
+              if (this.activeObj) this.activeObj.userData.type = "bunny";
+            }
+            return;
+          }
           this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
         } else {
           // Placeholder button: log and spawn an honest-to-goodness cube

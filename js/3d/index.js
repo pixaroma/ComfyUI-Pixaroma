@@ -11,6 +11,7 @@ import "./objects.mjs";
 import "./shape_params.mjs";
 import "./interaction.mjs";
 import "./persistence.mjs";
+import "./importer.mjs";
 
 import {
   allow_debug,
