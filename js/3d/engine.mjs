@@ -99,16 +99,24 @@ Pixaroma3DEditor.prototype._initThree = function () {
   // this.renderer.render() directly, so the exported PNG never has the
   // selection outline baked in — no need to toggle outline visibility.
   const pp = getPostprocessing();
-  this._composer = new pp.EffectComposer(this.renderer);
+  // Multisample render target so the composer keeps the renderer's
+  // antialias quality through the post pipeline. Without `samples`
+  // composer outputs to a non-MSAA buffer and silhouette edges
+  // (especially the OutlinePass orange) read as jagged staircase.
+  const composerRT = new THREE.WebGLRenderTarget(w, h, {
+    samples: 4,
+    type: THREE.HalfFloatType,
+  });
+  this._composer = new pp.EffectComposer(this.renderer, composerRT);
   this._composer.setSize(w, h);
   this._composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   this._composer.addPass(new pp.RenderPass(this.scene, this.camera));
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
-  this._outlinePass.edgeStrength = 5;
+  this._outlinePass.edgeStrength = 6;
   this._outlinePass.edgeGlow = 0;
-  this._outlinePass.edgeThickness = 1.0;
+  this._outlinePass.edgeThickness = 1.5;
   this._outlinePass.pulsePeriod = 0;
   // Full-resolution edge detection — the default half-res produced
   // "ray" streaks extending from sharp silhouettes.
@@ -210,6 +218,16 @@ Pixaroma3DEditor.prototype._initThree = function () {
       : this.transformCtrl;
   this.scene.add(helper);
   this._gizmoHelper = helper;
+  // TransformControls' helper subgroup includes long dashed AXIS lines
+  // that appear during hover/drag, extending across the scene from the
+  // gizmo origin. They're rendered as Line / LineSegments primitives
+  // (the gizmo arrows themselves are Mesh objects), so hiding all
+  // Line-type children kills the cross-scene indicators while keeping
+  // arrows, balls, and pickers intact. Also keeps OutlinePass from
+  // catching them as part of the visible scene.
+  helper.traverse((o) => {
+    if (o.isLine || o.isLineSegments) o.visible = false;
+  });
 
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
