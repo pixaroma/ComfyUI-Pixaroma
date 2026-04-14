@@ -216,7 +216,11 @@ async def save_3d_model_upload(request):
     filename = data.get("filename", "")
     b64 = data.get("data", "")
 
-    if not re.match(r"^[a-zA-Z0-9_\-. ]+\.(glb|gltf|obj)$", filename, re.IGNORECASE):
+    if not re.match(
+        r"^[a-zA-Z0-9_\-. ]+\.(glb|gltf|obj|mtl|jpg|jpeg|png|bmp|tga|webp)$",
+        filename,
+        re.IGNORECASE,
+    ):
         return web.json_response(
             {"status": "error", "msg": "bad_filename"}, status=400,
         )
@@ -233,12 +237,13 @@ async def save_3d_model_upload(request):
     except Exception:
         return web.json_response({"status": "error", "msg": "bad_base64"}, status=400)
 
-    # Write under input/pixaroma/<project_id>/models/<sha1>.<ext>.
-    # Hashing lets repeat uploads of the same file dedupe on disk.
-    import hashlib
-    h = hashlib.sha1(raw).hexdigest()[:12]
-    ext = filename.rsplit(".", 1)[-1].lower()
-    rel_subpath = os.path.join(project_id, "models", f"{h}.{ext}")
+    # Store under input/pixaroma/<project_id>/models/<filename>.
+    # Preserve the original (sanitized) filename so companion files in
+    # an OBJ bundle — .mtl referencing .jpg textures by name — keep
+    # their relative links working once served over /view. Repeat
+    # uploads within a project overwrite, which is usually desired.
+    safe_name = re.sub(r"[^a-zA-Z0-9_\-. ]", "_", filename)
+    rel_subpath = os.path.join(project_id, "models", safe_name)
     full_path = _safe_path(rel_subpath)
     if full_path is None:
         return web.json_response({"status": "error", "msg": "bad_path"}, status=400)
@@ -249,7 +254,7 @@ async def save_3d_model_upload(request):
 
     rel = os.path.join("pixaroma", rel_subpath).replace("\\", "/")
     return web.json_response(
-        {"status": "success", "path": rel, "filename": f"{h}.{ext}"},
+        {"status": "success", "path": rel, "filename": safe_name},
     )
 
 

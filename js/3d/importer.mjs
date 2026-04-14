@@ -11,6 +11,7 @@ const ESM = "https://esm.sh/three@0.170.0";
 
 let _GLTFLoader = null;
 let _OBJLoader = null;
+let _MTLLoader = null;
 let _mergeVertices = null;
 const _assetCache = new Map(); // url → cached Group
 
@@ -26,6 +27,13 @@ async function getOBJLoader() {
   const mod = await import(ESM + "/examples/jsm/loaders/OBJLoader.js");
   _OBJLoader = mod.OBJLoader;
   return _OBJLoader;
+}
+
+async function getMTLLoader() {
+  if (_MTLLoader) return _MTLLoader;
+  const mod = await import(ESM + "/examples/jsm/loaders/MTLLoader.js");
+  _MTLLoader = mod.MTLLoader;
+  return _MTLLoader;
 }
 
 async function getMergeVertices() {
@@ -104,55 +112,134 @@ export async function loadOBJFromURL(url) {
   return group;
 }
 
-// Full upload + load + add pipeline for a user-picked File. Uploads
-// via ThreeDAPI, constructs the ComfyUI /view URL from the returned
-// relative path, loads via GLB or OBJ depending on extension, and
-// drops the resulting Group into the editor with type:"import" plus
-// the saved path/ext so _serializeScene can restore it later.
-export async function importFromFile(editor, file) {
-  const ext = file.name.split(".").pop().toLowerCase();
-  if (!["glb", "gltf", "obj"].includes(ext)) {
-    throw new Error(`Unsupported extension: ${ext}`);
-  }
-  if (file.size > 50 * 1024 * 1024) {
-    throw new Error("File too large (max 50 MB)");
-  }
-
-  editor._setStatus?.("Uploading model…");
-  const dataURL = await new Promise((resolve, reject) => {
+// Read a File as a base64 data URL (used by the upload pipeline).
+function readAsDataURL(file) {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
 
-  const res = await ThreeDAPI.uploadModel(
-    editor.projectId, file.name, dataURL,
-  );
-  if (res.status !== "success") {
-    throw new Error(`Upload failed: ${res.msg || "unknown"}`);
+// Uploads one file and returns its /view URL + the stored path.
+async function uploadOne(projectId, file) {
+  if (file.size > 50 * 1024 * 1024) {
+    throw new Error(`${file.name}: file too large (max 50 MB)`);
   }
-
-  // res.path = "pixaroma/<project>/models/<hash>.<ext>".
-  // Build /view URL with filename + subfolder so ComfyUI serves it.
+  const dataURL = await readAsDataURL(file);
+  const res = await ThreeDAPI.uploadModel(projectId, file.name, dataURL);
+  if (res.status !== "success") {
+    throw new Error(`Upload failed (${file.name}): ${res.msg || "unknown"}`);
+  }
   const parts = res.path.split("/");
   const fname = parts.pop();
   const subfolder = parts.join("/");
   const url = "/view?filename=" + encodeURIComponent(fname)
             + "&type=input&subfolder=" + encodeURIComponent(subfolder)
             + "&t=" + Date.now();
+  return { path: res.path, storedName: res.filename, url, origName: file.name };
+}
+
+// Full upload + load + add pipeline. Accepts a FileList so the user
+// can drop an OBJ bundle (.obj + .mtl + texture images) in one go —
+// textures referenced by .mtl are fetched by the loader via relative
+// paths, which resolve against the uploaded blob's /view URL folder
+// (ComfyUI serves everything under the same subfolder).
+//
+// Single-file GLB works the same way (no companion files needed).
+export async function importFromFiles(editor, files) {
+  if (!files || !files.length) return;
+  const fileArray = Array.from(files);
+
+  // Find the primary mesh file (glb / gltf / obj).
+  const mainFile = fileArray.find((f) =>
+    /\.(glb|gltf|obj)$/i.test(f.name),
+  );
+  if (!mainFile) {
+    throw new Error("Select a .glb, .gltf or .obj file");
+  }
+  const mainExt = mainFile.name.split(".").pop().toLowerCase();
+
+  // Upload EVERY file so loaders can resolve companions/textures via
+  // relative paths under the same stored subfolder.
+  editor._setStatus?.(`Uploading ${fileArray.length} file(s)…`);
+  const THREE = getTHREE();
+  const uploaded = [];
+  for (const f of fileArray) {
+    // Skip files the backend won't accept (texture extensions etc).
+    // We send them anyway — the route accepts .glb/.gltf/.obj plus
+    // whitelisted companions added below.
+    try {
+      uploaded.push(await uploadOne(editor.projectId, f));
+    } catch (e) {
+      // Non-fatal per companion — keep going; main file checked below.
+      console.warn("[P3D] skip file", f.name, e.message || e);
+    }
+  }
+  const mainUp = uploaded.find((u) => u.origName === mainFile.name);
+  if (!mainUp) throw new Error("Main mesh file failed to upload");
 
   editor._setStatus?.("Loading model…");
-  const group = ext === "obj"
-    ? await loadOBJFromURL(url)
-    : await loadGLBFromURL(url);
+  let group;
+  if (mainExt === "obj") {
+    // Optional MTL companion. Load it first so OBJLoader picks up the
+    // materials. Textures referenced by filename in the .mtl are
+    // remapped to their uploaded /view URLs via LoadingManager's
+    // setURLModifier — the backend preserves original filenames so
+    // the lookup works on lowercased basenames.
+    const mtlFile = fileArray.find((f) => /\.mtl$/i.test(f.name));
+    const OBJLoader = await getOBJLoader();
+    const objLoader = new OBJLoader();
+    if (mtlFile) {
+      const mtlUp = uploaded.find((u) => u.origName === mtlFile.name);
+      if (mtlUp) {
+        const MTLLoader = await getMTLLoader();
+        // Build a basename → uploaded-URL map for every companion we
+        // uploaded. MTLLoader / its TextureLoader will request each
+        // texture by its relative name; we intercept and redirect.
+        const textureMap = new Map();
+        for (const u of uploaded) {
+          textureMap.set(u.origName.toLowerCase(), u.url);
+        }
+        const manager = new THREE.LoadingManager();
+        manager.setURLModifier((url) => {
+          const name = url.split("/").pop().split("?")[0].toLowerCase();
+          return textureMap.get(name) || url;
+        });
+        const mtlLoader = new MTLLoader(manager);
+        const materials = await mtlLoader.loadAsync(mtlUp.url);
+        materials.preload();
+        objLoader.setMaterials(materials);
+      }
+    }
+    group = await objLoader.loadAsync(mainUp.url);
+    await smoothGroupNormals(group);
+  } else {
+    // GLB/GLTF — all materials + textures are embedded in the file.
+    group = await loadGLBFromURL(mainUp.url);
+  }
 
   editor._addImportedGroup(group, "import", {
-    name: file.name,
-    importPath: res.path,
-    importExt: ext,
+    name: mainFile.name,
+    importPath: mainUp.path,
+    importExt: mainExt,
   });
+  // If an MTL / textures came in, default to showing original materials
+  // (user bothered to provide them; they probably want to see them).
+  const active = editor.activeObj;
+  if (active && mainExt === "obj"
+      && fileArray.some((f) => /\.mtl$/i.test(f.name))) {
+    active.userData.keepOriginalMaterials = true;
+    editor._applyImportMaterialMode?.(active);
+  }
   editor._setStatus?.("Model imported");
+}
+
+// Backwards-compatible single-file entry point (used by drag+drop etc
+// if we add that later).
+export async function importFromFile(editor, file) {
+  return importFromFiles(editor, [file]);
 }
 
 // Mixin — add an imported Group to the scene using the same plumbing

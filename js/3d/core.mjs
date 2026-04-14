@@ -690,33 +690,48 @@ export class Pixaroma3DEditor {
     });
     obs.content.appendChild(og);
 
-    // Import 3D Model button — opens a native file picker, then the
-    // importer module uploads to the backend and loads the resulting
-    // model into the scene.
+    // Import 3D Model button — opens a native file picker. Accepts
+    // multiple files so the user can bring in a textured OBJ bundle
+    // (.obj + .mtl + texture images) in one shot; GLBs just take one
+    // file.
     const importInput = document.createElement("input");
     importInput.type = "file";
-    importInput.accept = ".glb,.gltf,.obj";
+    importInput.multiple = true;
+    importInput.accept =
+      ".glb,.gltf,.obj,.mtl,.jpg,.jpeg,.png,.bmp,.tga,.webp";
     importInput.style.display = "none";
     importInput.addEventListener("change", async () => {
-      const file = importInput.files?.[0];
+      const files = importInput.files;
+      if (!files || !files.length) return;
+      const selected = Array.from(files);
       importInput.value = "";
-      if (!file) return;
       try {
-        const { importFromFile } = await import("./importer.mjs");
-        await importFromFile(this, file);
+        const { importFromFiles } = await import("./importer.mjs");
+        await importFromFiles(this, selected);
       } catch (e) {
         console.error("[P3D] import failed", e);
         this._setStatus?.("Import error: " + (e.message || e));
       }
     });
     obs.content.appendChild(importInput);
-    const importBtn = createButton("Import 3D Model (.glb / .obj, max 50 MB)", {
+    const importBtn = createButton("Import 3D Model", {
       variant: "standard",
       onClick: () => importInput.click(),
-      title: "Import a local GLB, GLTF, or OBJ file (max 50 MB)",
+      title:
+        "Import a local 3D model (max 50 MB per file). " +
+        "For textured OBJ, select the .obj, .mtl, AND all texture " +
+        "images together in the file picker. GLB embeds textures " +
+        "and only needs one file.",
     });
     importBtn.style.cssText = "width:100%;margin-top:8px;";
     obs.content.appendChild(importBtn);
+    const importHint = document.createElement("div");
+    importHint.style.cssText =
+      "font-size:10px;color:#888;margin-top:4px;line-height:1.4;";
+    importHint.textContent =
+      "GLB: 1 file. Textured OBJ: select .obj + .mtl + textures " +
+      "together. Max 50 MB each.";
+    obs.content.appendChild(importHint);
 
     left.appendChild(obs.el);
 
