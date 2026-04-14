@@ -74,8 +74,8 @@ function injectExtraStyles() {
 .p3d-shape-btn{display:flex;flex-direction:column;align-items:center;justify-content:center;height:54px;cursor:pointer;border:1px solid #3a3d40;background:#242628;color:#ccc;border-radius:5px;font-size:10px;gap:3px;transition:all .12s;padding:4px;}
 .p3d-shape-btn:hover{background:#2a2c2e;border-color:#f66744;transform:scale(1.05);}
 .p3d-shape-btn.selected{background:#2a1800;border-color:#f66744;color:#fff;}
-.p3d-shape-btn img{width:22px;height:22px;filter:invert(90%);transition:filter .12s;}
-.p3d-shape-btn:hover img,.p3d-shape-btn.selected img{filter:invert(56%) sepia(67%) saturate(900%) hue-rotate(340deg) brightness(100%) contrast(95%);}
+.p3d-shape-btn .p3d-shape-ico{width:22px;height:22px;background-color:#ccc;-webkit-mask-size:contain;mask-size:contain;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-position:center;mask-position:center;transition:background-color .12s;}
+.p3d-shape-btn:hover .p3d-shape-ico,.p3d-shape-btn.selected .p3d-shape-ico{background-color:#f66744;}
 .p3d-shape-params{margin-top:8px;padding:6px 0;border-top:1px solid #2a2c2e;}
 .p3d-mat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
 .p3d-mat-btn{display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;cursor:pointer;border:1px solid #3a3d40;background:#242628;border-radius:5px;font-size:9px;color:#999;transition:all .12s;}
@@ -579,12 +579,16 @@ export class Pixaroma3DEditor {
       const b = document.createElement("div");
       b.className = "p3d-shape-btn" + (sh.id === "cube" ? " selected" : "");
       b.title = "Select " + sh.l;
-      const img = document.createElement("img");
-      img.src = `/pixaroma/assets/icons/3D/${SHAPES[sh.id].icon}`;
-      img.alt = sh.l;
+      const ico = document.createElement("span");
+      ico.className = "p3d-shape-ico";
+      ico.setAttribute("role", "img");
+      ico.setAttribute("aria-label", sh.l);
+      const iconUrl = `url("/pixaroma/assets/icons/3D/${SHAPES[sh.id].icon}")`;
+      ico.style.webkitMaskImage = iconUrl;
+      ico.style.maskImage = iconUrl;
       const lbl = document.createElement("span");
       lbl.textContent = sh.l;
-      b.append(img, lbl);
+      b.append(ico, lbl);
       b.addEventListener("click", () => {
         this._selectedShape = sh.id;
         og.querySelectorAll(".p3d-shape-btn").forEach((x) =>

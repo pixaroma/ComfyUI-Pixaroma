@@ -225,6 +225,7 @@ Pixaroma3DEditor.prototype._updateShapeParams = function () {
       p[f.key] = +v;
       slider.value = v;
       numIn.value = Number.isInteger(f.step) ? v : (+v).toFixed(1);
+      if (window._pxfUpdateFill) window._pxfUpdateFill(slider);
     };
     slider.addEventListener("input", () => sync(slider.value));
     numIn.addEventListener("change", () => {
@@ -233,6 +234,10 @@ Pixaroma3DEditor.prototype._updateShapeParams = function () {
     });
     row.append(lbl, slider, numIn);
     box.appendChild(row);
+    // After mounting, refresh the --pxf-fill CSS var so the orange track
+    // fill aligns with the thumb. The framework's patched value-setter only
+    // updates the fill when the input is already in the DOM; we just added it.
+    if (window._pxfUpdateFill) window._pxfUpdateFill(slider);
   });
 
   // Reset to defaults button
