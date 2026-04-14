@@ -30,7 +30,7 @@ app.registerExtension({
       name: "Default Background Color (3D Builder)",
       type: "color",
       defaultValue: "#6e6e6e",
-      tooltip: "Color used as the background for new 3D scenes",
+      tooltip: "Color used as the background for new 3D scenes. Right-click the field to reset to default (#6e6e6e).",
       category: ["👑 Pixaroma", "3D Builder"],
     },
   ],
@@ -67,12 +67,19 @@ app.registerExtension({
     node.addWidget("button", "Open 3D Builder", null, () => {
       const editor = new Pixaroma3DEditor();
 
-      // Apply default BG from ComfyUI settings (if user configured it)
+      // Apply default BG from ComfyUI settings (if user configured it).
+      // ComfyUI's `color` setting type returns values without the leading
+      // `#` (e.g. "c936c9"), and the legacy `text` type returns "#c936c9".
+      // Accept either, and normalize to "#rrggbb".
       try {
-        const custom = app.ui.settings.getSettingValue("Pixaroma.3D.DefaultBgColor");
-        if (custom && /^#[0-9a-fA-F]{6}$/.test(custom)) {
-          editor.bgColor = custom;
-          editor._defaultBgColor = custom;
+        let custom = app.ui.settings.getSettingValue("Pixaroma.3D.DefaultBgColor");
+        if (typeof custom === "string") {
+          custom = custom.trim();
+          if (custom && custom[0] !== "#") custom = "#" + custom;
+          if (/^#[0-9a-fA-F]{6}$/.test(custom)) {
+            editor.bgColor = custom;
+            editor._defaultBgColor = custom;
+          }
         }
       } catch {}
 

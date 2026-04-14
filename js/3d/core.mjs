@@ -819,7 +819,7 @@ export class Pixaroma3DEditor {
     // 3) Materials
     const mats = createPanel("Materials", {
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
     });
     const mg = document.createElement("div");
     mg.className = "p3d-mat-grid";
@@ -872,7 +872,7 @@ export class Pixaroma3DEditor {
     right.insertBefore(mats.el, footer);
 
     // 4) Lighting
-    const lp = createPanel("Lighting", { collapsible: true, collapsed: true });
+    const lp = createPanel("Lighting", { collapsible: true, collapsed: false });
     const lcIn = createColorInput({
       value: "#ffffff",
       onChange: (v) => {
