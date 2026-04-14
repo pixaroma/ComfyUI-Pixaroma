@@ -56,6 +56,11 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
   this.objects.push(mesh);
   this._select(mesh, false);
   this._updateLayers();
+  // Snap the directional-light shadow frustum to the new scene bounds
+  // right now so the very first shadow frame is correct. Without this
+  // the shadow renders with the previous (wider) frustum until the 1s
+  // setInterval fires, which reads as a "shadow jump" to the user.
+  this._updateShadowFrustum?.();
 };
 
 Pixaroma3DEditor.prototype._defaultGeoParams = function (type) {
@@ -80,6 +85,7 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
   // them so the right sidebar shows the "Select an object…" placeholder
   // immediately instead of lingering until the next click.
   if (this._rebuildShapePanel) this._rebuildShapePanel();
+  this._updateShadowFrustum?.();
 };
 
 Pixaroma3DEditor.prototype._dupSelected = function () {
