@@ -107,7 +107,12 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._composer = new pp.EffectComposer(this.renderer);
   this._composer.setSize(w, h);
   this._composer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  this._composer.addPass(new pp.RenderPass(this.scene, this.camera));
+  // Store the RenderPass so _setPerspective can update its camera
+  // reference when the user swaps perspective ↔ isometric. Without
+  // this, pressing 6 then any view key would NEVER change the
+  // rendered view — the composer kept drawing with the old camera.
+  this._renderPass = new pp.RenderPass(this.scene, this.camera);
+  this._composer.addPass(this._renderPass);
   this._outlinePass = new pp.OutlinePass(
     new THREE.Vector2(w, h), this.scene, this.camera,
   );
@@ -189,6 +194,9 @@ Pixaroma3DEditor.prototype._initThree = function () {
     // snaps back to correct on mouseUp. Cost: one Box3 union per object
     // per frame, negligible for typical scene sizes.
     this._updateShadowFrustum?.();
+    // Live-sync the X/Y/Z transform sliders with whatever the gizmo
+    // is doing so the two input methods stay in sync frame-by-frame.
+    this._updateTransformSliders?.();
     // Multi-select: apply delta from activeObj to all selected objects
     if (!this._multiDragStart || !this.activeObj) return;
     const mode = this.transformCtrl.getMode();
@@ -353,7 +361,19 @@ Pixaroma3DEditor.prototype._onResize = function () {
   const w = vp.clientWidth,
     h = vp.clientHeight;
   if (!w || !h) return;
-  this.camera.aspect = w / h;
+  // Handle both camera types — OrthographicCamera has no `.aspect`
+  // property, it needs left/right recomputed from the viewport aspect,
+  // otherwise the frustum stays stuck at whatever aspect the camera
+  // was created with and objects look stretched or the scene zooms oddly.
+  if (this._isOrtho) {
+    const a = w / h;
+    this.camera.left = -5 * a;
+    this.camera.right = 5 * a;
+    this.camera.top = 5;
+    this.camera.bottom = -5;
+  } else {
+    this.camera.aspect = w / h;
+  }
   this.camera.updateProjectionMatrix();
   this.renderer.setSize(w, h);
   if (this._composer) this._composer.setSize(w, h);

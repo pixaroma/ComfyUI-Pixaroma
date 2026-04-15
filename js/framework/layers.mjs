@@ -44,7 +44,19 @@ function _layerActionBtn(iconName, title, onClick, cls = "") {
   const btn = document.createElement("button");
   btn.className = "pxf-layer-action-btn" + (cls ? " " + cls : "");
   btn.title = title;
-  btn.appendChild(_layerIcon(iconName, 14));
+  // If iconName starts with "/", treat it as an absolute asset path
+  // (e.g. "/pixaroma/assets/icons/3D/drop-on-floor.svg") and render
+  // that directly. Otherwise prepend the default layers icon base.
+  if (iconName.startsWith("/")) {
+    const img = document.createElement("img");
+    img.src = iconName;
+    img.width = 14;
+    img.height = 14;
+    img.draggable = false;
+    btn.appendChild(img);
+  } else {
+    btn.appendChild(_layerIcon(iconName, 14));
+  }
   if (onClick) btn.addEventListener("click", onClick);
   return btn;
 }
@@ -249,6 +261,17 @@ export function createLayersList(config) {
   if (config.onDuplicate)
     actions.appendChild(
       _layerActionBtn("duplicate", "Duplicate layer", config.onDuplicate),
+    );
+  // Editor-specific action — 3D editor uses this to snap the selected
+  // object's base to the ground plane. Pass a full asset path so the
+  // framework doesn't have to know about 3D-only icons.
+  if (config.onDropToFloor)
+    actions.appendChild(
+      _layerActionBtn(
+        config.dropToFloorIcon || "/pixaroma/assets/icons/3D/drop-on-floor.svg",
+        config.dropToFloorTitle || "Drop to floor",
+        config.onDropToFloor,
+      ),
     );
   if (config.onDelete)
     actions.appendChild(

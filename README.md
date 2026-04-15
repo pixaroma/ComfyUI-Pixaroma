@@ -20,7 +20,7 @@
 Pixaroma transforms ComfyUI into a powerful design environment, bringing professional editing capabilities directly into your node-based workflows.
 
 ### 🧊 3D Builder
-A complete WebGL 3D scene editor inside ComfyUI. Place primitives, apply custom materials, and configure interactive lighting to build complex depth maps or reference scenes for ControlNet. Supports background image references and full camera control.
+A complete WebGL 3D scene editor inside ComfyUI. Drop in primitives, procedural shapes, or composite assets (trees, houses, furniture, vessels, and more) and craft reference scenes for ControlNet, depth maps, or compositions. Import your own GLB/OBJ models with textures. Full camera control (perspective + isometric + axis views), interactive lighting with studio HDR, shape-specific slider panels, undo/redo, transform sliders, drop-to-floor, and live layer thumbnails.
 ![3D Builder Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
 
 ### ✨ Image Composer
@@ -83,6 +83,25 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **April 15, 2026 — 3D Builder v2**
+A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor.
+
+- 🧊 **18 primitive shapes** — Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain. Every shape has its own slider panel with per-parameter control (height, radius, segments, seed, smoothness, etc.) and a "Reset Shape Defaults" button.
+- 🌿 **16 composite shapes** — Multi-mesh groups that look like real objects: Tree, Pine Tree, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf. Each has its own set of sliders (trunk height, tier overlap, window shape, shelf count, …) and a re-roll seed for variety.
+- 🏺 **5 vessels with wall thickness** — Vase, Bottle, Goblet, Bowl, Plant Pot. All hollow, with a Thickness slider so you can actually see inside. Goblet is modeled as solid foot + solid stem + hollow cup.
+- 🐇 **Bundled Bunny** — Stanford bunny as a one-click add, rendered with its original material.
+- 📦 **GLB/OBJ import** — Load your own textured 3D models (supports MTL + companion textures for OBJ). Models load asynchronously, with a "Use Original Material" toggle to switch between the model's baked materials and your own color/roughness/metalness override.
+- ➕ **"Add 3D Object" picker** — Categorised modal grid (Primitives / Organic / Nature / Architecture / Furniture / Vessels). One click drops the object into the scene.
+- 🌍 **Greatly expanded Terrain** — 13 sliders for any kind of landscape: Size, Detail, Height, Scale, Octaves, Persistence, Lacunarity, Ridge (for mountains), Power, Flatness (for plateaus/fields), Edge Fall (for islands), Warp, Seed.
+- 🎥 **Camera shortcuts & views** — `1` front, `2` side, `3` back, `4` top, `5` perspective, `6` isometric, `7` other side, `0` focus-on-selected. SVG icons on the camera panel buttons.
+- 🎛️ **Transform sliders** — X / Y / Z sliders under the gizmo for Move, Rotate, and Scale modes. Bidirectional sync with the gizmo. "Lock Proportions" checkbox for uniform scaling. "Reset Transform" does a full reset + drop-to-floor.
+- 🏷️ **Layer panel thumbnails** — Every layer row now shows a mini 3D render of the actual object (28×28, rendered off-screen at 2× then downscaled) instead of a colored dot. Cached per object, invalidates on geometry/color/scale changes.
+- 🦶 **Drop to Floor** — Button in the layers panel that snaps any object's lowest vertex to y=0, even if rotated or scaled. Uses precise vertex AABB so rotated objects land flush on the grid.
+- 🌅 **Studio Lighting + PMREM** — HDR environment map for realistic PBR lighting. Checkbox saves with the scene.
+- ⏪ **Instant undo/redo for imports** — Imported models and composites are preserved across undo/redo (no more 2-3s flicker while the GLB/OBJ refetches). Composites rebuild synchronously — no placeholder sphere flicker.
+- 💾 **Robust save format** — All params (including ones added in later versions) round-trip safely. Old v1 scenes load with new defaults for any missing fields.
+- ⚙️ **ComfyUI Setting:** Pick your default background color for new 3D scenes under 👑 Pixaroma → 3D Builder.
 
 ### **April 14, 2026**
 - 🖼️ **Transparent Background Save:** Paint Studio, Image Composer, and 3D Builder now have a "Transparent BG (Save to Disk)" checkbox next to the BG color picker. When enabled, "Save to Disk" exports a PNG with transparent background. The regular "Save" (workflow) is unchanged — existing workflows stay fully compatible.

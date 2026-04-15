@@ -3,6 +3,7 @@
 // ============================================================
 import { Pixaroma3DEditor, getTHREE, createLayerItem } from "./core.mjs";
 import { buildGeometry, getShapeDefaults } from "./shapes.mjs";
+import { isCompositeType, buildComposite } from "./composites.mjs";
 
 // ─── Selection outline ────────────────────────────────────
 // Screen-space silhouette outline via three.js OutlinePass (same
@@ -70,6 +71,16 @@ Pixaroma3DEditor.prototype._addObject = function (type, gp) {
     geo.computeBoundingBox();
     mesh.position.y = -geo.boundingBox.min.y;
     mat.side = THREE.DoubleSide;
+  } else if (
+    type === "vase" || type === "bottle" || type === "goblet" ||
+    type === "bowl" || type === "plantpot"
+  ) {
+    // Lathe-geometry vessels: the profile creates an open mouth / deep
+    // interior cavity. Without DoubleSide the inside renders as a black
+    // hole whenever the camera peeks in or the light grazes the rim.
+    geo.computeBoundingBox();
+    mesh.position.y = -geo.boundingBox.min.y;
+    mat.side = THREE.DoubleSide;
   } else {
     geo.computeBoundingBox();
     mesh.position.y = -geo.boundingBox.min.y;
@@ -107,16 +118,24 @@ Pixaroma3DEditor.prototype._deleteSelected = function () {
     // imported Groups (walk the hierarchy). Without the traverse path
     // bunnies leaked GPU resources on delete and crashed the Shape /
     // undo machinery on the next add.
+    // Helper: material can be a single Material or an Array<Material>
+    // (multi-material meshes, common in GLBs with sub-materials). Arrays
+    // have no .dispose, so calling it crashes delete. Fan out here.
+    const disposeMat = (m) => {
+      if (!m) return;
+      if (Array.isArray(m)) m.forEach((mm) => mm?.dispose?.());
+      else m.dispose?.();
+    };
     if (o.isGroup) {
       o.traverse((c) => {
         if (c.isMesh) {
           c.geometry?.dispose();
-          c.material?.dispose();
+          disposeMat(c.material);
         }
       });
     } else {
       o.geometry?.dispose();
-      o.material?.dispose();
+      disposeMat(o.material);
     }
     this.objects = this.objects.filter((x) => x !== o);
   }
@@ -137,24 +156,173 @@ Pixaroma3DEditor.prototype._dupSelected = function () {
   if (!this.activeObj) return;
   this._pushUndo();
   const src = this.activeObj;
-  const m = new THREE.Mesh(src.geometry.clone(), src.material.clone());
-  m.position.copy(src.position);
-  m.position.x += 1;
-  m.rotation.copy(src.rotation);
-  m.scale.copy(src.scale);
-  m.castShadow = true;
-  m.receiveShadow = true;
-  this._id++;
-  m.userData = {
-    ...src.userData,
-    id: this._id,
-    name: src.userData.name + " copy",
-    locked: false,
-  };
-  this.scene.add(m);
-  this.objects.push(m);
-  this._select(m, false);
-  this._updateLayers();
+  const type = src.userData.type;
+
+  // Case 1: parametric primitive (Mesh with own geometry + material)
+  if (src.isMesh && src.geometry && src.material) {
+    const m = new THREE.Mesh(src.geometry.clone(), src.material.clone());
+    m.position.copy(src.position);
+    m.position.x += 1;
+    m.rotation.copy(src.rotation);
+    m.scale.copy(src.scale);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    this._id++;
+    m.userData = {
+      ...src.userData,
+      id: this._id,
+      name: src.userData.name + " copy",
+      locked: false,
+      geoParams: src.userData.geoParams ? { ...src.userData.geoParams } : null,
+    };
+    this.scene.add(m);
+    this.objects.push(m);
+    this._select(m, false);
+    this._updateLayers();
+    this._updateShadowFrustum?.();
+    return;
+  }
+
+  // Case 2: composite Group (tree, house, table, etc.) — rebuild from
+  // its type + geoParams so the duplicate has fresh independent
+  // materials, then copy over the user's override-color tweaks. This
+  // matches the initial-add path so the duplicate behaves identically
+  // in every way (material toggle works, sliders work, undo works).
+  if (isCompositeType(type)) {
+    this._id++;
+    const newId = this._id;
+    const gp = src.userData.geoParams
+      ? { ...src.userData.geoParams }
+      : {};
+    const inner = buildComposite(type, gp);
+    // Snapshot everything we need from src BEFORE the async resolves
+    // (user could select/delete src in the meantime).
+    const savedPos = src.position.clone();
+    const savedRot = src.rotation.clone();
+    const savedScl = src.scale.clone();
+    const savedColor = src.userData.colorHex;
+    const savedOverride = src.userData._overrideMat;
+    const savedKeep = !!src.userData.keepOriginalMaterials;
+    const savedName = src.userData.name;
+    import("./importer.mjs").then((mod) => {
+      if (this._closed) return;
+      const { prepareImportedGroup } = mod;
+      const { origMaterials, overrideMat } = prepareImportedGroup(
+        inner, savedColor,
+      );
+      if (savedOverride) {
+        overrideMat.color.copy(savedOverride.color);
+        overrideMat.roughness = savedOverride.roughness;
+        overrideMat.metalness = savedOverride.metalness;
+        overrideMat.opacity = savedOverride.opacity;
+        overrideMat.transparent = savedOverride.transparent;
+      }
+      inner.position.copy(savedPos);
+      inner.position.x += 1;
+      inner.rotation.copy(savedRot);
+      inner.scale.copy(savedScl);
+      inner.userData = {
+        id: newId,
+        name: savedName + " copy",
+        type,
+        colorHex: savedColor,
+        locked: false,
+        geoParams: gp,
+        keepOriginalMaterials: savedKeep,
+        _origMaterials: origMaterials,
+        _overrideMat: overrideMat,
+      };
+      this._applyImportMaterialMode?.(inner);
+      this.scene.add(inner);
+      this.objects.push(inner);
+      this._select(inner, false);
+      this._updateLayers();
+      this._updateShadowFrustum?.();
+    });
+    return;
+  }
+
+  // Case 3: any other Group — bunny, user-imported GLB/OBJ. Deep
+  // clone geometry + materials so the duplicate doesn't share mutable
+  // GPU resources with the source, and rebuild the _origMaterials /
+  // _overrideMat bookkeeping from the fresh cloned materials so the
+  // "Use Original Material" toggle keeps working on the duplicate.
+  if (src.isGroup) {
+    const clone = src.clone(true);
+    const newOrigMaterials = [];
+    clone.traverse((c) => {
+      if (c.isMesh) {
+        c.geometry = c.geometry.clone();
+        if (Array.isArray(c.material)) {
+          c.material = c.material.map((m) => m.clone());
+        } else if (c.material) {
+          c.material = c.material.clone();
+        }
+        newOrigMaterials.push(c.material);
+        c.castShadow = true;
+        c.receiveShadow = true;
+      }
+    });
+    clone.position.copy(src.position);
+    clone.position.x += 1;
+    clone.rotation.copy(src.rotation);
+    clone.scale.copy(src.scale);
+    this._id++;
+    const newOverride = src.userData._overrideMat
+      ? src.userData._overrideMat.clone()
+      : null;
+    clone.userData = {
+      ...src.userData,
+      id: this._id,
+      name: (src.userData.name || type) + " copy",
+      locked: false,
+      geoParams: src.userData.geoParams ? { ...src.userData.geoParams } : null,
+      _origMaterials: newOrigMaterials,
+      _overrideMat: newOverride,
+    };
+    this.scene.add(clone);
+    this.objects.push(clone);
+    this._select(clone, false);
+    this._updateLayers();
+    this._updateShadowFrustum?.();
+    return;
+  }
+};
+
+// Drop the selected object(s) onto the ground plane — computes each
+// object's world-space bounding box and shifts position.y so the box's
+// min.y lands at y = 0. Works for any selection: single mesh, imported
+// group, composite, multi-select. Locked objects are skipped.
+Pixaroma3DEditor.prototype._dropToFloor = function () {
+  const THREE = getTHREE();
+  if (!this.selectedObjs.size && !this.activeObj) return;
+  const targets = this.selectedObjs.size
+    ? [...this.selectedObjs]
+    : [this.activeObj];
+  // Filter out locked objects first so we don't push an undo entry
+  // when nothing will actually move.
+  const movable = targets.filter((o) => !o.userData.locked);
+  if (!movable.length) return;
+  this._pushUndo();
+  for (const o of movable) {
+    // Refresh the world matrix before measuring — otherwise the
+    // bounding box is computed from stale matrices when the object
+    // was moved just before this call (keyboard shortcut immediately
+    // after a slider change, etc.).
+    o.updateMatrixWorld(true);
+    // precise=true iterates actual vertex positions instead of the
+    // looser "transform the 8 corners of the local bbox" shortcut.
+    // For rotated objects those two differ dramatically — a rotated
+    // sphere's loose bbox extends √2× further along Y than the true
+    // silhouette, which made drop-to-floor undershoot and leave the
+    // object floating. precise=true gives the tight world AABB so
+    // position.y -= bb.min.y lands the actual lowest vertex at y=0.
+    const bb = new THREE.Box3().setFromObject(o, true);
+    if (!isFinite(bb.min.y)) continue;
+    o.position.y -= bb.min.y;
+  }
+  this._syncProps();
+  this._updateShadowFrustum?.();
 };
 
 Pixaroma3DEditor.prototype._select = function (mesh, additive) {
@@ -304,7 +472,57 @@ Pixaroma3DEditor.prototype._setObjectPanelsEnabled = function (enabled) {
   if (el.matBtns) for (const b of el.matBtns) toggle(b);
 };
 
+// Format a transform-slider value for the number input box. Integer
+// step (rotation in whole degrees) → no decimals; floats → 2dp.
+Pixaroma3DEditor.prototype._formatXformValue = function (v) {
+  return Number.isInteger(v) ? String(v) : (+v).toFixed(2);
+};
+
+// Configure the per-axis X / Y / Z sliders under Transform Tools for
+// the current mode, and populate them from the active object's
+// transform. Also called on every gizmo-drag tick so the sliders
+// track the 3D manipulator in real time.
+Pixaroma3DEditor.prototype._updateTransformSliders = function () {
+  const slots = this.el.xformSliders;
+  if (!slots) return;
+  const obj = this.activeObj;
+  const mode = this.toolMode;
+  const locked = !obj || !!obj.userData?.locked;
+  const fmt = (v) => this._formatXformValue(v);
+  // Lock Proportions is only meaningful in Scale mode — hide the
+  // checkbox row in Move / Rotate so it doesn't look like a dead
+  // option the user can toggle without effect.
+  if (this.el.xformUniformRow) {
+    this.el.xformUniformRow.style.display =
+      mode === "scale" ? "flex" : "none";
+  }
+  for (const { label, slider, numIn, axis } of slots) {
+    const axLower = axis.toLowerCase();
+    let min, max, step, val, prefix;
+    if (mode === "rotate") {
+      min = -180; max = 180; step = 1; prefix = "Rot";
+      val = obj ? (obj.rotation[axLower] * 180) / Math.PI : 0;
+    } else if (mode === "scale") {
+      min = 0.1; max = 5; step = 0.01; prefix = "Scale";
+      val = obj ? obj.scale[axLower] : 1;
+    } else {
+      // Default: move
+      min = -10; max = 10; step = 0.05; prefix = "Pos";
+      val = obj ? obj.position[axLower] : 0;
+    }
+    label.textContent = `${prefix} ${axis}`;
+    slider.min = min; slider.max = max; slider.step = step;
+    slider.value = val;
+    slider.disabled = locked;
+    numIn.min = min; numIn.max = max; numIn.step = step;
+    numIn.value = fmt(val);
+    numIn.disabled = locked;
+  }
+};
+
 Pixaroma3DEditor.prototype._syncProps = function () {
+  // Transform sliders follow every selection / transform change too
+  this._updateTransformSliders?.();
   const o = this.activeObj;
   if (!o) {
     // Browser <input type=color> requires "#rrggbb" — the shorthand
@@ -342,16 +560,124 @@ Pixaroma3DEditor.prototype._syncProps = function () {
   this._syncHSLFromColor();
 };
 
+// ─── Layer-panel mini thumbnail renderer ─────────────────────────
+// Complex objects (Bunny, Rock, Teapot, Gear, Blob, Terrain, imported
+// GLB/OBJ, composites) get a 28×28 offscreen WebGL render instead of
+// a flat colour dot, so layer items read as "a tree / a rock / a
+// chair" at a glance. Simple primitives keep the colour swatch.
+//
+// The renderer is a single extra WebGLRenderer kept per editor instance
+// (creating one per thumbnail would churn GPU contexts). Thumbnails
+// are cached on obj.userData._thumbCache keyed by a string that captures
+// everything that can change the render — type, colour, geoParams,
+// scale, material mode. Cache invalidates in _rebuildObjectGeometry
+// and _rebuildCompositeGroup.
+// Internal render size — 2× the 28px display so browser downscaling
+// smooths edges instead of showing pixel stairs. Bigger than this
+// just burns fill-rate without visible gain at the display size.
+const THUMB_RENDER_PX = 56;
+const THUMB_DISPLAY_PX = 28;
+
+Pixaroma3DEditor.prototype._getThumbRenderer = function () {
+  const THREE = getTHREE();
+  if (this._thumbRenderer) return this._thumbRenderer;
+  const r = new THREE.WebGLRenderer({
+    alpha: true,
+    antialias: true,
+    preserveDrawingBuffer: true,
+  });
+  r.setSize(THUMB_RENDER_PX, THUMB_RENDER_PX);
+  r.setClearColor(0x000000, 0);
+  this._thumbRenderer = r;
+  return r;
+};
+
+Pixaroma3DEditor.prototype._generateThumbnail = function (obj) {
+  const THREE = getTHREE();
+  // Cache key: any field that can change the render must be in here.
+  const ud = obj.userData || {};
+  const cacheKey = [
+    ud.type,
+    ud.colorHex || "",
+    JSON.stringify(ud.geoParams || {}),
+    obj.scale.x.toFixed(3),
+    obj.scale.y.toFixed(3),
+    obj.scale.z.toFixed(3),
+    ud._useOriginalMaterials ? "orig" : "override",
+  ].join("|");
+  if (ud._thumbCacheKey === cacheKey && ud._thumbCache) {
+    return ud._thumbCache;
+  }
+  try {
+    const r = this._getThumbRenderer();
+    const scene = new THREE.Scene();
+    const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+
+    // Deep-clone the object so the thumbnail render doesn't touch the
+    // live scene. clone(true) shares geometry + material references
+    // with the original, which is fine — we don't mutate either, and
+    // leaving the original materials intact means lighting / colour
+    // matches the live viewport.
+    const clone = obj.clone(true);
+    clone.position.set(0, 0, 0);
+    clone.rotation.set(0, 0, 0);
+    // Keep scale so stretched objects (e.g. squashed blobs) read the
+    // same in the thumb as they do in the viewport.
+    scene.add(clone);
+
+    // Auto-frame: fit the world AABB into the mini camera.
+    const box = new THREE.Box3().setFromObject(clone, true);
+    if (box.isEmpty()) return null;
+    const size = new THREE.Vector3(); box.getSize(size);
+    const center = new THREE.Vector3(); box.getCenter(center);
+    // Shift the clone so its bbox centre sits at the origin — gives
+    // a balanced framing regardless of the object's pivot.
+    clone.position.sub(center);
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+    const dist = maxDim * 1.6 + 0.3;
+    cam.position.set(dist, dist * 0.7, dist);
+    cam.lookAt(0, 0, 0);
+
+    const amb = new THREE.AmbientLight(0xffffff, 0.6);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+    dir.position.set(1, 2, 1);
+    scene.add(amb, dir);
+
+    r.render(scene, cam);
+    const url = r.domElement.toDataURL("image/png");
+
+    ud._thumbCache = url;
+    ud._thumbCacheKey = cacheKey;
+    return url;
+  } catch (e) {
+    console.warn("[P3D] thumbnail render failed", e);
+    return null;
+  }
+};
+
 Pixaroma3DEditor.prototype._updateLayers = function () {
   if (!this._layerPanel) return;
   const items = this.objects.map((obj, i) => {
     const isActive = obj === this.activeObj;
     const isMulti = this.selectedObjs.has(obj) && !isActive;
 
-    // Color swatch thumbnail
-    const dot = document.createElement("div");
-    dot.className = "p3d-layer-color";
-    dot.style.background = obj.userData.colorHex || "#888";
+    // Thumbnail: mini 3D render for every object (primitives,
+    // composites, imports all get a live render). Cached on userData
+    // so repeated _updateLayers calls don't re-render unless the
+    // geometry / color / scale / material changed.
+    let thumbnail;
+    const url = this._generateThumbnail(obj);
+    if (url) {
+      thumbnail = document.createElement("img");
+      thumbnail.src = url;
+      thumbnail.style.cssText =
+        `width:${THUMB_DISPLAY_PX}px;height:${THUMB_DISPLAY_PX}px;border-radius:3px;border:1px solid #555;flex-shrink:0;background:#2a2c2e;object-fit:contain;image-rendering:auto;`;
+    } else {
+      // Render failed (no WebGL / context lost) — fall back to colour dot.
+      thumbnail = document.createElement("div");
+      thumbnail.className = "p3d-layer-color";
+      thumbnail.style.background = obj.userData.colorHex || "#888";
+    }
 
     return createLayerItem({
       name: obj.userData.name || "Object",
@@ -359,7 +685,7 @@ Pixaroma3DEditor.prototype._updateLayers = function () {
       locked: !!obj.userData.locked,
       active: isActive,
       multiSelected: isMulti,
-      thumbnail: dot,
+      thumbnail: thumbnail,
       onVisibilityToggle: () => {
         obj.visible = !obj.visible;
         this._updateLayers();

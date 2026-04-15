@@ -2,7 +2,14 @@
 // Pixaroma 3D Editor — Save/restore, background image mgmt
 // ============================================================
 import { Pixaroma3DEditor, getTHREE, ThreeDAPI } from "./core.mjs";
-import { loadTeapotGeometry } from "./shapes.mjs";
+import { loadTeapotGeometry, getShapeDefaults } from "./shapes.mjs";
+import {
+  COMPOSITES, isCompositeType, buildComposite, getCompositeDefaults,
+} from "./composites.mjs";
+// Static import of the SYNCHRONOUS importer helpers so the composite
+// restore path can build Groups without a placeholder-swap flicker.
+// (GLB / OBJ restore still needs the async loaders below.)
+import { prepareImportedGroup } from "./importer.mjs";
 
 // ─── Save / Restore ───────────────────────────────────────
 
@@ -15,6 +22,9 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
     fov: this._fov,
     shadows: this._shadows,
     isOrtho: this._isOrtho,
+    // Studio Lighting checkbox state — default ON if key is missing
+    // on restore (preserves pre-v2 scene look).
+    studioLighting: this._studioEnvOn !== false,
     objects: this.objects.map((o) => {
       const base = {
         id: o.userData.id,
@@ -33,9 +43,24 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
       if (o.userData.type === "import") {
         base.importPath = o.userData.importPath || null;
         base.importExt = o.userData.importExt || null;
+        // Companion files (MTL + textures) so the restore path can
+        // re-run MTLLoader and rebuild the original-material list
+        // identically to the initial import. Without these, a saved
+        // textured-OBJ comes back gray on reopen because loadOBJFromURL
+        // alone has no MTL to consult.
+        base.companionFiles = o.userData.companionFiles || [];
         base.keepOriginalMaterials = !!o.userData.keepOriginalMaterials;
       } else if (o.userData.type === "bunny") {
         base.keepOriginalMaterials = !!o.userData.keepOriginalMaterials;
+      } else if (isCompositeType(o.userData.type)) {
+        // Composite groups (tree, house, table, etc.) — geometry is
+        // regenerated via buildComposite(type, geoParams) on restore.
+        // Save the geoParams object so per-shape slider state (trunk
+        // height, petal count, seed, etc.) survives save/reopen.
+        base.keepOriginalMaterials = !!o.userData.keepOriginalMaterials;
+        base.geoParams = o.userData.geoParams
+          ? { ...o.userData.geoParams }
+          : null;
       }
       // Material fields for parametric meshes straight from o.material.
       // For imported groups pull them from the stashed override material
@@ -130,6 +155,15 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
       if (this._groundMesh) this._groundMesh.visible = d.shadows;
     }
     if (d.isOrtho) this._setPerspective(false);
+    // Restore Studio Lighting state. If the saved scene predates this
+    // field (v1), leave it ON (the default). If it's explicitly false,
+    // drop the PMREM env off the scene so lighting matches what the
+    // user saved.
+    if (d.studioLighting === false) {
+      this._studioEnvOn = false;
+      if (this.el.studioCheck) this.el.studioCheck.checked = false;
+      if (this.scene) this.scene.environment = null;
+    }
     if (d.project_id) this.projectId = d.project_id;
     this._updateFrame();
     if (d.objects) d.objects.forEach((od) => this._addObjFromData(od));
@@ -219,7 +253,17 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
         Date.now();
       this._showBgImage(imgSrc, false);
     }
-    if (this.objects.length) this._select(this.objects[0], false);
+    // Start the session with nothing selected — the user picks which
+    // layer to work on. Previously we auto-selected the first object,
+    // which forced the Shape panel to rebuild for an arbitrary layer
+    // and also made the gizmo pop onto it before the user had a chance
+    // to look around. Clearing here keeps the scene ready but neutral.
+    this.selectedObjs.clear();
+    this.activeObj = null;
+    this.transformCtrl?.detach();
+    this._syncOutlineSelection?.();
+    this._syncProps?.();
+    this._rebuildShapePanel?.();
     this._updateLayers();
     // Snap the directional-light shadow frustum to the just-restored
     // scene bounds so the very first shadow frame is correct. Without
@@ -302,18 +346,28 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
     const placeholder = this.objects[this.objects.length - 1];
     placeholder.userData.type = "import";
     applyObjectData(placeholder, od);
-    import("./importer.mjs").then(async ({ loadGLBFromURL, loadOBJFromURL, prepareImportedGroup }) => {
+    import("./importer.mjs").then(async (mod) => {
       if (this._closed) return;
-      const parts = od.importPath.split("/");
-      const fname = parts.pop();
-      const subfolder = parts.join("/");
-      const url = "/view?filename=" + encodeURIComponent(fname)
-                + "&type=input&subfolder=" + encodeURIComponent(subfolder)
-                + "&t=" + Date.now();
+      const {
+        loadGLBFromURL, loadOBJWithCompanions, prepareImportedGroup,
+        wrapImportPivot, viewURLForStoredPath,
+      } = mod;
+      const url = viewURLForStoredPath(od.importPath);
       try {
-        const group = od.importExt === "obj"
-          ? await loadOBJFromURL(url)
-          : await loadGLBFromURL(url);
+        let innerGroup;
+        if (od.importExt === "obj") {
+          // Rebuild companion URL list from saved paths (cache-busted
+          // each time via viewURLForStoredPath). Without these the OBJ
+          // reloads with MTLLoader defaults and the mesh comes back
+          // gray instead of the textured look the user saved.
+          const companions = (od.companionFiles || []).map((c) => ({
+            name: c.name,
+            url: viewURLForStoredPath(c.path),
+          }));
+          innerGroup = await loadOBJWithCompanions(url, companions);
+        } else {
+          innerGroup = await loadGLBFromURL(url);
+        }
         const idx = this.objects.indexOf(placeholder);
         if (idx === -1) return;
         const wasAttached = this.transformCtrl?.object === placeholder;
@@ -325,11 +379,17 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         placeholder.material?.dispose();
         // Shared material prep so the Shape-panel toggle round-trips.
         const { origMaterials, overrideMat } =
-          prepareImportedGroup(group, od.colorHex);
+          prepareImportedGroup(innerGroup, od.colorHex);
+        // Wrap so the gizmo pivot sits on the mesh's base-center —
+        // matches the fresh-import flow so saved transforms apply to
+        // an equivalently-anchored object. No auto-scale here: the
+        // saved scale already carries the original 1.5-unit normalize.
+        const { outer: group } = wrapImportPivot(innerGroup);
         group.userData = {
           type: "import",
           importPath: od.importPath,
           importExt: od.importExt,
+          companionFiles: od.companionFiles || [],
           _origMaterials: origMaterials,
           _overrideMat: overrideMat,
           keepOriginalMaterials: !!od.keepOriginalMaterials,
@@ -348,6 +408,17 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         if (this._syncOutlineSelection) this._syncOutlineSelection();
         this._updateLayers();
         this._updateShadowFrustum?.();
+        // Refresh the right sidebar if this import was the active one
+        // when the swap completed. Restore ran _select on the placeholder
+        // BEFORE this async fetch resolved, so the Shape panel was built
+        // from the sphere (no "Use Original Material" row) and the
+        // Object Color panel disabled. Re-sync now that the real group
+        // is in place, otherwise the user sees a stale panel until they
+        // click the object again.
+        if (wasActive) {
+          this._rebuildShapePanel?.();
+          this._syncProps?.();
+        }
       } catch (e) {
         console.warn("[P3D] import restore failed, placeholder kept", e);
       }
@@ -365,10 +436,11 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
     const placeholder = this.objects[this.objects.length - 1];
     placeholder.userData.type = "bunny";
     applyObjectData(placeholder, od);
-    import("./importer.mjs").then(async ({ loadGLBFromURL }) => {
+    import("./importer.mjs").then(async (mod) => {
       if (this._closed) return;
+      const { loadGLBFromURL, prepareImportedGroup, wrapImportPivot } = mod;
       try {
-        const group = await loadGLBFromURL("/pixaroma/assets/models/bunny.glb");
+        const innerGroup = await loadGLBFromURL("/pixaroma/assets/models/bunny.glb");
         // Replace placeholder in-place so the layer panel entry and
         // object ordering don't shuffle.
         const idx = this.objects.indexOf(placeholder);
@@ -386,9 +458,11 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         // so _applyImportMaterialMode can toggle later, and
         // applyObjectData can write the saved colour/rough/etc through
         // to the override material.
-        const { prepareImportedGroup } = await import("./importer.mjs");
         const { origMaterials, overrideMat } =
-          prepareImportedGroup(group, od.colorHex);
+          prepareImportedGroup(innerGroup, od.colorHex);
+        // Wrap pivot at mesh base-center — same as fresh bunny adds —
+        // so the gizmo lands on the object instead of floating away.
+        const { outer: group } = wrapImportPivot(innerGroup);
         group.userData = {
           type: "bunny",
           _origMaterials: origMaterials,
@@ -409,13 +483,96 @@ Pixaroma3DEditor.prototype._addObjFromData = function (od) {
         if (this._syncOutlineSelection) this._syncOutlineSelection();
         this._updateLayers();
         this._updateShadowFrustum?.();
+        // Same fix as the import path: the sync _select during restore
+        // saw the placeholder sphere, so rebuild the sidebar now that
+        // the real bunny group has been swapped in.
+        if (wasActive) {
+          this._rebuildShapePanel?.();
+          this._syncProps?.();
+        }
       } catch (e) {
         console.warn("[P3D] bunny restore failed, keeping placeholder sphere", e);
       }
     });
     return;
   }
-  const gp = od.geoParams || this._defaultGeoParams(od.type || "cube");
+  // Composite shape (tree, house, table, flower, …) — rebuild the
+  // Group procedurally via the composites registry, then run it
+  // through the same import plumbing (prepareImportedGroup +
+  // wrapImportPivot) so it looks and behaves identically to a fresh
+  // add. buildComposite is synchronous so no placeholder swap is
+  // needed; we only dynamic-import the importer helpers to avoid a
+  // static dependency cycle between persistence.mjs and importer.mjs.
+  if (isCompositeType(od.type)) {
+    // Composites are built synchronously (no async GLB / OBJ fetch),
+    // so we can skip the placeholder-sphere-swap dance that imports
+    // use. Previously this path used a dynamic import, which caused a
+    // visible sphere flicker when the scene first loaded — even
+    // though the module is typically cached by that point.
+    const THREE = getTHREE();
+    try {
+      // Same backfill as primitives: merge saved geoParams over current
+      // composite defaults so v1 composite saves that predate newer
+      // sliders (e.g. expanded Tree / Pine Tree controls added recently)
+      // still deserialize with safe values for missing keys.
+      const cDefaults = getCompositeDefaults(od.type);
+      const params = od.geoParams
+        ? { ...cDefaults, ...od.geoParams }
+        : cDefaults;
+      const inner = buildComposite(od.type, params);
+      const { origMaterials, overrideMat } =
+        prepareImportedGroup(inner, od.colorHex);
+      // Composites build with pivot at origin — no wrap. Snap Y to
+      // floor as a safety net, then compute maxExtent for initial
+      // size normalize (saved scale below overrides it anyway).
+      const group = inner;
+      const bb = new THREE.Box3().setFromObject(group);
+      if (bb.min.y !== 0) group.position.y -= bb.min.y;
+      const size = new THREE.Vector3();
+      bb.getSize(size);
+      const maxExtent = Math.max(size.x, size.y, size.z);
+      if (maxExtent > 0) group.scale.setScalar(1.5 / maxExtent);
+      group.userData = {
+        id: od.id,
+        name: od.name || COMPOSITES[od.type]?.label || od.type,
+        type: od.type,
+        colorHex: od.colorHex,
+        locked: od.locked || false,
+        // Keep saved params so the Shape panel sliders land at the
+        // same positions after reopen. Fall back to defaults if the
+        // save predates composite params.
+        geoParams: params
+          ? { ...params }
+          : { ...(COMPOSITES[od.type]?.defaults || {}) },
+        // Composites default to true so baked colours render; user may
+        // have toggled it off before save — honour whichever they chose.
+        keepOriginalMaterials: od.keepOriginalMaterials !== undefined
+          ? !!od.keepOriginalMaterials
+          : true,
+        _origMaterials: origMaterials,
+        _overrideMat: overrideMat,
+      };
+      this._applyImportMaterialMode?.(group);
+      applyObjectData(group, od);
+      this.scene.add(group);
+      this.objects.push(group);
+      this._updateLayers();
+      this._updateShadowFrustum?.();
+    } catch (e) {
+      console.warn(`[P3D] composite "${od.type}" restore failed`, e);
+    }
+    return;
+  }
+  // Merge saved geoParams over current shape defaults so v1 saves that
+  // predate newer sliders still deserialize safely. For example: Blob /
+  // Rock / Terrain saved before the "seed" param existed would otherwise
+  // deserialize with seed=undefined and produce NaN-driven geometry.
+  // Same goes for the expanded Terrain controls (scale / persistence /
+  // lacunarity / ridge / power / flatness / edgeFalloff / warp), the
+  // new Tree / Pine Tree sliders, Rock smoothness, etc. User-saved keys
+  // always win; only missing keys get backfilled from defaults.
+  const defaults = getShapeDefaults(od.type || "cube");
+  const gp = od.geoParams ? { ...defaults, ...od.geoParams } : defaults;
   this._addObject(od.type || "cube", gp);
   const m = this.objects[this.objects.length - 1];
   applyObjectData(m, od);

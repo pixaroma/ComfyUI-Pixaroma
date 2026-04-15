@@ -2,7 +2,7 @@
 // Pixaroma 3D Editor — Core class, constructor, UI building
 // ============================================================
 import { ThreeDAPI } from "./api.mjs";
-import { SHAPES, SHAPE_GRID, loadTeapotGeometry } from "./shapes.mjs";
+import { openShapePicker } from "./picker.mjs";
 import {
   createEditorLayout,
   createPanel,
@@ -225,10 +225,13 @@ export class Pixaroma3DEditor {
 <b>Right drag</b><span>Pan camera</span>
 <b>Scroll</b><span>Zoom</span>
 <b style="color:#f66744;">Camera Views</b><span></span>
-<b>F / 1</b><span>Front view</span>
+<b>1</b><span>Front view</span>
 <b>2</b><span>Right side view</span>
-<b>B / 3</b><span>Back view</span>
-<b>T / 4</b><span>Top view</span>
+<b>3</b><span>Back view</span>
+<b>4</b><span>Top view</span>
+<b>5</b><span>Perspective camera</span>
+<b>6</b><span>Isometric camera</span>
+<b>7</b><span>Left side view</span>
 <b>0</b><span>Focus on selected object</span>
 <b style="color:#f66744;">Transform</b><span></span>
 <b>M</b><span>Move tool</span>
@@ -290,6 +293,15 @@ export class Pixaroma3DEditor {
       if (this.renderer) {
         this.renderer.dispose();
         this.renderer.forceContextLoss();
+      }
+      // Release the secondary WebGL context used for layer-panel
+      // thumbnails. Without forceContextLoss the browser can hold on
+      // to the GL context after editor close and eventually refuse
+      // to create more (Chrome caps at ~16).
+      if (this._thumbRenderer) {
+        this._thumbRenderer.dispose();
+        this._thumbRenderer.forceContextLoss();
+        this._thumbRenderer = null;
       }
       this.objects.forEach((o) => {
         o.geometry?.dispose();
@@ -606,94 +618,18 @@ export class Pixaroma3DEditor {
     }
     left.appendChild(bgTP.el);
 
-    // 3D Objects — click a shape to add it instantly (params editable on right sidebar)
+    // 3D Objects — two big primary buttons side by side.
+    // Add 3D Object opens a modal picker with every shape/primitive/
+    // composite, organised by category. Load 3D Model opens the
+    // native file picker for user-supplied GLB/OBJ bundles. Icons
+    // for both buttons match the rest of the shape iconography (same
+    // mask-image treatment, same brand hover color).
     const obs = createPanel("3D Objects", { collapsible: true });
-    const og = document.createElement("div");
-    og.className = "p3d-grid3";
-    og.style.cssText =
-      "display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;";
-    // Placeholder metadata for shapes not yet implemented — allows the
-    // full 18-button grid to render during migration. Clicking one of
-    // these adds a cube (using cube defaults so the Shape/Transform
-    // panels stay fully functional) and logs a warning.
-    // Types that aren't in the parametric SHAPES registry but are
-    // still real buttons in the grid — loaded via the importer
-    // module (bunny ships as GLB; user imports handled in Task 8).
-    const IMPORTED = { bunny: { icon: "bunny.svg", label: "Bunny" } };
-    const shapes = SHAPE_GRID.map((id) => {
-      const s = SHAPES[id];
-      const imp = IMPORTED[id];
-      return {
-        id,
-        icon: s ? s.icon : imp ? imp.icon : "cube.svg",
-        label: s ? s.label : imp ? imp.label : id.charAt(0).toUpperCase() + id.slice(1),
-        implemented: !!s || !!imp,
-      };
-    });
-    shapes.forEach((sh) => {
-      const b = document.createElement("div");
-      b.className = "p3d-shape-btn";
-      if (!sh.implemented) b.classList.add("p3d-shape-todo");
-      b.title = sh.implemented
-        ? "Add " + sh.label
-        : sh.label + " (coming soon)";
-      const ico = document.createElement("span");
-      ico.className = "p3d-shape-ico";
-      ico.setAttribute("role", "img");
-      ico.setAttribute("aria-label", sh.label);
-      const iconUrl = `url("/pixaroma/assets/icons/3D/${sh.icon}")`;
-      ico.style.webkitMaskImage = iconUrl;
-      ico.style.maskImage = iconUrl;
-      const lbl = document.createElement("span");
-      lbl.textContent = sh.label;
-      b.append(ico, lbl);
-      b.addEventListener("click", async () => {
-        if (sh.implemented) {
-          // Teapot geometry is fetched from a separate ESM module on
-          // first use so the editor's first-open stays fast. Await it
-          // before calling _addObject so the mesh appears with the
-          // real geometry rather than the placeholder-sphere fallback.
-          if (sh.id === "teapot") {
-            await loadTeapotGeometry();
-            this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
-            return;
-          }
-          // Bunny ships as a GLB asset. Load through the importer
-          // module (cached after first call) and add via the common
-          // imported-group plumbing.
-          if (sh.id === "bunny") {
-            const { loadGLBFromURL } = await import("./importer.mjs");
-            try {
-              const group = await loadGLBFromURL(
-                "/pixaroma/assets/models/bunny.glb",
-              );
-              this._addImportedGroup(group, "bunny", { name: "Bunny" });
-            } catch (e) {
-              console.error("[P3D] bunny load failed", e);
-              this._setStatus?.("Bunny file missing — added placeholder sphere");
-              this._addObject("sphere", { radius: 0.5, widthSegs: 32, heightSegs: 32 });
-              if (this.activeObj) this.activeObj.userData.type = "bunny";
-            }
-            return;
-          }
-          this._addObject(sh.id, { ...SHAPES[sh.id].defaults });
-        } else {
-          // Placeholder button: log and spawn an honest-to-goodness cube
-          // (type "cube") so the Shape panel + sliders all work. Keeps
-          // UX consistent while the real shape is still being migrated.
-          console.warn(
-            `[P3D] shape "${sh.id}" not yet implemented — adding a cube.`);
-          this._addObject("cube", { ...SHAPES.cube.defaults });
-        }
-      });
-      og.appendChild(b);
-    });
-    obs.content.appendChild(og);
+    const actRow = document.createElement("div");
+    actRow.style.cssText =
+      "display:grid;grid-template-columns:1fr 1fr;gap:6px;";
 
-    // Import 3D Model button — opens a native file picker. Accepts
-    // multiple files so the user can bring in a textured OBJ bundle
-    // (.obj + .mtl + texture images) in one shot; GLBs just take one
-    // file.
+    // Hidden file input — reused by the Load button.
     const importInput = document.createElement("input");
     importInput.type = "file";
     importInput.multiple = true;
@@ -714,20 +650,52 @@ export class Pixaroma3DEditor {
       }
     });
     obs.content.appendChild(importInput);
-    const importBtn = createButton("Import 3D Model", {
-      variant: "standard",
-      onClick: () => importInput.click(),
-      title:
-        "Import a local 3D model (max 50 MB per file). " +
-        "For textured OBJ, select the .obj, .mtl, AND all texture " +
-        "images together in the file picker. GLB embeds textures " +
-        "and only needs one file.",
-    });
-    importBtn.style.cssText = "width:100%;margin-top:8px;";
-    obs.content.appendChild(importBtn);
+
+    // Shared builder for both big buttons — same tile style used in
+    // the picker modal but sized up (88px tall) so the two actions
+    // read as top-level entry points.
+    const buildActionBtn = (iconFile, label, title, onClick) => {
+      const b = document.createElement("div");
+      b.className = "p3d-shape-btn";
+      b.style.cssText = "height:78px;gap:6px;";
+      b.title = title;
+      const ico = document.createElement("span");
+      ico.className = "p3d-shape-ico";
+      ico.style.cssText = "width:30px;height:30px;";
+      ico.setAttribute("role", "img");
+      ico.setAttribute("aria-label", label);
+      const iconUrl = `url("/pixaroma/assets/icons/3D/${iconFile}")`;
+      ico.style.webkitMaskImage = iconUrl;
+      ico.style.maskImage = iconUrl;
+      const lbl = document.createElement("span");
+      lbl.textContent = label;
+      lbl.style.cssText = "font-size:11px;font-weight:500;";
+      b.append(ico, lbl);
+      b.addEventListener("click", onClick);
+      return b;
+    };
+
+    const addBtn = buildActionBtn(
+      "add-3d-object.svg",
+      "Add 3D Object",
+      "Browse and add a built-in shape (primitives, vessels, nature, furniture, architecture).",
+      () => openShapePicker(this),
+    );
+    const loadBtn = buildActionBtn(
+      "load-3d-model.svg",
+      "Load 3D Model",
+      "Load a local 3D model (max 50 MB per file). " +
+      "For textured OBJ, select the .obj, .mtl, AND all texture " +
+      "images together in the file picker. GLB embeds textures " +
+      "and only needs one file.",
+      () => importInput.click(),
+    );
+    actRow.append(addBtn, loadBtn);
+    obs.content.appendChild(actRow);
+
     const importHint = document.createElement("div");
     importHint.style.cssText =
-      "font-size:10px;color:#888;margin-top:4px;line-height:1.4;";
+      "font-size:10px;color:#888;margin-top:6px;line-height:1.4;";
     importHint.textContent =
       "GLB: 1 file. Textured OBJ: select .obj + .mtl + textures " +
       "together. Max 50 MB each.";
@@ -773,6 +741,143 @@ export class Pixaroma3DEditor {
       tg.appendChild(b);
     });
     tt.content.appendChild(tg);
+
+    // Per-axis X / Y / Z sliders under the tool buttons. They
+    // reconfigure themselves based on the current Move / Rotate /
+    // Scale mode: translate range, degree range, or scale range.
+    // They drive the active object directly AND refresh from the
+    // gizmo when the user drags the 3D handles, so the two input
+    // methods stay in sync.
+    const xformBlock = document.createElement("div");
+    xformBlock.style.cssText =
+      "margin-top:8px;padding-top:6px;border-top:1px solid #2a2c2e;";
+    this.el.xformSliders = [];
+    // A flag shared by all three rows so dragging any slider only
+    // pushes a SINGLE undo entry per drag session (not one per tick).
+    const dragState = { snapshotted: false };
+    for (const axis of ["X", "Y", "Z"]) {
+      const row = document.createElement("div");
+      row.className = "p3d-row";
+      const lbl = document.createElement("div");
+      lbl.className = "p3d-label";
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.className = "p3d-range";
+      const numIn = document.createElement("input");
+      numIn.type = "number";
+      numIn.className = "p3d-input";
+      row.append(lbl, slider, numIn);
+      xformBlock.appendChild(row);
+      this.el.xformSliders.push({ label: lbl, slider, numIn, axis });
+
+      const axLower = axis.toLowerCase();
+      const apply = (v) => {
+        if (!this.activeObj || this.activeObj.userData.locked) return;
+        if (!dragState.snapshotted) {
+          this._pushUndo();
+          dragState.snapshotted = true;
+        }
+        const val = +v;
+        const mode = this.toolMode;
+        const obj = this.activeObj;
+        if (mode === "move") {
+          obj.position[axLower] = val;
+        } else if (mode === "rotate") {
+          obj.rotation[axLower] = (val * Math.PI) / 180;
+        } else if (mode === "scale") {
+          // Clamp away from zero so the object can't collapse and
+          // then fail to come back (scale 0 is irrecoverable via slider).
+          const clamped = Math.max(0.01, val);
+          if (this.el.xformUniform?.checked) {
+            // Lock Proportions: drive all three axes together. Also
+            // sync the OTHER two sliders visually so the UI matches
+            // what the geometry is doing.
+            obj.scale.set(clamped, clamped, clamped);
+            for (const s of this.el.xformSliders) {
+              if (s.axis === axis) continue;
+              s.slider.value = clamped;
+              s.numIn.value = this._formatXformValue(clamped);
+            }
+          } else {
+            obj.scale[axLower] = clamped;
+          }
+        }
+        // Keep this row's number input in sync if apply() fired from the slider.
+        numIn.value = this._formatXformValue(val);
+        this._updateShadowFrustum?.();
+      };
+      slider.addEventListener("input", () => apply(slider.value));
+      // Reset the per-drag flag on pointer-up so the next drag
+      // creates a fresh undo entry.
+      const endDrag = () => { dragState.snapshotted = false; };
+      slider.addEventListener("change", endDrag);
+      slider.addEventListener("mouseup", endDrag);
+      numIn.addEventListener("change", () => {
+        let v = +numIn.value;
+        if (isNaN(v)) v = +slider.value;
+        slider.value = v;
+        apply(v);
+        dragState.snapshotted = false;
+      });
+    }
+    tt.content.appendChild(xformBlock);
+
+    // Uniform-scale toggle — when checked, dragging ANY of the
+    // X/Y/Z sliders in scale mode sets all three to the same value
+    // so the object scales proportionally. Hidden outside scale
+    // mode (see _updateTransformSliders).
+    const uniformRow = document.createElement("label");
+    uniformRow.style.cssText =
+      "display:flex;align-items:center;gap:6px;font-size:11px;" +
+      "color:#ccc;margin:4px 0;cursor:pointer;";
+    const uniformCb = document.createElement("input");
+    uniformCb.type = "checkbox";
+    uniformCb.checked = true;
+    uniformRow.append(uniformCb, document.createTextNode(" Lock Proportions"));
+    tt.content.appendChild(uniformRow);
+    this.el.xformUniform = uniformCb;
+    this.el.xformUniformRow = uniformRow;
+
+    // Reset Transform button — fully resets translation + rotation
+    // + scale, then drops the object onto the floor so it doesn't
+    // land underground after the reset (its local pivot may not be
+    // at its visual bottom).
+    const xformReset = createButton("Reset Transform", {
+      variant: "standard",
+      onClick: () => {
+        const THREE = getTHREE();
+        const targets = this.selectedObjs.size
+          ? [...this.selectedObjs]
+          : (this.activeObj ? [this.activeObj] : []);
+        const movable = targets.filter((o) => !o.userData.locked);
+        if (!movable.length) return;
+        this._pushUndo();
+        for (const o of movable) {
+          o.position.set(0, 0, 0);
+          o.rotation.set(0, 0, 0);
+          o.scale.set(1, 1, 1);
+          // Refresh world matrix before measuring so the bbox sees
+          // the just-reset transform, then snap the base to y=0.
+          o.updateMatrixWorld(true);
+          const bb = new THREE.Box3().setFromObject(o);
+          if (isFinite(bb.min.y)) o.position.y -= bb.min.y;
+        }
+        this._updateTransformSliders?.();
+        this._syncProps?.();
+        this._updateShadowFrustum?.();
+      },
+      title: "Reset position / rotation / scale of the selected object",
+    });
+    xformReset.style.cssText = "width:100%;margin-top:4px;font-size:10px;padding:4px 8px;";
+    tt.content.appendChild(xformReset);
+
+    // Prime the transform sliders with the current mode's labels /
+    // ranges even when no object is selected yet. Without this initial
+    // call the labels were blank and the sliders sat at range defaults
+    // (0 → 100) until the first selection triggered _syncProps, which
+    // looked like a rendering bug on empty editor open.
+    this._updateTransformSliders?.();
+
     left.appendChild(tt.el);
 
     // Camera
@@ -781,28 +886,60 @@ export class Pixaroma3DEditor {
     cRow1.style.cssText =
       "display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;";
     [
-      { id: "front", l: "Front", tip: "Front view (F / 1)" },
-      { id: "side", l: "Side", tip: "Right side view (2)" },
-      { id: "back", l: "Back", tip: "Back view (B / 3)" },
-      { id: "top", l: "Top", tip: "Top view (T / 4)" },
+      { id: "front", l: "Front", ico: "front.svg", tip: "Front view (1)" },
+      { id: "side",  l: "Side",  ico: "side.svg",  tip: "Right side view (2) — press 7 for the opposite side" },
+      { id: "back",  l: "Back",  ico: "back.svg",  tip: "Back view (3)" },
+      { id: "top",   l: "Top",   ico: "top.svg",   tip: "Top view (4)" },
     ].forEach((t) => {
       const b = document.createElement("div");
       b.className = "pxf-tool-btn";
       b.title = t.tip;
-      b.innerHTML = `<span class="pxf-tool-btn-icon">${t.l[0]}</span><span class="pxf-tool-btn-label">${t.l}</span>`;
+      // Render SVG via mask-image so the icon's color is driven by
+      // our CSS (#ccc — matches .pxf-tool-btn text), not whatever
+      // color the SVG file itself happens to use. invert-filter on
+      // a <img> would also work but mask-image is the cleanest and
+      // lets hover tinting to orange drop in via CSS later.
+      const iconEl = document.createElement("span");
+      iconEl.className = "pxf-tool-btn-icon";
+      const iconUrl = `url("/pixaroma/assets/icons/3D/${t.ico}")`;
+      iconEl.style.cssText =
+        `display:block;width:22px;height:22px;margin:0 auto 2px;` +
+        `background-color:#ccc;` +
+        `-webkit-mask-image:${iconUrl};mask-image:${iconUrl};` +
+        `-webkit-mask-size:contain;mask-size:contain;` +
+        `-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;` +
+        `-webkit-mask-position:center;mask-position:center;` +
+        `transition:background-color .12s;`;
+      // Hover tint to Pixaroma orange — matches shape-picker tiles
+      b.addEventListener("mouseenter", () => {
+        iconEl.style.backgroundColor = "#f66744";
+      });
+      b.addEventListener("mouseleave", () => {
+        iconEl.style.backgroundColor = "#ccc";
+      });
+      const labelEl = document.createElement("span");
+      labelEl.className = "pxf-tool-btn-label";
+      labelEl.textContent = t.l;
+      b.append(iconEl, labelEl);
       b.addEventListener("click", () => this._camView(t.id));
       cRow1.appendChild(b);
     });
     cam.content.appendChild(cRow1);
     const perspBtn = createButton("Perspective", {
       variant: "standard",
-      onClick: () => this._setPerspective(true),
-      title: "Standard perspective camera",
+      onClick: () => {
+        this._setPerspective(true);
+        this._camView("perspective3q");
+      },
+      title: "Perspective camera — 3/4 viewing angle (5)",
     });
     const isoBtn = createButton("Isometric", {
       variant: "standard",
-      onClick: () => this._setPerspective(false),
-      title: "Orthographic/isometric camera",
+      onClick: () => {
+        this._setPerspective(false);
+        this._camView("iso");
+      },
+      title: "Orthographic camera — isometric viewing angle (6)",
     });
     this.el.perspBtn = perspBtn;
     this.el.isoBtn = isoBtn;
@@ -830,6 +967,7 @@ export class Pixaroma3DEditor {
     });
     this.el.fovSlider = fovR.slider;
     this.el.fovVal = fovR.numInput;
+    this.el.fovRow = fovR.el;
     cam.content.appendChild(fovR.el);
     // Checkboxes
     const shCb = createCheckbox("Ground Shadows", this._shadows, (v) => {
@@ -870,6 +1008,8 @@ export class Pixaroma3DEditor {
       showBlendMode: false,
       showOpacity: false,
       onDuplicate: () => this._dupSelected(),
+      onDropToFloor: () => this._dropToFloor(),
+      dropToFloorTitle: "Drop to floor — snap the selected object's base to the ground plane",
       onDelete: () => this._deleteSelected(),
       onReorder: (fromIdx, toIdx) => {
         const dragged = this.objects.splice(fromIdx, 1)[0];
@@ -945,7 +1085,7 @@ export class Pixaroma3DEditor {
     // 3) Materials
     const mats = createPanel("Materials", {
       collapsible: true,
-      collapsed: false,
+      collapsed: true,
     });
     const mg = document.createElement("div");
     mg.className = "p3d-mat-grid";
@@ -1019,7 +1159,7 @@ export class Pixaroma3DEditor {
     right.insertBefore(mats.el, footer);
 
     // 4) Lighting
-    const lp = createPanel("Lighting", { collapsible: true, collapsed: false });
+    const lp = createPanel("Lighting", { collapsible: true, collapsed: true });
     const lcIn = createColorInput({
       value: "#ffffff",
       onChange: (v) => {

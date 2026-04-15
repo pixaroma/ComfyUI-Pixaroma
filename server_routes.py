@@ -217,7 +217,7 @@ async def save_3d_model_upload(request):
     b64 = data.get("data", "")
 
     if not re.match(
-        r"^[a-zA-Z0-9_\-. ]+\.(glb|gltf|obj|mtl|jpg|jpeg|png|bmp|tga|webp)$",
+        r"^[a-zA-Z0-9_\-. ]+\.(glb|gltf|obj|mtl|jpg|jpeg|png|bmp|tga|webp|tif|tiff)$",
         filename,
         re.IGNORECASE,
     ):

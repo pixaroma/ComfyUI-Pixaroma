@@ -86,7 +86,16 @@ app.registerExtension({
 
       editor.onSave = (jsonStr, dataURL) => {
         sceneJson = jsonStr;
-        widget.value = { scene_json: jsonStr };
+        // Guard + re-lookup: ComfyUI's Vue frontend can tear down the
+        // DOM widget while the editor is still open (same pattern as
+        // the overlay-removal case noted in CLAUDE.md). If that
+        // happens, `widget` was nulled by onRemoved. Try node.widgets
+        // as a fallback — Vue may have recreated the widget under the
+        // same name. If still nothing, the widget's getValue reads
+        // from the `sceneJson` closure var (just refreshed) so the
+        // next workflow execution still picks up fresh data.
+        const w = widget || node.widgets?.find((x) => x.name === "SceneWidget");
+        if (w) w.value = { scene_json: jsonStr };
 
         if (dataURL) {
           let dimText = null;

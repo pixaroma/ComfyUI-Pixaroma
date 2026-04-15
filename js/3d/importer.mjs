@@ -112,6 +112,92 @@ export async function loadOBJFromURL(url) {
   return group;
 }
 
+// Load an OBJ alongside its MTL + textures. `companions` is an array
+// of {name, url} pairs for every companion file (the .mtl and every
+// referenced texture image). Passing an empty / undefined companions
+// list falls back to loadOBJFromURL (gray default materials).
+// Shared between the initial import and the save/restore path so a
+// textured cottage round-trips the same way both times.
+export async function loadOBJWithCompanions(mainUrl, companions) {
+  const THREE = getTHREE();
+  const OBJLoader = await getOBJLoader();
+  const objLoader = new OBJLoader();
+  const mtl = companions?.find?.((c) => /\.mtl$/i.test(c.name));
+  if (mtl) {
+    const MTLLoader = await getMTLLoader();
+    const textureMap = new Map();
+    for (const c of companions) {
+      if (c?.name && c?.url) textureMap.set(c.name.toLowerCase(), c.url);
+    }
+    const manager = new THREE.LoadingManager();
+    manager.setURLModifier((url) => {
+      // Scan the whole URL (lowercased) for any companion basename —
+      // MTLLoader's relative-path resolution over our /view?…
+      // upload URLs doesn't produce a clean last-segment filename.
+      const lc = url.toLowerCase();
+      for (const [name, mapped] of textureMap) {
+        if (lc.includes(name)) {
+          console.log("[P3D] texture redirect:", name, "→", mapped);
+          return mapped;
+        }
+      }
+      // Not the MTL itself and not a recognised companion — probably a
+      // texture the MTL references but the user didn't upload. Log so
+      // the console shows you what's missing (common cause of a model
+      // rendering as a black silhouette).
+      if (!lc.includes(".mtl")) {
+        console.warn("[P3D] texture not in companion list:", url);
+      }
+      return url;
+    });
+    manager.onError = (url) => {
+      console.warn("[P3D] failed to load (404?):", url);
+    };
+    const mtlLoader = new MTLLoader(manager);
+    // DoubleSide for the original-material path — house/cottage style
+    // OBJs are built from single-sided walls, so FrontSide shows the
+    // interior as transparent when the camera peeks inside.
+    mtlLoader.setMaterialOptions({ side: THREE.DoubleSide });
+    const materials = await mtlLoader.loadAsync(mtl.url);
+    materials.preload();
+    objLoader.setMaterials(materials);
+  }
+  const group = await objLoader.loadAsync(mainUrl);
+  await smoothGroupNormals(group);
+  // Post-process: some OBJ/MTL pairs exported from PBR pipelines set
+  // `Kd 0 0 0` (black diffuse) while carrying the actual colour in the
+  // `map_Kd` texture. MeshPhongMaterial multiplies the texture by the
+  // diffuse colour, so black × texture = pure black — the model renders
+  // as a silhouette with no shading. If a material has a diffuse map
+  // assigned but its colour is effectively black, force it to white so
+  // the texture shows through as intended.
+  group.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of mats) {
+      if (!m || !m.color || !m.map) continue;
+      const { r, g, b } = m.color;
+      if (r < 0.02 && g < 0.02 && b < 0.02) {
+        console.log("[P3D] reset black Kd → white on material with diffuse map:", m.name || "(unnamed)");
+        m.color.setRGB(1, 1, 1);
+      }
+    }
+  });
+  return group;
+}
+
+// Build a /view URL from a stored-input relative path like
+// "pixaroma/<proj>/models/foo.jpg". Exposed so the restore path can
+// reconstruct companion URLs from saved paths without re-uploading.
+export function viewURLForStoredPath(path) {
+  const parts = path.split("/");
+  const fname = parts.pop();
+  const subfolder = parts.join("/");
+  return "/view?filename=" + encodeURIComponent(fname)
+       + "&type=input&subfolder=" + encodeURIComponent(subfolder)
+       + "&t=" + Date.now();
+}
+
 // Read a File as a base64 data URL (used by the upload pipeline).
 function readAsDataURL(file) {
   return new Promise((resolve, reject) => {
@@ -181,58 +267,35 @@ export async function importFromFiles(editor, files) {
   if (!mainUp) throw new Error("Main mesh file failed to upload");
 
   editor._setStatus?.("Loading model…");
+  // Companions = every non-main file we uploaded with {name, path, url}.
+  // We stash the name/path pair on userData so save/restore can rebuild
+  // the /view URLs (which carry a cache-buster timestamp) on demand.
+  const companions = uploaded
+    .filter((u) => u.origName !== mainFile.name)
+    .map((u) => ({ name: u.origName, path: u.path, url: u.url }));
   let group;
   if (mainExt === "obj") {
-    // Optional MTL companion. Load it first so OBJLoader picks up the
-    // materials. Textures referenced by filename in the .mtl are
-    // remapped to their uploaded /view URLs via LoadingManager's
-    // setURLModifier — the backend preserves original filenames so
-    // the lookup works on lowercased basenames.
-    const mtlFile = fileArray.find((f) => /\.mtl$/i.test(f.name));
-    const OBJLoader = await getOBJLoader();
-    const objLoader = new OBJLoader();
-    if (mtlFile) {
-      const mtlUp = uploaded.find((u) => u.origName === mtlFile.name);
-      if (mtlUp) {
-        const MTLLoader = await getMTLLoader();
-        // Build a basename → uploaded-URL map for every companion we
-        // uploaded. MTLLoader / its TextureLoader will request each
-        // texture by its relative name; we intercept and redirect.
-        const textureMap = new Map();
-        for (const u of uploaded) {
-          textureMap.set(u.origName.toLowerCase(), u.url);
-        }
-        const manager = new THREE.LoadingManager();
-        manager.setURLModifier((url) => {
-          const name = url.split("/").pop().split("?")[0].toLowerCase();
-          return textureMap.get(name) || url;
-        });
-        const mtlLoader = new MTLLoader(manager);
-        const materials = await mtlLoader.loadAsync(mtlUp.url);
-        materials.preload();
-        objLoader.setMaterials(materials);
-      }
-    }
-    group = await objLoader.loadAsync(mainUp.url);
-    await smoothGroupNormals(group);
+    group = await loadOBJWithCompanions(mainUp.url, companions);
   } else {
     // GLB/GLTF — all materials + textures are embedded in the file.
     group = await loadGLBFromURL(mainUp.url);
   }
 
+  // Default to the file's own materials. GLB always carries PBR data;
+  // OBJ only does if an .mtl companion was supplied. For OBJ-without-MTL
+  // the stored "originals" are plain MeshPhongMaterial defaults from
+  // OBJLoader, so leave that case on the clay override instead.
+  const hasOwnMaterials = mainExt !== "obj"
+    || fileArray.some((f) => /\.mtl$/i.test(f.name));
+  // companionFiles persisted to save JSON — just the name+path pairs.
+  const companionFiles = companions.map((c) => ({ name: c.name, path: c.path }));
   editor._addImportedGroup(group, "import", {
     name: mainFile.name,
     importPath: mainUp.path,
     importExt: mainExt,
+    companionFiles,
+    keepOriginalMaterials: hasOwnMaterials,
   });
-  // If an MTL / textures came in, default to showing original materials
-  // (user bothered to provide them; they probably want to see them).
-  const active = editor.activeObj;
-  if (active && mainExt === "obj"
-      && fileArray.some((f) => /\.mtl$/i.test(f.name))) {
-    active.userData.keepOriginalMaterials = true;
-    editor._applyImportMaterialMode?.(active);
-  }
   editor._setStatus?.("Model imported");
 }
 
@@ -275,8 +338,20 @@ export function prepareImportedGroup(group, colorHex) {
     color: colorHex || IMPORTED_DEFAULT_COLOR,
     roughness: 0.55,
     metalness: 0,
-    transparent: true,
+    // Opaque by default. `transparent: true` with opacity=1 still pushes
+    // the mesh into the transparent render queue, which back-to-front
+    // sorts by centroid and skips depth writes — on complex multi-mesh
+    // imports (cottage walls, the bunny) this causes triangles to render
+    // out of order so you see "through" the model. The material-panel
+    // opacity slider flips transparent=true when the user drops it <1.
+    transparent: false,
     opacity: 1,
+    depthWrite: true,
+    // DoubleSide — imported meshes are often open shells (pot with no
+    // bottom, leaves modeled as single planes). With FrontSide culling
+    // you see "holes" right through them; DoubleSide shades both sides
+    // of every triangle so the override clay material looks solid.
+    side: THREE.DoubleSide,
   });
   group.traverse((o) => {
     if (o.isMesh) o.material = overrideMat;
@@ -284,32 +359,66 @@ export function prepareImportedGroup(group, colorHex) {
   return { origMaterials, overrideMat };
 }
 
-Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUserData = {}) {
+// Wrap an imported inner group in an outer Group whose origin sits on
+// the mesh's base-center. Returns { outer, sizeLocal } — sizeLocal is
+// the pre-scale world bbox size so callers can auto-scale if they want.
+// Shared between fresh-add and save-restore so the gizmo pivot lands
+// at the same spot on the mesh both times.
+export function wrapImportPivot(innerGroup) {
+  const THREE = getTHREE();
+  const outer = new THREE.Group();
+  outer.add(innerGroup);
+  // Bbox of the inner while the outer is still identity — effectively
+  // the inner's local-space bbox (three.js applies inner's own
+  // transforms inside setFromObject).
+  const bbLocal = new THREE.Box3().setFromObject(innerGroup);
+  const sizeLocal = new THREE.Vector3();
+  bbLocal.getSize(sizeLocal);
+  const centerLocal = new THREE.Vector3();
+  bbLocal.getCenter(centerLocal);
+  // Shift the inner inside the wrapper so mesh base-center ends up at
+  // the wrapper's local origin. Now TransformControls, which draws the
+  // gizmo at outer.position, lands on the visible object.
+  innerGroup.position.x -= centerLocal.x;
+  innerGroup.position.y -= bbLocal.min.y;
+  innerGroup.position.z -= centerLocal.z;
+  return { outer, sizeLocal };
+}
+
+Pixaroma3DEditor.prototype._addImportedGroup = function (innerGroup, typeTag, extraUserData = {}) {
   const THREE = getTHREE();
   this._pushUndo();
   this._id++;
 
-  const { origMaterials, overrideMat } = prepareImportedGroup(group);
+  const { origMaterials, overrideMat } = prepareImportedGroup(innerGroup);
 
-  // Normalise the imported group's size so it comes in at a sensible
-  // scale next to the parametric shapes. Imported GLBs are often
-  // authored in very different unit systems (bunny ships at ~0.2 m
-  // tall, user uploads can be huge). Compute the group's bounding
-  // box, then uniformly scale so the longest axis is ~1.5 world
-  // units — roughly the size of a default cube.
-  const bbPre = new THREE.Box3().setFromObject(group);
-  const size = new THREE.Vector3();
-  bbPre.getSize(size);
-  const maxExtent = Math.max(size.x, size.y, size.z);
-  if (maxExtent > 0) {
-    const target = 1.5;
-    const s = target / maxExtent;
-    group.scale.setScalar(s);
-    group.updateMatrixWorld(true);
+  // Composites build with their pivot already at the base-center origin,
+  // so re-centering via wrapImportPivot would drift the pivot every time
+  // bumps/arms are asymmetric. For composites: use the built group
+  // directly, snap Y so the base lands at y=0, skip XZ recenter.
+  // For imports (GLB/OBJ): wrap pivot so gizmo lands on the mesh.
+  const isComposite = !!extraUserData.skipPivotWrap;
+  let group, sizeLocal;
+  if (isComposite) {
+    group = innerGroup;
+    const bb = new THREE.Box3().setFromObject(group);
+    const size = new THREE.Vector3();
+    bb.getSize(size);
+    sizeLocal = size;
+    if (bb.min.y !== 0) group.position.y -= bb.min.y;
+  } else {
+    const wrapped = wrapImportPivot(innerGroup);
+    group = wrapped.outer;
+    sizeLocal = wrapped.sizeLocal;
   }
-  // Now sit the (rescaled) group on the floor.
-  const box = new THREE.Box3().setFromObject(group);
-  group.position.y = -box.min.y;
+
+  // Normalise size — longest axis to ~1.5 world units. Applied on the
+  // outer wrapper so the centering offset above (unscaled local coords)
+  // scales together with the mesh.
+  const maxExtent = Math.max(sizeLocal.x, sizeLocal.y, sizeLocal.z);
+  if (maxExtent > 0) {
+    group.scale.setScalar(1.5 / maxExtent);
+  }
 
   group.userData = {
     id: this._id,
@@ -323,6 +432,13 @@ Pixaroma3DEditor.prototype._addImportedGroup = function (group, typeTag, extraUs
     _overrideMat: overrideMat,
     ...extraUserData,
   };
+
+  // If the caller asked for original materials (GLB imports + textured
+  // OBJs set this via extraUserData), swap them back in BEFORE _select
+  // so the Shape-panel checkbox renders already checked.
+  if (group.userData.keepOriginalMaterials) {
+    this._applyImportMaterialMode?.(group);
+  }
 
   this.scene.add(group);
   this.objects.push(group);
