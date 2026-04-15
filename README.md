@@ -21,28 +21,34 @@ Pixaroma transforms ComfyUI into a powerful design environment, bringing profess
 
 ### 🧊 3D Builder
 A complete WebGL 3D scene editor inside ComfyUI. Drop in primitives, procedural shapes, or composite assets (trees, houses, furniture, vessels, and more) and craft reference scenes for ControlNet, depth maps, or compositions. Import your own GLB/OBJ models with textures. Full camera control (perspective + isometric + axis views), interactive lighting with studio HDR, shape-specific slider panels, undo/redo, transform sliders, drop-to-floor, and live layer thumbnails.
-![3D Builder Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
+![3D Builder — Node](workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
+![3D Builder — Editor](workflows/3D%20Builder%20Pixaroma%20Workflow%20v2.jpg)
 
 ### ✨ Image Composer
 Advanced layer-based composition. Move, scale, and rotate multiple images with a visual interface. Use the eraser tool with a soft brush for manual masking, or leverage the built-in AI background removal for instant object isolation. Perfect for pre-processing or final touch-ups.
-![Image Composer Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
+![Image Composer — Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
+![Image Composer — Editor](workflows/Image%20Composer%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🖌️ Paint Studio
 A professional-grade painting suite optimized for performance. Features a robust layer system, customizable brushes, blend modes, and a dedicated smudge tool for seamless blending. Ideal for inpainting, custom masks, or creating textures from scratch.
-![Paint Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Paint%20Pixaroma%20Workflow.jpg)
+![Paint — Node](workflows/Paint%20Pixaroma%20Workflow.jpg)
+![Paint — Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg)
 
 ### ✂️ Precision Crop
 No more guessing crop coordinates. Graphically define your crop area with interactive handles. Includes standard aspect ratio presets (1:1, 16:9, 9:16) to ensure your output is perfectly framed for its final destination.
-![Image Crop Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Crop%20Pixaroma%20Workflow.jpg)
+![Image Crop — Node](workflows/Crop%20Pixaroma%20Workflow.jpg)
+![Image Crop — Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🌓 Interactive Compare
 The ultimate tool for model testing and workflow optimization. Compare two images side-by-side with a slider, vertically, via overlay blending, or using a difference map to highlight identical pixels vs. changes.
-![Image Compare Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
+![Image Compare — Node](workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
+![Image Compare — Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🏷️ Label & Utility
 - **Label Tool:** Organize massive workflows with clean, customizable labels to keep your logic readable.
 - **Show Text:** A vital debugging tool that displays the raw content of any input—be it tensors, latents, or string values.
-![Labels Pixaroma](https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/workflows/Labels%20Pixaroma%20Workflow.jpg)
+![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
+![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
 
 ---
 
