@@ -322,6 +322,7 @@ Pixaroma3DEditor.prototype._selectAll = function () {
   this._syncOutlineSelection();
   this._updateLayers();
   this._syncProps();
+  this._updateAlignButtons?.();
   this._setStatus(`Selected all ${this.objects.length} objects`);
 };
 
