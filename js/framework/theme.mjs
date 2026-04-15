@@ -524,34 +524,53 @@ export function injectFrameworkStyles() {
   font-size: 14px; font-weight: bold;
 }
 
-/* ── Help overlay (unified modal) ───────────────────── */
+/* ── Help overlay (unified modal, 2-column layout) ───── */
 .pxf-help-overlay {
   display: none; position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   background: #171718; border: 1px solid var(--pxf-accent);
   border-radius: 10px; padding: 0;
-  width: 520px; max-width: 90%; max-height: 80vh;
+  width: 960px; max-width: 95%; max-height: 86vh;
   z-index: 100; overflow: hidden;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
   font-family: var(--pxf-font);
 }
 .pxf-help-header {
-  display: flex; align-items: center; padding: 14px 18px;
+  display: flex; align-items: center; padding: 14px 20px;
   border-bottom: 1px solid #2a2a2a;
 }
 .pxf-help-header h3 { flex: 1; color: var(--pxf-accent); font-size: 14px; margin: 0; font-weight: 600; }
 .pxf-help-content {
-  padding: 16px 18px; overflow-y: auto; max-height: 55vh;
-  font-size: 11px; line-height: 1.8; color: #ccc;
+  padding: 18px 24px; overflow-y: auto;
+  max-height: calc(86vh - 110px);
+  font-size: 11px; line-height: 1.7; color: #ccc;
+  column-count: 2; column-gap: 36px;
 }
+.pxf-help-section {
+  break-inside: avoid; margin-bottom: 14px;
+}
+.pxf-help-section:last-child { margin-bottom: 0; }
+.pxf-help-section h4 {
+  color: var(--pxf-accent);
+  margin: 0 0 6px 0; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.6px; text-transform: uppercase;
+}
+.pxf-help-grid {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+}
+.pxf-help-grid b { color: #eee; white-space: nowrap; font-weight: 600; }
+.pxf-help-grid span { color: #bbb; }
 .pxf-help-content kbd {
   background: #2a2c2e; border: 1px solid #444; border-radius: 3px;
   padding: 1px 5px; font-size: 10px; color: var(--pxf-text);
+  font-family: var(--pxf-font-mono, monospace);
 }
 .pxf-help-content b { color: #eee; }
 .pxf-help-footer {
-  padding: 12px 18px; border-top: 1px solid #2a2a2a;
+  padding: 10px 20px; border-top: 1px solid #2a2a2a;
   font-size: 10px; color: #666; text-align: center; line-height: 1.6;
+  flex-shrink: 0;
 }
 .pxf-help-footer a { color: var(--pxf-accent); text-decoration: none; }
 .pxf-help-footer a:hover { text-decoration: underline; }

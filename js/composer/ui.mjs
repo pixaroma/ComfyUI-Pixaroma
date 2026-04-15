@@ -342,29 +342,67 @@ export class PixaromaUI {
         layout.setZoomLabel(Math.round(core.viewZoom * 100) + "%");
       },
       helpContent: `
-                <b>Canvas Navigation</b><br>
-                &bull; <b>Space + Drag</b> or <b>Middle-Click</b> to Pan.<br>
-                &bull; <b>Scroll Wheel</b> to Zoom In/Out.<br><br>
-                <b>Selection</b><br>
-                &bull; Click any layer on canvas or in the Layers panel to select it.<br>
-                &bull; <b>Shift / Ctrl + Click</b> to multi-select.<br>
-                &bull; <b>Alt + Drag</b> to duplicate a layer.<br>
-                &bull; <b>Drag Corners</b> to scale uniformly.<br><br>
-                <b>Eraser</b><br>
-                &bull; Select a layer first, then click <b>Enable Eraser</b> (or press <kbd>E</kbd>).<br>
-                &bull; Press <kbd>E</kbd> again (or click the button) to switch back to Select.<br>
-                &bull; <b>Reset Mask</b> fully restores the layer's original pixels.<br><br>
-                <b>Keyboard Shortcuts</b><br>
-                &bull; <kbd>E</kbd>: Toggle Eraser on/off<br>
-                &bull; <kbd>V</kbd>: Return to Select mode<br>
-                &bull; <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Y</kbd>: Undo / Redo<br>
-                &bull; <kbd>Delete</kbd>: Remove selected layer(s)<br><br>
-                <b>Layers Panel</b><br>
-                &bull; Click to select, <b>Ctrl+Click</b> for multi-select.<br>
-                &bull; <b>Double-click</b> name to rename.<br>
-                &bull; <b>Drag</b> to reorder layers.<br>
-                &bull; Use <b>\u25b2/\u25bc</b> buttons to move up/down.
-            `,
+<div class="pxf-help-section">
+  <h4>Canvas Navigation</h4>
+  <div class="pxf-help-grid">
+    <b>Space+drag</b><span>Pan the canvas</span>
+    <b>Middle-click</b><span>Pan the canvas</span>
+    <b>Scroll wheel</b><span>Zoom in / out at cursor</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Selection</h4>
+  <div class="pxf-help-grid">
+    <b>Click</b><span>Select a layer (canvas or panel)</span>
+    <b>Shift+click</b><span>Add / remove from multi-selection</span>
+    <b>Ctrl+click</b><span>Add / remove from multi-selection</span>
+    <b>Alt+drag</b><span>Duplicate the layer while moving</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Transform</h4>
+  <div class="pxf-help-grid">
+    <b>Drag layer</b><span>Move</span>
+    <b>Drag corners</b><span>Scale uniformly</span>
+    <b>Drag edges</b><span>Scale single axis</span>
+    <b>Drag outside</b><span>Rotate (Shift = snap 15°)</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Align &amp; Distribute</h4>
+  <div class="pxf-help-grid">
+    <b>2+ layers</b><span>Enables Align buttons in the titlebar</span>
+    <b>3+ layers</b><span>Enables Distribute buttons</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Eraser</h4>
+  <div class="pxf-help-grid">
+    <b>E</b><span>Toggle eraser on / off</span>
+    <b>V</b><span>Return to select mode</span>
+    <b>Enable Eraser</b><span>Select a layer first, then click the button</span>
+    <b>Reset Mask</b><span>Restore the layer's original pixels</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Layers Panel</h4>
+  <div class="pxf-help-grid">
+    <b>Click</b><span>Select layer</span>
+    <b>Ctrl+click</b><span>Multi-select</span>
+    <b>Double-click</b><span>Rename layer</span>
+    <b>Drag</b><span>Reorder layers</span>
+    <b>▲ / ▼</b><span>Move layer up / down</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>General</h4>
+  <div class="pxf-help-grid">
+    <b>Ctrl+Z</b><span>Undo</span>
+    <b>Ctrl+Y</b><span>Redo</span>
+    <b>Delete</b><span>Remove selected layer(s)</span>
+    <b>Ctrl+S</b><span>Save</span>
+  </div>
+</div>`,
     });
 
     core._layout = layout;

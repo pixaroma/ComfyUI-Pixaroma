@@ -283,48 +283,80 @@ export class PaintStudio {
   _buildModal() {
     // ── Create editor layout using the shared framework ──
     const helpHTML = `
-<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 12px;color:#ccc;font-size:10px;">
-<b style="color:#f66744;">--- Tools ---</b><span></span>
-<b>B</b><span>Brush — soft-edge paint</span>
-<b>P</b><span>Pencil — hard-edge precise drawing</span>
-<b>E</b><span>Eraser — erase pixels on active layer</span>
-<b>G</b><span>Fill bucket — flood fill area</span>
-<b>I</b><span>Eyedropper — sample color from canvas</span>
-<b>R</b><span>Smudge — blend/smear pixels</span>
-<b>U</b><span>Shape tool — rectangle, ellipse, line, triangle, polygon</span>
-<b>V / T</b><span>Move/Transform — move, scale, rotate, flip layer</span>
-<b style="color:#f66744;">--- Brush ---</b><span></span>
-<b>[ / ]</b><span>Brush size \u00b12px (Shift = \u00b110px)</span>
-<b>Alt+drag</b><span>Temp eyedropper while painting</span>
-<b>Shift+click</b><span>Draw straight line from last point</span>
-<b style="color:#f66744;">--- Transform ---</b><span></span>
-<b>Drag inside</b><span>Move layer(s)</span>
-<b>Corner handles</b><span>Scale (uniform)</span>
-<b>Top circle</b><span>Rotate (Shift = snap 15\u00b0)</span>
-<b>Center dot</b><span>Move pivot point</span>
-<b>Enter</b><span>Apply (bake) transform</span>
-<b>Esc</b><span>Reset transform to identity</span>
-<b style="color:#f66744;">--- Selection ---</b><span></span>
-<b>Click canvas</b><span>Select topmost layer at pixel</span>
-<b>Ctrl+click</b><span>Add/remove layer from multi-selection</span>
-<b>Ctrl+A</b><span>Select all layers</span>
-<b style="color:#f66744;">--- General ---</b><span></span>
-<b>X</b><span>Swap foreground/background colors</span>
-<b>D</b><span>Reset to Black/White</span>
-<b>Ctrl+Z</b><span>Undo</span>
-<b>Ctrl+Shift+Z / Ctrl+Y</b><span>Redo</span>
-<b>Ctrl+D</b><span>Duplicate layer</span>
-<b>Ctrl+S</b><span>Save & close</span>
-<b>Space+drag</b><span>Pan canvas</span>
-<b>Scroll wheel</b><span>Zoom in/out at cursor</span>
-<b>Ctrl+scroll</b><span>Pan vertically</span>
-<b>Delete</b><span>Clear active layer pixels</span>
-<b>?</b><span>Toggle this help</span>
+<div class="pxf-help-section">
+  <h4>Tools</h4>
+  <div class="pxf-help-grid">
+    <b>B</b><span>Brush — soft-edge paint</span>
+    <b>P</b><span>Pencil — hard-edge pixel drawing</span>
+    <b>E</b><span>Eraser — erase on active layer</span>
+    <b>G</b><span>Fill bucket — flood fill</span>
+    <b>I</b><span>Eyedropper — sample color</span>
+    <b>R</b><span>Smudge — blend / smear pixels</span>
+    <b>U</b><span>Shape — rectangle / ellipse / line / polygon</span>
+    <b>V / T</b><span>Move / Transform layer</span>
+  </div>
 </div>
-<div style="color:#888;font-size:9px;margin-top:8px;border-top:1px solid #333;padding-top:6px;">
-Layers: click in panel to select, Ctrl+click for multi-select, drag to reorder, double-click to rename<br>
-Multi-move: select multiple layers with Ctrl+click, then drag to move them all together<br>
-Blend modes: Normal, Multiply, Screen, Overlay, Soft/Hard Light, Color Dodge/Burn, and more
+<div class="pxf-help-section">
+  <h4>Brush Control</h4>
+  <div class="pxf-help-grid">
+    <b>[ / ]</b><span>Brush size ±2 px (Shift = ±10 px)</span>
+    <b>Alt+drag</b><span>Temporary eyedropper while painting</span>
+    <b>Shift+click</b><span>Straight line from last paint point</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Transform Tool</h4>
+  <div class="pxf-help-grid">
+    <b>Drag inside</b><span>Move selected layer(s)</span>
+    <b>Corner handles</b><span>Scale uniformly</span>
+    <b>Top circle</b><span>Rotate (Shift = snap 15°)</span>
+    <b>Center dot</b><span>Move pivot point</span>
+    <b>Enter</b><span>Apply (bake) transform</span>
+    <b>Esc</b><span>Reset transform to identity</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Selection</h4>
+  <div class="pxf-help-grid">
+    <b>Click canvas</b><span>Select topmost layer at pixel</span>
+    <b>Ctrl+click</b><span>Add / remove from multi-selection</span>
+    <b>Ctrl+A</b><span>Select all layers</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Layers</h4>
+  <div class="pxf-help-grid">
+    <b>Click</b><span>Select layer</span>
+    <b>Ctrl+click</b><span>Multi-select layers</span>
+    <b>Drag</b><span>Reorder layers</span>
+    <b>Double-click</b><span>Rename layer</span>
+    <b>Ctrl+D</b><span>Duplicate layer</span>
+    <b>Delete</b><span>Clear active layer pixels</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Colors</h4>
+  <div class="pxf-help-grid">
+    <b>X</b><span>Swap foreground / background</span>
+    <b>D</b><span>Reset to black / white</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>View &amp; Canvas</h4>
+  <div class="pxf-help-grid">
+    <b>Space+drag</b><span>Pan canvas</span>
+    <b>Scroll wheel</b><span>Zoom in / out at cursor</span>
+    <b>Ctrl+scroll</b><span>Pan vertically</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>General</h4>
+  <div class="pxf-help-grid">
+    <b>Ctrl+Z</b><span>Undo</span>
+    <b>Ctrl+Shift+Z / Ctrl+Y</b><span>Redo</span>
+    <b>Ctrl+S</b><span>Save</span>
+    <b>?</b><span>Toggle this help</span>
+  </div>
 </div>`;
 
     const layout = createEditorLayout({

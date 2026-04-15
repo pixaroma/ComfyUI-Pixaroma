@@ -223,37 +223,80 @@ export class Pixaroma3DEditor {
 
   _buildUI() {
     const helpHTML = `
-<div style="display:grid;grid-template-columns:auto 1fr;gap:3px 14px;color:#ccc;font-size:11px;">
-<b style="color:#f66744;">Navigation</b><span></span>
-<b>Left drag</b><span>Orbit camera</span>
-<b>Right drag</b><span>Pan camera</span>
-<b>Scroll</b><span>Zoom</span>
-<b style="color:#f66744;">Camera Views</b><span></span>
-<b>1</b><span>Front view</span>
-<b>2</b><span>Right side view</span>
-<b>3</b><span>Back view</span>
-<b>4</b><span>Top view</span>
-<b>5</b><span>Perspective camera</span>
-<b>6</b><span>Isometric camera</span>
-<b>7</b><span>Left side view</span>
-<b>0</b><span>Focus on selected object</span>
-<b style="color:#f66744;">Transform</b><span></span>
-<b>M</b><span>Move tool</span>
-<b>R</b><span>Rotate tool</span>
-<b>S</b><span>Scale tool</span>
-<b style="color:#f66744;">Selection</b><span></span>
-<b>Click</b><span>Select object</span>
-<b>Shift+Click</b><span>Multi-select</span>
-<b>Ctrl+A</b><span>Select all</span>
-<b style="color:#f66744;">Actions</b><span></span>
-<b>Ctrl+D</b><span>Duplicate</span>
-<b>Delete</b><span>Delete selected</span>
-<b>Ctrl+Z / Y</b><span>Undo / Redo</span>
-<b>Ctrl+S</b><span>Save</span>
-<b style="color:#f66744;">Layers</b><span></span>
-<b>Drag layers</b><span>Reorder</span>
-<b>Double-click</b><span>Rename</span>
-<b>Lock icon</b><span>Prevent transforms</span>
+<div class="pxf-help-section">
+  <h4>Navigation</h4>
+  <div class="pxf-help-grid">
+    <b>Left drag</b><span>Orbit camera around target</span>
+    <b>Right drag</b><span>Pan camera</span>
+    <b>Scroll wheel</b><span>Zoom in / out</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Camera Views</h4>
+  <div class="pxf-help-grid">
+    <b>1</b><span>Front view</span>
+    <b>2</b><span>Right side view</span>
+    <b>3</b><span>Back view</span>
+    <b>4</b><span>Top view</span>
+    <b>5</b><span>Perspective (3/4 angle)</span>
+    <b>6</b><span>Isometric (orthographic)</span>
+    <b>7</b><span>Left side view</span>
+    <b>0</b><span>Focus on selected object</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Transform Tools</h4>
+  <div class="pxf-help-grid">
+    <b>M</b><span>Move tool (translate along X/Y/Z)</span>
+    <b>R</b><span>Rotate tool (around X/Y/Z)</span>
+    <b>S</b><span>Scale tool (per-axis or uniform)</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Selection</h4>
+  <div class="pxf-help-grid">
+    <b>Click</b><span>Select object under cursor</span>
+    <b>Shift+Click</b><span>Add / remove from multi-selection</span>
+    <b>Ctrl+A</b><span>Select all unlocked objects</span>
+    <b>Esc</b><span>Deselect all</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Align &amp; Distribute</h4>
+  <div class="pxf-help-grid">
+    <b>2+ objects</b><span>Enables the Align buttons in the titlebar</span>
+    <b>3+ objects</b><span>Enables Distribute buttons</span>
+    <b>X / Y / Z</b><span>Each axis group has Min / Center / Max</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Actions</h4>
+  <div class="pxf-help-grid">
+    <b>Ctrl+D</b><span>Duplicate selected</span>
+    <b>Delete</b><span>Delete selected</span>
+    <b>Ctrl+Z</b><span>Undo</span>
+    <b>Ctrl+Y</b><span>Redo</span>
+    <b>Ctrl+S</b><span>Save scene</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Layers Panel</h4>
+  <div class="pxf-help-grid">
+    <b>Click</b><span>Select layer</span>
+    <b>Drag</b><span>Reorder layers</span>
+    <b>Double-click</b><span>Rename layer</span>
+    <b>Eye icon</b><span>Toggle visibility</span>
+    <b>Lock icon</b><span>Prevent transforms / edits</span>
+    <b>Drop icon</b><span>Drop object to floor (y = 0)</span>
+  </div>
+</div>
+<div class="pxf-help-section">
+  <h4>Viewport</h4>
+  <div class="pxf-help-grid">
+    <b>Show Grid</b><span>Toggle the ground grid</span>
+    <b>Show Gizmo</b><span>Toggle the transform gizmo</span>
+    <b>Show Axes</b><span>Toggle the corner X/Y/Z indicator</span>
+  </div>
 </div>`;
 
     const layout = createEditorLayout({
