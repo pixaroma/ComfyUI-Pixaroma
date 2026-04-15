@@ -561,12 +561,18 @@ proto._updateToolOptions = function () {
       const sc = mkRange(0, 100, this.brush.scatter, (v) => (this.brush.scatter = v));
       add("Scatter", sc.range);
       bar.appendChild(sc.num);
+      // Angle is handcrafted (signed -180..180 range + bidirectional
+      // link between slider and number input) so it can't use mkRange.
+      // But the style MUST match the mkRange sliders' inline flex
+      // declaration — otherwise Chrome grows the angle slider to
+      // consume the remaining flex space, making it visibly much
+      // longer than Size / Opacity / Spacing / Scatter / etc.
       const angSlide = document.createElement("input");
       angSlide.type = "range";
       angSlide.min = -180;
       angSlide.max = 180;
       angSlide.value = this.brush.angle;
-      angSlide.style.cssText = "width:60px;cursor:pointer;flex-shrink:0;";
+      angSlide.style.cssText = "width:100px;max-width:100px;flex:0 0 auto;cursor:pointer;";
       const angN = document.createElement("input");
       angN.type = "number";
       angN.min = -180;
