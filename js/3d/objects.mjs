@@ -325,6 +325,82 @@ Pixaroma3DEditor.prototype._dropToFloor = function () {
   this._updateShadowFrustum?.();
 };
 
+// ─── Align & Distribute ─────────────────────────────────────
+// Operates on the multi-selection. Each object's world-space AABB is
+// measured with precise=true so rotated objects align by their actual
+// silhouette, not a loose rotated-box approximation. Locked objects
+// are skipped. Single-select or zero-select = no-op (needs 2+ to align
+// and 3+ to distribute meaningfully).
+Pixaroma3DEditor.prototype._alignSelected = function (axis, mode) {
+  const THREE = getTHREE();
+  const ax = axis.toLowerCase();
+  if (!["x", "y", "z"].includes(ax)) return;
+  if (!["min", "center", "max"].includes(mode)) return;
+  const movable = [...this.selectedObjs].filter((o) => !o.userData.locked);
+  if (movable.length < 2) {
+    this._setStatus?.("Align: select 2+ objects first");
+    return;
+  }
+
+  const bounds = movable.map((o) => {
+    o.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(o, true);
+    return { obj: o, min: bb.min[ax], max: bb.max[ax] };
+  });
+  const globalMin = Math.min(...bounds.map((b) => b.min));
+  const globalMax = Math.max(...bounds.map((b) => b.max));
+  const globalCenter = (globalMin + globalMax) / 2;
+
+  this._pushUndo();
+  for (const b of bounds) {
+    let delta = 0;
+    if (mode === "min") delta = globalMin - b.min;
+    else if (mode === "max") delta = globalMax - b.max;
+    else if (mode === "center") delta = globalCenter - (b.min + b.max) / 2;
+    b.obj.position[ax] += delta;
+  }
+  this._updateTransformSliders?.();
+  this._updateShadowFrustum?.();
+  this._syncProps?.();
+  // Human-readable feedback. Uses the same min/center/max words as
+  // the tooltip so the user can confirm the exact action.
+  const label = { min: "Min", center: "Center", max: "Max" }[mode];
+  this._setStatus?.(
+    `Aligned ${movable.length} objects to ${axis} ${label}`,
+  );
+};
+
+// Distribute: evenly space the selected objects' centers along an axis.
+// The two extremes (lowest and highest center on that axis) stay put,
+// and the middle objects slide to equal spacing between them. Needs
+// 3+ objects — with fewer it's already distributed (or degenerate).
+Pixaroma3DEditor.prototype._distributeSelected = function (axis) {
+  const THREE = getTHREE();
+  const ax = axis.toLowerCase();
+  if (!["x", "y", "z"].includes(ax)) return;
+  const movable = [...this.selectedObjs].filter((o) => !o.userData.locked);
+  if (movable.length < 3) return;
+
+  const bounds = movable.map((o) => {
+    o.updateMatrixWorld(true);
+    const bb = new THREE.Box3().setFromObject(o, true);
+    return { obj: o, center: (bb.min[ax] + bb.max[ax]) / 2 };
+  });
+  bounds.sort((a, b) => a.center - b.center);
+  const first = bounds[0].center;
+  const last = bounds[bounds.length - 1].center;
+  const step = (last - first) / (bounds.length - 1);
+
+  this._pushUndo();
+  for (let i = 1; i < bounds.length - 1; i++) {
+    const target = first + step * i;
+    bounds[i].obj.position[ax] += target - bounds[i].center;
+  }
+  this._updateTransformSliders?.();
+  this._updateShadowFrustum?.();
+  this._syncProps?.();
+};
+
 Pixaroma3DEditor.prototype._select = function (mesh, additive) {
   if (!additive) this.selectedObjs.clear();
   if (mesh) {
@@ -346,6 +422,8 @@ Pixaroma3DEditor.prototype._select = function (mesh, additive) {
   this._updateLayers();
   this._syncOutlineSelection();
   if (this._rebuildShapePanel) this._rebuildShapePanel();
+  // Align/distribute bar depends on how many objects are selected.
+  this._updateAlignButtons?.();
 };
 
 Pixaroma3DEditor.prototype._setObjColor = function (hex) {
