@@ -70,7 +70,17 @@ python.exe -m pip install rembg
 # Standard Installation
 pip install rembg
 ```
-*Note: The ~170MB model will download automatically upon first use to `ComfyUI/models/rembg/`.*
+
+Once installed, the panel's **Model** dropdown shows what's available in your rembg version:
+
+| Option | Model | Size | Notes |
+|--------|-------|------|-------|
+| **Auto (recommended)** | picks the best available | — | tries BiRefNet → isnet → u2net |
+| **Fast** | `u2net` | ~176 MB | works on any rembg install |
+| **Balanced** | `isnet-general-use` | ~170 MB | cleaner edges, needs rembg 2.0.27+ |
+| **Best** | `birefnet-general` | ~900 MB | highest quality, needs rembg 2.0.56+ |
+
+Models download automatically on first use to `ComfyUI/models/rembg/`. Options requiring a newer `rembg` are shown greyed out with the minimum version needed — upgrade with `python.exe -m pip install -U rembg` to unlock them.
 
 ---
 

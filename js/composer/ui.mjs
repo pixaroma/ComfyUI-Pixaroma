@@ -1048,13 +1048,19 @@ export class PixaromaUI {
     core.removeBgBtn.style.pointerEvents = "none";
     bgRemovalPanel.content.appendChild(core.removeBgBtn);
 
-    // Quality dropdown
+    // Model dropdown — starts with a conservative default set (works
+    // even before the /remove_bg_info call comes back). The list is
+    // replaced with the real server-reported catalog once the info
+    // request resolves (models greyed if not available, annotated
+    // with size, ✓ if already downloaded).
     const bgQualitySelect = createSelectInput({
       options: [
-        { value: "normal", label: "Normal" },
-        { value: "high", label: "High" },
+        { value: "auto", label: "Auto (recommended)" },
+        { value: "u2net", label: "Fast" },
+        { value: "isnet-general-use", label: "Balanced" },
+        { value: "birefnet-general", label: "Best" },
       ],
-      value: "normal",
+      value: "auto",
       onChange: (val) => {
         core._bgRemovalQuality = val;
         const firstId = Array.from(core.selectedLayerIds)[0];
@@ -1066,10 +1072,74 @@ export class PixaromaUI {
       },
     });
     bgQualitySelect.style.width = "100%";
-    const bgQualityRow = createRow("AI Quality", bgQualitySelect, { labelWidth: "80px" });
+    const bgQualityRow = createRow("Model", bgQualitySelect, { labelWidth: "80px" });
     core._bgQualityRow = bgQualityRow;
     core._bgQualitySelect = bgQualitySelect;
     bgRemovalPanel.content.appendChild(bgQualityRow);
+
+    // Status line — tells the user if rembg is installed, which version,
+    // and gives a quick hint about what the selected model will do on
+    // first use (download size). Populated by _refreshRembgInfo() below.
+    const bgStatusLine = document.createElement("div");
+    bgStatusLine.style.cssText =
+      "font-size:10px;color:#888;margin:4px 2px 2px;line-height:1.4;";
+    bgStatusLine.textContent = "Checking rembg installation...";
+    bgRemovalPanel.content.appendChild(bgStatusLine);
+    core._bgStatusLine = bgStatusLine;
+
+    // Async: fetch real model catalog from the server and refresh
+    // the dropdown + status line with proper labels & availability.
+    PixaromaAPI.removeBgInfo().then((info) => {
+      core._rembgInfo = info;
+      if (!info.rembgInstalled) {
+        bgStatusLine.innerHTML =
+          '<span style="color:#e57">✗ rembg not installed</span> — ' +
+          'run <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code> ' +
+          'in ComfyUI\'s python_embeded folder, then restart ComfyUI.';
+        // Grey out all controls so the user can't click into an error.
+        core.removeBgBtn.style.opacity = "0.3";
+        core.removeBgBtn.style.pointerEvents = "none";
+        bgQualitySelect.disabled = true;
+        return;
+      }
+
+      // Rebuild dropdown with real model names + annotations.
+      const models = Array.isArray(info.models) ? info.models : [];
+      bgQualitySelect.innerHTML = "";
+      for (const m of models) {
+        const opt = document.createElement("option");
+        opt.value = m.id;
+        let label = m.label;
+        if (m.id !== "auto") {
+          // Annotate real models with size + downloaded mark so the
+          // user knows what a first click will cost.
+          const parts = [];
+          if (m.sizeMB) parts.push(`${m.sizeMB} MB`);
+          if (m.downloaded) parts.push("✓ downloaded");
+          else if (m.available) parts.push("will download");
+          if (parts.length) label += ` — ${parts.join(", ")}`;
+        }
+        opt.textContent = label;
+        opt.disabled = !m.available;
+        if (!m.available) opt.title = `Needs rembg ${m.minRembg}+ (you have ${info.rembgVersion || "unknown"})`;
+        bgQualitySelect.appendChild(opt);
+      }
+      // Preserve existing selection if it's still a valid option,
+      // otherwise fall back to auto.
+      const current = core._bgRemovalQuality || "auto";
+      const hasCurrent = models.some((m) => m.id === current && m.available);
+      bgQualitySelect.value = hasCurrent ? current : "auto";
+
+      // Status line — green check + version + dir
+      const firstMissing = models.find((m) => m.available && !m.downloaded && m.id !== "auto");
+      const hint = firstMissing
+        ? `First use of a new model will download to <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>.`
+        : `Models: <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>`;
+      bgStatusLine.innerHTML =
+        `<span style="color:#4a7">✓ rembg ${info.rembgVersion || ""}</span> · ${hint}`;
+    }).catch(() => {
+      bgStatusLine.textContent = "Couldn't query rembg status — backend unreachable.";
+    });
 
     // Auto Remove BG checkbox
     const autoBgRow = document.createElement("label");

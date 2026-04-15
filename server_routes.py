@@ -321,6 +321,83 @@ async def upload_crop_source(request):
     return web.json_response({"status": "success", "path": relative_path})
 
 
+# Canonical list of bg-removal models shown in the Image Composer
+# dropdown. Each entry carries:
+#   id      — rembg session name (also dropdown `value`)
+#   label   — human-friendly name the user sees
+#   hint    — short description shown under the name
+#   sizeMB  — approximate download size
+#   minRembg — "0" means always; otherwise SemVer gate checked by info
+# `auto` is a virtual option; the server picks the best available.
+REMBG_MODELS = [
+    {"id": "auto",              "label": "Auto (recommended)", "hint": "Picks the best available model",   "sizeMB": 0,   "minRembg": "0"},
+    {"id": "u2net",             "label": "Fast",               "hint": "Works on any rembg install (u2net)", "sizeMB": 176, "minRembg": "0"},
+    {"id": "isnet-general-use", "label": "Balanced",           "hint": "Cleaner edges than u2net (isnet)",   "sizeMB": 170, "minRembg": "2.0.27"},
+    {"id": "birefnet-general",  "label": "Best",               "hint": "Highest quality, large (BiRefNet)",  "sizeMB": 900, "minRembg": "2.0.56"},
+]
+
+# Fallback chain used by "auto" — tries best first.
+_AUTO_ORDER = ("birefnet-general", "isnet-general-use", "u2net")
+
+
+def _version_tuple(v):
+    """Convert '2.0.56' → (2, 0, 56). Unknown pieces become 0."""
+    out = []
+    for part in (v or "0").split("."):
+        try:
+            out.append(int("".join(ch for ch in part if ch.isdigit()) or "0"))
+        except Exception:
+            out.append(0)
+    while len(out) < 3:
+        out.append(0)
+    return tuple(out[:3])
+
+
+@PromptServer.instance.routes.get("/pixaroma/remove_bg_info")
+async def remove_bg_info(request):
+    """Tells the frontend what's installed and what's downloadable.
+
+    Lets the Image Composer dropdown show real model names, mark the
+    ones already on disk (no download wait), and gray out options that
+    need a newer rembg version."""
+    info = {
+        "rembgInstalled": False,
+        "rembgVersion": None,
+        "modelDir": REMBG_MODELS_DIR,
+        "models": [],
+    }
+    try:
+        import rembg  # noqa: F401
+        info["rembgInstalled"] = True
+        info["rembgVersion"] = getattr(rembg, "__version__", "unknown")
+    except ImportError:
+        # Still return the model catalog so the UI can show greyed
+        # entries with the "install rembg" hint.
+        info["models"] = [dict(m, available=False, downloaded=False) for m in REMBG_MODELS]
+        return web.json_response(info)
+
+    # Which model files already exist on disk — saves the download wait
+    # on first use. rembg typically names files "<id>.onnx".
+    downloaded_ids = set()
+    try:
+        if os.path.isdir(REMBG_MODELS_DIR):
+            files = os.listdir(REMBG_MODELS_DIR)
+            for m in REMBG_MODELS:
+                if any(f.startswith(m["id"]) and f.endswith(".onnx") for f in files):
+                    downloaded_ids.add(m["id"])
+    except Exception:
+        pass
+
+    installed_ver = _version_tuple(info["rembgVersion"])
+    out_models = []
+    for m in REMBG_MODELS:
+        req = _version_tuple(m["minRembg"])
+        available = installed_ver >= req
+        out_models.append(dict(m, available=available, downloaded=m["id"] in downloaded_ids))
+    info["models"] = out_models
+    return web.json_response(info)
+
+
 @PromptServer.instance.routes.post("/pixaroma/remove_bg")
 async def remove_bg(request):
     try:
@@ -333,7 +410,11 @@ async def remove_bg(request):
 
     data = await request.json()
     b64_data = data.get("image", "")
-    quality = data.get("quality", "normal")
+    # Accept the new explicit `model` field; fall back to legacy `quality`
+    # ("normal"/"high") so old clients keep working.
+    model = data.get("model") or data.get("quality") or "auto"
+    legacy_map = {"normal": "isnet-general-use", "high": "birefnet-general"}
+    model = legacy_map.get(model, model)
 
     if b64_data.startswith("data:image"):
         b64_data = b64_data.split(",", 1)[1]
@@ -341,51 +422,42 @@ async def remove_bg(request):
     if len(b64_data) > _MAX_B64_BYTES:
         return web.json_response({"error": "Image too large"}, status=413)
 
-    # Model selection — try better models first, fall back to basics.
-    # `briarmbg` was an incorrect name (no such session class in rembg)
-    # and always errored into u2net, which gave poor edges on products.
-    #
-    # Normal  → u2net (fast, decent)
-    # High    → isnet-general-use (noticeably better edges, still small)
-    # BiRefNet models (birefnet-general) are highest quality but heavy
-    # and may not be in all rembg versions, so we try it first and
-    # fall back gracefully.
-    def _open_session(q):
-        if q == "high":
-            for name in ("birefnet-general", "isnet-general-use", "u2net"):
-                try:
-                    s = new_session(name)
-                    print(f"[Pixaroma] AI Remove Background: using model '{name}' (high quality)")
-                    return s
-                except Exception as e:
-                    print(f"[Pixaroma] model '{name}' not available: {e}")
-            raise RuntimeError("No rembg model could be loaded")
-        # normal
-        for name in ("isnet-general-use", "u2net"):
+    # _open_session tries the requested model, then falls back through
+    # the auto chain if it isn't available. Returns (session, model_used)
+    # so the client can surface the real model name to the user.
+    def _open_session(requested):
+        tried = []
+        order = list(_AUTO_ORDER) if requested == "auto" else [requested] + [n for n in _AUTO_ORDER if n != requested]
+        last_err = None
+        for name in order:
             try:
                 s = new_session(name)
-                print(f"[Pixaroma] AI Remove Background: using model '{name}' (normal quality)")
-                return s
+                print(f"[Pixaroma] AI Remove Background: using model '{name}'")
+                return s, name
             except Exception as e:
+                last_err = e
+                tried.append(name)
                 print(f"[Pixaroma] model '{name}' not available: {e}")
-        raise RuntimeError("No rembg model could be loaded")
+        raise RuntimeError(f"No rembg model could be loaded (tried {tried}): {last_err}")
 
     try:
-        session = _open_session(quality)
+        session, model_used = _open_session(model)
 
         input_data = base64.b64decode(b64_data)
         input_image = Image.open(io.BytesIO(input_data))
-        print(f"[Pixaroma] AI Remove Background: processing {input_image.size[0]}x{input_image.size[1]} image...")
+        print(f"[Pixaroma] AI Remove Background: processing {input_image.size[0]}x{input_image.size[1]} image with '{model_used}'...")
         output_image = remove(input_image, session=session)
 
         buffered = io.BytesIO()
         output_image.save(buffered, format="PNG")
         output_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        print(f"[Pixaroma] AI Remove Background: done")
+        print(f"[Pixaroma] AI Remove Background: done ({model_used})")
 
-        return web.json_response(
-            {"status": "success", "image": f"data:image/png;base64,{output_b64}"}
-        )
+        return web.json_response({
+            "status": "success",
+            "image": f"data:image/png;base64,{output_b64}",
+            "modelUsed": model_used,
+        })
     except Exception as e:
         print(f"[Pixaroma] AI Remove Background: failed - {e}")
-        return web.json_response({"error": "Background removal failed"}, status=500)
+        return web.json_response({"error": f"Background removal failed: {e}"}, status=500)

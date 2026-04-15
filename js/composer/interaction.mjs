@@ -579,7 +579,9 @@ PixaromaEditor.prototype.attachEvents = function () {
     try {
       const data = await PixaromaAPI.removeBg(
         tempCanvas.toDataURL("image/png"),
-        layer.bgRemovalQuality || this._bgRemovalQuality || "normal",
+        // Prefer per-layer model choice, then the panel selection,
+        // then fall back to auto (server picks best).
+        layer.bgRemovalQuality || this._bgRemovalQuality || "auto",
       );
       if (data.code === "REMBG_MISSING") {
         if (this._layout)
@@ -615,9 +617,13 @@ PixaromaEditor.prototype.attachEvents = function () {
           layer.savedOnServer = false;
           this.draw();
           this.pushHistory();
+          // Surface the real model name the server used — on "auto"
+          // this tells the user whether BiRefNet / isnet / u2net won
+          // the fallback chain, so they know what quality to expect.
+          const used = data.modelUsed ? ` (${data.modelUsed})` : "";
           if (this._layout)
-            this._layout.setStatus("Background removed successfully");
-          console.log("[Pixaroma] AI Remove Background: done");
+            this._layout.setStatus("Background removed" + used);
+          console.log("[Pixaroma] AI Remove Background: done" + used);
         };
         newImg.src = data.image;
       }

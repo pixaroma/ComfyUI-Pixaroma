@@ -1,8 +1,8 @@
 {
   "id": "80ceab5b-a0d7-438e-b586-d713da768a19",
   "revision": 0,
-  "last_node_id": 4,
-  "last_link_id": 3,
+  "last_node_id": 5,
+  "last_link_id": 4,
   "nodes": [
     {
       "id": 2,
@@ -22,7 +22,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 3
+          "link": 4
         }
       ],
       "outputs": [],
@@ -34,15 +34,15 @@
       "widgets_values": []
     },
     {
-      "id": 4,
+      "id": 5,
       "type": "PixaromaCrop",
       "pos": [
-        542.8879680509788,
-        405.5335588180974
+        648.487968050979,
+        406.2668809616521
       ],
       "size": [
-        400,
-        310
+        300,
+        300
       ],
       "flags": {},
       "order": 0,
@@ -50,36 +50,40 @@
       "inputs": [],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
-            3
+            4
           ]
         },
         {
-          "name": "WIDTH",
+          "name": "width",
           "type": "INT",
           "links": null
         },
         {
-          "name": "HEIGHT",
+          "name": "height",
           "type": "INT",
           "links": null
         }
       ],
       "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "69d6a57404dc8bddaa588b6bdd5fbf63c5b69535",
         "Node name for S&R": "PixaromaCrop"
       },
       "widgets_values": [
-        "{}",
-        null
+        null,
+        {
+          "crop_json": "{}"
+        }
       ]
     }
   ],
   "links": [
     [
-      3,
       4,
+      5,
       0,
       2,
       0,
@@ -90,13 +94,13 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 0.9090909090909091,
+      "scale": 1.4641000000000006,
       "offset": [
-        -22.187009084079087,
-        -186.88529700354863
+        -500.0455420031937,
+        -283.4530242642699
       ]
     },
-    "frontendVersion": "1.41.21",
+    "frontendVersion": "1.42.10",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
