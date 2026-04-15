@@ -13,6 +13,10 @@ import {
   createSelectInput,
   createRow,
 } from "../framework/index.mjs";
+// PixaromaAPI is used below to query rembg install status when the
+// AI Background Removal panel builds. Without this import the whole
+// right sidebar fails to build and the editor won't open.
+import { PixaromaAPI } from "./api.mjs";
 
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
 const COMPOSER_STYLE_ID = "pixaroma-composer-styles";
