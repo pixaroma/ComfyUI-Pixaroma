@@ -25,6 +25,8 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
     // Studio Lighting checkbox state — default ON if key is missing
     // on restore (preserves pre-v2 scene look).
     studioLighting: this._studioEnvOn !== false,
+    // Axis orientation HUD checkbox — default ON.
+    showAxes: this._axisHud ? this._axisHud.visible !== false : true,
     objects: this.objects.map((o) => {
       const base = {
         id: o.userData.id,
@@ -163,6 +165,11 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
       this._studioEnvOn = false;
       if (this.el.studioCheck) this.el.studioCheck.checked = false;
       if (this.scene) this.scene.environment = null;
+    }
+    // Restore axis HUD visibility (defaults to ON if the key is missing).
+    if (d.showAxes === false) {
+      if (this._axisHud) this._axisHud.visible = false;
+      if (this.el.axesCheck) this.el.axesCheck.checked = false;
     }
     if (d.project_id) this.projectId = d.project_id;
     this._updateFrame();
