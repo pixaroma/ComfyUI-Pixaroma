@@ -263,6 +263,13 @@ export class PaintStudio {
     this._updateColorUI();
     this._updateToolOptions();
     this._updateDocProps();
+    // Apply the cursor styles for the current tool. Constructor sets
+    // `this.tool = "brush"` but `_setTool()` (which hides the OS cursor
+    // on the canvas so the custom ring preview can show) only runs on
+    // a tool-button click. Without this call, the fresh-opened Paint
+    // studio shows the default OS arrow over the canvas and no brush
+    // ring preview until the user clicks a tool button.
+    this._restoreToolCursor();
   }
 
   _close() {
