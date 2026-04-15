@@ -1,8 +1,8 @@
 {
   "id": "80ceab5b-a0d7-438e-b586-d713da768a19",
   "revision": 0,
-  "last_node_id": 3,
-  "last_link_id": 2,
+  "last_node_id": 4,
+  "last_link_id": 3,
   "nodes": [
     {
       "id": 2,
@@ -22,7 +22,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 2
+          "link": 3
         }
       ],
       "outputs": [],
@@ -34,15 +34,15 @@
       "widgets_values": []
     },
     {
-      "id": 3,
+      "id": 4,
       "type": "PixaromaImageComposition",
       "pos": [
-        555.6813083437902,
-        405.5335588180974
+        651.5490769388317,
+        406.6354955997992
       ],
       "size": [
-        400,
-        310
+        300,
+        300
       ],
       "flags": {},
       "order": 0,
@@ -50,36 +50,40 @@
       "inputs": [],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
-            2
+            3
           ]
         },
         {
-          "name": "WIDTH",
+          "name": "width",
           "type": "INT",
           "links": null
         },
         {
-          "name": "HEIGHT",
+          "name": "height",
           "type": "INT",
           "links": null
         }
       ],
       "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "69d6a57404dc8bddaa588b6bdd5fbf63c5b69535",
         "Node name for S&R": "PixaromaImageComposition"
       },
       "widgets_values": [
-        "{}",
-        "Open Image Composer"
+        null,
+        {
+          "project_json": "{}"
+        }
       ]
     }
   ],
   "links": [
     [
-      2,
       3,
+      4,
       0,
       2,
       0,
@@ -90,13 +94,13 @@
   "config": {},
   "extra": {
     "ds": {
-      "scale": 1.2100000000000006,
+      "scale": 1.3310000000000008,
       "offset": [
-        -297.8300686743688,
-        -211.4862952312154
+        -403.96586735721985,
+        -248.82668669264012
       ]
     },
-    "frontendVersion": "1.41.21",
+    "frontendVersion": "1.42.10",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,

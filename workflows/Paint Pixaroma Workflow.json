@@ -1,8 +1,8 @@
 {
   "id": "80ceab5b-a0d7-438e-b586-d713da768a19",
   "revision": 0,
-  "last_node_id": 6,
-  "last_link_id": 5,
+  "last_node_id": 7,
+  "last_link_id": 6,
   "nodes": [
     {
       "id": 2,
@@ -22,7 +22,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 5
+          "link": 6
         }
       ],
       "outputs": [],
@@ -34,15 +34,15 @@
       "widgets_values": []
     },
     {
-      "id": 6,
+      "id": 7,
       "type": "PixaromaPaint",
       "pos": [
-        468.9142878381616,
-        364.7295235888603
+        553.0615455391381,
+        365.2303924800253
       ],
       "size": [
-        400,
-        310
+        300,
+        300
       ],
       "flags": {},
       "order": 0,
@@ -50,36 +50,40 @@
       "inputs": [],
       "outputs": [
         {
-          "name": "IMAGE",
+          "name": "image",
           "type": "IMAGE",
           "links": [
-            5
+            6
           ]
         },
         {
-          "name": "WIDTH",
+          "name": "width",
           "type": "INT",
           "links": null
         },
         {
-          "name": "HEIGHT",
+          "name": "height",
           "type": "INT",
           "links": null
         }
       ],
       "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "69d6a57404dc8bddaa588b6bdd5fbf63c5b69535",
         "Node name for S&R": "PixaromaPaint"
       },
       "widgets_values": [
-        "{}",
-        null
+        null,
+        {
+          "paint_json": "{}"
+        }
       ]
     }
   ],
   "links": [
     [
-      5,
       6,
+      7,
       0,
       2,
       0,
@@ -96,7 +100,7 @@
         -208.92091615524592
       ]
     },
-    "frontendVersion": "1.41.21",
+    "frontendVersion": "1.42.10",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,

@@ -341,15 +341,37 @@ async def remove_bg(request):
     if len(b64_data) > _MAX_B64_BYTES:
         return web.json_response({"error": "Image too large"}, status=413)
 
-    try:
-        if quality == "high":
+    # Model selection — try better models first, fall back to basics.
+    # `briarmbg` was an incorrect name (no such session class in rembg)
+    # and always errored into u2net, which gave poor edges on products.
+    #
+    # Normal  → u2net (fast, decent)
+    # High    → isnet-general-use (noticeably better edges, still small)
+    # BiRefNet models (birefnet-general) are highest quality but heavy
+    # and may not be in all rembg versions, so we try it first and
+    # fall back gracefully.
+    def _open_session(q):
+        if q == "high":
+            for name in ("birefnet-general", "isnet-general-use", "u2net"):
+                try:
+                    s = new_session(name)
+                    print(f"[Pixaroma] AI Remove Background: using model '{name}' (high quality)")
+                    return s
+                except Exception as e:
+                    print(f"[Pixaroma] model '{name}' not available: {e}")
+            raise RuntimeError("No rembg model could be loaded")
+        # normal
+        for name in ("isnet-general-use", "u2net"):
             try:
-                session = new_session("briarmbg")
+                s = new_session(name)
+                print(f"[Pixaroma] AI Remove Background: using model '{name}' (normal quality)")
+                return s
             except Exception as e:
-                print(f"[Pixaroma] briarmbg not available, falling back to u2net. {e}")
-                session = new_session("u2net")
-        else:
-            session = new_session("u2net")
+                print(f"[Pixaroma] model '{name}' not available: {e}")
+        raise RuntimeError("No rembg model could be loaded")
+
+    try:
+        session = _open_session(quality)
 
         input_data = base64.b64decode(b64_data)
         input_image = Image.open(io.BytesIO(input_data))

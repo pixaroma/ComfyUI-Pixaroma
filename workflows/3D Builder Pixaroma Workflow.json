@@ -1,51 +1,9 @@
 {
   "id": "80ceab5b-a0d7-438e-b586-d713da768a19",
   "revision": 0,
-  "last_node_id": 2,
-  "last_link_id": 1,
+  "last_node_id": 4,
+  "last_link_id": 3,
   "nodes": [
-    {
-      "id": 1,
-      "type": "Pixaroma3D",
-      "pos": [
-        531.1092684375614,
-        405.5335588180974
-      ],
-      "size": [
-        400,
-        310
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            1
-          ]
-        },
-        {
-          "name": "WIDTH",
-          "type": "INT",
-          "links": null
-        },
-        {
-          "name": "HEIGHT",
-          "type": "INT",
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "Pixaroma3D"
-      },
-      "widgets_values": [
-        "{}",
-        null
-      ]
-    },
     {
       "id": 2,
       "type": "PreviewImage",
@@ -64,7 +22,7 @@
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 1
+          "link": 3
         }
       ],
       "outputs": [],
@@ -74,12 +32,58 @@
         "Node name for S&R": "PreviewImage"
       },
       "widgets_values": []
+    },
+    {
+      "id": 4,
+      "type": "Pixaroma3D",
+      "pos": [
+        651.7749927813346,
+        405.98891501761847
+      ],
+      "size": [
+        300,
+        300
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "image",
+          "type": "IMAGE",
+          "links": [
+            3
+          ]
+        },
+        {
+          "name": "width",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "height",
+          "type": "INT",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "69d6a57404dc8bddaa588b6bdd5fbf63c5b69535",
+        "Node name for S&R": "Pixaroma3D"
+      },
+      "widgets_values": [
+        null,
+        {
+          "scene_json": "{}"
+        }
+      ]
     }
   ],
   "links": [
     [
-      1,
-      1,
+      3,
+      4,
       0,
       2,
       0,
@@ -92,11 +96,11 @@
     "ds": {
       "scale": 1.4641000000000006,
       "offset": [
-        -232.44921794959382,
-        -174.44731196102646
+        -471.50392732736856,
+        -285.5507958198976
       ]
     },
-    "frontendVersion": "1.41.21",
+    "frontendVersion": "1.42.10",
     "VHS_latentpreview": false,
     "VHS_latentpreviewrate": 0,
     "VHS_MetadataImage": true,
