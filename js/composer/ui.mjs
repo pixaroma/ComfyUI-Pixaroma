@@ -18,6 +18,28 @@ import {
 // right sidebar fails to build and the editor won't open.
 import { PixaromaAPI } from "./api.mjs";
 
+// Legacy values that predate the multi-model dropdown — remapped to
+// whatever the modern dropdown calls the same quality tier, so an
+// older saved layer doesn't make the <select> go blank on restore.
+const _LEGACY_BG_QUALITY_MAP = {
+  normal: "isnet-general-use",
+  high: "birefnet-general",
+};
+
+// Safely set the bg-quality dropdown's value. If the stored value
+// doesn't match any current option (legacy save, or the picked model
+// was greyed out by rembg version check), fall back to "auto" so the
+// select never shows empty.
+function _applyBgQualityToSelect(selectEl, stored) {
+  if (!selectEl) return;
+  let v = stored || "auto";
+  if (_LEGACY_BG_QUALITY_MAP[v]) v = _LEGACY_BG_QUALITY_MAP[v];
+  const hasOption = Array.from(selectEl.options).some(
+    (o) => o.value === v && !o.disabled,
+  );
+  selectEl.value = hasOption ? v : "auto";
+}
+
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
 const COMPOSER_STYLE_ID = "pixaroma-composer-styles";
 function injectComposerStyles() {
@@ -190,8 +212,7 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
-          if (core._bgQualitySelect)
-            core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
+          _applyBgQualityToSelect(core._bgQualitySelect, layer.bgRemovalQuality);
         } else {
           if (core._phFillRow) core._phFillRow.style.display = "none";
           if (core._phRatioRow) core._phRatioRow.style.display = "none";
@@ -205,8 +226,7 @@ export class PixaromaUI {
             core._autoBgRow.style.pointerEvents = "auto";
             core._autoBgCheck.checked = !!layer.removeBgOnExec;
           }
-          if (core._bgQualitySelect)
-            core._bgQualitySelect.value = layer.bgRemovalQuality || "normal";
+          _applyBgQualityToSelect(core._bgQualitySelect, layer.bgRemovalQuality);
         }
       }
     }
