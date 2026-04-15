@@ -5,6 +5,7 @@ import os
 import json
 import time
 import folder_paths
+from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
 
 
@@ -292,11 +293,31 @@ class PixaromaImageComposition:
                 # `rebuildPreview` re-composes the raw placeholder
                 # images client-side and the mini preview looks nothing
                 # like the Preview Image output downstream.
+                #
+                # IMPORTANT: we deliberately DON'T return {"ui":
+                # {"images": [...]}} here — ComfyUI would then render
+                # that image as a secondary preview panel below the
+                # node widgets, on top of our custom top preview.
+                # Instead we push a private WebSocket event that our
+                # index.js listener picks up and applies to the top
+                # preview only.
                 preview_img = _save_preview_png(canvas, doc_w, doc_h)
-                result = (_pil_to_tensor(canvas), doc_w, doc_h)
                 if preview_img:
-                    return {"ui": {"images": [preview_img]}, "result": result}
-                return result
+                    try:
+                        PromptServer.instance.send_sync(
+                            "pixaroma-composer-preview",
+                            {
+                                "project_id": meta.get("project_id"),
+                                "filename": preview_img["filename"],
+                                "subfolder": preview_img["subfolder"],
+                                "type": preview_img["type"],
+                                "doc_w": doc_w,
+                                "doc_h": doc_h,
+                            },
+                        )
+                    except Exception as e:
+                        print(f"[Pixaroma] preview WS send failed: {e}")
+                return (_pil_to_tensor(canvas), doc_w, doc_h)
 
             # Fast path: load the pre-rendered composite PNG
             composite_path = meta.get("composite_path")

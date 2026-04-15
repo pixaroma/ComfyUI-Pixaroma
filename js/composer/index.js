@@ -1,4 +1,8 @@
 import { app } from "../../../../scripts/app.js";
+// api is used at the top level (pixaroma-composer-preview WebSocket
+// listener) AND inside the execution-events try block further down.
+// Importing it once here keeps both call sites using the same module.
+import { api } from "../../../../scripts/api.js";
 import {
   allow_debug,
   createNodePreview,
@@ -46,33 +50,18 @@ app.registerExtension({
     nodeType.prototype.onExecuted = function (message) {
       originalOnExecuted?.apply(this, arguments);
       dbg("onExecuted fired", { hasRebuild: !!this._pixaromaRebuildPreview, editorOpen: isEditorOpen(this) });
-      // Preferred path: Python returned a preview image via the `ui`
-      // channel (dynamic re-compose with auto-rembg / masks / placeholders).
-      // Use that directly — it's the EXACT executed result, including
-      // any bg removal applied server-side, which client-side rebuild
-      // can't match without duplicating all the rembg calls.
-      const uiImages = message?.images;
-      if (Array.isArray(uiImages) && uiImages.length > 0 && this._pixaromaShowPreviewFromUI && !isEditorOpen(this)) {
-        this._pixaromaShowPreviewFromUI(uiImages[0]);
-        // ComfyUI, by default, also renders ui.images as a SECOND
-        // preview below the node widgets (the PreviewImage-style
-        // panel). We've already pushed the same image into our own
-        // top preview, so clear ComfyUI's copy so the node doesn't
-        // show two stacked previews of the same thing.
-        this.imgs = null;
-        this.setDirtyCanvas?.(true, true);
-        return;
-      }
-      // Fallback: client-side recompose (works when Python didn't send
-      // a UI image — e.g. pure layer composition with no placeholders).
+      // Note: the custom "pixaroma-composer-preview" WebSocket event
+      // (listened for in nodeCreated below) handles the dynamic-re-
+      // compose path (placeholders / auto-rembg / masks) by pushing
+      // the exact server-rendered image into our top preview.
+      //
+      // onExecuted's client-side rebuildPreview is the fallback for
+      // the fast path (pure static layer composition — Python didn't
+      // send a custom event because it loaded the pre-baked PNG).
       if (this._pixaromaRebuildPreview && !isEditorOpen(this)) {
         const rebuild = this._pixaromaRebuildPreview;
         setTimeout(() => { dbg("onExecuted → delayed rebuildPreview"); rebuild(); }, 300);
       }
-      // Also clear ComfyUI's default preview for the fallback path —
-      // we never want the node to render a secondary preview panel.
-      this.imgs = null;
-      this.setDirtyCanvas?.(true, true);
     };
   },
 
@@ -364,6 +353,33 @@ app.registerExtension({
       showNodePreview(parts, url, dimText, node);
     };
 
+    // Listen for the server-side "pixaroma-composer-preview" event the
+    // Python node sends after a dynamic re-compose (placeholders /
+    // auto-rembg / masks). It carries the filename of the exact PNG
+    // that was baked as the workflow output, so we can push that same
+    // image into this node's top preview. Scoped to this node via
+    // project_id so multiple composer nodes in the same workflow
+    // don't clobber each other.
+    const _onComposerPreview = (event) => {
+      const data = event?.detail;
+      if (!data || !data.filename) return;
+      // Match the event to this node. If project_id is missing (shouldn't
+      // happen but defensive), fall back to accepting the event so a
+      // single-node workflow still works.
+      let myProjectId = null;
+      try {
+        myProjectId = JSON.parse(projectJson)?.project_id || null;
+      } catch {}
+      if (data.project_id && myProjectId && data.project_id !== myProjectId) return;
+      if (isEditorOpen(node)) return; // don't fight the editor's own saves
+      node._pixaromaShowPreviewFromUI({
+        filename: data.filename,
+        subfolder: data.subfolder,
+        type: data.type,
+      });
+    };
+    api.addEventListener("pixaroma-composer-preview", _onComposerPreview);
+
     node.onConnectionsChange = (type, slotIndex, connected) => {
       if (type !== LiteGraph.INPUT) return;
       const inputName = node.inputs?.[slotIndex]?.name;
@@ -421,7 +437,7 @@ app.registerExtension({
 
     // ── Listen for ComfyUI API execution events to auto-rebuild preview ──
     try {
-      const { api } = await import("/scripts/api.js");
+      // `api` already imported at top of file — no need for dynamic import.
 
       let executionRunning = false;
       api.addEventListener("execution_start", () => {
@@ -443,6 +459,11 @@ app.registerExtension({
       node.onRemoved = () => {
         origRemoved?.call(node);
         clearInterval(pollInterval);
+        // Detach the preview WebSocket listener so removed nodes don't
+        // leak event handlers / update phantom previews on later runs.
+        try {
+          api.removeEventListener("pixaroma-composer-preview", _onComposerPreview);
+        } catch {}
         widget = null;
       };
     } catch (e) {
