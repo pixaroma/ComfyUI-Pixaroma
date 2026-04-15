@@ -50,14 +50,22 @@ app.registerExtension({
     nodeType.prototype.onExecuted = function (message) {
       originalOnExecuted?.apply(this, arguments);
       dbg("onExecuted fired", { hasRebuild: !!this._pixaromaRebuildPreview, editorOpen: isEditorOpen(this) });
-      // Note: the custom "pixaroma-composer-preview" WebSocket event
-      // (listened for in nodeCreated below) handles the dynamic-re-
-      // compose path (placeholders / auto-rembg / masks) by pushing
-      // the exact server-rendered image into our top preview.
+      // If the "pixaroma-composer-preview" WebSocket event already
+      // pushed the correct server-rendered image into our top
+      // preview (dynamic re-compose path: placeholders / auto-rembg
+      // / masks), DO NOT run rebuildPreview — it would re-composite
+      // the raw upstream images client-side without rembg and
+      // overwrite the good result with the wrong one.
       //
-      // onExecuted's client-side rebuildPreview is the fallback for
-      // the fast path (pure static layer composition — Python didn't
-      // send a custom event because it loaded the pre-baked PNG).
+      // The flag is set by _onComposerPreview and cleared on
+      // execution_start so the next run starts fresh.
+      if (this._pixaromaWsPreviewApplied) {
+        dbg("onExecuted → WS preview already applied, skipping rebuild");
+        return;
+      }
+      // Fast-path fallback (no placeholders / auto-rembg / masks):
+      // Python loaded the pre-baked composite PNG and didn't send a
+      // custom event — so rebuild client-side from current inputs.
       if (this._pixaromaRebuildPreview && !isEditorOpen(this)) {
         const rebuild = this._pixaromaRebuildPreview;
         setTimeout(() => { dbg("onExecuted → delayed rebuildPreview"); rebuild(); }, 300);
@@ -377,6 +385,13 @@ app.registerExtension({
         subfolder: data.subfolder,
         type: data.type,
       });
+      // Flag the node so onExecuted (which fires AFTER this WS event)
+      // knows the preview is already correct and skips its fallback
+      // rebuildPreview call — otherwise it would overwrite this
+      // server-rendered image with a client-side recomposite that
+      // doesn't include auto-rembg, causing the "good image flashes
+      // then goes bad" symptom.
+      node._pixaromaWsPreviewApplied = true;
     };
     api.addEventListener("pixaroma-composer-preview", _onComposerPreview);
 
@@ -442,6 +457,10 @@ app.registerExtension({
       let executionRunning = false;
       api.addEventListener("execution_start", () => {
         executionRunning = true;
+        // Reset the WS-preview flag so if this run doesn't hit the
+        // dynamic re-compose path (no placeholders / auto-rembg /
+        // masks), onExecuted falls back to rebuildPreview correctly.
+        node._pixaromaWsPreviewApplied = false;
       });
 
       // "executing" with null detail means execution finished
