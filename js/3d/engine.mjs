@@ -282,6 +282,77 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.gridHelper = new THREE.GridHelper(20, 20, 0x333344, 0x222233);
   this.scene.add(this.gridHelper);
 
+  // ── Axis orientation HUD (top-right corner) ──────────────
+  // A tiny independent scene + camera rendered in a scissor viewport
+  // over the main view. The HUD camera mirrors the main camera's
+  // rotation so the world axes in the HUD line up with the world axes
+  // visible in the scene — you can always tell which direction is
+  // X/Y/Z regardless of how the user has orbited.
+  //
+  // Using a scissor viewport on the main renderer (vs. a second
+  // WebGLRenderer) keeps us under Chrome's ~16 context cap — we
+  // already have a thumbnail renderer too.
+  const hudScene = new THREE.Scene();
+  // Red X, Green Y, Blue Z — standard 3D convention
+  const arrowLen = 0.85;
+  const headLen = 0.22;
+  const headW = 0.12;
+  const _arr = (dir, color) =>
+    new THREE.ArrowHelper(dir, new THREE.Vector3(), arrowLen, color, headLen, headW);
+  hudScene.add(_arr(new THREE.Vector3(1, 0, 0), 0xff4444));
+  hudScene.add(_arr(new THREE.Vector3(0, 1, 0), 0x55dd55));
+  hudScene.add(_arr(new THREE.Vector3(0, 0, 1), 0x4488ff));
+  // X / Y / Z letter labels at the arrow tips via CanvasTexture sprites.
+  // Sprites in three.js always face the camera, so the letters stay
+  // readable regardless of how the user has orbited — as long as the
+  // HUD camera isn't rolled (see _animate where it uses lookAt with
+  // world-up to avoid inheriting roll from the main camera).
+  //
+  // depthTest:false keeps letters on top of their arrow even when the
+  // arrow and label overlap along a world axis pointing at the viewer.
+  const _mkLabel = (text, colorHex) => {
+    const S = 128; // bigger canvas → crisper letters after mipmap downsample
+    const cv = document.createElement("canvas");
+    cv.width = cv.height = S;
+    const ctx = cv.getContext("2d");
+    // Thin black halo via shadow (not strokeText — stroke of thickness
+    // 6+ around a thin glyph like "Y" fills in the negative space and
+    // makes it look like an "I"). 3 overlapping fills at slight
+    // offsets gives a clean offset-shadow without the fill-in problem.
+    ctx.font = "900 96px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    const cx = S / 2, cy = S / 2;
+    // Mini drop-shadow in 4 directions for legibility on any bg
+    for (const [dx, dy] of [[-2,0],[2,0],[0,-2],[0,2]]) {
+      ctx.fillText(text, cx + dx, cy + dy);
+    }
+    ctx.fillStyle = colorHex;
+    ctx.fillText(text, cx, cy);
+    const tex = new THREE.CanvasTexture(cv);
+    tex.anisotropy = 4;
+    const sp = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }),
+    );
+    // Slightly larger than before so the glyph reads clearly at 80px HUD.
+    sp.scale.set(0.55, 0.55, 1);
+    return sp;
+  };
+  const lx = _mkLabel("X", "#ff9090"); lx.position.set(1.2, 0, 0);
+  const ly = _mkLabel("Y", "#9ef09e"); ly.position.set(0, 1.2, 0);
+  const lz = _mkLabel("Z", "#9bc2ff"); lz.position.set(0, 0, 1.2);
+  hudScene.add(lx, ly, lz);
+
+  const hudCamera = new THREE.PerspectiveCamera(50, 1, 0.1, 10);
+  this._axisHud = {
+    scene: hudScene,
+    camera: hudCamera,
+    size: 80,              // pixels in main canvas
+    margin: 10,            // offset from top-right
+    visible: true,         // toggled by "Show Axes" checkbox
+  };
+
   // Canvas frame + gray masks (using shared framework component)
   this._canvasFrame = createCanvasFrame(vp);
   this._canvasFrame.update(this.docW, this.docH);
@@ -391,6 +462,55 @@ Pixaroma3DEditor.prototype._animate = function () {
   // PNGs don't have the selection highlight baked in.
   if (this._composer) this._composer.render();
   else this.renderer.render(this.scene, this.camera);
+
+  // ── Axis HUD overlay ─────────────────────────────────────
+  // Drawn AFTER the main render into a small scissor viewport at the
+  // top-right corner. clearDepth() makes sure the HUD arrows are
+  // never clipped by the main scene's depth buffer. Save path skips
+  // the whole _animate loop so HUDs never appear in exported PNGs.
+  if (this._axisHud && this._axisHud.visible) {
+    const hud = this._axisHud;
+    // Place the HUD camera along the SAME world-space direction the
+    // main camera sits on (relative to origin), but force its up to
+    // be world +Y via lookAt. That way the HUD axes reflect the
+    // viewer's angle WITHOUT inheriting any camera roll — letters
+    // stay upright on screen even when the main camera is tilted.
+    const THREE = getTHREE();
+    if (!this._axisHudTmp) this._axisHudTmp = new THREE.Vector3();
+    const dir = this._axisHudTmp;
+    this.camera.getWorldDirection(dir); // main camera's -Z in world space
+    // Place HUD camera at the opposite of the main camera's look dir
+    // so it looks back at origin from the same side as main camera.
+    hud.camera.position.copy(dir).multiplyScalar(-2.8);
+    // Pick a non-degenerate up vector: world +Y normally, but when the
+    // user is looking nearly straight up or down (top/bottom view) the
+    // up and look directions become parallel and lookAt flips. Fall
+    // back to world -Z so the letters stay stable near those angles.
+    if (Math.abs(dir.y) > 0.98) {
+      hud.camera.up.set(0, 0, dir.y > 0 ? 1 : -1);
+    } else {
+      hud.camera.up.set(0, 1, 0);
+    }
+    hud.camera.lookAt(0, 0, 0);
+
+    // Renderer viewport uses CSS pixels; getSize() returns the same.
+    // Three.js viewport Y is 0 at the BOTTOM, so top-right means y = H - size - margin.
+    const sz = this.renderer.getSize(new THREE.Vector2());
+    const s = hud.size;
+    const m = hud.margin;
+    const vx = sz.x - s - m;
+    const vy = sz.y - s - m;
+    const prevAutoClear = this.renderer.autoClear;
+    this.renderer.autoClear = false;
+    this.renderer.clearDepth();
+    this.renderer.setViewport(vx, vy, s, s);
+    this.renderer.setScissor(vx, vy, s, s);
+    this.renderer.setScissorTest(true);
+    this.renderer.render(hud.scene, hud.camera);
+    this.renderer.setScissorTest(false);
+    this.renderer.setViewport(0, 0, sz.x, sz.y);
+    this.renderer.autoClear = prevAutoClear;
+  }
 };
 
 // ─── Lighting ─────────────────────────────────────────────
