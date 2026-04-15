@@ -109,6 +109,10 @@ function injectExtraStyles() {
 .p3d-hsl-row .val{font-size:9px;color:#aaa;width:28px;text-align:right;font-family:monospace;flex-shrink:0;}
 /* Layer styles now provided by the editor framework (pxf-layer-*) */
 .p3d-layer-color{width:14px;height:14px;border-radius:3px;border:1px solid #555;flex-shrink:0;}
+.p3d-ad-btn{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid #3a3d40;background:#242628;border-radius:4px;cursor:pointer;transition:all .12s;flex:0 0 auto;}
+.p3d-ad-btn:hover{background:#2a2c2e;border-color:#f66744;}
+.p3d-ad-btn.disabled{opacity:0.3;cursor:not-allowed;pointer-events:auto;}
+.p3d-ad-btn.disabled:hover{background:#242628;border-color:#3a3d40;}
 .p3d-row{display:flex;align-items:center;gap:5px;margin-bottom:4px;}
 .p3d-label{font-size:10px;color:#888;width:72px;flex-shrink:0;}
 .p3d-range{flex:1;min-width:0;}
@@ -265,6 +269,19 @@ export class Pixaroma3DEditor {
       helpContent: helpHTML,
     });
     this._layout = layout;
+
+    // ── Align & Distribute bar (titlebar center) ─────────────
+    // Matches the Image Composer pattern: compact horizontal bar of
+    // icon buttons in the top titlebar. 3D has THREE axes so the bar
+    // is grouped: [X row] [Y row] [Z row] [Distribute row]. Each row
+    // is 1 axis label + 3 min/center/max align buttons. The fourth
+    // group holds one distribute button per axis. Icons are reused
+    // from assets/icons/ui/ — the axis label before each group makes
+    // the reused icons unambiguous (e.g. align-left means "min" on
+    // whichever axis owns that group). Greys out when the selection
+    // is too small (<2 for align, <3 for distribute).
+    this._buildAlignDistributeBar(layout.titlebarCenter);
+
     layout.onSaveToDisk = () => {
       this._diskSavePending = true;
       this._save();
@@ -302,6 +319,21 @@ export class Pixaroma3DEditor {
         this._thumbRenderer.dispose();
         this._thumbRenderer.forceContextLoss();
         this._thumbRenderer = null;
+      }
+      // Free axis HUD resources (sprite textures, arrow materials).
+      if (this._axisHud) {
+        this._axisHud.scene.traverse((o) => {
+          if (o.material) {
+            if (o.material.map) o.material.map.dispose();
+            o.material.dispose?.();
+          }
+          o.geometry?.dispose?.();
+          if (o.line?.material) o.line.material.dispose?.();
+          if (o.cone?.material) o.cone.material.dispose?.();
+          if (o.line?.geometry) o.line.geometry.dispose?.();
+          if (o.cone?.geometry) o.cone.geometry.dispose?.();
+        });
+        this._axisHud = null;
       }
       this.objects.forEach((o) => {
         o.geometry?.dispose();
@@ -991,6 +1023,16 @@ export class Pixaroma3DEditor {
     this.el.gizmoCheck = gizCb.checkbox;
     gizCb.el.style.marginTop = "6px";
     cam.content.appendChild(gizCb.el);
+    // Show Axes — toggles the little X/Y/Z orientation HUD that draws
+    // in the top-right corner of the viewport. Off doesn't change the
+    // main render at all — the HUD pass is just skipped in _animate.
+    const showAxesInit = this._axisHud ? this._axisHud.visible !== false : true;
+    const axesCb = createCheckbox("Show Axes", showAxesInit, (v) => {
+      if (this._axisHud) this._axisHud.visible = v;
+    });
+    this.el.axesCheck = axesCb.checkbox;
+    axesCb.el.style.marginTop = "6px";
+    cam.content.appendChild(axesCb.el);
     left.appendChild(cam.el);
 
     // Status
@@ -1278,3 +1320,154 @@ export class Pixaroma3DEditor {
     if (this._layout) this._layout.toggleHelp();
   }
 }
+
+// ─── Align & Distribute titlebar bar ──────────────────────────
+// Added as a prototype method (kept out of the huge _buildUI method
+// to keep that readable). Populates layout.titlebarCenter with a
+// horizontal icon-button bar. Stores the buttons in this.el.adButtons
+// so _updateAlignButtons can grey them in/out as the selection grows
+// or shrinks.
+Pixaroma3DEditor.prototype._buildAlignDistributeBar = function (titlebarCenter) {
+  if (!titlebarCenter) return;
+  const AD_ICON_PATH = "/pixaroma/assets/icons/ui/";
+
+  // Build one icon button. Mask-image approach so the icon color is
+  // driven by CSS — matches the other tool/camera buttons and gives
+  // us a clean brand-orange hover tint via JS.
+  const makeBtn = (iconFile, title, onClick) => {
+    const b = document.createElement("div");
+    b.className = "p3d-ad-btn";
+    b.title = title;
+    const ico = document.createElement("span");
+    ico.className = "p3d-ad-ico";
+    const url = `url("${AD_ICON_PATH}${iconFile}")`;
+    ico.style.cssText =
+      `display:block;width:18px;height:18px;` +
+      `background-color:#ccc;` +
+      `-webkit-mask-image:${url};mask-image:${url};` +
+      `-webkit-mask-size:contain;mask-size:contain;` +
+      `-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;` +
+      `-webkit-mask-position:center;mask-position:center;` +
+      `transition:background-color .12s;`;
+    b.appendChild(ico);
+    b.addEventListener("mouseenter", () => {
+      if (!b.classList.contains("disabled"))
+        ico.style.backgroundColor = "#f66744";
+    });
+    b.addEventListener("mouseleave", () => {
+      ico.style.backgroundColor = "#ccc";
+    });
+    b.addEventListener("click", () => {
+      if (!b.classList.contains("disabled")) onClick();
+    });
+    return b;
+  };
+
+  // Axis-group config. X and Z reuse the horizontal-align icons (they
+  // share the "sideways" semantic). Y uses the vertical set. The axis
+  // letter label in front of each group disambiguates.
+  const axes = [
+    {
+      axis: "X", tip: "X axis — left / right",
+      align: [
+        ["align-left.svg",     "Align X Min (left)"],
+        ["align-center-h.svg", "Align X Center"],
+        ["align-right.svg",    "Align X Max (right)"],
+      ],
+      distribute: ["distribute-horizontal.svg", "Distribute along X"],
+    },
+    {
+      axis: "Y", tip: "Y axis — bottom / top",
+      align: [
+        ["align-bottom.svg",   "Align Y Min (bottom)"],
+        ["align-center-v.svg", "Align Y Center"],
+        ["align-top.svg",      "Align Y Max (top)"],
+      ],
+      distribute: ["distribute-vertical.svg", "Distribute along Y"],
+    },
+    {
+      axis: "Z", tip: "Z axis — back (-Z) / center / front (+Z, toward viewer)",
+      align: [
+        ["align-left.svg",     "Align Z Min (back, away from viewer)"],
+        ["align-center-h.svg", "Align Z Center"],
+        ["align-right.svg",    "Align Z Max (front, toward viewer)"],
+      ],
+      distribute: ["distribute-horizontal.svg", "Distribute along Z"],
+    },
+  ];
+
+  this.el.adButtons = { align: [], distribute: [] };
+  const bar = document.createElement("div");
+  bar.className = "p3d-ad-bar";
+  bar.style.cssText =
+    "display:flex;align-items:center;gap:4px;";
+
+  const modes = ["min", "center", "max"];
+  // One axis group (label + 3 align buttons) per axis
+  axes.forEach((a, idx) => {
+    if (idx > 0) {
+      const sep = document.createElement("div");
+      sep.className = "p3d-ad-sep";
+      sep.style.cssText =
+        "width:1px;height:20px;background:#3a3d40;margin:0 4px;";
+      bar.appendChild(sep);
+    }
+    const lbl = document.createElement("div");
+    lbl.textContent = a.axis;
+    lbl.title = a.tip;
+    lbl.style.cssText =
+      "font-size:11px;font-weight:700;color:#888;padding:0 4px 0 2px;" +
+      "min-width:12px;text-align:center;";
+    bar.appendChild(lbl);
+    a.align.forEach(([icon, title], i) => {
+      const btn = makeBtn(icon, title, () =>
+        this._alignSelected(a.axis, modes[i]),
+      );
+      this.el.adButtons.align.push(btn);
+      bar.appendChild(btn);
+    });
+  });
+
+  // Distribute group — separator, then one button per axis
+  const sepD = document.createElement("div");
+  sepD.className = "p3d-ad-sep";
+  sepD.style.cssText =
+    "width:1px;height:20px;background:#3a3d40;margin:0 6px 0 4px;";
+  bar.appendChild(sepD);
+  axes.forEach((a) => {
+    const [icon, titleBase] = a.distribute;
+    const title = titleBase + " (3+ objects)";
+    const btn = makeBtn(icon, title, () => this._distributeSelected(a.axis));
+    // Small axis letter overlay so all three distribute buttons are
+    // visually distinct (they use the same two icons otherwise).
+    btn.style.position = "relative";
+    const tag = document.createElement("span");
+    tag.textContent = a.axis;
+    tag.style.cssText =
+      "position:absolute;bottom:0;right:1px;font-size:8px;font-weight:700;" +
+      "color:#888;pointer-events:none;line-height:1;";
+    btn.appendChild(tag);
+    this.el.adButtons.distribute.push(btn);
+    bar.appendChild(btn);
+  });
+
+  titlebarCenter.appendChild(bar);
+  // Prime enabled/disabled state
+  this._updateAlignButtons();
+};
+
+// Grey out align buttons when <2 objects selected, distribute when <3.
+// Called from _select (any selection change) so the bar stays in sync.
+Pixaroma3DEditor.prototype._updateAlignButtons = function () {
+  const btns = this.el?.adButtons;
+  if (!btns) return;
+  const n = this.selectedObjs?.size ?? 0;
+  const alignEnabled = n >= 2;
+  const distribEnabled = n >= 3;
+  for (const b of btns.align) {
+    b.classList.toggle("disabled", !alignEnabled);
+  }
+  for (const b of btns.distribute) {
+    b.classList.toggle("disabled", !distribEnabled);
+  }
+};
