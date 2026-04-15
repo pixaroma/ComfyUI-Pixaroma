@@ -1386,13 +1386,17 @@ Pixaroma3DEditor.prototype._buildAlignDistributeBar = function (titlebarCenter) 
       distribute: ["distribute-vertical.svg", "Distribute along Y"],
     },
     {
+      // Z uses the VERTICAL align icons (bottom/center-v/top) because
+      // depth reads more naturally as "push down = back" / "push up =
+      // front" than left/right. Same min/center/max semantics as the
+      // other axes; only the icon choice differs.
       axis: "Z", tip: "Z axis — back (-Z) / center / front (+Z, toward viewer)",
       align: [
-        ["align-left.svg",     "Align Z Min (back, away from viewer)"],
-        ["align-center-h.svg", "Align Z Center"],
-        ["align-right.svg",    "Align Z Max (front, toward viewer)"],
+        ["align-bottom.svg",   "Align Z Min (back, away from viewer)"],
+        ["align-center-v.svg", "Align Z Center"],
+        ["align-top.svg",      "Align Z Max (front, toward viewer)"],
       ],
-      distribute: ["distribute-horizontal.svg", "Distribute along Z"],
+      distribute: ["distribute-vertical.svg", "Distribute along Z"],
     },
   ];
 

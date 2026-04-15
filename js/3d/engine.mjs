@@ -481,7 +481,11 @@ Pixaroma3DEditor.prototype._animate = function () {
     this.camera.getWorldDirection(dir); // main camera's -Z in world space
     // Place HUD camera at the opposite of the main camera's look dir
     // so it looks back at origin from the same side as main camera.
-    hud.camera.position.copy(dir).multiplyScalar(-2.8);
+    // Distance is tuned to keep the arrow tips + letter labels (at
+     // position ~1.2 with sprite half-size ~0.275) safely inside the
+     // viewport. At FOV 50° a distance of 3.5 gives ~1.63 of visible
+     // half-extent which leaves margin for the labels at corner poses.
+    hud.camera.position.copy(dir).multiplyScalar(-3.5);
     // Pick a non-degenerate up vector: world +Y normally, but when the
     // user is looking nearly straight up or down (top/bottom view) the
     // up and look directions become parallel and lookAt flips. Fall
