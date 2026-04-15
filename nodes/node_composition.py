@@ -3,8 +3,41 @@ import numpy as np
 from PIL import Image, ImageChops
 import os
 import json
+import time
 import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
+
+
+# Temp subfolder for Image Composer node previews (cleared by ComfyUI
+# between runs). We save the final executed image here so the node's
+# mini preview can show the EXACT result — matching what downstream
+# Preview Image nodes see, including any auto-rembg applied.
+_PIXAROMA_PREVIEW_SUBFOLDER = "pixaroma_composer_preview"
+
+
+def _save_preview_png(pil_img, doc_w, doc_h):
+    """Save the final composed image into ComfyUI's temp dir so the
+    ImageComposer node's JS side can fetch it and update the mini
+    preview. Returns the UI image descriptor dict expected by
+    ComfyUI's onExecuted message."""
+    try:
+        temp_dir = os.path.join(folder_paths.get_temp_directory(), _PIXAROMA_PREVIEW_SUBFOLDER)
+        os.makedirs(temp_dir, exist_ok=True)
+        filename = f"composer_{int(time.time() * 1000)}.png"
+        path = os.path.join(temp_dir, filename)
+        # RGB export — the ImageComposer's canvas is always a flat RGB
+        # image from the browser's point of view. Alpha channel from
+        # rembg output gets baked onto whatever bg color was set.
+        out = pil_img.convert("RGB") if pil_img.mode != "RGB" else pil_img
+        out.save(path, format="PNG", optimize=False)
+        return {
+            "filename": filename,
+            "subfolder": _PIXAROMA_PREVIEW_SUBFOLDER,
+            "type": "temp",
+        }
+    except Exception as e:
+        print(f"[Pixaroma] preview save failed: {e}")
+        return None
 
 
 # ── Helpers for placeholder compositing ──────────────────────────────────────
@@ -40,18 +73,40 @@ def _load_server_image(src, input_dir):
     return Image.open(full_path).convert("RGBA")
 
 
-def _remove_background(img, quality="normal"):
-    """Remove background from a PIL RGBA image using rembg (returns RGBA)."""
+def _remove_background(img, quality="auto"):
+    """Remove background from a PIL RGBA image using rembg (returns RGBA).
+
+    Accepts either a modern model id ('u2net' / 'isnet-general-use' /
+    'birefnet-general') or a legacy quality tier ('normal' / 'high' /
+    'auto'). Tries the requested model first, then walks the auto
+    fallback chain (best → lightest) if it's not installed.
+    """
     try:
         from rembg import remove, new_session
         import io
-        if quality == "high":
+
+        # Legacy tier → modern model. Keeps old saved scenes working.
+        _legacy = {"normal": "isnet-general-use", "high": "birefnet-general"}
+        requested = _legacy.get(quality, quality) or "auto"
+
+        # Try requested first, then fall through the auto chain. This
+        # matches the server-side /pixaroma/remove_bg behaviour so the
+        # workflow output matches what the Image Composer preview uses.
+        auto_chain = ("birefnet-general", "isnet-general-use", "u2net")
+        order = (list(auto_chain) if requested == "auto"
+                 else [requested] + [n for n in auto_chain if n != requested])
+        session = None
+        for name in order:
             try:
-                session = new_session("briarmbg")
-            except Exception:
-                session = new_session("u2net")
-        else:
-            session = new_session("u2net")
+                session = new_session(name)
+                print(f"[Pixaroma] Auto Remove BG: using model '{name}'")
+                break
+            except Exception as e:
+                print(f"[Pixaroma] model '{name}' not available: {e}")
+        if session is None:
+            print("[Pixaroma] No rembg model could be loaded, skipping remove BG")
+            return img
+
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         result_bytes = remove(buf.getvalue(), session=session)
@@ -211,7 +266,7 @@ class PixaromaImageComposition:
                         if img_input is not None:
                             layer_img = _tensor_to_pil(img_input)
                             if layer.get("removeBgOnExec"):
-                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
+                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
                             layer_img = _fit_to_placeholder(layer_img, ph_w, ph_h, layer.get("fillMode", "cover"))
                         else:
                             color = _hex_to_rgba(layer.get("placeholderColor", "#808080"))
@@ -224,14 +279,24 @@ class PixaromaImageComposition:
                         if layer_img is None:
                             continue
                         if layer.get("removeBgOnExec"):
-                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
+                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
                     # Apply eraser mask if present (mask white = erased)
                     mask_src = layer.get("maskSrc")
                     if mask_src:
                         layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
                     canvas = Image.alpha_composite(canvas, composed)
-                return (_pil_to_tensor(canvas), doc_w, doc_h)
+                # Save the final composed image to temp so the node's
+                # mini preview gets the exact executed result (including
+                # auto-rembg / mask application). Without this, the JS
+                # `rebuildPreview` re-composes the raw placeholder
+                # images client-side and the mini preview looks nothing
+                # like the Preview Image output downstream.
+                preview_img = _save_preview_png(canvas, doc_w, doc_h)
+                result = (_pil_to_tensor(canvas), doc_w, doc_h)
+                if preview_img:
+                    return {"ui": {"images": [preview_img]}, "result": result}
+                return result
 
             # Fast path: load the pre-rendered composite PNG
             composite_path = meta.get("composite_path")

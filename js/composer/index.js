@@ -46,6 +46,18 @@ app.registerExtension({
     nodeType.prototype.onExecuted = function (message) {
       originalOnExecuted?.apply(this, arguments);
       dbg("onExecuted fired", { hasRebuild: !!this._pixaromaRebuildPreview, editorOpen: isEditorOpen(this) });
+      // Preferred path: Python returned a preview image via the `ui`
+      // channel (dynamic re-compose with auto-rembg / masks / placeholders).
+      // Use that directly — it's the EXACT executed result, including
+      // any bg removal applied server-side, which client-side rebuild
+      // can't match without duplicating all the rembg calls.
+      const uiImages = message?.images;
+      if (Array.isArray(uiImages) && uiImages.length > 0 && this._pixaromaShowPreviewFromUI && !isEditorOpen(this)) {
+        this._pixaromaShowPreviewFromUI(uiImages[0]);
+        return;
+      }
+      // Fallback: client-side recompose (works when Python didn't send
+      // a UI image — e.g. pure layer composition with no placeholders).
       if (this._pixaromaRebuildPreview && !isEditorOpen(this)) {
         const rebuild = this._pixaromaRebuildPreview;
         setTimeout(() => { dbg("onExecuted → delayed rebuildPreview"); rebuild(); }, 300);
@@ -312,6 +324,34 @@ app.registerExtension({
 
     // Expose for onExecuted
     node._pixaromaRebuildPreview = rebuildPreview;
+
+    // Preferred onExecuted path: Python sends back the exact final
+    // composed PNG via the ui.images channel. This helper fetches it
+    // and pushes it to the node's mini preview — no client-side
+    // re-compositing needed, and critically it includes any server-
+    // applied auto-rembg so the mini preview matches downstream
+    // PreviewImage nodes.
+    node._pixaromaShowPreviewFromUI = (uiImage) => {
+      if (!uiImage || !uiImage.filename) return;
+      const params = new URLSearchParams({
+        filename: uiImage.filename,
+        type: uiImage.type || "temp",
+        subfolder: uiImage.subfolder || "",
+        // Cache-bust so the same filename with different content reloads.
+        t: Date.now(),
+      });
+      const url = `/view?${params.toString()}`;
+      // Pull dims from the current project json so the label reads right.
+      let dimText = null;
+      try {
+        const meta = JSON.parse(projectJson);
+        if (meta && meta.doc_w && meta.doc_h) {
+          dimText = `${meta.doc_w}\u00d7${meta.doc_h}`;
+        }
+      } catch {}
+      dbg("pixaromaShowPreviewFromUI → loading", url);
+      showNodePreview(parts, url, dimText, node);
+    };
 
     node.onConnectionsChange = (type, slotIndex, connected) => {
       if (type !== LiteGraph.INPUT) return;
