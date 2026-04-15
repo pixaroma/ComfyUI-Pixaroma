@@ -54,6 +54,13 @@ app.registerExtension({
       const uiImages = message?.images;
       if (Array.isArray(uiImages) && uiImages.length > 0 && this._pixaromaShowPreviewFromUI && !isEditorOpen(this)) {
         this._pixaromaShowPreviewFromUI(uiImages[0]);
+        // ComfyUI, by default, also renders ui.images as a SECOND
+        // preview below the node widgets (the PreviewImage-style
+        // panel). We've already pushed the same image into our own
+        // top preview, so clear ComfyUI's copy so the node doesn't
+        // show two stacked previews of the same thing.
+        this.imgs = null;
+        this.setDirtyCanvas?.(true, true);
         return;
       }
       // Fallback: client-side recompose (works when Python didn't send
@@ -62,6 +69,10 @@ app.registerExtension({
         const rebuild = this._pixaromaRebuildPreview;
         setTimeout(() => { dbg("onExecuted → delayed rebuildPreview"); rebuild(); }, 300);
       }
+      // Also clear ComfyUI's default preview for the fallback path —
+      // we never want the node to render a secondary preview panel.
+      this.imgs = null;
+      this.setDirtyCanvas?.(true, true);
     };
   },
 
