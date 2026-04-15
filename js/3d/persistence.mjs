@@ -814,13 +814,30 @@ Pixaroma3DEditor.prototype._showBgImage = function (src, autoFit) {
   if (this._updateBgPanelState) this._updateBgPanelState();
 };
 
-// Compute the pixel rect of the canvas frame inside the viewport
+// Compute the pixel rect of the canvas frame inside the viewport.
+// Delegates to the canvas frame's own getRect() so the bg image stays
+// aligned with the visible frame at every viewport size. Recomputing
+// here with a different formula (e.g. omitting the 40px padding the
+// frame uses) made the bg overshoot the frame whenever the browser
+// window wasn't fullscreen — the frame shrinks for padding while the
+// bg keeps the un-padded size.
 Pixaroma3DEditor.prototype._getFrameRect = function () {
   const vp = this.el.viewport;
   if (!vp) return { x: 0, y: 0, w: 800, h: 600 };
+  if (this._canvasFrame) {
+    const r = this._canvasFrame.getRect();
+    if (r && r.width > 0 && r.height > 0) {
+      return { x: r.left, y: r.top, w: r.width, h: r.height };
+    }
+  }
+  // Fallback (frame component not ready yet) — match the framework's
+  // formula in createCanvasFrame.update(): 40px padding on each side.
   const vpW = vp.clientWidth,
     vpH = vp.clientHeight;
-  const s = Math.min(vpW / this.docW, vpH / this.docH, 1);
+  const pad = 40;
+  const availW = Math.max(1, vpW - pad * 2),
+    availH = Math.max(1, vpH - pad * 2);
+  const s = Math.min(availW / this.docW, availH / this.docH, 1);
   const fw = this.docW * s,
     fh = this.docH * s;
   return { x: (vpW - fw) / 2, y: (vpH - fh) / 2, w: fw, h: fh };
