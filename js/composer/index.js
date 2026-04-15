@@ -446,6 +446,17 @@ app.registerExtension({
       if (snap && snap !== _lastUpstreamSnapshot) {
         dbg("poll → snapshot changed", { old: _lastUpstreamSnapshot.substring(0, 60), new: snap.substring(0, 60) });
         _lastUpstreamSnapshot = snap;
+        // If the server-side WS event already applied the correct
+        // post-execute preview (dynamic compose path), don't undo it
+        // by rebuilding client-side from raw upstream images. The
+        // snapshot update that triggered this poll is just the
+        // upstream LoadImage getting its exec result — not a real
+        // user-initiated change. Keep _lastUpstreamSnapshot updated
+        // so a later genuine change is detected.
+        if (node._pixaromaWsPreviewApplied) {
+          dbg("poll → WS preview already applied, skipping rebuild");
+          return;
+        }
         rebuildPreview();
       }
     }, 500);
@@ -469,6 +480,13 @@ app.registerExtension({
         if (detail === null || detail?.node === null) {
           if (executionRunning && !isEditorOpen(node)) {
             executionRunning = false;
+            // Same gate as onExecuted and the poll: if the WS event
+            // already pushed the correct server-rendered preview,
+            // don't clobber it with a client-side recomposite.
+            if (node._pixaromaWsPreviewApplied) {
+              dbg("executing-null → WS preview already applied, skipping rebuild");
+              return;
+            }
             setTimeout(() => rebuildPreview(), 200);
           }
         }
