@@ -101,7 +101,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 ### **April 15, 2026 — 3D Builder v2**
-A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor.
+A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor. 
+Check Tutorial on [Youtube Ep13](https://www.youtube.com/watch?v=DnKM-Np0fFw)
 
 - 🧊 **18 primitive shapes** — Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain. Every shape has its own slider panel with per-parameter control (height, radius, segments, seed, smoothness, etc.) and a "Reset Shape Defaults" button.
 - 🌿 **16 composite shapes** — Multi-mesh groups that look like real objects: Tree, Pine Tree, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf. Each has its own set of sliders (trunk height, tier overlap, window shape, shelf count, …) and a re-roll seed for variety.
