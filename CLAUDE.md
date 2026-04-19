@@ -206,6 +206,14 @@ Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" chec
 - Composer: checkbox in `js/composer/ui.mjs` (Canvas Settings panel), state on `this._transparentBg`. `_drawImpl` in `render.mjs` checks `this._transparentExport` flag to skip bg fill; save handler in `interaction.mjs` toggles the flag and re-renders for the disk PNG.
 - 3D Builder: checkbox in `js/3d/core.mjs` (Canvas Settings panel), state on `this._transparentBg`. `persistence.mjs` `_save()` does a second Three.js render with `scene.background = null` + `renderer.setClearColor(0x000000, 0)` (renderer already has `alpha: true`).
 
+### Image Composer Patterns (do not regress)
+
+1. **Per-layer blend mode has FOUR touch points that must stay in sync** — (a) in-editor canvas draw (`js/composer/render.mjs` — reads `layer.blendMode`, maps via `BLEND_MAP` to `globalCompositeOperation`), (b) project JSON save (`js/composer/interaction.mjs` `saveBtn` click handler — writes `blendMode` onto `layerEntry` when not "Normal"), (c) the Python executor (`nodes/node_composition.py` `_blend_over()` — W3C Compositing L1 with proper Porter-Duff alpha), AND (d) the **client-side mini-preview recomposite** (`js/composer/index.js` `rebuildPreview` → `drawLayer`). The recomposite runs 300 ms after workflow execution in the fast path (no placeholders/rembg/masks) and would otherwise overwrite the correct save-time preview with a Normal-only render. If any of these four is missing, blend modes silently revert to Normal on some path. The Python path is only taken when a layer has placeholder / auto-rembg / eraser-mask; otherwise the fast path loads the pre-rendered composite PNG which already has blend baked in.
+
+2. **Active-layer blend dropdown needs explicit sync** — `updateActiveLayerUI()` in `js/composer/ui.mjs` must call `core._layerPanel.setBlend(layer.blendMode || "Normal")` whenever a layer becomes active. Without this, `layer.blendMode` stays correct but the `<select>` UI reverts to its default option and misleads the user.
+
+3. **Restore path has THREE layer-construction sites** — `attemptRestore()` in `render.mjs` builds layer objects in three places: `isPlaceholder` fast path, `img.onload` success, and `img.onerror` missing-image fallback. Any new serialized field must be copied from `mLayer` in all three, or it gets silently dropped for certain layer types.
+
 ### 3D Builder Patterns (do not regress)
 
 These patterns were hard-won during 3D Builder v2 development. Regressing any of them reintroduces specific bugs.
