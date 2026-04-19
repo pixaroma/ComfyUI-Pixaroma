@@ -158,6 +158,108 @@ def _apply_eraser_mask(img, mask_path, input_dir):
     return Image.merge("RGBA", (r, g, b, a))
 
 
+def _rgb_to_hsl(rgb):
+    """rgb: (...,3) float 0-1 → (...,3) float HSL (H 0-1, S 0-1, L 0-1)."""
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    mx = np.max(rgb, axis=-1)
+    mn = np.min(rgb, axis=-1)
+    l = (mx + mn) / 2
+    d = mx - mn
+    s = np.where(d == 0, 0, d / np.where(l < 0.5, mx + mn, 2 - mx - mn + 1e-10))
+    h = np.zeros_like(l)
+    mask = d != 0
+    rc = (mx - r) / np.where(d == 0, 1, d)
+    gc = (mx - g) / np.where(d == 0, 1, d)
+    bc = (mx - b) / np.where(d == 0, 1, d)
+    h = np.where((r == mx) & mask, bc - gc, h)
+    h = np.where((g == mx) & mask, 2 + rc - bc, h)
+    h = np.where((b == mx) & mask, 4 + gc - rc, h)
+    h = (h / 6) % 1
+    return np.stack([h, s, l], axis=-1)
+
+
+def _hsl_to_rgb(hsl):
+    h, s, l = hsl[..., 0], hsl[..., 1], hsl[..., 2]
+    q = np.where(l < 0.5, l * (1 + s), l + s - l * s)
+    p = 2 * l - q
+
+    def hue2rgb(t):
+        t = t % 1
+        return np.where(t < 1/6, p + (q - p) * 6 * t,
+               np.where(t < 1/2, q,
+               np.where(t < 2/3, p + (q - p) * (2/3 - t) * 6, p)))
+
+    r = np.where(s == 0, l, hue2rgb(h + 1/3))
+    g = np.where(s == 0, l, hue2rgb(h))
+    b = np.where(s == 0, l, hue2rgb(h - 1/3))
+    return np.stack([r, g, b], axis=-1)
+
+
+def _blend_over(base_rgba, top_rgba, mode):
+    """Porter-Duff source-over with a blend function per W3C Compositing L1.
+    Returns a new PIL RGBA image. Both inputs must be the same size RGBA."""
+    if not mode or mode == "Normal":
+        return Image.alpha_composite(base_rgba, top_rgba)
+
+    b = np.asarray(base_rgba, dtype=np.float32) / 255.0
+    t = np.asarray(top_rgba, dtype=np.float32) / 255.0
+    base_rgb = b[..., :3]
+    top_rgb = t[..., :3]
+    base_a = b[..., 3:4]
+    top_a = t[..., 3:4]
+
+    if mode == "Multiply":
+        blended = base_rgb * top_rgb
+    elif mode == "Screen":
+        blended = 1 - (1 - base_rgb) * (1 - top_rgb)
+    elif mode == "Overlay":
+        blended = np.where(base_rgb < 0.5, 2 * base_rgb * top_rgb, 1 - 2 * (1 - base_rgb) * (1 - top_rgb))
+    elif mode == "Darken":
+        blended = np.minimum(base_rgb, top_rgb)
+    elif mode == "Lighten":
+        blended = np.maximum(base_rgb, top_rgb)
+    elif mode == "Color Dodge":
+        blended = np.where(top_rgb >= 1, 1.0, np.minimum(1.0, base_rgb / np.maximum(1 - top_rgb, 1e-6)))
+    elif mode == "Color Burn":
+        blended = np.where(top_rgb <= 0, 0.0, np.maximum(0.0, 1 - (1 - base_rgb) / np.maximum(top_rgb, 1e-6)))
+    elif mode == "Hard Light":
+        blended = np.where(top_rgb < 0.5, 2 * base_rgb * top_rgb, 1 - 2 * (1 - base_rgb) * (1 - top_rgb))
+    elif mode == "Soft Light":
+        gd = np.where(base_rgb < 0.25, ((16 * base_rgb - 12) * base_rgb + 4) * base_rgb, np.sqrt(np.maximum(base_rgb, 0)))
+        blended = np.where(top_rgb < 0.5,
+                           base_rgb - (1 - 2 * top_rgb) * base_rgb * (1 - base_rgb),
+                           base_rgb + (2 * top_rgb - 1) * (gd - base_rgb))
+    elif mode == "Difference":
+        blended = np.abs(base_rgb - top_rgb)
+    elif mode == "Exclusion":
+        blended = base_rgb + top_rgb - 2 * base_rgb * top_rgb
+    elif mode in ("Hue", "Saturation", "Color", "Luminosity"):
+        base_hsl = _rgb_to_hsl(base_rgb)
+        top_hsl = _rgb_to_hsl(top_rgb)
+        if mode == "Hue":
+            out_hsl = np.stack([top_hsl[..., 0], base_hsl[..., 1], base_hsl[..., 2]], axis=-1)
+        elif mode == "Saturation":
+            out_hsl = np.stack([base_hsl[..., 0], top_hsl[..., 1], base_hsl[..., 2]], axis=-1)
+        elif mode == "Color":
+            out_hsl = np.stack([top_hsl[..., 0], top_hsl[..., 1], base_hsl[..., 2]], axis=-1)
+        else:  # Luminosity
+            out_hsl = np.stack([base_hsl[..., 0], base_hsl[..., 1], top_hsl[..., 2]], axis=-1)
+        blended = _hsl_to_rgb(out_hsl)
+    else:
+        blended = top_rgb
+
+    # W3C compositing: source_color = (1 - αb) * Cs + αb * B(Cb, Cs)
+    # Then standard source-over with αs.
+    adjusted_top = (1 - base_a) * top_rgb + base_a * np.clip(blended, 0, 1)
+    out_rgb = top_a * adjusted_top + (1 - top_a) * base_a * base_rgb
+    out_a = top_a + (1 - top_a) * base_a
+    safe_a = np.where(out_a > 0, out_a, 1)
+    out_rgb = np.where(out_a > 0, out_rgb / safe_a, 0)
+    out = np.concatenate([out_rgb, out_a], axis=-1)
+    out = (np.clip(out, 0, 1) * 255).astype(np.uint8)
+    return Image.fromarray(out, "RGBA")
+
+
 def _apply_layer_transform(img, layer, doc_w, doc_h):
     """Apply layer transforms and return a doc-sized RGBA canvas."""
     nat_w, nat_h = img.size
@@ -286,7 +388,7 @@ class PixaromaImageComposition:
                     if mask_src:
                         layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
-                    canvas = Image.alpha_composite(canvas, composed)
+                    canvas = _blend_over(canvas, composed, layer.get("blendMode", "Normal"))
                 # Save the final composed image to temp so the node's
                 # mini preview gets the exact executed result (including
                 # auto-rembg / mask application). Without this, the JS
