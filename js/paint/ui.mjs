@@ -869,6 +869,8 @@ proto._syncLayerProps = function () {
   if (this.el.layerOpNum) this.el.layerOpNum.value = ly.opacity;
   this._syncTransformPanel();
   this._updateTransformWarn();
+  if (typeof this._syncBgRemovalButton === "function")
+    this._syncBgRemovalButton();
 };
 
 proto._syncTransformPanel = function () {
@@ -974,6 +976,7 @@ proto._save = async function () {
         locked: ly.locked,
         opacity: ly.opacity,
         blend_mode: ly.blendMode,
+        source_kind: ly.sourceKind,
         transform: ly.transform,
         src,
       };

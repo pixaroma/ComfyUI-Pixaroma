@@ -310,6 +310,8 @@ Files are named by concern. Match the task to the file:
 | Handle GLB/OBJ import behavior | `js/3d/importer.mjs` |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
+| Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
+| Paint AI Background Removal panel | `js/paint/core.mjs` `_buildBgRemovalPanel` + `_removeBgFromActiveLayer` (button gated on `ly.sourceKind === "image"`, set by the `onAddImage` handler and serialized as `source_kind` in the layer project JSON). Reuses the `/pixaroma/remove_bg` backend route via `PaintAPI.removeBg`. |
 
 ### 3. When adding a new method to an editor class
 - Add it to the most relevant existing `.mjs` file by concern (tools, events, render, etc.)
