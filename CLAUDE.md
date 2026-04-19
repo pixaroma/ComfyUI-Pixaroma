@@ -237,6 +237,41 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
 - Base64 payloads capped at 50 MB
 
+### Offline-first: Vendored Three.js
+The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
+broke with `ERR_CONNECTION_RESET` for any user running ComfyUI offline or behind a
+restrictive proxy. Three.js is now vendored inside the plugin.
+
+- **On disk**: `assets/vendor/three/three.mjs` plus every jsm addon the editor
+  touches (controls, postprocessing, loaders, utils, geometries). Each jsm addon
+  only imports `../../../three.mjs`, so copying the esm.sh "es2022" build
+  preserves all relative resolution with zero rewrites.
+- **Served at**: `/pixaroma/vendor/{tail}` — route in `server_routes.py`. Accepts
+  arbitrary depth, blocks `..` traversal and any chars outside `[A-Za-z0-9_\-./]`,
+  realpath-checks the result stays under `PIXAROMA_VENDOR_DIR`.
+- **Entry point**: `THREE_VENDOR = "/pixaroma/vendor/three"` exported from
+  `js/3d/core.mjs`. All dynamic `import()` calls in `core.mjs`, `importer.mjs`,
+  and `shapes.mjs` go through it.
+- **Upgrading three.js**: re-fetch `https://esm.sh/three@<VERSION>/es2022/*` for
+  each file listed under `assets/vendor/three/`, keeping the relative paths
+  identical. The addons import `../../../three.mjs` so the directory layout must
+  stay `three.mjs` at the root with `examples/jsm/<category>/*.mjs` for addons.
+
+**Do not** reintroduce esm.sh/unpkg/jsdelivr imports for three.js or its addons.
+
+### 3D CSS isolation
+`injectExtraStyles()` in `js/3d/core.mjs` adds global `<style>` rules to `<head>`.
+These must be scoped to a **3D-only** class (`.p3d-workspace`) — NOT the shared
+`.pxf-workspace` framework class — because the stylesheet persists in the DOM
+after the 3D editor closes and bleeds into every other editor.
+
+In particular, `.pxf-workspace canvas { position:relative; z-index:1 }` used to
+override Paint's `.ppx-cursor-canvas { position:absolute }` via selector
+specificity, unstacking the brush-ring cursor overlay canvas so it shifted
+below the display canvas — the brush preview disappeared after a 3D session.
+The 3D `open()` path now adds `.p3d-workspace` to its workspace element, and
+the CSS rule targets that class only.
+
 ## Token-Saving Rules for AI Agents
 
 **IMPORTANT: Follow these rules to minimize token usage and work efficiently.**

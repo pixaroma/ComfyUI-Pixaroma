@@ -31,20 +31,23 @@ export let THREE = null,
   RenderPass = null,
   OutlinePass = null,
   OutputPass = null;
-const ESM = "https://esm.sh/three@0.170.0";
+// Local vendored three.js (served by server_routes.py @ /pixaroma/vendor/three/)
+// keeps the 3D Builder working offline and pins the version so upstream
+// Three.js breaking changes can't silently break saved scenes.
+export const THREE_VENDOR = "/pixaroma/vendor/three";
 export async function loadThree() {
   if (THREE) return;
   // Parallel module loads — serial awaits added round-trip latency
   // that showed as a gray flash when the editor first opened.
   const [threeMod, orbitMod, transformMod, composerMod, renderMod, outlineMod, outputMod] =
     await Promise.all([
-      import(ESM),
-      import(ESM + "/examples/jsm/controls/OrbitControls.js"),
-      import(ESM + "/examples/jsm/controls/TransformControls.js"),
-      import(ESM + "/examples/jsm/postprocessing/EffectComposer.js"),
-      import(ESM + "/examples/jsm/postprocessing/RenderPass.js"),
-      import(ESM + "/examples/jsm/postprocessing/OutlinePass.js"),
-      import(ESM + "/examples/jsm/postprocessing/OutputPass.js"),
+      import(THREE_VENDOR + "/three.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/controls/OrbitControls.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/controls/TransformControls.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/postprocessing/EffectComposer.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/postprocessing/RenderPass.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/postprocessing/OutlinePass.mjs"),
+      import(THREE_VENDOR + "/examples/jsm/postprocessing/OutputPass.mjs"),
     ]);
   THREE = threeMod;
   OrbitControls = orbitMod.OrbitControls;
@@ -85,7 +88,9 @@ function injectExtraStyles() {
   s.id = STYLE_ID;
   s.textContent = `
 /* 3D-specific: viewport, frame, masks, background, materials, shape buttons, layers (kept for _updateLayers) */
-.p3d-viewport canvas, .pxf-workspace canvas{display:block;position:relative;z-index:1;}
+/* Scoped to .p3d-workspace so Paint's cursor-overlay canvas (position:absolute) isn't
+   stomped by position:relative after 3D's stylesheet is injected globally. */
+.p3d-workspace canvas{display:block;position:relative;z-index:1;}
 .p3d-bg-container{position:absolute;inset:0;overflow:hidden;z-index:0;pointer-events:none;}
 .p3d-bg-container img{position:absolute;top:50%;left:50%;transform-origin:center center;image-rendering:auto;pointer-events:none;}
 /* p3d-frame, p3d-frame-label, p3d-frame-mask — removed, now using shared createCanvasFrame */
@@ -241,13 +246,13 @@ export class Pixaroma3DEditor {
     <b>5</b><span>Perspective (3/4 angle)</span>
     <b>6</b><span>Isometric (orthographic)</span>
     <b>7</b><span>Left side view</span>
-    <b>0</b><span>Focus on selected object</span>
+    <b>0 / .</b><span>Focus on selected object (Blender: Numpad .)</span>
   </div>
 </div>
 <div class="pxf-help-section">
   <h4>Transform Tools</h4>
   <div class="pxf-help-grid">
-    <b>M</b><span>Move tool (translate along X/Y/Z)</span>
+    <b>M / G</b><span>Move tool (Blender: Grab)</span>
     <b>R</b><span>Rotate tool (around X/Y/Z)</span>
     <b>S</b><span>Scale tool (per-axis or uniform)</span>
   </div>
@@ -258,7 +263,8 @@ export class Pixaroma3DEditor {
     <b>Click</b><span>Select object under cursor</span>
     <b>Shift+Click</b><span>Add / remove from multi-selection</span>
     <b>Ctrl+A</b><span>Select all unlocked objects</span>
-    <b>Esc</b><span>Deselect all</span>
+    <b>Alt+A</b><span>Deselect all (Blender)</span>
+    <b>Esc</b><span>Deselect all (or close this help)</span>
   </div>
 </div>
 <div class="pxf-help-section">
@@ -272,7 +278,8 @@ export class Pixaroma3DEditor {
 <div class="pxf-help-section">
   <h4>Actions</h4>
   <div class="pxf-help-grid">
-    <b>Ctrl+D</b><span>Duplicate selected</span>
+    <b>Ctrl+D / Shift+D</b><span>Duplicate selected (Shift+D = Blender)</span>
+    <b>Shift+A</b><span>Add object — open shape picker (Blender)</span>
     <b>Delete</b><span>Delete selected</span>
     <b>Ctrl+Z</b><span>Undo</span>
     <b>Ctrl+Y</b><span>Redo</span>
@@ -392,6 +399,9 @@ export class Pixaroma3DEditor {
 
     // Viewport: use framework workspace but add 3D-specific elements
     const vp = layout.workspace;
+    // Scope 3D-only canvas CSS (position:relative for bg-container stacking)
+    // to this workspace; otherwise it bleeds into Paint and kills its cursor overlay.
+    vp.classList.add("p3d-workspace");
     // Seed the viewport with the final bgColor so we don't flash the
     // hardcoded default gray before Three.js sets scene.background.
     vp.style.background = this.bgColor;

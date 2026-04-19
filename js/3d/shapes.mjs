@@ -11,6 +11,8 @@
 // `live: true` = rebuild on every slider tick (cheap shapes).
 // `live: false` = rebuild debounced 60 ms (heavy shapes).
 
+import { THREE_VENDOR } from "./core.mjs";
+
 // ─── Lazy-loaded Teapot geometry ──────────────────────────────
 // TeapotGeometry lives in three/examples and weighs ~20KB. We fetch
 // it only when the user clicks Teapot (or reopens a scene that
@@ -19,7 +21,7 @@ let _TeapotGeometry = null;
 export async function loadTeapotGeometry() {
   if (_TeapotGeometry) return _TeapotGeometry;
   const mod = await import(
-    "https://esm.sh/three@0.170.0/examples/jsm/geometries/TeapotGeometry.js"
+    THREE_VENDOR + "/examples/jsm/geometries/TeapotGeometry.mjs"
   );
   _TeapotGeometry = mod.TeapotGeometry;
   return _TeapotGeometry;

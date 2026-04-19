@@ -3,6 +3,7 @@
 // ============================================================
 import { Pixaroma3DEditor, getTHREE } from "./core.mjs";
 import { isCompositeType, buildComposite } from "./composites.mjs";
+import { openShapePicker } from "./picker.mjs";
 // Static import of the SYNCHRONOUS importer helper so the composite
 // undo path can rebuild groups without a placeholder-sphere swap
 // flicker. (GLB / OBJ / bunny undo still needs the async loaders —
@@ -205,6 +206,27 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
     this._selectAll();
     return;
   }
+  // Blender-style parity: Alt+A deselects everything (Blender 2.7-era standard,
+  // still common muscle memory), Shift+A opens the add-object picker, Shift+D
+  // duplicates. These are all unused so adding them can't clash with anything.
+  if (e.altKey && !ctrl && !e.shiftKey && kl === "a") {
+    e.preventDefault();
+    if ((tag === "INPUT" || tag === "TEXTAREA") && !isTrap) ae.blur();
+    this._deselectAll();
+    return;
+  }
+  if (!ctrl && e.shiftKey && !e.altKey && kl === "a") {
+    e.preventDefault();
+    if ((tag === "INPUT" || tag === "TEXTAREA") && !isTrap) ae.blur();
+    openShapePicker(this);
+    return;
+  }
+  if (!ctrl && e.shiftKey && !e.altKey && kl === "d") {
+    e.preventDefault();
+    if ((tag === "INPUT" || tag === "TEXTAREA") && !isTrap) ae.blur();
+    this._dupSelected();
+    return;
+  }
   // Undo/Redo: always handle even when a slider / number input has focus.
   // Range inputs have no native Ctrl+Z, and for the Shape panel sliders the
   // user expects Ctrl+Z to revert the geometry change regardless of focus.
@@ -248,8 +270,10 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
     ? ["d", "s"].includes(kl)
     : [
         "m",
+        "g",       // Blender: Grab = Move
         "r",
         "s",
+        ".",       // Blender: Numpad . = Focus on selected
         "0",
         "1",
         "2",
@@ -276,11 +300,19 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
     return;
   }
   if (kl === "escape") {
-    if (this.el.helpOverlay?.style.display === "block")
+    // Priority: close help overlay if open, otherwise deselect (matches the
+    // docs that have always claimed Esc deselects, and Blender's "cancel /
+    // drop selection" habit from viewport navigation).
+    if (this.el.helpOverlay?.style.display === "block") {
       this.el.helpOverlay.style.display = "none";
+      return;
+    }
+    this._deselectAll();
     return;
   }
-  if (kl === "m") this._setToolMode("move");
+  // `G` is the Blender grab/move shortcut — added as an alias for `M` so
+  // long-time Blender users don't have to relearn. Existing M binding kept.
+  if (kl === "m" || kl === "g") this._setToolMode("move");
   else if (kl === "r") this._setToolMode("rotate");
   else if (kl === "s") this._setToolMode("scale");
   // Camera shortcuts — use e.code so they work on every keyboard layout
@@ -308,6 +340,20 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
   }
   else if (e.code === "Digit7" || e.code === "Numpad7") this._camView("otherside");
   else if (e.code === "Digit0" || e.code === "Numpad0") this._camView("focus");
+  // Blender uses Numpad . (Period) to frame the active object — alias for 0.
+  else if (e.code === "Period" || e.code === "NumpadDecimal") this._camView("focus");
+};
+
+Pixaroma3DEditor.prototype._deselectAll = function () {
+  this.selectedObjs.clear();
+  this.activeObj = null;
+  this.transformCtrl?.detach();
+  this._syncProps?.();
+  this._updateLayers?.();
+  this._syncOutlineSelection?.();
+  this._rebuildShapePanel?.();
+  this._updateAlignButtons?.();
+  this._setStatus?.("Deselected all");
 };
 
 Pixaroma3DEditor.prototype._selectAll = function () {

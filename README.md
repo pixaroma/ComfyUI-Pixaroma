@@ -100,6 +100,17 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **April 19, 2026**
+- 🔌 **3D Builder works offline:** Three.js is now bundled with the node instead of being downloaded from the internet each time. No more blank 3D canvas when you're offline, on a flaky connection, or behind a firewall that blocks CDNs. Nothing to configure — it just works after you update and restart ComfyUI.
+- 🖌️ **Paint cursor fix:** The brush ring preview could disappear after opening the 3D Builder once in the same session (a CSS rule from the 3D editor was leaking into Paint). The brush, pencil, eraser, and smudge cursors now stay visible no matter which editor you open first.
+- 🎮 **Blender-style shortcuts in 3D Builder** (all original shortcuts still work — these are added on top):
+  - `G` — Move tool (Blender "Grab")
+  - `Shift+D` — Duplicate selected
+  - `Shift+A` — Open the Add 3D Object picker
+  - `Alt+A` — Deselect all
+  - `Esc` — Deselect all (or close the help overlay if it's open)
+  - `.` / `Numpad .` — Focus on selected object
+
 ### **April 15, 2026 — 3D Builder v2**
 A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor. 
 Check Tutorial on [Youtube Ep13](https://www.youtube.com/watch?v=DnKM-Np0fFw)
