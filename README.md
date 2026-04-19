@@ -101,6 +101,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 ### **April 19, 2026**
+- 🚪 **Clearer editor close button:** The titlebar's `✕` in every Pixaroma editor (Paint, 3D, Crop, Composer, Compare, Label) is now labeled `✕ Close <EditorName>` (e.g. "✕ Close Paint Pixaroma") and styled in red. This avoids confusion with the host window's close X — especially inside desktop launchers like ComfyUI-EZi where the two X icons sit next to each other. Hover tooltip confirms it only closes the editor, not ComfyUI.
 - 🔌 **3D Builder works offline:** Three.js is now bundled with the node instead of being downloaded from the internet each time. No more blank 3D canvas when you're offline, on a flaky connection, or behind a firewall that blocks CDNs. Nothing to configure — it just works after you update and restart ComfyUI.
 - 🖌️ **Paint cursor fix:** The brush ring preview could disappear after opening the 3D Builder once in the same session (a CSS rule from the 3D editor was leaking into Paint). The brush, pencil, eraser, and smudge cursors now stay visible no matter which editor you open first.
 - 🎮 **Blender-style shortcuts in 3D Builder** (all original shortcuts still work — these are added on top):
