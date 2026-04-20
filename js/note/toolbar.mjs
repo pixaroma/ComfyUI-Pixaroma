@@ -663,7 +663,12 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(ytBtn);
 
-  // Discord button appended in Task 14.
+  const dcBtn = makeBtn("💬 DC", "Insert Discord link", "", () => {});
+  dcBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertDiscordBlock(dcBtn);
+  };
+  g6.appendChild(dcBtn);
 
   tb.appendChild(g6);
   tb.appendChild(el("div", "pix-note-tsep"));

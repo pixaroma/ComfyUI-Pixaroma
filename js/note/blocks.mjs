@@ -106,6 +106,27 @@ NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
   );
 };
 
+NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
+  makeDialog(
+    anchorBtn,
+    "Insert Discord link",
+    [
+      ["label", "Label", "Join Here", ""],
+      ["url", "URL", "https://discord.com/invite/gggpkVgBf3", ""],
+    ],
+    (v) => {
+      if (!v.url || !/^https?:\/\//i.test(v.url)) {
+        alert("URL must start with http:// or https://");
+        return;
+      }
+      const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Discord")}</a>&nbsp;`;
+      document.execCommand("insertHTML", false, html);
+      this._dirty = true;
+    }
+  );
+};
+
 function escapeHtml(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")
