@@ -121,7 +121,7 @@ NoteEditor.prototype._insertDownloadBlock = function (anchorBtn) {
       const html = `<a class="pix-note-dl" href="${escapeHtml(v.url)}"` +
         ` data-folder="${escapeHtml(v.folder)}"` +
         (v.size ? ` data-size="${escapeHtml(v.size)}"` : "") +
-        ` target="_blank" rel="noopener noreferrer">⬇ ${escapeHtml(v.label || "Download")}${sizeStr}</a>&nbsp;`;
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Download")}${sizeStr}</a>&nbsp;`;
       insertAtSavedRange(this, savedRange, html);
     }
   );

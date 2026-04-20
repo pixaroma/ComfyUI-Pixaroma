@@ -680,21 +680,24 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 6 — Pixaroma blocks
   const g6 = el("div", "pix-note-tgroup");
 
-  const dlBtn = makeBtn("⬇ DL", "Insert download button", "", () => {});
+  const dlIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/download.svg" draggable="false"> DL`;
+  const dlBtn = makeBtn(dlIcon, "Insert download button", "", () => {});
   dlBtn.onclick = (e) => {
     e.preventDefault();
     this._insertDownloadBlock(dlBtn);
   };
   g6.appendChild(dlBtn);
 
-  const ytBtn = makeBtn("🎥 YT", "Insert YouTube link", "", () => {});
+  const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false"> YT`;
+  const ytBtn = makeBtn(ytIcon, "Insert YouTube link", "", () => {});
   ytBtn.onclick = (e) => {
     e.preventDefault();
     this._insertYouTubeBlock(ytBtn);
   };
   g6.appendChild(ytBtn);
 
-  const dcBtn = makeBtn("💬 DC", "Insert Discord link", "", () => {});
+  const dcIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg" draggable="false"> DC`;
+  const dcBtn = makeBtn(dcIcon, "Insert Discord link", "", () => {});
   dcBtn.onclick = (e) => {
     e.preventDefault();
     this._insertDiscordBlock(dcBtn);

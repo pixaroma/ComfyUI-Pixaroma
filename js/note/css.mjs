@@ -73,37 +73,77 @@ export function injectCSS() {
   text-decoration: none !important;
 }
 
-/* Pixaroma block: Download pill */
-.pix-note-body .pix-note-dl {
-  display: inline-block;
-  padding: 5px 12px;
-  margin: 2px 0;
-  background: linear-gradient(180deg, var(--pix-note-accent, ${BRAND}), color-mix(in srgb, var(--pix-note-accent, ${BRAND}) 70%, black));
+/* Pixaroma block pills — flat style matching the Edit button. Rules
+   target both the on-canvas body AND the editor interior so the user
+   sees the real pill while editing (WYSIWYG), not a plain link. */
+.pix-note-body a.pix-note-dl,
+.pix-note-body a.pix-note-yt,
+.pix-note-body a.pix-note-discord,
+.pix-note-editarea a.pix-note-dl,
+.pix-note-editarea a.pix-note-yt,
+.pix-note-editarea a.pix-note-discord {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  margin: 2px;
   color: #fff;
-  border-radius: 5px;
+  border-radius: 4px;
   text-decoration: none !important;
   font-weight: 600;
-  font-size: 12px;
-  box-shadow: 0 2px 6px rgba(0,0,0,.3);
+  font-size: 11px;
+  line-height: 1.2;
+  box-shadow: 0 2px 6px rgba(0,0,0,.4);
   cursor: pointer;
+  vertical-align: middle;
 }
-.pix-note-body .pix-note-dl:hover { filter: brightness(1.08); }
+.pix-note-body a.pix-note-dl,
+.pix-note-editarea a.pix-note-dl {
+  background: var(--pix-note-accent, ${BRAND});
+}
+.pix-note-body a.pix-note-yt,
+.pix-note-editarea a.pix-note-yt { background: #ff3838; }
+.pix-note-body a.pix-note-discord,
+.pix-note-editarea a.pix-note-discord { background: #5865f2; }
+.pix-note-body a.pix-note-dl:hover,
+.pix-note-body a.pix-note-yt:hover,
+.pix-note-body a.pix-note-discord:hover,
+.pix-note-editarea a.pix-note-dl:hover,
+.pix-note-editarea a.pix-note-yt:hover,
+.pix-note-editarea a.pix-note-discord:hover { filter: brightness(1.1); }
 
-/* Pixaroma block: YouTube line */
-.pix-note-body .pix-note-yt {
-  color: #ff3838;
-  font-weight: 600;
-  text-decoration: underline;
+/* Block icons via SVG mask so they follow text colour (white on a
+   coloured pill). One base rule for size + currentColor, then per-class
+   rules for the mask image. */
+.pix-note-body a.pix-note-dl::before,
+.pix-note-body a.pix-note-yt::before,
+.pix-note-body a.pix-note-discord::before,
+.pix-note-editarea a.pix-note-dl::before,
+.pix-note-editarea a.pix-note-yt::before,
+.pix-note-editarea a.pix-note-discord::before {
+  content: "";
+  display: inline-block;
+  width: 12px; height: 12px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center; mask-position: center;
+  -webkit-mask-size: contain;    mask-size: contain;
 }
-.pix-note-body .pix-note-yt::before { content: "🎥 "; }
-
-/* Pixaroma block: Discord line */
-.pix-note-body .pix-note-discord {
-  color: #5865f2;
-  font-weight: 600;
-  text-decoration: underline;
+.pix-note-body a.pix-note-dl::before,
+.pix-note-editarea a.pix-note-dl::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/download.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/download.svg);
 }
-.pix-note-body .pix-note-discord::before { content: "💬 "; }
+.pix-note-body a.pix-note-yt::before,
+.pix-note-editarea a.pix-note-yt::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/youtube.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/youtube.svg);
+}
+.pix-note-body a.pix-note-discord::before,
+.pix-note-editarea a.pix-note-discord::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
+}
 
 /* Hover-reveal Edit button */
 .pix-note-editbtn {
