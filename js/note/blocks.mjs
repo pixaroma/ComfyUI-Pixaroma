@@ -1,5 +1,25 @@
 import { NoteEditor } from "./core.mjs";
 
+// Capture / restore helpers. When the block dialog opens, focus moves to
+// the dialog's first input — the contenteditable loses its selection, so
+// a naive execCommand("insertHTML") on submit has no target range and
+// silently no-ops. We snapshot the range before the dialog opens and put
+// it back before inserting.
+function saveRange(root) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return null;
+  const r = sel.getRangeAt(0);
+  if (!root || !root.contains(r.commonAncestorContainer)) return null;
+  return r.cloneRange();
+}
+
+function restoreRange(range) {
+  if (!range) return;
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
 function makeDialog(anchorBtn, title, fields, onSubmit) {
   const dlg = document.createElement("div");
   dlg.className = "pix-note-blockdlg";
@@ -59,7 +79,30 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
   );
 }
 
+// Run `buildHtml` inside the editor's saved range so execCommand("insertHTML")
+// has a valid target. Falls back to appending at the end of editArea if the
+// range was lost (e.g. the user clicked into an empty-padding area that
+// never had a selection).
+function insertAtSavedRange(editor, savedRange, html) {
+  const area = editor._editArea;
+  if (!area) return;
+  area.focus();
+  if (savedRange) {
+    restoreRange(savedRange);
+  } else {
+    const r = document.createRange();
+    r.selectNodeContents(area);
+    r.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+  document.execCommand("insertHTML", false, html);
+  editor._dirty = true;
+}
+
 NoteEditor.prototype._insertDownloadBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
   makeDialog(
     anchorBtn,
     "Insert download button",
@@ -79,13 +122,13 @@ NoteEditor.prototype._insertDownloadBlock = function (anchorBtn) {
         ` data-folder="${escapeHtml(v.folder)}"` +
         (v.size ? ` data-size="${escapeHtml(v.size)}"` : "") +
         ` target="_blank" rel="noopener noreferrer">⬇ ${escapeHtml(v.label || "Download")}${sizeStr}</a>&nbsp;`;
-      document.execCommand("insertHTML", false, html);
-      this._dirty = true;
+      insertAtSavedRange(this, savedRange, html);
     }
   );
 };
 
 NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
   makeDialog(
     anchorBtn,
     "Insert YouTube link",
@@ -100,13 +143,13 @@ NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
       }
       const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
         ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
-      document.execCommand("insertHTML", false, html);
-      this._dirty = true;
+      insertAtSavedRange(this, savedRange, html);
     }
   );
 };
 
 NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
   makeDialog(
     anchorBtn,
     "Insert Discord link",
@@ -121,8 +164,7 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
       }
       const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
         ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Discord")}</a>&nbsp;`;
-      document.execCommand("insertHTML", false, html);
-      this._dirty = true;
+      insertAtSavedRange(this, savedRange, html);
     }
   );
 };
