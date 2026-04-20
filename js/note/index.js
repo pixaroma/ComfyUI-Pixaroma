@@ -23,7 +23,14 @@ function parseCfg(node) {
 }
 
 function openEditor(node) {
+  // Prevent stacking overlays if user clicks Edit twice quickly or Vue removes the
+  // overlay without firing close() (see CLAUDE.md §Vue rule 2 — overlay.isConnected).
+  if (node._noteEditor?._el?.isConnected) return;
+  if (node._noteEditor && !node._noteEditor._el?.isConnected) {
+    node._noteEditor._cleanup();
+  }
   const editor = new NoteEditor(node);
+  node._noteEditor = editor;
   editor.open();
 }
 

@@ -21,7 +21,12 @@ export class NoteEditor {
     window.addEventListener("keydown", this._keyBlock, true);
     window.addEventListener("keyup", this._keyBlock, true);
     window.addEventListener("keypress", this._keyBlock, true);
-    setTimeout(() => this._editArea?.focus(), 30);
+    // Vue may remove the overlay without calling close(); observe and clean up.
+    this._removalObserver = new MutationObserver(() => {
+      if (this._el && !this._el.isConnected) this._cleanup();
+    });
+    this._removalObserver.observe(document.body, { childList: true, subtree: false });
+    requestAnimationFrame(() => this._editArea?.focus());
   }
 
   close(force = false) {
@@ -29,15 +34,33 @@ export class NoteEditor {
       const ok = window.confirm("Unsaved changes will be lost. Close anyway?");
       if (!ok) return;
     }
-    window.removeEventListener("keydown", this._keyBlock, true);
-    window.removeEventListener("keyup", this._keyBlock, true);
-    window.removeEventListener("keypress", this._keyBlock, true);
-    if (this._el) { this._el.remove(); this._el = null; }
+    this._cleanup();
+  }
+
+  _cleanup() {
+    if (this._removalObserver) {
+      this._removalObserver.disconnect();
+      this._removalObserver = null;
+    }
+    if (this._keyBlock) {
+      window.removeEventListener("keydown", this._keyBlock, true);
+      window.removeEventListener("keyup", this._keyBlock, true);
+      window.removeEventListener("keypress", this._keyBlock, true);
+      this._keyBlock = null;
+    }
+    if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
+    this._el = null;
+    if (this.node && this.node._noteEditor === this) {
+      this.node._noteEditor = null;
+    }
   }
 
   save() {
     const html = sanitize(this._editArea?.innerHTML || "");
     this.cfg.content = html;
+    // Preserve whatever size the node currently has so reload restores it. The
+    // editor overlay doesn't itself resize the node — this captures the size the
+    // user set on the canvas before opening the editor.
     this.cfg.width = this.node.size?.[0] || this.cfg.width;
     this.cfg.height = this.node.size?.[1] || this.cfg.height;
 
