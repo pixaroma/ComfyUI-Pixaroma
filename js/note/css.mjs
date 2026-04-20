@@ -34,7 +34,7 @@ export function injectCSS() {
 .pix-note-body h2 { font-size: 16px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-body h3 { font-size: 14px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
 .pix-note-body p  { margin: 6px 0; }
-.pix-note-body hr { border: none; border-top: 1px solid #333; margin: 10px 0; }
+.pix-note-body hr { border: none; border-top: 1px solid #555; margin: 10px 0; }
 .pix-note-body ul, .pix-note-body ol { margin: 4px 0 4px 20px; padding: 0; }
 .pix-note-body li { margin: 2px 0; }
 .pix-note-body code {
@@ -201,7 +201,7 @@ export function injectCSS() {
 .pix-note-editarea h1 { font-size: 22px; font-weight: 700; margin: 4px 0 8px; color: #fff; }
 .pix-note-editarea h2 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-editarea h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
-.pix-note-editarea hr { border:none; border-top: 1px solid #333; margin: 10px 0; }
+.pix-note-editarea hr { border:none; border-top: 1px solid #555; margin: 10px 0; }
 .pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
 .pix-note-editarea code { background: #2a2a2a; padding: 0 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 0.92em; }
 .pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
