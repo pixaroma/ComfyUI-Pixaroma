@@ -50,11 +50,6 @@ function setupNote(node) {
       renderContent(node, node._noteBody);
     }
 
-    const cfg = node._noteCfg;
-    if (node.size) {
-      node.size[0] = cfg.width || 420;
-      node.size[1] = cfg.height || 320;
-    }
   } catch (err) {
     console.error("[Pixaroma Note] setupNote error:", err);
   }
@@ -70,6 +65,11 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const r = _origCreated?.apply(this, arguments);
       setupNote(this);
+      // Apply default size only on initial create (not on workflow reload).
+      // onConfigure handles size restore natively via ComfyUI's graph deserialization.
+      if (!this.size || this.size[0] < 200 || this.size[1] < 80) {
+        this.size = [this._noteCfg?.width || 420, this._noteCfg?.height || 320];
+      }
       if (allow_debug) console.log("PixaromaNote created", this);
       return r;
     };

@@ -23,6 +23,8 @@ export function injectCSS() {
   color: #e4e4e4;
   word-wrap: break-word;
   user-select: text;
+  text-decoration: none !important;
+  text-shadow: none;
 }
 .pix-note-body::-webkit-scrollbar { width: 6px; }
 .pix-note-body::-webkit-scrollbar-track { background: transparent; }
@@ -52,6 +54,7 @@ export function injectCSS() {
 /* Placeholder shown when content empty */
 .pix-note-placeholder {
   color: #666; font-style: italic; pointer-events: none;
+  text-decoration: none !important;
 }
 
 /* Pixaroma block: Download pill */
