@@ -56,6 +56,54 @@ export class NoteEditor {
     document.addEventListener("keydown", this._keyBlock, true);
     document.addEventListener("keyup", this._keyBlock, true);
     document.addEventListener("keypress", this._keyBlock, true);
+    // Paste/drop into the editArea must NOT reach ComfyUI's global
+    // paste/drop listeners. ComfyUI intercepts image paste/drop and spawns
+    // a Load Image node on the graph — pasting an image into the Note
+    // editor would therefore both (a) embed an <img> in the contenteditable
+    // and (b) add an unrelated Load Image node. Register at window capture
+    // so we preempt ComfyUI's listener, and rewrite the paste as plain text.
+    this._pasteBlock = (e) => {
+      if (!this._el || !this._editArea) return;
+      const area = this._editArea;
+      const inArea = e.target === area || area.contains(e.target);
+      if (!inArea) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const text =
+        (e.clipboardData || window.clipboardData)?.getData("text/plain") || "";
+      if (!text) return;
+      if (document.activeElement !== area) area.focus();
+      document.execCommand("insertText", false, text);
+    };
+    this._dropBlock = (e) => {
+      if (!this._el) return;
+      const inOverlay = this._el.contains(e.target);
+      if (!inOverlay) return;
+      // Any drop that lands inside our overlay is ours — eat it so ComfyUI
+      // can't add a Load Image node. If the drop carried text, insert it.
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      const area = this._editArea;
+      const inArea = area && (e.target === area || area.contains(e.target));
+      if (inArea) {
+        const text = e.dataTransfer?.getData("text/plain") || "";
+        if (text) {
+          if (document.activeElement !== area) area.focus();
+          document.execCommand("insertText", false, text);
+        }
+      }
+    };
+    this._dragOverBlock = (e) => {
+      if (!this._el || !this._el.contains(e.target)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+    window.addEventListener("paste", this._pasteBlock, true);
+    document.addEventListener("paste", this._pasteBlock, true);
+    window.addEventListener("drop", this._dropBlock, true);
+    document.addEventListener("drop", this._dropBlock, true);
+    window.addEventListener("dragover", this._dragOverBlock, true);
+    document.addEventListener("dragover", this._dragOverBlock, true);
     // Belt-and-suspenders: neuter the graph's undo/redo and the Vue
     // frontend's Comfy.Undo/Comfy.Redo commands while the editor is open
     // so that even if a ComfyUI shortcut listener slips past our capture
@@ -186,6 +234,21 @@ export class NoteEditor {
       document.removeEventListener("keyup", this._keyBlock, true);
       document.removeEventListener("keypress", this._keyBlock, true);
       this._keyBlock = null;
+    }
+    if (this._pasteBlock) {
+      window.removeEventListener("paste", this._pasteBlock, true);
+      document.removeEventListener("paste", this._pasteBlock, true);
+      this._pasteBlock = null;
+    }
+    if (this._dropBlock) {
+      window.removeEventListener("drop", this._dropBlock, true);
+      document.removeEventListener("drop", this._dropBlock, true);
+      this._dropBlock = null;
+    }
+    if (this._dragOverBlock) {
+      window.removeEventListener("dragover", this._dragOverBlock, true);
+      document.removeEventListener("dragover", this._dragOverBlock, true);
+      this._dragOverBlock = null;
     }
     if (this._cmdExecPath && this._savedCmdExecute) {
       this._cmdExecPath.execute = this._savedCmdExecute;
