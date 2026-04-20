@@ -199,6 +199,9 @@ NoteEditor.prototype._buildToolbar = function () {
     openColorPop(textColorBtn, null, (c) => {
       this._editArea.focus();
       restoreRange(r);
+      // Force CSS output (<span style="color:...">) instead of legacy
+      // <font color="..."> so headings and the sanitizer preserve the color.
+      document.execCommand("styleWithCSS", false, true);
       if (c == null) {
         // "Clear" means reset to the body's default text color rather than
         // execCommand("removeFormat") which would strip bold/italic/etc too.
@@ -224,6 +227,7 @@ NoteEditor.prototype._buildToolbar = function () {
     openColorPop(hiColorBtn, null, (c) => {
       this._editArea.focus();
       restoreRange(r);
+      document.execCommand("styleWithCSS", false, true);
       if (c == null) document.execCommand("hiliteColor", false, "transparent");
       else {
         document.execCommand("hiliteColor", false, c);
