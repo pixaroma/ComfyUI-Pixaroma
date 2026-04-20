@@ -63,6 +63,26 @@ export class NoteEditor {
       app.graph.undo = function () {};
       app.graph.redo = function () {};
     }
+    // The real undo path (seen in the stack trace) is:
+    //   changeTracker.undo → app.loadGraphData → graph.configure → graph.clear
+    // The wrappers above don't cover this path — `changeTracker.undo` lives
+    // in the Vue workflow store, out of reach. Block it by patching the
+    // single bottleneck every path goes through: `app.loadGraphData`. While
+    // the editor is open, swallow the call so the graph state can't be
+    // reloaded (undo/redo, template load, etc. all pause).
+    if (typeof app.loadGraphData === "function") {
+      this._savedLoadGraphData = app.loadGraphData.bind(app);
+      app.loadGraphData = () => {
+        console.warn("[pix-note] loadGraphData blocked while note editor is open");
+        return Promise.resolve();
+      };
+    }
+    if (app.graph && typeof app.graph.configure === "function") {
+      this._savedGraphConfigure = app.graph.configure.bind(app.graph);
+      app.graph.configure = () => {
+        console.warn("[pix-note] graph.configure blocked while note editor is open");
+      };
+    }
     // Try to intercept the Vue frontend's command dispatch for Undo/Redo.
     // The exact API differs between ComfyUI versions; wrap whatever we can
     // find so Comfy.Undo and Comfy.Redo become no-ops while editor is open.
@@ -184,6 +204,14 @@ export class NoteEditor {
       }
       this._savedGraphUndo = undefined;
       this._savedGraphRedo = undefined;
+    }
+    if (this._savedLoadGraphData) {
+      app.loadGraphData = this._savedLoadGraphData;
+      this._savedLoadGraphData = null;
+    }
+    if (this._savedGraphConfigure) {
+      if (app.graph) app.graph.configure = this._savedGraphConfigure;
+      this._savedGraphConfigure = null;
     }
     if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
     this._el = null;
