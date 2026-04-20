@@ -82,6 +82,23 @@ app.registerExtension({
       if (body) renderContent(this, body);
       return r;
     };
+
+    // Persist node size on resize so the width/height survive workflow
+    // reload. The editor's save() also stamps the current size into cfg,
+    // but users may resize on the canvas without opening the editor at
+    // all — without this hook those nodes would revert to 420x320 on
+    // reload.
+    const _origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      const r = _origResize?.apply(this, arguments);
+      if (this._noteCfg && Array.isArray(size)) {
+        this._noteCfg.width = Math.max(160, size[0]);
+        this._noteCfg.height = Math.max(80, size[1]);
+        const w = (this.widgets || []).find((x) => x.name === "note_json");
+        if (w) w.value = JSON.stringify(this._noteCfg);
+      }
+      return r;
+    };
   },
 
   async nodeCreated(node) {
