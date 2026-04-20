@@ -70,6 +70,22 @@ NoteEditor.prototype._buildToolbar = function () {
   tb.appendChild(g1);
   tb.appendChild(el("div", "pix-note-tsep"));
 
+  // Group 2 — headings
+  const mkHeading = (tag, label) =>
+    makeBtn(label, `Heading ${tag.toUpperCase()}`, "", () =>
+      document.execCommand("formatBlock", false, tag)
+    );
+  const g2 = el("div", "pix-note-tgroup");
+  g2.appendChild(mkHeading("h1", "H1"));
+  g2.appendChild(mkHeading("h2", "H2"));
+  g2.appendChild(mkHeading("h3", "H3"));
+  // "¶" resets the current block back to a paragraph
+  g2.appendChild(makeBtn("\u00b6", "Paragraph (reset heading)", "", () =>
+    document.execCommand("formatBlock", false, "p")
+  ));
+  tb.appendChild(g2);
+  tb.appendChild(el("div", "pix-note-tsep"));
+
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();
 
