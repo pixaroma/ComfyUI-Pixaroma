@@ -25,8 +25,21 @@ function openEditor(node) {
   console.log("[Pixaroma Note] openEditor called — wiring in Task 6");
 }
 
-function setupNote(node) {
+function setupNote(node, phase = "?") {
   try {
+    // TEMP DEBUG — remove after doubled-text bug is confirmed fixed
+    try {
+      const snapshot = (node.widgets || []).map((w) => ({
+        name: w.name,
+        type: w.type,
+        hidden: !!w.hidden,
+        hasElement: !!w.element,
+        elementConnected: !!(w.element && w.element.isConnected),
+        value: typeof w.value === "string" ? w.value.slice(0, 40) + (w.value.length > 40 ? "…" : "") : w.value,
+      }));
+      console.log(`[Pixaroma Note][${phase}] widgets BEFORE setupNote:`, snapshot);
+    } catch {}
+
     hideJsonWidget(node.widgets, "note_json");
     node._noteCfg = parseCfg(node);
 
@@ -61,6 +74,18 @@ function setupNote(node) {
       renderContent(node, node._noteBody);
     }
 
+    // TEMP DEBUG — remove after doubled-text bug is confirmed fixed
+    try {
+      const snapshot = (node.widgets || []).map((w) => ({
+        name: w.name,
+        type: w.type,
+        hidden: !!w.hidden,
+        hasElement: !!w.element,
+        elementConnected: !!(w.element && w.element.isConnected),
+      }));
+      console.log(`[Pixaroma Note][${phase}] widgets AFTER setupNote:`, snapshot);
+    } catch {}
+
   } catch (err) {
     console.error("[Pixaroma Note] setupNote error:", err);
   }
@@ -75,7 +100,7 @@ app.registerExtension({
     const _origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       const r = _origCreated?.apply(this, arguments);
-      setupNote(this);
+      setupNote(this, "onNodeCreated");
       // Apply default size only on initial create (not on workflow reload).
       // onConfigure handles size restore natively via ComfyUI's graph deserialization.
       if (!this.size || this.size[0] < 200 || this.size[1] < 80) {
@@ -88,7 +113,7 @@ app.registerExtension({
     const _origCfg = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (data) {
       const r = _origCfg?.apply(this, arguments);
-      setupNote(this);
+      setupNote(this, "onConfigure");
       return r;
     };
 
