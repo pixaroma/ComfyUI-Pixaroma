@@ -289,18 +289,36 @@ NoteEditor.prototype._buildToolbar = function () {
   g3.appendChild(hiColorBtn);
 
   // Mirror the selection's inline background-color onto the ■ button so the
-  // highlight preview tracks whatever ancestor span/li is currently wrapping
-  // the cursor. Walk ancestors only (not computed bg) so the editor's own
-  // dark background doesn't leak in.
+  // highlight preview tracks whatever span/li currently wraps the cursor.
+  // Walks both selection endpoints (anchor can be on either side of a reverse
+  // drag-select) plus any highlighted spans intersected by the range.
   this._activeChecks.push(() => {
     const sel = window.getSelection();
-    const anchor = sel?.anchorNode;
-    if (!anchor || !this._editArea?.contains(anchor)) return;
-    let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
-    let bg = "";
-    while (n && n !== this._editArea) {
-      if (n.style?.backgroundColor) { bg = n.style.backgroundColor; break; }
-      n = n.parentElement;
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!this._editArea?.contains(range.commonAncestorContainer)) return;
+    const findAncestorBg = (node) => {
+      let n = node?.nodeType === 1 ? node : node?.parentElement;
+      while (n && n !== this._editArea) {
+        if (n.style?.backgroundColor) return n.style.backgroundColor;
+        n = n.parentElement;
+      }
+      return "";
+    };
+    let bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
+    if (!bg && !range.collapsed) {
+      // Non-collapsed selection: also check any highlighted span intersected
+      // by the range (e.g. user dragged across just part of an orange span).
+      const ca = range.commonAncestorContainer;
+      const scope = ca.nodeType === 1 ? ca : ca.parentElement;
+      if (scope) {
+        for (const el of scope.querySelectorAll("*")) {
+          if (el.style?.backgroundColor && range.intersectsNode(el)) {
+            bg = el.style.backgroundColor;
+            break;
+          }
+        }
+      }
     }
     hiColorBtn.style.color = bg || "";
   });
