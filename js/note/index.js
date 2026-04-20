@@ -26,7 +26,12 @@ function setupNote(node) {
     hideJsonWidget(node.widgets, "note_json");
     node._noteCfg = parseCfg(node);
 
-    if (!node._noteDOMWrap) {
+    if (!node._noteDOMWrap || !node._noteDOMWrap.isConnected) {
+      if (node._noteDOMWrap) {
+        // Vue detached the widget — clear stale refs so a fresh one is installed
+        node._noteDOMWrap = null;
+        node._noteBody = null;
+      }
       const wrap = createNoteDOMWidget(node);
       node._noteDOMWrap = wrap;
       node._noteBody = wrap.querySelector(".pix-note-body");
