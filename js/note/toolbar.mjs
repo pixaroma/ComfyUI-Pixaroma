@@ -128,12 +128,12 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 0 — undo / redo. Uses contenteditable's native history via
   // execCommand, matching what Ctrl+Z/Y does inside the editor.
   const g0 = el("div", "pix-note-tgroup");
-  const undoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/rotate-ccw.svg" draggable="false">`;
-  const redoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/rotate-cw.svg" draggable="false">`;
-  g0.appendChild(makeBtn(undoLabel, "Undo (Ctrl+Z)", "", () => {
+  const undoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/undo.svg" draggable="false">`;
+  const redoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/redo.svg" draggable="false">`;
+  g0.appendChild(makeBtn(undoLabel, "Undo (Ctrl+Z)", "pix-note-tbtn-accent", () => {
     try { document.execCommand("undo"); } catch (e) {}
   }));
-  g0.appendChild(makeBtn(redoLabel, "Redo (Ctrl+Shift+Z)", "", () => {
+  g0.appendChild(makeBtn(redoLabel, "Redo (Ctrl+Shift+Z)", "pix-note-tbtn-accent", () => {
     try { document.execCommand("redo"); } catch (e) {}
   }));
   tb.appendChild(g0);
