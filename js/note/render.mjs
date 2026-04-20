@@ -42,8 +42,15 @@ export function createNoteDOMWidget(node) {
 export function renderContent(node, bodyEl) {
   const cfg = node._noteCfg || {};
   bodyEl.style.setProperty("--pix-note-accent", cfg.accentColor || "#f66744");
-  bodyEl.style.background = cfg.backgroundColor && cfg.backgroundColor !== "transparent"
-    ? cfg.backgroundColor : "transparent";
+  // Default to the editor's interior gray (#151515) so the on-canvas body
+  // matches what the user sees while editing. "transparent" is still
+  // honored if explicitly set (user may pick it from the bg color picker
+  // once Task 17 lands, to let ComfyUI's node colour show through).
+  if (cfg.backgroundColor === "transparent") {
+    bodyEl.style.background = "transparent";
+  } else {
+    bodyEl.style.background = cfg.backgroundColor || "#151515";
+  }
 
   const html = (cfg.content || "").trim();
   if (!html) {

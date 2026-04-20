@@ -374,6 +374,10 @@ export class NoteEditor {
     const editArea = el("div", "pix-note-editarea");
     editArea.contentEditable = "true";
     editArea.innerHTML = sanitize(this.cfg.content || "");
+    // Apply the per-note background colour so the editor interior matches
+    // what the on-canvas body will look like after save. Falls back to the
+    // editor's dark-gray default (#151515) when the user hasn't picked one.
+    this._applyEditAreaBg(editArea);
     // Normalize: wrap any raw text nodes / bare <br>s at the root in <p> so
     // every top-level block operation (code insert, headings, clear-format)
     // can reliably find its enclosing block. Chrome otherwise leaves the
@@ -545,6 +549,17 @@ NoteEditor.prototype._normalizeEditArea = function (area) {
     const p = document.createElement("p");
     p.appendChild(document.createElement("br"));
     root.appendChild(p);
+  }
+};
+
+NoteEditor.prototype._applyEditAreaBg = function (area) {
+  const root = area || this._editArea;
+  if (!root) return;
+  const bg = this.cfg.backgroundColor;
+  if (bg === "transparent") {
+    root.style.background = "transparent";
+  } else {
+    root.style.background = bg || "#151515";
   }
 };
 
