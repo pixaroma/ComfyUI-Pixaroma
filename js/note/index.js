@@ -31,14 +31,23 @@ function setupNote(node) {
     node._noteCfg = parseCfg(node);
 
     if (!node._noteDOMWrap || !node._noteDOMWrap.isConnected) {
-      // Clear any stale refs and strip any pre-existing note_dom widget.
-      // Vue may pre-populate a placeholder widget from the saved workflow before
-      // onConfigure fires; without this cleanup we'd end up with two widgets
-      // rendering into the same slot (doubled text on reload).
+      // Clear stale refs and strip any widgets that aren't the Python-declared
+      // `note_json`. Vue may restore extra widget stubs or leftover DOM widgets
+      // from prior saves; leaving them attached causes doubled/blurred rendering
+      // on reload because two widgets occupy the same slot. Also detach any
+      // orphan widget DOM nodes so they don't keep painting under our body.
       node._noteDOMWrap = null;
       node._noteBody = null;
-      const staleIdx = (node.widgets || []).findIndex((w) => w.name === "note_dom");
-      if (staleIdx !== -1) node.widgets.splice(staleIdx, 1);
+      if (node.widgets) {
+        for (let i = node.widgets.length - 1; i >= 0; i--) {
+          const w = node.widgets[i];
+          if (w.name === "note_json") continue;
+          if (w.element && w.element.parentNode) {
+            w.element.parentNode.removeChild(w.element);
+          }
+          node.widgets.splice(i, 1);
+        }
+      }
 
       const wrap = createNoteDOMWidget(node);
       node._noteDOMWrap = wrap;
