@@ -18,7 +18,10 @@ function restoreRange(range) {
   sel.addRange(range);
 }
 
-const SWATCHES = ["#f66744","#ffffff","#111111","#888888","#4a90e2","#5bd45b","#e25b5b"];
+const SWATCHES = [
+  "#f66744","#ffffff","#111111","#888888","#4a90e2","#5bd45b","#e25b5b",
+  "#b565e2","#00bcd4","#ff79c6","#f1c40f","#cccccc","#8b4513","#2c3e50",
+];
 
 function openColorPop(anchorBtn, currentColor, onPick, allowClear = false) {
   const pop = document.createElement("div");
