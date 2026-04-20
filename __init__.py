@@ -14,6 +14,8 @@ from .nodes.node_paint import NODE_CLASS_MAPPINGS as _MAPS_PAINT
 from .nodes.node_paint import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAINT
 from .nodes.node_show_text import NODE_CLASS_MAPPINGS as _MAPS_SHOW_TEXT
 from .nodes.node_show_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SHOW_TEXT
+from .nodes.node_note import NODE_CLASS_MAPPINGS as _MAPS_NOTE
+from .nodes.node_note import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_NOTE
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -32,6 +34,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_COMPARE,
     **_MAPS_CROP,
     **_MAPS_LABEL,
+    **_MAPS_NOTE,
     **_MAPS_UTILS,
     **_MAPS_SHOW_TEXT,
 }
@@ -43,6 +46,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMPARE,
     **_NAMES_CROP,
     **_NAMES_LABEL,
+    **_NAMES_NOTE,
     **_NAMES_UTILS,
     **_NAMES_PAINT,
     **_NAMES_SHOW_TEXT,
