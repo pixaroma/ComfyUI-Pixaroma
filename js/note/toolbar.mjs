@@ -155,6 +155,13 @@ NoteEditor.prototype._buildToolbar = function () {
     document.execCommand("underline"), "underline"));
   g1.appendChild(makeBtn("<span class='strike'>S</span>", "Strikethrough", "", () =>
     document.execCommand("strikeThrough"), "strikeThrough"));
+  // Clear formatting — strips inline format (bold/italic/underline/colors)
+  // and unwraps links on the current selection. Block-level elements
+  // (H1/H2/H3/pre/li) are left alone — use ¶ for those.
+  g1.appendChild(makeBtn("T\u2093", "Clear formatting on selection", "", () => {
+    document.execCommand("removeFormat");
+    document.execCommand("unlink");
+  }));
   tb.appendChild(g1);
   tb.appendChild(el("div", "pix-note-tsep"));
 
