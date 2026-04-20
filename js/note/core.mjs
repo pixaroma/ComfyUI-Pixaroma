@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, installFocusTrap } from "../shared/index.mjs";
+import { BRAND } from "../shared/index.mjs";
 import { injectCSS } from "./css.mjs";
 import { sanitize } from "./sanitize.mjs";
 import { renderContent } from "./render.mjs";
@@ -16,7 +16,9 @@ export class NoteEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
-    installFocusTrap(this._el);
+    // No installFocusTrap here — its mouseup refocus steals selection from
+    // the contenteditable edit area when a drag-select ends outside it.
+    // Key isolation is handled below via _keyBlock.
     this._keyBlock = (e) => e.stopImmediatePropagation();
     window.addEventListener("keydown", this._keyBlock, true);
     window.addEventListener("keyup", this._keyBlock, true);
@@ -47,6 +49,10 @@ export class NoteEditor {
       window.removeEventListener("keyup", this._keyBlock, true);
       window.removeEventListener("keypress", this._keyBlock, true);
       this._keyBlock = null;
+    }
+    if (this._selectionChangeHandler) {
+      document.removeEventListener("selectionchange", this._selectionChangeHandler);
+      this._selectionChangeHandler = null;
     }
     if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
     this._el = null;
