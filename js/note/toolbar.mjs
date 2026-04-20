@@ -248,6 +248,21 @@ NoteEditor.prototype._buildToolbar = function () {
   tb.appendChild(g3);
   tb.appendChild(el("div", "pix-note-tsep"));
 
+  // Group 4 — lists
+  const g4 = el("div", "pix-note-tgroup");
+  g4.appendChild(makeBtn("&bull; List", "Bulleted list", "", () =>
+    document.execCommand("insertUnorderedList")
+  ));
+  g4.appendChild(makeBtn("1. List", "Numbered list", "", () =>
+    document.execCommand("insertOrderedList")
+  ));
+  g4.appendChild(makeBtn("\u2611", "Checkbox item", "", () => {
+    const html = `<label><input type="checkbox"> </label>&nbsp;`;
+    document.execCommand("insertHTML", false, html);
+  }));
+  tb.appendChild(g4);
+  tb.appendChild(el("div", "pix-note-tsep"));
+
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();
 

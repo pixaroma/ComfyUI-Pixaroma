@@ -269,6 +269,16 @@ export function injectCSS() {
   width: 22px; height: 22px; border: 1px solid #444; border-radius: 3px; cursor: pointer;
 }
 
+/* Checkbox list items (both editor and canvas) */
+.pix-note-editarea label, .pix-note-body label {
+  display: flex; align-items: center; gap: 6px; margin: 2px 0;
+}
+.pix-note-editarea label input[type="checkbox"] {
+  accent-color: ${BRAND};
+}
+/* On-canvas checkboxes are non-interactive */
+.pix-note-body label input[type="checkbox"] { pointer-events: none; }
+
   `;
   document.head.appendChild(s);
 }
