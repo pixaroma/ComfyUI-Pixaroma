@@ -315,34 +315,66 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 5 — inserts
   const g5 = el("div", "pix-note-tgroup");
 
-  g5.appendChild(makeBtn("\uD83D\uDD17", "Insert link", "", () => {
+  const linkBtn = makeBtn("\uD83D\uDD17", "Insert link", "", () => {
     const selText = window.getSelection()?.toString() || "";
-    const url = window.prompt("URL (http/https):", "https://");
-    if (!url) return;
-    const safe = /^https?:\/\//i.test(url) || /^mailto:/i.test(url);
-    if (!safe) { alert("Only http://, https://, and mailto: are allowed."); return; }
-    const label = selText || url;
-    document.execCommand(
-      "insertHTML", false,
-      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
-    );
-  }));
+    const savedRange = saveRange(this._editArea);
+    this._promptLinkUrl(selText).then((result) => {
+      if (!result) return;
+      this._editArea.focus();
+      restoreRange(savedRange);
+      const { url, label } = result;
+      document.execCommand(
+        "insertHTML", false,
+        `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+      );
+      this._dirty = true;
+      this._refreshActiveStates();
+    });
+  });
+  g5.appendChild(linkBtn);
 
-  g5.appendChild(makeBtn("{ }", "Inline code", "", () => {
+  const inlineCodeBtn = makeBtn("{ }", "Inline code", "", () => {
     const sel = window.getSelection();
     const text = sel?.toString() || "code";
     document.execCommand("insertHTML", false, `<code>${text}</code>`);
-  }));
+  });
+  g5.appendChild(inlineCodeBtn);
 
-  g5.appendChild(makeBtn("\u27E8/\u27E9", "Code block", "", () => {
+  const codeBlockBtn = makeBtn("\u27E8/\u27E9", "Code block", "", () => {
     const sel = window.getSelection();
     const text = sel?.toString() || "// code";
     document.execCommand("insertHTML", false, `<pre><code>${text}</code></pre><p><br></p>`);
-  }));
+  });
+  g5.appendChild(codeBlockBtn);
 
   g5.appendChild(makeBtn("\u2014", "Horizontal separator", "", () => {
     document.execCommand("insertHTML", false, `<hr><p><br></p>`);
   }));
+
+  // Active-state for link / inline code / code block: walk up from selection
+  // anchor and toggle .active when the matching ancestor exists. Inline code
+  // only activates when the <code> is NOT inside a <pre> (else the code-block
+  // button would be the correct indicator).
+  this._activeChecks.push(() => {
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode;
+    let inA = false, inCode = false, inPre = false;
+    if (anchor && this._editArea?.contains(anchor)) {
+      let n = anchor;
+      while (n && n !== this._editArea) {
+        if (n.nodeType === 1) {
+          const tag = n.tagName;
+          if (tag === "A") inA = true;
+          else if (tag === "CODE") inCode = true;
+          else if (tag === "PRE") inPre = true;
+        }
+        n = n.parentNode;
+      }
+    }
+    linkBtn.classList.toggle("active", inA);
+    inlineCodeBtn.classList.toggle("active", inCode && !inPre);
+    codeBlockBtn.classList.toggle("active", inPre);
+  });
 
   tb.appendChild(g5);
   tb.appendChild(el("div", "pix-note-tsep"));
@@ -366,4 +398,84 @@ NoteEditor.prototype._buildToolbar = function () {
 
 NoteEditor.prototype._refreshActiveStates = function () {
   (this._activeChecks || []).forEach((fn) => fn());
+};
+
+// Themed URL prompt that matches the editor's dark modal style (same look as
+// the unsaved-changes confirm dialog). Returns Promise<{url, label}|null>.
+// If `presetLabel` is non-empty (user had text selected before clicking),
+// it pre-fills the label field; otherwise the URL is used as the label.
+NoteEditor.prototype._promptLinkUrl = function (presetLabel) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "pix-note-confirm-backdrop";
+    const box = document.createElement("div");
+    box.className = "pix-note-confirm-box";
+    const title = document.createElement("div");
+    title.className = "pix-note-confirm-title";
+    title.textContent = "Insert link";
+
+    const urlLbl = document.createElement("div");
+    urlLbl.className = "pix-note-linklbl";
+    urlLbl.textContent = "URL";
+    const urlInput = document.createElement("input");
+    urlInput.type = "text";
+    urlInput.className = "pix-note-linkinput";
+    urlInput.value = "https://";
+
+    const labelLbl = document.createElement("div");
+    labelLbl.className = "pix-note-linklbl";
+    labelLbl.textContent = "Label (what you'll see in the note)";
+    const labelInput = document.createElement("input");
+    labelInput.type = "text";
+    labelInput.className = "pix-note-linkinput";
+    labelInput.value = presetLabel || "";
+    labelInput.placeholder = "Leave empty to show the URL";
+
+    const err = document.createElement("div");
+    err.className = "pix-note-linkerr";
+
+    const actions = document.createElement("div");
+    actions.className = "pix-note-confirm-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "pix-note-btn";
+    cancelBtn.textContent = "Cancel";
+    const okBtn = document.createElement("button");
+    okBtn.className = "pix-note-btn primary";
+    okBtn.textContent = "Insert";
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+
+    box.appendChild(title);
+    box.appendChild(urlLbl);
+    box.appendChild(urlInput);
+    box.appendChild(labelLbl);
+    box.appendChild(labelInput);
+    box.appendChild(err);
+    box.appendChild(actions);
+    backdrop.appendChild(box);
+    (this._el || document.body).appendChild(backdrop);
+
+    const finish = (v) => { backdrop.remove(); resolve(v); };
+    cancelBtn.addEventListener("click", () => finish(null));
+    okBtn.addEventListener("click", () => {
+      const url = urlInput.value.trim();
+      if (!url) { finish(null); return; }
+      if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) {
+        err.textContent = "URL must start with http://, https://, or mailto:";
+        urlInput.focus();
+        return;
+      }
+      const label = labelInput.value.trim() || url;
+      finish({ url, label });
+    });
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) finish(null);
+    });
+    requestAnimationFrame(() => {
+      // If we pre-filled the label (user had selection), focus URL first.
+      // Otherwise also focus URL — it's the required field.
+      urlInput.focus();
+      urlInput.select();
+    });
+  });
 };

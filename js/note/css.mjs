@@ -269,6 +269,22 @@ export function injectCSS() {
   width: 22px; height: 22px; border: 1px solid #444; border-radius: 3px; cursor: pointer;
 }
 
+/* ── Insert-link dialog inputs ───────────────────────────── */
+.pix-note-linklbl {
+  font-size: 10.5px; color: #888; text-transform: uppercase;
+  letter-spacing: 0.5px; margin: 6px 0 3px;
+}
+.pix-note-linkinput {
+  width: 100%; box-sizing: border-box;
+  background: #0f0f0f; border: 1px solid #333; border-radius: 3px;
+  color: #ddd; font-size: 12px; padding: 6px 8px;
+  font-family: "Consolas", monospace;
+}
+.pix-note-linkinput:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; border-color: ${BRAND}; }
+.pix-note-linkerr {
+  color: #e25b5b; font-size: 11px; margin-top: 6px; min-height: 14px;
+}
+
   `;
   document.head.appendChild(s);
 }
