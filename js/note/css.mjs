@@ -136,6 +136,63 @@ export function injectCSS() {
 }
 .pix-note-toast.show { opacity: 1; }
 
+/* ── Editor overlay ───────────────────────────────────────── */
+.pix-note-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.72);
+  z-index: 99990; display: flex; align-items: center; justify-content: center;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-panel {
+  background: #1b1b1b; border: 1px solid #333; border-radius: 8px;
+  width: min(920px, 94vw); height: min(720px, 90vh);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+  position: relative;
+}
+.pix-note-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: #252525; border-bottom: 1px solid #333;
+  color: #eee;
+}
+.pix-note-title { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; }
+.pix-note-title-logo { width: 18px; height: 18px; }
+.pix-note-title-brand { color: ${BRAND}; }
+.pix-note-close {
+  background: none; border: none; color: #aaa; font-size: 22px; cursor: pointer;
+  width: 28px; height: 28px; line-height: 1; border-radius: 4px;
+}
+.pix-note-close:hover { background: #333; color: #fff; }
+
+.pix-note-main {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden;
+}
+.pix-note-editarea {
+  flex: 1; overflow-y: auto; padding: 14px 18px; color: #e4e4e4; font-size: 13px;
+  line-height: 1.55; background: #151515; outline: none;
+}
+.pix-note-editarea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
+.pix-note-editarea h1 { font-size: 22px; font-weight: 700; margin: 4px 0 8px; color: #fff; }
+.pix-note-editarea h2 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
+.pix-note-editarea h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
+.pix-note-editarea hr { border:none; border-top: 1px solid #333; margin: 10px 0; }
+.pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
+.pix-note-editarea code { background: #2a2a2a; padding: 1px 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 12px; }
+.pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
+.pix-note-editarea ul, .pix-note-editarea ol { margin: 4px 0 4px 20px; }
+
+.pix-note-footer {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 10px 14px; background: #202020; border-top: 1px solid #333;
+}
+.pix-note-btn {
+  padding: 6px 14px; border-radius: 4px; font-size: 12px; font-weight: 600;
+  border: 1px solid #333; background: #2a2a2a; color: #ddd; cursor: pointer;
+}
+.pix-note-btn:hover { background: #333; }
+.pix-note-btn.primary { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+.pix-note-btn.primary:hover { filter: brightness(1.08); }
+.pix-note-btn.ghost { background: transparent; }
+
   `;
   document.head.appendChild(s);
 }

@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
 import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.mjs";
+import { NoteEditor } from "./core.mjs";
 
 const DEFAULT_CFG = {
   version: 1,
@@ -22,7 +23,8 @@ function parseCfg(node) {
 }
 
 function openEditor(node) {
-  console.log("[Pixaroma Note] openEditor called — wiring in Task 6");
+  const editor = new NoteEditor(node);
+  editor.open();
 }
 
 function setupNote(node) {
