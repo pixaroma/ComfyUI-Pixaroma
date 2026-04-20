@@ -271,10 +271,10 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 4 — lists
   const g4 = el("div", "pix-note-tgroup");
   g4.appendChild(makeBtn("&bull; List", "Bulleted list", "", () =>
-    document.execCommand("insertUnorderedList")
+    document.execCommand("insertUnorderedList"), "insertUnorderedList"
   ));
   g4.appendChild(makeBtn("1. List", "Numbered list", "", () =>
-    document.execCommand("insertOrderedList")
+    document.execCommand("insertOrderedList"), "insertOrderedList"
   ));
   tb.appendChild(g4);
   tb.appendChild(el("div", "pix-note-tsep"));
