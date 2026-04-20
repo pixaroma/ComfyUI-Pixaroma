@@ -7,7 +7,12 @@ export function attachEditButton(wrap, onClick) {
   const btn = document.createElement("button");
   btn.className = "pix-note-editbtn";
   btn.type = "button";
-  btn.innerHTML = "✏ Edit";
+  const icon = document.createElement("img");
+  icon.src = "/pixaroma/assets/icons/ui/edit.svg";
+  icon.draggable = false;
+  icon.className = "pix-note-editbtn-icon";
+  btn.appendChild(icon);
+  btn.appendChild(document.createTextNode(" Edit"));
   btn.addEventListener("mousedown", (e) => {
     // Prevent LiteGraph from starting a node drag from the button
     e.stopPropagation();

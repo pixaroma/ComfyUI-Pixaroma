@@ -31,12 +31,52 @@ export class NoteEditor {
     requestAnimationFrame(() => this._editArea?.focus());
   }
 
-  close(force = false) {
+  async close(force = false) {
     if (this._dirty && !force) {
-      const ok = window.confirm("Unsaved changes will be lost. Close anyway?");
+      const ok = await this._confirmDiscard();
       if (!ok) return;
     }
     this._cleanup();
+  }
+
+  _confirmDiscard() {
+    return new Promise((resolve) => {
+      const backdrop = document.createElement("div");
+      backdrop.className = "pix-note-confirm-backdrop";
+      const box = document.createElement("div");
+      box.className = "pix-note-confirm-box";
+      const title = document.createElement("div");
+      title.className = "pix-note-confirm-title";
+      title.textContent = "Unsaved changes";
+      const text = document.createElement("div");
+      text.className = "pix-note-confirm-text";
+      text.textContent = "Your changes will be lost. Close anyway?";
+      const actions = document.createElement("div");
+      actions.className = "pix-note-confirm-actions";
+      const cancelBtn = document.createElement("button");
+      cancelBtn.className = "pix-note-btn";
+      cancelBtn.textContent = "Cancel";
+      const discardBtn = document.createElement("button");
+      discardBtn.className = "pix-note-btn primary";
+      discardBtn.textContent = "Discard";
+      actions.appendChild(cancelBtn);
+      actions.appendChild(discardBtn);
+      box.appendChild(title);
+      box.appendChild(text);
+      box.appendChild(actions);
+      backdrop.appendChild(box);
+      (this._el || document.body).appendChild(backdrop);
+      const finish = (ok) => {
+        if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+        resolve(ok);
+      };
+      cancelBtn.addEventListener("click", () => finish(false));
+      discardBtn.addEventListener("click", () => finish(true));
+      backdrop.addEventListener("click", (e) => {
+        if (e.target === backdrop) finish(false);
+      });
+      requestAnimationFrame(() => cancelBtn.focus());
+    });
   }
 
   _cleanup() {

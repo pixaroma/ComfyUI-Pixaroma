@@ -59,8 +59,28 @@ NoteEditor.prototype._buildToolbar = function () {
 
   // Group 1 — text style
   const g1 = el("div", "pix-note-tgroup");
-  g1.appendChild(makeBtn("<b>B</b>", "Bold (Ctrl+B)", "", () =>
-    document.execCommand("bold"), "bold"));
+  // Bold uses a custom active check: queryCommandState("bold") returns true
+  // inside H1/H2/H3 because those render bold by default, making the button
+  // misleadingly light up. Walk up the DOM and only activate when a real
+  // <b>/<strong> wraps the selection.
+  const bBtn = makeBtn("<b>B</b>", "Bold (Ctrl+B)", "", () =>
+    document.execCommand("bold"));
+  this._activeChecks.push(() => {
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode;
+    let explicit = false;
+    if (anchor && this._editArea?.contains(anchor)) {
+      let n = anchor;
+      while (n && n !== this._editArea) {
+        if (n.nodeType === 1 && (n.tagName === "B" || n.tagName === "STRONG")) {
+          explicit = true; break;
+        }
+        n = n.parentNode;
+      }
+    }
+    bBtn.classList.toggle("active", explicit);
+  });
+  g1.appendChild(bBtn);
   g1.appendChild(makeBtn("<i>I</i>", "Italic (Ctrl+I)", "italic", () =>
     document.execCommand("italic"), "italic"));
   g1.appendChild(makeBtn("<span class='under'>U</span>", "Underline (Ctrl+U)", "", () =>

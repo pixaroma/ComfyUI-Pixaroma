@@ -93,6 +93,7 @@ export function injectCSS() {
 .pix-note-editbtn {
   position: absolute;
   top: 6px; right: 10px;
+  display: inline-flex; align-items: center; gap: 4px;
   padding: 4px 10px;
   background: ${BRAND};
   color: #fff;
@@ -105,6 +106,11 @@ export function injectCSS() {
   transition: opacity 120ms ease;
   z-index: 10;
   box-shadow: 0 2px 6px rgba(0,0,0,.4);
+}
+.pix-note-editbtn-icon {
+  width: 12px; height: 12px; pointer-events: none;
+  /* SVG is rendered black by default; tint to white to match button text. */
+  filter: brightness(0) invert(1);
 }
 .pix-note-wrap:hover .pix-note-editbtn { opacity: 0.95; }
 .pix-note-editbtn:hover { opacity: 1 !important; filter: brightness(1.1); }
@@ -192,6 +198,31 @@ export function injectCSS() {
 .pix-note-btn.primary { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
 .pix-note-btn.primary:hover { filter: brightness(1.08); }
 .pix-note-btn.ghost { background: transparent; }
+
+/* ── Unsaved-changes confirm modal ───────────────────────── */
+.pix-note-confirm-backdrop {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100010;
+}
+.pix-note-confirm-box {
+  min-width: 280px; max-width: 380px;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 6px;
+  padding: 18px 20px 14px;
+  box-shadow: 0 12px 40px rgba(0,0,0,.6);
+}
+.pix-note-confirm-title {
+  font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 6px;
+}
+.pix-note-confirm-text {
+  font-size: 12px; color: #bbb; margin-bottom: 14px; line-height: 1.45;
+}
+.pix-note-confirm-actions {
+  display: flex; justify-content: flex-end; gap: 8px;
+}
 
 /* ── Toolbar ──────────────────────────────────────────────── */
 .pix-note-toolbar {
