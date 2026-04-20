@@ -18,6 +18,68 @@ function restoreRange(range) {
   sel.addRange(range);
 }
 
+const SWATCHES = ["#f66744","#ffffff","#111111","#888888","#4a90e2","#5bd45b","#e25b5b"];
+
+function openColorPop(anchorBtn, currentColor, onPick, allowClear = false) {
+  const pop = document.createElement("div");
+  pop.className = "pix-note-colorpop";
+  const rect = anchorBtn.getBoundingClientRect();
+  pop.style.left = `${rect.left}px`;
+  pop.style.top = `${rect.bottom + 4}px`;
+
+  const sw = document.createElement("div");
+  sw.className = "pix-note-swatches";
+  SWATCHES.forEach((c) => {
+    const s = document.createElement("div");
+    s.className = "pix-note-swatch";
+    s.style.background = c;
+    if (c.toLowerCase() === (currentColor || "").toLowerCase()) s.classList.add("active");
+    s.addEventListener("mousedown", (e) => e.preventDefault());
+    s.addEventListener("click", (e) => { e.stopPropagation(); onPick(c); close(); });
+    sw.appendChild(s);
+  });
+  pop.appendChild(sw);
+
+  const row = document.createElement("div");
+  row.className = "pix-note-colorrow";
+  const picker = document.createElement("input");
+  picker.type = "color";
+  picker.value = /^#[0-9a-f]{6}$/i.test(currentColor || "") ? currentColor : "#f66744";
+  picker.addEventListener("mousedown", (e) => e.stopPropagation());
+  picker.oninput = () => { onPick(picker.value); hex.value = picker.value; };
+  const hex = document.createElement("input");
+  hex.type = "text";
+  hex.value = currentColor || "";
+  hex.placeholder = "#rrggbb";
+  hex.addEventListener("mousedown", (e) => e.stopPropagation());
+  hex.oninput = () => {
+    const v = hex.value.startsWith("#") ? hex.value : `#${hex.value}`;
+    if (/^#[0-9a-f]{6}$/i.test(v)) { onPick(v); picker.value = v; }
+  };
+  row.appendChild(picker);
+  row.appendChild(hex);
+  if (allowClear) {
+    const cl = document.createElement("div");
+    cl.className = "clearbtn";
+    cl.title = "Clear";
+    cl.addEventListener("mousedown", (e) => e.preventDefault());
+    cl.addEventListener("click", (e) => { e.stopPropagation(); onPick(null); close(); });
+    row.appendChild(cl);
+  }
+  pop.appendChild(row);
+
+  document.body.appendChild(pop);
+
+  const onDocClick = (e) => {
+    if (!pop.contains(e.target) && e.target !== anchorBtn) close();
+  };
+  function close() {
+    document.removeEventListener("mousedown", onDocClick, true);
+    pop.remove();
+  }
+  setTimeout(() => document.addEventListener("mousedown", onDocClick, true), 0);
+}
+
 NoteEditor.prototype._buildToolbar = function () {
   const tb = this._toolbarEl;
   tb.innerHTML = "";
@@ -120,6 +182,61 @@ NoteEditor.prototype._buildToolbar = function () {
       btn.classList.toggle("active", block === tag);
     }
   });
+
+  // Group 3 — colors
+  const g3 = el("div", "pix-note-tgroup");
+
+  const textColorBtn = el("button", "pix-note-tbtn");
+  textColorBtn.type = "button";
+  textColorBtn.textContent = "A";
+  textColorBtn.title = "Text color";
+  textColorBtn.style.fontWeight = "bold";
+  textColorBtn.style.borderBottom = `3px solid ${SWATCHES[0]}`;
+  textColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  textColorBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const r = saveRange(this._editArea);
+    openColorPop(textColorBtn, null, (c) => {
+      this._editArea.focus();
+      restoreRange(r);
+      if (c == null) {
+        // "Clear" means reset to the body's default text color rather than
+        // execCommand("removeFormat") which would strip bold/italic/etc too.
+        document.execCommand("foreColor", false, "#e4e4e4");
+      } else {
+        document.execCommand("foreColor", false, c);
+        textColorBtn.style.borderBottom = `3px solid ${c}`;
+      }
+      this._dirty = true;
+      this._refreshActiveStates();
+    }, true);
+  });
+  g3.appendChild(textColorBtn);
+
+  const hiColorBtn = el("button", "pix-note-tbtn");
+  hiColorBtn.type = "button";
+  hiColorBtn.textContent = "\u25A0";
+  hiColorBtn.title = "Highlight color";
+  hiColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  hiColorBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    const r = saveRange(this._editArea);
+    openColorPop(hiColorBtn, null, (c) => {
+      this._editArea.focus();
+      restoreRange(r);
+      if (c == null) document.execCommand("hiliteColor", false, "transparent");
+      else {
+        document.execCommand("hiliteColor", false, c);
+        hiColorBtn.style.color = c;
+      }
+      this._dirty = true;
+      this._refreshActiveStates();
+    }, true);
+  });
+  g3.appendChild(hiColorBtn);
+
+  tb.appendChild(g3);
+  tb.appendChild(el("div", "pix-note-tsep"));
 
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();
