@@ -190,6 +190,38 @@ NoteEditor.prototype._buildToolbar = function () {
         while (el.firstChild) parent.insertBefore(el.firstChild, el);
         parent.removeChild(el);
       }
+      // Also unwrap any UL/OL intersected by the selection: promote every LI
+      // to a P and drop the list wrapper. execCommand("removeFormat") doesn't
+      // touch lists, so without this step a bulleted/numbered selection still
+      // shows its bullets after Tx.
+      const listsToUnwrap = new Set();
+      const walkUpList = (start) => {
+        let n = start;
+        while (n && n !== this._editArea) {
+          if (n.nodeType === 1 && (n.tagName === "UL" || n.tagName === "OL")) {
+            listsToUnwrap.add(n);
+          }
+          n = n.parentNode;
+        }
+      };
+      walkUpList(range.startContainer);
+      walkUpList(range.endContainer);
+      if (scope?.querySelectorAll) {
+        for (const el of scope.querySelectorAll("ul, ol")) {
+          if (range.intersectsNode(el)) listsToUnwrap.add(el);
+        }
+      }
+      for (const list of listsToUnwrap) {
+        const parent = list.parentNode;
+        if (!parent) continue;
+        const lis = Array.from(list.children).filter((c) => c.tagName === "LI");
+        for (const li of lis) {
+          const p = document.createElement("p");
+          while (li.firstChild) p.appendChild(li.firstChild);
+          parent.insertBefore(p, list);
+        }
+        parent.removeChild(list);
+      }
     }
     document.execCommand("removeFormat");
     document.execCommand("unlink");
@@ -456,14 +488,42 @@ NoteEditor.prototype._buildToolbar = function () {
       if (code == null) return;
       this._editArea.focus();
       restoreRange(savedRange);
-      const escaped = code
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      document.execCommand(
-        "insertHTML", false,
-        `<pre><code>${escaped}</code></pre><p><br></p>`
-      );
+      // Insert the <pre> as a sibling of the current block rather than via
+      // execCommand("insertHTML"). insertHTML with a partial text range
+      // (e.g. one letter selected in a heading) wraps the selection in
+      // stray inline markup and produces a mangled block — observed as
+      // a monospace leftover letter after the operation. Inserting as a
+      // sibling keeps the user's current paragraph untouched and places
+      // the block cleanly below it.
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      let block = range.startContainer;
+      if (block.nodeType !== 1) block = block.parentNode;
+      while (
+        block && block !== this._editArea &&
+        block.parentNode && block.parentNode !== this._editArea
+      ) {
+        block = block.parentNode;
+      }
+      const pre = document.createElement("pre");
+      const codeEl = document.createElement("code");
+      codeEl.textContent = code;
+      pre.appendChild(codeEl);
+      const trailing = document.createElement("p");
+      trailing.appendChild(document.createElement("br"));
+      if (block && block.parentNode === this._editArea) {
+        block.parentNode.insertBefore(pre, block.nextSibling);
+        pre.parentNode.insertBefore(trailing, pre.nextSibling);
+      } else {
+        this._editArea.appendChild(pre);
+        this._editArea.appendChild(trailing);
+      }
+      const r = document.createRange();
+      r.selectNodeContents(trailing);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
       this._dirty = true;
       this._refreshActiveStates();
     });
