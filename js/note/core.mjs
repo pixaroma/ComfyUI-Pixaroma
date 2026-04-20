@@ -28,6 +28,8 @@ export class NoteEditor {
     this._keyBlock = (e) => {
       const key = (e.key || "").toLowerCase();
       const mod = e.ctrlKey || e.metaKey;
+      // Undo / Redo → our manual history (covers direct-DOM toolbar mutations
+      // that the browser's contenteditable undo doesn't track).
       if (mod && (key === "z" || key === "y")) {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -36,13 +38,50 @@ export class NoteEditor {
           if (this._editArea && document.activeElement !== this._editArea) {
             this._editArea.focus();
           }
-          // Use our manual history instead of execCommand("undo"/"redo").
-          // The browser's contenteditable undo only tracks text edits +
-          // execCommand operations; direct-DOM mutations from toolbar
-          // buttons (code block, etc.) are invisible to it.
           try { if (isRedo) this.doRedo(); else this.doUndo(); } catch (err) {}
         }
         return;
+      }
+      // Editor-scoped shortcuts. Only on keydown — keyup/keypress still need
+      // to be blocked so ComfyUI doesn't see them.
+      if (e.type === "keydown") {
+        // Bold / Italic / Underline — browser does this natively in a
+        // contenteditable, but we handle it explicitly so (a) ComfyUI can't
+        // see the key (its shortcuts are suppressed), and (b) the dirty flag
+        // + manual-history debounce are updated reliably.
+        if (mod && (key === "b" || key === "i" || key === "u")) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          if (this._editArea && document.activeElement !== this._editArea) {
+            this._editArea.focus();
+          }
+          const cmd = key === "b" ? "bold" : key === "i" ? "italic" : "underline";
+          try { document.execCommand(cmd); } catch (err) {}
+          this._dirty = true;
+          return;
+        }
+        // Ctrl/Cmd+S → save.
+        if (mod && key === "s") {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.save();
+          return;
+        }
+        // Escape → close (with dirty-confirm). If a child modal is open
+        // (code dialog, link dialog, block dialog, color popup, or the
+        // confirm dialog itself) skip the editor-close so Esc doesn't
+        // silently nuke everything. Those modals don't install their own
+        // Esc handlers, so nothing happens in that case — user can click
+        // Cancel/outside to dismiss.
+        if (key === "escape") {
+          const hasModal = !!document.querySelector(
+            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop"
+          );
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          if (!hasModal) this.close();
+          return;
+        }
       }
       e.stopImmediatePropagation();
     };
