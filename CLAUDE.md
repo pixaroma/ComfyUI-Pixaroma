@@ -168,6 +168,18 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
    };
    ```
 
+6. **Ctrl+Z escapes editor overlays to the graph** — The Vue frontend's undo is driven by `changeTracker.undo` (in the workflow store), which calls `app.loadGraphData` → `graph.configure` → `graph.clear`. `window.addEventListener("keydown", fn, true)` + `stopImmediatePropagation` does NOT preempt it because `changeTracker.undo` is scheduled via `requestAnimationFrame` from a different code path, and patching `app.graph.undo` / `Comfy.Undo` command doesn't cover it either. The only reliable block is patching the bottleneck functions while the editor is open, then restoring them on cleanup:
+   ```js
+   this._savedLoadGraphData = app.loadGraphData.bind(app);
+   app.loadGraphData = () => Promise.resolve();
+   this._savedGraphConfigure = app.graph.configure.bind(app.graph);
+   app.graph.configure = () => {};
+   // On cleanup: app.loadGraphData = this._savedLoadGraphData; etc.
+   ```
+   See `js/note/core.mjs` for the full pattern (also neuters `graph.undo/redo`, `Comfy.Undo`/`Comfy.Redo` commands, plus a `node.onRemoved` resurrection-close safety net). Always debug this class of bug with a stack trace from `onRemoved` — it will show you the exact path that needs wrapping.
+
+7. **`installFocusTrap` and contenteditable don't mix** — Paint/Composer/3D call `installFocusTrap(overlay)` so their hidden textarea absorbs focus for keyboard-shortcut isolation. For rich-text editors that use a contenteditable (Note Pixaroma), do NOT call `installFocusTrap`: its `mouseup` handler refocuses the hidden textarea whenever the event target isn't INPUT/TEXTAREA/SELECT, which steals focus on every toolbar-button click (user has to re-click into the editor to type) and wipes the text selection when a drag-select ends outside the panel. Use the `loadGraphData` / `graph.configure` neutering pattern from point 6 instead.
+
 ### ComfyUI Settings Integration
 Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
 
