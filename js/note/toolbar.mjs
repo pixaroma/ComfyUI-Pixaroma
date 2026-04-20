@@ -514,55 +514,49 @@ NoteEditor.prototype._buildToolbar = function () {
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
-      // Gather every top-level block inside editArea that the selection
-      // intersects. If the user selected across several paragraphs, those
-      // blocks should be REPLACED by the new code block rather than having
-      // the block inserted alongside.
-      const intersected = [];
+      // Expand the range so the insert REPLACES whole blocks instead of
+      // just the user's partial selection (otherwise the first block's
+      // unselected head would be left behind as a standalone paragraph
+      // above the code block). Going through `execCommand("insertHTML")`
+      // also puts the operation on the browser's native undo stack so
+      // Ctrl+Z can actually remove the code block we just inserted —
+      // direct DOM manipulation via insertBefore/removeChild is invisible
+      // to the contenteditable undo history.
       if (!range.collapsed) {
+        const intersected = [];
         for (const child of Array.from(this._editArea.children)) {
           if (range.intersectsNode(child)) intersected.push(child);
         }
-      }
-      // When the selection is collapsed (or fully inside a single inline
-      // run), fall back to the start block — we'll insert the pre after it
-      // without disturbing the user's current paragraph.
-      let anchorBlock = range.startContainer;
-      if (anchorBlock.nodeType !== 1) anchorBlock = anchorBlock.parentNode;
-      while (
-        anchorBlock && anchorBlock !== this._editArea &&
-        anchorBlock.parentNode && anchorBlock.parentNode !== this._editArea
-      ) {
-        anchorBlock = anchorBlock.parentNode;
-      }
-      const pre = document.createElement("pre");
-      const codeEl = document.createElement("code");
-      codeEl.textContent = code;
-      pre.appendChild(codeEl);
-      const trailing = document.createElement("p");
-      trailing.appendChild(document.createElement("br"));
-      if (intersected.length > 0) {
-        // Replace the selected blocks: insert pre at the position of the
-        // first intersected block, drop trailing paragraph after it, then
-        // remove the originals.
-        const first = intersected[0];
-        this._editArea.insertBefore(pre, first);
-        this._editArea.insertBefore(trailing, pre.nextSibling);
-        for (const b of intersected) {
-          if (b.parentNode === this._editArea) this._editArea.removeChild(b);
+        if (intersected.length > 0) {
+          range.setStartBefore(intersected[0]);
+          range.setEndAfter(intersected[intersected.length - 1]);
+          sel.removeAllRanges();
+          sel.addRange(range);
         }
-      } else if (anchorBlock && anchorBlock.parentNode === this._editArea) {
-        anchorBlock.parentNode.insertBefore(pre, anchorBlock.nextSibling);
-        pre.parentNode.insertBefore(trailing, pre.nextSibling);
       } else {
-        this._editArea.appendChild(pre);
-        this._editArea.appendChild(trailing);
+        // Collapsed: insert AFTER the enclosing block so we don't split
+        // the current line.
+        let anchorBlock = range.startContainer;
+        if (anchorBlock.nodeType !== 1) anchorBlock = anchorBlock.parentNode;
+        while (
+          anchorBlock && anchorBlock !== this._editArea &&
+          anchorBlock.parentNode && anchorBlock.parentNode !== this._editArea
+        ) {
+          anchorBlock = anchorBlock.parentNode;
+        }
+        if (anchorBlock && anchorBlock.parentNode === this._editArea) {
+          range.setStartAfter(anchorBlock);
+          range.setEndAfter(anchorBlock);
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
       }
-      const r = document.createRange();
-      r.selectNodeContents(trailing);
-      r.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(r);
+      const escapeHtml = (s) => s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      const html = `<pre><code>${escapeHtml(code)}</code></pre><p><br></p>`;
+      document.execCommand("insertHTML", false, html);
       this._dirty = true;
       this._refreshActiveStates();
     });
