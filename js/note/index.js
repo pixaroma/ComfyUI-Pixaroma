@@ -35,16 +35,24 @@ function setupNote(node) {
     hideJsonWidget(node.widgets, "note_json");
     node._noteCfg = parseCfg(node);
 
-    // 1) Detach our own previous wrap, if any (may or may not be in the DOM yet)
-    if (node._noteDOMWrap && node._noteDOMWrap.parentNode) {
-      node._noteDOMWrap.parentNode.removeChild(node._noteDOMWrap);
+    const nodeId = String(node.id ?? "");
+
+    // 1) DOM sweep: remove every .pix-note-wrap that belongs to this node.
+    //    ComfyUI may hold its own refs to DOM-widget elements beyond
+    //    node.widgets[].element, so walking node.widgets alone is not
+    //    sufficient to catch all prior wraps. This is the authoritative
+    //    cleanup path.
+    if (nodeId) {
+      document
+        .querySelectorAll(`.pix-note-wrap[data-pix-note-node="${CSS.escape(nodeId)}"]`)
+        .forEach((el) => {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        });
     }
     node._noteDOMWrap = null;
     node._noteBody = null;
 
-    // 2) Strip every widget except the Python-declared note_json. Also remove
-    //    their DOM elements. Covers Vue-restored stubs AND prior addDOMWidget
-    //    entries from an earlier setupNote invocation on the same node.
+    // 2) Strip every widget except the Python-declared note_json.
     if (node.widgets) {
       for (let i = node.widgets.length - 1; i >= 0; i--) {
         const w = node.widgets[i];
@@ -56,8 +64,10 @@ function setupNote(node) {
       }
     }
 
-    // 3) Build and register a fresh DOM widget
+    // 3) Build and register a fresh DOM widget, tagged with the node id so
+    //    future setupNote invocations can sweep it away cleanly.
     const wrap = createNoteDOMWidget(node);
+    if (nodeId) wrap.dataset.pixNoteNode = nodeId;
     node._noteDOMWrap = wrap;
     node._noteBody = wrap.querySelector(".pix-note-body");
     attachEditButton(wrap, () => openEditor(node));
