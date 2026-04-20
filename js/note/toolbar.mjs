@@ -239,19 +239,40 @@ NoteEditor.prototype._buildToolbar = function () {
     }
     document.execCommand("removeFormat");
     document.execCommand("unlink");
-    // Only demote the current block if it's NOT already a plain paragraph.
-    // Unconditionally calling formatBlock p wraps/swaps the p in some
-    // browsers and shifts the text vertically even when nothing changed.
-    const anchor = window.getSelection()?.anchorNode;
-    let block = "";
-    if (anchor && this._editArea?.contains(anchor)) {
-      let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
-      while (n && n !== this._editArea) {
-        if (/^(H1|H2|H3|PRE|BLOCKQUOTE)$/.test(n.tagName)) { block = n.tagName; break; }
-        n = n.parentNode;
+    // Demote headings / blockquotes into plain paragraphs by manual DOM
+    // replacement. execCommand("formatBlock", false, "p") sometimes leaves
+    // the heading wrapper intact or nests elements awkwardly, especially
+    // after the list/code unwrap steps above have already mutated the DOM.
+    const sel2 = window.getSelection();
+    if (sel2?.rangeCount > 0) {
+      const range2 = sel2.getRangeAt(0);
+      const ca2 = range2.commonAncestorContainer;
+      const scope2 = ca2.nodeType === 1 ? ca2 : ca2.parentElement;
+      const blocks = new Set();
+      const walkUpBlock = (start) => {
+        let n = start;
+        while (n && n !== this._editArea) {
+          if (n.nodeType === 1 && /^(H1|H2|H3|BLOCKQUOTE)$/.test(n.tagName)) {
+            blocks.add(n);
+          }
+          n = n.parentNode;
+        }
+      };
+      walkUpBlock(range2.startContainer);
+      walkUpBlock(range2.endContainer);
+      if (scope2?.querySelectorAll) {
+        for (const el of scope2.querySelectorAll("h1, h2, h3, blockquote")) {
+          if (range2.intersectsNode(el)) blocks.add(el);
+        }
+      }
+      for (const el of blocks) {
+        const parent = el.parentNode;
+        if (!parent) continue;
+        const p = document.createElement("p");
+        while (el.firstChild) p.appendChild(el.firstChild);
+        parent.replaceChild(p, el);
       }
     }
-    if (block) document.execCommand("formatBlock", false, "p");
   }));
   tb.appendChild(g1);
   tb.appendChild(el("div", "pix-note-tsep"));

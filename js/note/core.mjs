@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, installFocusTrap } from "../shared/index.mjs";
 import { injectCSS } from "./css.mjs";
 import { sanitize } from "./sanitize.mjs";
 import { renderContent } from "./render.mjs";
@@ -16,9 +16,12 @@ export class NoteEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
-    // No installFocusTrap here — its mouseup refocus steals selection from
-    // the contenteditable edit area when a drag-select ends outside it.
-    // Key isolation is handled below via _keyBlock.
+    // Hidden textarea — matches the pattern used by Paint/Composer/3D so
+    // when focus isn't in our editArea (e.g. on a toolbar button), the
+    // activeElement is still a TEXTAREA which ComfyUI's keybinding
+    // service treats as "reserved by text input". The utility already
+    // exempts our contenteditable from its mouseup refocus.
+    installFocusTrap(this._el);
     // Intercept Ctrl/Cmd+Z/Y explicitly — if the event escapes to ComfyUI's
     // shortcut handlers the graph's undo runs, which removes the node that
     // owns this editor. We run the contenteditable's native undo/redo
@@ -41,18 +44,43 @@ export class NoteEditor {
       }
       e.stopImmediatePropagation();
     };
+    // Register on multiple targets in capture phase — ComfyUI/LiteGraph
+    // register their own handlers on window/document/canvas with capture,
+    // and listener order within the same target is registration order;
+    // blanketing these targets maximises the chance we fire before them.
     window.addEventListener("keydown", this._keyBlock, true);
     window.addEventListener("keyup", this._keyBlock, true);
     window.addEventListener("keypress", this._keyBlock, true);
-    // Belt-and-suspenders: also neuter graph undo/redo while the editor is
-    // open in case a ComfyUI shortcut listener was registered earlier on
-    // window capture (where our stopImmediatePropagation can't preempt it).
+    document.addEventListener("keydown", this._keyBlock, true);
+    document.addEventListener("keyup", this._keyBlock, true);
+    document.addEventListener("keypress", this._keyBlock, true);
+    // Belt-and-suspenders: neuter the graph's undo/redo and the Vue
+    // frontend's Comfy.Undo/Comfy.Redo commands while the editor is open
+    // so that even if a ComfyUI shortcut listener slips past our capture
+    // blocker, the actual undo routines are no-ops.
     if (app.graph) {
       this._savedGraphUndo = app.graph.undo;
       this._savedGraphRedo = app.graph.redo;
       app.graph.undo = function () {};
       app.graph.redo = function () {};
     }
+    const cs = app?.extensionManager?.command?.commandStore?.commands
+            || app?.extensionManager?.command?.commands;
+    try {
+      const byId = (id) => cs?.find?.((c) => c.id === id) || cs?.[id];
+      const uCmd = byId?.("Comfy.Undo");
+      const rCmd = byId?.("Comfy.Redo");
+      if (uCmd && typeof uCmd.function === "function") {
+        this._savedUndoCmd = uCmd.function;
+        uCmd.function = () => {};
+      }
+      if (rCmd && typeof rCmd.function === "function") {
+        this._savedRedoCmd = rCmd.function;
+        rCmd.function = () => {};
+      }
+      this._undoCmdRef = uCmd;
+      this._redoCmdRef = rCmd;
+    } catch (e) { /* Vue frontend API surface may change — non-fatal. */ }
     // Vue may remove the overlay without calling close(); observe and clean up.
     this._removalObserver = new MutationObserver(() => {
       if (this._el && !this._el.isConnected) this._cleanup();
@@ -118,8 +146,19 @@ export class NoteEditor {
       window.removeEventListener("keydown", this._keyBlock, true);
       window.removeEventListener("keyup", this._keyBlock, true);
       window.removeEventListener("keypress", this._keyBlock, true);
+      document.removeEventListener("keydown", this._keyBlock, true);
+      document.removeEventListener("keyup", this._keyBlock, true);
+      document.removeEventListener("keypress", this._keyBlock, true);
       this._keyBlock = null;
     }
+    if (this._undoCmdRef && this._savedUndoCmd) {
+      this._undoCmdRef.function = this._savedUndoCmd;
+    }
+    if (this._redoCmdRef && this._savedRedoCmd) {
+      this._redoCmdRef.function = this._savedRedoCmd;
+    }
+    this._undoCmdRef = this._redoCmdRef = null;
+    this._savedUndoCmd = this._savedRedoCmd = null;
     if (this._selectionChangeHandler) {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
