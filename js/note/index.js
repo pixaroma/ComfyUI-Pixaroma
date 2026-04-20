@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
 import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.mjs";
 import { NoteEditor } from "./core.mjs";
+import "./toolbar.mjs";
 
 const DEFAULT_CFG = {
   version: 1,

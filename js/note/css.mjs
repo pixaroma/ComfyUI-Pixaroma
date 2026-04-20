@@ -193,6 +193,26 @@ export function injectCSS() {
 .pix-note-btn.primary:hover { filter: brightness(1.08); }
 .pix-note-btn.ghost { background: transparent; }
 
+/* ── Toolbar ──────────────────────────────────────────────── */
+.pix-note-toolbar {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 3px;
+  padding: 6px 8px; background: #202020; border-bottom: 1px solid #333;
+}
+.pix-note-tbtn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 26px; height: 26px; padding: 0 7px;
+  background: #2a2a2a; border: 1px solid transparent; border-radius: 3px;
+  color: #ddd; font-size: 12px; font-weight: 600; cursor: pointer;
+  user-select: none;
+}
+.pix-note-tbtn:hover { background: #333; border-color: #444; }
+.pix-note-tbtn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+.pix-note-tbtn.italic { font-style: italic; font-family: Georgia, serif; }
+.pix-note-tbtn.under { text-decoration: underline; }
+.pix-note-tbtn.strike { text-decoration: line-through; }
+.pix-note-tsep { width: 1px; height: 18px; background: #3a3a3a; margin: 0 4px; }
+.pix-note-tgroup { display: inline-flex; gap: 3px; }
+
   `;
   document.head.appendChild(s);
 }

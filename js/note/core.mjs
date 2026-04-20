@@ -131,6 +131,7 @@ export class NoteEditor {
     // Toolbar placeholder — filled in by toolbar.mjs mixin
     this._toolbarEl = el("div", "pix-note-toolbar");
     main.appendChild(this._toolbarEl);
+    this._buildToolbar();
 
     // Edit area
     const editArea = el("div", "pix-note-editarea");
