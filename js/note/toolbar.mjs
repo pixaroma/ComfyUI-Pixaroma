@@ -447,6 +447,37 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(bgColorBtn);
 
+  // Per-note accent colour — drives the orange highlight on Pixaroma
+  // download pills (via CSS var --pix-note-accent) and anywhere else
+  // BRAND is referenced. Editor previews it live through the CSS var on
+  // the edit area. Default matches the Pixaroma brand colour.
+  const accColorBtn = el("button", "pix-note-tbtn");
+  accColorBtn.type = "button";
+  accColorBtn.textContent = "Ac";
+  accColorBtn.title = "Accent color (Pixaroma block pills, links)";
+  accColorBtn.style.fontWeight = "bold";
+  const refreshAccSwatch = () => {
+    const c = this.cfg.accentColor || "#f66744";
+    accColorBtn.style.borderBottom = `3px solid ${c}`;
+  };
+  refreshAccSwatch();
+  const applyAccent = () => {
+    const c = this.cfg.accentColor || "#f66744";
+    this._editArea?.style.setProperty("--pix-note-accent", c);
+  };
+  applyAccent();
+  accColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  accColorBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    openColorPop(accColorBtn, this.cfg.accentColor || "#f66744", (c) => {
+      this.cfg.accentColor = (c == null) ? "#f66744" : c;
+      applyAccent();
+      refreshAccSwatch();
+      this._dirty = true;
+    }, true);
+  });
+  g3.appendChild(accColorBtn);
+
   tb.appendChild(g3);
   tb.appendChild(el("div", "pix-note-tsep"));
 
