@@ -76,15 +76,30 @@ NoteEditor.prototype._buildToolbar = function () {
       document.execCommand("formatBlock", false, tag)
     );
   const g2 = el("div", "pix-note-tgroup");
-  g2.appendChild(mkHeading("h1", "H1"));
-  g2.appendChild(mkHeading("h2", "H2"));
-  g2.appendChild(mkHeading("h3", "H3"));
+  const h1Btn = mkHeading("h1", "H1");
+  const h2Btn = mkHeading("h2", "H2");
+  const h3Btn = mkHeading("h3", "H3");
+  g2.appendChild(h1Btn);
+  g2.appendChild(h2Btn);
+  g2.appendChild(h3Btn);
   // "¶" resets the current block back to a paragraph
   g2.appendChild(makeBtn("\u00b6", "Paragraph (reset heading)", "", () =>
     document.execCommand("formatBlock", false, "p")
   ));
   tb.appendChild(g2);
   tb.appendChild(el("div", "pix-note-tsep"));
+
+  // Heading active-state: queryCommandValue returns the current block tag
+  // (e.g. "h1", "p"). Some browsers wrap it in angle brackets ("<h1>").
+  const headingMap = { h1: h1Btn, h2: h2Btn, h3: h3Btn };
+  this._activeChecks.push(() => {
+    let block = "";
+    try { block = (document.queryCommandValue("formatBlock") || "").toString(); } catch (e) {}
+    block = block.toLowerCase().replace(/[<>]/g, "");
+    for (const [tag, btn] of Object.entries(headingMap)) {
+      btn.classList.toggle("active", block === tag);
+    }
+  });
 
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();
