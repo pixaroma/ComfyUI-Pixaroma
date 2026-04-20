@@ -19,10 +19,40 @@ export class NoteEditor {
     // No installFocusTrap here — its mouseup refocus steals selection from
     // the contenteditable edit area when a drag-select ends outside it.
     // Key isolation is handled below via _keyBlock.
-    this._keyBlock = (e) => e.stopImmediatePropagation();
+    // Intercept Ctrl/Cmd+Z/Y explicitly — if the event escapes to ComfyUI's
+    // shortcut handlers the graph's undo runs, which removes the node that
+    // owns this editor. We run the contenteditable's native undo/redo
+    // ourselves so in-editor typing history still works.
+    this._keyBlock = (e) => {
+      const key = (e.key || "").toLowerCase();
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && (key === "z" || key === "y")) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        if (e.type === "keydown") {
+          const isRedo = key === "y" || (key === "z" && e.shiftKey);
+          if (this._editArea && document.activeElement !== this._editArea) {
+            this._editArea.focus();
+          }
+          try { document.execCommand(isRedo ? "redo" : "undo"); } catch (err) {}
+          this._dirty = true;
+        }
+        return;
+      }
+      e.stopImmediatePropagation();
+    };
     window.addEventListener("keydown", this._keyBlock, true);
     window.addEventListener("keyup", this._keyBlock, true);
     window.addEventListener("keypress", this._keyBlock, true);
+    // Belt-and-suspenders: also neuter graph undo/redo while the editor is
+    // open in case a ComfyUI shortcut listener was registered earlier on
+    // window capture (where our stopImmediatePropagation can't preempt it).
+    if (app.graph) {
+      this._savedGraphUndo = app.graph.undo;
+      this._savedGraphRedo = app.graph.redo;
+      app.graph.undo = function () {};
+      app.graph.redo = function () {};
+    }
     // Vue may remove the overlay without calling close(); observe and clean up.
     this._removalObserver = new MutationObserver(() => {
       if (this._el && !this._el.isConnected) this._cleanup();
@@ -93,6 +123,14 @@ export class NoteEditor {
     if (this._selectionChangeHandler) {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
+    }
+    if (this._savedGraphUndo !== undefined) {
+      if (app.graph) {
+        app.graph.undo = this._savedGraphUndo;
+        app.graph.redo = this._savedGraphRedo;
+      }
+      this._savedGraphUndo = undefined;
+      this._savedGraphRedo = undefined;
     }
     if (this._el && this._el.parentNode) this._el.parentNode.removeChild(this._el);
     this._el = null;
