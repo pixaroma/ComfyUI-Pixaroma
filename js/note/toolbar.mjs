@@ -688,7 +688,34 @@ NoteEditor.prototype._buildToolbar = function () {
   }));
   tb.appendChild(gURight);
 
-  // Groups 2-7 added in later tasks.
+  // View toggle: WYSIWYG vs raw-HTML. Sits on the far right so users
+  // can flip views without hunting for the button.
+  const tog = el("div", "pix-note-viewtoggle");
+  const codeBtn = document.createElement("button");
+  codeBtn.type = "button";
+  codeBtn.textContent = "Code";
+  const prevBtn = document.createElement("button");
+  prevBtn.type = "button";
+  prevBtn.textContent = "Preview";
+  prevBtn.classList.add("active");
+  tog.appendChild(codeBtn);
+  tog.appendChild(prevBtn);
+  tb.appendChild(tog);
+
+  const switchTo = (mode) => {
+    if (mode === "code") {
+      codeBtn.classList.add("active"); prevBtn.classList.remove("active");
+      this._enterCodeView?.();
+    } else {
+      prevBtn.classList.add("active"); codeBtn.classList.remove("active");
+      this._enterPreviewView?.();
+    }
+  };
+  codeBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  prevBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  codeBtn.onclick = () => switchTo("code");
+  prevBtn.onclick = () => switchTo("preview");
+
   this._afterToolbarBuilt?.();
 
   // Reflect selection state into button `.active` classes.

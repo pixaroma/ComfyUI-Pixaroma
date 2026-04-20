@@ -287,7 +287,12 @@ export class NoteEditor {
   }
 
   save() {
-    const raw = this._editArea?.innerHTML || "";
+    // If the user is in Code view, persist what they edited in the textarea,
+    // not what's currently in the (hidden) WYSIWYG area. sanitize runs either
+    // way so malicious markup added in Code view is stripped before storage.
+    const raw = this._mode === "code"
+      ? (this._codeArea?.value || "")
+      : (this._editArea?.innerHTML || "");
     let html;
     try {
       html = sanitize(raw);
@@ -433,6 +438,7 @@ export class NoteEditor {
     });
     main.appendChild(editArea);
     this._editArea = editArea;
+    this._mode = "preview";
 
     // Footer
     const footer = el("div", "pix-note-footer");
@@ -550,6 +556,40 @@ NoteEditor.prototype._normalizeEditArea = function (area) {
     p.appendChild(document.createElement("br"));
     root.appendChild(p);
   }
+};
+
+// Code / Preview view toggle. "Code" shows the sanitized HTML in a textarea
+// so power users can tweak markup directly; "Preview" (default) is the
+// WYSIWYG contenteditable. Switching in either direction runs sanitize so
+// the user sees the exact shape that will be stored.
+NoteEditor.prototype._enterCodeView = function () {
+  if (this._mode === "code" || !this._editArea) return;
+  const htmlNow = sanitize(this._editArea.innerHTML || "");
+  this._editArea.style.display = "none";
+  if (!this._codeArea) {
+    const ta = document.createElement("textarea");
+    ta.className = "pix-note-codearea";
+    ta.spellcheck = false;
+    ta.addEventListener("input", () => { this._dirty = true; });
+    this._editArea.parentElement.appendChild(ta);
+    this._codeArea = ta;
+  }
+  this._codeArea.style.display = "";
+  this._codeArea.value = htmlNow;
+  this._mode = "code";
+  this._codeArea.focus();
+};
+
+NoteEditor.prototype._enterPreviewView = function () {
+  if (this._mode !== "code") { this._mode = "preview"; return; }
+  const raw = this._codeArea?.value || "";
+  const clean = sanitize(raw);
+  this._editArea.innerHTML = clean;
+  this._normalizeEditArea?.(this._editArea);
+  if (this._codeArea) this._codeArea.style.display = "none";
+  this._editArea.style.display = "";
+  this._mode = "preview";
+  this._editArea.focus();
 };
 
 NoteEditor.prototype._applyEditAreaBg = function (area) {

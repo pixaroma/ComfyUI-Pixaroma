@@ -202,6 +202,26 @@ export function injectCSS() {
 .pix-note-editarea h2 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-editarea h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
 .pix-note-editarea hr { border:none; border-top: 1px solid #555; margin: 10px 0; }
+
+/* Code / Preview view toggle (right-aligned in toolbar) */
+.pix-note-viewtoggle {
+  margin-left: auto; display: inline-flex; background: #111;
+  padding: 2px; border-radius: 4px; gap: 2px;
+}
+.pix-note-viewtoggle button {
+  background: transparent; border: none; color: #888;
+  padding: 3px 10px; font-size: 11px; font-weight: 600;
+  border-radius: 3px; cursor: pointer;
+}
+.pix-note-viewtoggle button.active { background: ${BRAND}; color: #fff; }
+
+.pix-note-codearea {
+  flex: 1; background: #0d0d0d; color: #e0e0e0;
+  font-family: "Consolas", "Courier New", monospace; font-size: 12.5px;
+  padding: 12px 16px; border: none; outline: none;
+  line-height: 1.5; resize: none; white-space: pre-wrap;
+}
+.pix-note-codearea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
 .pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
 .pix-note-editarea code { background: #2a2a2a; padding: 0 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 0.92em; }
 .pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
