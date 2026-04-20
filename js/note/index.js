@@ -42,7 +42,7 @@ function setupNote(node) {
       node._noteDOMWrap = wrap;
       node._noteBody = wrap.querySelector(".pix-note-body");
       attachEditButton(wrap, () => openEditor(node));
-      node.addDOMWidget("note_dom", "note", wrap, {
+      node.addDOMWidget("note_dom", "custom", wrap, {
         serialize: false,
         getMinHeight: () => 80,
       });
