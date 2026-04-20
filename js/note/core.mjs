@@ -499,8 +499,32 @@ export class NoteEditor {
   }
 
   _showHelp(panel) {
-    // Expanded in Task 20
-    alert("Help panel — populated in Task 20.");
+    if (panel.querySelector(".pix-note-help")) return;
+    const h = document.createElement("div");
+    h.className = "pix-note-help";
+    h.innerHTML = `
+      <h3>Note Pixaroma</h3>
+      <p><b>Purpose:</b> Annotate your workflow with rich formatted notes — models to download, nodes used, tutorials. Purely visual; not wired into processing.</p>
+      <p><b>Text:</b> Bold (Ctrl+B), Italic (Ctrl+I), Underline (Ctrl+U), Strikethrough. The broom icon clears all formatting on the current selection.</p>
+      <p><b>Headings:</b> H1 / H2 / H3 apply to the current line. Use the broom to demote back to a paragraph.</p>
+      <p><b>Colors:</b> <b>A</b> changes text color, <b>■</b> changes highlight, <b>Bg</b> sets the editor + on-canvas background, <b>Ac</b> sets the per-note accent color (drives Download pill tint and link color).</p>
+      <p><b>Lists:</b> bulleted and numbered. Click the list button again to toggle off.</p>
+      <p><b>Inserts:</b> 🔗 link (http, https, or mailto only), ⟨/⟩ code block, — horizontal separator. Download / YouTube / Discord blocks live in the Pixaroma group.</p>
+      <p><b>⬇ Download:</b> inserts a pill button. On the canvas, clicking the pill opens the URL in a new tab AND copies the target folder path to your clipboard — paste it into your browser's Save As dialog.</p>
+      <p><b>🎥 YouTube / 💬 Discord:</b> preset Pixaroma links with defaults prefilled. Override freely.</p>
+      <p><b>Code / Preview:</b> top-right toggle. Code view shows raw sanitized HTML; Preview is WYSIWYG. Switching in either direction runs the sanitizer.</p>
+      <p><b>Security:</b> any &lt;script&gt;, event handler (onclick, onerror, …), javascript: URL, &lt;iframe&gt;, or &lt;img&gt; you paste / write is stripped automatically.</p>
+      <p><b>Paste:</b> clipboard content is converted to plain text — images and rich formatting are dropped to keep notes clean.</p>
+      <p><b>Save:</b> Ctrl+S or the Save button. Esc prompts if you have unsaved changes. Ctrl+Z / Ctrl+Y undo/redo.</p>
+      <p style="margin-top:14px;color:#888">Pixaroma &mdash; <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">youtube.com/@pixaroma</a></p>
+    `;
+    const close = document.createElement("button");
+    close.className = "pix-note-help-close";
+    close.type = "button";
+    close.innerHTML = "\u00d7";
+    close.onclick = () => h.remove();
+    h.appendChild(close);
+    panel.appendChild(h);
   }
 }
 

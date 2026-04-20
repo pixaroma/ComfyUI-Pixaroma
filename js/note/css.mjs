@@ -222,6 +222,22 @@ export function injectCSS() {
   line-height: 1.5; resize: none; white-space: pre-wrap;
 }
 .pix-note-codearea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
+
+/* In-panel help overlay — covers the whole editor panel when the user
+   clicks ? Help in the footer. */
+.pix-note-help {
+  position: absolute; inset: 0; background: rgba(0,0,0,.82); z-index: 10;
+  overflow-y: auto; padding: 24px 36px; color: #ddd; font-size: 13px;
+}
+.pix-note-help h3 { color: #fff; margin: 0 0 8px; }
+.pix-note-help p { margin: 4px 0; line-height: 1.6; }
+.pix-note-help b { color: #fff; }
+.pix-note-help a { color: ${BRAND}; }
+.pix-note-help-close {
+  position: absolute; top: 10px; right: 14px; background: none;
+  color: #aaa; border: none; font-size: 22px; cursor: pointer;
+}
+.pix-note-help-close:hover { color: #fff; }
 .pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
 .pix-note-editarea code { background: #2a2a2a; padding: 0 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 0.92em; }
 .pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
