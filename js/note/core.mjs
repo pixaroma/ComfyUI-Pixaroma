@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, installFocusTrap } from "../shared/index.mjs";
+import { BRAND } from "../shared/index.mjs";
 import { injectCSS } from "./css.mjs";
 import { sanitize } from "./sanitize.mjs";
 import { renderContent } from "./render.mjs";
@@ -16,12 +16,11 @@ export class NoteEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
-    // Hidden textarea — matches the pattern used by Paint/Composer/3D so
-    // when focus isn't in our editArea (e.g. on a toolbar button), the
-    // activeElement is still a TEXTAREA which ComfyUI's keybinding
-    // service treats as "reserved by text input". The utility already
-    // exempts our contenteditable from its mouseup refocus.
-    installFocusTrap(this._el);
+    // Don't use installFocusTrap here — its mouseup refocus pulls focus
+    // away from the contenteditable on any button click (breaking typing)
+    // and wipes the text selection on drag-select that ends outside the
+    // panel. Ctrl+Z escape is handled by the capture listeners + graph
+    // undo neutering below.
     // Intercept Ctrl/Cmd+Z/Y explicitly — if the event escapes to ComfyUI's
     // shortcut handlers the graph's undo runs, which removes the node that
     // owns this editor. We run the contenteditable's native undo/redo
@@ -64,23 +63,37 @@ export class NoteEditor {
       app.graph.undo = function () {};
       app.graph.redo = function () {};
     }
-    const cs = app?.extensionManager?.command?.commandStore?.commands
-            || app?.extensionManager?.command?.commands;
+    // Try to intercept the Vue frontend's command dispatch for Undo/Redo.
+    // The exact API differs between ComfyUI versions; wrap whatever we can
+    // find so Comfy.Undo and Comfy.Redo become no-ops while editor is open.
     try {
-      const byId = (id) => cs?.find?.((c) => c.id === id) || cs?.[id];
-      const uCmd = byId?.("Comfy.Undo");
-      const rCmd = byId?.("Comfy.Redo");
-      if (uCmd && typeof uCmd.function === "function") {
-        this._savedUndoCmd = uCmd.function;
-        uCmd.function = () => {};
+      const cmd = app?.extensionManager?.command;
+      const execPath = cmd?.execute ? cmd : (cmd?.commandStore || cmd);
+      if (execPath && typeof execPath.execute === "function") {
+        this._savedCmdExecute = execPath.execute.bind(execPath);
+        const orig = this._savedCmdExecute;
+        execPath.execute = (id, ...rest) => {
+          if (id === "Comfy.Undo" || id === "Comfy.Redo") return;
+          return orig(id, ...rest);
+        };
+        this._cmdExecPath = execPath;
       }
-      if (rCmd && typeof rCmd.function === "function") {
-        this._savedRedoCmd = rCmd.function;
-        rCmd.function = () => {};
-      }
-      this._undoCmdRef = uCmd;
-      this._redoCmdRef = rCmd;
     } catch (e) { /* Vue frontend API surface may change — non-fatal. */ }
+    // Node-resurrection safety net: if Ctrl+Z still slips through and the
+    // node is removed from the graph while the editor is open, LiteGraph's
+    // onRemoved fires. Close the editor gracefully so the user isn't stuck
+    // editing a dead node. Full resurrection (restoring node + state) is
+    // impractical because the graph's undo replays a full snapshot.
+    this._origOnRemoved = this.node.onRemoved;
+    const self = this;
+    this.node.onRemoved = function () {
+      try { self._origOnRemoved?.call(this); } catch (e) {}
+      if (self._el?.isConnected) {
+        console.warn("[pix-note] node removed while editor open — closing editor");
+        self._dirty = false;
+        self.close(true);
+      }
+    };
     // Vue may remove the overlay without calling close(); observe and clean up.
     this._removalObserver = new MutationObserver(() => {
       if (this._el && !this._el.isConnected) this._cleanup();
@@ -151,14 +164,15 @@ export class NoteEditor {
       document.removeEventListener("keypress", this._keyBlock, true);
       this._keyBlock = null;
     }
-    if (this._undoCmdRef && this._savedUndoCmd) {
-      this._undoCmdRef.function = this._savedUndoCmd;
+    if (this._cmdExecPath && this._savedCmdExecute) {
+      this._cmdExecPath.execute = this._savedCmdExecute;
     }
-    if (this._redoCmdRef && this._savedRedoCmd) {
-      this._redoCmdRef.function = this._savedRedoCmd;
+    this._cmdExecPath = null;
+    this._savedCmdExecute = null;
+    if (this.node && this._origOnRemoved !== undefined) {
+      this.node.onRemoved = this._origOnRemoved;
+      this._origOnRemoved = undefined;
     }
-    this._undoCmdRef = this._redoCmdRef = null;
-    this._savedUndoCmd = this._savedRedoCmd = null;
     if (this._selectionChangeHandler) {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
