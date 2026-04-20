@@ -279,6 +279,41 @@ NoteEditor.prototype._buildToolbar = function () {
   tb.appendChild(g4);
   tb.appendChild(el("div", "pix-note-tsep"));
 
+  // Group 5 — inserts
+  const g5 = el("div", "pix-note-tgroup");
+
+  g5.appendChild(makeBtn("\uD83D\uDD17", "Insert link", "", () => {
+    const selText = window.getSelection()?.toString() || "";
+    const url = window.prompt("URL (http/https):", "https://");
+    if (!url) return;
+    const safe = /^https?:\/\//i.test(url) || /^mailto:/i.test(url);
+    if (!safe) { alert("Only http://, https://, and mailto: are allowed."); return; }
+    const label = selText || url;
+    document.execCommand(
+      "insertHTML", false,
+      `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+    );
+  }));
+
+  g5.appendChild(makeBtn("{ }", "Inline code", "", () => {
+    const sel = window.getSelection();
+    const text = sel?.toString() || "code";
+    document.execCommand("insertHTML", false, `<code>${text}</code>`);
+  }));
+
+  g5.appendChild(makeBtn("\u27E8/\u27E9", "Code block", "", () => {
+    const sel = window.getSelection();
+    const text = sel?.toString() || "// code";
+    document.execCommand("insertHTML", false, `<pre><code>${text}</code></pre><p><br></p>`);
+  }));
+
+  g5.appendChild(makeBtn("\u2014", "Horizontal separator", "", () => {
+    document.execCommand("insertHTML", false, `<hr><p><br></p>`);
+  }));
+
+  tb.appendChild(g5);
+  tb.appendChild(el("div", "pix-note-tsep"));
+
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();
 
