@@ -308,6 +308,16 @@ export function injectCSS() {
 .pix-note-linkerr {
   color: #e25b5b; font-size: 11px; margin-top: 6px; min-height: 14px;
 }
+.pix-note-confirm-box.wide { min-width: 560px; max-width: 720px; }
+.pix-note-codeinput {
+  width: 100%; box-sizing: border-box;
+  background: #0f0f0f; border: 1px solid #333; border-radius: 3px;
+  color: #ddd; font-size: 12px; padding: 6px 8px;
+  font-family: "Consolas", "Courier New", monospace;
+  resize: vertical; min-height: 120px;
+  white-space: pre; tab-size: 2;
+}
+.pix-note-codeinput:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; border-color: ${BRAND}; }
 
   `;
   document.head.appendChild(s);

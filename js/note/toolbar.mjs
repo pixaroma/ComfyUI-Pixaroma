@@ -193,7 +193,19 @@ NoteEditor.prototype._buildToolbar = function () {
     }
     document.execCommand("removeFormat");
     document.execCommand("unlink");
-    document.execCommand("formatBlock", false, "p");
+    // Only demote the current block if it's NOT already a plain paragraph.
+    // Unconditionally calling formatBlock p wraps/swaps the p in some
+    // browsers and shifts the text vertically even when nothing changed.
+    const anchor = window.getSelection()?.anchorNode;
+    let block = "";
+    if (anchor && this._editArea?.contains(anchor)) {
+      let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+      while (n && n !== this._editArea) {
+        if (/^(H1|H2|H3|PRE|BLOCKQUOTE)$/.test(n.tagName)) { block = n.tagName; break; }
+        n = n.parentNode;
+      }
+    }
+    if (block) document.execCommand("formatBlock", false, "p");
   }));
   tb.appendChild(g1);
   tb.appendChild(el("div", "pix-note-tsep"));
@@ -434,26 +446,27 @@ NoteEditor.prototype._buildToolbar = function () {
     // Refuse if cursor is inside an inline <code> (leftover from older
     // notes) — nesting <pre> inside <code> violates HTML spec.
     if (isSelectionInsideTag(["CODE"])) return;
-    const sel = window.getSelection();
-    const selText = sel?.toString() || "";
-    const text = selText || "// code";
-    const markerId = `__pix_cb_${Date.now()}__`;
-    document.execCommand(
-      "insertHTML", false,
-      `<pre id="${markerId}"><code>${text}</code></pre><p><br></p>`
-    );
-    const pre = this._editArea.querySelector(`#${markerId}`);
-    if (pre) {
-      pre.removeAttribute("id");
-      const code = pre.querySelector("code");
-      if (code) {
-        const r = document.createRange();
-        r.selectNodeContents(code);
-        const s = window.getSelection();
-        s.removeAllRanges();
-        s.addRange(r);
-      }
-    }
+    // Collect code through a modal so the block is built as one clean
+    // insertHTML — avoids the edge cases that came from letting the user
+    // type directly inside a fresh <pre><code> (cursor escaping, nested
+    // inserts, node-vanishing on save).
+    const selText = window.getSelection()?.toString() || "";
+    const savedRange = saveRange(this._editArea);
+    this._promptCodeBlock(selText).then((code) => {
+      if (code == null) return;
+      this._editArea.focus();
+      restoreRange(savedRange);
+      const escaped = code
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+      document.execCommand(
+        "insertHTML", false,
+        `<pre><code>${escaped}</code></pre><p><br></p>`
+      );
+      this._dirty = true;
+      this._refreshActiveStates();
+    });
   });
   g5.appendChild(codeBlockBtn);
 
@@ -582,5 +595,56 @@ NoteEditor.prototype._promptLinkUrl = function (presetLabel) {
       urlInput.focus();
       urlInput.select();
     });
+  });
+};
+
+// Themed code-block prompt — multi-line textarea. Returns Promise<string|null>.
+// Using a dialog instead of inserting a placeholder and letting the user type
+// inside the contenteditable <pre><code> avoids a family of edge cases
+// (cursor escaping the block, nested inserts, node-wiping on save).
+NoteEditor.prototype._promptCodeBlock = function (presetCode) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "pix-note-confirm-backdrop";
+    const box = document.createElement("div");
+    box.className = "pix-note-confirm-box wide";
+    const title = document.createElement("div");
+    title.className = "pix-note-confirm-title";
+    title.textContent = "Insert code block";
+    const lbl = document.createElement("div");
+    lbl.className = "pix-note-linklbl";
+    lbl.textContent = "Paste or type your code (plain text, no formatting)";
+    const ta = document.createElement("textarea");
+    ta.className = "pix-note-codeinput";
+    ta.rows = 10;
+    ta.placeholder = "// your code here";
+    ta.value = presetCode || "";
+    const actions = document.createElement("div");
+    actions.className = "pix-note-confirm-actions";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.className = "pix-note-btn";
+    cancelBtn.textContent = "Cancel";
+    const okBtn = document.createElement("button");
+    okBtn.className = "pix-note-btn primary";
+    okBtn.textContent = "Insert";
+    actions.appendChild(cancelBtn);
+    actions.appendChild(okBtn);
+    box.appendChild(title);
+    box.appendChild(lbl);
+    box.appendChild(ta);
+    box.appendChild(actions);
+    backdrop.appendChild(box);
+    (this._el || document.body).appendChild(backdrop);
+    const finish = (v) => { backdrop.remove(); resolve(v); };
+    cancelBtn.addEventListener("click", () => finish(null));
+    okBtn.addEventListener("click", () => {
+      const v = ta.value;
+      if (!v) { finish(null); return; }
+      finish(v);
+    });
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) finish(null);
+    });
+    requestAnimationFrame(() => { ta.focus(); });
   });
 };
