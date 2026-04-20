@@ -281,6 +281,23 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(hiColorBtn);
 
+  // Mirror the selection's inline background-color onto the ■ button so the
+  // highlight preview tracks whatever ancestor span/li is currently wrapping
+  // the cursor. Walk ancestors only (not computed bg) so the editor's own
+  // dark background doesn't leak in.
+  this._activeChecks.push(() => {
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode;
+    if (!anchor || !this._editArea?.contains(anchor)) return;
+    let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+    let bg = "";
+    while (n && n !== this._editArea) {
+      if (n.style?.backgroundColor) { bg = n.style.backgroundColor; break; }
+      n = n.parentElement;
+    }
+    hiColorBtn.style.color = bg || "";
+  });
+
   tb.appendChild(g3);
   tb.appendChild(el("div", "pix-note-tsep"));
 
