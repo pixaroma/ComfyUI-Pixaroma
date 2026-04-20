@@ -102,7 +102,14 @@ export class NoteEditor {
   }
 
   save() {
-    const html = sanitize(this._editArea?.innerHTML || "");
+    const raw = this._editArea?.innerHTML || "";
+    let html;
+    try {
+      html = sanitize(raw);
+    } catch (e) {
+      console.error("[pix-note] sanitize threw during save; keeping raw HTML", e, { raw });
+      html = raw;
+    }
     this.cfg.content = html;
     // Preserve whatever size the node currently has so reload restores it. The
     // editor overlay doesn't itself resize the node — this captures the size the
