@@ -156,10 +156,40 @@ NoteEditor.prototype._buildToolbar = function () {
   g1.appendChild(makeBtn("<span class='strike'>S</span>", "Strikethrough", "", () =>
     document.execCommand("strikeThrough"), "strikeThrough"));
   // Clear formatting — strips inline format (bold/italic/underline/colors),
-  // unlinks anchors, and demotes the current block (heading/pre) back to
-  // a paragraph. List items are left alone — removing a bullet/numbered
-  // wrapper requires toggling the list button itself.
+  // unlinks anchors, unwraps <code>/<pre> (execCommand leaves those alone),
+  // and demotes the current block (heading) back to a paragraph. List items
+  // are left alone — removing a bullet/numbered wrapper requires toggling
+  // the list button itself.
   g1.appendChild(makeBtn("T\u2093", "Clear all formatting on selection", "", () => {
+    const sel = window.getSelection();
+    if (sel?.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      const ca = range.commonAncestorContainer;
+      const scope = ca.nodeType === 1 ? ca : ca.parentElement;
+      const toUnwrap = new Set();
+      const walkUp = (start) => {
+        let n = start;
+        while (n && n !== this._editArea) {
+          if (n.nodeType === 1 && (n.tagName === "CODE" || n.tagName === "PRE")) {
+            toUnwrap.add(n);
+          }
+          n = n.parentNode;
+        }
+      };
+      walkUp(range.startContainer);
+      walkUp(range.endContainer);
+      if (scope?.querySelectorAll) {
+        for (const el of scope.querySelectorAll("code, pre")) {
+          if (range.intersectsNode(el)) toUnwrap.add(el);
+        }
+      }
+      for (const el of toUnwrap) {
+        const parent = el.parentNode;
+        if (!parent) continue;
+        while (el.firstChild) parent.insertBefore(el.firstChild, el);
+        parent.removeChild(el);
+      }
+    }
     document.execCommand("removeFormat");
     document.execCommand("unlink");
     document.execCommand("formatBlock", false, "p");
@@ -362,8 +392,19 @@ NoteEditor.prototype._buildToolbar = function () {
 
   const inlineCodeBtn = makeBtn("{ }", "Inline code", "", () => {
     const sel = window.getSelection();
-    const text = sel?.toString() || "code";
-    document.execCommand("insertHTML", false, `<code>${text}</code>`);
+    const selText = sel?.toString() || "";
+    const text = selText || "code";
+    const markerId = `__pix_ic_${Date.now()}__`;
+    document.execCommand("insertHTML", false, `<code id="${markerId}">${text}</code>`);
+    const code = this._editArea.querySelector(`#${markerId}`);
+    if (code) {
+      code.removeAttribute("id");
+      const r = document.createRange();
+      r.selectNodeContents(code);
+      const s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    }
   });
   g5.appendChild(inlineCodeBtn);
 
