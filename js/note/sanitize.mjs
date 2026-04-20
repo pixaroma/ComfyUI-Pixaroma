@@ -4,7 +4,7 @@
 
 const ALLOWED_TAGS = new Set([
   "h1","h2","h3","p","br","hr","ul","ol","li","b","i","u","s","strike","strong","em",
-  "code","pre","span","div","a","blockquote","label","input",
+  "code","pre","span","div","a","blockquote","label",
 ]);
 
 // Tags whose content is ALSO discarded when removed (vs. unwrapped).
@@ -37,7 +37,6 @@ const ALLOWED_HREF_PROTOCOLS = ["http:", "https:", "mailto:"];
 const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
-  input: new Set(["type","checked","disabled"]),
   label: new Set(["class","style"]),
 };
 
@@ -99,12 +98,6 @@ function filterElement(el) {
     }
     return;
   }
-  // input must be a checkbox only
-  if (tag === "input") {
-    const t = (el.getAttribute("type") || "").toLowerCase();
-    if (t !== "checkbox") { el.remove(); return; }
-  }
-
   // Scan attributes; mutate list while iterating via snapshot.
   const attrs = Array.from(el.attributes);
   const allowedForTag = ALLOWED_ATTRS[tag] || ALLOWED_ATTRS["*"];

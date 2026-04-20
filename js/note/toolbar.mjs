@@ -234,8 +234,28 @@ NoteEditor.prototype._buildToolbar = function () {
       this._editArea.focus();
       restoreRange(r);
       document.execCommand("styleWithCSS", false, true);
-      if (c == null) document.execCommand("hiliteColor", false, "transparent");
-      else {
+      if (c == null) {
+        // hiliteColor("transparent") creates a nested span instead of
+        // unsetting the parent span/li's color, so the old highlight
+        // persists. Walk the selection's ancestors + descendants and
+        // directly strip inline background-color.
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0) {
+          const ca = sel.getRangeAt(0).commonAncestorContainer;
+          const scope = ca.nodeType === 1 ? ca : ca.parentNode;
+          const targets = new Set([scope, ...scope.querySelectorAll("*")]);
+          let p = scope.parentNode;
+          while (p && p !== this._editArea && p !== document.body) {
+            targets.add(p); p = p.parentNode;
+          }
+          for (const el of targets) {
+            if (el.style && el.style.backgroundColor) {
+              el.style.backgroundColor = "";
+              if (!el.getAttribute("style")) el.removeAttribute("style");
+            }
+          }
+        }
+      } else {
         document.execCommand("hiliteColor", false, c);
         hiColorBtn.style.color = c;
       }
@@ -256,10 +276,6 @@ NoteEditor.prototype._buildToolbar = function () {
   g4.appendChild(makeBtn("1. List", "Numbered list", "", () =>
     document.execCommand("insertOrderedList")
   ));
-  g4.appendChild(makeBtn("\u2611", "Checkbox item", "", () => {
-    const html = `<label><input type="checkbox"> </label>&nbsp;`;
-    document.execCommand("insertHTML", false, html);
-  }));
   tb.appendChild(g4);
   tb.appendChild(el("div", "pix-note-tsep"));
 
