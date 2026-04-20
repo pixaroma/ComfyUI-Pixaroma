@@ -200,6 +200,11 @@ export function injectCSS() {
 .pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
 .pix-note-editarea code { background: #2a2a2a; padding: 0 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 0.92em; }
 .pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
+/* Reset inline-code styling when nested inside <pre> — otherwise the
+   editor shows the dark <pre> panel AND the inline <code> gray-per-word
+   highlight, and <code>'s left padding only applies to the first line of
+   multiline content (pushing "text1" right but leaving text2/3 flush). */
+.pix-note-editarea pre code { background: transparent; padding: 0; font-size: inherit; }
 .pix-note-editarea ul, .pix-note-editarea ol { margin: 4px 0 4px 20px; }
 
 .pix-note-footer {
