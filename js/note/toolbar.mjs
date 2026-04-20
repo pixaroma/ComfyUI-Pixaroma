@@ -222,6 +222,22 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(textColorBtn);
 
+  // Reflect the selection's current computed text color on the A button
+  // underline so the swatch preview tracks what the user is actually looking
+  // at (white text → white underline, not stuck on orange).
+  this._activeChecks.push(() => {
+    const sel = window.getSelection();
+    const anchor = sel?.anchorNode;
+    if (!anchor || !this._editArea?.contains(anchor)) return;
+    const node = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+    if (!node) return;
+    const rgb = getComputedStyle(node).color || "";
+    const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (!m) return;
+    const hex = (n) => Number(n).toString(16).padStart(2, "0");
+    textColorBtn.style.borderBottom = `3px solid #${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+  });
+
   const hiColorBtn = el("button", "pix-note-tbtn");
   hiColorBtn.type = "button";
   hiColorBtn.textContent = "\u25A0";
