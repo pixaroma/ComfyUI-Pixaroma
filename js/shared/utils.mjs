@@ -86,7 +86,11 @@ export function installFocusTrap(overlay) {
   overlay.appendChild(trap);
   trap.focus();
   const refocus = (e) => {
-    const tag = e.target?.tagName;
+    const t = e.target;
+    const tag = t?.tagName;
+    // Exempt contenteditable regions (e.g. Note Pixaroma editor) — refocusing
+    // the hidden trap on mouseup would steal focus mid-typing.
+    if (t?.isContentEditable || t?.closest?.('[contenteditable="true"]')) return;
     if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") {
       requestAnimationFrame(() => trap.focus());
     }
