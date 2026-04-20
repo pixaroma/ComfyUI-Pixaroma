@@ -124,7 +124,6 @@ export class NoteEditor {
     header.appendChild(closeBtn);
     panel.appendChild(header);
 
-    // Main: (toolbar is added in Task 8)
     const main = el("div", "pix-note-main");
     panel.appendChild(main);
 
