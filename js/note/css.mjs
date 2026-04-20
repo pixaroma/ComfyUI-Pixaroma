@@ -207,11 +207,11 @@ export function injectCSS() {
   z-index: 100010;
 }
 .pix-note-confirm-box {
-  min-width: 280px; max-width: 380px;
+  min-width: 360px; max-width: 460px;
   background: #1e1e1e;
   border: 1px solid #3a3a3a;
   border-radius: 6px;
-  padding: 18px 20px 14px;
+  padding: 18px 22px 16px;
   box-shadow: 0 12px 40px rgba(0,0,0,.6);
 }
 .pix-note-confirm-title {
@@ -219,6 +219,7 @@ export function injectCSS() {
 }
 .pix-note-confirm-text {
   font-size: 12px; color: #bbb; margin-bottom: 14px; line-height: 1.45;
+  text-wrap: pretty;
 }
 .pix-note-confirm-actions {
   display: flex; justify-content: flex-end; gap: 8px;
