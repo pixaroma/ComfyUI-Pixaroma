@@ -43,7 +43,7 @@ Opens when the user clicks the hover-reveal `✏ Edit` button.
 3. **Colors** — Text color (swatch picker + hex) · Highlight/background color
 4. **Lists** — `• Bulleted` · `1. Numbered` · `☑ Checkbox`
 5. **Inserts** — 🔗 Link · `{ }` Inline code · `⟨/⟩` Code block · `—` Separator
-6. **Pixaroma blocks** — ⬇ Download · 📺 YouTube · 💬 Discord
+6. **Pixaroma blocks** — ⬇ Download · 🎥 YouTube · 💬 Discord
 7. **View toggle** (far right) — `Code` ⇄ `Preview` (Preview is home/default)
 
 **Editing model:** WYSIWYG via `contenteditable`. Select text → toolbar formats the selection. `Code` view shows the raw sanitized HTML source (same content, editable as text). Switching tabs preserves the content in both directions.
@@ -71,16 +71,16 @@ Each inserted via its toolbar button. Once inserted, clicking the block in the e
   3. Shows a small toast: "Path copied — save the file there"
 - **No backend download** — the server never writes to disk. Link-only, chosen for simplicity and zero security surface.
 
-### 3.2 📺 YouTube button
+### 3.2 🎥 YouTube button
 
 - **Fields:** Label (default "Pixaroma YouTube Channel"), URL (default `https://www.youtube.com/@pixaroma`).
-- **Render:** chip with YouTube red + play icon.
+- **Render:** chip/line with 🎥 icon + YouTube red accent + underlined link, matching the user's existing Resources footer style (`🎥 **Tutorials:** [Pixaroma YouTube Channel](…)`).
 - **Click:** opens URL in a new tab.
 
 ### 3.3 💬 Discord button
 
-- **Fields:** Label (default "Join Here"), URL (default TBD — will ask user for Pixaroma Discord invite URL during implementation).
-- **Render:** chip with Discord blurple + chat icon.
+- **Fields:** Label (default "Join Here"), URL (default `https://discord.com/invite/gggpkVgBf3`).
+- **Render:** chip/line with 💬 icon + Discord blurple accent + underlined link, matching the user's existing Resources footer style (`💬 **Community Discord:** [Join Here](…)`).
 - **Click:** opens URL in a new tab.
 
 YouTube and Discord defaults are pre-filled so a single toolbar click inserts a ready-to-use Pixaroma link.
@@ -241,8 +241,12 @@ Project has no test suite or linting config. Verification is manual against a ch
 - Close editor overlay via ComfyUI's tab switching → re-open editor → works
 - Node deletion while editor open → editor closes cleanly
 
-## 9. Open Questions (must resolve before or during implementation)
+## 9. Open Questions
 
-1. **Discord invite URL** — §3.3 defaults need a real URL for the Pixaroma Discord. Ask the user at implementation start.
-2. **YouTube button default label** — currently "Pixaroma YouTube Channel". Confirm wording.
-3. **Exact Pixaroma block visual styling** — pill shape vs. chip, icon placement, hover state. Will be sketched during implementation before the editor work; quick design-check with the user.
+All blockers resolved with the user:
+
+- ~~Discord URL~~ → `https://discord.com/invite/gggpkVgBf3`
+- ~~YouTube label~~ → "Pixaroma YouTube Channel"
+- ~~YouTube icon~~ → 🎥 (matches user's existing Resources footer style)
+
+Only remaining uncertainty is the visual polish of the three Pixaroma blocks (pill vs. chip, icon placement, hover state, exact accent palette). That will be sketched for quick approval during implementation, before toolbar work begins.
