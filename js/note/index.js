@@ -31,13 +31,15 @@ function setupNote(node) {
     node._noteCfg = parseCfg(node);
 
     if (!node._noteDOMWrap || !node._noteDOMWrap.isConnected) {
-      if (node._noteDOMWrap) {
-        // Vue detached the widget — clear stale refs so a fresh one is installed
-        node._noteDOMWrap = null;
-        node._noteBody = null;
-        const staleIdx = (node.widgets || []).findIndex((w) => w.name === "note_dom");
-        if (staleIdx !== -1) node.widgets.splice(staleIdx, 1);
-      }
+      // Clear any stale refs and strip any pre-existing note_dom widget.
+      // Vue may pre-populate a placeholder widget from the saved workflow before
+      // onConfigure fires; without this cleanup we'd end up with two widgets
+      // rendering into the same slot (doubled text on reload).
+      node._noteDOMWrap = null;
+      node._noteBody = null;
+      const staleIdx = (node.widgets || []).findIndex((w) => w.name === "note_dom");
+      if (staleIdx !== -1) node.widgets.splice(staleIdx, 1);
+
       const wrap = createNoteDOMWidget(node);
       node._noteDOMWrap = wrap;
       node._noteBody = wrap.querySelector(".pix-note-body");
