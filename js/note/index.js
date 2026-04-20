@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
+import { createNoteDOMWidget, renderContent } from "./render.mjs";
 
 const DEFAULT_CFG = {
   version: 1,
@@ -24,6 +25,19 @@ function setupNote(node) {
   try {
     hideJsonWidget(node.widgets, "note_json");
     node._noteCfg = parseCfg(node);
+
+    if (!node._noteDOMWrap) {
+      const wrap = createNoteDOMWidget(node);
+      node._noteDOMWrap = wrap;
+      node._noteBody = wrap.querySelector(".pix-note-body");
+      node.addDOMWidget("note_dom", "note", wrap, {
+        serialize: false,
+        getMinHeight: () => 80,
+      });
+    } else {
+      renderContent(node, node._noteBody);
+    }
+
     const cfg = node._noteCfg;
     if (node.size) {
       node.size[0] = cfg.width || 420;
