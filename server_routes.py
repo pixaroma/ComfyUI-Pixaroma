@@ -1,8 +1,10 @@
 import os
 import io
 import re
+import sys
 import base64
 import uuid
+import subprocess
 from server import PromptServer
 from aiohttp import web
 from PIL import Image
@@ -461,3 +463,102 @@ async def remove_bg(request):
     except Exception as e:
         print(f"[Pixaroma] AI Remove Background: failed - {e}")
         return web.json_response({"error": f"Background removal failed: {e}"}, status=500)
+
+
+# ----------------------------------------------------------------------
+# Note Pixaroma — "open folder" endpoints for the Download pill
+#
+# Clicking a download pill in a Note should open the target folder in the
+# host OS file explorer so the user can drop the downloaded file in.
+# Path handling:
+#   - Folder field is relative to ComfyUI base_path.
+#   - "" / None          → base_path/models
+#   - Known top-level    → used as-is (models, input, output, custom_nodes, user)
+#   - Anything else      → prefixed with "models/" (so "loras" → "models/loras")
+# Security: resolved path must stay inside base_path.
+# ----------------------------------------------------------------------
+
+_COMFY_ROOT = os.path.realpath(folder_paths.base_path)
+_KNOWN_TOP = ("models", "input", "output", "custom_nodes", "user", "temp")
+# Reject absurdly long folder strings and control chars early.
+_MAX_FOLDER_LEN = 512
+
+
+def _resolve_note_folder(folder: str):
+    """Return (abspath, rel_for_display) inside ComfyUI base_path, or (None, None)
+    if the folder string escapes or is malformed."""
+    if not folder or not folder.strip():
+        folder = "models"
+    folder = folder.strip().replace("\\", "/").lstrip("/")
+    if len(folder) > _MAX_FOLDER_LEN:
+        return None, None
+    # Reject NUL and other control characters; allow unicode letters since
+    # ComfyUI users can legitimately name subfolders in their own language.
+    if any(ord(c) < 32 for c in folder):
+        return None, None
+    first = folder.split("/", 1)[0].lower()
+    if first not in _KNOWN_TOP:
+        folder = "models/" + folder
+    abspath = os.path.realpath(os.path.join(_COMFY_ROOT, folder))
+    if abspath != _COMFY_ROOT and not abspath.startswith(_COMFY_ROOT + os.sep):
+        return None, None
+    return abspath, folder
+
+
+def _open_in_file_explorer(abspath: str) -> bool:
+    """Open the given folder in the host OS file explorer.
+    Returns True if the platform-specific call was issued without raising."""
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(abspath)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", abspath])
+        else:
+            subprocess.Popen(["xdg-open", abspath])
+        return True
+    except Exception as e:
+        print(f"[Pixaroma Note] open folder failed: {e}")
+        return False
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/note/check_folder")
+async def note_check_folder(request):
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "bad_json"}, status=400)
+    abspath, rel = _resolve_note_folder(data.get("folder", ""))
+    if abspath is None:
+        return web.json_response({"error": "bad_path"}, status=400)
+    return web.json_response(
+        {"exists": os.path.isdir(abspath), "abspath": abspath, "resolved": rel}
+    )
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/note/open_folder")
+async def note_open_folder(request):
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "bad_json"}, status=400)
+    abspath, rel = _resolve_note_folder(data.get("folder", ""))
+    if abspath is None:
+        return web.json_response({"error": "bad_path"}, status=400)
+    create = bool(data.get("create", False))
+    if not os.path.isdir(abspath):
+        if not create:
+            return web.json_response(
+                {"status": "not_found", "abspath": abspath, "resolved": rel},
+                status=404,
+            )
+        try:
+            os.makedirs(abspath, exist_ok=True)
+        except Exception as e:
+            return web.json_response(
+                {"status": "error", "msg": f"mkdir_failed: {e}"}, status=500
+            )
+    opened = _open_in_file_explorer(abspath)
+    return web.json_response(
+        {"status": "success" if opened else "open_failed",
+         "abspath": abspath, "resolved": rel}
+    )

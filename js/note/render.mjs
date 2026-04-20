@@ -127,21 +127,101 @@ function showToast(msg) {
   }, 1800);
 }
 
+// Themed yes/no confirm that matches the editor's modal styling. Resolves
+// true if the user accepts, false if they cancel or click the backdrop.
+// Uses the same .pix-note-confirm-* classes injected by css.mjs, so it
+// looks identical to the editor's unsaved-changes dialog.
+function confirmCreateFolder(folder) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "pix-note-confirm-backdrop";
+    const box = document.createElement("div");
+    box.className = "pix-note-confirm-box";
+    const title = document.createElement("div");
+    title.className = "pix-note-confirm-title";
+    title.textContent = "Folder doesn't exist";
+    const msg = document.createElement("div");
+    msg.className = "pix-note-confirm-text";
+    msg.textContent = `The folder "${folder}" doesn't exist. Create it and open?`;
+    const actions = document.createElement("div");
+    actions.className = "pix-note-confirm-actions";
+    const no = document.createElement("button");
+    no.className = "pix-note-btn";
+    no.textContent = "No";
+    const yes = document.createElement("button");
+    yes.className = "pix-note-btn primary";
+    yes.textContent = "Yes, create";
+    actions.appendChild(no);
+    actions.appendChild(yes);
+    box.appendChild(title);
+    box.appendChild(msg);
+    box.appendChild(actions);
+    backdrop.appendChild(box);
+    document.body.appendChild(backdrop);
+    const finish = (v) => { backdrop.remove(); resolve(v); };
+    no.addEventListener("click", () => finish(false));
+    yes.addEventListener("click", () => finish(true));
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) finish(false);
+    });
+  });
+}
+
+async function openFolderFlow(folder) {
+  let check;
+  try {
+    const r = await fetch("/pixaroma/api/note/check_folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder }),
+    });
+    check = await r.json();
+    if (!r.ok) throw new Error(check?.error || "check_failed");
+  } catch (e) {
+    showToast("Couldn't reach the ComfyUI backend");
+    return;
+  }
+  const resolved = check.resolved || folder || "models";
+  if (check.exists) {
+    try {
+      await fetch("/pixaroma/api/note/open_folder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ folder }),
+      });
+      showToast(`Opened ${resolved}`);
+    } catch (e) {
+      showToast("Couldn't open folder");
+    }
+    return;
+  }
+  const ok = await confirmCreateFolder(resolved);
+  if (!ok) return;
+  try {
+    const r = await fetch("/pixaroma/api/note/open_folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder, create: true }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j?.msg || "open_failed");
+    showToast(`Created and opened ${resolved}`);
+  } catch (e) {
+    showToast("Couldn't create folder");
+  }
+}
+
 export function attachCanvasClickDelegation(bodyEl) {
   bodyEl.addEventListener("click", (e) => {
     const a = e.target.closest("a");
     if (!a) return;
-    // All anchors already have target=_blank from sanitizer, so the browser
-    // opens the tab. We just need to do the clipboard+toast for download blocks.
+    // Download pill: fire the folder-open flow in parallel with the
+    // browser's navigation (target=_blank already opens the URL in a new
+    // tab to start the actual download). Empty data-folder → backend
+    // defaults to "models".
     if (a.classList.contains("pix-note-dl")) {
-      const folder = a.getAttribute("data-folder");
-      if (folder && navigator.clipboard?.writeText) {
-        navigator.clipboard.writeText(folder).then(
-          () => showToast(`Path copied: ${folder}`),
-          () => showToast("Path copy failed — see button's data-folder")
-        );
-      }
-      // Let the browser navigate (target=_blank)
+      const folder = a.getAttribute("data-folder") || "";
+      openFolderFlow(folder);
     }
     e.stopPropagation();
   }, true);
