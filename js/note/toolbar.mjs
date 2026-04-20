@@ -498,32 +498,42 @@ NoteEditor.prototype._buildToolbar = function () {
     // notes) — nesting <pre> inside <code> violates HTML spec.
     if (isSelectionInsideTag(["CODE"])) return;
     // Collect code through a modal so the block is built as one clean
-    // insertHTML — avoids the edge cases that came from letting the user
+    // DOM insert — avoids the edge cases that came from letting the user
     // type directly inside a fresh <pre><code> (cursor escaping, nested
     // inserts, node-vanishing on save).
-    const selText = window.getSelection()?.toString() || "";
+    // Trim the selected-text preview: Chrome's selection.toString() across
+    // block boundaries injects newlines/spaces around block edges, which
+    // otherwise shows as a stray leading blank inside the code modal.
+    const rawSel = window.getSelection()?.toString() || "";
+    const selText = rawSel.replace(/^[\s\uFEFF]+|[\s\uFEFF]+$/g, "");
     const savedRange = saveRange(this._editArea);
     this._promptCodeBlock(selText).then((code) => {
       if (code == null) return;
       this._editArea.focus();
       restoreRange(savedRange);
-      // Insert the <pre> as a sibling of the current block rather than via
-      // execCommand("insertHTML"). insertHTML with a partial text range
-      // (e.g. one letter selected in a heading) wraps the selection in
-      // stray inline markup and produces a mangled block — observed as
-      // a monospace leftover letter after the operation. Inserting as a
-      // sibling keeps the user's current paragraph untouched and places
-      // the block cleanly below it.
       const sel = window.getSelection();
       if (!sel || sel.rangeCount === 0) return;
       const range = sel.getRangeAt(0);
-      let block = range.startContainer;
-      if (block.nodeType !== 1) block = block.parentNode;
+      // Gather every top-level block inside editArea that the selection
+      // intersects. If the user selected across several paragraphs, those
+      // blocks should be REPLACED by the new code block rather than having
+      // the block inserted alongside.
+      const intersected = [];
+      if (!range.collapsed) {
+        for (const child of Array.from(this._editArea.children)) {
+          if (range.intersectsNode(child)) intersected.push(child);
+        }
+      }
+      // When the selection is collapsed (or fully inside a single inline
+      // run), fall back to the start block — we'll insert the pre after it
+      // without disturbing the user's current paragraph.
+      let anchorBlock = range.startContainer;
+      if (anchorBlock.nodeType !== 1) anchorBlock = anchorBlock.parentNode;
       while (
-        block && block !== this._editArea &&
-        block.parentNode && block.parentNode !== this._editArea
+        anchorBlock && anchorBlock !== this._editArea &&
+        anchorBlock.parentNode && anchorBlock.parentNode !== this._editArea
       ) {
-        block = block.parentNode;
+        anchorBlock = anchorBlock.parentNode;
       }
       const pre = document.createElement("pre");
       const codeEl = document.createElement("code");
@@ -531,8 +541,18 @@ NoteEditor.prototype._buildToolbar = function () {
       pre.appendChild(codeEl);
       const trailing = document.createElement("p");
       trailing.appendChild(document.createElement("br"));
-      if (block && block.parentNode === this._editArea) {
-        block.parentNode.insertBefore(pre, block.nextSibling);
+      if (intersected.length > 0) {
+        // Replace the selected blocks: insert pre at the position of the
+        // first intersected block, drop trailing paragraph after it, then
+        // remove the originals.
+        const first = intersected[0];
+        this._editArea.insertBefore(pre, first);
+        this._editArea.insertBefore(trailing, pre.nextSibling);
+        for (const b of intersected) {
+          if (b.parentNode === this._editArea) this._editArea.removeChild(b);
+        }
+      } else if (anchorBlock && anchorBlock.parentNode === this._editArea) {
+        anchorBlock.parentNode.insertBefore(pre, anchorBlock.nextSibling);
         pre.parentNode.insertBefore(trailing, pre.nextSibling);
       } else {
         this._editArea.appendChild(pre);
