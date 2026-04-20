@@ -155,12 +155,13 @@ NoteEditor.prototype._buildToolbar = function () {
     document.execCommand("underline"), "underline"));
   g1.appendChild(makeBtn("<span class='strike'>S</span>", "Strikethrough", "", () =>
     document.execCommand("strikeThrough"), "strikeThrough"));
-  // Clear formatting — strips inline format (bold/italic/underline/colors),
-  // unlinks anchors, unwraps <code>/<pre> (execCommand leaves those alone),
-  // and demotes the current block (heading) back to a paragraph. List items
-  // are left alone — removing a bullet/numbered wrapper requires toggling
-  // the list button itself.
-  g1.appendChild(makeBtn("T\u2093", "Clear all formatting on selection", "", () => {
+  // Clear formatting — always-on orange icon button. Strips inline format
+  // (bold/italic/underline/colors), unlinks anchors, unwraps <code>/<pre>
+  // (execCommand leaves those alone), and demotes the current block
+  // (heading) back to a paragraph. List items are left alone — removing a
+  // bullet/numbered wrapper requires toggling the list button itself.
+  const clearFmtLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/clear-format.svg" draggable="false">`;
+  g1.appendChild(makeBtn(clearFmtLabel, "Clear all formatting on selection", "pix-note-tbtn-accent", () => {
     const sel = window.getSelection();
     if (sel?.rangeCount > 0) {
       const range = sel.getRangeAt(0);
@@ -402,38 +403,40 @@ NoteEditor.prototype._buildToolbar = function () {
     return false;
   };
 
-  const inlineCodeBtn = makeBtn("{ }", "Inline code", "", () => {
-    // Refuse if cursor is already inside any code environment. Nested
-    // <code> inside <pre> or <code> produces invalid HTML that the browser
-    // mangles on re-serialization — can even wipe the whole note on save.
-    // User must Tx-reset first to exit code, then re-wrap.
-    if (isSelectionInsideTag(["CODE", "PRE"])) return;
-    const sel = window.getSelection();
-    const selText = sel?.toString() || "";
-    const text = selText || "code";
-    const markerId = `__pix_ic_${Date.now()}__`;
-    document.execCommand("insertHTML", false, `<code id="${markerId}">${text}</code>`);
-    const code = this._editArea.querySelector(`#${markerId}`);
-    if (code) {
-      code.removeAttribute("id");
-      const r = document.createRange();
-      r.selectNodeContents(code);
-      const s = window.getSelection();
-      s.removeAllRanges();
-      s.addRange(r);
-    }
-  });
-  g5.appendChild(inlineCodeBtn);
-
+  // Code block is a toggle: if cursor is inside an existing <pre>, clicking
+  // unwraps it back to a paragraph; otherwise it inserts a new block with
+  // the placeholder pre-selected. Inline <code> was removed — one
+  // code style keeps the allowed HTML shapes simple and predictable.
   const codeBlockBtn = makeBtn("\u27E8/\u27E9", "Code block", "", () => {
-    // Refuse nested code blocks or code block inside inline code — both
-    // violate HTML spec and Chrome's parser loses content on re-serialize.
-    if (isSelectionInsideTag(["PRE", "CODE"])) return;
+    // Toggle off: unwrap the current <pre> (and any nested <code>) into a
+    // plain paragraph containing its text.
+    if (isSelectionInsideTag(["PRE"])) {
+      const sel = window.getSelection();
+      const anchor = sel?.anchorNode;
+      let pre = null;
+      let n = anchor;
+      while (n && n !== this._editArea) {
+        if (n.nodeType === 1 && n.tagName === "PRE") { pre = n; break; }
+        n = n.parentNode;
+      }
+      if (pre?.parentNode) {
+        const p = document.createElement("p");
+        p.textContent = pre.textContent;
+        pre.parentNode.replaceChild(p, pre);
+        const r = document.createRange();
+        r.selectNodeContents(p);
+        r.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(r);
+      }
+      return;
+    }
+    // Refuse if cursor is inside an inline <code> (leftover from older
+    // notes) — nesting <pre> inside <code> violates HTML spec.
+    if (isSelectionInsideTag(["CODE"])) return;
     const sel = window.getSelection();
     const selText = sel?.toString() || "";
     const text = selText || "// code";
-    // Marker id lets us reliably locate the just-inserted block even if the
-    // note already contains other <pre> elements.
     const markerId = `__pix_cb_${Date.now()}__`;
     document.execCommand(
       "insertHTML", false,
@@ -444,8 +447,6 @@ NoteEditor.prototype._buildToolbar = function () {
       pre.removeAttribute("id");
       const code = pre.querySelector("code");
       if (code) {
-        // Pre-select placeholder text (or the block's contents if user had
-        // a selection) so typing immediately replaces it.
         const r = document.createRange();
         r.selectNodeContents(code);
         const s = window.getSelection();
@@ -460,28 +461,23 @@ NoteEditor.prototype._buildToolbar = function () {
     document.execCommand("insertHTML", false, `<hr><p><br></p>`);
   }));
 
-  // Active-state for link / inline code / code block: walk up from selection
-  // anchor and toggle .active when the matching ancestor exists. Inline code
-  // only activates when the <code> is NOT inside a <pre> (else the code-block
-  // button would be the correct indicator).
+  // Active-state for link / code block: walk up from selection anchor and
+  // toggle .active when the matching ancestor exists.
   this._activeChecks.push(() => {
     const sel = window.getSelection();
     const anchor = sel?.anchorNode;
-    let inA = false, inCode = false, inPre = false;
+    let inA = false, inPre = false;
     if (anchor && this._editArea?.contains(anchor)) {
       let n = anchor;
       while (n && n !== this._editArea) {
         if (n.nodeType === 1) {
-          const tag = n.tagName;
-          if (tag === "A") inA = true;
-          else if (tag === "CODE") inCode = true;
-          else if (tag === "PRE") inPre = true;
+          if (n.tagName === "A") inA = true;
+          else if (n.tagName === "PRE") inPre = true;
         }
         n = n.parentNode;
       }
     }
     linkBtn.classList.toggle("active", inA);
-    inlineCodeBtn.classList.toggle("active", inCode && !inPre);
     codeBlockBtn.classList.toggle("active", inPre);
   });
 

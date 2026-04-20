@@ -42,11 +42,27 @@ export function injectCSS() {
   font-family: "Consolas", "Courier New", monospace; font-size: 0.92em;
 }
 .pix-note-body pre {
+  position: relative;
   background: #1a1a1a; border: 1px solid #333; border-radius: 4px;
   padding: 8px 10px; overflow-x: auto; margin: 8px 0;
   font-family: "Consolas", "Courier New", monospace; font-size: 12px;
 }
 .pix-note-body pre code { background: transparent; padding: 0; }
+/* Copy-to-clipboard button revealed on pre hover */
+.pix-note-copybtn {
+  position: absolute; top: 4px; right: 4px;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  background: rgba(0,0,0,0.55); border: 1px solid #333; border-radius: 3px;
+  cursor: pointer; opacity: 0; transition: opacity 120ms, background 120ms;
+}
+.pix-note-body pre:hover .pix-note-copybtn { opacity: 0.9; }
+.pix-note-copybtn:hover { background: ${BRAND}; border-color: ${BRAND}; opacity: 1; }
+.pix-note-copybtn.copied { background: #5bd45b; border-color: #5bd45b; opacity: 1; }
+.pix-note-copybtn img {
+  width: 12px; height: 12px; pointer-events: none;
+  filter: brightness(0) invert(1);
+}
 .pix-note-body a { color: ${BRAND}; text-decoration: underline; cursor: pointer; }
 .pix-note-body a:hover { text-decoration: none; }
 .pix-note-body label { display: inline-flex; align-items: center; gap: 6px; cursor: default; }
@@ -239,6 +255,14 @@ export function injectCSS() {
 }
 .pix-note-tbtn:hover { background: #333; border-color: #444; }
 .pix-note-tbtn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+.pix-note-tbtn.pix-note-tbtn-accent {
+  background: ${BRAND}; color: #fff; border-color: ${BRAND};
+}
+.pix-note-tbtn.pix-note-tbtn-accent:hover { filter: brightness(1.1); background: ${BRAND}; }
+.pix-note-tbtn-icon {
+  width: 14px; height: 14px; pointer-events: none;
+  filter: brightness(0) invert(1);
+}
 .pix-note-tbtn.italic { font-style: italic; font-family: Georgia, serif; }
 .pix-note-tbtn.under { text-decoration: underline; }
 .pix-note-tbtn.strike { text-decoration: line-through; }

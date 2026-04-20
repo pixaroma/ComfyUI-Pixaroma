@@ -58,5 +58,51 @@ export function renderContent(node, bodyEl) {
     // body blank — blank content can make the on-canvas node visually vanish.
     console.error("[pix-note] renderContent failed, falling back", e);
     bodyEl.innerHTML = `<div class="pix-note-placeholder">Note content could not be rendered. Click Edit to fix.</div>`;
+    return;
   }
+  injectCopyButtons(bodyEl);
+}
+
+function injectCopyButtons(bodyEl) {
+  bodyEl.querySelectorAll("pre").forEach((pre) => {
+    if (pre.querySelector(":scope > .pix-note-copybtn")) return;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pix-note-copybtn";
+    btn.title = "Copy code";
+    btn.contentEditable = "false";
+    const icon = document.createElement("img");
+    icon.src = "/pixaroma/assets/icons/ui/copy.svg";
+    icon.draggable = false;
+    btn.appendChild(icon);
+    pre.appendChild(btn);
+  });
+  if (bodyEl._pixCopyBound) return;
+  bodyEl._pixCopyBound = true;
+  bodyEl.addEventListener("click", (e) => {
+    const cb = e.target.closest?.(".pix-note-copybtn");
+    if (!cb || !bodyEl.contains(cb)) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const pre = cb.closest("pre");
+    if (!pre) return;
+    const code = pre.querySelector("code");
+    const text = (code ? code.textContent : pre.textContent) || "";
+    const flash = () => {
+      cb.classList.add("copied");
+      setTimeout(() => cb.classList.remove("copied"), 1200);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(flash).catch(() => {});
+    } else {
+      // Fallback for older browsers / non-secure contexts.
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); flash(); } catch {}
+      ta.remove();
+    }
+  });
 }
