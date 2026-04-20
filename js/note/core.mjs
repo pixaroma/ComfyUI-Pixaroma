@@ -183,6 +183,19 @@ export class NoteEditor {
     editArea.contentEditable = "true";
     editArea.innerHTML = sanitize(this.cfg.content || "");
     editArea.addEventListener("input", () => { this._dirty = true; });
+    // Clicking the empty padding below text should collapse the selection to
+    // the end — Chrome otherwise keeps the old selection since the click
+    // didn't land on any text node.
+    editArea.addEventListener("mousedown", (e) => {
+      if (e.target === editArea && e.button === 0) {
+        const range = document.createRange();
+        range.selectNodeContents(editArea);
+        range.collapse(false);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
     main.appendChild(editArea);
     this._editArea = editArea;
 
