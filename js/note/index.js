@@ -25,49 +25,15 @@ function openEditor(node) {
   console.log("[Pixaroma Note] openEditor called — wiring in Task 6");
 }
 
-// Always-idempotent setup: on every invocation, destroy any prior Note DOM widget
-// (our own from a previous call AND any stub ComfyUI restored) and build a fresh
-// one. This matters because on workflow reload both onNodeCreated and onConfigure
-// fire; without full cleanup each call, two wraps overlap in the DOM and the text
-// renders doubled/blurred.
 function setupNote(node) {
   try {
     hideJsonWidget(node.widgets, "note_json");
     node._noteCfg = parseCfg(node);
 
-    const nodeId = String(node.id ?? "");
-
-    // 1) DOM sweep: remove every .pix-note-wrap that belongs to this node.
-    //    ComfyUI may hold its own refs to DOM-widget elements beyond
-    //    node.widgets[].element, so walking node.widgets alone is not
-    //    sufficient to catch all prior wraps. This is the authoritative
-    //    cleanup path.
-    if (nodeId) {
-      document
-        .querySelectorAll(`.pix-note-wrap[data-pix-note-node="${CSS.escape(nodeId)}"]`)
-        .forEach((el) => {
-          if (el.parentNode) el.parentNode.removeChild(el);
-        });
-    }
-    node._noteDOMWrap = null;
-    node._noteBody = null;
-
-    // 2) Strip every widget except the Python-declared note_json.
-    if (node.widgets) {
-      for (let i = node.widgets.length - 1; i >= 0; i--) {
-        const w = node.widgets[i];
-        if (w.name === "note_json") continue;
-        if (w.element && w.element.parentNode) {
-          w.element.parentNode.removeChild(w.element);
-        }
-        node.widgets.splice(i, 1);
-      }
-    }
-
-    // 3) Build and register a fresh DOM widget, tagged with the node id so
-    //    future setupNote invocations can sweep it away cleanly.
+    // Build and register the DOM widget. nodeCreated only fires once per node
+    // lifecycle (unlike prototype onNodeCreated + onConfigure overrides which
+    // both fire on workflow reload), so this is always a fresh install.
     const wrap = createNoteDOMWidget(node);
-    if (nodeId) wrap.dataset.pixNoteNode = nodeId;
     node._noteDOMWrap = wrap;
     node._noteBody = wrap.querySelector(".pix-note-body");
     attachEditButton(wrap, () => openEditor(node));
@@ -86,30 +52,25 @@ app.registerExtension({
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaNote") return;
 
-    const _origCreated = nodeType.prototype.onNodeCreated;
-    nodeType.prototype.onNodeCreated = function () {
-      const r = _origCreated?.apply(this, arguments);
-      setupNote(this);
-      // Apply default size only on initial create (not on workflow reload).
-      // onConfigure handles size restore natively via ComfyUI's graph deserialization.
-      if (!this.size || this.size[0] < 200 || this.size[1] < 80) {
-        this.size = [this._noteCfg?.width || 420, this._noteCfg?.height || 320];
-      }
-      if (allow_debug) console.log("PixaromaNote created", this);
-      return r;
-    };
-
-    const _origCfg = nodeType.prototype.onConfigure;
-    nodeType.prototype.onConfigure = function (data) {
-      const r = _origCfg?.apply(this, arguments);
-      setupNote(this);
-      return r;
-    };
-
-    const _origDblClick = nodeType.prototype.onDblClick;
-    nodeType.prototype.onDblClick = function (e, pos) {
-      // Intentional no-op: only the hover-reveal Edit button opens the editor.
+    // Prototype-level: suppress double-click so only the hover-reveal Edit
+    // button can open the editor. Applies to all instances of this type.
+    nodeType.prototype.onDblClick = function () {
       return false;
     };
+  },
+
+  async nodeCreated(node) {
+    if (node.comfyClass !== "PixaromaNote") return;
+
+    setupNote(node);
+
+    // Apply default size only if the node is at LiteGraph's tiny default.
+    // Workflow-restored nodes already have their saved size set before this
+    // hook fires, so we leave those untouched.
+    if (!node.size || node.size[0] < 200 || node.size[1] < 80) {
+      node.size = [node._noteCfg?.width || 420, node._noteCfg?.height || 320];
+    }
+
+    if (allow_debug) console.log("PixaromaNote created", node);
   },
 });
