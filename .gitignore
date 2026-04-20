@@ -5,6 +5,7 @@ __pycache__/
 .agent
 .vscode
 .claude
+.superpowers
 
 # C extensions
 *.so
