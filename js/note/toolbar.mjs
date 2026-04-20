@@ -483,6 +483,7 @@ NoteEditor.prototype._buildToolbar = function () {
         n = n.parentNode;
       }
       if (pre?.parentNode) {
+        this._snapBefore?.();
         const p = document.createElement("p");
         p.textContent = pre.textContent;
         pre.parentNode.replaceChild(p, pre);
@@ -491,12 +492,34 @@ NoteEditor.prototype._buildToolbar = function () {
         r.collapse(false);
         sel.removeAllRanges();
         sel.addRange(r);
+        this._snapAfter?.();
       }
       return;
     }
     // Refuse if cursor is inside an inline <code> (leftover from older
     // notes) — nesting <pre> inside <code> violates HTML spec.
     if (isSelectionInsideTag(["CODE"])) return;
+    // Walk up to the top-level block inside editArea. We capture BOTH
+    // endpoints of the selection as direct element references before the
+    // modal opens — restoring a Range after the modal's focus change is
+    // unreliable on Chrome (intersectsNode sometimes misses the first
+    // block), so we keep references instead.
+    const findTopBlock = (node) => {
+      if (!node) return null;
+      if (node.nodeType !== 1) node = node.parentNode;
+      while (node && node.parentNode !== this._editArea && node !== this._editArea) {
+        node = node.parentNode;
+      }
+      return node && node.parentNode === this._editArea ? node : null;
+    };
+    let startBlock = null, endBlock = null, wasCollapsed = true;
+    const sel0 = window.getSelection();
+    if (sel0?.rangeCount > 0) {
+      const r0 = sel0.getRangeAt(0);
+      wasCollapsed = r0.collapsed;
+      startBlock = findTopBlock(r0.startContainer);
+      endBlock = findTopBlock(r0.endContainer);
+    }
     // Collect code through a modal so the block is built as one clean
     // DOM insert — avoids the edge cases that came from letting the user
     // type directly inside a fresh <pre><code> (cursor escaping, nested
@@ -506,57 +529,56 @@ NoteEditor.prototype._buildToolbar = function () {
     // otherwise shows as a stray leading blank inside the code modal.
     const rawSel = window.getSelection()?.toString() || "";
     const selText = rawSel.replace(/^[\s\uFEFF]+|[\s\uFEFF]+$/g, "");
-    const savedRange = saveRange(this._editArea);
     this._promptCodeBlock(selText).then((code) => {
       if (code == null) return;
-      this._editArea.focus();
-      restoreRange(savedRange);
-      const sel = window.getSelection();
-      if (!sel || sel.rangeCount === 0) return;
-      const range = sel.getRangeAt(0);
-      // Expand the range so the insert REPLACES whole blocks instead of
-      // just the user's partial selection (otherwise the first block's
-      // unselected head would be left behind as a standalone paragraph
-      // above the code block). Going through `execCommand("insertHTML")`
-      // also puts the operation on the browser's native undo stack so
-      // Ctrl+Z can actually remove the code block we just inserted —
-      // direct DOM manipulation via insertBefore/removeChild is invisible
-      // to the contenteditable undo history.
-      if (!range.collapsed) {
-        const intersected = [];
-        for (const child of Array.from(this._editArea.children)) {
-          if (range.intersectsNode(child)) intersected.push(child);
-        }
-        if (intersected.length > 0) {
-          range.setStartBefore(intersected[0]);
-          range.setEndAfter(intersected[intersected.length - 1]);
-          sel.removeAllRanges();
-          sel.addRange(range);
-        }
-      } else {
-        // Collapsed: insert AFTER the enclosing block so we don't split
-        // the current line.
-        let anchorBlock = range.startContainer;
-        if (anchorBlock.nodeType !== 1) anchorBlock = anchorBlock.parentNode;
-        while (
-          anchorBlock && anchorBlock !== this._editArea &&
-          anchorBlock.parentNode && anchorBlock.parentNode !== this._editArea
-        ) {
-          anchorBlock = anchorBlock.parentNode;
-        }
-        if (anchorBlock && anchorBlock.parentNode === this._editArea) {
-          range.setStartAfter(anchorBlock);
-          range.setEndAfter(anchorBlock);
-          sel.removeAllRanges();
-          sel.addRange(range);
+      this._snapBefore?.();
+      // Build the replacement nodes: <pre><code>…</code></pre> plus a
+      // trailing empty <p> so the user has somewhere to type below.
+      const pre = document.createElement("pre");
+      const codeEl = document.createElement("code");
+      codeEl.textContent = code;
+      pre.appendChild(codeEl);
+      const trailing = document.createElement("p");
+      trailing.appendChild(document.createElement("br"));
+      // Walk from startBlock to endBlock (inclusive) using direct element
+      // references captured before the modal. If either reference became
+      // detached (e.g. user clicked elsewhere between open and Insert),
+      // fall back to append.
+      const toReplace = [];
+      if (
+        !wasCollapsed &&
+        startBlock?.parentNode === this._editArea &&
+        endBlock?.parentNode === this._editArea
+      ) {
+        let n = startBlock;
+        while (n) {
+          toReplace.push(n);
+          if (n === endBlock) break;
+          n = n.nextElementSibling;
         }
       }
-      const escapeHtml = (s) => s
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      const html = `<pre><code>${escapeHtml(code)}</code></pre><p><br></p>`;
-      document.execCommand("insertHTML", false, html);
+      if (toReplace.length > 0) {
+        const first = toReplace[0];
+        this._editArea.insertBefore(pre, first);
+        this._editArea.insertBefore(trailing, pre.nextSibling);
+        for (const b of toReplace) {
+          if (b.parentNode === this._editArea) this._editArea.removeChild(b);
+        }
+      } else if (startBlock && startBlock.parentNode === this._editArea) {
+        startBlock.parentNode.insertBefore(pre, startBlock.nextSibling);
+        pre.parentNode.insertBefore(trailing, pre.nextSibling);
+      } else {
+        this._editArea.appendChild(pre);
+        this._editArea.appendChild(trailing);
+      }
+      const r = document.createRange();
+      r.selectNodeContents(trailing);
+      r.collapse(true);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+      this._editArea.focus();
+      this._snapAfter?.();
       this._dirty = true;
       this._refreshActiveStates();
     });
@@ -598,10 +620,10 @@ NoteEditor.prototype._buildToolbar = function () {
   const undoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/undo.svg" draggable="false">`;
   const redoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/redo.svg" draggable="false">`;
   gURight.appendChild(makeBtn(undoLabel, "Undo (Ctrl+Z)", "pix-note-tbtn-accent", () => {
-    try { document.execCommand("undo"); } catch (e) {}
+    this.doUndo?.();
   }));
   gURight.appendChild(makeBtn(redoLabel, "Redo (Ctrl+Shift+Z)", "pix-note-tbtn-accent", () => {
-    try { document.execCommand("redo"); } catch (e) {}
+    this.doRedo?.();
   }));
   tb.appendChild(gURight);
 

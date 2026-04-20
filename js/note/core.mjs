@@ -36,8 +36,11 @@ export class NoteEditor {
           if (this._editArea && document.activeElement !== this._editArea) {
             this._editArea.focus();
           }
-          try { document.execCommand(isRedo ? "redo" : "undo"); } catch (err) {}
-          this._dirty = true;
+          // Use our manual history instead of execCommand("undo"/"redo").
+          // The browser's contenteditable undo only tracks text edits +
+          // execCommand operations; direct-DOM mutations from toolbar
+          // buttons (code block, etc.) are invisible to it.
+          try { if (isRedo) this.doRedo(); else this.doUndo(); } catch (err) {}
         }
         return;
       }
@@ -308,7 +311,27 @@ export class NoteEditor {
     const editArea = el("div", "pix-note-editarea");
     editArea.contentEditable = "true";
     editArea.innerHTML = sanitize(this.cfg.content || "");
-    editArea.addEventListener("input", () => { this._dirty = true; });
+    // Manual undo history. We replace the browser's native contenteditable
+    // undo entirely because direct-DOM mutations from toolbar buttons (code
+    // block insert, etc.) aren't tracked by it. Typing / execCommand
+    // operations fire `input` and are captured via the debounced snap below.
+    this._history = [];
+    this._future = [];
+    this._lastSnap = editArea.innerHTML;
+    this._snapDebounce = null;
+    editArea.addEventListener("input", () => {
+      this._dirty = true;
+      if (this._snapDebounce) clearTimeout(this._snapDebounce);
+      this._snapDebounce = setTimeout(() => {
+        this._snapDebounce = null;
+        if (this._editArea && this._editArea.innerHTML !== this._lastSnap) {
+          this._history.push(this._lastSnap);
+          if (this._history.length > 100) this._history.shift();
+          this._lastSnap = this._editArea.innerHTML;
+          this._future = [];
+        }
+      }, 400);
+    });
     // Clicking the empty padding below text should collapse the selection to
     // the end — Chrome otherwise keeps the old selection since the click
     // didn't land on any text node.
@@ -349,3 +372,72 @@ export class NoteEditor {
     alert("Help panel — populated in Task 20.");
   }
 }
+
+// Flush any pending debounced snap so subsequent push/restore operations see
+// the current innerHTML as the baseline.
+NoteEditor.prototype._flushDebouncedSnap = function () {
+  if (this._snapDebounce) {
+    clearTimeout(this._snapDebounce);
+    this._snapDebounce = null;
+    if (this._editArea && this._editArea.innerHTML !== this._lastSnap) {
+      this._history.push(this._lastSnap);
+      if (this._history.length > 100) this._history.shift();
+      this._lastSnap = this._editArea.innerHTML;
+      this._future = [];
+    }
+  }
+};
+
+// Toolbar operations that mutate the DOM directly (not via execCommand) must
+// call _snapBefore / _snapAfter so the manual history records them. Operations
+// that use execCommand don't need these — the resulting `input` event triggers
+// the debounced snap in _build.
+NoteEditor.prototype._snapBefore = function () {
+  if (!this._editArea) return;
+  this._flushDebouncedSnap();
+  this._history.push(this._lastSnap);
+  if (this._history.length > 100) this._history.shift();
+  this._future = [];
+};
+NoteEditor.prototype._snapAfter = function () {
+  if (!this._editArea) return;
+  this._lastSnap = this._editArea.innerHTML;
+};
+
+NoteEditor.prototype.doUndo = function () {
+  if (!this._editArea) return;
+  this._flushDebouncedSnap();
+  if (!this._history || this._history.length === 0) return;
+  this._future.push(this._lastSnap);
+  const prev = this._history.pop();
+  this._editArea.innerHTML = prev;
+  this._lastSnap = prev;
+  this._placeCursorAtEnd();
+  this._dirty = true;
+  this._refreshActiveStates?.();
+};
+
+NoteEditor.prototype.doRedo = function () {
+  if (!this._editArea) return;
+  this._flushDebouncedSnap();
+  if (!this._future || this._future.length === 0) return;
+  this._history.push(this._lastSnap);
+  if (this._history.length > 100) this._history.shift();
+  const next = this._future.pop();
+  this._editArea.innerHTML = next;
+  this._lastSnap = next;
+  this._placeCursorAtEnd();
+  this._dirty = true;
+  this._refreshActiveStates?.();
+};
+
+NoteEditor.prototype._placeCursorAtEnd = function () {
+  if (!this._editArea) return;
+  const range = document.createRange();
+  range.selectNodeContents(this._editArea);
+  range.collapse(false);
+  const sel = window.getSelection();
+  sel.removeAllRanges();
+  sel.addRange(range);
+  this._editArea.focus();
+};
