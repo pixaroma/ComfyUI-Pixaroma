@@ -57,7 +57,7 @@ function filterStyle(value) {
 
 function filterHref(value) {
   try {
-    const u = new URL(value, "https://example.com/");
+    const u = new URL(value);  // no base — throws on relative URLs
     if (!ALLOWED_HREF_PROTOCOLS.includes(u.protocol)) return null;
     return u.toString();
   } catch {
@@ -100,8 +100,12 @@ function filterElement(el) {
       else el.removeAttribute("style");
     } else if (name === "href") {
       const cleaned = filterHref(a.value);
-      if (cleaned) el.setAttribute("href", cleaned);
-      else el.remove();
+      if (cleaned) {
+        el.setAttribute("href", cleaned);
+      } else {
+        el.remove();
+        return;
+      }
     }
   }
 
