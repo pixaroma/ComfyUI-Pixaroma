@@ -3,6 +3,7 @@ import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
 import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.mjs";
 import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
+import "./blocks.mjs";
 
 
 const DEFAULT_CFG = {

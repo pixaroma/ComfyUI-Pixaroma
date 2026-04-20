@@ -330,6 +330,24 @@ export function injectCSS() {
 }
 .pix-note-codeinput:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; border-color: ${BRAND}; }
 
+/* ── Block edit dialog ───────────────────────────────────── */
+.pix-note-blockdlg {
+  position: fixed; background: #1b1b1b; border: 1px solid #444;
+  border-radius: 6px; padding: 14px 16px; z-index: 100001;
+  box-shadow: 0 10px 30px rgba(0,0,0,.6);
+  min-width: 420px; max-width: 90vw;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-blockdlg h4 { margin: 0 0 10px; color: #fff; font-size: 14px; }
+.pix-note-blockdlg .field { display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px; }
+.pix-note-blockdlg label.lbl { font-size: 10.5px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.pix-note-blockdlg input {
+  background: #0f0f0f; border: 1px solid #333; border-radius: 3px;
+  color: #ddd; font-size: 12px; padding: 5px 8px;
+}
+.pix-note-blockdlg input:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; }
+.pix-note-blockdlg .dlgfooter { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
+
   `;
   document.head.appendChild(s);
 }

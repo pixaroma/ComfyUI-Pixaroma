@@ -646,6 +646,21 @@ NoteEditor.prototype._buildToolbar = function () {
   tb.appendChild(g5);
   tb.appendChild(el("div", "pix-note-tsep"));
 
+  // Group 6 — Pixaroma blocks
+  const g6 = el("div", "pix-note-tgroup");
+
+  const dlBtn = makeBtn("⬇ DL", "Insert download button", "", () => {});
+  dlBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertDownloadBlock(dlBtn);
+  };
+  g6.appendChild(dlBtn);
+
+  // YouTube and Discord buttons appended in Tasks 13 and 14.
+
+  tb.appendChild(g6);
+  tb.appendChild(el("div", "pix-note-tsep"));
+
   // Right-aligned undo / redo. Flex spacer pushes this group to the end
   // of the toolbar so it sits opposite the editing controls on the left.
   const spacer = el("div", "pix-note-tspacer");

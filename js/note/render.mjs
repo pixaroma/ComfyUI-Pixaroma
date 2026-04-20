@@ -36,6 +36,7 @@ export function createNoteDOMWidget(node) {
   wrap.appendChild(body);
 
   renderContent(node, body);
+  attachCanvasClickDelegation(body);
   return wrap;
 }
 
@@ -112,4 +113,39 @@ function injectCopyButtons(bodyEl) {
       ta.remove();
     }
   });
+}
+
+function showToast(msg) {
+  const t = document.createElement("div");
+  t.className = "pix-note-toast";
+  t.textContent = msg;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("show"));
+  setTimeout(() => {
+    t.classList.remove("show");
+    setTimeout(() => t.remove(), 220);
+  }, 1800);
+}
+
+export function attachCanvasClickDelegation(bodyEl) {
+  bodyEl.addEventListener("click", (e) => {
+    const a = e.target.closest("a");
+    if (!a) return;
+    // All anchors already have target=_blank from sanitizer, so the browser
+    // opens the tab. We just need to do the clipboard+toast for download blocks.
+    if (a.classList.contains("pix-note-dl")) {
+      const folder = a.getAttribute("data-folder");
+      if (folder && navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(folder).then(
+          () => showToast(`Path copied: ${folder}`),
+          () => showToast("Path copy failed — see button's data-folder")
+        );
+      }
+      // Let the browser navigate (target=_blank)
+    }
+    e.stopPropagation();
+  }, true);
+  bodyEl.addEventListener("mousedown", (e) => {
+    if (e.target.closest("a")) e.stopPropagation();
+  }, true);
 }
