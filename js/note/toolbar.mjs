@@ -680,7 +680,7 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 6 — Pixaroma blocks
   const g6 = el("div", "pix-note-tgroup");
 
-  const dlIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/download.svg" draggable="false"> DL`;
+  const dlIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/download.svg" draggable="false">`;
   const dlBtn = makeBtn(dlIcon, "Insert download button", "", () => {});
   dlBtn.onclick = (e) => {
     e.preventDefault();
@@ -688,7 +688,7 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(dlBtn);
 
-  const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false"> YT`;
+  const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false">`;
   const ytBtn = makeBtn(ytIcon, "Insert YouTube link", "", () => {});
   ytBtn.onclick = (e) => {
     e.preventDefault();
@@ -696,7 +696,7 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(ytBtn);
 
-  const dcIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg" draggable="false"> DC`;
+  const dcIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg" draggable="false">`;
   const dcBtn = makeBtn(dcIcon, "Insert Discord link", "", () => {});
   dcBtn.onclick = (e) => {
     e.preventDefault();
