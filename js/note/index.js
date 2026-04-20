@@ -31,6 +31,8 @@ function setupNote(node) {
         // Vue detached the widget — clear stale refs so a fresh one is installed
         node._noteDOMWrap = null;
         node._noteBody = null;
+        const staleIdx = (node.widgets || []).findIndex((w) => w.name === "note_dom");
+        if (staleIdx !== -1) node.widgets.splice(staleIdx, 1);
       }
       const wrap = createNoteDOMWidget(node);
       node._noteDOMWrap = wrap;
