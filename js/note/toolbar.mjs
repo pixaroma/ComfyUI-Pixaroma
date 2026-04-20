@@ -49,7 +49,10 @@ function openColorPop(anchorBtn, currentColor, onPick, allowClear = false) {
   picker.type = "color";
   picker.value = /^#[0-9a-f]{6}$/i.test(currentColor || "") ? currentColor : "#f66744";
   picker.addEventListener("mousedown", (e) => e.stopPropagation());
-  picker.oninput = () => { onPick(picker.value); hex.value = picker.value; };
+  // Use `change` (fires once when native picker dialog closes) instead of
+  // `input` (fires on every drag). Native picker steals focus from the
+  // contenteditable; repeated live applies operate on a stale range.
+  picker.addEventListener("change", () => { onPick(picker.value); hex.value = picker.value; });
   const hex = document.createElement("input");
   hex.type = "text";
   hex.value = currentColor || "";
