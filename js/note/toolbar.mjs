@@ -656,7 +656,14 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(dlBtn);
 
-  // YouTube and Discord buttons appended in Tasks 13 and 14.
+  const ytBtn = makeBtn("🎥 YT", "Insert YouTube link", "", () => {});
+  ytBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertYouTubeBlock(ytBtn);
+  };
+  g6.appendChild(ytBtn);
+
+  // Discord button appended in Task 14.
 
   tb.appendChild(g6);
   tb.appendChild(el("div", "pix-note-tsep"));

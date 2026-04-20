@@ -85,6 +85,27 @@ NoteEditor.prototype._insertDownloadBlock = function (anchorBtn) {
   );
 };
 
+NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
+  makeDialog(
+    anchorBtn,
+    "Insert YouTube link",
+    [
+      ["label", "Label", "Pixaroma YouTube Channel", ""],
+      ["url", "URL", "https://www.youtube.com/@pixaroma", ""],
+    ],
+    (v) => {
+      if (!v.url || !/^https?:\/\//i.test(v.url)) {
+        alert("URL must start with http:// or https://");
+        return;
+      }
+      const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
+      document.execCommand("insertHTML", false, html);
+      this._dirty = true;
+    }
+  );
+};
+
 function escapeHtml(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")
