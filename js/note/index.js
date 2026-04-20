@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
-import { createNoteDOMWidget, renderContent } from "./render.mjs";
+import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.mjs";
 
 const DEFAULT_CFG = {
   version: 1,
@@ -21,6 +21,10 @@ function parseCfg(node) {
   }
 }
 
+function openEditor(node) {
+  console.log("[Pixaroma Note] openEditor called — wiring in Task 6");
+}
+
 function setupNote(node) {
   try {
     hideJsonWidget(node.widgets, "note_json");
@@ -37,6 +41,7 @@ function setupNote(node) {
       const wrap = createNoteDOMWidget(node);
       node._noteDOMWrap = wrap;
       node._noteBody = wrap.querySelector(".pix-note-body");
+      attachEditButton(wrap, () => openEditor(node));
       node.addDOMWidget("note_dom", "note", wrap, {
         serialize: false,
         getMinHeight: () => 80,
@@ -74,6 +79,12 @@ app.registerExtension({
       const r = _origCfg?.apply(this, arguments);
       setupNote(this);
       return r;
+    };
+
+    const _origDblClick = nodeType.prototype.onDblClick;
+    nodeType.prototype.onDblClick = function (e, pos) {
+      // Intentional no-op: only the hover-reveal Edit button opens the editor.
+      return false;
     };
   },
 });

@@ -2,6 +2,24 @@ import { injectCSS } from "./css.mjs";
 
 const PLACEHOLDER_TEXT = "Add your workflow notes here\u2026";
 
+export function attachEditButton(wrap, onClick) {
+  const btn = document.createElement("button");
+  btn.className = "pix-note-editbtn";
+  btn.type = "button";
+  btn.innerHTML = "✏ Edit";
+  btn.addEventListener("mousedown", (e) => {
+    // Prevent LiteGraph from starting a node drag from the button
+    e.stopPropagation();
+  });
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onClick();
+  });
+  wrap.appendChild(btn);
+  return btn;
+}
+
 export function createNoteDOMWidget(node) {
   injectCSS();
   const wrap = document.createElement("div");
