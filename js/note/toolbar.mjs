@@ -499,6 +499,12 @@ NoteEditor.prototype._buildToolbar = function () {
     // Refuse if cursor is inside an inline <code> (leftover from older
     // notes) — nesting <pre> inside <code> violates HTML spec.
     if (isSelectionInsideTag(["CODE"])) return;
+    // Safety net: wrap any loose text/inline nodes at the editArea root in
+    // <p> before we capture block references. Without this, typing on a
+    // fresh note leaves raw text as a direct editArea child, and
+    // findTopBlock() returns null for it — the code-block insert then
+    // silently appends instead of replacing.
+    this._normalizeEditArea?.();
     // Walk up to the top-level block inside editArea. We capture BOTH
     // endpoints of the selection as direct element references before the
     // modal opens — restoring a Range after the modal's focus change is

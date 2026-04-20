@@ -193,6 +193,11 @@ export function injectCSS() {
   line-height: 1.55; background: #151515; outline: none;
 }
 .pix-note-editarea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
+/* Consistent vertical spacing between blocks. The browser's default p margin
+   (1em ≈ 16px) was way larger than its default div margin (0), which made
+   old content and new Enter-pressed content look mismatched. */
+.pix-note-editarea p, .pix-note-editarea div { margin: 0 0 6px 0; }
+.pix-note-editarea p:last-child, .pix-note-editarea div:last-child { margin-bottom: 0; }
 .pix-note-editarea h1 { font-size: 22px; font-weight: 700; margin: 4px 0 8px; color: #fff; }
 .pix-note-editarea h2 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-editarea h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; color: #fff; }

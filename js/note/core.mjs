@@ -311,6 +311,16 @@ export class NoteEditor {
     const editArea = el("div", "pix-note-editarea");
     editArea.contentEditable = "true";
     editArea.innerHTML = sanitize(this.cfg.content || "");
+    // Normalize: wrap any raw text nodes / bare <br>s at the root in <p> so
+    // every top-level block operation (code insert, headings, clear-format)
+    // can reliably find its enclosing block. Chrome otherwise leaves the
+    // first-typed line as a bare text-node child of editArea, which made
+    // the code-block insert silently skip the first line on fresh notes.
+    this._normalizeEditArea(editArea);
+    // Force <p> as Enter's default paragraph separator so spacing stays
+    // consistent (Chrome otherwise uses <div>, which has no default margin
+    // and looks mismatched against older <p>-wrapped content).
+    try { document.execCommand("defaultParagraphSeparator", false, "p"); } catch (e) {}
     // Manual undo history. We replace the browser's native contenteditable
     // undo entirely because direct-DOM mutations from toolbar buttons (code
     // block insert, etc.) aren't tracked by it. Typing / execCommand
@@ -333,13 +343,22 @@ export class NoteEditor {
       }, 400);
     });
     // Clicking the empty padding below text should collapse the selection to
-    // the end — Chrome otherwise keeps the old selection since the click
-    // didn't land on any text node.
+    // the end of the LAST block — Chrome otherwise keeps the old selection
+    // since the click didn't land on any text node, and if we collapse to
+    // editArea's end the cursor lands OUTSIDE any block, so the next
+    // keystroke creates a raw text-node child of editArea (breaks
+    // findTopBlock / code-block insert).
     editArea.addEventListener("mousedown", (e) => {
       if (e.target === editArea && e.button === 0) {
+        const last = editArea.lastElementChild;
         const range = document.createRange();
-        range.selectNodeContents(editArea);
-        range.collapse(false);
+        if (last) {
+          range.selectNodeContents(last);
+          range.collapse(false);
+        } else {
+          range.selectNodeContents(editArea);
+          range.collapse(false);
+        }
         const sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
@@ -429,6 +448,41 @@ NoteEditor.prototype.doRedo = function () {
   this._placeCursorAtEnd();
   this._dirty = true;
   this._refreshActiveStates?.();
+};
+
+// Wrap any loose text nodes / <br>s at the editArea root in <p> so every
+// direct child is a block element. Without this, findTopBlock() called from
+// toolbar handlers returns null for the first-typed line on a fresh note
+// (Chrome leaves it as a raw text node), and the code-block insert silently
+// skipped over it.
+NoteEditor.prototype._normalizeEditArea = function (area) {
+  const root = area || this._editArea;
+  if (!root) return;
+  const nodes = Array.from(root.childNodes);
+  let currentP = null;
+  for (const n of nodes) {
+    const isTextish =
+      n.nodeType === 3 ||
+      (n.nodeType === 1 && (n.tagName === "BR" || n.tagName === "SPAN" ||
+        n.tagName === "B" || n.tagName === "STRONG" || n.tagName === "I" ||
+        n.tagName === "EM" || n.tagName === "U" || n.tagName === "S" ||
+        n.tagName === "STRIKE" || n.tagName === "A" || n.tagName === "CODE" ||
+        n.tagName === "FONT" || n.tagName === "LABEL"));
+    if (isTextish) {
+      if (!currentP) {
+        currentP = document.createElement("p");
+        root.insertBefore(currentP, n);
+      }
+      currentP.appendChild(n);
+    } else {
+      currentP = null;
+    }
+  }
+  if (root.childNodes.length === 0) {
+    const p = document.createElement("p");
+    p.appendChild(document.createElement("br"));
+    root.appendChild(p);
+  }
 };
 
 NoteEditor.prototype._placeCursorAtEnd = function () {
