@@ -4,6 +4,7 @@ import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.m
 import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
 
+
 const DEFAULT_CFG = {
   version: 1,
   content: "",
@@ -66,6 +67,19 @@ app.registerExtension({
     // button can open the editor. Applies to all instances of this type.
     nodeType.prototype.onDblClick = function () {
       return false;
+    };
+
+    // Workflow reload path: nodeCreated fires BEFORE configure populates
+    // widget values, so parseCfg() during setupNote reads empty defaults.
+    // Re-parse + re-render after configure has set note_json.value.
+    const _origCfg = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (data) {
+      const r = _origCfg?.apply(this, arguments);
+      this._noteCfg = parseCfg(this);
+      const body =
+        this._noteBody || this._noteDOMWrap?.querySelector(".pix-note-body");
+      if (body) renderContent(this, body);
+      return r;
     };
   },
 
