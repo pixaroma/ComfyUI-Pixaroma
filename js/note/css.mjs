@@ -79,9 +79,13 @@ export function injectCSS() {
 .pix-note-body a.pix-note-dl,
 .pix-note-body a.pix-note-yt,
 .pix-note-body a.pix-note-discord,
+.pix-note-body a.pix-note-vp,
+.pix-note-body a.pix-note-rm,
 .pix-note-editarea a.pix-note-dl,
 .pix-note-editarea a.pix-note-yt,
-.pix-note-editarea a.pix-note-discord {
+.pix-note-editarea a.pix-note-discord,
+.pix-note-editarea a.pix-note-vp,
+.pix-note-editarea a.pix-note-rm {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -105,12 +109,20 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-yt { background: #ff3838; }
 .pix-note-body a.pix-note-discord,
 .pix-note-editarea a.pix-note-discord { background: #5865f2; }
+.pix-note-body a.pix-note-vp,
+.pix-note-editarea a.pix-note-vp { background: #3b82f6; }
+.pix-note-body a.pix-note-rm,
+.pix-note-editarea a.pix-note-rm { background: #10b981; }
 .pix-note-body a.pix-note-dl:hover,
 .pix-note-body a.pix-note-yt:hover,
 .pix-note-body a.pix-note-discord:hover,
+.pix-note-body a.pix-note-vp:hover,
+.pix-note-body a.pix-note-rm:hover,
 .pix-note-editarea a.pix-note-dl:hover,
 .pix-note-editarea a.pix-note-yt:hover,
-.pix-note-editarea a.pix-note-discord:hover { filter: brightness(1.1); }
+.pix-note-editarea a.pix-note-discord:hover,
+.pix-note-editarea a.pix-note-vp:hover,
+.pix-note-editarea a.pix-note-rm:hover { filter: brightness(1.1); }
 
 /* Block icons via SVG mask so they follow text colour (white on a
    coloured pill). One base rule for size + currentColor, then per-class
@@ -118,9 +130,13 @@ export function injectCSS() {
 .pix-note-body a.pix-note-dl::before,
 .pix-note-body a.pix-note-yt::before,
 .pix-note-body a.pix-note-discord::before,
+.pix-note-body a.pix-note-vp::before,
+.pix-note-body a.pix-note-rm::before,
 .pix-note-editarea a.pix-note-dl::before,
 .pix-note-editarea a.pix-note-yt::before,
-.pix-note-editarea a.pix-note-discord::before {
+.pix-note-editarea a.pix-note-discord::before,
+.pix-note-editarea a.pix-note-vp::before,
+.pix-note-editarea a.pix-note-rm::before {
   content: "";
   display: inline-block;
   width: 12px; height: 12px;
@@ -131,8 +147,8 @@ export function injectCSS() {
 }
 .pix-note-body a.pix-note-dl::before,
 .pix-note-editarea a.pix-note-dl::before {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/download.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/download.svg);
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/download-model.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/download-model.svg);
 }
 .pix-note-body a.pix-note-yt::before,
 .pix-note-editarea a.pix-note-yt::before {
@@ -143,6 +159,16 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-discord::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
           mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
+}
+.pix-note-body a.pix-note-vp::before,
+.pix-note-editarea a.pix-note-vp::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/view-model-page.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/view-model-page.svg);
+}
+.pix-note-body a.pix-note-rm::before,
+.pix-note-editarea a.pix-note-rm::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/read-more.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/read-more.svg);
 }
 
 /* Hover-reveal Edit button */

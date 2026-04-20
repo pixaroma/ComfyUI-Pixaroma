@@ -169,6 +169,48 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
   );
 };
 
+NoteEditor.prototype._insertViewPageBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
+  makeDialog(
+    anchorBtn,
+    "Insert View Model Page link",
+    [
+      ["label", "Label", "View Model Page", "e.g. Flux 2 on HuggingFace"],
+      ["url", "URL", "", "https://huggingface.co/..."],
+    ],
+    (v) => {
+      if (!v.url || !/^https?:\/\//i.test(v.url)) {
+        alert("URL must start with http:// or https://");
+        return;
+      }
+      const html = `<a class="pix-note-vp" href="${escapeHtml(v.url)}"` +
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "View Model Page")}</a>&nbsp;`;
+      insertAtSavedRange(this, savedRange, html);
+    }
+  );
+};
+
+NoteEditor.prototype._insertReadMoreBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
+  makeDialog(
+    anchorBtn,
+    "Insert Read More link",
+    [
+      ["label", "Label", "Read More", "e.g. Release notes"],
+      ["url", "URL", "", "https://..."],
+    ],
+    (v) => {
+      if (!v.url || !/^https?:\/\//i.test(v.url)) {
+        alert("URL must start with http:// or https://");
+        return;
+      }
+      const html = `<a class="pix-note-rm" href="${escapeHtml(v.url)}"` +
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Read More")}</a>&nbsp;`;
+      insertAtSavedRange(this, savedRange, html);
+    }
+  );
+};
+
 function escapeHtml(s) {
   return String(s || "")
     .replace(/&/g, "&amp;")

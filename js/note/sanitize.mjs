@@ -20,6 +20,7 @@ const DANGEROUS_TAGS = new Set([
 // Pixaroma block classes are the ONLY allowed class values.
 const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-dl","pix-note-yt","pix-note-discord",
+  "pix-note-vp","pix-note-rm",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
