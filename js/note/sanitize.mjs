@@ -3,8 +3,18 @@
 // Drops tags/attributes not on the allowlist. Forces target/rel on anchors.
 
 const ALLOWED_TAGS = new Set([
-  "h1","h2","h3","p","br","hr","ul","ol","li","b","i","u","s","strong","em",
+  "h1","h2","h3","p","br","hr","ul","ol","li","b","i","u","s","strike","strong","em",
   "code","pre","span","div","a","blockquote","label","input",
+]);
+
+// Tags whose content is ALSO discarded when removed (vs. unwrapped).
+// Anything not in ALLOWED_TAGS and not here is unwrapped so inner text/nodes
+// survive — e.g. Chrome wraps strikeThrough in <strike>; if that tag weren't
+// allowed we'd still want the wrapped text to remain.
+const DANGEROUS_TAGS = new Set([
+  "script","style","iframe","object","embed","link","meta",
+  "form","button","select","textarea","svg","math",
+  "applet","frame","frameset","base",
 ]);
 
 // Pixaroma block classes are the ONLY allowed class values.
@@ -65,11 +75,28 @@ function filterHref(value) {
   }
 }
 
+function unwrap(el) {
+  const parent = el.parentNode;
+  if (!parent) { el.remove(); return []; }
+  const kids = Array.from(el.childNodes);
+  for (const c of kids) parent.insertBefore(c, el);
+  parent.removeChild(el);
+  return kids;
+}
+
 function filterElement(el) {
   const tag = el.tagName.toLowerCase();
 
   if (!ALLOWED_TAGS.has(tag)) {
-    el.remove();
+    if (DANGEROUS_TAGS.has(tag)) {
+      el.remove();
+      return;
+    }
+    // Unknown/benign wrapper: keep children so user text isn't lost.
+    const kids = unwrap(el);
+    for (const c of kids) {
+      if (c.nodeType === 1) filterElement(c);
+    }
     return;
   }
   // input must be a checkbox only
