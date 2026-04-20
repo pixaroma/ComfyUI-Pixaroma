@@ -125,20 +125,6 @@ NoteEditor.prototype._buildToolbar = function () {
     return b;
   };
 
-  // Group 0 — undo / redo. Uses contenteditable's native history via
-  // execCommand, matching what Ctrl+Z/Y does inside the editor.
-  const g0 = el("div", "pix-note-tgroup");
-  const undoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/undo.svg" draggable="false">`;
-  const redoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/redo.svg" draggable="false">`;
-  g0.appendChild(makeBtn(undoLabel, "Undo (Ctrl+Z)", "pix-note-tbtn-accent", () => {
-    try { document.execCommand("undo"); } catch (e) {}
-  }));
-  g0.appendChild(makeBtn(redoLabel, "Redo (Ctrl+Shift+Z)", "pix-note-tbtn-accent", () => {
-    try { document.execCommand("redo"); } catch (e) {}
-  }));
-  tb.appendChild(g0);
-  tb.appendChild(el("div", "pix-note-tsep"));
-
   // Group 1 — text style
   const g1 = el("div", "pix-note-tgroup");
   // Bold uses a custom active check: queryCommandState("bold") returns true
@@ -289,10 +275,8 @@ NoteEditor.prototype._buildToolbar = function () {
   g2.appendChild(h1Btn);
   g2.appendChild(h2Btn);
   g2.appendChild(h3Btn);
-  // "¶" resets the current block back to a paragraph
-  g2.appendChild(makeBtn("\u00b6", "Paragraph (reset heading)", "", () =>
-    document.execCommand("formatBlock", false, "p")
-  ));
+  // No paragraph-reset button — the Tx clear-format button in Group 1
+  // already demotes headings back to paragraphs via its manual DOM unwrap.
   tb.appendChild(g2);
   tb.appendChild(el("div", "pix-note-tsep"));
 
@@ -591,6 +575,21 @@ NoteEditor.prototype._buildToolbar = function () {
 
   tb.appendChild(g5);
   tb.appendChild(el("div", "pix-note-tsep"));
+
+  // Right-aligned undo / redo. Flex spacer pushes this group to the end
+  // of the toolbar so it sits opposite the editing controls on the left.
+  const spacer = el("div", "pix-note-tspacer");
+  tb.appendChild(spacer);
+  const gURight = el("div", "pix-note-tgroup");
+  const undoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/undo.svg" draggable="false">`;
+  const redoLabel = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/redo.svg" draggable="false">`;
+  gURight.appendChild(makeBtn(undoLabel, "Undo (Ctrl+Z)", "pix-note-tbtn-accent", () => {
+    try { document.execCommand("undo"); } catch (e) {}
+  }));
+  gURight.appendChild(makeBtn(redoLabel, "Redo (Ctrl+Shift+Z)", "pix-note-tbtn-accent", () => {
+    try { document.execCommand("redo"); } catch (e) {}
+  }));
+  tb.appendChild(gURight);
 
   // Groups 2-7 added in later tasks.
   this._afterToolbarBuilt?.();

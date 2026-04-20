@@ -268,6 +268,7 @@ export function injectCSS() {
 .pix-note-tbtn.strike { text-decoration: line-through; }
 .pix-note-tsep { width: 1px; height: 18px; background: #3a3a3a; margin: 0 4px; }
 .pix-note-tgroup { display: inline-flex; gap: 3px; }
+.pix-note-tspacer { flex: 1 1 auto; min-width: 8px; }
 
 /* ── Color popover ───────────────────────────────────────── */
 .pix-note-colorpop {
