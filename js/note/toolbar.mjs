@@ -155,12 +155,14 @@ NoteEditor.prototype._buildToolbar = function () {
     document.execCommand("underline"), "underline"));
   g1.appendChild(makeBtn("<span class='strike'>S</span>", "Strikethrough", "", () =>
     document.execCommand("strikeThrough"), "strikeThrough"));
-  // Clear formatting — strips inline format (bold/italic/underline/colors)
-  // and unwraps links on the current selection. Block-level elements
-  // (H1/H2/H3/pre/li) are left alone — use ¶ for those.
-  g1.appendChild(makeBtn("T\u2093", "Clear formatting on selection", "", () => {
+  // Clear formatting — strips inline format (bold/italic/underline/colors),
+  // unlinks anchors, and demotes the current block (heading/pre) back to
+  // a paragraph. List items are left alone — removing a bullet/numbered
+  // wrapper requires toggling the list button itself.
+  g1.appendChild(makeBtn("T\u2093", "Clear all formatting on selection", "", () => {
     document.execCommand("removeFormat");
     document.execCommand("unlink");
+    document.execCommand("formatBlock", false, "p");
   }));
   tb.appendChild(g1);
   tb.appendChild(el("div", "pix-note-tsep"));
@@ -367,8 +369,29 @@ NoteEditor.prototype._buildToolbar = function () {
 
   const codeBlockBtn = makeBtn("\u27E8/\u27E9", "Code block", "", () => {
     const sel = window.getSelection();
-    const text = sel?.toString() || "// code";
-    document.execCommand("insertHTML", false, `<pre><code>${text}</code></pre><p><br></p>`);
+    const selText = sel?.toString() || "";
+    const text = selText || "// code";
+    // Marker id lets us reliably locate the just-inserted block even if the
+    // note already contains other <pre> elements.
+    const markerId = `__pix_cb_${Date.now()}__`;
+    document.execCommand(
+      "insertHTML", false,
+      `<pre id="${markerId}"><code>${text}</code></pre><p><br></p>`
+    );
+    const pre = this._editArea.querySelector(`#${markerId}`);
+    if (pre) {
+      pre.removeAttribute("id");
+      const code = pre.querySelector("code");
+      if (code) {
+        // Pre-select placeholder text (or the block's contents if user had
+        // a selection) so typing immediately replaces it.
+        const r = document.createRange();
+        r.selectNodeContents(code);
+        const s = window.getSelection();
+        s.removeAllRanges();
+        s.addRange(r);
+      }
+    }
   });
   g5.appendChild(codeBlockBtn);
 
