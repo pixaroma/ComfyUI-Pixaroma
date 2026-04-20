@@ -50,5 +50,13 @@ export function renderContent(node, bodyEl) {
     bodyEl.innerHTML = `<div class="pix-note-placeholder">${PLACEHOLDER_TEXT}</div>`;
     return;
   }
-  bodyEl.innerHTML = sanitize(html);
+  try {
+    bodyEl.innerHTML = sanitize(html);
+  } catch (e) {
+    // Malformed content (e.g. nested <pre><code>) could trip sanitize or the
+    // parser. Fall back to a readable error message rather than leaving the
+    // body blank — blank content can make the on-canvas node visually vanish.
+    console.error("[pix-note] renderContent failed, falling back", e);
+    bodyEl.innerHTML = `<div class="pix-note-placeholder">Note content could not be rendered. Click Edit to fix.</div>`;
+  }
 }

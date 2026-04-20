@@ -390,7 +390,24 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g5.appendChild(linkBtn);
 
+  const isSelectionInsideTag = (tagNames) => {
+    const s = window.getSelection();
+    const anchor = s?.anchorNode;
+    if (!anchor || !this._editArea?.contains(anchor)) return false;
+    let n = anchor;
+    while (n && n !== this._editArea) {
+      if (n.nodeType === 1 && tagNames.includes(n.tagName)) return true;
+      n = n.parentNode;
+    }
+    return false;
+  };
+
   const inlineCodeBtn = makeBtn("{ }", "Inline code", "", () => {
+    // Refuse if cursor is already inside any code environment. Nested
+    // <code> inside <pre> or <code> produces invalid HTML that the browser
+    // mangles on re-serialization — can even wipe the whole note on save.
+    // User must Tx-reset first to exit code, then re-wrap.
+    if (isSelectionInsideTag(["CODE", "PRE"])) return;
     const sel = window.getSelection();
     const selText = sel?.toString() || "";
     const text = selText || "code";
@@ -409,6 +426,9 @@ NoteEditor.prototype._buildToolbar = function () {
   g5.appendChild(inlineCodeBtn);
 
   const codeBlockBtn = makeBtn("\u27E8/\u27E9", "Code block", "", () => {
+    // Refuse nested code blocks or code block inside inline code — both
+    // violate HTML spec and Chrome's parser loses content on re-serialize.
+    if (isSelectionInsideTag(["PRE", "CODE"])) return;
     const sel = window.getSelection();
     const selText = sel?.toString() || "";
     const text = selText || "// code";
