@@ -359,58 +359,27 @@ NoteEditor.prototype._buildToolbar = function () {
         // "Clear" means reset to the body's default text color rather than
         // execCommand("removeFormat") which would strip bold/italic/etc too.
         document.execCommand("foreColor", false, "#e4e4e4");
+        textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
       } else {
         document.execCommand("foreColor", false, c);
-      }
-      this._dirty = true;
-      // Run active-state mirrors FIRST. The text-color mirror reads
-      // getComputedStyle at the cursor; for a collapsed selection that
-      // returns the parent's (unchanged) color, not our just-picked
-      // value, which would clobber the icon tint. Setting tint AFTER
-      // the mirror ensures the explicit pick wins visually.
-      this._refreshActiveStates();
-      if (c != null) {
         textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
+      this._dirty = true;
+      this._refreshActiveStates();
     }, true);
   });
   g3.appendChild(textColorBtn);
 
-  // "Sticky" text-color mirror: walks the selection's ancestors for
-  // an EXPLICIT inline style.color. If found, reflect it on the icon.
-  // If not found, do nothing — the user's last picked color stays,
-  // which matches Notion / Google Docs behaviour and avoids two bugs:
-  //   1. A just-picked color getting clobbered by a selectionchange
-  //      event that fires when the popup closes (collapsed selection
-  //      → no coloured span in DOM → mirror would reset to default).
-  //   2. Picking a highlight color then silently resetting the text-
-  //      color icon (and vice versa) because queryCommandValue's
-  //      internal state gets confused across chained colour commands.
-  //
-  // Trade-off: if the cursor sits in default-coloured text after the
-  // user picked red for something else, the icon stays red ("this is
-  // the colour that will apply next / was last picked") rather than
-  // tracking the cursor strictly. That's the common editor pattern.
-  this._activeChecks.push(() => {
-    const sel = window.getSelection();
-    const anchor = sel?.anchorNode;
-    if (!anchor || !this._editArea?.contains(anchor)) return;
-    let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
-    let explicit = "";
-    while (n && n !== this._editArea) {
-      if (n.style?.color) { explicit = n.style.color; break; }
-      n = n.parentElement;
-    }
-    if (!explicit) return; // Leave the last-picked tint alone.
-    // Inline style.color can be either "rgb(r, g, b)" or a hex literal.
-    const m = explicit.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
-    if (m) {
-      const hex = (n) => Number(n).toString(16).padStart(2, "0");
-      textColorBtn.style.setProperty("--pix-note-tbtn-tint", `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`);
-    } else if (/^#[0-9a-f]{3,8}$/i.test(explicit)) {
-      textColorBtn.style.setProperty("--pix-note-tbtn-tint", explicit);
-    }
-  });
+  // Intentionally NO selectionchange-driven mirror for the text-color
+  // icon. Earlier attempts (getComputedStyle-based, queryCommandValue-
+  // based, then ancestor-walk "sticky") all hit variants of the same
+  // problem: execCommand("foreColor") on a collapsed selection STAGES
+  // the color without mutating the DOM, so any mirror that reads the
+  // cursor's current context sees the OLD color (the parent's or a
+  // previously-colored ancestor) and clobbers the user's just-picked
+  // value. The icon now simply shows the user's last explicit pick
+  // (same pattern as Notion / Google Docs). Clear via the popup's
+  // Clear button resets the tint to currentColor (toolbar default).
 
   const hiColorBtn = el("button", "pix-note-tbtn");
   hiColorBtn.type = "button";
@@ -445,6 +414,7 @@ NoteEditor.prototype._buildToolbar = function () {
             }
           }
         }
+        hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
       } else {
         document.execCommand("hiliteColor", false, c);
         // Chrome quirk: execCommand("hiliteColor", ...) on a collapsed
@@ -461,56 +431,17 @@ NoteEditor.prototype._buildToolbar = function () {
         if (stagedFg) {
           try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
         }
-      }
-      this._dirty = true;
-      // Same ordering fix as text-color: run mirrors before setting
-      // the tint, so the highlight mirror (which reads ancestor
-      // backgroundColor — empty for a collapsed selection not inside
-      // a highlighted span) doesn't clobber our explicit pick.
-      this._refreshActiveStates();
-      if (c != null) {
         hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
+      this._dirty = true;
+      this._refreshActiveStates();
     }, true);
   });
   g3.appendChild(hiColorBtn);
 
-  // Sticky highlight mirror — same pattern as the text-color mirror
-  // above. Walk ancestors for an explicit inline style.backgroundColor;
-  // if found, reflect it. If not, leave the last-picked tint alone
-  // (common-editor behaviour: icon shows the most recent highlight
-  // choice, not strictly what's at the cursor).
-  this._activeChecks.push(() => {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const range = sel.getRangeAt(0);
-    if (!this._editArea?.contains(range.commonAncestorContainer)) return;
-    const findAncestorBg = (node) => {
-      let n = node?.nodeType === 1 ? node : node?.parentElement;
-      while (n && n !== this._editArea) {
-        if (n.style?.backgroundColor) return n.style.backgroundColor;
-        n = n.parentElement;
-      }
-      return "";
-    };
-    let bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
-    if (!bg && !range.collapsed) {
-      // Partial selection crossing a highlighted span.
-      const ca = range.commonAncestorContainer;
-      const scope = ca.nodeType === 1 ? ca : ca.parentElement;
-      if (scope) {
-        for (const el of scope.querySelectorAll("*")) {
-          if (el.style?.backgroundColor && range.intersectsNode(el)) {
-            bg = el.style.backgroundColor;
-            break;
-          }
-        }
-      }
-    }
-    if (bg) hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bg);
-    // Intentionally no else-branch: don't remove the tint when nothing
-    // is found. That keeps the last-picked colour visible.
-  });
+  // Intentionally NO selectionchange-driven mirror for highlight —
+  // same reasoning as text-color (see comment above). Icon shows the
+  // user's last explicit pick. Clear resets to currentColor.
 
   // Page background colour — affects the whole editor interior AND the
   // on-canvas node body after save (WYSIWYG). Default is the editor's
