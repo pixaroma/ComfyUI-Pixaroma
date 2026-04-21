@@ -129,6 +129,16 @@ NoteEditor.prototype._buildToolbar = function () {
     return span;
   };
 
+  // Two-layer sibling of makeMaskIcon for color pickers. Outline stays
+  // currentColor; drop takes --pix-note-tbtn-tint. Uses CSS ::before +
+  // ::after so no extra inner DOM nodes are needed. See css.mjs
+  // .pix-note-tbtn-maskicon-multi for the layered rendering.
+  const makeMaskIconMulti = (name) => {
+    const span = document.createElement("span");
+    span.className = `pix-note-tbtn-maskicon-multi pix-note-icon-${name}`;
+    return span;
+  };
+
   const makeBtn = (label, title, cls, onClick, queryCmd) => {
     const b = el("button", `pix-note-tbtn ${cls || ""}`.trim());
     b.type = "button";
@@ -330,7 +340,7 @@ NoteEditor.prototype._buildToolbar = function () {
   const textColorBtn = el("button", "pix-note-tbtn");
   textColorBtn.type = "button";
   textColorBtn.title = "Text color";
-  textColorBtn.appendChild(makeMaskIcon("text-color"));
+  textColorBtn.appendChild(makeMaskIconMulti("text-color"));
   // No initial tint — icon falls back to currentColor (toolbar text
   // color) so it's immediately visible on the dark toolbar. The
   // _activeChecks mirror + openColorPop onPick below will setProperty
@@ -378,7 +388,7 @@ NoteEditor.prototype._buildToolbar = function () {
   const hiColorBtn = el("button", "pix-note-tbtn");
   hiColorBtn.type = "button";
   hiColorBtn.title = "Highlight color";
-  hiColorBtn.appendChild(makeMaskIcon("highlight-color"));
+  hiColorBtn.appendChild(makeMaskIconMulti("highlight-color"));
   hiColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   hiColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
@@ -461,7 +471,7 @@ NoteEditor.prototype._buildToolbar = function () {
   const bgColorBtn = el("button", "pix-note-tbtn");
   bgColorBtn.type = "button";
   bgColorBtn.title = "Page background color";
-  bgColorBtn.appendChild(makeMaskIcon("bg-color"));
+  bgColorBtn.appendChild(makeMaskIconMulti("bg-color"));
   const refreshBgSwatch = () => {
     const c = this.cfg.backgroundColor || "#111111";
     bgColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
@@ -495,7 +505,11 @@ NoteEditor.prototype._buildToolbar = function () {
     const btn = el("button", "pix-note-tbtn");
     btn.type = "button";
     btn.title = title;
-    btn.appendChild(makeMaskIcon(iconName));
+    // Two-layer icon: factory pickers are always color pickers, so the
+    // outline-stays-white-and-drop-takes-tint treatment is the right
+    // default. Single-layer (makeMaskIcon) is only used for plain
+    // action buttons like link / code / separator.
+    btn.appendChild(makeMaskIconMulti(iconName));
     const refreshSwatch = () => {
       const c = this.cfg[cfgKey] || fallback;
       btn.style.setProperty("--pix-note-tbtn-tint", c);

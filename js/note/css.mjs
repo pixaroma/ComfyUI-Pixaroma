@@ -535,25 +535,75 @@ export function injectCSS() {
           mask-size: contain;
   pointer-events: none;
 }
-.pix-note-icon-text-color {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/text-color.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/text-color.svg);
+/* Two-layer mask icons for the 5 color pickers. Outline stays
+   currentColor (toolbar-white); drop takes --pix-note-tbtn-tint (the
+   user's picked color). User authored each as two separate SVGs —
+   <name>-outline.svg + <name>-drop.svg — layered via ::before / ::after.
+   The wrapper has NO background-color itself, unlike the single-layer
+   .pix-note-tbtn-maskicon class; the two pseudo-elements paint their
+   own backgrounds. */
+.pix-note-tbtn-maskicon-multi {
+  position: relative;
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  pointer-events: none;
 }
-.pix-note-icon-highlight-color {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/highlight-color.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/highlight-color.svg);
+.pix-note-tbtn-maskicon-multi::before,
+.pix-note-tbtn-maskicon-multi::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+          mask-position: center;
+  -webkit-mask-size: contain;
+          mask-size: contain;
 }
-.pix-note-icon-bg-color {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/bg-color.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/bg-color.svg);
+.pix-note-tbtn-maskicon-multi::before { background-color: currentColor; }
+.pix-note-tbtn-maskicon-multi::after  { background-color: var(--pix-note-tbtn-tint, currentColor); }
+
+.pix-note-icon-text-color::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/text-color-outline.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/text-color-outline.svg);
 }
-.pix-note-icon-button-color {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/button-color.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/button-color.svg);
+.pix-note-icon-text-color::after {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/text-color-drop.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/text-color-drop.svg);
 }
-.pix-note-icon-line-color {
-  -webkit-mask-image: url(/pixaroma/assets/icons/ui/line-color.svg);
-          mask-image: url(/pixaroma/assets/icons/ui/line-color.svg);
+.pix-note-icon-highlight-color::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/highlight-color-outline.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/highlight-color-outline.svg);
+}
+.pix-note-icon-highlight-color::after {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/highlight-color-drop.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/highlight-color-drop.svg);
+}
+.pix-note-icon-bg-color::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/bg-color-outline.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/bg-color-outline.svg);
+}
+.pix-note-icon-bg-color::after {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/bg-color-drop.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/bg-color-drop.svg);
+}
+.pix-note-icon-button-color::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/button-color-outline.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/button-color-outline.svg);
+}
+.pix-note-icon-button-color::after {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/button-color-drop.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/button-color-drop.svg);
+}
+.pix-note-icon-line-color::before {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/line-color-outline.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/line-color-outline.svg);
+}
+.pix-note-icon-line-color::after {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/line-color-drop.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/line-color-drop.svg);
 }
 .pix-note-icon-separator {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/separator.svg);
