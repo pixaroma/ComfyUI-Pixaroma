@@ -102,7 +102,10 @@ export function injectCSS() {
   font-weight: 600;
   font-size: 11px;
   line-height: 1.2;
-  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  /* Flat, no drop shadow — shadows made the buttons look floaty against
+     the dark note body. Distinct background colours already provide
+     enough separation. */
+  box-shadow: none;
   cursor: pointer;
   vertical-align: middle;
 }
