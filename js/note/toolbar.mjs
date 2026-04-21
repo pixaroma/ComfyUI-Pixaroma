@@ -860,6 +860,23 @@ NoteEditor.prototype._promptLinkUrl = function (presetLabel) {
         urlInput.focus();
         return;
       }
+      // Fully parse so we reject URLs the sanitizer would later drop —
+      // e.g. 'https://' with no host. Without this check users could hit
+      // Insert on the default 'https://' placeholder, the anchor would
+      // be written into the DOM, and save-time sanitization would later
+      // throw on new URL() and strip the whole anchor.
+      try {
+        const u = new URL(url);
+        if ((u.protocol === "http:" || u.protocol === "https:") && !u.hostname) {
+          err.textContent = "URL must include a domain (e.g. example.com)";
+          urlInput.focus();
+          return;
+        }
+      } catch {
+        err.textContent = "That doesn't look like a valid URL";
+        urlInput.focus();
+        return;
+      }
       const label = labelInput.value.trim() || url;
       finish({ url, label });
     });

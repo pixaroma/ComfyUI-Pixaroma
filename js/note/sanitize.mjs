@@ -126,7 +126,14 @@ function filterElement(el) {
       if (cleaned) {
         el.setAttribute("href", cleaned);
       } else {
-        el.remove();
+        // Invalid URL — strip the link but KEEP the inner text. Removing
+        // the whole element silently deleted the user's text on save
+        // (e.g. if they hit Insert on the link dialog without changing
+        // the default 'https://' placeholder, or pasted a relative URL).
+        const kids = unwrap(el);
+        for (const c of kids) {
+          if (c.nodeType === 1) filterElement(c);
+        }
         return;
       }
     }
