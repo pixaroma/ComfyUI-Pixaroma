@@ -836,7 +836,15 @@ NoteEditor.prototype._buildToolbar = function () {
 
   this._afterToolbarBuilt?.();
 
-  // Reflect selection state into button `.active` classes.
+  // Reflect selection state into button `.active` classes, and keep
+  // the user's picked text/highlight color "sticky" across selection
+  // moves. Chrome wipes the execCommand-staged foreColor / hiliteColor
+  // every time the caret moves (click into another cell, arrow keys,
+  // Tab across cells, click through a block boundary after a grid
+  // insert), so subsequent typing reverts to the default color unless
+  // we re-stage on every caret move. The restage is a no-op when the
+  // selection is a range (non-collapsed) — user is actively selecting,
+  // we must not apply the picked color to their selection mid-drag.
   if (!this._selectionChangeHandler) {
     this._selectionChangeHandler = () => {
       // Only update when the selection is inside our edit area, else queries
@@ -845,6 +853,7 @@ NoteEditor.prototype._buildToolbar = function () {
       if (!sel || sel.rangeCount === 0) return;
       if (!this._editArea?.contains(sel.anchorNode)) return;
       this._refreshActiveStates();
+      this._restageColors?.();
     };
     document.addEventListener("selectionchange", this._selectionChangeHandler);
   }
@@ -877,6 +886,12 @@ NoteEditor.prototype._restageColors = function () {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
   if (!this._editArea?.contains(sel.anchorNode)) return;
+  // Must be collapsed — if it's a range, execCommand("foreColor") would
+  // APPLY the picked color to the selection, overriding whatever the
+  // user was trying to do (e.g. select text to bold it, or deliberately
+  // not recolor it). Only stage against a caret.
+  const r = sel.getRangeAt(0);
+  if (!r.collapsed) return;
   try {
     document.execCommand("styleWithCSS", false, true);
     if (bg) document.execCommand("hiliteColor", false, bg);
