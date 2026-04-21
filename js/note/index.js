@@ -28,7 +28,18 @@ function parseCfg(node) {
   const w = (node.widgets || []).find((x) => x.name === "note_json");
   if (!w?.value || w.value === "{}") return { ...DEFAULT_CFG };
   try {
-    return { ...DEFAULT_CFG, ...JSON.parse(w.value) };
+    const parsed = JSON.parse(w.value);
+    // Migration: earlier versions of node_note.py shipped the widget
+    // default with backgroundColor:"transparent". A brand-new Note node
+    // therefore loads that value even though it was never a deliberate
+    // user choice, and our renderContent then clears node.color/bgcolor —
+    // making the canvas node fall back to LiteGraph's theme gray instead
+    // of matching the editor interior. If we see the old default shape
+    // (transparent + empty content), drop it so DEFAULT_CFG takes over.
+    if (parsed.backgroundColor === "transparent" && !parsed.content) {
+      delete parsed.backgroundColor;
+    }
+    return { ...DEFAULT_CFG, ...parsed };
   } catch (e) {
     return { ...DEFAULT_CFG };
   }
