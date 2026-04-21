@@ -197,7 +197,7 @@ function escapeText(s) {
 //
 // Task 2 uses renderTokensPlain: one text node, no colors. Task 3
 // replaces it with renderTokensColored.
-export function buildCodeViewDOM(initialHtml) {
+export function buildCodeViewDOM(initialHtml, opts) {
   const root = document.createElement("div");
   root.className = "pix-note-codewrap";
 
@@ -216,7 +216,7 @@ export function buildCodeViewDOM(initialHtml) {
 
   const formatted = prettyFormatHTML(initialHtml || "");
   textarea.value = formatted;
-  renderTokensPlain(overlay, formatted);
+  renderTokensColored(overlay, formatted);
 
   // Scroll sync — overlay follows the textarea, one direction only
   // (overlay has no scrollbar of its own thanks to overflow: hidden).
@@ -226,9 +226,12 @@ export function buildCodeViewDOM(initialHtml) {
   };
   textarea.addEventListener("scroll", syncScroll, { passive: true });
 
-  // Live re-render (plain text in task 2; replaced in task 3).
+  // Live re-render with colored tokens.
   const onInput = () => {
-    renderTokensPlain(overlay, textarea.value);
+    renderTokensColored(overlay, textarea.value);
+    // Optional caller hook (kept inside the same listener so `destroy`
+    // cleans it up with no extra bookkeeping).
+    if (opts && typeof opts.onInput === "function") opts.onInput();
   };
   textarea.addEventListener("input", onInput);
 
@@ -247,4 +250,27 @@ export function renderTokensPlain(overlay, text) {
   overlay.textContent = text + "\n"; // trailing newline so the last
                                      // line of textarea scroll lines
                                      // up with the overlay
+}
+
+// Colored token renderer: tokenize `text` and emit one <span> per token
+// with a class per type. Must be the ONLY child-setter on `overlay` so
+// repeated renders don't leak DOM.
+export function renderTokensColored(overlay, text) {
+  // Tokenize the raw textarea contents (not sanitized — we want to color
+  // even malformed drafts the user is mid-typing).
+  const tokens = tokenizeHTML(text);
+  // Build a fragment; swap in one go so we never paint half-updated
+  // overlay state.
+  const frag = document.createDocumentFragment();
+  for (const t of tokens) {
+    const span = document.createElement("span");
+    span.className = "tk-" + t.type;
+    span.textContent = t.text;
+    frag.appendChild(span);
+  }
+  // Trailing newline space so the last visible line of the textarea
+  // aligns with the overlay when the textarea has just scrolled.
+  frag.appendChild(document.createTextNode("\n"));
+  overlay.textContent = "";
+  overlay.appendChild(frag);
 }

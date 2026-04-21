@@ -637,9 +637,10 @@ NoteEditor.prototype._enterCodeView = function () {
     this._codeView.destroy();
     this._codeView = null;
   }
-  const cv = buildCodeViewDOM(htmlNow);
+  const cv = buildCodeViewDOM(htmlNow, {
+    onInput: () => { this._dirty = true; },
+  });
   this._editArea.parentElement.appendChild(cv.root);
-  cv.textarea.addEventListener("input", () => { this._dirty = true; });
   this._codeView = cv;
   this._codeArea = cv.textarea; // back-compat alias; toolbar still reads ._codeArea
 

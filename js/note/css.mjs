@@ -407,6 +407,20 @@ export function injectCSS() {
 }
 .pix-note-raw::selection { background: rgba(246, 103, 68, 0.35); color: transparent; }
 
+/* Code-view syntax highlighting — see codeview.mjs tokenizeHTML for
+   the full list of token types. Orange (brand) for the two things the
+   user actually edits: attribute VALUES (URLs, labels) and pix-note-*
+   classes. Everything else fades into the background. */
+.pix-note-hl .tk-tag-punct   { color: #555; }
+.pix-note-hl .tk-tag-name    { color: #555; }
+.pix-note-hl .tk-attr-name   { color: #7a9cc6; }
+.pix-note-hl .tk-attr-equals { color: #555; }
+.pix-note-hl .tk-attr-value  { color: ${BRAND}; }
+.pix-note-hl .tk-pix-class   { color: ${BRAND}; font-weight: 700; }
+.pix-note-hl .tk-text        { color: #e4e4e4; }
+.pix-note-hl .tk-entity      { color: #666; font-style: italic; }
+.pix-note-hl .tk-whitespace  { /* no color — inherits */ }
+
 /* Kept for back-compat in case any other code still targets the old
    class. Unused visually once task 2 lands. */
 .pix-note-codearea { display: none; }
