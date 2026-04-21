@@ -331,7 +331,10 @@ NoteEditor.prototype._buildToolbar = function () {
   textColorBtn.type = "button";
   textColorBtn.title = "Text color";
   textColorBtn.appendChild(makeMaskIcon("text-color"));
-  textColorBtn.style.setProperty("--pix-note-tbtn-tint", SWATCHES[0]);
+  // No initial tint — icon falls back to currentColor (toolbar text
+  // color) so it's immediately visible on the dark toolbar. The
+  // _activeChecks mirror + openColorPop onPick below will setProperty
+  // with the user's real color once anything actually happens.
   textColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   textColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
