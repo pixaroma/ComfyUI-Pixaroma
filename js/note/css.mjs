@@ -777,10 +777,10 @@ export function injectCSS() {
 .pix-note-editarea table.pix-note-grid td {
   border: 1px solid #333;
   padding: 6px 8px;
-  vertical-align: top;
+  vertical-align: middle;
   word-wrap: break-word;
   overflow-wrap: anywhere;
-  text-align: left;
+  text-align: center;
 }
 .pix-note-body table.pix-note-grid thead th,
 .pix-note-editarea table.pix-note-grid thead th {
