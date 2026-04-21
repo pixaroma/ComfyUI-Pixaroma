@@ -117,6 +117,18 @@ NoteEditor.prototype._buildToolbar = function () {
     return e;
   };
 
+  // Build a tintable SVG mask-icon span for a toolbar button. The
+  // icon's fill color comes from CSS custom property --pix-note-tbtn-
+  // tint on the button element (set inline by color pickers to reflect
+  // the current selection) or falls back to currentColor for plain
+  // action buttons. `name` must match a CSS class suffix declared in
+  // css.mjs — e.g. "text-color" → ".pix-note-icon-text-color".
+  const makeMaskIcon = (name) => {
+    const span = document.createElement("span");
+    span.className = `pix-note-tbtn-maskicon pix-note-icon-${name}`;
+    return span;
+  };
+
   const makeBtn = (label, title, cls, onClick, queryCmd) => {
     const b = el("button", `pix-note-tbtn ${cls || ""}`.trim());
     b.type = "button";
@@ -317,10 +329,9 @@ NoteEditor.prototype._buildToolbar = function () {
 
   const textColorBtn = el("button", "pix-note-tbtn");
   textColorBtn.type = "button";
-  textColorBtn.textContent = "A";
   textColorBtn.title = "Text color";
-  textColorBtn.style.fontWeight = "bold";
-  textColorBtn.style.borderBottom = `3px solid ${SWATCHES[0]}`;
+  textColorBtn.appendChild(makeMaskIcon("text-color"));
+  textColorBtn.style.setProperty("--pix-note-tbtn-tint", SWATCHES[0]);
   textColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   textColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
@@ -337,7 +348,7 @@ NoteEditor.prototype._buildToolbar = function () {
         document.execCommand("foreColor", false, "#e4e4e4");
       } else {
         document.execCommand("foreColor", false, c);
-        textColorBtn.style.borderBottom = `3px solid ${c}`;
+        textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
       this._dirty = true;
       this._refreshActiveStates();
@@ -358,13 +369,13 @@ NoteEditor.prototype._buildToolbar = function () {
     const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
     if (!m) return;
     const hex = (n) => Number(n).toString(16).padStart(2, "0");
-    textColorBtn.style.borderBottom = `3px solid #${hex(m[1])}${hex(m[2])}${hex(m[3])}`;
+    textColorBtn.style.setProperty("--pix-note-tbtn-tint", `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`);
   });
 
   const hiColorBtn = el("button", "pix-note-tbtn");
   hiColorBtn.type = "button";
-  hiColorBtn.textContent = "\u25A0";
   hiColorBtn.title = "Highlight color";
+  hiColorBtn.appendChild(makeMaskIcon("highlight-color"));
   hiColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   hiColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
@@ -396,7 +407,7 @@ NoteEditor.prototype._buildToolbar = function () {
         }
       } else {
         document.execCommand("hiliteColor", false, c);
-        hiColorBtn.style.color = c;
+        hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
       this._dirty = true;
       this._refreshActiveStates();
@@ -436,7 +447,8 @@ NoteEditor.prototype._buildToolbar = function () {
         }
       }
     }
-    hiColorBtn.style.color = bg || "";
+    if (bg) hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bg);
+    else hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
   });
 
   // Page background colour — affects the whole editor interior AND the
@@ -445,12 +457,11 @@ NoteEditor.prototype._buildToolbar = function () {
   // to that.
   const bgColorBtn = el("button", "pix-note-tbtn");
   bgColorBtn.type = "button";
-  bgColorBtn.textContent = "Bg";
   bgColorBtn.title = "Page background color";
-  bgColorBtn.style.fontWeight = "bold";
+  bgColorBtn.appendChild(makeMaskIcon("bg-color"));
   const refreshBgSwatch = () => {
     const c = this.cfg.backgroundColor || "#111111";
-    bgColorBtn.style.borderBottom = `3px solid ${c}`;
+    bgColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
   };
   refreshBgSwatch();
   bgColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
@@ -477,15 +488,14 @@ NoteEditor.prototype._buildToolbar = function () {
   // color, opens openColorPop on click, and is live-previewed via the
   // onChange. Factory moves construction logic out of G5/G6 wiring so
   // the two new pickers don't duplicate the Ac pattern five ways.
-  const makeColorPicker = (label, title, cfgKey, cssVar, fallback) => {
+  const makeColorPicker = (iconName, title, cfgKey, cssVar, fallback) => {
     const btn = el("button", "pix-note-tbtn");
     btn.type = "button";
-    btn.textContent = label;
     btn.title = title;
-    btn.style.fontWeight = "bold";
+    btn.appendChild(makeMaskIcon(iconName));
     const refreshSwatch = () => {
       const c = this.cfg[cfgKey] || fallback;
-      btn.style.borderBottom = `3px solid ${c}`;
+      btn.style.setProperty("--pix-note-tbtn-tint", c);
     };
     const apply = () => {
       const c = this.cfg[cfgKey] || fallback;
@@ -520,7 +530,9 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 5 — inserts
   const g5 = el("div", "pix-note-tgroup");
 
-  const linkBtn = makeBtn("\uD83D\uDD17", "Insert link", "", () => {
+  const linkBtn = makeBtn(
+    '<span class="pix-note-tbtn-maskicon pix-note-icon-link"></span>',
+    "Insert link", "", () => {
     const selText = window.getSelection()?.toString() || "";
     const savedRange = saveRange(this._editArea);
     this._promptLinkUrl(selText).then((result) => {
@@ -554,7 +566,9 @@ NoteEditor.prototype._buildToolbar = function () {
   // unwraps it back to a paragraph; otherwise it inserts a new block with
   // the placeholder pre-selected. Inline <code> was removed — one
   // code style keeps the allowed HTML shapes simple and predictable.
-  const codeBlockBtn = makeBtn("\u27E8/\u27E9", "Code block", "", () => {
+  const codeBlockBtn = makeBtn(
+    '<span class="pix-note-tbtn-maskicon pix-note-icon-code"></span>',
+    "Code block", "", () => {
     // Toggle off: unwrap the current <pre> (and any nested <code>) into a
     // plain paragraph containing its text.
     if (isSelectionInsideTag(["PRE"])) {
@@ -675,7 +689,9 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g5.appendChild(codeBlockBtn);
 
-  g5.appendChild(makeBtn("\u2014", "Horizontal separator", "", () => {
+  g5.appendChild(makeBtn(
+    '<span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>',
+    "Horizontal separator", "", () => {
     document.execCommand("insertHTML", false, `<hr><p><br></p>`);
   }));
 
@@ -688,7 +704,7 @@ NoteEditor.prototype._buildToolbar = function () {
   g5.appendChild(gridBtn);
 
   const lnColorBtn = makeColorPicker(
-    "Ln",
+    "line-color",
     "Line color (grid borders, grid header underline, HR separator)",
     "lineColor",
     "--pix-note-line",
@@ -735,7 +751,7 @@ NoteEditor.prototype._buildToolbar = function () {
   g6.appendChild(bdBtn);
 
   const btnColorBtn = makeColorPicker(
-    "Btn",
+    "button-color",
     "Button color (Download / View Page / Read More pills)",
     "buttonColor",
     "--pix-note-btn",

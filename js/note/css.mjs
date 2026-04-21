@@ -236,7 +236,7 @@ export function injectCSS() {
   display: block;
   margin: 4px 2px 2px 2px;
   padding: 2px 0;
-  color: #9a9a9a;
+  color: var(--pix-note-line, #9a9a9a);
   font-size: 12px;
   font-style: italic;
   line-height: 1.4;
@@ -513,6 +513,59 @@ export function injectCSS() {
 .pix-note-tbtn-icon {
   width: 14px; height: 14px; pointer-events: none;
   filter: brightness(0) invert(1);
+}
+/* ── Tintable SVG mask icons for toolbar buttons ─────────────────────
+   Used by the 5 color pickers (text, highlight, bg, button, line) and
+   the 3 plain action buttons (link, code, separator). Mask stamps the
+   SVG; background-color fills it. Picker buttons set --pix-note-tbtn-
+   tint inline to the user's chosen color — the icon then reads that
+   var. Plain buttons leave the var unset, so background-color falls
+   back to currentColor (toolbar text color). */
+.pix-note-tbtn-maskicon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  background-color: var(--pix-note-tbtn-tint, currentColor);
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+          mask-position: center;
+  -webkit-mask-size: contain;
+          mask-size: contain;
+  pointer-events: none;
+}
+.pix-note-icon-text-color {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/text-color.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/text-color.svg);
+}
+.pix-note-icon-highlight-color {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/highlight-color.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/highlight-color.svg);
+}
+.pix-note-icon-bg-color {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/bg-color.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/bg-color.svg);
+}
+.pix-note-icon-button-color {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/button-color.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/button-color.svg);
+}
+.pix-note-icon-line-color {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/line-color.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/line-color.svg);
+}
+.pix-note-icon-separator {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/separator.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/separator.svg);
+}
+.pix-note-icon-code {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/code.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/code.svg);
+}
+.pix-note-icon-link {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/link.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/link.svg);
 }
 .pix-note-tbtn.italic { font-style: italic; font-family: Georgia, serif; }
 .pix-note-tbtn.under { text-decoration: underline; }
