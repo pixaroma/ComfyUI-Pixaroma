@@ -34,7 +34,7 @@ export function injectCSS() {
 .pix-note-body h2 { font-size: 16px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-body h3 { font-size: 14px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
 .pix-note-body p  { margin: 6px 0; }
-.pix-note-body hr { border: none; border-top: 1px solid #555; margin: 10px 0; }
+.pix-note-body hr { border: none; border-top: 1px solid var(--pix-note-line, ${BRAND}); margin: 10px 0; }
 .pix-note-body ul, .pix-note-body ol { margin: 4px 0 4px 20px; padding: 0; }
 .pix-note-body li { margin: 2px 0; }
 .pix-note-body code {
@@ -109,10 +109,20 @@ export function injectCSS() {
   cursor: pointer;
   vertical-align: middle;
 }
+/* Btn picker drives all three Pixaroma-styled pills (Download, View
+   Page, Read More) via the --pix-note-btn CSS var. Icon is the
+   semantic distinguisher; color is unified. YouTube and Discord pills
+   keep their brand colors below (recognition is the whole point). */
 .pix-note-body a.pix-note-dl,
 .pix-note-editarea a.pix-note-dl,
-.pix-note-prevwrap a.pix-note-dl {
-  background: var(--pix-note-accent, ${BRAND});
+.pix-note-prevwrap a.pix-note-dl,
+.pix-note-body a.pix-note-vp,
+.pix-note-editarea a.pix-note-vp,
+.pix-note-prevwrap a.pix-note-vp,
+.pix-note-body a.pix-note-rm,
+.pix-note-editarea a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-rm {
+  background: var(--pix-note-btn, ${BRAND});
 }
 .pix-note-body a.pix-note-yt,
 .pix-note-editarea a.pix-note-yt,
@@ -120,14 +130,6 @@ export function injectCSS() {
 .pix-note-body a.pix-note-discord,
 .pix-note-editarea a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-discord { background: #5865f2; }
-/* View Page + Read More share one neutral slate-gray so they read as
-   secondary actions; Download stays the accent-orange primary. */
-.pix-note-body a.pix-note-vp,
-.pix-note-editarea a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-vp,
-.pix-note-body a.pix-note-rm,
-.pix-note-editarea a.pix-note-rm,
-.pix-note-prevwrap a.pix-note-rm { background: #3f3f46; }
 .pix-note-body a.pix-note-dl:hover,
 .pix-note-body a.pix-note-yt:hover,
 .pix-note-body a.pix-note-discord:hover,
@@ -351,7 +353,7 @@ export function injectCSS() {
 .pix-note-editarea h1 { font-size: 22px; font-weight: 700; margin: 4px 0 8px; color: #fff; }
 .pix-note-editarea h2 { font-size: 17px; font-weight: 700; margin: 10px 0 6px; color: #fff; }
 .pix-note-editarea h3 { font-size: 15px; font-weight: 700; margin: 8px 0 4px; color: #fff; }
-.pix-note-editarea hr { border:none; border-top: 1px solid #555; margin: 10px 0; }
+.pix-note-editarea hr { border:none; border-top: 1px solid var(--pix-note-line, ${BRAND}); margin: 10px 0; }
 
 /* Code / Preview view toggle (right-aligned in toolbar) */
 .pix-note-viewtoggle {
@@ -775,7 +777,7 @@ export function injectCSS() {
 .pix-note-body table.pix-note-grid td,
 .pix-note-editarea table.pix-note-grid th,
 .pix-note-editarea table.pix-note-grid td {
-  border: 1px solid #333;
+  border: 1px solid var(--pix-note-line, ${BRAND});
   padding: 6px 8px;
   vertical-align: middle;
   word-wrap: break-word;
@@ -787,7 +789,7 @@ export function injectCSS() {
   background: #1a1a1a;
   color: #fff;
   font-weight: 700;
-  border-bottom: 2px solid ${BRAND};
+  border-bottom: 2px solid var(--pix-note-line, ${BRAND});
 }
 
 /* ── Grid insert dialog (preview + steppers) ──────────────────────── */
@@ -814,7 +816,7 @@ export function injectCSS() {
 }
 .pix-note-gridprevcell.head {
   background: #333;
-  border-bottom: 2px solid ${BRAND};
+  border-bottom: 2px solid var(--pix-note-line, ${BRAND});
 }
 .pix-note-stepper {
   display: inline-flex;

@@ -9,7 +9,8 @@ import "./blocks.mjs";
 const DEFAULT_CFG = {
   version: 1,
   content: "",
-  accentColor: "#f66744",
+  buttonColor: "#f66744",
+  lineColor: "#f66744",
   // Match the editor's interior dark gray so a freshly-created note's
   // node body looks identical to what the user will see when they open
   // the editor. Value is intentionally a step darker than #151515 —
@@ -39,6 +40,16 @@ function parseCfg(node) {
     if (parsed.backgroundColor === "transparent" && !parsed.content) {
       delete parsed.backgroundColor;
     }
+    // Migration: single accentColor → split buttonColor + lineColor.
+    // Existing notes authored before the split get their accent preserved
+    // as the button color. lineColor falls through to the DEFAULT_CFG
+    // value rather than inheriting the old accent — accentColor wasn't
+    // driving any lines before, so there's no prior-art line color to
+    // preserve. See spec 2026-04-21-note-btn-ln-split-design.md.
+    if (parsed.accentColor !== undefined && parsed.buttonColor === undefined) {
+      parsed.buttonColor = parsed.accentColor;
+    }
+    delete parsed.accentColor;
     return { ...DEFAULT_CFG, ...parsed };
   } catch (e) {
     return { ...DEFAULT_CFG };

@@ -468,39 +468,43 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(bgColorBtn);
 
-  // Per-note accent colour — drives the orange highlight on Pixaroma
-  // download pills (via CSS var --pix-note-accent) and anywhere else
-  // BRAND is referenced. Editor previews it live through the CSS var on
-  // the edit area. Default matches the Pixaroma brand colour.
-  const accColorBtn = el("button", "pix-note-tbtn");
-  accColorBtn.type = "button";
-  accColorBtn.textContent = "Ac";
-  accColorBtn.title = "Accent color (Pixaroma block pills, links)";
-  accColorBtn.style.fontWeight = "bold";
-  const refreshAccSwatch = () => {
-    const c = this.cfg.accentColor || "#f66744";
-    accColorBtn.style.borderBottom = `3px solid ${c}`;
-  };
-  refreshAccSwatch();
-  const applyAccent = () => {
-    const c = this.cfg.accentColor || "#f66744";
-    this._editArea?.style.setProperty("--pix-note-accent", c);
-  };
-  applyAccent();
-  accColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  accColorBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    openColorPop(accColorBtn, this.cfg.accentColor || "#f66744", (c) => {
-      this.cfg.accentColor = (c == null) ? "#f66744" : c;
-      applyAccent();
-      refreshAccSwatch();
-      this._dirty = true;
-    }, true);
-  });
-  g3.appendChild(accColorBtn);
-
   tb.appendChild(g3);
   tb.appendChild(el("div", "pix-note-tsep"));
+
+  // Shared color-picker factory for Btn + Ln (and Bg/Ac before them).
+  // Returns a configured button that: reads cfg[cfgKey], sets the named
+  // CSS var on editArea, shows a bottom-border swatch in the picker's
+  // color, opens openColorPop on click, and is live-previewed via the
+  // onChange. Factory moves construction logic out of G5/G6 wiring so
+  // the two new pickers don't duplicate the Ac pattern five ways.
+  const makeColorPicker = (label, title, cfgKey, cssVar, fallback) => {
+    const btn = el("button", "pix-note-tbtn");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.title = title;
+    btn.style.fontWeight = "bold";
+    const refreshSwatch = () => {
+      const c = this.cfg[cfgKey] || fallback;
+      btn.style.borderBottom = `3px solid ${c}`;
+    };
+    const apply = () => {
+      const c = this.cfg[cfgKey] || fallback;
+      this._editArea?.style.setProperty(cssVar, c);
+    };
+    refreshSwatch();
+    apply();
+    btn.addEventListener("mousedown", (e) => e.preventDefault());
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      openColorPop(btn, this.cfg[cfgKey] || fallback, (c) => {
+        this.cfg[cfgKey] = (c == null) ? fallback : c;
+        apply();
+        refreshSwatch();
+        this._dirty = true;
+      }, true);
+    });
+    return btn;
+  };
 
   // Group 4 — lists
   const g4 = el("div", "pix-note-tgroup");
@@ -675,6 +679,23 @@ NoteEditor.prototype._buildToolbar = function () {
     document.execCommand("insertHTML", false, `<hr><p><br></p>`);
   }));
 
+  const gridIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg" draggable="false">`;
+  const gridBtn = makeBtn(gridIcon, "Insert grid (table)", "", () => {});
+  gridBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertGridBlock(gridBtn);
+  };
+  g5.appendChild(gridBtn);
+
+  const lnColorBtn = makeColorPicker(
+    "Ln",
+    "Line color (grid borders, grid header underline, HR separator)",
+    "lineColor",
+    "--pix-note-line",
+    "#f66744"
+  );
+  g5.appendChild(lnColorBtn);
+
   // Active-state for link / code block: walk up from selection anchor and
   // toggle .active when the matching ancestor exists.
   this._activeChecks.push(() => {
@@ -713,6 +734,15 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(bdBtn);
 
+  const btnColorBtn = makeColorPicker(
+    "Btn",
+    "Button color (Download / View Page / Read More pills)",
+    "buttonColor",
+    "--pix-note-btn",
+    "#f66744"
+  );
+  g6.appendChild(btnColorBtn);
+
   const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false">`;
   const ytBtn = makeBtn(ytIcon, "Insert YouTube link", "", () => {});
   ytBtn.onclick = (e) => {
@@ -728,14 +758,6 @@ NoteEditor.prototype._buildToolbar = function () {
     this._insertDiscordBlock(dcBtn);
   };
   g6.appendChild(dcBtn);
-
-  const gridIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg" draggable="false">`;
-  const gridBtn = makeBtn(gridIcon, "Insert grid (table)", "", () => {});
-  gridBtn.onclick = (e) => {
-    e.preventDefault();
-    this._insertGridBlock(gridBtn);
-  };
-  g6.appendChild(gridBtn);
 
   tb.appendChild(g6);
   tb.appendChild(el("div", "pix-note-tsep"));

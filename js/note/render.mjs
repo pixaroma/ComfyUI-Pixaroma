@@ -42,7 +42,10 @@ export function createNoteDOMWidget(node) {
 
 export function renderContent(node, bodyEl) {
   const cfg = node._noteCfg || {};
-  bodyEl.style.setProperty("--pix-note-accent", cfg.accentColor || "#f66744");
+  // Two independent pickers after the Btn/Ln split. Both CSS vars are
+  // written up-front so on-canvas rendering matches the editor view.
+  bodyEl.style.setProperty("--pix-note-btn", cfg.buttonColor || "#f66744");
+  bodyEl.style.setProperty("--pix-note-line", cfg.lineColor || "#f66744");
 
   // The Bg picker is the single source of truth for the node's visual
   // background. It drives BOTH the LiteGraph node frame (title bar + body)
