@@ -723,7 +723,6 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
   icon.src = "/pixaroma/assets/icons/layers/edit.svg";
   icon.draggable = false;
   pencil.appendChild(icon);
-  pencil.style.display = "none";
   main.appendChild(pencil);
   this._pencil = pencil;
   this._pencilTarget = null;
@@ -733,10 +732,10 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
     if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
     this._pencilTarget = target;
     this._repositionPencil();
-    pencil.style.display = "";
+    pencil.classList.add("visible");
   };
   const hide = () => {
-    pencil.style.display = "none";
+    pencil.classList.remove("visible");
     this._pencilTarget = null;
   };
   const scheduleHide = () => {
@@ -760,6 +759,22 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
   });
   pencil.addEventListener("mouseleave", () => scheduleHide());
 
+  pencil.addEventListener("mousedown", (e) => {
+    // Prevent the editor from deselecting / re-placing the caret on
+    // mousedown — we want the click to dispatch cleanly and any caret
+    // change to be the dialog's doing.
+    e.preventDefault();
+    e.stopPropagation();
+  });
+  pencil.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const target = this._pencilTarget;
+    if (!target) return;
+    hide();
+    this._dispatchBlockEdit?.(target, pencil);
+  });
+
   // Recompute position on editArea scroll + window resize so the pencil
   // tracks its target during layout changes.
   editArea.addEventListener("scroll", () => this._repositionPencil());
@@ -775,7 +790,7 @@ NoteEditor.prototype._repositionPencil = function () {
   const tRect = target.getBoundingClientRect();
   // Bail if target scrolled out of view.
   if (tRect.bottom < mainRect.top || tRect.top > mainRect.bottom) {
-    pencil.style.display = "none";
+    pencil.classList.remove("visible");
     return;
   }
   const top = tRect.top - mainRect.top + 4;

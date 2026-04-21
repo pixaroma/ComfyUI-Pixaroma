@@ -648,3 +648,105 @@ export function extractCodeValues(el) {
   // lines on repeated edits.
   return { code: text.replace(/\n$/, "") };
 }
+
+// ── Pencil dispatcher: open the right dialog pre-filled, replace the
+// target block on submit, bracket with undo snapshots. ───────────────
+//
+// `editor` is the NoteEditor instance (gives us _editArea, _snapBefore,
+// _snapAfter, _promptLinkUrl, _promptCodeBlock, _dirty). `target` is
+// the DOM element under the pencil.
+NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
+  if (!target || !this._editArea || !this._editArea.contains(target)) return;
+
+  // Button Design block: span.pix-note-btnblock
+  if (target.tagName === "SPAN" && target.classList.contains("pix-note-btnblock")) {
+    const values = extractButtonValues(target);
+    if (!values) return;
+    makeButtonDesignDialog(anchorBtn, (v, ctx) => {
+      const check = validateUrl(v.url);
+      if (!check.ok) { ctx.showError(check.message); return false; }
+      this._snapBefore?.();
+      // renderButtonHTML returns "<span …>…</span>&nbsp;". When editing
+      // we replace only the span, not the trailing &nbsp;; otherwise
+      // consecutive pencil-edits would keep appending nbsp chars.
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderButtonHTML(v);
+      const newBlock = wrapper.querySelector(".pix-note-btnblock");
+      if (newBlock) target.replaceWith(newBlock);
+      this._snapAfter?.();
+      this._dirty = true;
+      return true;
+    }, values);
+    return;
+  }
+
+  // YouTube / Discord: a.pix-note-yt / a.pix-note-discord
+  if (target.tagName === "A" && target.classList.contains("pix-note-yt")) {
+    return openLinkEditor(this, target, "Edit YouTube link", "pix-note-yt", anchorBtn);
+  }
+  if (target.tagName === "A" && target.classList.contains("pix-note-discord")) {
+    return openLinkEditor(this, target, "Edit Discord link", "pix-note-discord", anchorBtn);
+  }
+
+  // Plain link: <a> without any pix-note-* class. Reuse _promptLinkUrl
+  // which already has the themed URL-validation UX.
+  if (target.tagName === "A") {
+    const current = extractLinkValues(target);
+    this._editArea.focus();
+    // Pass both label AND url as presets so the dialog round-trips the
+    // existing link cleanly (step 0 extended _promptLinkUrl for this).
+    this._promptLinkUrl(current.label, current.url).then((result) => {
+      if (!result) return;
+      this._snapBefore?.();
+      target.setAttribute("href", result.url);
+      target.textContent = result.label;
+      this._snapAfter?.();
+      this._dirty = true;
+    });
+    return;
+  }
+
+  // Code block: <pre>
+  if (target.tagName === "PRE") {
+    const current = extractCodeValues(target);
+    this._promptCodeBlock(current?.code || "").then((code) => {
+      if (code === null || code === undefined) return;
+      this._snapBefore?.();
+      const pre = document.createElement("pre");
+      const codeEl = document.createElement("code");
+      codeEl.textContent = code + (code.endsWith("\n") ? "" : "\n");
+      pre.appendChild(codeEl);
+      target.replaceWith(pre);
+      this._snapAfter?.();
+      this._dirty = true;
+    });
+    return;
+  }
+};
+
+// YouTube + Discord pencils share one path: same dialog shape, same
+// HTML output differing only in the pill class.
+function openLinkEditor(editor, target, title, className, anchorBtn) {
+  const values = extractLinkValues(target);
+  makeDialog(
+    anchorBtn,
+    title,
+    [
+      ["label", "Label", "", ""],
+      ["url", "URL", "", ""],
+    ],
+    (v, ctx) => {
+      const check = validateUrl(v.url);
+      if (!check.ok) { ctx.showError(check.message); return false; }
+      editor._snapBefore?.();
+      target.setAttribute("href", v.url);
+      target.textContent = v.label || v.url;
+      target.setAttribute("target", "_blank");
+      target.setAttribute("rel", "noopener noreferrer");
+      target.className = className;
+      editor._snapAfter?.();
+      editor._dirty = true;
+    },
+    values,
+  );
+}

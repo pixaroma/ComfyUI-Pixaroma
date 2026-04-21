@@ -336,6 +336,7 @@ export function injectCSS() {
 
 .pix-note-main {
   flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  position: relative;
 }
 .pix-note-editarea {
   flex: 1; overflow-y: auto; padding: 14px 18px; color: #e4e4e4; font-size: 13px;
@@ -746,18 +747,15 @@ export function injectCSS() {
   opacity: 0;
   transition: opacity 120ms ease-out;
 }
-.pix-note-pencil[style*="display: none"] { opacity: 0; }
-.pix-note-pencil:not([style*="display: none"]) { opacity: 0.95; }
-.pix-note-pencil:hover { opacity: 1; }
+.pix-note-pencil { pointer-events: none; }
+.pix-note-pencil.visible { opacity: 0.95; pointer-events: auto; }
+.pix-note-pencil.visible:hover { opacity: 1; }
 .pix-note-pencil img {
   width: 12px;
   height: 12px;
   filter: brightness(0) invert(1);
   pointer-events: none;
 }
-/* Main container needs position:relative so absolute-positioned pencil
-   resolves against it, not the viewport. */
-.pix-note-main { position: relative; }
 
   `;
   document.head.appendChild(s);

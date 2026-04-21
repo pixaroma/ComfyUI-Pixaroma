@@ -799,7 +799,7 @@ NoteEditor.prototype._refreshActiveStates = function () {
 // the unsaved-changes confirm dialog). Returns Promise<{url, label}|null>.
 // If `presetLabel` is non-empty (user had text selected before clicking),
 // it pre-fills the label field; otherwise the URL is used as the label.
-NoteEditor.prototype._promptLinkUrl = function (presetLabel) {
+NoteEditor.prototype._promptLinkUrl = function (presetLabel, presetUrl) {
   return new Promise((resolve) => {
     const backdrop = document.createElement("div");
     backdrop.className = "pix-note-confirm-backdrop";
@@ -815,7 +815,7 @@ NoteEditor.prototype._promptLinkUrl = function (presetLabel) {
     const urlInput = document.createElement("input");
     urlInput.type = "text";
     urlInput.className = "pix-note-linkinput";
-    urlInput.value = "https://";
+    urlInput.value = presetUrl || "https://";
 
     const labelLbl = document.createElement("div");
     labelLbl.className = "pix-note-linklbl";
