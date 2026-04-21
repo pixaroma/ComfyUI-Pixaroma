@@ -364,13 +364,52 @@ export function injectCSS() {
 }
 .pix-note-viewtoggle button.active { background: ${BRAND}; color: #fff; }
 
-.pix-note-codearea {
-  flex: 1; background: #0d0d0d; color: #e0e0e0;
-  font-family: "Consolas", "Courier New", monospace; font-size: 12.5px;
-  padding: 12px 16px; border: none; outline: none;
-  line-height: 1.5; resize: none; white-space: pre-wrap;
+/* ── Code view: <pre> overlay under transparent <textarea> ─────────── */
+.pix-note-codewrap {
+  position: relative;
+  flex: 1;
+  margin: 8px 12px 0;
+  background: #111111;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  overflow: hidden;
+  min-height: 120px;
 }
-.pix-note-codearea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
+.pix-note-hl,
+.pix-note-raw {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
+  font-family: "Consolas", "Menlo", "Monaco", monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  tab-size: 2;
+}
+.pix-note-hl {
+  pointer-events: none;
+  color: #e4e4e4;
+  background: transparent;
+  overflow: hidden;
+  z-index: 1;
+}
+.pix-note-raw {
+  resize: none;
+  color: transparent;
+  background: transparent;
+  caret-color: ${BRAND};
+  outline: none;
+  overflow: auto;
+  z-index: 2;
+}
+.pix-note-raw::selection { background: rgba(246, 103, 68, 0.35); color: transparent; }
+
+/* Kept for back-compat in case any other code still targets the old
+   class. Unused visually once task 2 lands. */
+.pix-note-codearea { display: none; }
 
 /* In-panel help overlay — covers the whole editor panel when the user
    clicks ? Help in the footer. */

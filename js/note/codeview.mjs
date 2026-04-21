@@ -181,3 +181,70 @@ function serializeBlock(node) {
 function escapeText(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+
+// Build the Code-view DOM: a container wrapping a <pre> highlight overlay
+// and an editable <textarea>. Both share the same font, padding, and
+// line-height so the overlay spans align exactly with the text the
+// user types. The textarea is transparent (color: transparent via CSS,
+// caret stays visible via CSS caret-color); the overlay has
+// pointer-events: none so clicks pass through to the textarea.
+//
+// Returns an object { root, textarea, overlay, setValue, destroy }.
+//
+// Caller wires:
+//   - scroll sync (we set up the listener in attachScrollSync below)
+//   - live re-render on `input` (task 3 plugs in the colored renderer)
+//
+// Task 2 uses renderTokensPlain: one text node, no colors. Task 3
+// replaces it with renderTokensColored.
+export function buildCodeViewDOM(initialHtml) {
+  const root = document.createElement("div");
+  root.className = "pix-note-codewrap";
+
+  const overlay = document.createElement("pre");
+  overlay.className = "pix-note-hl";
+  overlay.setAttribute("aria-hidden", "true");
+  root.appendChild(overlay);
+
+  const textarea = document.createElement("textarea");
+  textarea.className = "pix-note-raw";
+  textarea.spellcheck = false;
+  textarea.autocapitalize = "off";
+  textarea.autocomplete = "off";
+  textarea.setAttribute("wrap", "soft");
+  root.appendChild(textarea);
+
+  const formatted = prettyFormatHTML(initialHtml || "");
+  textarea.value = formatted;
+  renderTokensPlain(overlay, formatted);
+
+  // Scroll sync — overlay follows the textarea, one direction only
+  // (overlay has no scrollbar of its own thanks to overflow: hidden).
+  const syncScroll = () => {
+    overlay.scrollTop = textarea.scrollTop;
+    overlay.scrollLeft = textarea.scrollLeft;
+  };
+  textarea.addEventListener("scroll", syncScroll, { passive: true });
+
+  // Live re-render (plain text in task 2; replaced in task 3).
+  const onInput = () => {
+    renderTokensPlain(overlay, textarea.value);
+  };
+  textarea.addEventListener("input", onInput);
+
+  const destroy = () => {
+    textarea.removeEventListener("scroll", syncScroll);
+    textarea.removeEventListener("input", onInput);
+    root.remove();
+  };
+
+  return { root, textarea, overlay, destroy };
+}
+
+// Plain text renderer — used by task 2 scaffolding. Task 3 replaces
+// this with renderTokensColored, which emits colored spans.
+export function renderTokensPlain(overlay, text) {
+  overlay.textContent = text + "\n"; // trailing newline so the last
+                                     // line of textarea scroll lines
+                                     // up with the overlay
+}

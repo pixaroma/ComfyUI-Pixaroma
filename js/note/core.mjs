@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 import { injectCSS } from "./css.mjs";
 import { sanitize } from "./sanitize.mjs";
+import { buildCodeViewDOM } from "./codeview.mjs";
 import { renderContent } from "./render.mjs";
 
 export class NoteEditor {
@@ -629,27 +630,34 @@ NoteEditor.prototype._enterCodeView = function () {
   if (this._mode === "code" || !this._editArea) return;
   const htmlNow = sanitize(this._editArea.innerHTML || "");
   this._editArea.style.display = "none";
-  if (!this._codeArea) {
-    const ta = document.createElement("textarea");
-    ta.className = "pix-note-codearea";
-    ta.spellcheck = false;
-    ta.addEventListener("input", () => { this._dirty = true; });
-    this._editArea.parentElement.appendChild(ta);
-    this._codeArea = ta;
+
+  // Destroy any prior overlay — keeping one around would stale-scroll
+  // when the user toggles Code→Preview→Code with edits in between.
+  if (this._codeView) {
+    this._codeView.destroy();
+    this._codeView = null;
   }
-  this._codeArea.style.display = "";
-  this._codeArea.value = htmlNow;
+  const cv = buildCodeViewDOM(htmlNow);
+  this._editArea.parentElement.appendChild(cv.root);
+  cv.textarea.addEventListener("input", () => { this._dirty = true; });
+  this._codeView = cv;
+  this._codeArea = cv.textarea; // back-compat alias; toolbar still reads ._codeArea
+
   this._mode = "code";
-  this._codeArea.focus();
+  cv.textarea.focus();
 };
 
 NoteEditor.prototype._enterPreviewView = function () {
   if (this._mode !== "code") { this._mode = "preview"; return; }
-  const raw = this._codeArea?.value || "";
+  const raw = this._codeView?.textarea.value || "";
   const clean = sanitize(raw);
   this._editArea.innerHTML = clean;
   this._normalizeEditArea?.(this._editArea);
-  if (this._codeArea) this._codeArea.style.display = "none";
+  if (this._codeView) {
+    this._codeView.destroy();
+    this._codeView = null;
+    this._codeArea = null;
+  }
   this._editArea.style.display = "";
   this._mode = "preview";
   this._editArea.focus();
