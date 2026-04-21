@@ -126,7 +126,7 @@ export class NoteEditor {
         // Cancel/outside to dismiss.
         if (key === "escape") {
           const hasModal = !!document.querySelector(
-            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop"
+            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop, .pix-note-iconpop"
           );
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -457,14 +457,14 @@ export class NoteEditor {
     overlay.addEventListener("mousedown", (e) => {
       if (e.target !== overlay) return;
       // Block-insert dialogs (grid / button / YT / Discord), color popups,
-      // and confirm backdrops are all appended to document.body — NOT
-      // inside this.panel. Without this guard, a mousedown that falls
-      // outside the dialog but inside the editor backdrop lands on the
-      // overlay and triggers close(), popping an unsaved-changes prompt
-      // ON TOP of the still-open modal. Mirrors the same hasModal check
-      // the Escape-key handler already uses above.
+      // icon picker popup, and confirm backdrops are all appended to
+      // document.body — NOT inside this.panel. Without this guard, a
+      // mousedown that falls outside the dialog but inside the editor
+      // backdrop lands on the overlay and triggers close(), popping an
+      // unsaved-changes prompt ON TOP of the still-open modal. Mirrors
+      // the same hasModal check the Escape-key handler already uses above.
       const hasModal = !!document.querySelector(
-        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop"
+        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop, .pix-note-iconpop"
       );
       if (hasModal) return;
       this.close();
