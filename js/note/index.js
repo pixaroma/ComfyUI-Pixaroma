@@ -10,7 +10,12 @@ const DEFAULT_CFG = {
   version: 1,
   content: "",
   accentColor: "#f66744",
-  backgroundColor: "transparent",
+  // Match the editor's interior dark gray so a freshly-created note's
+  // node body looks identical to what the user will see when they open
+  // the editor. Users can change this via the Bg picker; "transparent"
+  // (the only value that clears node.color/bgcolor) is still honoured
+  // on notes that were saved with it previously.
+  backgroundColor: "#151515",
   width: 420,
   height: 320,
 };

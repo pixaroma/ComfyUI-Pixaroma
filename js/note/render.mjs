@@ -49,19 +49,19 @@ export function renderContent(node, bodyEl) {
   // AND our inner .pix-note-body, so the whole node reads as one surface
   // instead of a coloured box floating inside a dark frame.
   //
-  //   - unset / #151515 / "transparent"  → treat as "no explicit color";
-  //     clear the LiteGraph overrides so the current theme shows through,
-  //     and keep the inner body transparent.
-  //   - anything else                    → apply to node.color (title)
-  //     and node.bgcolor (body), keep inner body transparent so the color
-  //     flows continuously through the note area.
+  //   - unset / "transparent"  → clear node.color/bgcolor, let the active
+  //     LiteGraph theme show through. Kept for backward compatibility with
+  //     notes saved before the new default landed.
+  //   - any explicit color      → apply to node.color (title) + node.bgcolor
+  //     (body). The default '#151515' (matches the editor interior) goes
+  //     through this branch so a brand-new note renders with the same dark
+  //     gray the user sees inside the editor, no mismatch.
   //
   // node.setDirtyCanvas(true, true) forces LiteGraph to repaint the node
   // frame with the new colours; without it the graph keeps the old colour
   // until the user pans/zooms.
   const bg = cfg.backgroundColor;
-  const noExplicit = !bg || bg === "transparent" || bg === "#151515";
-  if (noExplicit) {
+  if (!bg || bg === "transparent") {
     node.color = null;
     node.bgcolor = null;
   } else {
