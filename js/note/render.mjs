@@ -46,6 +46,16 @@ export function renderContent(node, bodyEl) {
   // written up-front so on-canvas rendering matches the editor view.
   bodyEl.style.setProperty("--pix-note-btn", cfg.buttonColor || "#f66744");
   bodyEl.style.setProperty("--pix-note-line", cfg.lineColor || "#f66744");
+  // TEMP DEBUG — remove once Bug B (line colors not persisting) is resolved.
+  console.log("[pix-note render]", {
+    buttonColor: cfg.buttonColor,
+    lineColor: cfg.lineColor,
+    backgroundColor: cfg.backgroundColor,
+    bodyElConnected: bodyEl.isConnected,
+    bodyElRef: bodyEl,
+    appliedBtnVar: bodyEl.style.getPropertyValue("--pix-note-btn"),
+    appliedLineVar: bodyEl.style.getPropertyValue("--pix-note-line"),
+  });
 
   // The Bg picker is the single source of truth for the node's visual
   // background. It drives BOTH the LiteGraph node frame (title bar + body)

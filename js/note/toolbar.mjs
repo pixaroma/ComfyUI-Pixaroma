@@ -376,17 +376,30 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(textColorBtn);
 
-  // Reflect the selection's current computed text color on the A button
-  // underline so the swatch preview tracks what the user is actually looking
-  // at (white text → white underline, not stuck on orange).
+  // Reflect the selection's current text color on the A button icon so
+  // the swatch tracks what the user is actually looking at (white text
+  // → white icon, not stuck on orange).
+  //
+  // Prefer document.queryCommandValue("foreColor") over getComputedStyle
+  // because execCommand("foreColor") on a COLLAPSED selection stages
+  // the color for the next input WITHOUT wrapping the cursor in a
+  // coloured span. getComputedStyle at the cursor would then return the
+  // parent's unchanged color — and a selectionchange event firing after
+  // the popup closes would clobber the just-picked tint back to the
+  // parent's default. queryCommandValue correctly returns the staged
+  // color in that case. getComputedStyle is kept as a fallback for
+  // cases where queryCommandValue doesn't return an rgb string.
   this._activeChecks.push(() => {
     const sel = window.getSelection();
     const anchor = sel?.anchorNode;
     if (!anchor || !this._editArea?.contains(anchor)) return;
-    const node = anchor.nodeType === 1 ? anchor : anchor.parentElement;
-    if (!node) return;
-    const rgb = getComputedStyle(node).color || "";
-    const m = rgb.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    let colorStr = "";
+    try { colorStr = document.queryCommandValue("foreColor") || ""; } catch (e) {}
+    if (!/^rgb/i.test(colorStr)) {
+      const node = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+      if (node) colorStr = getComputedStyle(node).color || "";
+    }
+    const m = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
     if (!m) return;
     const hex = (n) => Number(n).toString(16).padStart(2, "0");
     textColorBtn.style.setProperty("--pix-note-tbtn-tint", `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`);
@@ -441,34 +454,52 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(hiColorBtn);
 
-  // Mirror the selection's inline background-color onto the ■ button so the
-  // highlight preview tracks whatever span/li currently wraps the cursor.
-  // Walks both selection endpoints (anchor can be on either side of a reverse
-  // drag-select) plus any highlighted spans intersected by the range.
+  // Mirror the highlight color currently active at the cursor onto the
+  // highlight button's drop icon.
+  //
+  // Prefer queryCommandValue("backColor") which returns the STAGED
+  // color after execCommand("hiliteColor") on a collapsed selection.
+  // Without it, a selectionchange event firing after the popup closes
+  // would clobber the just-picked tint (same root cause as text-color
+  // mirror — see comment above). For non-collapsed selections or when
+  // queryCommandValue returns an unhelpful value (empty /
+  // transparent), fall back to the ancestor-walk logic that inspects
+  // inline backgroundColor — useful for catching partial selections
+  // crossing a highlighted span.
   this._activeChecks.push(() => {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
     if (!this._editArea?.contains(range.commonAncestorContainer)) return;
-    const findAncestorBg = (node) => {
-      let n = node?.nodeType === 1 ? node : node?.parentElement;
-      while (n && n !== this._editArea) {
-        if (n.style?.backgroundColor) return n.style.backgroundColor;
-        n = n.parentElement;
-      }
-      return "";
-    };
-    let bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
-    if (!bg && !range.collapsed) {
-      // Non-collapsed selection: also check any highlighted span intersected
-      // by the range (e.g. user dragged across just part of an orange span).
-      const ca = range.commonAncestorContainer;
-      const scope = ca.nodeType === 1 ? ca : ca.parentElement;
-      if (scope) {
-        for (const el of scope.querySelectorAll("*")) {
-          if (el.style?.backgroundColor && range.intersectsNode(el)) {
-            bg = el.style.backgroundColor;
-            break;
+
+    let bg = "";
+    try { bg = document.queryCommandValue("backColor") || ""; } catch (e) {}
+    // Unhighlighted text reports transparent / default page bg. Treat
+    // "transparent" or rgba with alpha 0 as "no highlight".
+    if (/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*0(?:\.0+)?)?\)/i.test(bg)
+        && /,\s*0(?:\.0+)?\)$/.test(bg)) bg = "";
+    if (bg === "transparent") bg = "";
+
+    if (!bg) {
+      const findAncestorBg = (node) => {
+        let n = node?.nodeType === 1 ? node : node?.parentElement;
+        while (n && n !== this._editArea) {
+          if (n.style?.backgroundColor) return n.style.backgroundColor;
+          n = n.parentElement;
+        }
+        return "";
+      };
+      bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
+      if (!bg && !range.collapsed) {
+        // Partial selection crossing a highlighted span.
+        const ca = range.commonAncestorContainer;
+        const scope = ca.nodeType === 1 ? ca : ca.parentElement;
+        if (scope) {
+          for (const el of scope.querySelectorAll("*")) {
+            if (el.style?.backgroundColor && range.intersectsNode(el)) {
+              bg = el.style.backgroundColor;
+              break;
+            }
           }
         }
       }
