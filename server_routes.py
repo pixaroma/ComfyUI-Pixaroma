@@ -71,6 +71,68 @@ async def serve_pixaroma_asset_sub2(request):
     return web.FileResponse(file_path)
 
 
+PIXAROMA_NOTE_ICONS_DIR = os.path.realpath(
+    os.path.join(PIXAROMA_ASSETS_DIR, "icons", "note")
+)
+
+
+def _derive_icon_label(stem: str) -> str:
+    """Derive a human-readable label from a kebab/snake filename stem.
+
+    Rules (per spec 2026-04-21-note-inline-icons-design.md):
+      - Split on '-' and '_'.
+      - Preserve all-uppercase segments (CLIP, VAE, GGUF, LORA).
+      - Lowercase mixed/lowercase segments.
+      - Join with spaces.
+      - Capitalize first letter of the result.
+    """
+    parts = re.split(r"[-_]", stem)
+    mapped = []
+    for p in parts:
+        if p and p == p.upper() and any(c.isalpha() for c in p):
+            mapped.append(p)
+        else:
+            mapped.append(p.lower())
+    joined = " ".join(mapped).strip()
+    if not joined:
+        return stem
+    return joined[0].upper() + joined[1:]
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/note/icons/list")
+async def list_note_icons(request):
+    """Enumerate the note inline-icon folder.
+
+    Returns { "icons": [ { "id", "label", "url" }, ... ] } sorted by label.
+    Empty list on error or missing folder — the frontend handles both
+    empty-folder and route-failure with the same "No icons found" UI.
+    """
+    try:
+        if not os.path.isdir(PIXAROMA_NOTE_ICONS_DIR):
+            return web.json_response({"icons": []})
+        entries = []
+        for name in os.listdir(PIXAROMA_NOTE_ICONS_DIR):
+            if not name.lower().endswith(".svg"):
+                continue
+            stem = name[:-4]
+            # Slug must match the frontend sanitizer regex
+            # /^[A-Za-z0-9_-]{1,64}$/ — reject anything else so we
+            # never hand the frontend an id it would later strip.
+            if not re.match(r"^[A-Za-z0-9_-]{1,64}$", stem):
+                continue
+            entries.append({
+                "id": stem,
+                "label": _derive_icon_label(stem),
+                "url": f"/pixaroma/assets/icons/note/{name}",
+            })
+        entries.sort(key=lambda e: e["label"].lower())
+        return web.json_response({"icons": entries})
+    except Exception:
+        # Never 500 on a listing failure — frontend treats empty list as
+        # "no icons", which is the least-surprising UX.
+        return web.json_response({"icons": []})
+
+
 PIXAROMA_INPUT_ROOT = os.path.realpath(
     os.path.join(folder_paths.get_input_directory(), "pixaroma")
 )
