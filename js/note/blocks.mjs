@@ -552,3 +552,85 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
+
+// ── Extract value objects from rendered block DOM ─────────────────────
+// Each helper returns the exact shape its matching dialog's onSubmit
+// produces, so a round-trip (extract → pre-fill → submit → renderXxxHTML)
+// is lossless. Returns null if the element doesn't match the expected
+// shape — callers treat null as "no pencil for this block".
+
+// Inverse of ICON_TO_CLASS — read the pill's class list to recover the
+// icon id the user originally chose. Defaults to "dl" so unknown shapes
+// at least round-trip as a Download pill.
+const CLASS_TO_ICON = {
+  "pix-note-dl": "dl",
+  "pix-note-vp": "vp",
+  "pix-note-rm": "rm",
+};
+
+export function extractButtonValues(el) {
+  if (!el || el.nodeType !== 1) return null;
+  if (!el.classList || !el.classList.contains("pix-note-btnblock")) return null;
+  const a = el.querySelector(":scope > a");
+  if (!a) return null;
+  let icon = "dl";
+  for (const c of a.classList) {
+    if (CLASS_TO_ICON[c]) { icon = CLASS_TO_ICON[c]; break; }
+  }
+  // Size lives in a nested <span class="pix-note-btnsize">. Pull it
+  // out (text only) before reading the pill label, then remove the
+  // span from a temporary clone so label extraction sees only the
+  // user's label text.
+  const sizeSpan = a.querySelector(":scope > .pix-note-btnsize");
+  const size = sizeSpan ? (sizeSpan.textContent || "").trim() : "";
+  const sizeOn = !!(sizeSpan && size);
+  const clone = a.cloneNode(true);
+  const innerSize = clone.querySelector(":scope > .pix-note-btnsize");
+  if (innerSize) innerSize.remove();
+  const label = (clone.textContent || "").trim();
+  // Folder hint is a sibling of the <a> inside the block wrapper. The
+  // rendered text always has the "Place in: ComfyUI/" prefix; strip it
+  // so we return the raw folder the user typed.
+  const hint = el.querySelector(":scope > .pix-note-folderhint");
+  const hintText = hint ? (hint.textContent || "").trim() : "";
+  const prefix = "Place in: ComfyUI/";
+  let folder = "";
+  let folderOn = false;
+  if (hintText.startsWith(prefix)) {
+    folder = hintText.slice(prefix.length);
+    folderOn = true;
+  } else if (hintText) {
+    // Legacy or manually-edited blocks — keep whatever's there.
+    folder = hintText;
+    folderOn = true;
+  }
+  return {
+    icon,
+    url: a.getAttribute("href") || "",
+    label,
+    folderOn,
+    folder,
+    sizeOn,
+    size,
+  };
+}
+
+// Dialog-shape for the generic makeDialog link fields. Also used for
+// plain <a> (no pix-note-* class) and YT / Discord pencils.
+export function extractLinkValues(el) {
+  if (!el || el.nodeType !== 1 || el.tagName !== "A") return null;
+  return {
+    label: (el.textContent || "").trim(),
+    url: el.getAttribute("href") || "",
+  };
+}
+
+// Code block: accept <pre> (with or without child <code>). Returns the
+// plain text the user originally typed.
+export function extractCodeValues(el) {
+  if (!el || el.nodeType !== 1 || el.tagName !== "PRE") return null;
+  const code = el.querySelector(":scope > code");
+  const text = (code ? code.textContent : el.textContent) || "";
+  // Strip the trailing newline the insert path adds for rendering.
+  return { code: text.replace(/\n$/, "") };
+}
