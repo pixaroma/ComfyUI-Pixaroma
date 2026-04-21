@@ -100,6 +100,9 @@ function makeDialog(anchorBtn, title, fields, onSubmit, initialValues) {
     inputs[key] = inp;
   }
 
+  // Inline error row — used for themed validation feedback (invalid URL
+  // etc.) so the user doesn't get bounced to a native alert() that
+  // steals focus and can lose their typing.
   const err = document.createElement("div");
   err.className = "pix-note-linkerr";
   dlg.appendChild(err);
@@ -126,6 +129,9 @@ function makeDialog(anchorBtn, title, fields, onSubmit, initialValues) {
   const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
   setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
   cancel.onclick = close;
+  // onSubmit can:
+  //   - call ctx.showError(msg) and return false  → dialog stays open
+  //   - return anything else (or undefined)        → dialog closes
   ok.onclick = () => {
     const values = {};
     for (const k of Object.keys(inputs)) values[k] = inputs[k].value.trim();
