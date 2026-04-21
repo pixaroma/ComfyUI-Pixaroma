@@ -117,12 +117,14 @@ export function injectCSS() {
 .pix-note-body a.pix-note-discord,
 .pix-note-editarea a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-discord { background: #5865f2; }
+/* View Page + Read More share one neutral slate-gray so they read as
+   secondary actions; Download stays the accent-orange primary. */
 .pix-note-body a.pix-note-vp,
 .pix-note-editarea a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-vp { background: #3b82f6; }
+.pix-note-prevwrap a.pix-note-vp,
 .pix-note-body a.pix-note-rm,
 .pix-note-editarea a.pix-note-rm,
-.pix-note-prevwrap a.pix-note-rm { background: #10b981; }
+.pix-note-prevwrap a.pix-note-rm { background: #3f3f46; }
 .pix-note-body a.pix-note-dl:hover,
 .pix-note-body a.pix-note-yt:hover,
 .pix-note-body a.pix-note-discord:hover,
@@ -230,7 +232,7 @@ export function injectCSS() {
   margin: 4px 2px 2px 2px;
   padding: 2px 0;
   color: #9a9a9a;
-  font-size: 10.5px;
+  font-size: 12px;
   font-style: italic;
   line-height: 1.4;
 }
@@ -538,16 +540,16 @@ export function injectCSS() {
    uses the existing .pix-note-dl / vp / rm rules (extended to target
    .pix-note-prevwrap ancestors above), so styling stays in sync. */
 .pix-note-prevwrap {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  padding: 14px 10px;
+  /* Match the on-canvas layout: block flow, left-aligned. Preview is
+     WYSIWYG — whatever position/alignment you see here is what the
+     pill gets when inserted into the note body. */
+  display: block;
+  padding: 14px;
   background: #0f0f0f;
   border: 1px dashed #333;
   border-radius: 4px;
   margin-bottom: 12px;
-  text-align: center;
+  text-align: left;
 }
 .pix-note-prevwrap a.pix-note-dl,
 .pix-note-prevwrap a.pix-note-yt,
