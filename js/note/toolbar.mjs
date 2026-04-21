@@ -376,33 +376,40 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(textColorBtn);
 
-  // Reflect the selection's current text color on the A button icon so
-  // the swatch tracks what the user is actually looking at (white text
-  // → white icon, not stuck on orange).
+  // "Sticky" text-color mirror: walks the selection's ancestors for
+  // an EXPLICIT inline style.color. If found, reflect it on the icon.
+  // If not found, do nothing — the user's last picked color stays,
+  // which matches Notion / Google Docs behaviour and avoids two bugs:
+  //   1. A just-picked color getting clobbered by a selectionchange
+  //      event that fires when the popup closes (collapsed selection
+  //      → no coloured span in DOM → mirror would reset to default).
+  //   2. Picking a highlight color then silently resetting the text-
+  //      color icon (and vice versa) because queryCommandValue's
+  //      internal state gets confused across chained colour commands.
   //
-  // Prefer document.queryCommandValue("foreColor") over getComputedStyle
-  // because execCommand("foreColor") on a COLLAPSED selection stages
-  // the color for the next input WITHOUT wrapping the cursor in a
-  // coloured span. getComputedStyle at the cursor would then return the
-  // parent's unchanged color — and a selectionchange event firing after
-  // the popup closes would clobber the just-picked tint back to the
-  // parent's default. queryCommandValue correctly returns the staged
-  // color in that case. getComputedStyle is kept as a fallback for
-  // cases where queryCommandValue doesn't return an rgb string.
+  // Trade-off: if the cursor sits in default-coloured text after the
+  // user picked red for something else, the icon stays red ("this is
+  // the colour that will apply next / was last picked") rather than
+  // tracking the cursor strictly. That's the common editor pattern.
   this._activeChecks.push(() => {
     const sel = window.getSelection();
     const anchor = sel?.anchorNode;
     if (!anchor || !this._editArea?.contains(anchor)) return;
-    let colorStr = "";
-    try { colorStr = document.queryCommandValue("foreColor") || ""; } catch (e) {}
-    if (!/^rgb/i.test(colorStr)) {
-      const node = anchor.nodeType === 1 ? anchor : anchor.parentElement;
-      if (node) colorStr = getComputedStyle(node).color || "";
+    let n = anchor.nodeType === 1 ? anchor : anchor.parentElement;
+    let explicit = "";
+    while (n && n !== this._editArea) {
+      if (n.style?.color) { explicit = n.style.color; break; }
+      n = n.parentElement;
     }
-    const m = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
-    if (!m) return;
-    const hex = (n) => Number(n).toString(16).padStart(2, "0");
-    textColorBtn.style.setProperty("--pix-note-tbtn-tint", `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`);
+    if (!explicit) return; // Leave the last-picked tint alone.
+    // Inline style.color can be either "rgb(r, g, b)" or a hex literal.
+    const m = explicit.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+    if (m) {
+      const hex = (n) => Number(n).toString(16).padStart(2, "0");
+      textColorBtn.style.setProperty("--pix-note-tbtn-tint", `#${hex(m[1])}${hex(m[2])}${hex(m[3])}`);
+    } else if (/^#[0-9a-f]{3,8}$/i.test(explicit)) {
+      textColorBtn.style.setProperty("--pix-note-tbtn-tint", explicit);
+    }
   });
 
   const hiColorBtn = el("button", "pix-note-tbtn");
@@ -454,58 +461,41 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(hiColorBtn);
 
-  // Mirror the highlight color currently active at the cursor onto the
-  // highlight button's drop icon.
-  //
-  // Prefer queryCommandValue("backColor") which returns the STAGED
-  // color after execCommand("hiliteColor") on a collapsed selection.
-  // Without it, a selectionchange event firing after the popup closes
-  // would clobber the just-picked tint (same root cause as text-color
-  // mirror — see comment above). For non-collapsed selections or when
-  // queryCommandValue returns an unhelpful value (empty /
-  // transparent), fall back to the ancestor-walk logic that inspects
-  // inline backgroundColor — useful for catching partial selections
-  // crossing a highlighted span.
+  // Sticky highlight mirror — same pattern as the text-color mirror
+  // above. Walk ancestors for an explicit inline style.backgroundColor;
+  // if found, reflect it. If not, leave the last-picked tint alone
+  // (common-editor behaviour: icon shows the most recent highlight
+  // choice, not strictly what's at the cursor).
   this._activeChecks.push(() => {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return;
     const range = sel.getRangeAt(0);
     if (!this._editArea?.contains(range.commonAncestorContainer)) return;
-
-    let bg = "";
-    try { bg = document.queryCommandValue("backColor") || ""; } catch (e) {}
-    // Unhighlighted text reports transparent / default page bg. Treat
-    // "transparent" or rgba with alpha 0 as "no highlight".
-    if (/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*0(?:\.0+)?)?\)/i.test(bg)
-        && /,\s*0(?:\.0+)?\)$/.test(bg)) bg = "";
-    if (bg === "transparent") bg = "";
-
-    if (!bg) {
-      const findAncestorBg = (node) => {
-        let n = node?.nodeType === 1 ? node : node?.parentElement;
-        while (n && n !== this._editArea) {
-          if (n.style?.backgroundColor) return n.style.backgroundColor;
-          n = n.parentElement;
-        }
-        return "";
-      };
-      bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
-      if (!bg && !range.collapsed) {
-        // Partial selection crossing a highlighted span.
-        const ca = range.commonAncestorContainer;
-        const scope = ca.nodeType === 1 ? ca : ca.parentElement;
-        if (scope) {
-          for (const el of scope.querySelectorAll("*")) {
-            if (el.style?.backgroundColor && range.intersectsNode(el)) {
-              bg = el.style.backgroundColor;
-              break;
-            }
+    const findAncestorBg = (node) => {
+      let n = node?.nodeType === 1 ? node : node?.parentElement;
+      while (n && n !== this._editArea) {
+        if (n.style?.backgroundColor) return n.style.backgroundColor;
+        n = n.parentElement;
+      }
+      return "";
+    };
+    let bg = findAncestorBg(range.startContainer) || findAncestorBg(range.endContainer);
+    if (!bg && !range.collapsed) {
+      // Partial selection crossing a highlighted span.
+      const ca = range.commonAncestorContainer;
+      const scope = ca.nodeType === 1 ? ca : ca.parentElement;
+      if (scope) {
+        for (const el of scope.querySelectorAll("*")) {
+          if (el.style?.backgroundColor && range.intersectsNode(el)) {
+            bg = el.style.backgroundColor;
+            break;
           }
         }
       }
     }
     if (bg) hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bg);
-    else hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    // Intentionally no else-branch: don't remove the tint when nothing
+    // is found. That keeps the last-picked colour visible.
   });
 
   // Page background colour — affects the whole editor interior AND the
