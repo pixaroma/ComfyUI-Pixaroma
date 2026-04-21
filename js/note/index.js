@@ -12,10 +12,14 @@ const DEFAULT_CFG = {
   accentColor: "#f66744",
   // Match the editor's interior dark gray so a freshly-created note's
   // node body looks identical to what the user will see when they open
-  // the editor. Users can change this via the Bg picker; "transparent"
-  // (the only value that clears node.color/bgcolor) is still honoured
-  // on notes that were saved with it previously.
-  backgroundColor: "#151515",
+  // the editor. Value is intentionally a step darker than #151515 —
+  // LiteGraph / the Vue canvas renders node bgcolor with a subtle
+  // compositing that lifts the apparent brightness a few values, so
+  // setting it lower here lands the canvas rendering at the same
+  // perceived dark as the editarea. Users can change this via the Bg
+  // picker; "transparent" (the only value that clears
+  // node.color/bgcolor) is still honoured on notes saved with it.
+  backgroundColor: "#0a0a0a",
   width: 420,
   height: 320,
 };

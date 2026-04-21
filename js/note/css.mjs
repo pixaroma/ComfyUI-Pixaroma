@@ -338,7 +338,7 @@ export function injectCSS() {
 }
 .pix-note-editarea {
   flex: 1; overflow-y: auto; padding: 14px 18px; color: #e4e4e4; font-size: 13px;
-  line-height: 1.55; background: #151515; outline: none;
+  line-height: 1.55; background: #0a0a0a; outline: none;
 }
 .pix-note-editarea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
 /* Consistent vertical spacing between blocks. The browser's default p margin

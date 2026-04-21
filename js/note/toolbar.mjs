@@ -421,25 +421,26 @@ NoteEditor.prototype._buildToolbar = function () {
 
   // Page background colour — affects the whole editor interior AND the
   // on-canvas node body after save (WYSIWYG). Default is the editor's
-  // dark-gray (#151515); Clear resets to that.
+  // dark-gray (#0a0a0a, matches .pix-note-editarea CSS); Clear resets
+  // to that.
   const bgColorBtn = el("button", "pix-note-tbtn");
   bgColorBtn.type = "button";
   bgColorBtn.textContent = "Bg";
   bgColorBtn.title = "Page background color";
   bgColorBtn.style.fontWeight = "bold";
   const refreshBgSwatch = () => {
-    const c = this.cfg.backgroundColor || "#151515";
+    const c = this.cfg.backgroundColor || "#0a0a0a";
     bgColorBtn.style.borderBottom = `3px solid ${c}`;
   };
   refreshBgSwatch();
   bgColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   bgColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
-    openColorPop(bgColorBtn, this.cfg.backgroundColor || "#151515", (c) => {
+    openColorPop(bgColorBtn, this.cfg.backgroundColor || "#0a0a0a", (c) => {
       // null = Clear → reset to the dark-gray default rather than making
       // the editor transparent. Explicit "transparent" would need a
       // separate UI affordance; keep the picker simple for now.
-      this.cfg.backgroundColor = (c == null) ? "#151515" : c;
+      this.cfg.backgroundColor = (c == null) ? "#0a0a0a" : c;
       this._applyEditAreaBg?.();
       refreshBgSwatch();
       this._dirty = true;
