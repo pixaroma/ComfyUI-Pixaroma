@@ -303,6 +303,10 @@ export class NoteEditor {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
     }
+    if (this._onWindowResize) {
+      window.removeEventListener("resize", this._onWindowResize);
+      this._onWindowResize = null;
+    }
     if (this._savedGraphUndo !== undefined) {
       if (app.graph) {
         app.graph.undo = this._savedGraphUndo;
@@ -478,6 +482,10 @@ export class NoteEditor {
     });
     main.appendChild(editArea);
     this._editArea = editArea;
+    // Edit-in-place pencil — one reusable floating button that follows
+    // the user's hover across editable blocks. See Task 6 of the Code
+    // Readability plan for the full scope.
+    this._installPencil(main, editArea);
     this._mode = "preview";
 
     // Footer
@@ -684,4 +692,94 @@ NoteEditor.prototype._placeCursorAtEnd = function () {
   sel.removeAllRanges();
   sel.addRange(range);
   this._editArea.focus();
+};
+
+// Floating pencil. Hover-delegation pattern: one reusable <button>
+// positioned absolutely inside the editor's main container; we listen
+// to mouseover/mouseout on editArea, find the closest editable block
+// under the pointer via a single selector list, and reposition the
+// pencil over the block's top-right corner. Task 6 ships the DOM and
+// positioning; task 7 wires the click handler.
+//
+// The selector list MUST stay in sync with the dialog router in task 7
+// (_dispatchBlockEdit). Any new editable block type needs to be added
+// in both places.
+const PENCIL_BLOCK_SELECTORS = [
+  "span.pix-note-btnblock",
+  "a.pix-note-yt",
+  "a.pix-note-discord",
+  "pre",
+  // Plain anchors last so a Pixaroma-classed <a> matches above first.
+  "a:not([class*='pix-note-'])",
+].join(",");
+
+NoteEditor.prototype._installPencil = function (main, editArea) {
+  const pencil = document.createElement("button");
+  pencil.type = "button";
+  pencil.className = "pix-note-pencil";
+  pencil.contentEditable = "false";
+  pencil.setAttribute("aria-label", "Edit block");
+  const icon = document.createElement("img");
+  icon.src = "/pixaroma/assets/icons/layers/edit.svg";
+  icon.draggable = false;
+  pencil.appendChild(icon);
+  pencil.style.display = "none";
+  main.appendChild(pencil);
+  this._pencil = pencil;
+  this._pencilTarget = null;
+
+  let hideTimer = null;
+  const show = (target) => {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+    this._pencilTarget = target;
+    this._repositionPencil();
+    pencil.style.display = "";
+  };
+  const hide = () => {
+    pencil.style.display = "none";
+    this._pencilTarget = null;
+  };
+  const scheduleHide = () => {
+    if (hideTimer) clearTimeout(hideTimer);
+    hideTimer = setTimeout(hide, 150);
+  };
+
+  editArea.addEventListener("mouseover", (e) => {
+    const t = e.target.closest?.(PENCIL_BLOCK_SELECTORS);
+    if (!t || !editArea.contains(t)) return;
+    show(t);
+  });
+  editArea.addEventListener("mouseout", (e) => {
+    // Moving to the pencil itself should NOT hide it.
+    const to = e.relatedTarget;
+    if (to === pencil || pencil.contains(to)) return;
+    scheduleHide();
+  });
+  pencil.addEventListener("mouseenter", () => {
+    if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+  });
+  pencil.addEventListener("mouseleave", () => scheduleHide());
+
+  // Recompute position on editArea scroll + window resize so the pencil
+  // tracks its target during layout changes.
+  editArea.addEventListener("scroll", () => this._repositionPencil());
+  window.addEventListener("resize", this._onWindowResize = () => this._repositionPencil());
+};
+
+NoteEditor.prototype._repositionPencil = function () {
+  const pencil = this._pencil;
+  const target = this._pencilTarget;
+  const main = pencil?.parentElement;
+  if (!pencil || !target || !main) return;
+  const mainRect = main.getBoundingClientRect();
+  const tRect = target.getBoundingClientRect();
+  // Bail if target scrolled out of view.
+  if (tRect.bottom < mainRect.top || tRect.top > mainRect.bottom) {
+    pencil.style.display = "none";
+    return;
+  }
+  const top = tRect.top - mainRect.top + 4;
+  const left = tRect.right - mainRect.left - 26;
+  pencil.style.top = `${top}px`;
+  pencil.style.left = `${left}px`;
 };

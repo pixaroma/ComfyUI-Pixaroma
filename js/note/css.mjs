@@ -728,6 +728,37 @@ export function injectCSS() {
   flex-shrink: 0;
 }
 
+/* -- Edit-in-place floating pencil ----------------------------------- */
+.pix-note-pencil {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: ${BRAND};
+  color: #fff;
+  cursor: pointer;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+}
+.pix-note-pencil[style*="display: none"] { opacity: 0; }
+.pix-note-pencil:not([style*="display: none"]) { opacity: 0.95; }
+.pix-note-pencil:hover { opacity: 1; }
+.pix-note-pencil img {
+  width: 12px;
+  height: 12px;
+  filter: brightness(0) invert(1);
+  pointer-events: none;
+}
+/* Main container needs position:relative so absolute-positioned pencil
+   resolves against it, not the viewport. */
+.pix-note-main { position: relative; }
+
   `;
   document.head.appendChild(s);
 }
