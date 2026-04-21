@@ -439,7 +439,19 @@ export class NoteEditor {
 
     const overlay = el("div", "pix-note-overlay");
     overlay.addEventListener("mousedown", (e) => {
-      if (e.target === overlay) this.close();
+      if (e.target !== overlay) return;
+      // Block-insert dialogs (grid / button / YT / Discord), color popups,
+      // and confirm backdrops are all appended to document.body — NOT
+      // inside this.panel. Without this guard, a mousedown that falls
+      // outside the dialog but inside the editor backdrop lands on the
+      // overlay and triggers close(), popping an unsaved-changes prompt
+      // ON TOP of the still-open modal. Mirrors the same hasModal check
+      // the Escape-key handler already uses above.
+      const hasModal = !!document.querySelector(
+        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop"
+      );
+      if (hasModal) return;
+      this.close();
     });
 
     const panel = el("div", "pix-note-panel");
@@ -533,6 +545,19 @@ export class NoteEditor {
         sel.addRange(range);
       }
     });
+    // Intercept <a> clicks inside the editor — browsers follow href on
+    // any click in a contenteditable, so clicking on a Download / View
+    // Page / Read More / YouTube / Discord pill (or any inserted link)
+    // to reposition the caret would instead open the URL in a new tab.
+    // Users need to be able to click INTO a pill to place the cursor
+    // and then Tx-clear-format or delete it. The pencil handles bulk
+    // edits; this just lets simple click-to-position work. Use capture
+    // so we preempt the anchor's default navigation.
+    editArea.addEventListener("click", (e) => {
+      if (e.target.closest("a")) {
+        e.preventDefault();
+      }
+    }, true);
     main.appendChild(editArea);
     this._editArea = editArea;
     // Write the Btn/Ln CSS vars on editArea NOW that it exists. The

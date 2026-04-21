@@ -588,9 +588,28 @@ NoteEditor.prototype._buildToolbar = function () {
       }
       return;
     }
-    // Refuse if cursor is inside an inline <code> (leftover from older
-    // notes) — nesting <pre> inside <code> violates HTML spec.
-    if (isSelectionInsideTag(["CODE"])) return;
+    // Unwrap inline <code> before proceeding (leftover from older notes
+    // that had inline code). Nesting <pre> inside <code> violates HTML
+    // spec, so we can't just fall through — but silently no-oping on
+    // click is user-hostile. Walk up from the anchor, find the nearest
+    // inline <code>, unwrap it in place, then continue into the normal
+    // insert path below.
+    if (isSelectionInsideTag(["CODE"])) {
+      const sel = window.getSelection();
+      let n = sel?.anchorNode;
+      let codeEl = null;
+      while (n && n !== this._editArea) {
+        if (n.nodeType === 1 && n.tagName === "CODE") { codeEl = n; break; }
+        n = n.parentNode;
+      }
+      if (codeEl?.parentNode) {
+        this._snapBefore?.();
+        const parent = codeEl.parentNode;
+        while (codeEl.firstChild) parent.insertBefore(codeEl.firstChild, codeEl);
+        parent.removeChild(codeEl);
+        this._snapAfter?.();
+      }
+    }
     // Safety net: wrap any loose text/inline nodes at the editArea root in
     // <p> before we capture block references. Without this, typing on a
     // fresh note leaves raw text as a direct editArea child, and
