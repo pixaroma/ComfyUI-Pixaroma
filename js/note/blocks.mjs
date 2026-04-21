@@ -559,14 +559,14 @@ function escapeHtml(s) {
 // is lossless. Returns null if the element doesn't match the expected
 // shape — callers treat null as "no pencil for this block".
 
-// Inverse of ICON_TO_CLASS — read the pill's class list to recover the
-// icon id the user originally chose. Defaults to "dl" so unknown shapes
-// at least round-trip as a Download pill.
-const CLASS_TO_ICON = {
-  "pix-note-dl": "dl",
-  "pix-note-vp": "vp",
-  "pix-note-rm": "rm",
-};
+// Derived inverse of ICON_TO_CLASS (top of file) — read the pill's
+// class list to recover the icon id the user originally chose. Built
+// at module load so adding a new icon only requires updating
+// ICON_TO_CLASS. Callers default to "dl" when no class matches, so
+// unknown shapes at least round-trip as a Download pill.
+const CLASS_TO_ICON = Object.fromEntries(
+  Object.entries(ICON_TO_CLASS).map(([icon, cls]) => [cls, icon])
+);
 
 export function extractButtonValues(el) {
   if (!el || el.nodeType !== 1) return null;
@@ -587,7 +587,17 @@ export function extractButtonValues(el) {
   const clone = a.cloneNode(true);
   const innerSize = clone.querySelector(":scope > .pix-note-btnsize");
   if (innerSize) innerSize.remove();
-  const label = (clone.textContent || "").trim();
+  let label = (clone.textContent || "").trim();
+  // If the label exactly matches the icon's fallback (e.g. "Download"
+  // for dl), the user originally left the field blank and
+  // renderButtonHTML filled in the default for rendering. Return ""
+  // so the dialog's placeholder shows instead of the cosmetic default,
+  // preserving the round-trip invariant for the common "no label"
+  // case. A user who genuinely typed "Download" accepts this tiny
+  // ambiguity — same rendered pill either way.
+  if (ICON_TO_FALLBACK_LABEL[icon] && label === ICON_TO_FALLBACK_LABEL[icon]) {
+    label = "";
+  }
   // Folder hint is a sibling of the <a> inside the block wrapper. The
   // rendered text always has the "Place in: ComfyUI/" prefix; strip it
   // so we return the raw folder the user typed.
@@ -631,6 +641,10 @@ export function extractCodeValues(el) {
   if (!el || el.nodeType !== 1 || el.tagName !== "PRE") return null;
   const code = el.querySelector(":scope > code");
   const text = (code ? code.textContent : el.textContent) || "";
-  // Strip the trailing newline the insert path adds for rendering.
+  // Defensive trailing-newline strip: the canonical insert path in
+  // toolbar.mjs doesn't add one, but browsers sometimes normalize
+  // pasted / contenteditable-produced <pre> content with a trailing
+  // newline. Strip at most one so round-trips don't accumulate blank
+  // lines on repeated edits.
   return { code: text.replace(/\n$/, "") };
 }
