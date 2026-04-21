@@ -535,6 +535,14 @@ export class NoteEditor {
     });
     main.appendChild(editArea);
     this._editArea = editArea;
+    // Write the Btn/Ln CSS vars on editArea NOW that it exists. The
+    // makeColorPicker factory inside _buildToolbar() ran before this
+    // assignment, so its apply() no-oped on `this._editArea?.`—
+    // without this explicit call, the editor preview would fall back
+    // to the default orange for lines/buttons on every open even when
+    // cfg has a saved color. Click-time picker updates still work via
+    // their own apply() call because editArea is set by then.
+    this._applyCfgColorsToEditArea();
     // Edit-in-place pencil — one reusable floating button that follows
     // the user's hover across editable blocks. See Task 6 of the Code
     // Readability plan for the full scope.
@@ -734,6 +742,19 @@ NoteEditor.prototype._applyEditAreaBg = function (area) {
   } else {
     root.style.background = bg || "#111111";
   }
+};
+
+// Write the Btn/Ln CSS vars onto the edit area based on the current
+// cfg. Called at editor open (after _editArea is assigned) so the
+// initial render reflects saved colors. makeColorPicker's per-picker
+// apply() also writes these, but only when it runs AFTER _editArea is
+// set — which isn't the case on editor open. Keeping this method on
+// the instance so it can be re-triggered if cfg is swapped later.
+NoteEditor.prototype._applyCfgColorsToEditArea = function () {
+  const a = this._editArea;
+  if (!a) return;
+  a.style.setProperty("--pix-note-btn",  this.cfg.buttonColor || "#f66744");
+  a.style.setProperty("--pix-note-line", this.cfg.lineColor   || "#f66744");
 };
 
 NoteEditor.prototype._placeCursorAtEnd = function () {

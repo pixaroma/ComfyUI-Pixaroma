@@ -447,6 +447,20 @@ NoteEditor.prototype._buildToolbar = function () {
         }
       } else {
         document.execCommand("hiliteColor", false, c);
+        // Chrome quirk: execCommand("hiliteColor", ...) on a collapsed
+        // selection CREATES a new <span style="background-color:..."> at
+        // the cursor, and in doing so it CLEARS any previously-staged
+        // foreColor. If the user just picked a text color (staged but
+        // not yet in the DOM), typing would then get the default text
+        // color instead. Restage the text color by replaying
+        // execCommand("foreColor") immediately after hiliteColor so the
+        // two combine. We read the color back from the text-color
+        // icon's inline tint so we pick up the most recent A-button
+        // choice.
+        const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
+        if (stagedFg) {
+          try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
+        }
       }
       this._dirty = true;
       // Same ordering fix as text-color: run mirrors before setting
