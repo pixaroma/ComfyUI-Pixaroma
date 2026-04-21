@@ -332,6 +332,11 @@ NoteEditor.prototype._buildToolbar = function () {
   textColorBtn.type = "button";
   textColorBtn.title = "Text color";
   textColorBtn.appendChild(makeMaskIconMulti("text-color"));
+  // Expose on the editor instance so block-insert paths (grid, button,
+  // YT, Discord, code) can re-stage the picked color after an
+  // execCommand("insertHTML") splits the current inline formatting
+  // context. See _restageColors() below.
+  this._textColorBtn = textColorBtn;
   // No initial tint — icon falls back to currentColor (toolbar text
   // color) so it's immediately visible on the dark toolbar. The
   // _activeChecks mirror + openColorPop onPick below will setProperty
@@ -376,6 +381,8 @@ NoteEditor.prototype._buildToolbar = function () {
   hiColorBtn.type = "button";
   hiColorBtn.title = "Highlight color";
   hiColorBtn.appendChild(makeMaskIconMulti("highlight-color"));
+  // Exposed for _restageColors() — see textColorBtn comment above.
+  this._hiColorBtn = hiColorBtn;
   hiColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   hiColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
@@ -826,6 +833,36 @@ NoteEditor.prototype._buildToolbar = function () {
 
 NoteEditor.prototype._refreshActiveStates = function () {
   (this._activeChecks || []).forEach((fn) => fn());
+};
+
+// Re-stage the currently-picked text + highlight colors against the
+// current selection. Called from block-insert paths after
+// execCommand("insertHTML") of a block-level element (grid, code block,
+// HR) — such inserts split the caret out of its current inline
+// formatting context and silently drop any staged foreColor /
+// hiliteColor. Without this, the user picks orange, inserts a grid,
+// clicks into a cell, and typing is white until they re-pick orange.
+//
+// For inline inserts (button / YT / Discord pills), the helper is still
+// safe to call: the stage is a no-op when no color has been picked yet,
+// and a harmless re-apply of the same color when one has.
+//
+// Ordering mirrors the highlight-picker's Chrome-quirk fix (patterns
+// #21): hiliteColor on a collapsed selection clears staged foreColor,
+// so if both colors are set we apply highlight FIRST and foreground
+// SECOND, leaving foreColor as the last-staged command.
+NoteEditor.prototype._restageColors = function () {
+  const fg = this._textColorBtn?.style.getPropertyValue("--pix-note-tbtn-tint").trim();
+  const bg = this._hiColorBtn?.style.getPropertyValue("--pix-note-tbtn-tint").trim();
+  if (!fg && !bg) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  if (!this._editArea?.contains(sel.anchorNode)) return;
+  try {
+    document.execCommand("styleWithCSS", false, true);
+    if (bg) document.execCommand("hiliteColor", false, bg);
+    if (fg) document.execCommand("foreColor", false, fg);
+  } catch (e) {}
 };
 
 // Themed URL prompt that matches the editor's dark modal style (same look as

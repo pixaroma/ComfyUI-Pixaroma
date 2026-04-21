@@ -149,6 +149,14 @@ function makeDialog(anchorBtn, title, fields, onSubmit, initialValues) {
 // has a valid target. Falls back to appending at the end of editArea if the
 // range was lost (e.g. the user clicked into an empty-padding area that
 // never had a selection).
+//
+// After the insert, re-stage the currently-picked text/highlight colors.
+// Block-level insertHTML (a <table>, a <pre>, an <hr>) splits the caret
+// out of the surrounding inline formatting context, silently dropping
+// any staged foreColor/hiliteColor — without the restage, typing into
+// a fresh grid cell or below the block comes out in the default color
+// until the user re-picks. See _restageColors() in toolbar.mjs for the
+// full rationale. Safe no-op for inline inserts.
 function insertAtSavedRange(editor, savedRange, html) {
   const area = editor._editArea;
   if (!area) return;
@@ -164,6 +172,7 @@ function insertAtSavedRange(editor, savedRange, html) {
     sel.addRange(r);
   }
   document.execCommand("insertHTML", false, html);
+  editor._restageColors?.();
   editor._dirty = true;
 }
 
@@ -922,9 +931,75 @@ function makeGridDialog(anchorBtn, onSubmit) {
 }
 
 NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
+  // Capture the saved range AND the top-level block containing it, like
+  // the code-block insert path does. We bypass execCommand("insertHTML")
+  // for the grid because block-level insertHTML of a <table> has two
+  // sharp edges in Chrome:
+  //
+  //   1. Caret placement is unpredictable — often the caret lands inside
+  //      the last <td> instead of the trailing <p>, so the next keystroke
+  //      adds text to a cell the user didn't intend.
+  //   2. The insert splits the surrounding inline formatting context and
+  //      drops any staged foreColor/hiliteColor. Even with the
+  //      _restageColors() compensation in insertAtSavedRange, caret
+  //      placement inside a <td> then stages the color against the cell
+  //      rather than the trailing paragraph.
+  //
+  // Direct DOM manipulation side-steps both: we insert the table as a
+  // sibling of the current top-level block, drop a trailing <p><br></p>
+  // after it, and explicitly position the caret inside that <p>.
   const savedRange = saveRange(this._editArea);
+  this._normalizeEditArea?.();
   makeGridDialog(anchorBtn, (v) => {
-    insertAtSavedRange(this, savedRange, renderGridHTML(v.cols, v.rows, v.header));
+    this._snapBefore?.();
+    // Build the nodes: <table> + trailing <p><br></p> for caret landing.
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = renderGridHTML(v.cols, v.rows, v.header);
+    const table = wrapper.querySelector("table");
+    const trailing = wrapper.querySelector("p");
+    if (!table || !trailing) { this._snapAfter?.(); return true; }
+
+    // Find the top-level block inside editArea that contains the saved
+    // range (or fall back to end-of-editArea).
+    const findTopBlock = (node) => {
+      if (!node) return null;
+      if (node.nodeType !== 1) node = node.parentNode;
+      while (node && node.parentNode !== this._editArea && node !== this._editArea) {
+        node = node.parentNode;
+      }
+      return node && node.parentNode === this._editArea ? node : null;
+    };
+    let anchorBlock = null;
+    if (savedRange) {
+      anchorBlock = findTopBlock(savedRange.startContainer);
+    }
+    if (anchorBlock && anchorBlock.parentNode === this._editArea) {
+      // Insert AFTER the anchor block so the user's existing content
+      // keeps its inline formatting — split-through-insertHTML was
+      // the main way colors were getting dropped.
+      this._editArea.insertBefore(table, anchorBlock.nextSibling);
+      this._editArea.insertBefore(trailing, table.nextSibling);
+    } else {
+      this._editArea.appendChild(table);
+      this._editArea.appendChild(trailing);
+    }
+
+    // Position the caret inside the trailing <p>. Use a collapsed range
+    // at the start of the <p> so typing lands there (not in the table).
+    const r = document.createRange();
+    r.selectNodeContents(trailing);
+    r.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    this._editArea.focus();
+
+    // Re-stage the picked colors AFTER caret placement so the stage
+    // targets the trailing <p>, not whatever Chrome thought was current.
+    this._restageColors?.();
+
+    this._snapAfter?.();
+    this._dirty = true;
     return true;
   });
 };
