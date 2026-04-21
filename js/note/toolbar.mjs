@@ -361,10 +361,17 @@ NoteEditor.prototype._buildToolbar = function () {
         document.execCommand("foreColor", false, "#e4e4e4");
       } else {
         document.execCommand("foreColor", false, c);
-        textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
       this._dirty = true;
+      // Run active-state mirrors FIRST. The text-color mirror reads
+      // getComputedStyle at the cursor; for a collapsed selection that
+      // returns the parent's (unchanged) color, not our just-picked
+      // value, which would clobber the icon tint. Setting tint AFTER
+      // the mirror ensures the explicit pick wins visually.
       this._refreshActiveStates();
+      if (c != null) {
+        textColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+      }
     }, true);
   });
   g3.appendChild(textColorBtn);
@@ -420,10 +427,16 @@ NoteEditor.prototype._buildToolbar = function () {
         }
       } else {
         document.execCommand("hiliteColor", false, c);
-        hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
       }
       this._dirty = true;
+      // Same ordering fix as text-color: run mirrors before setting
+      // the tint, so the highlight mirror (which reads ancestor
+      // backgroundColor — empty for a collapsed selection not inside
+      // a highlighted span) doesn't clobber our explicit pick.
       this._refreshActiveStates();
+      if (c != null) {
+        hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+      }
     }, true);
   });
   g3.appendChild(hiColorBtn);

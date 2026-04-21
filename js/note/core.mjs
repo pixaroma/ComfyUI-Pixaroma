@@ -397,10 +397,29 @@ export class NoteEditor {
     }
     this.node._noteCfg = this.cfg;
 
-    const body =
-      this.node._noteBody ||
-      this.node._noteDOMWrap?.querySelector(".pix-note-body");
-    if (body) renderContent(this.node, body);
+    // Robust body lookup — Vue can detach the DOM widget while the
+    // fullscreen editor overlay is open (see CLAUDE.md Vue-compat #5).
+    // Using `_noteBody` directly risks writing CSS vars / innerHTML on
+    // a stale reference that's no longer in the live DOM, which makes
+    // per-note picker changes (Bg, Btn, Ln) silently fail to reach
+    // the visible canvas body. Prefer live elements; only use cached
+    // references if they're still connected.
+    let body = null;
+    if (this.node._noteBody?.isConnected) {
+      body = this.node._noteBody;
+    } else if (this.node._noteDOMWrap?.isConnected) {
+      body = this.node._noteDOMWrap.querySelector(".pix-note-body");
+    } else {
+      // Both stale — ask ComfyUI for the current widget element.
+      const w = this.node.widgets?.find((x) => x.name === "note_dom");
+      body = w?.element?.querySelector?.(".pix-note-body");
+    }
+    if (body) {
+      // Refresh the cached reference so subsequent reads point to the
+      // live element, not the stale one we just bypassed.
+      this.node._noteBody = body;
+      renderContent(this.node, body);
+    }
 
     if (app.graph) {
       app.graph.setDirtyCanvas(true, true);
