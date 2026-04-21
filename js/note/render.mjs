@@ -43,15 +43,35 @@ export function createNoteDOMWidget(node) {
 export function renderContent(node, bodyEl) {
   const cfg = node._noteCfg || {};
   bodyEl.style.setProperty("--pix-note-accent", cfg.accentColor || "#f66744");
-  // Default to the editor's interior gray (#151515) so the on-canvas body
-  // matches what the user sees while editing. "transparent" is still
-  // honored if explicitly set (user may pick it from the bg color picker
-  // once Task 17 lands, to let ComfyUI's node colour show through).
-  if (cfg.backgroundColor === "transparent") {
-    bodyEl.style.background = "transparent";
+
+  // The Bg picker is the single source of truth for the node's visual
+  // background. It drives BOTH the LiteGraph node frame (title bar + body)
+  // AND our inner .pix-note-body, so the whole node reads as one surface
+  // instead of a coloured box floating inside a dark frame.
+  //
+  //   - unset / #151515 / "transparent"  → treat as "no explicit color";
+  //     clear the LiteGraph overrides so the current theme shows through,
+  //     and keep the inner body transparent.
+  //   - anything else                    → apply to node.color (title)
+  //     and node.bgcolor (body), keep inner body transparent so the color
+  //     flows continuously through the note area.
+  //
+  // node.setDirtyCanvas(true, true) forces LiteGraph to repaint the node
+  // frame with the new colours; without it the graph keeps the old colour
+  // until the user pans/zooms.
+  const bg = cfg.backgroundColor;
+  const noExplicit = !bg || bg === "transparent" || bg === "#151515";
+  if (noExplicit) {
+    node.color = null;
+    node.bgcolor = null;
   } else {
-    bodyEl.style.background = cfg.backgroundColor || "#151515";
+    node.color = bg;
+    node.bgcolor = bg;
   }
+  if (typeof node.setDirtyCanvas === "function") {
+    node.setDirtyCanvas(true, true);
+  }
+  bodyEl.style.background = "transparent";
 
   const html = (cfg.content || "").trim();
   if (!html) {
