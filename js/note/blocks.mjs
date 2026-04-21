@@ -43,6 +43,28 @@ function restoreRange(range) {
   sel.addRange(range);
 }
 
+// Shared URL validation. Returns { ok: true } or { ok: false, message }.
+// Matches the policy used by the link dialog and the sanitizer so users
+// see the same error up-front as the sanitizer would apply at save time.
+// Native alert() was the old fallback but context-switches out of the
+// editor and loses the user's typing — inline messages in the dialog are
+// much smoother.
+function validateUrl(url) {
+  if (!url) return { ok: false, message: "URL is required" };
+  if (!/^https?:\/\//i.test(url) && !/^mailto:/i.test(url)) {
+    return { ok: false, message: "URL must start with http://, https://, or mailto:" };
+  }
+  try {
+    const u = new URL(url);
+    if ((u.protocol === "http:" || u.protocol === "https:") && !u.hostname) {
+      return { ok: false, message: "URL must include a domain (e.g. example.com)" };
+    }
+  } catch {
+    return { ok: false, message: "That doesn't look like a valid URL" };
+  }
+  return { ok: true };
+}
+
 function makeDialog(anchorBtn, title, fields, onSubmit) {
   const dlg = document.createElement("div");
   dlg.className = "pix-note-blockdlg";
@@ -72,6 +94,13 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
     inputs[key] = inp;
   }
 
+  // Inline error row — used for themed validation feedback (invalid URL
+  // etc.) so the user doesn't get bounced to a native alert() that
+  // steals focus and can lose their typing.
+  const err = document.createElement("div");
+  err.className = "pix-note-linkerr";
+  dlg.appendChild(err);
+
   const footer = document.createElement("div");
   footer.className = "dlgfooter";
   const cancel = document.createElement("button");
@@ -91,11 +120,16 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
   const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
   setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
   cancel.onclick = close;
+  // onSubmit can:
+  //   - call ctx.showError(msg) and return false  → dialog stays open
+  //   - return anything else (or undefined)        → dialog closes
   ok.onclick = () => {
     const values = {};
     for (const k of Object.keys(inputs)) values[k] = inputs[k].value.trim();
-    onSubmit(values);
-    close();
+    err.textContent = "";
+    const showError = (msg) => { err.textContent = msg || ""; };
+    const result = onSubmit(values, { showError });
+    if (result !== false) close();
   };
   [...dlg.querySelectorAll("input")].forEach((i) =>
     i.addEventListener("keydown", (e) => { if (e.key === "Enter") ok.click(); })
@@ -126,10 +160,11 @@ function insertAtSavedRange(editor, savedRange, html) {
 
 NoteEditor.prototype._insertButtonBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeButtonDesignDialog(anchorBtn, (v) => {
-    if (!v.url || !/^https?:\/\//i.test(v.url)) {
-      alert("URL must start with http:// or https://");
-      return false; // keep dialog open
+  makeButtonDesignDialog(anchorBtn, (v, ctx) => {
+    const check = validateUrl(v.url);
+    if (!check.ok) {
+      ctx.showError(check.message);
+      return false; // keep dialog open, user can fix the URL
     }
     insertAtSavedRange(this, savedRange, renderButtonHTML(v));
     return true; // close dialog
@@ -170,11 +205,9 @@ NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
       ["label", "Label", "Pixaroma YouTube Channel", ""],
       ["url", "URL", "https://www.youtube.com/@pixaroma", ""],
     ],
-    (v) => {
-      if (!v.url || !/^https?:\/\//i.test(v.url)) {
-        alert("URL must start with http:// or https://");
-        return;
-      }
+    (v, ctx) => {
+      const check = validateUrl(v.url);
+      if (!check.ok) { ctx.showError(check.message); return false; }
       const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
         ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
       insertAtSavedRange(this, savedRange, html);
@@ -191,11 +224,9 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
       ["label", "Label", "Join Discord", ""],
       ["url", "URL", "https://discord.com/invite/gggpkVgBf3", ""],
     ],
-    (v) => {
-      if (!v.url || !/^https?:\/\//i.test(v.url)) {
-        alert("URL must start with http:// or https://");
-        return;
-      }
+    (v, ctx) => {
+      const check = validateUrl(v.url);
+      if (!check.ok) { ctx.showError(check.message); return false; }
       const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
         ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Join Discord")}</a>&nbsp;`;
       insertAtSavedRange(this, savedRange, html);
@@ -345,6 +376,14 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   sizeInputRow.appendChild(sizeInput);
   dlg.appendChild(sizeInputRow);
 
+  // --- Inline error row (themed, lives above the footer) -----------------
+  // Populated when the user clicks Insert with an invalid URL. Keeps the
+  // dialog open so typing isn't lost — unlike the old alert() which was
+  // also blocked by some browsers when fired from inside an overlay.
+  const errEl = document.createElement("div");
+  errEl.className = "pix-note-linkerr";
+  dlg.appendChild(errEl);
+
   // --- Footer -------------------------------------------------------------
   const footer = document.createElement("div");
   footer.className = "dlgfooter";
@@ -428,7 +467,15 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
       sizeOn: state.sizeOn,
       size: sizeInput.value.trim(),
     };
-    const r = onSubmit(values);
+    // Clear any prior error so the user sees a fresh state each submit.
+    // onSubmit can call ctx.showError(msg) + return false to keep the
+    // dialog open with the message visible.
+    errEl.textContent = "";
+    const showError = (msg) => {
+      errEl.textContent = msg || "";
+      urlInput.focus();
+    };
+    const r = onSubmit(values, { showError });
     if (r !== false) close();
   }
   cancel.addEventListener("click", close);
