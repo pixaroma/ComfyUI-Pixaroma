@@ -68,6 +68,40 @@ export class NoteEditor {
           this.save();
           return;
         }
+        // Tab inside a table cell: move caret to next/previous cell.
+        // Swallow unconditionally when inside a cell so Tab doesn't
+        // escape to ComfyUI's workflow-tab shortcut or to the next
+        // focusable element.
+        if (key === "tab") {
+          const sel = window.getSelection();
+          const anchor = sel?.anchorNode;
+          let cell = null;
+          let n = anchor;
+          while (n && n !== this._editArea) {
+            if (n.nodeType === 1 && (n.tagName === "TD" || n.tagName === "TH")) {
+              cell = n;
+              break;
+            }
+            n = n.parentNode;
+          }
+          if (cell) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const cells = Array.from(
+              cell.closest("table").querySelectorAll("th, td")
+            );
+            const ix = cells.indexOf(cell);
+            const next = e.shiftKey ? cells[ix - 1] : cells[ix + 1];
+            if (next) {
+              const r = document.createRange();
+              r.selectNodeContents(next);
+              r.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(r);
+            }
+            return;
+          }
+        }
         // Escape → close (with dirty-confirm). If a child modal is open
         // (code dialog, link dialog, block dialog, color popup, or the
         // confirm dialog itself) skip the editor-close so Esc doesn't
