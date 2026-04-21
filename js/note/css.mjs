@@ -757,6 +757,39 @@ export function injectCSS() {
   pointer-events: none;
 }
 
+/* ── Grid (table) block ───────────────────────────────────────────── */
+/* Scoped to both the on-canvas body and the editor interior so it
+   looks identical in both. table-layout: fixed so columns share width
+   equally and long cell content wraps inside its column rather than
+   stretching the table across the note's width. */
+.pix-note-body table.pix-note-grid,
+.pix-note-editarea table.pix-note-grid {
+  border-collapse: collapse;
+  width: 100%;
+  table-layout: fixed;
+  margin: 8px 0;
+  font-size: 13px;
+  word-wrap: break-word;
+}
+.pix-note-body table.pix-note-grid th,
+.pix-note-body table.pix-note-grid td,
+.pix-note-editarea table.pix-note-grid th,
+.pix-note-editarea table.pix-note-grid td {
+  border: 1px solid #333;
+  padding: 6px 8px;
+  vertical-align: top;
+  word-wrap: break-word;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.pix-note-body table.pix-note-grid thead th,
+.pix-note-editarea table.pix-note-grid thead th {
+  background: #1a1a1a;
+  color: #fff;
+  font-weight: 700;
+  border-bottom: 2px solid ${BRAND};
+}
+
   `;
   document.head.appendChild(s);
 }

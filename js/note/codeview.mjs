@@ -8,7 +8,7 @@
 // blank line between them when we pretty-print. Inline tags (<a>, <b>,
 // <span>, …) stay on their parent's line.
 const TOP_LEVEL_BLOCK_TAGS = new Set([
-  "p","h1","h2","h3","ul","ol","pre","blockquote","hr","div",
+  "p","h1","h2","h3","ul","ol","pre","blockquote","hr","div","table",
 ]);
 
 // <span class="pix-note-btnblock"> is also treated as a top-level block

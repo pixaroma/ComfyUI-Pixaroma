@@ -5,6 +5,9 @@
 const ALLOWED_TAGS = new Set([
   "h1","h2","h3","p","br","hr","ul","ol","li","b","i","u","s","strike","strong","em",
   "code","pre","span","div","a","blockquote","label",
+  // Grid / table support — see spec 2026-04-21-note-grid-design.md.
+  // No colspan/rowspan (V1); hand-edit via Code view if needed.
+  "table","thead","tbody","tr","th","td",
 ]);
 
 // Tags whose content is ALSO discarded when removed (vs. unwrapped).
@@ -23,6 +26,8 @@ const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-vp","pix-note-rm",
   // Wrapper + decoration pieces for the Button Design output
   "pix-note-btnblock","pix-note-folderhint","pix-note-btnsize",
+  // Grid (table) marker class
+  "pix-note-grid",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
