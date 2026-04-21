@@ -18,9 +18,29 @@ function restoreRange(range) {
   sel.addRange(range);
 }
 
+// 4 rows × 7 = 28 swatches, grouped by purpose so the rows read as a
+// proper palette rather than a random grid. The CSS grid below lays them
+// out in 7 columns so the row structure stays intact visually.
+//
+//   Row 1 — Neutrals: white through black, covers 90% of "just a note"
+//           backgrounds and is where default (#111111) lives.
+//   Row 2 — Bright accents: Pixaroma brand orange plus saturated hues,
+//           most useful for text/highlight colour or for an attention-
+//           grabbing note ("IMPORTANT").
+//   Row 3 — ComfyUI-style muted: approximates the dusty tones from the
+//           Vue canvas right-click 'Colors' menu, so Pixaroma notes can
+//           colour-coordinate with the built-in node palette.
+//   Row 4 — Modern soft / deep: pastels for calm light notes and deep
+//           tones for rich dark notes.
 const SWATCHES = [
-  "#f66744","#ffffff","#111111","#888888","#4a90e2","#5bd45b","#e25b5b",
-  "#b565e2","#00bcd4","#ff79c6","#f1c40f","#cccccc","#8b4513","#2c3e50",
+  // Row 1 — Neutrals
+  "#ffffff","#d4d4d4","#888888","#555555","#2a2a2a","#111111","#000000",
+  // Row 2 — Bright accents (Pixaroma brand first)
+  "#f66744","#e74c3c","#f1c40f","#5bd45b","#00bcd4","#4a90e2","#b565e2",
+  // Row 3 — ComfyUI-muted node colours
+  "#a85848","#a66a3d","#a08147","#6f8e46","#537c90","#4c6db9","#a968c2",
+  // Row 4 — Modern soft + deep
+  "#ff79c6","#f4a261","#c9a96e","#3a5a40","#1e3a5f","#4a3d6b","#2c3e50",
 ];
 
 function openColorPop(anchorBtn, currentColor, onPick, allowClear = false) {
