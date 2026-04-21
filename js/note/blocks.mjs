@@ -796,6 +796,25 @@ function makeGridDialog(anchorBtn, onSubmit) {
   previewWrap.appendChild(preview);
   dlg.appendChild(previewWrap);
 
+  // Header toggle — created (but not yet appended to the dialog) before
+  // the steppers so the stepper's initial set() → refresh() can read
+  // `headToggle` without hitting the TDZ. Visual order stays "preview,
+  // steppers, header toggle" because appendChild happens further below.
+  const headRow = document.createElement("div");
+  headRow.className = "pix-note-optrow";
+  const headLbl = document.createElement("div");
+  headLbl.className = "lbl";
+  headLbl.textContent = "First row as header";
+  const headToggle = document.createElement("div");
+  headToggle.className = "pix-note-toggle";
+  headRow.appendChild(headLbl);
+  headRow.appendChild(headToggle);
+  headRow.addEventListener("click", (e) => {
+    if (e.target.closest("input")) return;
+    state.header = !state.header;
+    refresh();
+  });
+
   // Stepper builder — shared between cols + rows.
   function makeStepper(labelText, key, min, max) {
     const row = document.createElement("div");
@@ -838,22 +857,6 @@ function makeGridDialog(anchorBtn, onSubmit) {
 
   dlg.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
   dlg.appendChild(makeStepper("Rows", "rows", GRID_ROW_MIN, GRID_ROW_MAX));
-
-  // Header toggle — reuses the .pix-note-toggle style from Button Design.
-  const headRow = document.createElement("div");
-  headRow.className = "pix-note-optrow";
-  const headLbl = document.createElement("div");
-  headLbl.className = "lbl";
-  headLbl.textContent = "First row as header";
-  const headToggle = document.createElement("div");
-  headToggle.className = "pix-note-toggle";
-  headRow.appendChild(headLbl);
-  headRow.appendChild(headToggle);
-  headRow.addEventListener("click", (e) => {
-    if (e.target.closest("input")) return;
-    state.header = !state.header;
-    refresh();
-  });
   dlg.appendChild(headRow);
 
   // Inline error row kept for consistency with other dialogs; no URL
