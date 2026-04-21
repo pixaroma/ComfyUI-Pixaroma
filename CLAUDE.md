@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop) directly inside ComfyUI workflows. It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node) directly inside ComfyUI workflows. It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -37,6 +37,10 @@ Nodes are `OUTPUT_NODE = True` and receive editor state as a serialized JSON str
 | `/pixaroma/api/crop/save` | Save crop result |
 | `/pixaroma/remove_bg` | AI background removal (rembg) |
 | `/pixaroma/assets/{filename}` | Serve logo/assets |
+| `/pixaroma/api/note/check_folder` | (dead — kept only for back-compat; no JS caller) |
+| `/pixaroma/api/note/open_folder` | (dead — kept only for back-compat; no JS caller) |
+
+The two `note/*_folder` routes are leftover from an earlier iteration where the Note Pixaroma Download pill would open the target ComfyUI folder in the OS file explorer. Design changed to "folder path is purely informational text under the pill" — the JS no longer fetches these routes. Safe to delete after confirming no workflow depends on them.
 
 ### Frontend Directory Structure
 The frontend is organized into **directory-per-editor** modules under `js/`. Each directory is self-contained with files split by concern (~300 lines max per file).
@@ -106,6 +110,21 @@ js/
 │   ├── index.js        # Entry: ComfyUI extension registration
 │   ├── core.mjs        # LabelEditor class, UI building
 │   └── render.mjs      # Canvas text rendering, typography helpers
+│
+├── note/               # Note Pixaroma (NoteEditor class, mixin pattern)
+│   ├── index.js        # Entry: node lifecycle, DEFAULT_CFG, parseCfg, onConfigure/onResize
+│   ├── core.mjs        # Class shell: open/close, save, undo history, Ctrl+Z neutering,
+│   │                   #  code/preview view toggle, _applyEditAreaBg, _normalizeEditArea
+│   ├── toolbar.mjs     # _buildToolbar: bold/italic/headings/colour pickers/link/code/HR/
+│   │                   #  Button Design/YT/Discord entries, undo/redo, view toggle, SWATCHES,
+│   │                   #  _promptLinkUrl + _promptCodeBlock themed modals
+│   ├── blocks.mjs      # Button Design rich dialog (icon picker, live preview, toggles),
+│   │                   #  YouTube + Discord generic block dialogs, validateUrl helper,
+│   │                   #  renderButtonHTML, insertAtSavedRange, saveRange/restoreRange
+│   ├── render.mjs      # createNoteDOMWidget, renderContent, attachEditButton,
+│   │                   #  attachCanvasClickDelegation, injectCopyButtons (for <pre>)
+│   ├── sanitize.mjs    # Allowlist-based HTML sanitizer (tags, attrs, classes, styles, href)
+│   └── css.mjs         # injectCSS — all note styles (overlay, editarea, pills, toggles)
 │
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
@@ -244,10 +263,43 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 11. **Keyboard shortcuts use `e.code`, not `e.key`** — `Digit1`, `Digit2`, `Numpad1` etc. This is layout-independent. `e.key` depends on the user's keyboard layout and breaks for non-QWERTY users.
 
+### Note Pixaroma Patterns (do not regress)
+
+These patterns were hard-won during Note Pixaroma development. Regressing any of them reintroduces specific bugs, some silent.
+
+1. **Sanitizer must UNWRAP on invalid href, not remove** — in `sanitize.mjs` `filterElement`, when `filterHref` returns null the old code called `el.remove()` which deleted the `<a>` *and* its child text. Users lost their typed content silently on save whenever a link had a bad URL (e.g. dialog default `https://` with no host). Unwrap the anchor instead, keep the inner text, recurse into children. Same policy as for unknown wrapper tags.
+
+2. **URL validation must fully parse, not just regex** — `/^https?:\/\//i.test(url)` accepts `"https://"` with no hostname. Use `new URL(url)` + `u.hostname` check so the dialog rejects what the sanitizer would later throw on. Shared `validateUrl()` in `blocks.mjs` returns `{ ok, message }` and is used by Button Design / YouTube / Discord; the link dialog in `toolbar.mjs` has the equivalent inline check.
+
+3. **Python widget default MUST stay in sync with JS DEFAULT_CFG** — `nodes/node_note.py` ships a JSON string `default` for the `note_json` widget. ComfyUI pre-fills this into the widget value BEFORE `nodeCreated` fires, so `parseCfg` merges it on top of the JS defaults and whatever the Python string contains wins. `backgroundColor` and `accentColor` must match between the two files. `parseCfg` also contains a migration that strips the old `backgroundColor:"transparent"` default when content is empty, so users who haven't restarted ComfyUI still get the current default.
+
+4. **Bg picker drives node.color + node.bgcolor, not just the inner body** — `renderContent(node, bodyEl)` in `render.mjs` is the single source of truth. It sets `node.color` (title bar) + `node.bgcolor` (body) from `cfg.backgroundColor`, keeps `.pix-note-body` transparent so the colour flows through as one surface, and calls `node.setDirtyCanvas(true, true)` to force an immediate repaint. Only `!bg || bg === "transparent"` clears the overrides. Every save + `onConfigure` re-runs `renderContent` so cfg stays authoritative over ComfyUI's right-click Colors menu.
+
+5. **Ctrl+Z escape fix — patch `app.loadGraphData` AND `app.graph.configure`** — see Vue Frontend Compatibility point 6 above. Note Pixaroma is the canonical implementation; `core.mjs` `open()` saves the originals and restores in `_cleanup`. Also neuters `graph.undo`/`graph.redo`, `Comfy.Undo`/`Comfy.Redo` commands, and has a `node.onRemoved` resurrection-close safety net. Missing any of these leaves a path that deletes the note while the editor is open.
+
+6. **Do NOT call `installFocusTrap` with a contenteditable editor** — see Vue Frontend Compatibility point 7 above. The focus trap's mouseup handler steals focus and wipes text selection after drag-selects outside the panel.
+
+7. **Inline errors, not `alert()`, inside editor overlays** — `alert()` context-switches out of the editor, loses focus, and some browsers block it from inside modal overlays entirely. Both `makeDialog` and `makeButtonDesignDialog` in `blocks.mjs` have an inline `.pix-note-linkerr` row; callbacks receive a `ctx.showError(msg)` helper and return `false` to keep the dialog open.
+
+8. **Button pill output structure** — `renderButtonHTML(v)` in `blocks.mjs` wraps pill + folder hint in `<span class="pix-note-btnblock">`. Size hint goes *inside* the `<a>` as `<span class="pix-note-btnsize">` so the `::before` middle-dot separator is a CSS pseudo-element (backspace collapses cleanly). Folder hint goes *outside* the `<a>` as a sibling `<span class="pix-note-folderhint">` — it's a separate visual line with a `::before` folder-icon mask. All four classes (`pix-note-btnblock`, `pix-note-btnsize`, `pix-note-folderhint`, `pix-note-dl`/`vp`/`rm`) are allowlisted in `sanitize.mjs`; adding a new pill class requires adding it there.
+
+9. **Block-insert dialogs: capture the range BEFORE the modal opens** — focus moves to the dialog's first input, `window.getSelection()` loses its range. `saveRange(editArea)` snapshots the cloned range; `insertAtSavedRange` restores it and does the `execCommand("insertHTML", ...)`. Without this, Insert appears to do nothing (the HTML is inserted but nowhere visible).
+
+10. **Code block inserts by direct DOM manipulation + captures block refs BEFORE modal** — `execCommand("insertHTML")` after the code modal closes has unreliable range targeting (Chrome's `intersectsNode` sometimes misses the first block after focus changes). In `toolbar.mjs` the code-block handler grabs `startBlock` / `endBlock` element references from the pre-modal selection, replaces them directly with the new `<pre><code>` + trailing `<p>`, and places the caret in the trailing paragraph. Also: `_normalizeEditArea` wraps any loose text-node root children in `<p>` first, otherwise `findTopBlock` returns null for freshly-typed content on a brand-new note.
+
+11. **Manual undo history — browser native undo doesn't cover direct DOM mutations** — `core.mjs` maintains an innerHTML-snapshot stack (`_undo`, `_redo`) with debounced `_snapBefore`/`_snapAfter` wrappers. All direct-DOM operations (code-block insert, clear-format, list unwrap) must bracket themselves with snap calls. Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y keybindings in `_keyBlock` route through `doUndo`/`doRedo`.
+
+12. **Paste strips formatting + prevents ComfyUI image-drop escape** — window-capture `paste` and `drop`/`dragover` handlers in `core.mjs` `open()` intercept images (prevents ComfyUI from spawning a Load Image node on the canvas) and pasted rich HTML (keeps pasted content as plain text). `stopImmediatePropagation` preempts ComfyUI's listeners.
+
+13. **Swatches shared across pickers** — `SWATCHES` array in `toolbar.mjs` feeds A (text), ■ (highlight), Bg (background), Ac (accent) pickers. CSS grid in `css.mjs` is `repeat(7, 18px)`, so the 28 current swatches (4 rows × 7) render cleanly. Adding colours = edit one array; keep row count a multiple of 7.
+
+14. **Page bg default is `#111111`** — set in three places that MUST stay in sync: `DEFAULT_CFG.backgroundColor` in `index.js`, `.pix-note-editarea` CSS baseline in `css.mjs`, and the `node_note.py` widget default string. Also referenced by the Bg picker's Clear behaviour and `_applyEditAreaBg` fallback in `core.mjs` and `toolbar.mjs`. If you change the default, grep for the old value — there are 5–6 call sites.
+
 ### Security Patterns (do not remove)
 - `_safe_path()` in `server_routes.py` — validates all file paths stay within `PIXAROMA_INPUT_ROOT`
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
 - Base64 payloads capped at 50 MB
+- Note sanitizer (`js/note/sanitize.mjs`) — allowlist-based. Anything user-reachable (link insert, code-view HTML edit, paste) must round-trip through `sanitize(html)` before being written to the DOM or saved. Class allowlist covers only Pixaroma-specific classes; style allowlist covers only `color`, `background-color`, `text-align`; href allowlist is `http:`, `https:`, `mailto:`.
 
 ## Token-Saving Rules for AI Agents
 
@@ -277,6 +329,11 @@ Files are named by concern. Match the task to the file:
 | Add a new composite (multi-mesh) 3D shape | `js/3d/composites.mjs` + `js/3d/picker.mjs` SECTIONS |
 | Change the per-object Shape panel | `js/3d/shape_params.mjs` |
 | Handle GLB/OBJ import behavior | `js/3d/importer.mjs` |
+| Fix / extend Note toolbar (buttons, pickers) | `js/note/toolbar.mjs` |
+| Fix Note block dialogs (Download/YT/Discord, link, code) | `js/note/blocks.mjs` (+ `_promptLinkUrl`/`_promptCodeBlock` in toolbar.mjs) |
+| Change what HTML/attrs/classes are allowed in a note | `js/note/sanitize.mjs` (allowlists) |
+| Change how a note renders on canvas or node colour behaviour | `js/note/render.mjs` (`renderContent`) |
+| Change Note default colour / size / placeholder | `js/note/index.js` DEFAULT_CFG + `nodes/node_note.py` widget default (keep in sync) |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
 
