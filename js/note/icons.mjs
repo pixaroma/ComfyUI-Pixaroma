@@ -5,6 +5,10 @@
 // See docs/superpowers/specs/2026-04-21-note-inline-icons-design.md
 // for the design rationale.
 
+// NoteEditor is unused in Phase 2 but intentionally imported now —
+// Phase 4 will extend NoteEditor.prototype at module-top of this
+// file. Removing the import now only to re-add it would churn the
+// circular-dep analysis documented in core.mjs::open().
 import { NoteEditor } from "./core.mjs";
 
 // Module-level cache. `null` = not yet fetched; `[]` = fetched empty;
@@ -20,8 +24,16 @@ let _iconsPromise = null;
 let _cssInjected = false;
 
 // Fetch the icon list if we haven't already. Returns the cached array.
-// Never throws — on error, caches [] and returns it, so the UI can
-// render "No icons found" without a try/catch at every call site.
+// Never throws. Error contract:
+//   - HTTP 2xx with body {"icons": [...]}         → cache + return it.
+//   - HTTP 2xx with body {"icons": []}            → cache [] + return it
+//                                                     (genuine empty folder,
+//                                                     sticky until reload).
+//   - HTTP non-2xx / network error / bad JSON     → return [] for THIS call,
+//                                                     leave cache null so
+//                                                     the NEXT call retries.
+// So callers can render "No icons found" immediately without try/catch,
+// AND transient server hiccups don't permanently brick the picker.
 export async function ensureIcons() {
   if (_iconsCache !== null) return _iconsCache;
   if (!_iconsPromise) {
@@ -31,11 +43,19 @@ export async function ensureIcons() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         _iconsCache = Array.isArray(j?.icons) ? j.icons : [];
+        return _iconsCache;
       } catch (e) {
-        console.warn("[pix-note/icons] list fetch failed, using empty:", e);
-        _iconsCache = [];
+        // Transient failure (network error, HTTP 5xx, malformed JSON)
+        // → leave _iconsCache as null so the NEXT ensureIcons() call
+        // re-fetches. Clear _iconsPromise here too so subsequent
+        // callers don't latch onto this rejected-but-caught promise.
+        // A successful fetch returning {"icons": []} for a genuinely
+        // empty folder DOES cache [] (fast path above), which is the
+        // right behavior for intentional empties.
+        console.warn("[pix-note/icons] list fetch failed, will retry on next open:", e);
+        _iconsPromise = null;
+        return [];
       }
-      return _iconsCache;
     })();
   }
   return _iconsPromise;
@@ -60,6 +80,11 @@ export function injectIconCSS() {
   if (_cssInjected) return;
   const icons = _iconsCache || [];
   if (icons.length === 0) return; // nothing to inject; retry on next call
+  // getElementById branch handles hot-module-reload scenarios where a
+  // previous page evaluation left a <style id="pix-note-icon-css"> in
+  // <head> but the module-level _cssInjected guard was reset. Reuse
+  // the existing element and overwrite textContent rather than
+  // appending a duplicate node.
   let style = document.getElementById("pix-note-icon-css");
   if (!style) {
     style = document.createElement("style");

@@ -18,6 +18,15 @@ export class NoteEditor {
     // picker opens instantly without a round-trip fetch. Both calls are
     // idempotent (cache + one-time injection guards). Fire-and-forget —
     // we never block editor open on the fetch.
+    //
+    // NOTE: dynamic import() is deliberate, NOT laziness. `icons.mjs`
+    // attaches prototype methods to NoteEditor at module-top (Phase 4).
+    // A static `import { ... } from "./icons.mjs"` here would create a
+    // circular dependency — core.mjs imports icons.mjs statically, but
+    // icons.mjs imports NoteEditor from core.mjs — and when icons.mjs
+    // first evaluates, NoteEditor would be undefined, crashing the
+    // prototype extension. Dynamic import() defers loading until after
+    // the class is fully defined. DO NOT simplify to a static import.
     import("./icons.mjs").then((m) => {
       m.ensureIcons().then(() => m.injectIconCSS());
     });
