@@ -35,7 +35,18 @@ User-provided SVGs live in `assets/icons/note/`. The folder is drop-and-discover
 
 - User adds a new SVG file → reloads the browser → the icon appears in the picker.
 - Removing a file → reload → the icon disappears from the picker. Any note that referenced that icon by `data-ic="<slug>"` renders as a solid 1.2em × 1.2em colored rectangle (no mask-image matches, so the `background-color: currentColor` fills the whole box). Ugly but deliberate — signals "missing icon" loudly so the user notices and fixes it. See the Edge Cases section below for the full rationale.
-- Filename conventions: lowercase kebab-case (`download-model.svg`, `star-filled.svg`). Underscores treated as separators during label derivation (`my_icon.svg` → "My icon"). The slug used in `data-ic` is exactly the filename minus `.svg`.
+- Filename conventions: kebab-case, underscores also accepted as separators during label derivation. Mixed case allowed — uppercase acronym filenames like `CLIP.svg`, `GGUF.svg`, `LORA.svg`, `VAE.svg` are common and should render with their original casing. The slug used in `data-ic` is exactly the filename minus `.svg`, case preserved.
+- Label derivation rules (for the picker tooltip):
+  - Split the stem on `-` and `_`.
+  - For each segment: if it's all-uppercase → keep as-is (preserves acronyms like CLIP / VAE / GGUF). Otherwise → lowercase.
+  - Join with spaces.
+  - Uppercase the first letter of the joined string.
+  - Examples:
+    - `download-model.svg` → "Download model"
+    - `CLIP.svg` → "CLIP"
+    - `model-v7.svg` → "Model v7"
+    - `my_icon.svg` → "My icon"
+    - `ai-brain.svg` → "Ai brain"
 
 ### Backend route
 
@@ -135,7 +146,7 @@ One rule per discovered icon. Grows with the folder. Rendered both in the editor
 
 - `ALLOWED_CLASS_VALUES`: add `pix-note-ic`.
 - `ALLOWED_ATTRS` for `<span>` (or equivalent): add `data-ic`.
-- Validate `data-ic` value against `/^[a-z0-9-]{1,64}$/`. On mismatch, strip the attribute but keep the span (degrades to an empty 1.2em gap). Never silently delete the whole span — respects the unwrap-not-remove policy from Pattern #1.
+- Validate `data-ic` value against `/^[A-Za-z0-9_-]{1,64}$/`. Mixed case intentionally allowed — acronym filenames (CLIP.svg, GGUF.svg, LORA.svg, VAE.svg) are part of the shipped library and must round-trip. Underscore allowed because label derivation accepts it as a word separator. On regex mismatch, strip the attribute but keep the span (degrades to a 1.2em colored rectangle per the Edge Cases section). Never silently delete the whole span — respects the unwrap-not-remove policy from Pattern #1.
 - Do NOT validate that the slug corresponds to a real on-disk icon. Drop-and-discover means user A's note may reference an icon user B doesn't have; sanitizer has no way to know.
 - `style` allowlist already covers `color` — no new CSS property needed.
 
