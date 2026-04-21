@@ -65,7 +65,7 @@ function validateUrl(url) {
   return { ok: true };
 }
 
-function makeDialog(anchorBtn, title, fields, onSubmit) {
+function makeDialog(anchorBtn, title, fields, onSubmit, initialValues) {
   const dlg = document.createElement("div");
   dlg.className = "pix-note-blockdlg";
 
@@ -86,7 +86,13 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
     lbl.textContent = labelText;
     const inp = document.createElement("input");
     inp.type = "text";
-    inp.value = defaultVal || "";
+    // initialValues wins over defaultVal — it's only passed when the
+    // dialog opens from a pencil-edit, in which case we want the
+    // block's actual current value, not the "fresh insert" default.
+    const pre = (initialValues && Object.prototype.hasOwnProperty.call(initialValues, key))
+      ? initialValues[key]
+      : defaultVal;
+    inp.value = pre || "";
     if (placeholder) inp.placeholder = placeholder;
     row.appendChild(lbl);
     row.appendChild(inp);
@@ -94,9 +100,6 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
     inputs[key] = inp;
   }
 
-  // Inline error row — used for themed validation feedback (invalid URL
-  // etc.) so the user doesn't get bounced to a native alert() that
-  // steals focus and can lose their typing.
   const err = document.createElement("div");
   err.className = "pix-note-linkerr";
   dlg.appendChild(err);
@@ -108,7 +111,10 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
   cancel.textContent = "Cancel";
   const ok = document.createElement("button");
   ok.className = "pix-note-btn primary";
-  ok.textContent = "Insert";
+  // Button label reads "Update" when editing an existing block,
+  // "Insert" when inserting a new one. Visual reminder that the
+  // action replaces the block vs. appends a new one.
+  ok.textContent = initialValues ? "Update" : "Insert";
   footer.appendChild(cancel);
   footer.appendChild(ok);
   dlg.appendChild(footer);
@@ -120,9 +126,6 @@ function makeDialog(anchorBtn, title, fields, onSubmit) {
   const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
   setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
   cancel.onclick = close;
-  // onSubmit can:
-  //   - call ctx.showError(msg) and return false  → dialog stays open
-  //   - return anything else (or undefined)        → dialog closes
   ok.onclick = () => {
     const values = {};
     for (const k of Object.keys(inputs)) values[k] = inputs[k].value.trim();
@@ -242,7 +245,7 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
 // onSubmit: ({icon, url, label, folderOn, folder, sizeOn, size}) → boolean
 //   Return true to close the dialog, false to keep it open (e.g. to show
 //   a validation error without losing the user's typing).
-function makeButtonDesignDialog(anchorBtn, onSubmit) {
+function makeButtonDesignDialog(anchorBtn, onSubmit, initialValues) {
   const state = {
     icon: "dl",
     url: "",
@@ -256,6 +259,15 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   // overwritten by ICON_DEFAULTS when the icon changes.
   const touched = { folderOn: false, sizeOn: false };
 
+  // Editing an existing block: overlay initial values onto state and
+  // mark both toggles as "touched" so a subsequent icon change doesn't
+  // clobber the user's original choices.
+  if (initialValues) {
+    Object.assign(state, initialValues);
+    touched.folderOn = true;
+    touched.sizeOn = true;
+  }
+
   const dlg = document.createElement("div");
   dlg.className = "pix-note-blockdlg pix-note-btndesign";
   const rect = anchorBtn.getBoundingClientRect();
@@ -264,7 +276,7 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
 
   // Header
   const h = document.createElement("h4");
-  h.textContent = "Insert button";
+  h.textContent = initialValues ? "Edit button" : "Insert button";
   dlg.appendChild(h);
 
   // --- Live preview pill --------------------------------------------------
@@ -392,7 +404,7 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   cancel.textContent = "Cancel";
   const ok = document.createElement("button");
   ok.className = "pix-note-btn primary";
-  ok.textContent = "Insert";
+  ok.textContent = initialValues ? "Update" : "Insert";
   footer.appendChild(cancel);
   footer.appendChild(ok);
   dlg.appendChild(footer);
@@ -480,6 +492,16 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   }
   cancel.addEventListener("click", close);
   ok.addEventListener("click", submit);
+
+  // Pre-populate the four visible text inputs from state — these are
+  // wired only to `state` on input, so the initial state values need
+  // an explicit DOM write or the fields render empty even though the
+  // preview reads state correctly.
+  urlInput.value = state.url || "";
+  labelInput.value = state.label || "";
+  folderInput.value = state.folder || "";
+  sizeInput.value = state.size || "";
+  if (state.icon && state.icon !== "dl") setIcon(state.icon);
 
   // Initial render
   refresh();
