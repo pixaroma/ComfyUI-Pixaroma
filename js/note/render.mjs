@@ -178,7 +178,7 @@ async function openFolderFlow(folder) {
     check = await r.json();
     if (!r.ok) throw new Error(check?.error || "check_failed");
   } catch (e) {
-    showToast("URL copied. Couldn't reach the ComfyUI backend.");
+    showToast("Couldn't reach the ComfyUI backend");
     return;
   }
   const resolved = check.resolved || folder || "models";
@@ -189,17 +189,14 @@ async function openFolderFlow(folder) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ folder }),
       });
-      showToast(`URL copied. Opened ${resolved}.`);
+      showToast(`Opened ${resolved}`);
     } catch (e) {
-      showToast("URL copied. Couldn't open folder.");
+      showToast("Couldn't open folder");
     }
     return;
   }
   const ok = await confirmCreateFolder(resolved);
-  if (!ok) {
-    showToast(`URL copied. ${resolved} not opened.`);
-    return;
-  }
+  if (!ok) return;
   try {
     const r = await fetch("/pixaroma/api/note/open_folder", {
       method: "POST",
@@ -208,27 +205,9 @@ async function openFolderFlow(folder) {
     });
     const j = await r.json();
     if (!r.ok) throw new Error(j?.msg || "open_failed");
-    showToast(`URL copied. Created and opened ${resolved}.`);
+    showToast(`Created and opened ${resolved}`);
   } catch (e) {
-    showToast("URL copied. Couldn't create folder.");
-  }
-}
-
-function copyToClipboard(text) {
-  if (navigator.clipboard?.writeText) {
-    return navigator.clipboard.writeText(text).then(() => true, () => false);
-  }
-  try {
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed"; ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.select();
-    const ok = document.execCommand("copy");
-    ta.remove();
-    return Promise.resolve(!!ok);
-  } catch {
-    return Promise.resolve(false);
+    showToast("Couldn't create folder");
   }
 }
 
@@ -236,26 +215,17 @@ export function attachCanvasClickDelegation(bodyEl) {
   bodyEl.addEventListener("click", (e) => {
     const a = e.target.closest("a");
     if (!a) return;
-    // Download pill: open the target folder in OS file explorer AND copy
-    // the download URL to the clipboard. We intentionally do NOT let the
-    // browser navigate — Chrome's Save As for a direct .safetensors URL
-    // always defaults to the Downloads/Desktop folder regardless of any
-    // attribute we set, which is the opposite of what the user wants.
-    // Copy-URL lets them paste into a download manager or the address
-    // bar on their own terms.
-    if (a.classList.contains("pix-note-dl")) {
-      e.preventDefault();
-      const folder = a.getAttribute("data-folder") || "";
-      const url = a.href || "";
-      copyToClipboard(url).then((ok) => {
-        if (!ok) console.warn("[pix-note] clipboard copy failed");
-      });
+    // Any pill that carries data-folder gets the "open folder in OS file
+    // explorer" side-effect on click. The browser's default navigation
+    // (target=_blank → URL in a new tab) still runs — if that triggers a
+    // download/Save As, that's the browser's business. We no longer copy
+    // the URL or block the nav.
+    const folder = a.getAttribute("data-folder");
+    if (folder != null) {
       openFolderFlow(folder);
-      e.stopPropagation();
-      return;
     }
-    // YouTube / Discord / View Page / Read More: normal navigation
-    // (target=_blank from the sanitizer keeps them in a new tab).
+    // Stop propagation so clicking inside the note body doesn't also
+    // initiate a LiteGraph node drag on the canvas underneath.
     e.stopPropagation();
   }, true);
   bodyEl.addEventListener("mousedown", (e) => {

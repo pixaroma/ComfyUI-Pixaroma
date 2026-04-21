@@ -680,29 +680,17 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 6 — Pixaroma blocks
   const g6 = el("div", "pix-note-tgroup");
 
-  const dlIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/download-model.svg" draggable="false">`;
-  const dlBtn = makeBtn(dlIcon, "Insert download model button", "", () => {});
-  dlBtn.onclick = (e) => {
+  // Unified "Button Design" entry — opens a rich dialog where the user
+  // picks an icon (Download / View Page / Read More) and toggles whether
+  // to attach a folder suggestion and a size hint. The 3 pill types still
+  // exist as CSS classes so old notes keep rendering.
+  const bdIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg" draggable="false">`;
+  const bdBtn = makeBtn(bdIcon, "Insert button (Download / View Page / Read More)", "", () => {});
+  bdBtn.onclick = (e) => {
     e.preventDefault();
-    this._insertDownloadBlock(dlBtn);
+    this._insertButtonBlock(bdBtn);
   };
-  g6.appendChild(dlBtn);
-
-  const vpIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/view-model-page.svg" draggable="false">`;
-  const vpBtn = makeBtn(vpIcon, "Insert View Model Page link", "", () => {});
-  vpBtn.onclick = (e) => {
-    e.preventDefault();
-    this._insertViewPageBlock(vpBtn);
-  };
-  g6.appendChild(vpBtn);
-
-  const rmIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/read-more.svg" draggable="false">`;
-  const rmBtn = makeBtn(rmIcon, "Insert Read More link", "", () => {});
-  rmBtn.onclick = (e) => {
-    e.preventDefault();
-    this._insertReadMoreBlock(rmBtn);
-  };
-  g6.appendChild(rmBtn);
+  g6.appendChild(bdBtn);
 
   const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false">`;
   const ytBtn = makeBtn(ytIcon, "Insert YouTube link", "", () => {});

@@ -450,6 +450,136 @@ export function injectCSS() {
 .pix-note-blockdlg input:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; }
 .pix-note-blockdlg .dlgfooter { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 
+/* ── Button Design dialog ─────────────────────────────────
+   A superset of the normal block dialog with a live preview
+   pill, an icon segmented control, and on/off toggles for
+   the optional folder and size fields. */
+.pix-note-btndesign { min-width: 440px; }
+
+/* Live preview pill — centred, with a subtle framed container so it
+   reads as a preview and not an already-inserted button. */
+.pix-note-prevwrap {
+  display: flex; justify-content: center; align-items: center;
+  padding: 14px 10px;
+  background: #0f0f0f;
+  border: 1px dashed #333;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+.pix-note-prevwrap a {
+  /* The pill itself uses the existing .pix-note-dl / vp / rm styles. */
+  font-size: 12px !important;
+  cursor: default !important;
+  pointer-events: none;
+}
+
+/* Icon segmented control — three "tabs" with icon + label, active
+   tab glows in the accent colour. */
+.pix-note-iconpick {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 5px;
+  margin-bottom: 12px;
+}
+.pix-note-iconpick button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: #888;
+  font-family: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.pix-note-iconpick button:hover { background: rgba(255,255,255,.04); color: #ccc; }
+.pix-note-iconpick button.active {
+  background: rgba(246,103,68,.15);
+  border-color: ${BRAND};
+  color: ${BRAND};
+}
+.pix-note-iconpick button .ico {
+  display: inline-block;
+  width: 20px; height: 20px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+  -webkit-mask-size: contain;     mask-size: contain;
+  pointer-events: none;
+}
+.pix-note-iconpick button .ico-lbl { line-height: 1; }
+
+/* Toggle switch — pill-shaped background + sliding circle.
+   Gray when off, accent orange when on. The whole row is clickable. */
+.pix-note-optrow {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 2px 6px;
+  margin-top: 4px;
+  border-top: 1px solid #2a2a2a;
+  cursor: pointer;
+  user-select: none;
+}
+.pix-note-optrow:hover .lbl { color: #ddd; }
+.pix-note-optrow .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  transition: color 120ms;
+}
+.pix-note-toggle {
+  position: relative;
+  width: 32px; height: 16px;
+  background: #555;
+  border-radius: 9px;
+  transition: background 160ms;
+  flex-shrink: 0;
+}
+.pix-note-toggle.on { background: ${BRAND}; }
+.pix-note-toggle::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  background: #fff;
+  border-radius: 50%;
+  transition: left 160ms;
+}
+.pix-note-toggle.on::after { left: 18px; }
+
+/* Optional-field input row — sits under a toggle header. Folder row has
+   an inline folder icon prefix. Both grey out when their toggle is off. */
+.pix-note-optinput {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 2px 2px;
+  transition: opacity 160ms;
+}
+.pix-note-optinput input {
+  flex: 1;
+  background: #0f0f0f; border: 1px solid #333; border-radius: 3px;
+  color: #ddd; font-size: 12px; padding: 5px 8px;
+  font-family: inherit;
+}
+.pix-note-optinput input:focus { outline: 1px solid ${BRAND}; outline-offset: -1px; }
+.pix-note-optinput.disabled { opacity: 0.35; pointer-events: none; }
+.pix-note-optinput .folderico {
+  display: inline-block;
+  width: 16px; height: 16px;
+  background-color: #bbb;
+  -webkit-mask: url(/pixaroma/assets/icons/ui/folder.svg) no-repeat center / contain;
+          mask: url(/pixaroma/assets/icons/ui/folder.svg) no-repeat center / contain;
+  flex-shrink: 0;
+}
+
   `;
   document.head.appendChild(s);
 }
