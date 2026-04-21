@@ -790,6 +790,60 @@ export function injectCSS() {
   border-bottom: 2px solid ${BRAND};
 }
 
+/* ── Grid insert dialog (preview + steppers) ──────────────────────── */
+.pix-note-griddlg .pix-note-prevwrap {
+  display: block;
+  text-align: left;
+  padding: 8px 0;
+}
+.pix-note-gridprev {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 60px;
+  padding: 4px;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 4px;
+}
+.pix-note-gridprevcell {
+  height: 14px;
+  background: #2a2a2a;
+  border: 1px solid #333;
+  border-radius: 2px;
+}
+.pix-note-gridprevcell.head {
+  background: #333;
+  border-bottom: 2px solid ${BRAND};
+}
+.pix-note-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.pix-note-step {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #444;
+  border-radius: 3px;
+  background: #1f1f1f;
+  color: #e4e4e4;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.pix-note-step:hover:not(:disabled) { background: #2a2a2a; border-color: ${BRAND}; }
+.pix-note-step:disabled { opacity: 0.4; cursor: not-allowed; }
+.pix-note-stepnum {
+  min-width: 20px;
+  text-align: center;
+  color: #fff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
   `;
   document.head.appendChild(s);
 }

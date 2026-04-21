@@ -750,3 +750,178 @@ function openLinkEditor(editor, target, title, className, anchorBtn) {
     values,
   );
 }
+
+// ── Grid (table) block ───────────────────────────────────────────────
+// Dialog + insert path. Cells are empty <br> placeholders so
+// contenteditable has a landing point; users click into any cell and
+// type. No per-cell dialog — per spec 2026-04-21-note-grid-design.md.
+
+const GRID_COL_MIN = 2;
+const GRID_COL_MAX = 4;
+const GRID_ROW_MIN = 1;
+const GRID_ROW_MAX = 10;
+
+function renderGridHTML(cols, rows, header) {
+  const cell = "<td><br></td>";
+  const headCell = "<th><br></th>";
+  const bodyRow = `<tr>${cell.repeat(cols)}</tr>`;
+  const headRow = `<tr>${headCell.repeat(cols)}</tr>`;
+  const thead = header ? `<thead>${headRow}</thead>` : "";
+  const tbody = `<tbody>${bodyRow.repeat(rows)}</tbody>`;
+  // Trailing <p><br></p> so the caret has a paragraph to land in after
+  // the table — otherwise the user has to click BELOW the table in the
+  // padding area to keep typing, which Chrome sometimes routes into the
+  // last table cell instead.
+  return `<table class="pix-note-grid">${thead}${tbody}</table><p><br></p>`;
+}
+
+function makeGridDialog(anchorBtn, onSubmit) {
+  const state = { cols: 3, rows: 3, header: false };
+
+  const dlg = document.createElement("div");
+  dlg.className = "pix-note-blockdlg pix-note-griddlg";
+  const rect = anchorBtn.getBoundingClientRect();
+  dlg.style.left = `${Math.max(8, rect.left)}px`;
+  dlg.style.top = `${rect.bottom + 6}px`;
+
+  const h = document.createElement("h4");
+  h.textContent = "Insert grid";
+  dlg.appendChild(h);
+
+  // Preview — CSS grid of div cells mirroring current cols/rows.
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-note-prevwrap";
+  const preview = document.createElement("div");
+  preview.className = "pix-note-gridprev";
+  previewWrap.appendChild(preview);
+  dlg.appendChild(previewWrap);
+
+  // Stepper builder — shared between cols + rows.
+  function makeStepper(labelText, key, min, max) {
+    const row = document.createElement("div");
+    row.className = "field";
+    const lbl = document.createElement("label");
+    lbl.className = "lbl";
+    lbl.textContent = labelText;
+    const stepper = document.createElement("div");
+    stepper.className = "pix-note-stepper";
+    const minus = document.createElement("button");
+    minus.type = "button";
+    minus.className = "pix-note-step";
+    minus.textContent = "\u2212"; // en-minus, more visually balanced than "-"
+    const num = document.createElement("span");
+    num.className = "pix-note-stepnum";
+    num.textContent = String(state[key]);
+    const plus = document.createElement("button");
+    plus.type = "button";
+    plus.className = "pix-note-step";
+    plus.textContent = "+";
+    stepper.appendChild(minus);
+    stepper.appendChild(num);
+    stepper.appendChild(plus);
+    row.appendChild(lbl);
+    row.appendChild(stepper);
+    function set(v) {
+      state[key] = Math.max(min, Math.min(max, v));
+      num.textContent = String(state[key]);
+      minus.disabled = state[key] <= min;
+      plus.disabled = state[key] >= max;
+      refresh();
+    }
+    minus.addEventListener("mousedown", (e) => e.preventDefault());
+    plus.addEventListener("mousedown", (e) => e.preventDefault());
+    minus.addEventListener("click", () => set(state[key] - 1));
+    plus.addEventListener("click", () => set(state[key] + 1));
+    set(state[key]); // initial disabled state
+    return row;
+  }
+
+  dlg.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
+  dlg.appendChild(makeStepper("Rows", "rows", GRID_ROW_MIN, GRID_ROW_MAX));
+
+  // Header toggle — reuses the .pix-note-toggle style from Button Design.
+  const headRow = document.createElement("div");
+  headRow.className = "pix-note-optrow";
+  const headLbl = document.createElement("div");
+  headLbl.className = "lbl";
+  headLbl.textContent = "First row as header";
+  const headToggle = document.createElement("div");
+  headToggle.className = "pix-note-toggle";
+  headRow.appendChild(headLbl);
+  headRow.appendChild(headToggle);
+  headRow.addEventListener("click", (e) => {
+    if (e.target.closest("input")) return;
+    state.header = !state.header;
+    refresh();
+  });
+  dlg.appendChild(headRow);
+
+  // Inline error row kept for consistency with other dialogs; no URL
+  // validation here, so it stays empty.
+  const errEl = document.createElement("div");
+  errEl.className = "pix-note-linkerr";
+  dlg.appendChild(errEl);
+
+  const footer = document.createElement("div");
+  footer.className = "dlgfooter";
+  const cancel = document.createElement("button");
+  cancel.className = "pix-note-btn";
+  cancel.textContent = "Cancel";
+  const ok = document.createElement("button");
+  ok.className = "pix-note-btn primary";
+  ok.textContent = "Insert";
+  footer.appendChild(cancel);
+  footer.appendChild(ok);
+  dlg.appendChild(footer);
+
+  document.body.appendChild(dlg);
+
+  function refresh() {
+    // Rebuild the preview as a CSS grid. Uses 3px gap + 1px-solid borders
+    // to visually read as a tiny grid without needing a real <table>.
+    preview.innerHTML = "";
+    preview.style.gridTemplateColumns = `repeat(${state.cols}, 1fr)`;
+    const totalRows = state.rows + (state.header ? 1 : 0);
+    for (let r = 0; r < totalRows; r++) {
+      for (let c = 0; c < state.cols; c++) {
+        const cell = document.createElement("div");
+        cell.className = "pix-note-gridprevcell";
+        if (state.header && r === 0) cell.classList.add("head");
+        preview.appendChild(cell);
+      }
+    }
+    headToggle.classList.toggle("on", state.header);
+  }
+
+  function close() {
+    dlg.remove();
+    document.removeEventListener("mousedown", onOutside, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.preventDefault(); close(); }
+    else if (e.key === "Enter") { e.preventDefault(); submit(); }
+  };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onOutside, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
+
+  function submit() {
+    const r = onSubmit({ ...state });
+    if (r !== false) close();
+  }
+  cancel.addEventListener("click", close);
+  ok.addEventListener("click", submit);
+
+  refresh();
+}
+
+NoteEditor.prototype._insertGridBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
+  makeGridDialog(anchorBtn, (v) => {
+    insertAtSavedRange(this, savedRange, renderGridHTML(v.cols, v.rows, v.header));
+    return true;
+  });
+};

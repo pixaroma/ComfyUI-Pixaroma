@@ -729,6 +729,14 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g6.appendChild(dcBtn);
 
+  const gridIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg" draggable="false">`;
+  const gridBtn = makeBtn(gridIcon, "Insert grid (table)", "", () => {});
+  gridBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertGridBlock(gridBtn);
+  };
+  g6.appendChild(gridBtn);
+
   tb.appendChild(g6);
   tb.appendChild(el("div", "pix-note-tsep"));
 
