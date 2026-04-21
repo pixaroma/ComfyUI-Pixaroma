@@ -672,6 +672,73 @@ export function injectCSS() {
   width: 22px; height: 22px; border: 1px solid #444; border-radius: 3px; cursor: pointer;
 }
 
+/* Inline-icons picker popup — mirrors .pix-note-colorpop in
+   positioning + dismiss behaviour, but shows a scrollable icon grid
+   instead of color swatches. */
+.pix-note-iconpop {
+  position: absolute;
+  z-index: 1002;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+.pix-note-iconswatches {
+  display: grid;
+  grid-template-columns: repeat(7, 32px);
+  gap: 6px;
+  max-height: 240px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.pix-note-iconswatch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 0;
+}
+.pix-note-iconswatch:hover {
+  border-color: #f66744;
+  background: rgba(246, 103, 68, 0.15);
+}
+.pix-note-iconswatch .pix-note-ic {
+  /* Inside the picker, render at a fixed 18px regardless of the
+     document's font-size so tiles stay visually uniform. */
+  width: 18px;
+  height: 18px;
+  vertical-align: middle;
+}
+.pix-note-iconpop-empty {
+  color: #888;
+  font-size: 12px;
+  padding: 12px 6px;
+  max-width: 220px;
+  text-align: center;
+  line-height: 1.4;
+}
+.pix-note-iconpop-empty code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  color: #ddd;
+}
+
+/* Toolbar button mask-icon for the "Insert icon" entry.
+   Single-layer (no outline+drop split) — uses the existing
+   .pix-note-tbtn-maskicon class for currentColor tinting. */
+.pix-note-icon-icon-insert {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/icon-insert.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/icon-insert.svg);
+}
+
 /* ── Insert-link dialog inputs ───────────────────────────── */
 .pix-note-linklbl {
   font-size: 10.5px; color: #888; text-transform: uppercase;

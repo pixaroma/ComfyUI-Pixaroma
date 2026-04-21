@@ -716,6 +716,18 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g5.appendChild(gridBtn);
 
+  const iconInsertBtn = makeBtn(
+    '<span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>',
+    "Insert icon",
+    "",
+    () => {},
+  );
+  iconInsertBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertInlineIcon(iconInsertBtn);
+  };
+  g5.appendChild(iconInsertBtn);
+
   const lnColorBtn = makeColorPicker(
     "line-color",
     "Line color (grid borders, grid header underline, HR separator)",

@@ -123,3 +123,104 @@ export function renderIconHTML(id, color) {
   return `<span data-ic="${safeId}" class="pix-note-ic" ` +
     `style="color:${safeColor}"></span>`;
 }
+
+// Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
+// outside-click dismiss, mousedown-preventDefault to keep the
+// editor's selection alive). Not exported — only _insertInlineIcon
+// uses it.
+function openIconPop(anchorBtn, icons, onPick) {
+  const pop = document.createElement("div");
+  pop.className = "pix-note-iconpop";
+  const rect = anchorBtn.getBoundingClientRect();
+  pop.style.left = `${rect.left}px`;
+  pop.style.top = `${rect.bottom + 4}px`;
+
+  if (!icons || icons.length === 0) {
+    const msg = document.createElement("div");
+    msg.className = "pix-note-iconpop-empty";
+    msg.innerHTML =
+      'No icons found. Drop SVG files into ' +
+      '<code>assets/icons/note/</code> and reload the browser.';
+    pop.appendChild(msg);
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "pix-note-iconswatches";
+    for (const ic of icons) {
+      const tile = document.createElement("button");
+      tile.type = "button";
+      tile.className = "pix-note-iconswatch";
+      tile.setAttribute("data-ic", ic.id);
+      tile.title = ic.label;
+      // mousedown prevents the editArea from losing focus + selection
+      // when the user clicks a tile.
+      tile.addEventListener("mousedown", (e) => e.preventDefault());
+      tile.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onPick(ic.id);
+        close();
+      });
+      const glyph = document.createElement("span");
+      glyph.className = "pix-note-ic";
+      glyph.setAttribute("data-ic", ic.id);
+      glyph.style.color = "#f66744"; // preview in insert-color
+      tile.appendChild(glyph);
+      grid.appendChild(tile);
+    }
+    pop.appendChild(grid);
+  }
+
+  document.body.appendChild(pop);
+
+  const onDocDown = (e) => {
+    if (!pop.contains(e.target) && e.target !== anchorBtn) close();
+  };
+  function close() {
+    document.removeEventListener("mousedown", onDocDown, true);
+    pop.remove();
+  }
+  // Defer attach by one tick so the click that opened us doesn't
+  // immediately close us.
+  setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+}
+
+// Toolbar handler — opens the picker anchored to the button.
+// Captures the saved range BEFORE the popup opens so the insert
+// lands at the user's caret position (same pattern as
+// _insertButtonBlock / _insertGridBlock in blocks.mjs).
+//
+// Does its own insert (not via insertAtSavedRange) to avoid a
+// circular import between blocks.mjs and icons.mjs. Calls
+// _restageColors() after the insert so surrounding text color
+// stays sticky for the next keystroke (Pattern #25).
+NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
+  if (!this._editArea) return;
+  // Capture the caret position synchronously so the async fetch
+  // below doesn't lose it (focus moves to the body while loading).
+  const savedRange = (() => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    const r = sel.getRangeAt(0);
+    if (!this._editArea.contains(r.commonAncestorContainer)) return null;
+    return r.cloneRange();
+  })();
+
+  const icons = await ensureIcons();
+  injectIconCSS();
+
+  openIconPop(anchorBtn, icons, (id) => {
+    if (savedRange) {
+      this._editArea.focus();
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+    }
+    document.execCommand(
+      "insertHTML",
+      false,
+      renderIconHTML(id, "#f66744"),
+    );
+    this._restageColors?.();
+    this._dirty = true;
+    this._refreshActiveStates?.();
+  });
+};
