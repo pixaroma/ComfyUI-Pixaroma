@@ -14,6 +14,13 @@ export class NoteEditor {
   }
 
   open() {
+    // Preload inline-icon list + inject per-icon CSS rules so the toolbar
+    // picker opens instantly without a round-trip fetch. Both calls are
+    // idempotent (cache + one-time injection guards). Fire-and-forget —
+    // we never block editor open on the fetch.
+    import("./icons.mjs").then((m) => {
+      m.ensureIcons().then(() => m.injectIconCSS());
+    });
     injectCSS();
     this._build();
     document.body.appendChild(this._el);

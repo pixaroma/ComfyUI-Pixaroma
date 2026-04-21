@@ -255,6 +255,30 @@ export function injectCSS() {
   opacity: 0.85;
 }
 
+/* Inline icons: empty span rendered via mask-image + currentColor.
+   Per-icon mask-image URLs come from the dynamically-injected
+   <style id="pix-note-icon-css"> (see js/note/icons.mjs).
+   Default: solid 1.2em×1.2em colored rectangle when no matching
+   per-icon rule is present — deliberately visible to signal a
+   missing / unknown icon rather than rendering invisibly. */
+.pix-note-ic {
+  display: inline-block;
+  width: 1.2em;
+  height: 1.2em;
+  vertical-align: -0.15em;
+  background-color: currentColor;
+  -webkit-mask-size: contain;
+          mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+          mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+          mask-position: center;
+  /* Prevent the caret from entering the empty span itself */
+  -webkit-user-modify: read-only;
+       -moz-user-select: none;
+            user-select: none;
+}
+
 /* Hover-reveal Edit button */
 .pix-note-editbtn {
   position: absolute;

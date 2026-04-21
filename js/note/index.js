@@ -4,6 +4,7 @@ import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.m
 import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
 import "./blocks.mjs";
+import "./icons.mjs";
 
 
 const DEFAULT_CFG = {
