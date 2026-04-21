@@ -269,7 +269,8 @@ export function injectCSS() {
   opacity: 0;
   transition: opacity 120ms ease;
   z-index: 10;
-  box-shadow: 0 2px 6px rgba(0,0,0,.4);
+  /* Flat — no drop shadow, matches the pill buttons inside the note. */
+  box-shadow: none;
 }
 .pix-note-editbtn-icon {
   width: 12px; height: 12px; pointer-events: none;
@@ -338,7 +339,7 @@ export function injectCSS() {
 }
 .pix-note-editarea {
   flex: 1; overflow-y: auto; padding: 14px 18px; color: #e4e4e4; font-size: 13px;
-  line-height: 1.55; background: #0a0a0a; outline: none;
+  line-height: 1.55; background: #111111; outline: none;
 }
 .pix-note-editarea:focus-visible { outline: 1px solid ${BRAND}; outline-offset: -2px; }
 /* Consistent vertical spacing between blocks. The browser's default p margin

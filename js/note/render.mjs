@@ -53,7 +53,7 @@ export function renderContent(node, bodyEl) {
   //     LiteGraph theme show through. Kept for backward compatibility with
   //     notes saved before the new default landed.
   //   - any explicit color      → apply to node.color (title) + node.bgcolor
-  //     (body). The DEFAULT_CFG '#0a0a0a' (matches the editor interior)
+  //     (body). The DEFAULT_CFG '#111111' (matches the editor interior)
   //     goes through this branch so a brand-new note renders with the same
   //     dark gray the user sees inside the editor, no mismatch.
   //

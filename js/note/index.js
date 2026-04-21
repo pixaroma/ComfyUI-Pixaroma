@@ -19,7 +19,7 @@ const DEFAULT_CFG = {
   // perceived dark as the editarea. Users can change this via the Bg
   // picker; "transparent" (the only value that clears
   // node.color/bgcolor) is still honoured on notes saved with it.
-  backgroundColor: "#0a0a0a",
+  backgroundColor: "#111111",
   width: 420,
   height: 320,
 };

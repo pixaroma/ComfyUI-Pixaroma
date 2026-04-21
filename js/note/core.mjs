@@ -662,7 +662,7 @@ NoteEditor.prototype._applyEditAreaBg = function (area) {
   if (bg === "transparent") {
     root.style.background = "transparent";
   } else {
-    root.style.background = bg || "#0a0a0a";
+    root.style.background = bg || "#111111";
   }
 };
 

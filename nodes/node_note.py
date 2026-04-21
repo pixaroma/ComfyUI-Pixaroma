@@ -11,7 +11,7 @@ class PixaromaNote:
                         # NOTE: keep backgroundColor in sync with
                         # js/note/index.js DEFAULT_CFG so freshly-added notes
                         # render in the same dark gray as the editor interior.
-                        "default": '{"version":1,"content":"","accentColor":"#f66744","backgroundColor":"#0a0a0a","width":420,"height":320}',
+                        "default": '{"version":1,"content":"","accentColor":"#f66744","backgroundColor":"#111111","width":420,"height":320}',
                         "multiline": True,
                     },
                 ),
