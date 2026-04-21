@@ -28,6 +28,8 @@ const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-btnblock","pix-note-folderhint","pix-note-btnsize",
   // Grid (table) marker class
   "pix-note-grid",
+  // Inline-icon span marker (data-ic slug on <span>)
+  "pix-note-ic",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
@@ -41,11 +43,19 @@ const ALIGN_RE = /^(left|right|center|justify)$/i;
 
 const ALLOWED_HREF_PROTOCOLS = ["http:", "https:", "mailto:"];
 
+// Inline-icon slug shape: matches registered icon filenames. Mixed case is
+// intentional — acronym filenames (CLIP / VAE / GGUF / LORA) ship with the
+// library. Slug is NOT cross-checked against the live icon list here —
+// drop-and-discover means user A's note may reference an icon user B doesn't
+// have; sanitizer has no view into the filesystem.
+const IC_SLUG_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 // Per-tag attribute allowlist. "*" means "any tag".
 const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
   label: new Set(["class","style"]),
+  span: new Set(["class","style","data-ic"]),
 };
 
 function filterClass(value) {
@@ -141,6 +151,11 @@ function filterElement(el) {
         }
         return;
       }
+    } else if (name === "data-ic") {
+      // Malformed slug strips ONLY the attribute, keeping the span intact
+      // (unwrap-not-remove policy, Pattern #1). Cross-file contract with
+      // js/note/icons.mjs (cache + inject) and server_routes.py (list).
+      if (!IC_SLUG_RE.test(a.value)) el.removeAttribute(a.name);
     }
   }
 
