@@ -85,7 +85,12 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-yt,
 .pix-note-editarea a.pix-note-discord,
 .pix-note-editarea a.pix-note-vp,
-.pix-note-editarea a.pix-note-rm {
+.pix-note-editarea a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-dl,
+.pix-note-prevwrap a.pix-note-yt,
+.pix-note-prevwrap a.pix-note-discord,
+.pix-note-prevwrap a.pix-note-vp,
+.pix-note-prevwrap a.pix-note-rm {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -102,17 +107,22 @@ export function injectCSS() {
   vertical-align: middle;
 }
 .pix-note-body a.pix-note-dl,
-.pix-note-editarea a.pix-note-dl {
+.pix-note-editarea a.pix-note-dl,
+.pix-note-prevwrap a.pix-note-dl {
   background: var(--pix-note-accent, ${BRAND});
 }
 .pix-note-body a.pix-note-yt,
-.pix-note-editarea a.pix-note-yt { background: #ff3838; }
+.pix-note-editarea a.pix-note-yt,
+.pix-note-prevwrap a.pix-note-yt { background: #ff3838; }
 .pix-note-body a.pix-note-discord,
-.pix-note-editarea a.pix-note-discord { background: #5865f2; }
+.pix-note-editarea a.pix-note-discord,
+.pix-note-prevwrap a.pix-note-discord { background: #5865f2; }
 .pix-note-body a.pix-note-vp,
-.pix-note-editarea a.pix-note-vp { background: #3b82f6; }
+.pix-note-editarea a.pix-note-vp,
+.pix-note-prevwrap a.pix-note-vp { background: #3b82f6; }
 .pix-note-body a.pix-note-rm,
-.pix-note-editarea a.pix-note-rm { background: #10b981; }
+.pix-note-editarea a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-rm { background: #10b981; }
 .pix-note-body a.pix-note-dl:hover,
 .pix-note-body a.pix-note-yt:hover,
 .pix-note-body a.pix-note-discord:hover,
@@ -136,7 +146,12 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-yt::before,
 .pix-note-editarea a.pix-note-discord::before,
 .pix-note-editarea a.pix-note-vp::before,
-.pix-note-editarea a.pix-note-rm::before {
+.pix-note-editarea a.pix-note-rm::before,
+.pix-note-prevwrap a.pix-note-dl::before,
+.pix-note-prevwrap a.pix-note-yt::before,
+.pix-note-prevwrap a.pix-note-discord::before,
+.pix-note-prevwrap a.pix-note-vp::before,
+.pix-note-prevwrap a.pix-note-rm::before {
   content: "";
   display: inline-block;
   width: 12px; height: 12px;
@@ -146,29 +161,91 @@ export function injectCSS() {
   -webkit-mask-size: contain;    mask-size: contain;
 }
 .pix-note-body a.pix-note-dl::before,
-.pix-note-editarea a.pix-note-dl::before {
+.pix-note-editarea a.pix-note-dl::before,
+.pix-note-prevwrap a.pix-note-dl::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/download-model.svg);
           mask-image: url(/pixaroma/assets/icons/ui/download-model.svg);
 }
 .pix-note-body a.pix-note-yt::before,
-.pix-note-editarea a.pix-note-yt::before {
+.pix-note-editarea a.pix-note-yt::before,
+.pix-note-prevwrap a.pix-note-yt::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/youtube.svg);
           mask-image: url(/pixaroma/assets/icons/ui/youtube.svg);
 }
 .pix-note-body a.pix-note-discord::before,
-.pix-note-editarea a.pix-note-discord::before {
+.pix-note-editarea a.pix-note-discord::before,
+.pix-note-prevwrap a.pix-note-discord::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
           mask-image: url(/pixaroma/assets/icons/ui/discord.svg);
 }
 .pix-note-body a.pix-note-vp::before,
-.pix-note-editarea a.pix-note-vp::before {
+.pix-note-editarea a.pix-note-vp::before,
+.pix-note-prevwrap a.pix-note-vp::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/view-model-page.svg);
           mask-image: url(/pixaroma/assets/icons/ui/view-model-page.svg);
 }
 .pix-note-body a.pix-note-rm::before,
-.pix-note-editarea a.pix-note-rm::before {
+.pix-note-editarea a.pix-note-rm::before,
+.pix-note-prevwrap a.pix-note-rm::before {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/read-more.svg);
           mask-image: url(/pixaroma/assets/icons/ui/read-more.svg);
+}
+
+/* ── Button Design block wrapper + decorations ──────────────
+   .pix-note-btnblock pairs the pill with an optional folder-hint line
+   so they stay together as one visual unit. .pix-note-btnsize shows a
+   muted size value inside the pill (with a subtle dot separator from
+   the label). .pix-note-folderhint renders on its own line below the
+   pill, prefixed by a folder icon — same look as the old markdown
+   "Place in: ComfyUI/..." note. */
+.pix-note-body .pix-note-btnblock,
+.pix-note-editarea .pix-note-btnblock,
+.pix-note-prevwrap .pix-note-btnblock {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+}
+.pix-note-body .pix-note-btnsize,
+.pix-note-editarea .pix-note-btnsize,
+.pix-note-prevwrap .pix-note-btnsize {
+  font-weight: 500;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.pix-note-body .pix-note-btnsize::before,
+.pix-note-editarea .pix-note-btnsize::before,
+.pix-note-prevwrap .pix-note-btnsize::before {
+  /* Middle-dot separator between the label and size hint. Inline ::before
+     rather than a real element so selection/backspace collapses it with
+     the size text rather than leaving a stray character behind. */
+  content: "\\2022";
+  margin: 0 6px 0 2px;
+  opacity: 0.55;
+  font-weight: 700;
+}
+.pix-note-body .pix-note-folderhint,
+.pix-note-editarea .pix-note-folderhint,
+.pix-note-prevwrap .pix-note-folderhint {
+  display: block;
+  margin: 4px 2px 2px 2px;
+  padding: 2px 0;
+  color: #9a9a9a;
+  font-size: 10.5px;
+  font-style: italic;
+  line-height: 1.4;
+}
+.pix-note-body .pix-note-folderhint::before,
+.pix-note-editarea .pix-note-folderhint::before,
+.pix-note-prevwrap .pix-note-folderhint::before {
+  content: "";
+  display: inline-block;
+  width: 12px; height: 12px;
+  background-color: currentColor;
+  -webkit-mask: url(/pixaroma/assets/icons/ui/folder.svg) no-repeat center / contain;
+          mask: url(/pixaroma/assets/icons/ui/folder.svg) no-repeat center / contain;
+  vertical-align: -2px;
+  margin-right: 6px;
+  opacity: 0.85;
 }
 
 /* Hover-reveal Edit button */
@@ -457,20 +534,32 @@ export function injectCSS() {
 .pix-note-btndesign { min-width: 440px; }
 
 /* Live preview pill — centred, with a subtle framed container so it
-   reads as a preview and not an already-inserted button. */
+   reads as a preview and not an already-inserted button. The pill itself
+   uses the existing .pix-note-dl / vp / rm rules (extended to target
+   .pix-note-prevwrap ancestors above), so styling stays in sync. */
 .pix-note-prevwrap {
-  display: flex; justify-content: center; align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   padding: 14px 10px;
   background: #0f0f0f;
   border: 1px dashed #333;
   border-radius: 4px;
   margin-bottom: 12px;
+  text-align: center;
 }
-.pix-note-prevwrap a {
-  /* The pill itself uses the existing .pix-note-dl / vp / rm styles. */
-  font-size: 12px !important;
-  cursor: default !important;
+.pix-note-prevwrap a.pix-note-dl,
+.pix-note-prevwrap a.pix-note-yt,
+.pix-note-prevwrap a.pix-note-discord,
+.pix-note-prevwrap a.pix-note-vp,
+.pix-note-prevwrap a.pix-note-rm {
+  cursor: default;
   pointer-events: none;
+  font-size: 12px;
+}
+.pix-note-prevwrap .pix-note-folderhint {
+  margin-top: 6px;
 }
 
 /* Icon segmented control — three "tabs" with icon + label, active

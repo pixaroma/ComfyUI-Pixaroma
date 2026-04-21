@@ -131,22 +131,31 @@ NoteEditor.prototype._insertButtonBlock = function (anchorBtn) {
       alert("URL must start with http:// or https://");
       return false; // keep dialog open
     }
-    const cls = ICON_TO_CLASS[v.icon] || "pix-note-dl";
-    const labelFallback = ICON_TO_FALLBACK_LABEL[v.icon] || "Download";
-    const sizeStr = (v.sizeOn && v.size) ? ` (${escapeHtml(v.size)})` : "";
-    const attrs = [
-      `class="${cls}"`,
-      `href="${escapeHtml(v.url)}"`,
-      `target="_blank"`,
-      `rel="noopener noreferrer"`,
-    ];
-    if (v.folderOn && v.folder) attrs.push(`data-folder="${escapeHtml(v.folder)}"`);
-    if (v.sizeOn && v.size) attrs.push(`data-size="${escapeHtml(v.size)}"`);
-    const html = `<a ${attrs.join(" ")}>${escapeHtml(v.label || labelFallback)}${sizeStr}</a>&nbsp;`;
-    insertAtSavedRange(this, savedRange, html);
+    insertAtSavedRange(this, savedRange, renderButtonHTML(v));
     return true; // close dialog
   });
 };
+
+// Build the final HTML for a Button Design block. The pill sits on its own
+// line; if the size hint is enabled, a subtle middle-dot separator + muted
+// size appears inside the pill. If the folder hint is enabled, a second
+// line underneath reads "Place in: ComfyUI/<folder>" with a folder icon.
+// The whole thing is wrapped in a <span class="pix-note-btnblock"> so the
+// pair can be deleted in a single backspace and laid out as one unit.
+function renderButtonHTML(v) {
+  const cls = ICON_TO_CLASS[v.icon] || "pix-note-dl";
+  const labelFallback = ICON_TO_FALLBACK_LABEL[v.icon] || "Download";
+  const labelText = escapeHtml(v.label || labelFallback);
+  const sizeInner = (v.sizeOn && v.size)
+    ? `<span class="pix-note-btnsize">${escapeHtml(v.size)}</span>`
+    : "";
+  const pill = `<a class="${cls}" href="${escapeHtml(v.url)}"` +
+    ` target="_blank" rel="noopener noreferrer">${labelText}${sizeInner}</a>`;
+  const hint = (v.folderOn && v.folder)
+    ? `<span class="pix-note-folderhint">Place in: ComfyUI/${escapeHtml(v.folder)}</span>`
+    : "";
+  return `<span class="pix-note-btnblock">${pill}${hint}</span>&nbsp;`;
+}
 
 // Kept as backwards-compatible alias so nothing that still calls the
 // old method name crashes — redirects to the new unified button dialog.
@@ -179,7 +188,7 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
     anchorBtn,
     "Insert Discord link",
     [
-      ["label", "Label", "Join Here", ""],
+      ["label", "Label", "Join Discord", ""],
       ["url", "URL", "https://discord.com/invite/gggpkVgBf3", ""],
     ],
     (v) => {
@@ -188,7 +197,7 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
         return;
       }
       const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
-        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Discord")}</a>&nbsp;`;
+        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Join Discord")}</a>&nbsp;`;
       insertAtSavedRange(this, savedRange, html);
     }
   );
@@ -228,14 +237,29 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   dlg.appendChild(h);
 
   // --- Live preview pill --------------------------------------------------
+  // Mirrors the HTML shape produced by renderButtonHTML() — same
+  // .pix-note-btnblock wrapper, .pix-note-{dl,vp,rm} pill, optional
+  // .pix-note-btnsize inside the pill, and optional .pix-note-folderhint
+  // line below. The preview container (.pix-note-prevwrap) is included as
+  // an ancestor in the pill CSS selectors so the styling matches on-canvas.
   const previewWrap = document.createElement("div");
   previewWrap.className = "pix-note-prevwrap";
+  const previewBlock = document.createElement("span");
+  previewBlock.className = "pix-note-btnblock";
   const preview = document.createElement("a");
   preview.className = "pix-note-dl";
   preview.href = "#";
-  preview.textContent = "Model Name";
+  const previewLabel = document.createTextNode("Model Name");
+  const previewSize = document.createElement("span");
+  previewSize.className = "pix-note-btnsize";
+  preview.appendChild(previewLabel);
+  preview.appendChild(previewSize);
   preview.addEventListener("click", (e) => e.preventDefault());
-  previewWrap.appendChild(preview);
+  const previewHint = document.createElement("span");
+  previewHint.className = "pix-note-folderhint";
+  previewBlock.appendChild(preview);
+  previewBlock.appendChild(previewHint);
+  previewWrap.appendChild(previewBlock);
   dlg.appendChild(previewWrap);
 
   // --- Icon segmented control ---------------------------------------------
@@ -299,7 +323,7 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
   folderInput.type = "text";
   folderInput.placeholder = "e.g. models/loras";
   folderInput.value = state.folder;
-  folderInput.addEventListener("input", () => { state.folder = folderInput.value; });
+  folderInput.addEventListener("input", () => { state.folder = folderInput.value; refresh(); });
   folderInputRow.appendChild(folderInput);
   dlg.appendChild(folderInputRow);
 
@@ -351,12 +375,25 @@ function makeButtonDesignDialog(anchorBtn, onSubmit) {
     for (const [id, btn] of Object.entries(iconBtns)) {
       btn.classList.toggle("active", id === state.icon);
     }
-    // Preview pill: class + text
-    const cls = ICON_TO_CLASS[state.icon];
-    preview.className = cls;
-    const labelText = state.label || ICON_TO_FALLBACK_LABEL[state.icon];
-    const sizeSuffix = (state.sizeOn && state.size) ? ` (${state.size})` : "";
-    preview.textContent = `${labelText}${sizeSuffix}`;
+    // Preview pill class + text. Use textContent on the label node (not
+    // innerHTML) so any angle brackets the user typed stay as literal
+    // characters rather than becoming live HTML in the preview.
+    preview.className = ICON_TO_CLASS[state.icon];
+    previewLabel.nodeValue = state.label || ICON_TO_FALLBACK_LABEL[state.icon];
+    if (state.sizeOn && state.size) {
+      previewSize.textContent = state.size;
+      previewSize.style.display = "";
+    } else {
+      previewSize.textContent = "";
+      previewSize.style.display = "none";
+    }
+    if (state.folderOn && folderInput.value.trim()) {
+      previewHint.textContent = `Place in: ComfyUI/${folderInput.value.trim()}`;
+      previewHint.style.display = "";
+    } else {
+      previewHint.textContent = "";
+      previewHint.style.display = "none";
+    }
     // Toggles
     folderToggle.classList.toggle("on", state.folderOn);
     sizeToggle.classList.toggle("on", state.sizeOn);

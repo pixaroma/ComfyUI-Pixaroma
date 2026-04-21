@@ -21,6 +21,8 @@ const DANGEROUS_TAGS = new Set([
 const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-dl","pix-note-yt","pix-note-discord",
   "pix-note-vp","pix-note-rm",
+  // Wrapper + decoration pieces for the Button Design output
+  "pix-note-btnblock","pix-note-folderhint","pix-note-btnsize",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
