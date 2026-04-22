@@ -19,23 +19,29 @@ export class NoteEditor {
     // native right-click Colors menu between saves: node.bgcolor is
     // updated directly (native menu doesn't know about our cfg
     // object), but our cfg still holds the hex from the last Bg-
-    // picker save. Without this sync, canvas shows the native
-    // pick while the editor body opens at the stale cfg color.
+    // picker save. Without this sync, canvas shows the native pick
+    // while the editor body opens at the stale cfg color.
     //
     // Triggers only when cfg is a concrete hex (not undefined / null
     // / "transparent" — in those states _applyEditAreaBg already
     // falls back to node.bgcolor cleanly). Two resolution paths:
-    //   - node.bgcolor is a hex    → sync cfg to that hex. Next
-    //                                 save persists it so reload
-    //                                 doesn't revert to the old cfg.
-    //   - node.bgcolor is null     → native picker cleared to
-    //                                 default. Delete cfg key entirely
-    //                                 so render's "undefined" branch
-    //                                 fires (no-op, preserves native)
-    //                                 instead of "null" branch (which
-    //                                 would force our #111111 dark).
-    // Either way, mark dirty so closing via Cancel prompts to save,
-    // persisting the sync into the widget JSON.
+    //   - node.bgcolor is a hex   → sync cfg to that hex. Next save
+    //                                persists it so reload doesn't
+    //                                revert to the old cfg.
+    //   - node.bgcolor is null    → native picker cleared to
+    //                                default. Delete cfg key so
+    //                                render's "undefined" branch
+    //                                fires (no-op, preserves native)
+    //                                instead of "null" branch (which
+    //                                would force our #111111 dark).
+    //
+    // CRITICAL: the sync must mirror into BOTH `this.node._noteCfg`
+    // AND the `note_json` widget value, not just the editor-local
+    // `this.cfg` clone. Without the widget write, clicking Cancel
+    // leaves the stale hex in the serialized workflow JSON and the
+    // next workflow reload reverts the color. (Code-review finding
+    // C1 on commit 23221f0.) Mark dirty too so Save-path treats it
+    // as a pending change even if the user makes no other edit.
     if (
       typeof this.cfg.backgroundColor === "string" &&
       this.cfg.backgroundColor &&
@@ -47,6 +53,15 @@ export class NoteEditor {
       } else {
         delete this.cfg.backgroundColor;
       }
+      // Mirror into the persistent node-level cfg so subsequent
+      // editor opens see the corrected state without re-running
+      // this sync.
+      this.node._noteCfg = { ...this.cfg };
+      // Mirror into the serialized widget value so the correction
+      // survives workflow save → reload even if the user closes
+      // via Cancel without any other edit.
+      const jw = this.node.widgets?.find((w) => w.name === "note_json");
+      if (jw) jw.value = JSON.stringify(this.cfg);
       this._dirty = true;
     }
     // Preload inline-icon list + inject per-icon CSS rules so the toolbar
