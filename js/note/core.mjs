@@ -226,6 +226,62 @@ export class NoteEditor {
                   return;
                 }
               }
+              // Element-container fallback. On fresh inserts Chrome
+              // programmatically parks the caret INSIDE the nbsp
+              // text node at offset 1 (branch above). On restored
+              // content (workflow reload), the user CLICKS near the
+              // icon to delete it and Chrome resolves the caret to
+              // the parent element at the boundary between the
+              // empty inline-block span and the following text node
+              // — e.g. `{container: <h1>, offset: 1}`. The strict
+              // text-node check above fails and native Backspace
+              // refuses to delete an empty inline-block span, so
+              // the icon appears un-deletable. Here we match the
+              // element-container shape: caret at (elem, N) where
+              // childNodes[N-1] is a .pix-note-ic span. Same
+              // delete-both semantics.
+              if (node.nodeType === 1 && off >= 1) {
+                const prev = node.childNodes[off - 1];
+                if (
+                  prev &&
+                  prev.nodeType === 1 &&
+                  prev.classList?.contains("pix-note-ic")
+                ) {
+                  e.preventDefault();
+                  e.stopImmediatePropagation();
+                  this._snapBefore?.();
+                  const next = node.childNodes[off];
+                  prev.remove();
+                  // Strip leading nbsp from the following text node
+                  // if present, matching the text-node branch above.
+                  if (
+                    next &&
+                    next.nodeType === 3 &&
+                    next.nodeValue?.[0] === "\u00A0"
+                  ) {
+                    next.nodeValue = next.nodeValue.slice(1);
+                    if (next.nodeValue.length === 0) {
+                      next.parentNode?.removeChild(next);
+                    }
+                  }
+                  const r2 = document.createRange();
+                  // After prev.remove(), childNodes shifted down by
+                  // 1, so the slot where the icon used to be is now
+                  // off-1. Clamp to childNodes.length for safety
+                  // (valid Range offset: 0..childNodes.length).
+                  const clamped = Math.min(
+                    Math.max(0, off - 1),
+                    node.childNodes.length
+                  );
+                  r2.setStart(node, clamped);
+                  r2.collapse(true);
+                  sel.removeAllRanges();
+                  sel.addRange(r2);
+                  this._snapAfter?.();
+                  this._dirty = true;
+                  return;
+                }
+              }
             }
           }
         }
