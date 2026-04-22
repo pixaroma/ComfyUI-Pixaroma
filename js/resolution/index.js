@@ -45,7 +45,7 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      min-height: var(--pix-res-list-min, 138px);
+      min-height: 120px;
       display: flex;
       flex-direction: column;
     }
@@ -128,14 +128,10 @@ function injectCSS() {
 }
 injectCSS();
 
-// Locked node dimensions. Three knobs control the layout. While iterating
-// you can tune them live from the browser DevTools console — see the
-// `pixResTune` helper added in onNodeCreated below. Once you find values
-// you like, paste them back here and remove the tuner.
+// Locked node dimensions. Tuned by eye in the Vue frontend.
 const NODE_W = 240;
-let NODE_H   = 290;  // total node height
-let WIDGET_H = 244;  // DOM widget area height (inside title + ports)
-let LIST_MIN = 138;  // size list min-height (drives row spacing)
+const NODE_H = 296;   // total node height
+const WIDGET_H = 250; // DOM widget area height (inside title + ports)
 
 const STATE_WIDGET = "ResolutionState";
 
@@ -485,41 +481,3 @@ app.registerExtension({
     };
   },
 });
-
-// ─── DEV layout tuner ───────────────────────────────────────────────────────
-// Live-tune layout from the browser DevTools console while a Resolution
-// Pixaroma node is on the canvas. Any field you omit keeps its current value.
-//
-// Examples:
-//   pixResTune({ nodeH: 280 })                      // try shorter total node
-//   pixResTune({ widgetH: 230, listMin: 120 })      // tighter widget + smaller rows
-//   pixResTune()                                     // print current values
-//
-// When you find values that look right, screenshot and tell me — I'll bake
-// them in as constants and remove this helper.
-window.pixResTune = (opts = {}) => {
-  if (opts.nodeH    != null) NODE_H   = opts.nodeH;
-  if (opts.widgetH  != null) WIDGET_H = opts.widgetH;
-  if (opts.listMin  != null) {
-    LIST_MIN = opts.listMin;
-    document.documentElement.style.setProperty(
-      "--pix-res-list-min", `${LIST_MIN}px`,
-    );
-  }
-  // Apply to all PixaromaResolution nodes currently on the graph.
-  const nodes = (app.graph?._nodes || [])
-    .filter((n) => n.comfyClass === "PixaromaResolution" || n.type === "PixaromaResolution");
-  for (const n of nodes) {
-    n.size = [NODE_W, NODE_H];
-    // Force LiteGraph to reconsider widget sizes (re-evaluates getMinHeight/getMaxHeight).
-    n.setSize?.(n.size);
-  }
-  app.graph?.setDirtyCanvas?.(true, true);
-  console.log("[pixResTune] applied:", { NODE_H, WIDGET_H, LIST_MIN });
-  console.log("Drop a fresh Resolution Pixaroma node if changes don't show on existing ones.");
-  return { NODE_H, WIDGET_H, LIST_MIN };
-};
-console.log(
-  "%c[Pixaroma Resolution]%c tuner ready. Try: %cpixResTune({ nodeH: 290, widgetH: 244, listMin: 138 })",
-  "color:#f66744;font-weight:bold", "", "color:#f66744;font-family:monospace",
-);
