@@ -261,25 +261,26 @@ export function injectCSS() {
    Default: solid 1.2em×1.2em colored rectangle when no matching
    per-icon rule is present — deliberately visible to signal a
    missing / unknown icon rather than rendering invisibly.
-   user-select: all makes a single click on the icon select the
-   whole element as one unit (like a hyperlink), so the text-color
-   picker / Backspace / Delete all act on it atomically. Tried
-   contenteditable="false" first — it broke H1/H2/H3 formatBlock
-   when the caret was adjacent, so it was removed. */
+   No user-select rule on purpose — tried user-select:all (clicks
+   in the editor stopped placing the caret reliably when an icon
+   was present) and contenteditable="false" (broke H1/H2/H3
+   formatBlock adjacent to the atom). Click-to-select is instead
+   handled by the editArea click listener in core.mjs, which
+   calls selectNode() on the clicked icon. cursor:pointer is the
+   affordance that the icon is clickable-as-a-unit. */
 .pix-note-ic {
   display: inline-block;
   width: 1.2em;
   height: 1.2em;
   vertical-align: -0.15em;
   background-color: currentColor;
+  cursor: pointer;
   -webkit-mask-size: contain;
           mask-size: contain;
   -webkit-mask-repeat: no-repeat;
           mask-repeat: no-repeat;
   -webkit-mask-position: center;
           mask-position: center;
-  -webkit-user-select: all;
-          user-select: all;
 }
 
 /* Hover-reveal Edit button */
