@@ -366,108 +366,106 @@ function renderUI(node) {
   }
 }
 
+function setupResolutionNode(node) {
+  // Hide the raw JSON widget — JS owns the UI.
+  hideJsonWidget(node.widgets, STATE_WIDGET);
+
+  // Vue's ComfyUI frontend auto-exposes primitive widgets (STRING/INT/FLOAT)
+  // as a convertible input slot that flashes a grey dot on hover. Drop it.
+  // Vue may add the input AFTER nodeCreated runs — retry on next frame
+  // and again after the initial Vue settle so the slot stays gone.
+  const _stripSlot = () => {
+    const idx = (node.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
+    if (idx !== -1) node.removeInput(idx);
+  };
+  _stripSlot();
+  requestAnimationFrame(_stripSlot);
+  setTimeout(_stripSlot, 100);
+
+  // Lock the node size and disable resize handle.
+  node.resizable = false;
+  node.size = [NODE_W, NODE_H];
+
+  // Read state. nodeCreated fires AFTER configure, so for workflow-restored
+  // nodes the widget value is the saved JSON; for fresh nodes it's the Python
+  // default. Either way readState yields the right state to render.
+  const state = readState(node);
+  writeState(node, state); // normalize back so widget value is canonical
+
+  // Build the UI: chip grid + (size list OR Custom panel based on mode).
+  const root = document.createElement("div");
+  root.className = "pix-res-root";
+
+  // Initial population MUST happen before addDOMWidget. At this point
+  // root.isConnected is false, so renderUI()'s connection guard would
+  // short-circuit. Click-driven re-renders run later when root is
+  // connected and renderUI works correctly.
+  root.appendChild(renderChipGrid(state));
+  if (state.mode === "custom") {
+    root.appendChild(renderCustomPanel(node, state));
+  } else {
+    root.appendChild(renderSizeList(state));
+  }
+
+  const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
+    getValue: () => readState(node),
+    setValue: (_v) => {},
+    getMinHeight: () => WIDGET_H,
+    getMaxHeight: () => WIDGET_H,
+    margin: 4,
+    serialize: false, // DOM widget itself does not serialize; the hidden STRING widget owns the state
+  });
+
+  const _onClick = (e) => {
+    const chip = e.target.closest(".pix-res-chip");
+    if (chip) {
+      const id = chip.dataset.chipId;
+      const cur = readState(node);
+      if (id === "custom") {
+        writeState(node, {
+          ...cur,
+          mode: "custom",
+          w: cur.custom_w ?? 1024,
+          h: cur.custom_h ?? 1024,
+        });
+      } else {
+        const sizes = SIZES[id];
+        if (!sizes) return;
+        const [w, h] = sizes[0];
+        writeState(node, { ...cur, mode: "preset", ratio: id, w, h });
+      }
+      renderUI(node);
+      return;
+    }
+    const row = e.target.closest(".pix-res-row");
+    if (row && !row.classList.contains("empty") && row.dataset.w) {
+      const w = parseInt(row.dataset.w, 10);
+      const h = parseInt(row.dataset.h, 10);
+      const cur = readState(node);
+      writeState(node, { ...cur, w, h });
+      renderUI(node);
+    }
+  };
+
+  // Attach to both root and the widget container so a Vue rebuild still routes events.
+  root.addEventListener("click", _onClick);
+  if (_widget?.element) _widget.element.addEventListener("click", _onClick);
+
+  node._pixResRoot = root;
+}
+
 app.registerExtension({
   name: "Pixaroma.Resolution",
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaResolution") return;
 
-    const _origCreated = nodeType.prototype.onNodeCreated;
-    nodeType.prototype.onNodeCreated = function () {
-      _origCreated?.apply(this, arguments);
-
-      // Hide the raw JSON widget — JS owns the UI.
-      hideJsonWidget(this.widgets, STATE_WIDGET);
-
-      // Vue's ComfyUI frontend auto-exposes primitive widgets (STRING/INT/FLOAT)
-      // as a convertible input slot that flashes a grey dot on hover. Drop it
-      // so the hidden state widget can't be wired from outside.
-      // Vue may add the input AFTER onNodeCreated runs — retry on next frame
-      // and again after the initial Vue settle so the slot stays gone.
-      const _stripSlot = () => {
-        const idx = (this.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
-        if (idx !== -1) this.removeInput(idx);
-      };
-      _stripSlot();
-      requestAnimationFrame(_stripSlot);
-      setTimeout(_stripSlot, 100);
-
-      // Lock the node size and disable resize handle.
-      this.resizable = false;
-      this.size = [NODE_W, NODE_H];
-
-      // Initial state (from saved widget value or default).
-      const state = readState(this);
-      writeState(this, state); // normalize back so widget value is canonical
-
-      // Build the UI: chip grid + (size list OR Custom panel based on mode).
-      const root = document.createElement("div");
-      root.className = "pix-res-root";
-
-      // Initial population MUST happen before addDOMWidget. At this point
-      // root.isConnected is false, so renderUI()'s connection guard would
-      // short-circuit. Click-driven re-renders run later when root is
-      // connected and renderUI works correctly.
-      root.appendChild(renderChipGrid(state));
-      if (state.mode === "custom") {
-        root.appendChild(renderCustomPanel(this, state));
-      } else {
-        root.appendChild(renderSizeList(state));
-      }
-
-      const _widget = this.addDOMWidget("resolution_ui", "custom", root, {
-        getValue: () => readState(this),
-        setValue: (_v) => {},
-        getMinHeight: () => WIDGET_H,
-        getMaxHeight: () => WIDGET_H,
-        margin: 4,
-      });
-
-      const _node = this;
-      const _onClick = (e) => {
-        const chip = e.target.closest(".pix-res-chip");
-        if (chip) {
-          const id = chip.dataset.chipId;
-          const cur = readState(_node);
-          if (id === "custom") {
-            writeState(_node, {
-              ...cur,
-              mode: "custom",
-              w: cur.custom_w ?? 1024,
-              h: cur.custom_h ?? 1024,
-            });
-          } else {
-            const sizes = SIZES[id];
-            if (!sizes) return;
-            const [w, h] = sizes[0];
-            writeState(_node, { ...cur, mode: "preset", ratio: id, w, h });
-          }
-          renderUI(_node);
-          return;
-        }
-        const row = e.target.closest(".pix-res-row");
-        if (row && !row.classList.contains("empty") && row.dataset.w) {
-          const w = parseInt(row.dataset.w, 10);
-          const h = parseInt(row.dataset.h, 10);
-          const cur = readState(_node);
-          writeState(_node, { ...cur, w, h });
-          renderUI(_node);
-        }
-      };
-
-      // Attach to both root and the widget container so a Vue rebuild still routes events
-      root.addEventListener("click", _onClick);
-      if (_widget?.element) _widget.element.addEventListener("click", _onClick);
-
-      this._pixResRoot = root;
-    };
-
-    // onConfigure fires AFTER widget values are restored from a saved workflow.
-    // onNodeCreated runs first with default widget values, so the initial UI is
-    // built from defaults — re-render here so restored state shows up correctly.
+    // onConfigure fires when ComfyUI loads a saved workflow into an existing
+    // node (e.g. user opens a different workflow without page reload). Re-read
+    // and re-render so the UI matches the freshly-applied widget value.
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
-      const r = _origConfigure?.call(this, info);
+      const r = _origConfigure?.apply(this, arguments);
       if (this._pixResRoot) renderUI(this);
       return r;
     };
@@ -479,5 +477,14 @@ app.registerExtension({
       this.size[1] = NODE_H;
       if (_origResize) return _origResize.call(this, size);
     };
+  },
+
+  // nodeCreated fires AFTER node construction including configure, so widget
+  // values restored from a saved workflow are already in place. This is the
+  // proven Pixaroma pattern (see js/note/index.js) for hidden-JSON-widget
+  // state restoration.
+  nodeCreated(node) {
+    if (node.comfyClass !== "PixaromaResolution") return;
+    setupResolutionNode(node);
   },
 });
