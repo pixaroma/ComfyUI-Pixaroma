@@ -480,7 +480,15 @@ export function injectCSS() {
    highlight, and <code>'s left padding only applies to the first line of
    multiline content (pushing "text1" right but leaving text2/3 flush). */
 .pix-note-editarea pre code { background: transparent; padding: 0; font-size: inherit; }
-.pix-note-editarea ul, .pix-note-editarea ol { margin: 4px 0 4px 20px; }
+/* Lists: reset both margin AND padding on ul/ol so the spacing is
+   identical between bulleted and numbered. Without padding:0 the
+   browser's default padding-inline-start differs between <ul> and
+   <ol> just enough that toggling one into the other makes the
+   whole list visibly jump up/down. Matches the .pix-note-body rule
+   on line 38 so canvas-rendered notes look identical. Explicit
+   li { margin: 2px 0 } pins per-item vertical spacing too. */
+.pix-note-editarea ul, .pix-note-editarea ol { margin: 4px 0 4px 20px; padding: 0; }
+.pix-note-editarea li { margin: 2px 0; }
 
 .pix-note-footer {
   display: flex; justify-content: flex-end; gap: 8px;
