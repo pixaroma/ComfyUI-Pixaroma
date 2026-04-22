@@ -9,6 +9,7 @@ DEFAULT_STATE = {
     "h": 1024,
     "custom_w": 1024,
     "custom_h": 1024,
+    "snap": 16,
 }
 
 

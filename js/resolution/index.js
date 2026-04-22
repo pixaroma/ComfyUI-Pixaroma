@@ -136,11 +136,47 @@ function injectCSS() {
     }
     .pix-res-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
     .pix-res-readout {
-      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
       font-size: 10px;
       color: #777;
     }
     .pix-res-readout .accent { color: ${BRAND}; }
+    /* Snap-step pill: magnet icon + native <select> of 8/16/32/64 px. */
+    .pix-res-snap {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 1px 4px 1px 5px;
+      color: #ccc;
+      cursor: pointer;
+    }
+    .pix-res-snap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-res-snap-icon {
+      display: inline-block;
+      width: 11px;
+      height: 11px;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/magnet.svg") center / 11px 11px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/magnet.svg") center / 11px 11px no-repeat;
+      pointer-events: none;
+    }
+    .pix-res-snap-select {
+      background: transparent;
+      border: none;
+      color: inherit;
+      font-size: 10px;
+      cursor: pointer;
+      padding: 0;
+      font-family: inherit;
+    }
+    .pix-res-snap-select:focus { outline: none; }
+    .pix-res-snap-select option { background: #1d1d1d; color: #ddd; }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-resolution-css";
@@ -163,7 +199,10 @@ const DEFAULT_STATE = {
   h: 1024,
   custom_w: 1024,
   custom_h: 1024,
+  snap: 16, // px step for Custom mode commit + arrow-key nudge (8 / 16 / 32 / 64)
 };
+
+const SNAP_OPTIONS = [8, 16, 32, 64];
 
 function readState(node) {
   const w = (node.widgets || []).find((x) => x.name === STATE_WIDGET);
@@ -235,7 +274,7 @@ function megapixels(w, h) {
   return ((w * h) / 1_000_000).toFixed(2);
 }
 
-function snap16(n) { return Math.round(n / 16) * 16; }
+function snapTo(n, step) { return Math.round(n / step) * step; }
 function clampDim(n) { return Math.max(256, Math.min(4096, n)); }
 
 function renderChipGrid(state) {
@@ -295,7 +334,7 @@ function renderCustomPanel(node, state) {
   wInput.type = "number";
   wInput.min = "256";
   wInput.max = "4096";
-  wInput.step = "16";
+  wInput.step = String(state.snap || 16);
   wInput.value = String(state.w);
 
   const hField = document.createElement("div");
@@ -306,7 +345,7 @@ function renderCustomPanel(node, state) {
   hInput.type = "number";
   hInput.min = "256";
   hInput.max = "4096";
-  hInput.step = "16";
+  hInput.step = String(state.snap || 16);
   hInput.value = String(state.h);
 
   wField.append(wLabel, wInput);
@@ -324,23 +363,59 @@ function renderCustomPanel(node, state) {
   const readout = document.createElement("div");
   readout.className = "pix-res-readout";
 
+  // Snap-step pill: magnet icon + dropdown of supported steps. Lives in the
+  // readout line so it's discoverable but doesn't take a separate row.
+  const snapPill = document.createElement("label");
+  snapPill.className = "pix-res-snap";
+  snapPill.title = "Snap step (also drives Up/Down arrow nudge)";
+  const snapIcon = document.createElement("span");
+  snapIcon.className = "pix-res-snap-icon";
+  const snapSelect = document.createElement("select");
+  snapSelect.className = "pix-res-snap-select";
+  for (const v of SNAP_OPTIONS) {
+    const opt = document.createElement("option");
+    opt.value = String(v);
+    opt.textContent = `${v} px`;
+    if (v === (state.snap || 16)) opt.selected = true;
+    snapSelect.appendChild(opt);
+  }
+  snapPill.append(snapIcon, snapSelect);
+
+  const ratioMP = document.createElement("span");
+
+  readout.append(snapPill, document.createTextNode(" · "), ratioMP);
+
   function refreshReadout(w, h) {
-    readout.innerHTML =
-      `snaps to 16 px · <span class="accent">${ratioLabel(w, h)}</span> · ${megapixels(w, h)} MP`;
+    ratioMP.innerHTML =
+      `<span class="accent">${ratioLabel(w, h)}</span> · ${megapixels(w, h)} MP`;
   }
   refreshReadout(state.w, state.h);
 
   function commit() {
+    const cur = readState(node);
+    const step = cur.snap || 16;
     const wRaw = parseInt(wInput.value, 10);
     const hRaw = parseInt(hInput.value, 10);
-    const wNew = clampDim(snap16(Number.isFinite(wRaw) ? wRaw : 1024));
-    const hNew = clampDim(snap16(Number.isFinite(hRaw) ? hRaw : 1024));
+    const wNew = clampDim(snapTo(Number.isFinite(wRaw) ? wRaw : 1024, step));
+    const hNew = clampDim(snapTo(Number.isFinite(hRaw) ? hRaw : 1024, step));
     wInput.value = String(wNew);
     hInput.value = String(hNew);
     refreshReadout(wNew, hNew);
-    const cur = readState(node);
     writeState(node, { ...cur, w: wNew, h: hNew, custom_w: wNew, custom_h: hNew });
   }
+
+  // Snap-step change: update inputs' arrow-key step + persist the new snap
+  // value, and re-commit so the current values snap to the new grid.
+  snapSelect.addEventListener("change", () => {
+    const newStep = parseInt(snapSelect.value, 10) || 16;
+    wInput.step = String(newStep);
+    hInput.step = String(newStep);
+    const cur = readState(node);
+    writeState(node, { ...cur, snap: newStep });
+    commit();
+  });
+  // Don't let the click on the select bubble to the root's chip-handler.
+  snapSelect.addEventListener("click", (e) => e.stopPropagation());
 
   function liveUpdate() {
     const wLive = parseInt(wInput.value, 10);
