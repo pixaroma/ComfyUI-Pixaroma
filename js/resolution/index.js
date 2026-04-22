@@ -139,8 +139,11 @@ function injectCSS() {
     .pix-res-readout {
       display: flex;
       align-items: center;
-      justify-content: center;
+      /* snap-group pinned left, ratio/MP pinned right — text length changes
+         on the right side then can't push the snap chips around. */
+      justify-content: space-between;
       gap: 6px;
+      padding: 0 2px;
       font-size: 10px;
       color: #777;
     }
@@ -452,7 +455,7 @@ function renderCustomPanel(node, state) {
 
   const ratioMP = document.createElement("span");
 
-  readout.append(snapGroup, document.createTextNode(" · "), ratioMP);
+  readout.append(snapGroup, ratioMP);
 
   // Aspect-ratio visual preview — orange-tinted rectangle scaled to the
   // chosen W:H, with the exact W × H labeled below it.
