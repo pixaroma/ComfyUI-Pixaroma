@@ -132,9 +132,9 @@ injectCSS();
 // for Task 2 we use a placeholder constant we'll refine in Task 3 / 4.
 const NODE_W = 240;
 // Tuned by eye against the rendered Vue node: title + 2 output ports + DOM
-// widget (270) + margins. 380 left a large empty band; 340 still cut a thin
-// strip; 320 sits flush against the bottom border.
-const NODE_H = 320;
+// widget (270) + margins. 380 left a large empty band; 340 cut a thin strip;
+// 320 still had a small dark band below the list; 305 sits flush.
+const NODE_H = 305;
 // DOM widget content: chips (~82) + gap (8) + 6-row list (min-height 156 +
 // natural growth ≈ ~165) + padding (16). 270 keeps rows readable, no overflow.
 const WIDGET_H = 270;
