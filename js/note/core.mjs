@@ -656,6 +656,13 @@ export class NoteEditor {
     const helpBtn = el("button", "pix-note-btn ghost");
     helpBtn.textContent = "? Help";
     helpBtn.onclick = () => this._showHelp();
+    // Code Reference — secondary help modal focused on what HTML
+    // tags / styles / classes the sanitizer allows in Code view.
+    // Split off from the main Help so neither dialog needs a
+    // scroll bar.
+    const codeRefBtn = el("button", "pix-note-btn ghost");
+    codeRefBtn.textContent = "? Code";
+    codeRefBtn.onclick = () => this._showCodeRef();
     const cancelBtn = el("button", "pix-note-btn");
     cancelBtn.textContent = "Cancel";
     cancelBtn.onclick = () => this.close();
@@ -663,6 +670,7 @@ export class NoteEditor {
     saveBtn.textContent = "Save";
     saveBtn.onclick = () => this.save();
     footer.appendChild(helpBtn);
+    footer.appendChild(codeRefBtn);
     footer.appendChild(cancelBtn);
     footer.appendChild(saveBtn);
     panel.appendChild(footer);
@@ -782,17 +790,121 @@ export class NoteEditor {
             <b>URL allowlist</b><span>Links / pills only accept http, https, mailto</span>
           </div>
         </div>
+      </div>
+      <div class="pix-note-help-footer">
+        For the list of HTML tags / styles / classes allowed in Code
+        view, click <b>? Code</b> in the footer.<br>
+        Designed by <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">Pixaroma</a>
+        &middot; <a href="https://github.com/pixaroma/ComfyUI-Pixaroma" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
+    `;
+    const close = h.querySelector(".pix-note-help-close");
+    if (close) close.addEventListener("click", () => h.remove());
+    host.appendChild(h);
+  }
+
+  _showCodeRef() {
+    const host = this._el;
+    if (!host) return;
+    if (host.querySelector(".pix-note-help-overlay")) return;
+    const h = document.createElement("div");
+    h.className = "pix-note-help-overlay";
+    h.innerHTML = `
+      <div class="pix-note-help-header">
+        <h3>Note Pixaroma — Code View Reference</h3>
+        <button type="button" class="pix-note-help-close" title="Close">\u2715</button>
+      </div>
+      <div class="pix-note-help-content">
         <div class="pix-note-help-section">
-          <h4>Code View — Supported HTML</h4>
+          <h4>About Code View</h4>
           <div class="pix-note-help-grid">
-            <b>Blocks</b><span>&lt;p&gt; &lt;h1&gt; &lt;h2&gt; &lt;h3&gt; &lt;blockquote&gt; &lt;pre&gt; &lt;hr&gt; &lt;div&gt;</span>
-            <b>Lists</b><span>&lt;ul&gt; &lt;ol&gt; &lt;li&gt;</span>
-            <b>Tables</b><span>&lt;table&gt; &lt;thead&gt; &lt;tbody&gt; &lt;tr&gt; &lt;th&gt; &lt;td&gt;</span>
-            <b>Inline</b><span>&lt;b&gt; &lt;strong&gt; &lt;i&gt; &lt;em&gt; &lt;u&gt; &lt;s&gt; &lt;strike&gt; &lt;br&gt; &lt;a&gt; &lt;code&gt; &lt;span&gt;</span>
-            <b>Styles</b><span>Only <code>color</code>, <code>background-color</code>, <code>text-align</code>. Other CSS is stripped.</span>
-            <b>Classes</b><span>Pixaroma-specific only (pill types, pix-note-ic, pix-note-grid, …). Unknown classes are removed.</span>
-            <b>Anchors</b><span>Auto-rewritten to target="_blank" rel="noopener noreferrer"</span>
+            <b>Purpose</b><span>Edit the note's raw HTML directly. Useful for hand-crafting structure the toolbar doesn't expose (nested lists, custom combinations, bulk changes).</span>
+            <b>On switch</b><span>Code shows pretty-printed sanitized HTML. Preview re-runs the sanitizer, so anything disallowed is stripped.</span>
+            <b>Safety</b><span>The sanitizer is the same on save, paste, AND view-switch. Writing &lt;script&gt; in Code view and switching to Preview removes it.</span>
           </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Block Tags</h4>
+          <div class="pix-note-help-grid">
+            <b>&lt;p&gt;</b><span>Paragraph (the default block)</span>
+            <b>&lt;h1&gt; / &lt;h2&gt; / &lt;h3&gt;</b><span>Headings</span>
+            <b>&lt;blockquote&gt;</b><span>Quoted paragraph (no dedicated toolbar button; hand-write it)</span>
+            <b>&lt;pre&gt;</b><span>Code block wrapper</span>
+            <b>&lt;hr&gt;</b><span>Horizontal separator</span>
+            <b>&lt;div&gt;</b><span>Generic block (allowed but discouraged — prefer &lt;p&gt;)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Inline Tags</h4>
+          <div class="pix-note-help-grid">
+            <b>&lt;b&gt; / &lt;strong&gt;</b><span>Bold</span>
+            <b>&lt;i&gt; / &lt;em&gt;</b><span>Italic</span>
+            <b>&lt;u&gt;</b><span>Underline</span>
+            <b>&lt;s&gt; / &lt;strike&gt;</b><span>Strikethrough</span>
+            <b>&lt;br&gt;</b><span>Line break</span>
+            <b>&lt;a href&gt;</b><span>Link (http, https, mailto only — others stripped; auto-target _blank + rel noopener noreferrer)</span>
+            <b>&lt;code&gt;</b><span>Inline code (inside &lt;pre&gt; for blocks)</span>
+            <b>&lt;span&gt;</b><span>Generic inline; carries color / highlight / alignment styles AND data-ic for inline icons</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Lists</h4>
+          <div class="pix-note-help-grid">
+            <b>&lt;ul&gt;</b><span>Bulleted list</span>
+            <b>&lt;ol&gt;</b><span>Numbered list</span>
+            <b>&lt;li&gt;</b><span>List item (child of ul / ol)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Tables (Grid)</h4>
+          <div class="pix-note-help-grid">
+            <b>&lt;table class="pix-note-grid"&gt;</b><span>The pix-note-grid class is required; without it styling doesn't apply.</span>
+            <b>&lt;thead&gt; / &lt;tbody&gt;</b><span>Optional head / body wrappers</span>
+            <b>&lt;tr&gt;</b><span>Row</span>
+            <b>&lt;th&gt; / &lt;td&gt;</b><span>Header cell / data cell. colspan / rowspan NOT allowed.</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Allowed Inline Styles</h4>
+          <div class="pix-note-help-grid">
+            <b><code>color</code></b><span>Text foreground. Hex only (#rgb or #rrggbb). Other formats stripped.</span>
+            <b><code>background-color</code></b><span>Text highlight. Hex only.</span>
+            <b><code>text-align</code></b><span>left / right / center / justify</span>
+          </div>
+          <p style="margin:6px 0 0 0;color:#888;">Any other style (font-size, margin, display, …) is removed on save / paste / view-switch.</p>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Allowed Classes</h4>
+          <div class="pix-note-help-grid">
+            <b>pix-note-dl / vp / rm</b><span>Button Design pills (Download / View Page / Read More)</span>
+            <b>pix-note-btnblock</b><span>Button pill wrapper with folder hint</span>
+            <b>pix-note-btnsize</b><span>Size tag inside a pill</span>
+            <b>pix-note-folderhint</b><span>"Place in: …" line under a Download pill</span>
+            <b>pix-note-yt / discord</b><span>YouTube / Discord pills</span>
+            <b>pix-note-grid</b><span>Tables — required on &lt;table&gt;</span>
+            <b>pix-note-ic</b><span>Inline icon span — with data-ic="&lt;slug&gt;" (slug = filename in assets/icons/note/, no .svg)</span>
+          </div>
+          <p style="margin:6px 0 0 0;color:#888;">Any other class is stripped silently.</p>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Stripped on Sight</h4>
+          <div class="pix-note-help-grid">
+            <b>&lt;script&gt;</b><span>Always removed</span>
+            <b>&lt;iframe&gt; / &lt;img&gt;</b><span>Always removed</span>
+            <b>on*=</b><span>All event handlers (onclick, onerror, onmouseover, …) stripped from every tag</span>
+            <b>javascript:</b><span>URL scheme blocked on &lt;a&gt;</span>
+            <b>data-*</b><span>Only data-ic is kept (on span). Other data-attrs removed.</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Example</h4>
+          <pre style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:4px;padding:8px;color:#ddd;font-size:10px;line-height:1.5;overflow-x:auto;margin:0;">&lt;h2&gt;Workflow overview&lt;/h2&gt;
+&lt;p&gt;Install &lt;span data-ic="CLIP" class="pix-note-ic"&gt;&lt;/span&gt;&amp;nbsp;then&lt;/p&gt;
+&lt;span class="pix-note-btnblock"&gt;
+  &lt;a class="pix-note-dl" href="https://example.com/model.safetensors"
+     target="_blank" rel="noopener noreferrer"&gt;Model 2 GB&lt;/a&gt;
+  &lt;span class="pix-note-folderhint"&gt;Place in: ComfyUI/models/loras&lt;/span&gt;
+&lt;/span&gt;</pre>
         </div>
       </div>
       <div class="pix-note-help-footer">
