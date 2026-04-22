@@ -391,6 +391,17 @@ app.registerExtension({
       const root = document.createElement("div");
       root.className = "pix-res-root";
 
+      // Initial population MUST happen before addDOMWidget. At this point
+      // root.isConnected is false, so renderUI()'s connection guard would
+      // short-circuit. Click-driven re-renders run later when root is
+      // connected and renderUI works correctly.
+      root.appendChild(renderChipGrid(state));
+      if (state.mode === "custom") {
+        root.appendChild(renderCustomPanel(this, state));
+      } else {
+        root.appendChild(renderSizeList(state));
+      }
+
       const _widget = this.addDOMWidget("resolution_ui", "custom", root, {
         getValue: () => readState(this),
         setValue: (_v) => {},
@@ -436,7 +447,6 @@ app.registerExtension({
       if (_widget?.element) _widget.element.addEventListener("click", _onClick);
 
       this._pixResRoot = root;
-      renderUI(this);
     };
 
     // Re-clamp on every resize attempt so the node can never grow / shrink.
