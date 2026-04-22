@@ -112,13 +112,29 @@ app.registerExtension({
     // Workflow reload path: nodeCreated fires BEFORE configure populates
     // widget values, so parseCfg() during setupNote reads empty defaults.
     // Re-parse + re-render after configure has set note_json.value.
+    //
+    // Body lookup mirrors save()'s three-step robust chain (Pattern #23 in
+    // CLAUDE.md). Vue can tear down and re-attach the DOM widget during
+    // workflow reload; if we paint to a stale `_noteBody` reference, the
+    // canvas renders blank until the next save or resize. Each step checks
+    // `.isConnected` so we only accept a live element; refresh the cached
+    // `_noteBody` reference to the live one so subsequent renders are fast.
     const _origCfg = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (data) {
       const r = _origCfg?.apply(this, arguments);
       this._noteCfg = parseCfg(this);
-      const body =
-        this._noteBody || this._noteDOMWrap?.querySelector(".pix-note-body");
-      if (body) renderContent(this, body);
+      let body = this._noteBody?.isConnected ? this._noteBody : null;
+      if (!body && this._noteDOMWrap?.isConnected) {
+        body = this._noteDOMWrap.querySelector(".pix-note-body");
+      }
+      if (!body) {
+        const w = this.widgets?.find((x) => x.name === "note_dom");
+        body = w?.element?.querySelector(".pix-note-body");
+      }
+      if (body) {
+        this._noteBody = body;
+        renderContent(this, body);
+      }
       return r;
     };
 
