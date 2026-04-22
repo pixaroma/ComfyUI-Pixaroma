@@ -145,6 +145,31 @@ function injectCSS() {
       color: #777;
     }
     .pix-res-readout .accent { color: ${BRAND}; }
+    /* Aspect-ratio visual preview — fills the remaining custom-panel space.
+       The inner rect is scaled to the chosen W:H ratio so the user sees the
+       shape they'll get at a glance. Label below shows the exact W × H. */
+    .pix-res-preview {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      padding-top: 4px;
+      min-height: 0;
+    }
+    .pix-res-preview-rect {
+      background: rgba(246, 103, 68, 0.18);
+      border: 1px solid ${BRAND};
+      border-radius: 2px;
+      transition: width 0.15s ease, height 0.15s ease;
+    }
+    .pix-res-preview-label {
+      font-family: ui-monospace, monospace;
+      font-size: 10px;
+      color: #999;
+    }
+    .pix-res-preview-label .accent { color: ${BRAND}; }
     /* Snap-step pill: magnet icon + native <select> of 8/16/32/64 px. */
     .pix-res-snap {
       display: inline-flex;
@@ -476,9 +501,41 @@ function renderCustomPanel(node, state) {
 
   readout.append(snapPill, document.createTextNode(" · "), ratioMP);
 
+  // Aspect-ratio visual preview — orange-tinted rectangle scaled to the
+  // chosen W:H, with the exact W × H labeled below it.
+  const preview = document.createElement("div");
+  preview.className = "pix-res-preview";
+  const previewRect = document.createElement("div");
+  previewRect.className = "pix-res-preview-rect";
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "pix-res-preview-label";
+  preview.append(previewRect, previewLabel);
+
+  // Maximum bounding box for the rectangle. Tuned so a 1:1 fits comfortably
+  // inside the empty space below the readout in the locked node.
+  const PREVIEW_MAX_W = 90;
+  const PREVIEW_MAX_H = 60;
+
+  function refreshPreview(w, h) {
+    const aspect = w / h;
+    let pw, ph;
+    if (aspect >= PREVIEW_MAX_W / PREVIEW_MAX_H) {
+      pw = PREVIEW_MAX_W;
+      ph = PREVIEW_MAX_W / aspect;
+    } else {
+      ph = PREVIEW_MAX_H;
+      pw = PREVIEW_MAX_H * aspect;
+    }
+    previewRect.style.width = `${pw}px`;
+    previewRect.style.height = `${ph}px`;
+    previewLabel.innerHTML = `<span class="accent">${w}</span> × <span class="accent">${h}</span>`;
+  }
+  refreshPreview(state.w, state.h);
+
   function refreshReadout(w, h) {
     ratioMP.innerHTML =
       `<span class="accent">${ratioLabel(w, h)}</span> · ${megapixels(w, h)} MP`;
+    refreshPreview(w, h);
   }
   refreshReadout(state.w, state.h);
 
@@ -522,7 +579,7 @@ function renderCustomPanel(node, state) {
   });
 
   // swap is already inside `row` (between W and H fields), don't append again.
-  wrap.append(row, readout);
+  wrap.append(row, readout, preview);
   return wrap;
 }
 
