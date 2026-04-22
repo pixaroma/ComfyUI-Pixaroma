@@ -15,28 +15,38 @@ export class NoteEditor {
 
   open() {
     // Sync cfg.backgroundColor to node.bgcolor on open when they
-    // differ. Happens when the user picks a color via ComfyUI's
+    // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
     // updated directly (native menu doesn't know about our cfg
     // object), but our cfg still holds the hex from the last Bg-
-    // picker save. Without this sync, the canvas shows the native
-    // color while the editor body opens at the stale cfg color —
-    // visual disagreement, and the next save would clobber the
-    // native pick back to the cfg value.
+    // picker save. Without this sync, canvas shows the native
+    // pick while the editor body opens at the stale cfg color.
     //
-    // Guard conditions: cfg has a concrete hex (not undefined / null /
-    // "transparent" — in those states _applyEditAreaBg already falls
-    // back to node.bgcolor cleanly), AND node.bgcolor is set, AND
-    // they differ. Mark dirty so closing via Cancel prompts to save,
+    // Triggers only when cfg is a concrete hex (not undefined / null
+    // / "transparent" — in those states _applyEditAreaBg already
+    // falls back to node.bgcolor cleanly). Two resolution paths:
+    //   - node.bgcolor is a hex    → sync cfg to that hex. Next
+    //                                 save persists it so reload
+    //                                 doesn't revert to the old cfg.
+    //   - node.bgcolor is null     → native picker cleared to
+    //                                 default. Delete cfg key entirely
+    //                                 so render's "undefined" branch
+    //                                 fires (no-op, preserves native)
+    //                                 instead of "null" branch (which
+    //                                 would force our #111111 dark).
+    // Either way, mark dirty so closing via Cancel prompts to save,
     // persisting the sync into the widget JSON.
     if (
-      this.node?.bgcolor &&
       typeof this.cfg.backgroundColor === "string" &&
       this.cfg.backgroundColor &&
       this.cfg.backgroundColor !== "transparent" &&
-      this.cfg.backgroundColor !== this.node.bgcolor
+      this.cfg.backgroundColor !== this.node?.bgcolor
     ) {
-      this.cfg.backgroundColor = this.node.bgcolor;
+      if (this.node?.bgcolor) {
+        this.cfg.backgroundColor = this.node.bgcolor;
+      } else {
+        delete this.cfg.backgroundColor;
+      }
       this._dirty = true;
     }
     // Preload inline-icon list + inject per-icon CSS rules so the toolbar
