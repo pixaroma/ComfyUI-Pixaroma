@@ -45,7 +45,7 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      min-height: 156px;
+      min-height: 138px;
       display: flex;
       flex-direction: column;
     }
@@ -131,13 +131,11 @@ injectCSS();
 // Locked node dimensions. Height is computed once we know chip + list heights;
 // for Task 2 we use a placeholder constant we'll refine in Task 3 / 4.
 const NODE_W = 240;
-// Tuned by eye against the rendered Vue node: title + 2 output ports + DOM
-// widget (270) + margins. 380 left a large empty band; 340 cut a thin strip;
-// 320 still had a small dark band below the list; 305 sits flush.
-const NODE_H = 305;
-// DOM widget content: chips (~82) + gap (8) + 6-row list (min-height 156 +
-// natural growth ≈ ~165) + padding (16). 270 keeps rows readable, no overflow.
-const WIDGET_H = 270;
+// Total node size locked. With list min-height = 138, the widget content
+// totals: chips (82) + gap (8) + list (138) + padding (16) = 244. Widget
+// claims that height; node = title + 2 ports + widget + margins ≈ 290.
+const NODE_H = 290;
+const WIDGET_H = 244;
 
 const STATE_WIDGET = "ResolutionState";
 
