@@ -484,6 +484,33 @@ export class PixaromaUI {
         img.crossOrigin = "Anonymous";
         img.onload = async () => {
           const { PixaromaLayers } = await import("./layers.mjs");
+
+          // Auto-size canvas to the image on an empty composer so users don't
+          // have to manually match dimensions before composing.
+          const isFirstImage = core.layers.length === 0;
+          if (isFirstImage) {
+            const newW = Math.max(64, Math.min(8192, img.width));
+            const newH = Math.max(64, Math.min(8192, img.height));
+            core.docWidth = newW;
+            core.docHeight = newH;
+            core.canvas.width = newW;
+            core.canvas.height = newH;
+            if (core.selCanvas) {
+              core.selCanvas.width = newW + 2 * core.selPad;
+              core.selCanvas.height = newH + 2 * core.selPad;
+            }
+            if (core.selHitArea) {
+              core.selHitArea.style.width = newW + 2 * core.selPad + "px";
+              core.selHitArea.style.height = newH + 2 * core.selPad + "px";
+            }
+            if (core._dimLabel)
+              core._dimLabel.textContent = `${newW}\u00d7${newH}`;
+            if (core._canvasSettings) {
+              core._canvasSettings.setSize(newW, newH);
+              core._canvasSettings.setRatio(0);
+            }
+          }
+
           const layerObj = {
             id: Date.now().toString(),
             name: `Layer ${core.layers.length + 1} (${file.name})`,
@@ -513,6 +540,7 @@ export class PixaromaUI {
           core.selectedLayerIds.add(layerObj.id);
           core.syncActiveLayerIndex();
           this.updateActiveLayerUI();
+          if (isFirstImage) core.fitViewToWorkspace();
           core.draw();
           core.pushHistory();
         };
