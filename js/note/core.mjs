@@ -751,7 +751,7 @@ export class NoteEditor {
           <h4>Pixaroma Blocks</h4>
           <div class="pix-note-help-grid">
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
-            <b>Download pill</b><span>On canvas: click opens URL in new tab AND copies the folder path to clipboard</span>
+            <b>Download pill</b><span>On canvas: click opens the URL in a new tab. The folder hint below is informational — save the file manually into that path.</span>
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
             <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
           </div>
