@@ -166,17 +166,36 @@ function injectCSS() {
               mask: url("/pixaroma/assets/icons/ui/magnet.svg") center / 11px 11px no-repeat;
       pointer-events: none;
     }
-    .pix-res-snap-select {
-      background: transparent;
-      border: none;
-      color: inherit;
+    .pix-res-snap-value {
       font-size: 10px;
-      cursor: pointer;
-      padding: 0;
-      font-family: inherit;
+      line-height: 1;
     }
-    .pix-res-snap-select:focus { outline: none; }
-    .pix-res-snap-select option { background: #1d1d1d; color: #ddd; }
+    .pix-res-snap-caret {
+      font-size: 8px;
+      opacity: 0.7;
+      margin-left: 2px;
+    }
+    /* Custom dropdown popup (appended to <body> to escape node clipping) */
+    .pix-res-snap-pop {
+      position: fixed;
+      z-index: 9999;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+      padding: 4px 0;
+      min-width: 70px;
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 10px;
+    }
+    .pix-res-snap-opt {
+      padding: 5px 10px;
+      color: #ccc;
+      cursor: pointer;
+      user-select: none;
+    }
+    .pix-res-snap-opt:hover { background: rgba(246,103,68,0.15); color: ${BRAND}; }
+    .pix-res-snap-opt.active { color: ${BRAND}; font-weight: 600; }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-resolution-css";
@@ -363,23 +382,73 @@ function renderCustomPanel(node, state) {
   const readout = document.createElement("div");
   readout.className = "pix-res-readout";
 
-  // Snap-step pill: magnet icon + dropdown of supported steps. Lives in the
-  // readout line so it's discoverable but doesn't take a separate row.
-  const snapPill = document.createElement("label");
+  // Snap-step pill: magnet icon + custom dropdown of supported steps.
+  // Custom dropdown (not <select>) so the menu styling matches the rest
+  // of the node — native <select> popups can't be themed cross-browser.
+  const snapPill = document.createElement("button");
+  snapPill.type = "button";
   snapPill.className = "pix-res-snap";
   snapPill.title = "Snap step (also drives Up/Down arrow nudge)";
   const snapIcon = document.createElement("span");
   snapIcon.className = "pix-res-snap-icon";
-  const snapSelect = document.createElement("select");
-  snapSelect.className = "pix-res-snap-select";
-  for (const v of SNAP_OPTIONS) {
-    const opt = document.createElement("option");
-    opt.value = String(v);
-    opt.textContent = `${v} px`;
-    if (v === (state.snap || 16)) opt.selected = true;
-    snapSelect.appendChild(opt);
+  const snapValue = document.createElement("span");
+  snapValue.className = "pix-res-snap-value";
+  snapValue.textContent = `${state.snap || 16} px`;
+  const snapCaret = document.createElement("span");
+  snapCaret.className = "pix-res-snap-caret";
+  snapCaret.textContent = "▾";
+  snapPill.append(snapIcon, snapValue, snapCaret);
+
+  // Popup management. Only one popup can be open at a time per node.
+  let _snapPop = null;
+  const closeSnapPop = () => {
+    if (_snapPop) { _snapPop.remove(); _snapPop = null; }
+    document.removeEventListener("mousedown", onDocDown, true);
+  };
+  function onDocDown(e) {
+    if (_snapPop && !_snapPop.contains(e.target) && e.target !== snapPill) {
+      closeSnapPop();
+    }
   }
-  snapPill.append(snapIcon, snapSelect);
+  function openSnapPop() {
+    closeSnapPop();
+    const cur = readState(node);
+    const popup = document.createElement("div");
+    popup.className = "pix-res-snap-pop";
+    for (const v of SNAP_OPTIONS) {
+      const opt = document.createElement("div");
+      opt.className = "pix-res-snap-opt" + (v === (cur.snap || 16) ? " active" : "");
+      opt.textContent = `${v} px`;
+      opt.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        applySnap(v);
+        closeSnapPop();
+      });
+      popup.appendChild(opt);
+    }
+    document.body.appendChild(popup);
+    // Position below the pill, left-aligned. Flip up if it would overflow.
+    const r = snapPill.getBoundingClientRect();
+    const popH = popup.offsetHeight;
+    const top = (r.bottom + popH > window.innerHeight - 8) ? r.top - popH - 4 : r.bottom + 4;
+    popup.style.top = `${top}px`;
+    popup.style.left = `${r.left}px`;
+    _snapPop = popup;
+    document.addEventListener("mousedown", onDocDown, true);
+  }
+  snapPill.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (_snapPop) closeSnapPop(); else openSnapPop();
+  });
+
+  function applySnap(v) {
+    snapValue.textContent = `${v} px`;
+    wInput.step = String(v);
+    hInput.step = String(v);
+    const cur = readState(node);
+    writeState(node, { ...cur, snap: v });
+    commit();
+  }
 
   const ratioMP = document.createElement("span");
 
@@ -404,18 +473,6 @@ function renderCustomPanel(node, state) {
     writeState(node, { ...cur, w: wNew, h: hNew, custom_w: wNew, custom_h: hNew });
   }
 
-  // Snap-step change: update inputs' arrow-key step + persist the new snap
-  // value, and re-commit so the current values snap to the new grid.
-  snapSelect.addEventListener("change", () => {
-    const newStep = parseInt(snapSelect.value, 10) || 16;
-    wInput.step = String(newStep);
-    hInput.step = String(newStep);
-    const cur = readState(node);
-    writeState(node, { ...cur, snap: newStep });
-    commit();
-  });
-  // Don't let the click on the select bubble to the root's chip-handler.
-  snapSelect.addEventListener("click", (e) => e.stopPropagation());
 
   function liveUpdate() {
     const wLive = parseInt(wInput.value, 10);
