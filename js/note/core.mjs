@@ -724,7 +724,7 @@ export class NoteEditor {
           <h4>Colors</h4>
           <div class="pix-note-help-grid">
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color (also used for inline icons)</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Background behind text (execCommand hiliteColor)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Colored background behind the selected text</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-button-color"></span>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
@@ -783,11 +783,10 @@ export class NoteEditor {
           </div>
         </div>
         <div class="pix-note-help-section">
-          <h4>Security &amp; Paste</h4>
+          <h4>Paste &amp; Links</h4>
           <div class="pix-note-help-grid">
-            <b>Sanitizer</b><span>&lt;script&gt;, event handlers (onclick, onerror, …), javascript: URLs, &lt;iframe&gt;, &lt;img&gt; are stripped on save AND on paste</span>
-            <b>Paste</b><span>Clipboard is converted to plain text; images and rich formatting are dropped to keep notes clean</span>
-            <b>URL allowlist</b><span>Links / pills only accept http, https, mailto</span>
+            <b>Paste</b><span>Clipboard content comes in as plain text — images and rich formatting are dropped to keep notes clean</span>
+            <b>Link URLs</b><span>Only http, https, and mailto links are accepted</span>
           </div>
         </div>
       </div>
