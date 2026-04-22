@@ -450,18 +450,29 @@ NoteEditor.prototype._buildToolbar = function () {
   bgColorBtn.title = "Page background color";
   bgColorBtn.appendChild(makeMaskIconMulti("bg-color"));
   const refreshBgSwatch = () => {
-    const c = this.cfg.backgroundColor || "#111111";
-    bgColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+    const c = this.cfg.backgroundColor;
+    // Only tint the icon when the user has an explicit hex in play.
+    // Unset (undefined), Cleared (null), and legacy "transparent" all
+    // leave the icon at the toolbar's default currentColor so it
+    // reads as "no override active".
+    if (typeof c === "string" && c && c !== "transparent") {
+      bgColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
+    } else {
+      bgColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    }
   };
   refreshBgSwatch();
   bgColorBtn.addEventListener("mousedown", (e) => e.preventDefault());
   bgColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
     openColorPop(bgColorBtn, this.cfg.backgroundColor || "#111111", (c) => {
-      // null = Clear → reset to the dark-gray default rather than making
-      // the editor transparent. Explicit "transparent" would need a
-      // separate UI affordance; keep the picker simple for now.
-      this.cfg.backgroundColor = (c == null) ? "#111111" : c;
+      // Clear (c == null) → set cfg.backgroundColor to NULL, not a
+      // hex default. null is the signal to renderContent() that the
+      // user explicitly cleared — it will revert node.color/bgcolor
+      // to LiteGraph defaults, allowing ComfyUI's native right-click
+      // Colors menu to take over. Setting to "#111111" here would
+      // permanently override the native picker (the original bug).
+      this.cfg.backgroundColor = (c == null) ? null : c;
       this._applyEditAreaBg?.();
       refreshBgSwatch();
       this._dirty = true;

@@ -3,6 +3,23 @@ import { sanitize } from "./sanitize.mjs";
 
 const PLACEHOLDER_TEXT = "Add your workflow notes here\u2026";
 
+// Darken a #rgb or #rrggbb hex by `amount` in 0..1 range. Used to
+// derive a title-bar color from the body background so the title is
+// always a visually distinct (darker) shade. Matches the contrast
+// ComfyUI's native right-click Colors menu produces.
+function darken(hex, amount) {
+  if (!hex || typeof hex !== "string") return hex;
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+  if (!m) return hex;
+  let s = m[1];
+  if (s.length === 3) s = s.split("").map((c) => c + c).join("");
+  const n = parseInt(s, 16);
+  const r = Math.max(0, Math.round(((n >> 16) & 0xff) * (1 - amount)));
+  const g = Math.max(0, Math.round(((n >> 8) & 0xff) * (1 - amount)));
+  const b = Math.max(0, Math.round((n & 0xff) * (1 - amount)));
+  return `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+}
+
 export function attachEditButton(wrap, onClick) {
   const btn = document.createElement("button");
   btn.className = "pix-note-editbtn";
@@ -47,30 +64,33 @@ export function renderContent(node, bodyEl) {
   bodyEl.style.setProperty("--pix-note-btn", cfg.buttonColor || "#f66744");
   bodyEl.style.setProperty("--pix-note-line", cfg.lineColor || "#f66744");
 
-  // The Bg picker is the single source of truth for the node's visual
-  // background. It drives BOTH the LiteGraph node frame (title bar + body)
-  // AND our inner .pix-note-body, so the whole node reads as one surface
-  // instead of a coloured box floating inside a dark frame.
+  // Bg picker drives the node's visual background. Three-state logic
+  // so our override doesn't clobber ComfyUI's native right-click Colors
+  // menu every time the user edits text and saves:
   //
-  //   - unset / "transparent"  → clear node.color/bgcolor, let the active
-  //     LiteGraph theme show through. Kept for backward compatibility with
-  //     notes saved before the new default landed.
-  //   - any explicit color      → apply to node.color (title) + node.bgcolor
-  //     (body). The DEFAULT_CFG '#111111' (matches the editor interior)
-  //     goes through this branch so a brand-new note renders with the same
-  //     dark gray the user sees inside the editor, no mismatch.
+  //   - undefined / key missing  → user has never touched the Bg picker.
+  //     Leave node.color / node.bgcolor ALONE. Native Colors-menu picks
+  //     survive save, and LiteGraph theme defaults show for fresh nodes.
+  //   - null OR "transparent"    → user clicked Clear in the Bg picker.
+  //     Explicitly null out node.color / node.bgcolor so whatever we had
+  //     set before reverts to LiteGraph defaults.
+  //   - hex string               → user picked a color in the Bg picker.
+  //     node.bgcolor = hex (body), node.color = darken(hex, 0.3) (title).
+  //     The darkened title matches the contrast native Colors-menu
+  //     produces so the title strip always reads against the body.
   //
   // node.setDirtyCanvas(true, true) forces LiteGraph to repaint the node
   // frame with the new colours; without it the graph keeps the old colour
   // until the user pans/zooms.
   const bg = cfg.backgroundColor;
-  if (!bg || bg === "transparent") {
+  if (typeof bg === "string" && bg && bg !== "transparent") {
+    node.color = darken(bg, 0.3);
+    node.bgcolor = bg;
+  } else if (bg === null || bg === "transparent") {
     node.color = null;
     node.bgcolor = null;
-  } else {
-    node.color = bg;
-    node.bgcolor = bg;
   }
+  // else (undefined / missing): no-op, preserve native picker choice.
   if (typeof node.setDirtyCanvas === "function") {
     node.setDirtyCanvas(true, true);
   }

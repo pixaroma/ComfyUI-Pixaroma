@@ -12,16 +12,15 @@ const DEFAULT_CFG = {
   content: "",
   buttonColor: "#f66744",
   lineColor: "#f66744",
-  // Match the editor's interior dark gray so a freshly-created note's
-  // node body looks identical to what the user will see when they open
-  // the editor. Value is intentionally a step darker than #151515 —
-  // LiteGraph / the Vue canvas renders node bgcolor with a subtle
-  // compositing that lifts the apparent brightness a few values, so
-  // setting it lower here lands the canvas rendering at the same
-  // perceived dark as the editarea. Users can change this via the Bg
-  // picker; "transparent" (the only value that clears
-  // node.color/bgcolor) is still honoured on notes saved with it.
-  backgroundColor: "#111111",
+  // backgroundColor is intentionally NOT listed here — the key is
+  // missing in DEFAULT_CFG so fresh notes have `undefined`, which
+  // renderContent treats as "don't touch node.color/bgcolor". That
+  // means ComfyUI's native right-click Colors menu is respected out
+  // of the box, and the LiteGraph theme default shows on brand-new
+  // notes. If the user picks a hex via the Bg picker, cfg gets the
+  // hex and renderContent applies it (with a darkened title). If
+  // the user clicks Clear in the Bg picker, cfg gets null (NOT
+  // deleted) so renderContent explicitly reverts our override.
   width: 420,
   height: 320,
 };
@@ -31,14 +30,22 @@ function parseCfg(node) {
   if (!w?.value || w.value === "{}") return { ...DEFAULT_CFG };
   try {
     const parsed = JSON.parse(w.value);
-    // Migration: earlier versions of node_note.py shipped the widget
-    // default with backgroundColor:"transparent". A brand-new Note node
-    // therefore loads that value even though it was never a deliberate
-    // user choice, and our renderContent then clears node.color/bgcolor —
-    // making the canvas node fall back to LiteGraph's theme gray instead
-    // of matching the editor interior. If we see the old default shape
-    // (transparent + empty content), drop it so DEFAULT_CFG takes over.
-    if (parsed.backgroundColor === "transparent" && !parsed.content) {
+    // Migration: two generations of widget defaults shipped a
+    // cosmetic backgroundColor that ALWAYS overrode whatever the user
+    // picked in ComfyUI's native right-click Colors menu. For
+    // brand-new notes (no content) those defaults are noise — drop
+    // them so the node respects native Colors-menu picks.
+    //   - "transparent" — the earliest widget default.
+    //   - "#111111"     — the later default, dropped in favour of
+    //                     "undefined means no override".
+    // If the note has content, we leave whatever value is there
+    // alone; the user may have explicitly picked #111111, and we
+    // shouldn't second-guess that.
+    if (
+      (parsed.backgroundColor === "transparent" ||
+        parsed.backgroundColor === "#111111") &&
+      !parsed.content
+    ) {
       delete parsed.backgroundColor;
     }
     // Migration: single accentColor → split buttonColor + lineColor.

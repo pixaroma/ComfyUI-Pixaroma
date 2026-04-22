@@ -8,10 +8,13 @@ class PixaromaNote:
                 "note_json": (
                     "STRING",
                     {
-                        # NOTE: keep backgroundColor in sync with
-                        # js/note/index.js DEFAULT_CFG so freshly-added notes
-                        # render in the same dark gray as the editor interior.
-                        "default": '{"version":1,"content":"","buttonColor":"#f66744","lineColor":"#f66744","backgroundColor":"#111111","width":420,"height":320}',
+                        # NOTE: keep in sync with js/note/index.js DEFAULT_CFG.
+                        # backgroundColor is INTENTIONALLY omitted — fresh
+                        # notes get an `undefined` bg so renderContent
+                        # doesn't override ComfyUI's native right-click
+                        # Colors menu. parseCfg migrates the legacy
+                        # "transparent" / "#111111" values on load.
+                        "default": '{"version":1,"content":"","buttonColor":"#f66744","lineColor":"#f66744","width":420,"height":320}',
                         "multiline": True,
                     },
                 ),

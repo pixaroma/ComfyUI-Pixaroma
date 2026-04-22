@@ -839,10 +839,17 @@ NoteEditor.prototype._applyEditAreaBg = function (area) {
   const root = area || this._editArea;
   if (!root) return;
   const bg = this.cfg.backgroundColor;
-  if (bg === "transparent") {
-    root.style.background = "transparent";
+  // Only apply an explicit hex; otherwise fall back to the editor's
+  // default dark (#111111) baked into the .pix-note-editarea CSS.
+  // null (user cleared), undefined (never set), and the legacy
+  // "transparent" all collapse into "use the default dark" — the
+  // editor ALWAYS has a readable dark body regardless of what the
+  // canvas node looks like, so users never edit text on a
+  // see-through surface.
+  if (typeof bg === "string" && bg && bg !== "transparent") {
+    root.style.background = bg;
   } else {
-    root.style.background = bg || "#111111";
+    root.style.background = "#111111";
   }
 };
 
