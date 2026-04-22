@@ -374,35 +374,14 @@ function setupResolutionNode(node) {
   node.resizable = false;
   node.size = [NODE_W, NODE_H];
 
-  // DEBUG — remove after persistence is confirmed working.
-  const _stateW = (node.widgets || []).find((x) => x.name === STATE_WIDGET);
-  console.log(
-    "[PixRes] setupResolutionNode — widget value at setup:",
-    _stateW?.value,
-    "| widgets:", (node.widgets || []).map((w) => w.name),
-  );
-
-  // Read state. nodeCreated fires AFTER configure, so for workflow-restored
-  // nodes the widget value is the saved JSON; for fresh nodes it's the Python
-  // default.
-  const state = readState(node);
-  console.log("[PixRes] parsed state:", state);
-  writeState(node, state); // normalize back so widget value is canonical
-
-  // Build the UI: chip grid + (size list OR Custom panel based on mode).
+  // Empty root — we do NOT populate it synchronously. In Vue's new frontend,
+  // nodeCreated fires BEFORE configure restores widget values from saved
+  // workflows. If we render now, we'd render with default state and flash to
+  // the restored state when onConfigure re-renders milliseconds later. Defer
+  // the initial render (see queueMicrotask at the bottom) so configure has
+  // a chance to land the saved value first.
   const root = document.createElement("div");
   root.className = "pix-res-root";
-
-  // Initial population MUST happen before addDOMWidget. At this point
-  // root.isConnected is false, so renderUI()'s connection guard would
-  // short-circuit. Click-driven re-renders run later when root is
-  // connected and renderUI works correctly.
-  root.appendChild(renderChipGrid(state));
-  if (state.mode === "custom") {
-    root.appendChild(renderCustomPanel(node, state));
-  } else {
-    root.appendChild(renderSizeList(state));
-  }
 
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
     getValue: () => readState(node),
@@ -449,6 +428,21 @@ function setupResolutionNode(node) {
   if (_widget?.element) _widget.element.addEventListener("click", _onClick);
 
   node._pixResRoot = root;
+
+  // Deferred initial render. By the time the microtask fires, Vue will have
+  // called configure() on this node (if it's being restored from a saved
+  // workflow) so widget.value reflects the saved state and we render it
+  // correctly on the first paint — no flash from defaults.
+  queueMicrotask(() => {
+    const state = readState(node);
+    root.innerHTML = "";
+    root.appendChild(renderChipGrid(state));
+    if (state.mode === "custom") {
+      root.appendChild(renderCustomPanel(node, state));
+    } else {
+      root.appendChild(renderSizeList(state));
+    }
+  });
 }
 
 app.registerExtension({
@@ -457,25 +451,13 @@ app.registerExtension({
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaResolution") return;
 
-    // onConfigure fires when ComfyUI loads a saved workflow into an existing
-    // node (e.g. user opens a different workflow without page reload). Re-read
-    // and re-render so the UI matches the freshly-applied widget value.
+    // onConfigure fires whenever configure() is called — catches the case
+    // where a user opens a different workflow into an already-constructed
+    // node. Re-render so the UI matches the freshly-applied widget value.
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
-      // DEBUG
-      console.log("[PixRes] onConfigure fired. info.widgets_values:", info?.widgets_values);
       const r = _origConfigure?.apply(this, arguments);
-      const _w = (this.widgets || []).find((x) => x.name === STATE_WIDGET);
-      console.log("[PixRes] onConfigure post — widget value:", _w?.value, "_pixResRoot:", !!this._pixResRoot);
       if (this._pixResRoot) renderUI(this);
-      // Defensive: also re-render after a short delay in case _pixResRoot
-      // wasn't ready yet (nodeCreated may fire later than onConfigure).
-      setTimeout(() => {
-        if (this._pixResRoot?.isConnected) {
-          console.log("[PixRes] deferred re-render after onConfigure");
-          renderUI(this);
-        }
-      }, 200);
       return r;
     };
 
