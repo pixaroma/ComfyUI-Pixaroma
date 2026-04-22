@@ -123,6 +123,11 @@ js/
 │   ├── sanitize.mjs    # Allowlist-based HTML sanitizer (tags, attrs, classes, styles, href)
 │   └── css.mjs         # injectCSS — all note styles (overlay, editarea, pills, toggles)
 │
+├── resolution/         # Resolution Pixaroma (single file, ~640 lines)
+│   └── index.js        # 3x3 ratio chip grid + 8-row size list + Custom mode
+│                       #  (W/H inputs, swap, snap chips, aspect preview).
+│                       #  State on node.properties + graphToPrompt hook.
+│
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
 │
@@ -408,6 +413,7 @@ Files are named by concern. Match the task to the file:
 | Add a new composite (multi-mesh) 3D shape | `js/3d/composites.mjs` + `js/3d/picker.mjs` SECTIONS |
 | Change the per-object Shape panel | `js/3d/shape_params.mjs` |
 | Handle GLB/OBJ import behavior | `js/3d/importer.mjs` |
+| Add / change Resolution Pixaroma sizes per ratio | `js/resolution/index.js` `SIZES` const + `DEFAULT_PER_RATIO` (per-ratio click default) — keep the spec doc table in sync. Layout sizing (NODE_H / WIDGET_H / list min-height) lives at the top of the same file. State schema on `node.properties.resolutionState` + `app.graphToPrompt` injection hook at the bottom of the file (Pattern #9). |
 | Fix / extend Note toolbar (buttons, pickers) | `js/note/toolbar.mjs` |
 | Add / change a toolbar mask-icon | `js/note/css.mjs` (`.pix-note-tbtn-maskicon` for single-layer, `.pix-note-tbtn-maskicon-multi` for two-layer color pickers) + SVG files in `assets/icons/ui/` (two-layer icons need `<name>-outline.svg` + `<name>-drop.svg`) + `makeMaskIcon`/`makeMaskIconMulti` call in `toolbar.mjs` |
 | Change per-note colour pickers (Btn, Ln, Bg, text, highlight) | `js/note/toolbar.mjs` (`makeColorPicker` factory for Btn/Ln; inline pickers for text / highlight / Bg in G3); `js/note/render.mjs` writes CSS vars on canvas body; `core.mjs` `_applyCfgColorsToEditArea` writes same vars on the editor's contenteditable on each open |
