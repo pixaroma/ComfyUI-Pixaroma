@@ -170,58 +170,43 @@ function injectCSS() {
       color: #999;
     }
     .pix-res-preview-label .accent { color: ${BRAND}; }
-    /* Snap-step pill: magnet icon + native <select> of 8/16/32/64 px. */
-    .pix-res-snap {
+    /* Snap-step picker — magnet label + 4 small chip buttons (8/16/32/64). */
+    .pix-res-snap-group {
       display: inline-flex;
       align-items: center;
       gap: 4px;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 4px;
-      padding: 1px 4px 1px 5px;
-      color: #ccc;
-      cursor: pointer;
     }
-    .pix-res-snap:hover { color: ${BRAND}; border-color: ${BRAND}; }
     .pix-res-snap-icon {
       display: inline-block;
       width: 11px;
       height: 11px;
-      background-color: currentColor;
+      background-color: #888;
       -webkit-mask: url("/pixaroma/assets/icons/ui/magnet.svg") center / 11px 11px no-repeat;
               mask: url("/pixaroma/assets/icons/ui/magnet.svg") center / 11px 11px no-repeat;
       pointer-events: none;
     }
-    .pix-res-snap-value {
-      font-size: 10px;
-      line-height: 1;
+    .pix-res-snap-btns {
+      display: inline-flex;
+      gap: 2px;
     }
-    .pix-res-snap-caret {
-      font-size: 8px;
-      opacity: 0.7;
-      margin-left: 2px;
-    }
-    /* Custom dropdown popup (appended to <body> to escape node clipping) */
-    .pix-res-snap-pop {
-      position: fixed;
-      z-index: 9999;
+    .pix-res-snap-btn {
       background: #1d1d1d;
       border: 1px solid #444;
-      border-radius: 4px;
-      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
-      padding: 4px 0;
-      min-width: 70px;
-      font-family: ui-sans-serif, system-ui, sans-serif;
-      font-size: 10px;
-    }
-    .pix-res-snap-opt {
-      padding: 5px 10px;
-      color: #ccc;
+      border-radius: 3px;
+      color: #aaa;
+      font-size: 9px;
+      padding: 2px 5px;
+      min-width: 18px;
       cursor: pointer;
-      user-select: none;
+      font-family: ui-monospace, monospace;
+      line-height: 1;
     }
-    .pix-res-snap-opt:hover { background: rgba(246,103,68,0.15); color: ${BRAND}; }
-    .pix-res-snap-opt.active { color: ${BRAND}; font-weight: 600; }
+    .pix-res-snap-btn:hover { color: #ddd; border-color: #666; }
+    .pix-res-snap-btn.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-resolution-css";
@@ -429,73 +414,35 @@ function renderCustomPanel(node, state) {
   const readout = document.createElement("div");
   readout.className = "pix-res-readout";
 
-  // Snap-step pill: magnet icon + custom dropdown of supported steps.
-  // Custom dropdown (not <select>) so the menu styling matches the rest
-  // of the node — native <select> popups can't be themed cross-browser.
-  const snapPill = document.createElement("button");
-  snapPill.type = "button";
-  snapPill.className = "pix-res-snap";
-  snapPill.title = "Snap step (also drives Up/Down arrow nudge)";
+  // Snap-step picker: magnet icon + 4 small chip buttons (8/16/32/64).
+  // Click to set; the active value is highlighted in brand orange.
+  const snapGroup = document.createElement("div");
+  snapGroup.className = "pix-res-snap-group";
+  snapGroup.title = "Snap step (also drives Up/Down arrow nudge)";
   const snapIcon = document.createElement("span");
   snapIcon.className = "pix-res-snap-icon";
-  const snapValue = document.createElement("span");
-  snapValue.className = "pix-res-snap-value";
-  snapValue.textContent = `${state.snap || 16} px`;
-  const snapCaret = document.createElement("span");
-  snapCaret.className = "pix-res-snap-caret";
-  snapCaret.textContent = "▾";
-  snapPill.append(snapIcon, snapValue, snapCaret);
-
-  // Popup management. Only one popup can be open at a time per node.
-  let _snapPop = null;
-  const closeSnapPop = () => {
-    if (_snapPop) { _snapPop.remove(); _snapPop = null; }
-    document.removeEventListener("mousedown", onDocDown, true);
-    document.removeEventListener("wheel", onDocWheel, true);
-  };
-  function onDocDown(e) {
-    if (_snapPop && !_snapPop.contains(e.target) && e.target !== snapPill) {
-      closeSnapPop();
-    }
+  const snapBtns = document.createElement("div");
+  snapBtns.className = "pix-res-snap-btns";
+  const snapBtnEls = [];
+  for (const v of SNAP_OPTIONS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pix-res-snap-btn" + (v === (state.snap || 16) ? " active" : "");
+    btn.textContent = String(v);
+    btn.dataset.v = String(v);
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      applySnap(v);
+    });
+    snapBtns.appendChild(btn);
+    snapBtnEls.push(btn);
   }
-  // Wheel-pan / wheel-zoom of the LiteGraph canvas doesn't fire a mousedown,
-  // so the popup would visually detach from the pill as the canvas moved
-  // under it. Close on any wheel event while the popup is open.
-  function onDocWheel() { closeSnapPop(); }
-  function openSnapPop() {
-    closeSnapPop();
-    const cur = readState(node);
-    const popup = document.createElement("div");
-    popup.className = "pix-res-snap-pop";
-    for (const v of SNAP_OPTIONS) {
-      const opt = document.createElement("div");
-      opt.className = "pix-res-snap-opt" + (v === (cur.snap || 16) ? " active" : "");
-      opt.textContent = `${v} px`;
-      opt.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        applySnap(v);
-        closeSnapPop();
-      });
-      popup.appendChild(opt);
-    }
-    document.body.appendChild(popup);
-    // Position below the pill, left-aligned. Flip up if it would overflow.
-    const r = snapPill.getBoundingClientRect();
-    const popH = popup.offsetHeight;
-    const top = (r.bottom + popH > window.innerHeight - 8) ? r.top - popH - 4 : r.bottom + 4;
-    popup.style.top = `${top}px`;
-    popup.style.left = `${r.left}px`;
-    _snapPop = popup;
-    document.addEventListener("mousedown", onDocDown, true);
-    document.addEventListener("wheel", onDocWheel, { capture: true, passive: true });
-  }
-  snapPill.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (_snapPop) closeSnapPop(); else openSnapPop();
-  });
+  snapGroup.append(snapIcon, snapBtns);
 
   function applySnap(v) {
-    snapValue.textContent = `${v} px`;
+    for (const b of snapBtnEls) {
+      b.classList.toggle("active", parseInt(b.dataset.v, 10) === v);
+    }
     wInput.step = String(v);
     hInput.step = String(v);
     const cur = readState(node);
@@ -505,7 +452,7 @@ function renderCustomPanel(node, state) {
 
   const ratioMP = document.createElement("span");
 
-  readout.append(snapPill, document.createTextNode(" · "), ratioMP);
+  readout.append(snapGroup, document.createTextNode(" · "), ratioMP);
 
   // Aspect-ratio visual preview — orange-tinted rectangle scaled to the
   // chosen W:H, with the exact W × H labeled below it.
