@@ -79,8 +79,13 @@ function injectCSS() {
       flex-direction: column;
       gap: 10px;
     }
-    .pix-res-custom-row { display: flex; gap: 8px; }
-    .pix-res-custom-field { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+    .pix-res-custom-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 6px;
+      align-items: end; /* push the swap icon down so it sits next to the input boxes, not the labels */
+    }
+    .pix-res-custom-field { display: flex; flex-direction: column; gap: 3px; }
     .pix-res-custom-field label {
       font-size: 9px;
       color: #888;
@@ -105,16 +110,31 @@ function injectCSS() {
       outline: none;
       border-color: ${BRAND};
     }
+    /* Square icon button placed BETWEEN the W and H inputs (Figma/Photoshop pattern).
+       Uses CSS mask-image so the SVG inherits color via the button's color property
+       — same technique Note Pixaroma uses for toolbar mask-icons. */
     .pix-res-swap {
+      width: 32px;
+      height: 32px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 5px;
       color: #aaa;
-      font-size: 10px;
       cursor: pointer;
+      padding: 0;
+      position: relative;
+      display: inline-block;
     }
-    .pix-res-swap:hover { color: #ddd; border-color: #666; }
+    .pix-res-swap::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
+      pointer-events: none;
+    }
+    .pix-res-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
     .pix-res-readout {
       text-align: center;
       font-size: 10px;
@@ -291,12 +311,15 @@ function renderCustomPanel(node, state) {
 
   wField.append(wLabel, wInput);
   hField.append(hLabel, hInput);
-  row.append(wField, hField);
 
   const swap = document.createElement("button");
   swap.type = "button";
   swap.className = "pix-res-swap";
-  swap.textContent = "⇄  Swap W ↔ H";
+  swap.title = "Swap Width ↔ Height";
+  swap.setAttribute("aria-label", "Swap Width and Height");
+
+  // Place the swap icon BETWEEN the two input fields (Figma/Photoshop pattern).
+  row.append(wField, swap, hField);
 
   const readout = document.createElement("div");
   readout.className = "pix-res-readout";
@@ -344,7 +367,8 @@ function renderCustomPanel(node, state) {
     commit();
   });
 
-  wrap.append(row, swap, readout);
+  // swap is already inside `row` (between W and H fields), don't append again.
+  wrap.append(row, readout);
   return wrap;
 }
 
