@@ -384,6 +384,12 @@ app.registerExtension({
       // Hide the raw JSON widget — JS owns the UI.
       hideJsonWidget(this.widgets, STATE_WIDGET);
 
+      // Vue's ComfyUI frontend auto-exposes primitive widgets (STRING/INT/FLOAT)
+      // as a convertible input slot that flashes a grey dot on hover. Drop it
+      // so the hidden state widget can't be wired from outside.
+      const _slotIdx = (this.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
+      if (_slotIdx !== -1) this.removeInput(_slotIdx);
+
       // Lock the node size and disable resize handle.
       this.resizable = false;
       this.size = [NODE_W, NODE_H];
