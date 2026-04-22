@@ -96,12 +96,21 @@ export function renderContent(node, bodyEl) {
   } else if (bg === null || bg === "transparent") {
     node.color = "#111111";
     node.bgcolor = "#111111";
-  } else if (!node.bgcolor) {
+  } else if (!node.bgcolor && !cfg.content) {
+    // Brand-new empty note (cfg undefined, no content typed, node
+    // has never had a bgcolor set). Apply our dark default so the
+    // fresh-placement experience matches the editor interior.
+    //
+    // The !cfg.content guard is load-bearing: if the note has
+    // content but node.bgcolor is null, the user has explicitly
+    // picked "no color / default" via ComfyUI's native right-click
+    // Colors menu. Saving text edits must NOT reset that back to
+    // #111111 — canvas should stay at LiteGraph's theme default.
     node.color = "#111111";
     node.bgcolor = "#111111";
   }
-  // else (undefined AND node.bgcolor already set): no-op, preserve
-  // native Colors-menu pick.
+  // else (cfg undefined AND (node.bgcolor set OR content present)):
+  // no-op, preserve whatever the user picked via native picker.
   if (typeof node.setDirtyCanvas === "function") {
     node.setDirtyCanvas(true, true);
   }

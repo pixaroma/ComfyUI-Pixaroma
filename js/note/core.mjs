@@ -841,14 +841,19 @@ NoteEditor.prototype._applyEditAreaBg = function (area) {
   // Priority order for the editor's interior background:
   //   1. cfg.backgroundColor as an explicit hex (user picked in our
   //      Bg picker) — authoritative.
-  //   2. node.bgcolor (native right-click Colors menu or already-
-  //      rendered default) — so the editor interior matches the
+  //   2. node.bgcolor (native right-click Colors menu or an already-
+  //      applied default) — so the editor interior matches the
   //      canvas node the user is about to edit. Without this, picking
   //      green via the native picker then opening the editor would
   //      show a dark-gray editor body on top of a green canvas node,
   //      which is confusing.
-  //   3. #111111 ultimate fallback (should only hit if both cfg and
-  //      node.bgcolor are unset, e.g. before any render has run).
+  //   3. LiteGraph's NODE_DEFAULT_BGCOLOR — hit when the user picked
+  //      "no color / default" in the native picker, so node.bgcolor
+  //      is null and the canvas is rendering at the LiteGraph theme
+  //      default. Matching that in the editor keeps the two surfaces
+  //      visually consistent.
+  //   4. #111111 ultimate fallback if LiteGraph isn't exposed on
+  //      window (shouldn't happen in normal ComfyUI, but defensive).
   const cfgBg = this.cfg.backgroundColor;
   let bg;
   if (typeof cfgBg === "string" && cfgBg && cfgBg !== "transparent") {
@@ -856,7 +861,7 @@ NoteEditor.prototype._applyEditAreaBg = function (area) {
   } else if (this.node?.bgcolor) {
     bg = this.node.bgcolor;
   } else {
-    bg = "#111111";
+    bg = window.LiteGraph?.NODE_DEFAULT_BGCOLOR || "#111111";
   }
   root.style.background = bg;
 };
