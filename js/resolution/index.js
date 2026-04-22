@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, hideJsonWidget } from "../shared/index.mjs";
 
 function injectCSS() {
   if (document.getElementById("pixaroma-resolution-css")) return;
@@ -559,7 +559,11 @@ function renderUI(node) {
 }
 
 function setupResolutionNode(node) {
-  // (No widget to hide — Python uses `hidden` inputs so no widget is auto-created.)
+  // Defensive: if a widget for ResolutionState somehow exists (stale Python
+  // not yet restarted, or a workflow loaded under the old architecture),
+  // hide it. With the current Python (hidden input), no widget is created
+  // and this is a no-op.
+  hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
 
   // Branded default colors. Only applied when the node has no override yet —
   // workflow-restored colors and right-click Color-menu picks both land on
