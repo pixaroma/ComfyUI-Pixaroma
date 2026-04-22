@@ -540,6 +540,14 @@ function setupResolutionNode(node) {
   // Hide the raw JSON widget — JS owns the UI.
   hideJsonWidget(node.widgets, STATE_WIDGET);
 
+  // Branded default colors. Only applied when the node has no override yet —
+  // workflow-restored colors and right-click Color-menu picks both land on
+  // node.color / node.bgcolor before nodeCreated fires, so the user's choice
+  // wins. Title bar matches the chip surface (#1d1d1d), body matches the root
+  // surface (#2a2a2a) so the whole node reads as one cohesive dark panel.
+  if (!node.color)   node.color   = "#1d1d1d";
+  if (!node.bgcolor) node.bgcolor = "#2a2a2a";
+
   // Lock the node size and disable resize handle.
   node.resizable = false;
   node.size = [NODE_W, NODE_H];
