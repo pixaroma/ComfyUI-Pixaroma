@@ -838,19 +838,27 @@ NoteEditor.prototype._enterPreviewView = function () {
 NoteEditor.prototype._applyEditAreaBg = function (area) {
   const root = area || this._editArea;
   if (!root) return;
-  const bg = this.cfg.backgroundColor;
-  // Only apply an explicit hex; otherwise fall back to the editor's
-  // default dark (#111111) baked into the .pix-note-editarea CSS.
-  // null (user cleared), undefined (never set), and the legacy
-  // "transparent" all collapse into "use the default dark" — the
-  // editor ALWAYS has a readable dark body regardless of what the
-  // canvas node looks like, so users never edit text on a
-  // see-through surface.
-  if (typeof bg === "string" && bg && bg !== "transparent") {
-    root.style.background = bg;
+  // Priority order for the editor's interior background:
+  //   1. cfg.backgroundColor as an explicit hex (user picked in our
+  //      Bg picker) — authoritative.
+  //   2. node.bgcolor (native right-click Colors menu or already-
+  //      rendered default) — so the editor interior matches the
+  //      canvas node the user is about to edit. Without this, picking
+  //      green via the native picker then opening the editor would
+  //      show a dark-gray editor body on top of a green canvas node,
+  //      which is confusing.
+  //   3. #111111 ultimate fallback (should only hit if both cfg and
+  //      node.bgcolor are unset, e.g. before any render has run).
+  const cfgBg = this.cfg.backgroundColor;
+  let bg;
+  if (typeof cfgBg === "string" && cfgBg && cfgBg !== "transparent") {
+    bg = cfgBg;
+  } else if (this.node?.bgcolor) {
+    bg = this.node.bgcolor;
   } else {
-    root.style.background = "#111111";
+    bg = "#111111";
   }
+  root.style.background = bg;
 };
 
 // Write the Btn/Ln CSS vars onto the edit area based on the current

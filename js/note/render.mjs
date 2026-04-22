@@ -65,32 +65,43 @@ export function renderContent(node, bodyEl) {
   bodyEl.style.setProperty("--pix-note-line", cfg.lineColor || "#f66744");
 
   // Bg picker drives the node's visual background. Three-state logic
-  // so our override doesn't clobber ComfyUI's native right-click Colors
-  // menu every time the user edits text and saves:
+  // designed to (a) give fresh notes our dark #111111 default instead
+  // of the lighter LiteGraph theme gray, and (b) not clobber
+  // ComfyUI's native right-click Colors menu every time the user
+  // saves text edits:
   //
-  //   - undefined / key missing  → user has never touched the Bg picker.
-  //     Leave node.color / node.bgcolor ALONE. Native Colors-menu picks
-  //     survive save, and LiteGraph theme defaults show for fresh nodes.
-  //   - null OR "transparent"    → user clicked Clear in the Bg picker.
-  //     Explicitly null out node.color / node.bgcolor so whatever we had
-  //     set before reverts to LiteGraph defaults.
-  //   - hex string               → user picked a color in the Bg picker.
-  //     node.bgcolor = hex (body), node.color = darken(hex, 0.3) (title).
-  //     The darkened title matches the contrast native Colors-menu
-  //     produces so the title strip always reads against the body.
+  //   - hex string              → user picked a color in OUR Bg picker.
+  //     node.bgcolor = hex (body), node.color = darken(hex, 0.3)
+  //     (title). The darkened title matches the contrast native
+  //     Colors-menu produces so the title strip always reads against
+  //     the body.
+  //   - null OR "transparent"   → user clicked Clear in OUR Bg picker.
+  //     Reset to our #111111 default (flat, no darken — the default is
+  //     already almost black, darkening further would be invisible).
+  //   - undefined / key missing → fresh note OR user has never touched
+  //     OUR Bg picker. If node.bgcolor is still null (LiteGraph default,
+  //     brand-new node), apply our #111111 default so fresh notes are
+  //     dark-gray like the editor interior. If node.bgcolor has a value,
+  //     leave it alone — that means ComfyUI's native Colors menu set
+  //     it, and our override would clobber the user's pick on every
+  //     save (this was the bug that made us rework the pattern).
   //
-  // node.setDirtyCanvas(true, true) forces LiteGraph to repaint the node
-  // frame with the new colours; without it the graph keeps the old colour
-  // until the user pans/zooms.
+  // node.setDirtyCanvas(true, true) forces LiteGraph to repaint the
+  // node frame with the new colours; without it the graph keeps the
+  // old colour until the user pans/zooms.
   const bg = cfg.backgroundColor;
   if (typeof bg === "string" && bg && bg !== "transparent") {
     node.color = darken(bg, 0.3);
     node.bgcolor = bg;
   } else if (bg === null || bg === "transparent") {
-    node.color = null;
-    node.bgcolor = null;
+    node.color = "#111111";
+    node.bgcolor = "#111111";
+  } else if (!node.bgcolor) {
+    node.color = "#111111";
+    node.bgcolor = "#111111";
   }
-  // else (undefined / missing): no-op, preserve native picker choice.
+  // else (undefined AND node.bgcolor already set): no-op, preserve
+  // native Colors-menu pick.
   if (typeof node.setDirtyCanvas === "function") {
     node.setDirtyCanvas(true, true);
   }
