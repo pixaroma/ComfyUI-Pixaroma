@@ -120,8 +120,14 @@ export function deriveLabel(stem) {
 export function renderIconHTML(id, color) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
   const safeColor = /^#[0-9a-f]{3,8}$/i.test(color) ? color : "#f66744";
+  // contenteditable="false" makes the empty span behave as a single
+  // atomic unit: backspace deletes it whole, the caret never lands
+  // "inside" the empty element, and crucially — the browser lets
+  // execCommand("foreColor") recolor it via the text-color picker.
+  // Without this the CSS user-select:none made the icon unselectable
+  // and therefore uncolorable.
   return `<span data-ic="${safeId}" class="pix-note-ic" ` +
-    `style="color:${safeColor}"></span>`;
+    `contenteditable="false" style="color:${safeColor}"></span>`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,

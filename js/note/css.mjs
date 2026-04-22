@@ -260,7 +260,11 @@ export function injectCSS() {
    <style id="pix-note-icon-css"> (see js/note/icons.mjs).
    Default: solid 1.2em×1.2em colored rectangle when no matching
    per-icon rule is present — deliberately visible to signal a
-   missing / unknown icon rather than rendering invisibly. */
+   missing / unknown icon rather than rendering invisibly.
+   The span gets contenteditable="false" in renderIconHTML, which
+   makes it atomic (single backspace, caret can't land inside,
+   and browsers DO let execCommand("foreColor") recolor it —
+   unlike user-select:none which blocked selection entirely). */
 .pix-note-ic {
   display: inline-block;
   width: 1.2em;
@@ -273,10 +277,6 @@ export function injectCSS() {
           mask-repeat: no-repeat;
   -webkit-mask-position: center;
           mask-position: center;
-  /* Prevent the caret from entering the empty span itself */
-  -webkit-user-modify: read-only;
-       -moz-user-select: none;
-            user-select: none;
 }
 
 /* Hover-reveal Edit button */
@@ -636,6 +636,14 @@ export function injectCSS() {
 .pix-note-icon-code {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/code.svg);
           mask-image: url(/pixaroma/assets/icons/ui/code.svg);
+}
+.pix-note-icon-list-dot {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/list-dot.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/list-dot.svg);
+}
+.pix-note-icon-list-number {
+  -webkit-mask-image: url(/pixaroma/assets/icons/ui/list-number.svg);
+          mask-image: url(/pixaroma/assets/icons/ui/list-number.svg);
 }
 .pix-note-icon-link {
   -webkit-mask-image: url(/pixaroma/assets/icons/ui/link.svg);

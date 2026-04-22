@@ -55,7 +55,7 @@ const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
   label: new Set(["class","style"]),
-  span: new Set(["class","style","data-ic"]),
+  span: new Set(["class","style","data-ic","contenteditable"]),
 };
 
 function filterClass(value) {
@@ -156,6 +156,13 @@ function filterElement(el) {
       // (unwrap-not-remove policy, Pattern #1). Cross-file contract with
       // js/note/icons.mjs (cache + inject) and server_routes.py (list).
       if (!IC_SLUG_RE.test(a.value)) el.removeAttribute(a.name);
+    } else if (name === "contenteditable") {
+      // Only "false" is allowed — used by inline icons to behave as
+      // atomic units (single-backspace delete, caret never lands inside,
+      // execCommand("foreColor") can recolor). Any other value is
+      // stripped so an attacker can't toggle contenteditable on other
+      // elements to break the sanitizer's trust boundary.
+      if (a.value !== "false") el.removeAttribute(a.name);
     }
   }
 
