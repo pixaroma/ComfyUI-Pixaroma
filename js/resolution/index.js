@@ -131,7 +131,11 @@ injectCSS();
 // Locked node dimensions. Height is computed once we know chip + list heights;
 // for Task 2 we use a placeholder constant we'll refine in Task 3 / 4.
 const NODE_W = 240;
-const NODE_H = 290; // chip grid (3 rows ~32px) + 6-row list (156px) + paddings + title
+// Title (~30) + 2 output ports (~46) + DOM widget (300) + margins ≈ 380.
+const NODE_H = 380;
+// DOM widget content: chip grid (3 rows × ~24 + 2 gaps × 5 ≈ 82) + gap (8) +
+// 6-row size list (~32 each = 192) + root padding (16) ≈ 298. Round to 300.
+const WIDGET_H = 300;
 
 const STATE_WIDGET = "ResolutionState";
 
@@ -405,8 +409,8 @@ app.registerExtension({
       const _widget = this.addDOMWidget("resolution_ui", "custom", root, {
         getValue: () => readState(this),
         setValue: (_v) => {},
-        getMinHeight: () => 240,
-        getMaxHeight: () => 240,
+        getMinHeight: () => WIDGET_H,
+        getMaxHeight: () => WIDGET_H,
         margin: 4,
       });
 
