@@ -46,6 +46,7 @@ function injectCSS() {
       border: 1px solid #444;
       border-radius: 4px;
       min-height: 160px;
+      flex: 1; /* fill remaining widget space so size-list and custom panel match outer height */
       display: flex;
       flex-direction: column;
     }
