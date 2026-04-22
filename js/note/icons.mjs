@@ -120,19 +120,15 @@ export function deriveLabel(stem) {
 export function renderIconHTML(id, color) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
   const safeColor = /^#[0-9a-f]{3,8}$/i.test(color) ? color : "#f66744";
-  // Plain inline span — no contenteditable="false". Initially tried
-  // that approach for "atomic" behavior, but it broke two things:
-  //   1. Clicking the icon didn't select it — caret was placed
-  //      adjacent, so the text-color picker had nothing to act on.
-  //   2. execCommand("formatBlock") (H1/H2/H3) became unreliable
-  //      when the caret was adjacent to a contenteditable="false"
-  //      child — the block-detection walked up through the atom
-  //      and lost its target.
-  // Instead we rely on CSS user-select:all (in css.mjs) so a click
-  // on the icon selects the whole 1.2em element as one unit, ready
-  // for any execCommand (foreColor, backspace, etc.) to act on.
+  // Plain inline span followed by a non-breaking space. The trailing
+  // &nbsp; matters: Chrome has trouble reliably placing the caret
+  // immediately after an empty inline-block element, so clicking
+  // below the icon in the editor would sometimes appear to do
+  // nothing. The &nbsp; is a concrete landing character for the
+  // caret — same trick the Button Design pills already use. It
+  // renders as a single space of width, which is visually fine.
   return `<span data-ic="${safeId}" class="pix-note-ic" ` +
-    `style="color:${safeColor}"></span>`;
+    `style="color:${safeColor}"></span>&nbsp;`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,

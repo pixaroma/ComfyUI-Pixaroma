@@ -261,20 +261,21 @@ export function injectCSS() {
    Default: solid 1.2em×1.2em colored rectangle when no matching
    per-icon rule is present — deliberately visible to signal a
    missing / unknown icon rather than rendering invisibly.
-   No user-select rule on purpose — tried user-select:all (clicks
-   in the editor stopped placing the caret reliably when an icon
-   was present) and contenteditable="false" (broke H1/H2/H3
-   formatBlock adjacent to the atom). Click-to-select is instead
-   handled by the editArea click listener in core.mjs, which
-   calls selectNode() on the clicked icon. cursor:pointer is the
-   affordance that the icon is clickable-as-a-unit. */
+   Kept as a plain inline-block with NO user-select, cursor, or
+   contenteditable overrides — earlier attempts at each
+   (user-select:all, contenteditable="false", cursor:pointer + JS
+   click-to-select) all created regressions around caret placement
+   or heading formatBlock. The trailing &nbsp; in renderIconHTML
+   gives the caret a reliable landing character after the icon.
+   To re-color: drag-select over the icon, then pick a color from
+   the text-color picker. To delete: Backspace once from the right
+   side of the icon. */
 .pix-note-ic {
   display: inline-block;
   width: 1.2em;
   height: 1.2em;
   vertical-align: -0.15em;
   background-color: currentColor;
-  cursor: pointer;
   -webkit-mask-size: contain;
           mask-size: contain;
   -webkit-mask-repeat: no-repeat;

@@ -573,21 +573,6 @@ export class NoteEditor {
       if (e.target.closest("a")) {
         e.preventDefault();
       }
-      // Inline icons (.pix-note-ic spans) behave as atomic units.
-      // A single click selects the whole 1.2em span so the text-color
-      // picker / Delete / Backspace can act on it. We do this in JS
-      // instead of via CSS user-select:all (which broke nearby caret
-      // placement) or contenteditable="false" (which broke formatBlock
-      // / H1-H3 adjacency).
-      const ic = e.target.closest(".pix-note-ic");
-      if (ic && editArea.contains(ic)) {
-        e.preventDefault();
-        const range = document.createRange();
-        range.selectNode(ic);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-      }
     }, true);
     main.appendChild(editArea);
     this._editArea = editArea;
