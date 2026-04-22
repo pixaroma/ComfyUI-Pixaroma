@@ -671,31 +671,128 @@ export class NoteEditor {
   }
 
   _showHelp(panel) {
-    if (panel.querySelector(".pix-note-help")) return;
+    if (panel.querySelector(".pix-note-help-overlay")) return;
     const h = document.createElement("div");
-    h.className = "pix-note-help";
+    h.className = "pix-note-help-overlay";
     h.innerHTML = `
-      <h3>Note Pixaroma</h3>
-      <p><b>Purpose:</b> Annotate your workflow with rich formatted notes — models to download, nodes used, tutorials. Purely visual; not wired into processing.</p>
-      <p><b>Text:</b> Bold (Ctrl+B), Italic (Ctrl+I), Underline (Ctrl+U), Strikethrough. The broom icon clears all formatting on the current selection.</p>
-      <p><b>Headings:</b> H1 / H2 / H3 apply to the current line. Use the broom to demote back to a paragraph.</p>
-      <p><b>Colors:</b> <b>A</b> changes text color, <b>■</b> changes highlight, <b>Bg</b> sets the editor + on-canvas background, <b>Ac</b> sets the per-note accent color (drives Download pill tint and link color).</p>
-      <p><b>Lists:</b> bulleted and numbered. Click the list button again to toggle off.</p>
-      <p><b>Inserts:</b> 🔗 link (http, https, or mailto only), ⟨/⟩ code block, — horizontal separator. Download / YouTube / Discord blocks live in the Pixaroma group.</p>
-      <p><b>⬇ Download:</b> inserts a pill button. On the canvas, clicking the pill opens the URL in a new tab AND copies the target folder path to your clipboard — paste it into your browser's Save As dialog.</p>
-      <p><b>🎥 YouTube / 💬 Discord:</b> preset Pixaroma links with defaults prefilled. Override freely.</p>
-      <p><b>Code / Preview:</b> top-right toggle. Code view shows raw sanitized HTML; Preview is WYSIWYG. Switching in either direction runs the sanitizer.</p>
-      <p><b>Security:</b> any &lt;script&gt;, event handler (onclick, onerror, …), javascript: URL, &lt;iframe&gt;, or &lt;img&gt; you paste / write is stripped automatically.</p>
-      <p><b>Paste:</b> clipboard content is converted to plain text — images and rich formatting are dropped to keep notes clean.</p>
-      <p><b>Save:</b> Ctrl+S or the Save button. Esc prompts if you have unsaved changes. Ctrl+Z / Ctrl+Y undo/redo.</p>
-      <p style="margin-top:14px;color:#888">Pixaroma &mdash; <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">youtube.com/@pixaroma</a></p>
+      <div class="pix-note-help-header">
+        <h3>Note Pixaroma — Shortcuts &amp; Features</h3>
+        <button type="button" class="pix-note-help-close" title="Close">\u2715</button>
+      </div>
+      <div class="pix-note-help-content">
+        <div class="pix-note-help-section">
+          <h4>Overview</h4>
+          <div class="pix-note-help-grid">
+            <b>Purpose</b><span>Rich-text annotation node — models to download, nodes used, tutorials. Purely visual; not wired into processing.</span>
+            <b>Save</b><span>Ctrl+S or the Save button. Esc prompts if unsaved.</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Text Formatting</h4>
+          <div class="pix-note-help-grid">
+            <b>B</b><span>Bold (Ctrl+B)</span>
+            <b>I</b><span>Italic (Ctrl+I)</span>
+            <b>U</b><span>Underline (Ctrl+U)</span>
+            <b>S</b><span>Strikethrough</span>
+            <b>Broom</b><span>Clear all formatting on selection; demotes headings to paragraph; unwraps code / lists</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Headings</h4>
+          <div class="pix-note-help-grid">
+            <b>H1 / H2 / H3</b><span>Apply to the current line. Use Broom to demote back to &lt;p&gt;</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Colors</h4>
+          <div class="pix-note-help-grid">
+            <b>A</b><span>Text color (also used for inline icons)</span>
+            <b>Highlight</b><span>Background behind text (execCommand hiliteColor)</span>
+            <b>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
+            <b>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
+            <b>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Lists</h4>
+          <div class="pix-note-help-grid">
+            <b>&bull; List</b><span>Bulleted list — click again to toggle off</span>
+            <b>1. List</b><span>Numbered list — click again to toggle off</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Inserts</h4>
+          <div class="pix-note-help-grid">
+            <b>Link</b><span>http, https, or mailto URLs only. Opens in new tab.</span>
+            <b>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
+            <b>Separator</b><span>&lt;hr&gt; horizontal rule</span>
+            <b>Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
+            <b>Icon</b><span>SVG from assets/icons/note/. Takes current A color on insert</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Pixaroma Blocks</h4>
+          <div class="pix-note-help-grid">
+            <b>Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
+            <b>Download pill</b><span>On canvas: click opens URL in new tab AND copies the folder path to clipboard</span>
+            <b>YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
+            <b>Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Editing Blocks In Place</h4>
+          <div class="pix-note-help-grid">
+            <b>Pencil</b><span>Hover a link, pill, code block, or grid-free block — pencil appears, reopens its dialog pre-filled</span>
+            <b>Recolor Icon</b><span>Drag-select over the icon, pick a new color in A</span>
+            <b>Delete Icon</b><span>Backspace once from right of icon (removes icon + trailing space in one step)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Views</h4>
+          <div class="pix-note-help-grid">
+            <b>Preview</b><span>WYSIWYG (default)</span>
+            <b>Code</b><span>Raw sanitized HTML with syntax highlight. Edit freely; switching back runs the sanitizer.</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Keyboard</h4>
+          <div class="pix-note-help-grid">
+            <b>Ctrl+B / I / U</b><span>Bold / Italic / Underline</span>
+            <b>Ctrl+Z</b><span>Undo</span>
+            <b>Ctrl+Y / Ctrl+Shift+Z</b><span>Redo</span>
+            <b>Ctrl+S</b><span>Save</span>
+            <b>Tab / Shift+Tab</b><span>Move between grid cells (when inside one)</span>
+            <b>Esc</b><span>Close editor (prompts if unsaved)</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Security &amp; Paste</h4>
+          <div class="pix-note-help-grid">
+            <b>Sanitizer</b><span>&lt;script&gt;, event handlers (onclick, onerror, …), javascript: URLs, &lt;iframe&gt;, &lt;img&gt; are stripped on save AND on paste</span>
+            <b>Paste</b><span>Clipboard is converted to plain text; images and rich formatting are dropped to keep notes clean</span>
+            <b>URL allowlist</b><span>Links / pills only accept http, https, mailto</span>
+          </div>
+        </div>
+        <div class="pix-note-help-section">
+          <h4>Code View — Supported HTML</h4>
+          <div class="pix-note-help-grid">
+            <b>Blocks</b><span>&lt;p&gt; &lt;h1&gt; &lt;h2&gt; &lt;h3&gt; &lt;blockquote&gt; &lt;pre&gt; &lt;hr&gt; &lt;div&gt;</span>
+            <b>Lists</b><span>&lt;ul&gt; &lt;ol&gt; &lt;li&gt;</span>
+            <b>Tables</b><span>&lt;table&gt; &lt;thead&gt; &lt;tbody&gt; &lt;tr&gt; &lt;th&gt; &lt;td&gt;</span>
+            <b>Inline</b><span>&lt;b&gt; &lt;strong&gt; &lt;i&gt; &lt;em&gt; &lt;u&gt; &lt;s&gt; &lt;strike&gt; &lt;br&gt; &lt;a&gt; &lt;code&gt; &lt;span&gt;</span>
+            <b>Styles</b><span>Only <code>color</code>, <code>background-color</code>, <code>text-align</code>. Other CSS is stripped.</span>
+            <b>Classes</b><span>Pixaroma-specific only (pill types, pix-note-ic, pix-note-grid, …). Unknown classes are removed.</span>
+            <b>Anchors</b><span>Auto-rewritten to target="_blank" rel="noopener noreferrer"</span>
+          </div>
+        </div>
+      </div>
+      <div class="pix-note-help-footer">
+        Designed by <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">Pixaroma</a>
+        &middot; <a href="https://github.com/pixaroma/ComfyUI-Pixaroma" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </div>
     `;
-    const close = document.createElement("button");
-    close.className = "pix-note-help-close";
-    close.type = "button";
-    close.innerHTML = "\u00d7";
-    close.onclick = () => h.remove();
-    h.appendChild(close);
+    const close = h.querySelector(".pix-note-help-close");
+    if (close) close.addEventListener("click", () => h.remove());
     panel.appendChild(h);
   }
 }

@@ -457,21 +457,69 @@ export function injectCSS() {
    class. Unused visually once task 2 lands. */
 .pix-note-codearea { display: none; }
 
-/* In-panel help overlay — covers the whole editor panel when the user
-   clicks ? Help in the footer. */
-.pix-note-help {
-  position: absolute; inset: 0; background: rgba(0,0,0,.82); z-index: 10;
-  overflow-y: auto; padding: 24px 36px; color: #ddd; font-size: 13px;
+/* In-panel help overlay — mirrors the framework's pxf-help-overlay
+   look (composer, paint, etc.) so the Note editor's Help dialog has
+   the same visual language: centered modal, two-column content grid,
+   orange section headers, footer with credit. Positioned absolute
+   over the editor panel; covers the toolbar and body, leaves the
+   header/footer bars visible underneath the backdrop. */
+.pix-note-help-overlay {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #171718; border: 1px solid ${BRAND};
+  border-radius: 10px; padding: 0;
+  width: 960px; max-width: 95%; max-height: 86vh;
+  z-index: 10; overflow: hidden;
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.6);
 }
-.pix-note-help h3 { color: #fff; margin: 0 0 8px; }
-.pix-note-help p { margin: 4px 0; line-height: 1.6; }
-.pix-note-help b { color: #fff; }
-.pix-note-help a { color: ${BRAND}; }
+.pix-note-help-header {
+  display: flex; align-items: center; padding: 14px 20px;
+  border-bottom: 1px solid #2a2a2a;
+}
+.pix-note-help-header h3 {
+  flex: 1; color: ${BRAND}; font-size: 14px; margin: 0; font-weight: 600;
+}
 .pix-note-help-close {
-  position: absolute; top: 10px; right: 14px; background: none;
-  color: #aaa; border: none; font-size: 22px; cursor: pointer;
+  background: #2a2a2a; color: #ccc; border: 1px solid #3a3a3a;
+  border-radius: 4px; padding: 4px 10px; cursor: pointer;
+  font-size: 13px; line-height: 1; flex-shrink: 0;
 }
-.pix-note-help-close:hover { color: #fff; }
+.pix-note-help-close:hover { background: #3a3a3a; color: #fff; }
+.pix-note-help-content {
+  padding: 18px 24px; overflow-y: auto;
+  max-height: calc(86vh - 110px);
+  font-size: 11px; line-height: 1.7; color: #ccc;
+  column-count: 2; column-gap: 36px;
+}
+.pix-note-help-section {
+  break-inside: avoid; margin-bottom: 14px;
+}
+.pix-note-help-section:last-child { margin-bottom: 0; }
+.pix-note-help-section h4 {
+  color: ${BRAND};
+  margin: 0 0 6px 0; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.6px; text-transform: uppercase;
+}
+.pix-note-help-grid {
+  display: grid; grid-template-columns: max-content 1fr;
+  gap: 3px 14px;
+}
+.pix-note-help-grid b { color: #eee; white-space: nowrap; font-weight: 600; }
+.pix-note-help-grid span { color: #bbb; }
+.pix-note-help-content b { color: #eee; }
+.pix-note-help-content code {
+  background: #2a2c2e; border: 1px solid #444; border-radius: 3px;
+  padding: 1px 5px; font-size: 10px; color: #ddd;
+  font-family: "Consolas", monospace;
+}
+.pix-note-help-footer {
+  padding: 10px 20px; border-top: 1px solid #2a2a2a;
+  font-size: 10px; color: #666; text-align: center; line-height: 1.6;
+  flex-shrink: 0;
+}
+.pix-note-help-footer a { color: ${BRAND}; text-decoration: none; }
+.pix-note-help-footer a:hover { text-decoration: underline; }
 .pix-note-editarea a  { color: ${BRAND}; text-decoration: underline; }
 .pix-note-editarea code { background: #2a2a2a; padding: 0 5px; border-radius: 3px; font-family: "Consolas", monospace; font-size: 0.92em; }
 .pix-note-editarea pre  { background: #1a1a1a; border:1px solid #333; border-radius: 4px; padding: 8px 10px; font-family: "Consolas", monospace; font-size: 12px; }
