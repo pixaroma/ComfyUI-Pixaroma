@@ -117,22 +117,26 @@ export function deriveLabel(stem) {
 // `id` must match the sanitizer slug regex. If it doesn't, we emit a
 // span with the bad id stripped — sanitizer would do the same at save
 // time, so pre-strip keeps the DOM consistent.
-export function renderIconHTML(id) {
+export function renderIconHTML(id, color) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
-  // No inline style="color:..." — the .pix-note-ic CSS uses
-  // background-color: currentColor, so the icon automatically
-  // inherits whatever the surrounding text color is. Users who pick
-  // a color via the text-color picker get that color applied to the
-  // icon for free (because the icon lives inside the colored span
-  // that execCommand("foreColor") created). Simpler than shipping a
-  // per-icon color override.
+  // Optional `color` arg: if a hex is given, the icon carries an
+  // inline style="color:..." — rendered via background-color:
+  // currentColor in the .pix-note-ic CSS rule. The caller passes
+  // whatever color the A text-color picker currently has staged,
+  // so "pick green → insert icon" yields a green icon (matches
+  // Notion-like "picked color wins for new content" UX).
   //
-  // Trailing &nbsp; matters: Chrome has trouble reliably placing the
-  // caret immediately after an empty inline-block element, so
-  // clicking below the icon in the editor would sometimes appear to
-  // do nothing. The &nbsp; is a concrete landing character for the
-  // caret — same trick the Button Design pills already use.
-  return `<span data-ic="${safeId}" class="pix-note-ic"></span>&nbsp;`;
+  // If `color` is missing or invalid, no inline style is emitted —
+  // the icon then inherits currentColor from its surroundings
+  // (default editor text color = white-ish, or an ancestor span's
+  // color if the caret was inside one).
+  //
+  // Trailing &nbsp; is the caret's landing character — without it,
+  // Chrome sometimes fails to place the caret after an empty
+  // inline-block span. Same trick the Button Design pills use.
+  const hasColor = /^#[0-9a-f]{3,8}$/i.test(color || "");
+  const style = hasColor ? ` style="color:${color}"` : "";
+  return `<span data-ic="${safeId}" class="pix-note-ic"${style}></span>&nbsp;`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
@@ -208,12 +212,6 @@ function openIconPop(anchorBtn, icons, onPick) {
 // stays sticky for the next keystroke (Pattern #25).
 NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   if (!this._editArea) return;
-  // Ensure loose root-level text is wrapped in <p> before inserting.
-  // Without this, inserting an icon into a brand-new note leaves the
-  // icon as a direct child of editArea (no block wrapper) — then
-  // H1/H2/H3 formatBlock has no block to retarget. Same guard the
-  // code-block insert uses (toolbar.mjs::_normalizeEditArea).
-  this._normalizeEditArea?.();
   // Capture the caret position synchronously so the async fetch
   // below doesn't lose it (focus moves to the body while loading).
   const savedRange = (() => {
@@ -234,32 +232,22 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
       sel.removeAllRanges();
       sel.addRange(savedRange);
     }
+    // Read the A text-color picker's currently-staged color and stamp
+    // it onto the icon. Chrome does NOT apply a staged foreColor to
+    // raw HTML inserted via execCommand("insertHTML") — the stage is
+    // consumed by TYPED characters, not by programmatic inserts.
+    // Without this read-and-stamp, picking green in the A picker and
+    // then inserting an icon would give a white icon, which is a
+    // surprise for the user. Empty string → no inline style, icon
+    // inherits currentColor (default behaviour for unpicked state).
+    const pickedColor = this._textColorBtn?.style
+      .getPropertyValue("--pix-note-tbtn-tint")
+      .trim() || "";
     document.execCommand(
       "insertHTML",
       false,
-      renderIconHTML(id),
+      renderIconHTML(id, pickedColor),
     );
-    // Fresh-editor cleanup: if the containing block originally had
-    // just a trailing <br> (Chrome's "empty-paragraph marker"), that
-    // <br> survives the insert and ends up AFTER our &nbsp;. Visually
-    // that creates a phantom empty line below the icon — and when
-    // the user then presses H1, the caret can snap to that trailing
-    // empty line and appear to "jump down" below the icon. Walk up
-    // to the containing block and strip any trailing <br> that sits
-    // as the last meaningful child.
-    const sel2 = window.getSelection();
-    if (sel2 && sel2.rangeCount > 0) {
-      let block = sel2.getRangeAt(0).startContainer;
-      while (block && block.parentNode !== this._editArea && block !== this._editArea) {
-        block = block.parentNode;
-      }
-      if (block && block.parentNode === this._editArea) {
-        const last = block.lastChild;
-        if (last && last.nodeType === 1 && last.tagName === "BR") {
-          block.removeChild(last);
-        }
-      }
-    }
     this._restageColors?.();
     this._dirty = true;
     this._refreshActiveStates?.();
