@@ -131,11 +131,12 @@ injectCSS();
 // Locked node dimensions. Height is computed once we know chip + list heights;
 // for Task 2 we use a placeholder constant we'll refine in Task 3 / 4.
 const NODE_W = 240;
-// Title (~30) + 2 output ports (~46) + DOM widget (300) + margins ≈ 380.
-const NODE_H = 380;
-// DOM widget content: chip grid (3 rows × ~24 + 2 gaps × 5 ≈ 82) + gap (8) +
-// 6-row size list (~32 each = 192) + root padding (16) ≈ 298. Round to 300.
-const WIDGET_H = 300;
+// Title + 2 output ports + DOM widget + margins. Tuned by eye: 380 left a
+// large empty band below the size list; 290 (original) overflowed it. 340 fits.
+const NODE_H = 340;
+// DOM widget content: chips (~82) + gap (8) + 6-row list (min-height 156 +
+// natural growth ≈ ~165) + padding (16). 270 keeps rows readable, no overflow.
+const WIDGET_H = 270;
 
 const STATE_WIDGET = "ResolutionState";
 
