@@ -192,7 +192,7 @@ Single file, single `app.registerExtension` block. Estimated ~300–400 lines in
 ## Out of scope (explicitly)
 
 - No `batch_size` output (matches user spec — width + height only; `EmptyLatent` keeps its own `batch_size` widget).
-- No "preview rectangle" thumbnail of the chosen ratio.
+- ~~No "preview rectangle" thumbnail of the chosen ratio.~~ — **IN SCOPE (added post-implementation 2026-04-22)**: Custom mode shows a brand-orange-tinted rectangle scaled to the chosen W:H within a 90×60 bounding box, plus a `W × H` label underneath. Live updates on input, swap, snap-step change, and commit. Preset mode does not show the preview (the size list fills the panel).
 - No tooltip on size rows (compact display already shows W × H).
 - No registered ComfyUI Settings entry (no user preferences worth persisting at this point).
 - No keyboard shortcuts beyond Up / Down nudge inside the Custom inputs.
