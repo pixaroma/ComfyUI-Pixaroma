@@ -51,7 +51,7 @@ Picking width / height for an `EmptyLatent` (or any size-driven downstream node)
 - Below chips: a fixed-height list sized to fit exactly **6 rows** so it never scrolls or crops.
 - Each row: centered `WIDTH × HEIGHT` in monospace.
 - Click selects. Selected row: orange-tint bg (`rgba(246,103,68,0.15)`) + orange text, bold.
-- 1:1 has 5 entries — the 6th row renders as visible empty space (no overflow, no scroll bar).
+- All 6 ratios have 6 entries each (1:1 was extended to include `2048×2048` during brainstorm so the list is uniformly populated). The `.empty`-row code path is kept as a defensive fallback for any future ratio with fewer than 6 sizes.
 
 ### Custom mode (Custom Resolution chip selected)
 
@@ -202,8 +202,7 @@ Single file, single `app.registerExtension` block. Estimated ~300–400 lines in
 - [ ] Default state on create: 1:1 active, 1024×1024 selected, outputs emit 1024 / 1024.
 - [ ] Clicking each ratio chip selects first size of that ratio; outputs update.
 - [ ] Clicking each size row updates the orange highlight + outputs.
-- [ ] 1:1 size list shows 5 rows + one empty visible row, no scroll bar.
-- [ ] All other ratios show exactly 6 rows.
+- [ ] All 6 ratios show exactly 6 populated rows, no scroll bar.
 - [ ] Custom Resolution chip swaps the size area to W / H inputs at 1024 × 1024 on first click.
 - [ ] Switching to Custom and back to a preset preserves the preset's last selected size.
 - [ ] Switching from a preset to Custom and back to Custom restores the last typed Custom values (not 1024×1024 again).
