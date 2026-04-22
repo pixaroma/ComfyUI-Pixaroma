@@ -131,9 +131,10 @@ injectCSS();
 // Locked node dimensions. Height is computed once we know chip + list heights;
 // for Task 2 we use a placeholder constant we'll refine in Task 3 / 4.
 const NODE_W = 240;
-// Title + 2 output ports + DOM widget + margins. Tuned by eye: 380 left a
-// large empty band below the size list; 290 (original) overflowed it. 340 fits.
-const NODE_H = 340;
+// Tuned by eye against the rendered Vue node: title + 2 output ports + DOM
+// widget (270) + margins. 380 left a large empty band; 340 still cut a thin
+// strip; 320 sits flush against the bottom border.
+const NODE_H = 320;
 // DOM widget content: chips (~82) + gap (8) + 6-row list (min-height 156 +
 // natural growth ≈ ~165) + padding (16). 270 keeps rows readable, no overflow.
 const WIDGET_H = 270;
@@ -387,8 +388,15 @@ app.registerExtension({
       // Vue's ComfyUI frontend auto-exposes primitive widgets (STRING/INT/FLOAT)
       // as a convertible input slot that flashes a grey dot on hover. Drop it
       // so the hidden state widget can't be wired from outside.
-      const _slotIdx = (this.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
-      if (_slotIdx !== -1) this.removeInput(_slotIdx);
+      // Vue may add the input AFTER onNodeCreated runs — retry on next frame
+      // and again after the initial Vue settle so the slot stays gone.
+      const _stripSlot = () => {
+        const idx = (this.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
+        if (idx !== -1) this.removeInput(idx);
+      };
+      _stripSlot();
+      requestAnimationFrame(_stripSlot);
+      setTimeout(_stripSlot, 100);
 
       // Lock the node size and disable resize handle.
       this.resizable = false;
