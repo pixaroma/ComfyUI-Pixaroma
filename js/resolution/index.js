@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget } from "../shared/index.mjs";
+import { BRAND } from "../shared/index.mjs";
 
 function injectCSS() {
   if (document.getElementById("pixaroma-resolution-css")) return;
@@ -45,6 +45,7 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
+      overflow: hidden; /* clip active-row orange tint to the rounded border */
       min-height: 160px;
       flex: 1; /* fill remaining widget space so size-list and custom panel match outer height */
       display: flex;
@@ -209,7 +210,12 @@ const NODE_W = 240;
 const NODE_H = 336;   // total node height
 const WIDGET_H = 290; // DOM widget area height (inside title + ports)
 
-const STATE_WIDGET = "ResolutionState";
+// Python uses `hidden` inputs (no widget, no slot dot). State lives on
+// node.properties[STATE_PROP] which LiteGraph serializes natively in the
+// workflow JSON. The JS-side hook (app.graphToPrompt) injects the state
+// into the API prompt as the `ResolutionState` hidden input at run time.
+const STATE_PROP = "resolutionState";
+const HIDDEN_INPUT_NAME = "ResolutionState"; // matches Python INPUT_TYPES key
 
 const DEFAULT_STATE = {
   mode: "preset",
@@ -224,19 +230,35 @@ const DEFAULT_STATE = {
 const SNAP_OPTIONS = [8, 16, 32, 64];
 
 function readState(node) {
-  const w = (node.widgets || []).find((x) => x.name === STATE_WIDGET);
-  if (!w?.value) return { ...DEFAULT_STATE };
-  try {
-    const parsed = JSON.parse(w.value);
-    return { ...DEFAULT_STATE, ...parsed };
-  } catch {
-    return { ...DEFAULT_STATE };
+  // Primary: node.properties (current architecture).
+  const v = node.properties?.[STATE_PROP];
+  if (typeof v === "string" && v) {
+    try { return { ...DEFAULT_STATE, ...JSON.parse(v) }; }
+    catch { /* fall through to migration */ }
   }
+  // Migration: workflows saved with the old widget-based architecture have
+  // their state in node.widgets_values[0] as a JSON string. Detect, migrate,
+  // and persist into node.properties so the next save is in the new format.
+  const wv = node.widgets_values;
+  if (Array.isArray(wv)) {
+    for (const x of wv) {
+      if (typeof x === "string" && x.includes('"mode"')) {
+        try {
+          const parsed = JSON.parse(x);
+          if (parsed && typeof parsed === "object" && "ratio" in parsed) {
+            writeState(node, { ...DEFAULT_STATE, ...parsed });
+            return { ...DEFAULT_STATE, ...parsed };
+          }
+        } catch { /* not our JSON, keep looking */ }
+      }
+    }
+  }
+  return { ...DEFAULT_STATE };
 }
 
 function writeState(node, state) {
-  const w = (node.widgets || []).find((x) => x.name === STATE_WIDGET);
-  if (w) w.value = JSON.stringify(state);
+  if (!node.properties) node.properties = {};
+  node.properties[STATE_PROP] = JSON.stringify(state);
 }
 
 // Chip layout — order matches design spec
@@ -537,8 +559,7 @@ function renderUI(node) {
 }
 
 function setupResolutionNode(node) {
-  // Hide the raw JSON widget — JS owns the UI.
-  hideJsonWidget(node.widgets, STATE_WIDGET);
+  // (No widget to hide — Python uses `hidden` inputs so no widget is auto-created.)
 
   // Branded default colors. Only applied when the node has no override yet —
   // workflow-restored colors and right-click Color-menu picks both land on
@@ -657,3 +678,25 @@ app.registerExtension({
     setupResolutionNode(node);
   },
 });
+
+// Inject the per-node state into the API prompt at execution time. Python's
+// `hidden` ResolutionState input expects a STRING value but doesn't get one
+// from the workflow JSON (no widget exists). Patch app.graphToPrompt so each
+// PixaromaResolution node's prompt entry gets its `inputs.ResolutionState`
+// populated from node.properties[STATE_PROP] right before submission.
+const _origGraphToPrompt = app.graphToPrompt.bind(app);
+app.graphToPrompt = async function (...args) {
+  const result = await _origGraphToPrompt(...args);
+  const out = result?.output;
+  if (out) {
+    const graph = app.graph;
+    for (const id in out) {
+      const n = graph?.getNodeById?.(parseInt(id, 10));
+      if (!n || (n.comfyClass !== "PixaromaResolution" && n.type !== "PixaromaResolution")) continue;
+      const state = n.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
+      out[id].inputs = out[id].inputs || {};
+      out[id].inputs[HIDDEN_INPUT_NAME] = state;
+    }
+  }
+  return result;
+};

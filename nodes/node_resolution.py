@@ -20,16 +20,20 @@ def _clamp(n: int, lo: int, hi: int) -> int:
 class PixaromaResolution:
     @classmethod
     def INPUT_TYPES(cls):
+        # ResolutionState is `hidden`, NOT `required`. Hidden inputs do NOT
+        # produce a widget OR an input slot in the Vue frontend (the auto-
+        # created input dot for required STRING widgets is what the original
+        # implementation had to fight against). The JS frontend stores state
+        # in node.properties.resolutionState and injects it into the API
+        # prompt at execution time via app.graphToPrompt.
         return {
-            "required": {
+            "required": {},
+            "hidden": {
                 "ResolutionState": (
                     "STRING",
-                    {
-                        "default": json.dumps(DEFAULT_STATE),
-                        "multiline": False,
-                    },
+                    {"default": json.dumps(DEFAULT_STATE)},
                 ),
-            }
+            },
         }
 
     RETURN_TYPES = ("INT", "INT")
