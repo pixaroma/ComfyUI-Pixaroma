@@ -1,0 +1,169 @@
+{
+  "id": "358ad30c-0aa7-4601-ae8c-2a8064ffb86e",
+  "revision": 0,
+  "last_node_id": 6,
+  "last_link_id": 0,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "PixaromaNote",
+      "pos": [
+        105.99996948242188,
+        171.4693977355957
+      ],
+      "size": [
+        626,
+        603.3333129882812
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "233d3f75da5866047306e8b02e1ced53a93c4347",
+        "Node name for S&R": "PixaromaNote"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"content\":\"<h1><span data-ic=\\\"workflow-v1\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;Models &amp; Nodes Used in This Workflow</h1>\\n\\n<p>This workflow uses <b>Z-Image Turbo</b> (GGUF) with a <b>Qwen-4B</b> text encoder and the <b>Flux VAE</b>. Download all three below — each goes into a different ComfyUI folder.</p>\\n\\n<hr>\\n\\n<h2><span data-ic=\\\"GGUF\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #b565e2\\\"></span>&nbsp;Unet Loader (GGUF)</h2>\\n\\n<p>Main diffusion model. <b>Create the <code>z-image</code> folder inside <code>diffusion_models</code> if it doesn't exist.</b></p>\\n\\n<span class=\\\"pix-note-btnblock\\\"><a class=\\\"pix-note-dl\\\" href=\\\"https://huggingface.co/gguf-org/z-image-gguf/resolve/main/z-image-turbo-q4_k_s.gguf?download=true\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">z-image-turbo-q4_k_s.gguf<span class=\\\"pix-note-btnsize\\\">~1.5 GB</span></a><span class=\\\"pix-note-folderhint\\\">Place in: ComfyUI/models/diffusion_models/z-image</span></span>&nbsp;\\n\\n<p><span data-ic=\\\"puzzle\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #888888\\\"></span>&nbsp;More quant options: <a href=\\\"https://huggingface.co/gguf-org/z-image-gguf/tree/main\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">z-image-gguf on HuggingFace</a></p>\\n\\n<hr>\\n\\n<h2><span data-ic=\\\"CLIP\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #00bcd4\\\"></span>&nbsp;CLIPLoader (GGUF)</h2>\\n\\n<p>Text encoder — converts your prompt into embeddings for the diffusion model.</p>\\n\\n<span class=\\\"pix-note-btnblock\\\"><a class=\\\"pix-note-dl\\\" href=\\\"https://huggingface.co/Lockout/qwen3-4b-heretic-zimage/resolve/main/qwen-4b-zimage-heretic-q8.gguf?download=true\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">qwen-4b-zimage-heretic-q8.gguf<span class=\\\"pix-note-btnsize\\\">~4 GB</span></a><span class=\\\"pix-note-folderhint\\\">Place in: ComfyUI/models/text_encoders</span></span>&nbsp;\\n\\n<hr>\\n\\n<h2><span data-ic=\\\"VAE\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #5bd45b\\\"></span>&nbsp;Load VAE</h2>\\n\\n<p>Flux 1 VAE — decodes the model's latent output back into pixels.</p>\\n\\n<span class=\\\"pix-note-btnblock\\\"><a class=\\\"pix-note-dl\\\" href=\\\"https://huggingface.co/Comfy-Org/z_image_turbo/resolve/main/split_files/vae/ae.safetensors\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">ae.safetensors<span class=\\\"pix-note-btnsize\\\">335 MB</span></a><span class=\\\"pix-note-folderhint\\\">Place in: ComfyUI/models/vae</span></span>&nbsp;\\n\\n<hr>\\n\\n<p><span data-ic=\\\"warning-v1\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f1c40f\\\"></span>&nbsp;<b>Tip:</b> Each pill opens the download page in a new tab. The folder path under each pill tells you where to save the file.</p>\",\"buttonColor\":\"#f66744\",\"lineColor\":\"#f66744\",\"width\":400,\"height\":200}",
+        ""
+      ],
+      "color": "#111111",
+      "bgcolor": "#111111"
+    },
+    {
+      "id": 3,
+      "type": "PixaromaNote",
+      "pos": [
+        791.6996853637697,
+        171.4693977355957
+      ],
+      "size": [
+        382.6666259765625,
+        388
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "233d3f75da5866047306e8b02e1ced53a93c4347",
+        "Node name for S&R": "PixaromaNote"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"content\":\"<h2><span data-ic=\\\"pixaroma\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;Pixaroma Community</h2><p>\\n\\n</p><p>Tutorials, workflows, and updates from the Pixaroma team. Everything lives in one place — pick your favourite:</p><p>\\n\\n</p><h3>Connect</h3><p>\\n\\n</p><p><a class=\\\"pix-note-yt\\\" href=\\\"https://www.youtube.com/@pixaroma\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">Subscribe on YouTube</a>&nbsp;<a class=\\\"pix-note-discord\\\" href=\\\"https://discord.com/invite/gggpkVgBf3\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">Join the Discord</a></p><p>\\n\\n</p><h3>Resources</h3><p>\\n\\n<span class=\\\"pix-note-btnblock\\\"><a class=\\\"pix-note-rm\\\" href=\\\"https://github.com/pixaroma/ComfyUI-Pixaroma\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">GitHub Repository</a></span>&nbsp;\\n\\n<span class=\\\"pix-note-btnblock\\\"><a class=\\\"pix-note-vp\\\" href=\\\"https://huggingface.co/pixaroma\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">HuggingFace Profile</a></span>&nbsp;\\n\\n</p><h3>Quick Links</h3><p>\\n\\n</p><ul>\\n  <li><span data-ic=\\\"github\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #ffffff\\\"></span>&nbsp;<b>Source:</b> <a href=\\\"https://github.com/pixaroma/ComfyUI-Pixaroma\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">github.com/pixaroma</a></li>\\n  <li><span data-ic=\\\"huggingface\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f1c40f\\\"></span>&nbsp;<b>Models:</b> <a href=\\\"https://huggingface.co/pixaroma\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">huggingface.co/pixaroma</a></li>\\n  <li><span data-ic=\\\"question\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #00bcd4\\\"></span>&nbsp;<b>Help:</b> open an <a href=\\\"https://github.com/pixaroma/ComfyUI-Pixaroma/issues\\\" target=\\\"_blank\\\" rel=\\\"noopener noreferrer\\\">issue on GitHub</a></li>\\n</ul><p>\\n\\n</p><hr><p>\\n\\n</p><p style=\\\"text-align: center; color: #f66744\\\"><b><i>Thank you for using Pixaroma nodes!</i></b></p>\",\"buttonColor\":\"#f66744\",\"lineColor\":\"#f66744\",\"width\":382.6666259765625,\"height\":388,\"backgroundColor\":\"#0f1f1e\"}",
+        ""
+      ],
+      "color": "#0b1615",
+      "bgcolor": "#0f1f1e"
+    },
+    {
+      "id": 5,
+      "type": "PixaromaNote",
+      "pos": [
+        806.5472775268559,
+        825.4535447387699
+      ],
+      "size": [
+        352.97144165039026,
+        147.64736041259744
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Example Note - You Can Change Title",
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "233d3f75da5866047306e8b02e1ced53a93c4347",
+        "Node name for S&R": "PixaromaNote"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"content\":\"<h3><span data-ic=\\\"checkmark\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #5bd45b\\\"></span>&nbsp;Quick Tip</h3><p>\\n</p><p>Double-click the canvas to open the node search. Start typing the node name (<b>KSampler</b>, <b>VAE Decode</b>…) to filter instantly.</p>\",\"buttonColor\":\"#f66744\",\"lineColor\":\"#f66744\",\"width\":345.8727208251951,\"height\":136.99936041259753,\"backgroundColor\":\"#5d1b88\"}",
+        ""
+      ],
+      "color": "#41135f",
+      "bgcolor": "#5d1b88"
+    },
+    {
+      "id": 4,
+      "type": "PixaromaNote",
+      "pos": [
+        807.8782775268558,
+        621.7434712371828
+      ],
+      "size": [
+        350.30944165039045,
+        141.43599999999992
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Example Note - You Can Change Title",
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "233d3f75da5866047306e8b02e1ced53a93c4347",
+        "Node name for S&R": "PixaromaNote"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"content\":\"<h3><span data-ic=\\\"warning-v1\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f1c40f\\\"></span>&nbsp;VRAM Requirement</h3><p>\\n</p><p>This workflow needs at least <b>8 GB VRAM</b>. If you hit out-of-memory errors, try lowering the batch size or switching to a smaller quant (Q4 instead of Q8).</p>\",\"buttonColor\":\"#f66744\",\"lineColor\":\"#f66744\",\"width\":350.30944165039045,\"height\":141.43599999999992,\"backgroundColor\":\"#b91f0e\"}",
+        ""
+      ],
+      "color": "#82160a",
+      "bgcolor": "#b91f0e"
+    },
+    {
+      "id": 2,
+      "type": "PixaromaNote",
+      "pos": [
+        1234.06602722168,
+        171.4693977355957
+      ],
+      "size": [
+        648.666748046875,
+        619.3333129882812
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Another Note",
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "233d3f75da5866047306e8b02e1ced53a93c4347",
+        "Node name for S&R": "PixaromaNote"
+      },
+      "widgets_values": [
+        "{\"version\":1,\"content\":\"<h1><span data-ic=\\\"workflow-v1\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;SDXL Workflow Guide</h1><p>\\n\\n</p><p>This workflow produces <b>high-detail</b> 1024×1024 images in <i>~20 seconds</i> on a modern GPU. Tweak the highlighted values to experiment:</p><p>\\n\\n</p><p><span style=\\\"background-color: #f1c40f; color: #111111\\\">&nbsp;CFG 7.5&nbsp;</span>&nbsp;<span style=\\\"background-color: #5bd45b; color: #111111\\\">&nbsp;Steps 30&nbsp;</span>&nbsp;<span style=\\\"background-color: #b565e2; color: #ffffff\\\">&nbsp;Sampler dpmpp_2m&nbsp;</span></p><p>\\n\\n</p><h2><span data-ic=\\\"gear\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;Settings</h2><p>\\n\\n</p><table class=\\\"pix-note-grid\\\">\\n  <thead>\\n    <tr><th>Parameter</th><th>Value</th><th>Range</th></tr>\\n  </thead>\\n  <tbody>\\n    <tr><td>CFG</td><td>7.5</td><td>4 – 12</td></tr>\\n    <tr><td>Steps</td><td>30</td><td>20 – 50</td></tr>\\n    <tr><td>Seed</td><td>random</td><td>any int</td></tr>\\n    <tr><td>Resolution</td><td>1024 × 1024</td><td>SDXL native</td></tr>\\n  </tbody>\\n</table><p>\\n\\n</p><h3><span data-ic=\\\"checkmark\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #5bd45b\\\"></span>&nbsp;Steps</h3><p>\\n\\n</p><ol>\\n  <li><span data-ic=\\\"model-v1\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;Load <b>Checkpoint Loader</b> → pick SDXL Base</li>\\n  <li><span data-ic=\\\"chip\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #00bcd4\\\"></span>&nbsp;Write your prompt in <b>CLIP Text Encode</b></li>\\n  <li><span data-ic=\\\"node-v2\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #b565e2\\\"></span>&nbsp;Wire into <b>KSampler</b></li>\\n  <li><span data-ic=\\\"checkmark\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #5bd45b\\\"></span>&nbsp;Run — the image shows up in <b>Save Image</b></li>\\n</ol><p>\\n\\n</p><h3><span data-ic=\\\"file\\\" class=\\\"pix-note-ic\\\" style=\\\"color: #f66744\\\"></span>&nbsp;Example Prompt</h3><p>\\n\\n</p><pre><code>masterpiece, cinematic portrait, golden hour,\\nultra detailed, 8k resolution, f/1.8 shallow depth</code></pre><p>\\n\\n</p><hr><p>\\n\\n</p><p style=\\\"text-align: center; color: #888888\\\"><i>Lower CFG (4–6) = more creative. Higher CFG (8–12) = sticks to prompt.</i></p>\",\"buttonColor\":\"#f66744\",\"lineColor\":\"#394551\",\"width\":648.666748046875,\"height\":619.3333129882812,\"backgroundColor\":\"#2e2d34\"}",
+        ""
+      ],
+      "color": "#201f24",
+      "bgcolor": "#2e2d34"
+    }
+  ],
+  "links": [],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.8264462809917354,
+      "offset": [
+        21.86626324462915,
+        66.71576028442398
+      ]
+    },
+    "frontendVersion": "1.42.11",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}

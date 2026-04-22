@@ -3,7 +3,7 @@
   <h1>ComfyUI Pixaroma</h1>
   <p align="center">
     <strong>Elevate your ComfyUI workflow with professional-grade creative tools.</strong><br />
-    3D scenes • Texture painting • Layered composition • Precision cropping • Side-by-side comparison
+    3D scenes • Texture painting • Layered composition • Precision cropping • Rich notes • Side-by-side comparison
   </p>
 
   <p align="center">
@@ -43,6 +43,11 @@ No more guessing crop coordinates. Graphically define your crop area with intera
 The ultimate tool for model testing and workflow optimization. Compare two images side-by-side with a slider, vertically, via overlay blending, or using a difference map to highlight identical pixels vs. changes.
 ![Image Compare — Node](workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
 ![Image Compare — Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg)
+
+### 📝 Note Pixaroma
+Rich-text annotation node for documenting your workflow inline. Full WYSIWYG editor with a **Preview / Code** toggle — write like a normal doc, or drop into sanitized HTML when you want precise control. Bold / italic / underline / strikethrough, headings H1-H3, bulleted & numbered lists, tables (2-4 cols × 1-10 rows with Tab navigation between cells), code blocks, horizontal rules, per-text color and highlight. Per-note **Bg** color drives both the editor interior and the on-canvas node (title bar auto-darkens for readable contrast). Dedicated **Btn** and **Ln** pickers for pill backgrounds and line accents. **Button-Design pills** (Download / View Page / Read More) with optional folder hints ("Place in: ComfyUI/models/checkpoints") and size tags, plus preset **YouTube** and **Discord** pills. **42 inline SVG icons** shipped (CLIP / GGUF / LORA / VAE acronyms plus 38 workflow glyphs) in a drop-and-discover folder — drop more SVGs into `assets/icons/note/` and they appear in the picker, auto-scaled to surrounding font size. Click-to-edit pencil on every inserted block re-opens its dialog pre-filled. Built-in **Help** and **Code Reference** modals document every feature and every allowed HTML tag. Allowlist-based sanitizer strips scripts, event handlers, and unsafe URLs on save and paste.
+![Note Pixaroma — Node](workflows/Note%20Pixaroma%20Workflow.jpg)
+![Note Pixaroma — Editor](workflows/Note%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🏷️ Label & Utility
 - **Label Tool:** Organize massive workflows with clean, customizable labels to keep your logic readable.
@@ -99,6 +104,20 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **April 22, 2026 — Note Pixaroma**
+A brand-new rich-text annotation node. Replaces the "wall of Markdown as a comment" approach with a full WYSIWYG editor + sanitized Code view.
+
+- 📝 **WYSIWYG editor** — Bold / Italic / Underline / Strikethrough, headings H1-H3, bulleted and numbered lists, tables (2-4 cols × 1-10 rows with Tab navigation between cells), code blocks (`<pre><code>`), horizontal rules, inline text color, highlight color.
+- 🎨 **Per-note colors** — Bg picker drives both the editor interior AND the on-canvas node (title bar auto-darkens for readable contrast). Separate Btn picker for button-pill backgrounds and Ln picker for line accents (grid borders, HR, folder hints).
+- 🔗 **Pixaroma blocks** — Button Design dialog produces Download / View Page / Read More pills with optional folder hints ("Place in: ComfyUI/models/...") and file-size tags. Preset YouTube and Discord pills with Pixaroma defaults.
+- 🎯 **Inline icon library** — 42 SVG icons shipped (CLIP / GGUF / LORA / VAE acronyms + 38 workflow glyphs). Drop more SVGs into `assets/icons/note/` and they auto-appear in the picker. Size auto-scales with surrounding font, color follows the text picker.
+- ✏️ **Click-to-edit pencils** — Every inserted block (link, pill, code, grid-free block) has a hover pencil that re-opens its dialog pre-filled for edits.
+- 🧰 **Code view** — Edit raw sanitized HTML with syntax highlighting when you need precise control. Pretty-printed on entry, re-sanitized on exit.
+- ❓ **Help + Code Reference modals** — Two built-in popup dialogs document every feature, every shortcut, and every allowed HTML tag / class / inline style — so even users hand-editing HTML know exactly what survives the sanitizer.
+- 🛡️ **Allowlist sanitizer** — Strips `<script>`, `<iframe>`, `<img>`, all event handlers (onclick, onerror, …), and `javascript:` URLs automatically. Classes, styles, and `href` protocols are all explicitly allowlisted.
+- 🌐 **Plays nicely with ComfyUI's native color menu** — Pick a color from the right-click Colors menu and our editor respects it across save/reload. Sync logic prevents the editor body from disagreeing with the canvas when both color sources are in play.
+- 🎹 **Keyboard shortcuts** — Ctrl+B / I / U formatting, Ctrl+Z / Y undo/redo (with manual history for direct-DOM mutations), Ctrl+S save, Tab / Shift+Tab to navigate grid cells, Backspace to delete an inline icon in a single keystroke.
 
 ### **April 15, 2026 — 3D Builder v2**
 A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor.
