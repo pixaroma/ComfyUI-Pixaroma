@@ -374,10 +374,19 @@ function setupResolutionNode(node) {
   node.resizable = false;
   node.size = [NODE_W, NODE_H];
 
+  // DEBUG — remove after persistence is confirmed working.
+  const _stateW = (node.widgets || []).find((x) => x.name === STATE_WIDGET);
+  console.log(
+    "[PixRes] setupResolutionNode — widget value at setup:",
+    _stateW?.value,
+    "| widgets:", (node.widgets || []).map((w) => w.name),
+  );
+
   // Read state. nodeCreated fires AFTER configure, so for workflow-restored
   // nodes the widget value is the saved JSON; for fresh nodes it's the Python
-  // default. Either way readState yields the right state to render.
+  // default.
   const state = readState(node);
+  console.log("[PixRes] parsed state:", state);
   writeState(node, state); // normalize back so widget value is canonical
 
   // Build the UI: chip grid + (size list OR Custom panel based on mode).
@@ -453,8 +462,20 @@ app.registerExtension({
     // and re-render so the UI matches the freshly-applied widget value.
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
+      // DEBUG
+      console.log("[PixRes] onConfigure fired. info.widgets_values:", info?.widgets_values);
       const r = _origConfigure?.apply(this, arguments);
+      const _w = (this.widgets || []).find((x) => x.name === STATE_WIDGET);
+      console.log("[PixRes] onConfigure post — widget value:", _w?.value, "_pixResRoot:", !!this._pixResRoot);
       if (this._pixResRoot) renderUI(this);
+      // Defensive: also re-render after a short delay in case _pixResRoot
+      // wasn't ready yet (nodeCreated may fire later than onConfigure).
+      setTimeout(() => {
+        if (this._pixResRoot?.isConnected) {
+          console.log("[PixRes] deferred re-render after onConfigure");
+          renderUI(this);
+        }
+      }, 200);
       return r;
     };
 
