@@ -370,18 +370,6 @@ function setupResolutionNode(node) {
   // Hide the raw JSON widget — JS owns the UI.
   hideJsonWidget(node.widgets, STATE_WIDGET);
 
-  // Vue's ComfyUI frontend auto-exposes primitive widgets (STRING/INT/FLOAT)
-  // as a convertible input slot that flashes a grey dot on hover. Drop it.
-  // Vue may add the input AFTER nodeCreated runs — retry on next frame
-  // and again after the initial Vue settle so the slot stays gone.
-  const _stripSlot = () => {
-    const idx = (node.inputs || []).findIndex((i) => i.name === STATE_WIDGET);
-    if (idx !== -1) node.removeInput(idx);
-  };
-  _stripSlot();
-  requestAnimationFrame(_stripSlot);
-  setTimeout(_stripSlot, 100);
-
   // Lock the node size and disable resize handle.
   node.resizable = false;
   node.size = [NODE_W, NODE_H];
