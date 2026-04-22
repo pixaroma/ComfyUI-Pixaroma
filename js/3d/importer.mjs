@@ -1,13 +1,11 @@
 // ============================================================
 // Pixaroma 3D Editor — Model importer (GLB / OBJ)
-// Lazy-loads GLTFLoader / OBJLoader from esm.sh on first use.
+// Lazy-loads GLTFLoader / OBJLoader from the local vendored three.js.
 // Caches models loaded from static asset URLs (e.g. the built-in
 // bunny) so repeat Bunny clicks don't refetch / re-parse.
 // ============================================================
-import { Pixaroma3DEditor, getTHREE } from "./core.mjs";
+import { Pixaroma3DEditor, getTHREE, THREE_VENDOR } from "./core.mjs";
 import { ThreeDAPI } from "./api.mjs";
-
-const ESM = "https://esm.sh/three@0.170.0";
 
 let _GLTFLoader = null;
 let _OBJLoader = null;
@@ -17,21 +15,21 @@ const _assetCache = new Map(); // url → cached Group
 
 async function getGLTFLoader() {
   if (_GLTFLoader) return _GLTFLoader;
-  const mod = await import(ESM + "/examples/jsm/loaders/GLTFLoader.js");
+  const mod = await import(THREE_VENDOR + "/examples/jsm/loaders/GLTFLoader.mjs");
   _GLTFLoader = mod.GLTFLoader;
   return _GLTFLoader;
 }
 
 async function getOBJLoader() {
   if (_OBJLoader) return _OBJLoader;
-  const mod = await import(ESM + "/examples/jsm/loaders/OBJLoader.js");
+  const mod = await import(THREE_VENDOR + "/examples/jsm/loaders/OBJLoader.mjs");
   _OBJLoader = mod.OBJLoader;
   return _OBJLoader;
 }
 
 async function getMTLLoader() {
   if (_MTLLoader) return _MTLLoader;
-  const mod = await import(ESM + "/examples/jsm/loaders/MTLLoader.js");
+  const mod = await import(THREE_VENDOR + "/examples/jsm/loaders/MTLLoader.mjs");
   _MTLLoader = mod.MTLLoader;
   return _MTLLoader;
 }
@@ -39,7 +37,7 @@ async function getMTLLoader() {
 async function getMergeVertices() {
   if (_mergeVertices) return _mergeVertices;
   const mod = await import(
-    ESM + "/examples/jsm/utils/BufferGeometryUtils.js"
+    THREE_VENDOR + "/examples/jsm/utils/BufferGeometryUtils.mjs"
   );
   _mergeVertices = mod.mergeVertices;
   return _mergeVertices;

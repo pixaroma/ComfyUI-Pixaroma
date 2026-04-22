@@ -21,6 +21,8 @@ import {
   createLayerItem,
   createCanvasToolbar,
   createTransformPanel,
+  createSelectInput,
+  createRow,
 } from "../framework/index.mjs";
 
 const PAINT_STYLE_ID = "pixaroma-paint-extra-styles-v4";
@@ -717,6 +719,7 @@ export class PaintStudio {
             const dx = (this.docW - dw) / 2,
               dy = (this.docH - dh) / 2;
             ly.ctx.drawImage(img, dx, dy, dw, dh);
+            ly.sourceKind = "image";
             this.layers.unshift(ly);
             this.activeIdx = 0;
             this.selectedIndices.clear();
@@ -1040,6 +1043,171 @@ export class PaintStudio {
     clearLyrBtn.style.cssText = "width:100%;font-size:11px;padding:5px 6px;";
     actsPanel.content.appendChild(clearLyrBtn);
     container.insertBefore(actsPanel.el, sidebarFooter);
+
+    this._buildBgRemovalPanel(container, sidebarFooter);
+  }
+
+  // ─── AI Background Removal panel (mirrors composer's panel,
+  // minus the "Auto Remove on Execute" checkbox which is a
+  // composer-only placeholder-at-execute concept) ────────────
+  _buildBgRemovalPanel(container, sidebarFooter) {
+    const panel = createPanel("AI Background Removal", {
+      collapsible: true,
+      collapsed: false,
+    });
+
+    this._bgRemovalBtn = createButton("Remove Background", {
+      variant: "accent",
+      onClick: () => this._removeBgFromActiveLayer(),
+    });
+    this._bgRemovalBtn.style.cssText =
+      "width:100%;margin-bottom:8px;opacity:0.3;pointer-events:none;";
+    this._bgRemovalBtn.title =
+      "Enabled on layers added from an image. Draw layers stay disabled.";
+    panel.content.appendChild(this._bgRemovalBtn);
+
+    const select = createSelectInput({
+      options: [
+        { value: "auto", label: "Auto (recommended)" },
+        { value: "u2net", label: "Fast" },
+        { value: "isnet-general-use", label: "Balanced" },
+        { value: "birefnet-general", label: "Best" },
+      ],
+      value: "auto",
+      onChange: (val) => { this._bgRemovalQuality = val; },
+    });
+    select.style.width = "100%";
+    this._bgRemovalSelect = select;
+    panel.content.appendChild(createRow("Model", select, { labelWidth: "80px" }));
+
+    const statusLine = document.createElement("div");
+    statusLine.style.cssText =
+      "font-size:10px;color:#888;margin:4px 2px 2px;line-height:1.4;";
+    statusLine.textContent = "Checking rembg installation...";
+    panel.content.appendChild(statusLine);
+    this._bgRemovalStatusLine = statusLine;
+
+    PaintAPI.removeBgInfo().then((info) => {
+      if (!info.rembgInstalled) {
+        statusLine.innerHTML =
+          '<span style="color:#e57">\u2717 rembg not installed</span> \u2014 ' +
+          'run <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code> ' +
+          "in ComfyUI's python_embeded folder, then restart.";
+        select.disabled = true;
+        this._bgRemovalUnavailable = true;
+        this._syncBgRemovalButton();
+        return;
+      }
+      const models = Array.isArray(info.models) ? info.models : [];
+      if (models.length) {
+        select.innerHTML = "";
+        for (const m of models) {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          let label = m.label;
+          if (m.id !== "auto") {
+            const parts = [];
+            if (m.sizeMB) parts.push(`${m.sizeMB} MB`);
+            if (m.downloaded) parts.push("\u2713 downloaded");
+            else if (m.available) parts.push("will download");
+            if (parts.length) label += ` \u2014 ${parts.join(", ")}`;
+          }
+          opt.textContent = label;
+          opt.disabled = !m.available;
+          select.appendChild(opt);
+        }
+        select.value = "auto";
+      }
+      const firstMissing = models.find((m) => m.available && !m.downloaded && m.id !== "auto");
+      const hint = firstMissing
+        ? `First use of a new model will download to <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>.`
+        : `Models: <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>`;
+      statusLine.innerHTML =
+        `<span style="color:#4a7">\u2713 rembg ${info.rembgVersion || ""}</span> \u00b7 ${hint}`;
+    }).catch(() => {
+      statusLine.textContent = "Couldn't query rembg status \u2014 backend unreachable.";
+    });
+
+    container.insertBefore(panel.el, sidebarFooter);
+  }
+
+  _syncBgRemovalButton() {
+    const btn = this._bgRemovalBtn;
+    if (!btn) return;
+    const ly = this.layers[this.activeIdx];
+    const enabled =
+      !this._bgRemovalUnavailable && !!ly && !ly.locked && ly.sourceKind === "image";
+    btn.style.opacity = enabled ? "1" : "0.3";
+    btn.style.pointerEvents = enabled ? "auto" : "none";
+    btn.disabled = !enabled;
+  }
+
+  async _removeBgFromActiveLayer() {
+    const ly = this.layers[this.activeIdx];
+    if (!ly || ly.sourceKind !== "image" || ly.locked) return;
+
+    // Content check — fully transparent layer has nothing to process
+    const px = ly.ctx.getImageData(0, 0, this.docW, this.docH).data;
+    let hasContent = false;
+    for (let i = 3; i < px.length; i += 4) {
+      if (px[i] > 0) { hasContent = true; break; }
+    }
+    if (!hasContent) {
+      this._setStatus("Layer is empty \u2014 nothing to remove");
+      return;
+    }
+
+    const btn = this._bgRemovalBtn;
+    const originalText = btn.textContent;
+    btn.textContent = "Processing... please wait";
+    btn.disabled = true;
+    btn.style.opacity = "0.6";
+    this._setStatus("AI Remove Background: processing selected layer...");
+
+    try {
+      const dataURL = ly.canvas.toDataURL("image/png");
+      const model = this._bgRemovalQuality || "auto";
+      const res = await PaintAPI.removeBg(dataURL, model);
+
+      if (res.code === "REMBG_MISSING") {
+        this._setStatus("rembg not installed \u2014 see Help for instructions");
+        alert(
+          "Remove BG \u2014 Missing Dependency\n\n" +
+            "The rembg library is not installed. To install it:\n\n" +
+            "1. Open your main ComfyUI folder and go inside the python_embeded folder.\n" +
+            "2. Click in the file path/address bar at the top of the folder window.\n" +
+            "3. Type cmd and press Enter.\n" +
+            "4. Copy and paste: python.exe -m pip install rembg\n\n" +
+            "After installation, restart ComfyUI and try again.",
+        );
+      } else if (res.error) {
+        this._setStatus("AI Remove Background failed: " + res.error);
+        console.error("[Pixaroma Paint] AI Remove BG error:", res.error);
+      } else if (res.image) {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = res.image;
+        });
+        // Snapshot BEFORE replacing so undo restores the original
+        this._pushHistory();
+        ly.ctx.clearRect(0, 0, this.docW, this.docH);
+        ly.ctx.drawImage(img, 0, 0);
+        this._contentBoundsCache.delete(ly.id);
+        this._updateLayerThumb(this.activeIdx);
+        this._renderDisplay();
+        const used = res.modelUsed ? ` (${res.modelUsed})` : "";
+        this._setStatus("Background removed" + used);
+      }
+    } catch (err) {
+      this._setStatus("AI Remove Background failed");
+      console.error("[Pixaroma Paint] AI Remove BG error:", err);
+    } finally {
+      btn.textContent = originalText;
+      this._syncBgRemovalButton();
+    }
   }
 
   // ─── Helpers ──────────────────────────────────────────────

@@ -119,8 +119,23 @@ A brand-new rich-text annotation node. Replaces the "wall of Markdown as a comme
 - 🌐 **Plays nicely with ComfyUI's native color menu** — Pick a color from the right-click Colors menu and our editor respects it across save/reload. Sync logic prevents the editor body from disagreeing with the canvas when both color sources are in play.
 - 🎹 **Keyboard shortcuts** — Ctrl+B / I / U formatting, Ctrl+Z / Y undo/redo (with manual history for direct-DOM mutations), Ctrl+S save, Tab / Shift+Tab to navigate grid cells, Backspace to delete an inline icon in a single keystroke.
 
+### **April 19, 2026**
+- 🚪 **Clearer editor close button:** The titlebar's `✕` in every Pixaroma editor (Paint, 3D, Crop, Composer, Compare, Label) is now labeled `✕ Close <EditorName>` (e.g. "✕ Close Paint Pixaroma") and styled in red. This avoids confusion with the host window's close X — especially inside desktop launchers like ComfyUI-EZi where the two X icons sit next to each other. Hover tooltip confirms it only closes the editor, not ComfyUI.
+- 🔌 **3D Builder works offline:** Three.js is now bundled with the node instead of being downloaded from the internet each time. No more blank 3D canvas when you're offline, on a flaky connection, or behind a firewall that blocks CDNs. Nothing to configure — it just works after you update and restart ComfyUI.
+- 🖌️ **Paint cursor fix:** The brush ring preview could disappear after opening the 3D Builder once in the same session (a CSS rule from the 3D editor was leaking into Paint). The brush, pencil, eraser, and smudge cursors now stay visible no matter which editor you open first.
+- 🎨 **Image Composer — Blend modes are back:** Per-layer blend modes (Multiply, Screen, Overlay, Soft Light, etc.) now round-trip correctly through save → reopen → workflow execution. Previously a layer set to Multiply would quietly revert to Normal on reopen, the Preview Image output would lose the blend whenever a layer had auto-rembg / placeholder / mask (the Python compositor ignored blend modes), and the node's mini-preview would overwrite itself with a Normal recomposite ~300 ms after execution. Fixed on all four touch points: project JSON save, in-editor restore + dropdown sync, Python compositor (full W3C Compositing L1 with proper Porter-Duff alpha — all 16 modes), and the post-execution client-side recomposite.
+- 🎨 **Paint Studio — AI Background Removal panel:** New sidebar section mirrors the Image Composer's — Remove Background button, model dropdown (Auto / Fast / Balanced / Best), rembg status line. Shares the same backend route and model catalog. **Safer scope:** the button is only enabled on layers that started from an imported image (Add Image / drag-drop). Layers drawn from scratch with the brush stay grayed out so you can't accidentally rembg a stroke composition. Painting on top of an imported image keeps the layer rembg-eligible. One Ctrl+Z after a removal restores the original pixels.
+- 🎮 **Blender-style shortcuts in 3D Builder** (all original shortcuts still work — these are added on top):
+  - `G` — Move tool (Blender "Grab")
+  - `Shift+D` — Duplicate selected
+  - `Shift+A` — Open the Add 3D Object picker
+  - `Alt+A` — Deselect all
+  - `Esc` — Deselect all (or close the help overlay if it's open)
+  - `.` / `Numpad .` — Focus on selected object
+
 ### **April 15, 2026 — 3D Builder v2**
-A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor.
+A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor. 
+Check Tutorial on [Youtube Ep13](https://www.youtube.com/watch?v=DnKM-Np0fFw)
 
 - 🧊 **18 primitive shapes** — Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain. Every shape has its own slider panel with per-parameter control (height, radius, segments, seed, smoothness, etc.) and a "Reset Shape Defaults" button.
 - 🌿 **16 composite shapes** — Multi-mesh groups that look like real objects: Tree, Pine Tree, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf. Each has its own set of sliders (trunk height, tier overlap, window shape, shelf count, …) and a re-roll seed for variety.

@@ -18,4 +18,27 @@ export const PaintAPI = {
     });
     return await res.json();
   },
+
+  // Shared backend route — same one the Image Composer uses. Server
+  // side accepts either a model id ("u2net" / "isnet-general-use" /
+  // "birefnet-general") or "auto" (best available falls through).
+  async removeBg(dataURL, model = "auto") {
+    const res = await api.fetchApi("/pixaroma/remove_bg", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataURL, model }),
+    });
+    return await res.json();
+  },
+
+  async removeBgInfo() {
+    try {
+      const res = await api.fetchApi("/pixaroma/remove_bg_info", {
+        method: "GET",
+      });
+      return await res.json();
+    } catch {
+      return { rembgInstalled: false, models: [] };
+    }
+  },
 };

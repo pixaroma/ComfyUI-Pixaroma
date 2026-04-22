@@ -27,6 +27,29 @@ export { PixaromaEditor };
 const DBG = false;
 function dbg(...args) { if (DBG) console.log("[PXR-DEBUG]", ...args); }
 
+// Same mapping used by the in-editor canvas (see composer/render.mjs).
+// Must stay in sync — the mini-preview client recomposite needs to
+// honor blend modes, or it overwrites the correct save with a
+// Normal-only render after execution.
+const BLEND_MAP = {
+  Normal: "source-over",
+  Multiply: "multiply",
+  Screen: "screen",
+  Overlay: "overlay",
+  Darken: "darken",
+  Lighten: "lighten",
+  "Color Dodge": "color-dodge",
+  "Color Burn": "color-burn",
+  "Hard Light": "hard-light",
+  "Soft Light": "soft-light",
+  Difference: "difference",
+  Exclusion: "exclusion",
+  Hue: "hue",
+  Saturation: "saturation",
+  Color: "color",
+  Luminosity: "luminosity",
+};
+
 // Check if the editor is truly open (overlay is in the DOM)
 function isEditorOpen(node) {
   if (!node._pixaromaEditor) return false;
@@ -278,6 +301,8 @@ app.registerExtension({
         const rot = (layer.rotation || 0) * Math.PI / 180;
         ctx.save();
         ctx.globalAlpha = layer.opacity ?? 1;
+        if (layer.blendMode && BLEND_MAP[layer.blendMode])
+          ctx.globalCompositeOperation = BLEND_MAP[layer.blendMode];
         ctx.translate(cx, cy);
         ctx.rotate(rot);
         ctx.scale(layer.flippedX ? -1 : 1, layer.flippedY ? -1 : 1);

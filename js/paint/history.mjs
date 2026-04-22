@@ -31,6 +31,7 @@ proto._pushFullSnapshot = function () {
     locked: ly.locked,
     opacity: ly.opacity,
     blendMode: ly.blendMode,
+    sourceKind: ly.sourceKind,
     transform: { ...ly.transform },
     imageData: ly.ctx.getImageData(0, 0, this.docW, this.docH),
   }));
@@ -120,6 +121,7 @@ proto.redo = function () {
         ly.locked = s.locked;
         ly.opacity = s.opacity;
         ly.blendMode = s.blendMode;
+        if (s.sourceKind) ly.sourceKind = s.sourceKind;
         ly.transform = { ...s.transform };
         ly.ctx.putImageData(s.imageData, 0, 0);
         return ly;

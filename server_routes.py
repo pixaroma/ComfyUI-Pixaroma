@@ -19,6 +19,38 @@ os.environ["U2NET_HOME"] = REMBG_MODELS_DIR
 PIXAROMA_ASSETS_DIR = os.path.realpath(
     os.path.join(os.path.dirname(__file__), "assets")
 )
+PIXAROMA_VENDOR_DIR = os.path.realpath(
+    os.path.join(PIXAROMA_ASSETS_DIR, "vendor")
+)
+
+# Offline-first vendored third-party assets (Three.js, OrbitControls, loaders…).
+# Served with arbitrary path depth so `three/examples/jsm/…` resolves.
+_VENDOR_PATH_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
+_VENDOR_MIME = {
+    ".mjs": "application/javascript",
+    ".js": "application/javascript",
+    ".json": "application/json",
+    ".wasm": "application/wasm",
+    ".glb": "model/gltf-binary",
+    ".gltf": "model/gltf+json",
+}
+
+
+@PromptServer.instance.routes.get("/pixaroma/vendor/{tail:.*}")
+async def serve_pixaroma_vendor(request):
+    tail = request.match_info["tail"]
+    if not tail or ".." in tail.split("/") or not _VENDOR_PATH_RE.match(tail):
+        return web.Response(status=400)
+    file_path = os.path.realpath(os.path.join(PIXAROMA_VENDOR_DIR, tail))
+    if not file_path.startswith(PIXAROMA_VENDOR_DIR + os.sep):
+        return web.Response(status=403)
+    if not os.path.isfile(file_path):
+        return web.Response(status=404)
+    ext = os.path.splitext(tail)[1].lower()
+    headers = {"Cache-Control": "public, max-age=31536000, immutable"}
+    if ext in _VENDOR_MIME:
+        headers["Content-Type"] = _VENDOR_MIME[ext]
+    return web.FileResponse(file_path, headers=headers)
 
 
 @PromptServer.instance.routes.get("/pixaroma/assets/{filename}")

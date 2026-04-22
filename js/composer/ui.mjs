@@ -168,6 +168,8 @@ export class PixaromaUI {
       // Sync transform sliders to the first selected layer
       const layer = core.getActiveLayer();
       if (layer) {
+        if (core._layerPanel && core._layerPanel.setBlend)
+          core._layerPanel.setBlend(layer.blendMode || "Normal");
         core.opacitySlider.value = Math.round(layer.opacity * 100);
         core.opacityNum.value = Math.round(layer.opacity * 100);
         core.rotateSlider.value = layer.rotation;

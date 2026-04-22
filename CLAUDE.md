@@ -234,6 +234,14 @@ Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" chec
 - Composer: checkbox in `js/composer/ui.mjs` (Canvas Settings panel), state on `this._transparentBg`. `_drawImpl` in `render.mjs` checks `this._transparentExport` flag to skip bg fill; save handler in `interaction.mjs` toggles the flag and re-renders for the disk PNG.
 - 3D Builder: checkbox in `js/3d/core.mjs` (Canvas Settings panel), state on `this._transparentBg`. `persistence.mjs` `_save()` does a second Three.js render with `scene.background = null` + `renderer.setClearColor(0x000000, 0)` (renderer already has `alpha: true`).
 
+### Image Composer Patterns (do not regress)
+
+1. **Per-layer blend mode has FOUR touch points that must stay in sync** — (a) in-editor canvas draw (`js/composer/render.mjs` — reads `layer.blendMode`, maps via `BLEND_MAP` to `globalCompositeOperation`), (b) project JSON save (`js/composer/interaction.mjs` `saveBtn` click handler — writes `blendMode` onto `layerEntry` when not "Normal"), (c) the Python executor (`nodes/node_composition.py` `_blend_over()` — W3C Compositing L1 with proper Porter-Duff alpha), AND (d) the **client-side mini-preview recomposite** (`js/composer/index.js` `rebuildPreview` → `drawLayer`). The recomposite runs 300 ms after workflow execution in the fast path (no placeholders/rembg/masks) and would otherwise overwrite the correct save-time preview with a Normal-only render. If any of these four is missing, blend modes silently revert to Normal on some path. The Python path is only taken when a layer has placeholder / auto-rembg / eraser-mask; otherwise the fast path loads the pre-rendered composite PNG which already has blend baked in.
+
+2. **Active-layer blend dropdown needs explicit sync** — `updateActiveLayerUI()` in `js/composer/ui.mjs` must call `core._layerPanel.setBlend(layer.blendMode || "Normal")` whenever a layer becomes active. Without this, `layer.blendMode` stays correct but the `<select>` UI reverts to its default option and misleads the user.
+
+3. **Restore path has THREE layer-construction sites** — `attemptRestore()` in `render.mjs` builds layer objects in three places: `isPlaceholder` fast path, `img.onload` success, and `img.onerror` missing-image fallback. Any new serialized field must be copied from `mLayer` in all three, or it gets silently dropped for certain layer types.
+
 ### 3D Builder Patterns (do not regress)
 
 These patterns were hard-won during 3D Builder v2 development. Regressing any of them reintroduces specific bugs.
@@ -330,6 +338,41 @@ These patterns were hard-won during Note Pixaroma development. Regressing any of
 - Base64 payloads capped at 50 MB
 - Note sanitizer (`js/note/sanitize.mjs`) — allowlist-based. Anything user-reachable (link insert, code-view HTML edit, paste) must round-trip through `sanitize(html)` before being written to the DOM or saved. Class allowlist covers only Pixaroma-specific classes; style allowlist covers only `color`, `background-color`, `text-align`; href allowlist is `http:`, `https:`, `mailto:`.
 
+### Offline-first: Vendored Three.js
+The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
+broke with `ERR_CONNECTION_RESET` for any user running ComfyUI offline or behind a
+restrictive proxy. Three.js is now vendored inside the plugin.
+
+- **On disk**: `assets/vendor/three/three.mjs` plus every jsm addon the editor
+  touches (controls, postprocessing, loaders, utils, geometries). Each jsm addon
+  only imports `../../../three.mjs`, so copying the esm.sh "es2022" build
+  preserves all relative resolution with zero rewrites.
+- **Served at**: `/pixaroma/vendor/{tail}` — route in `server_routes.py`. Accepts
+  arbitrary depth, blocks `..` traversal and any chars outside `[A-Za-z0-9_\-./]`,
+  realpath-checks the result stays under `PIXAROMA_VENDOR_DIR`.
+- **Entry point**: `THREE_VENDOR = "/pixaroma/vendor/three"` exported from
+  `js/3d/core.mjs`. All dynamic `import()` calls in `core.mjs`, `importer.mjs`,
+  and `shapes.mjs` go through it.
+- **Upgrading three.js**: re-fetch `https://esm.sh/three@<VERSION>/es2022/*` for
+  each file listed under `assets/vendor/three/`, keeping the relative paths
+  identical. The addons import `../../../three.mjs` so the directory layout must
+  stay `three.mjs` at the root with `examples/jsm/<category>/*.mjs` for addons.
+
+**Do not** reintroduce esm.sh/unpkg/jsdelivr imports for three.js or its addons.
+
+### 3D CSS isolation
+`injectExtraStyles()` in `js/3d/core.mjs` adds global `<style>` rules to `<head>`.
+These must be scoped to a **3D-only** class (`.p3d-workspace`) — NOT the shared
+`.pxf-workspace` framework class — because the stylesheet persists in the DOM
+after the 3D editor closes and bleeds into every other editor.
+
+In particular, `.pxf-workspace canvas { position:relative; z-index:1 }` used to
+override Paint's `.ppx-cursor-canvas { position:absolute }` via selector
+specificity, unstacking the brush-ring cursor overlay canvas so it shifted
+below the display canvas — the brush preview disappeared after a 3D session.
+The 3D `open()` path now adds `.p3d-workspace` to its workspace element, and
+the CSS rule targets that class only.
+
 ## Token-Saving Rules for AI Agents
 
 **IMPORTANT: Follow these rules to minimize token usage and work efficiently.**
@@ -369,6 +412,8 @@ Files are named by concern. Match the task to the file:
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
+| Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
+| Paint AI Background Removal panel | `js/paint/core.mjs` `_buildBgRemovalPanel` + `_removeBgFromActiveLayer` (button gated on `ly.sourceKind === "image"`, set by the `onAddImage` handler and serialized as `source_kind` in the layer project JSON). Reuses the `/pixaroma/remove_bg` backend route via `PaintAPI.removeBg`. |
 
 ### 3. When adding a new method to an editor class
 - Add it to the most relevant existing `.mjs` file by concern (tools, events, render, etc.)

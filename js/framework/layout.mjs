@@ -145,14 +145,14 @@ export function createEditorLayout(config) {
   }
 
   // Header close button (close without saving)
-  const headerCloseBtn = createButton("✕", {
-    variant: "standard",
-    title: "Close",
+  const headerCloseBtn = createButton(`✕ Close ${editorName}`, {
+    variant: "danger",
+    title: `Close ${editorName} (does not close ComfyUI)`,
     onClick: () => {
       if (onClose) onClose();
     },
   });
-  headerCloseBtn.style.cssText = "padding:5px 10px;font-size:13px;";
+  headerCloseBtn.style.cssText = "padding:5px 12px;font-size:12px;font-weight:bold;margin-left:8px;";
   actions.appendChild(headerCloseBtn);
 
   titlebar.appendChild(actions);

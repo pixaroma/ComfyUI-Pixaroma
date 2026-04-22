@@ -51,6 +51,12 @@ proto._makeLayer = function (name) {
     locked: false,
     opacity: 100,
     blendMode: "source-over",
+    // "drawn" by default; callers that populate the layer from an
+    // imported image bump this to "image" so the AI Background
+    // Removal button in the right sidebar becomes active. Merge /
+    // flatten results stay "drawn" — rembg on a flattened composite
+    // rarely does what users want.
+    sourceKind: "drawn",
     transform: {
       x: 0,
       y: 0,
@@ -123,6 +129,7 @@ proto._duplicateLayer = function () {
   const ly = this._makeLayer(src.name + " copy");
   ly.blendMode = src.blendMode;
   ly.opacity = src.opacity;
+  ly.sourceKind = src.sourceKind;
   ly.transform = { ...src.transform };
   ly.ctx.drawImage(src.canvas, 0, 0);
   this._pushFullSnapshot();
@@ -211,6 +218,10 @@ proto._loadLayers = async function (layersData) {
     ly.locked = ld.locked === true;
     ly.opacity = ld.opacity ?? 100;
     ly.blendMode = ld.blend_mode || "source-over";
+    // Fallback: saves that predate sourceKind are treated as "image"
+    // if they had a layer src (so the BG removal button is usable on
+    // restored image layers from older projects).
+    ly.sourceKind = ld.source_kind || (ld.src ? "image" : "drawn");
     ly.transform = ld.transform
       ? { pivotOffX: 0, pivotOffY: 0, ...ld.transform }
       : {
