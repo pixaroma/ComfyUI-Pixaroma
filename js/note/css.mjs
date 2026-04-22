@@ -512,6 +512,28 @@ export function injectCSS() {
 }
 .pix-note-help-grid b { color: #eee; white-space: nowrap; font-weight: 600; }
 .pix-note-help-grid span { color: #bbb; }
+/* Inline the actual toolbar icons inside the help label column so
+   users can recognise "that's the button I click". Reuses the exact
+   classes the toolbar uses (.pix-note-tbtn-maskicon, -multi, -icon)
+   and just pins them to 14x14 with a small baseline nudge so they
+   sit right next to the label text. The two-layer color-picker
+   icons default their "drop" tint to Pixaroma orange inside the
+   help — the tint CSS var falls through to currentColor on
+   toolbar buttons, but in the help we want all five pickers to
+   read as "color picker" with a recognisable tinted droplet. */
+.pix-note-help-grid .pix-note-tbtn-maskicon,
+.pix-note-help-grid .pix-note-tbtn-maskicon-multi {
+  width: 14px; height: 14px; vertical-align: -3px;
+  display: inline-block;
+  margin-right: 2px;
+}
+.pix-note-help-grid .pix-note-tbtn-maskicon-multi {
+  --pix-note-tbtn-tint: ${BRAND};
+}
+.pix-note-help-grid img.pix-note-tbtn-icon {
+  width: 14px; height: 14px; vertical-align: -3px;
+  margin-right: 2px;
+}
 .pix-note-help-content b { color: #eee; }
 .pix-note-help-content code {
   background: #2a2c2e; border: 1px solid #444; border-radius: 3px;

@@ -707,11 +707,11 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Text Formatting</h4>
           <div class="pix-note-help-grid">
-            <b>B</b><span>Bold (Ctrl+B)</span>
-            <b>I</b><span>Italic (Ctrl+I)</span>
-            <b>U</b><span>Underline (Ctrl+U)</span>
-            <b>S</b><span>Strikethrough</span>
-            <b>Broom</b><span>Clear all formatting on selection; demotes headings to paragraph; unwraps code / lists</span>
+            <b><b>B</b></b><span>Bold (Ctrl+B)</span>
+            <b><i>I</i></b><span>Italic (Ctrl+I)</span>
+            <b><u>U</u></b><span>Underline (Ctrl+U)</span>
+            <b><s>S</s></b><span>Strikethrough</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/clear-format.svg">Broom</b><span>Clear all formatting on selection; demotes headings to paragraph; unwraps code / lists</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -723,37 +723,37 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Colors</h4>
           <div class="pix-note-help-grid">
-            <b>A</b><span>Text color (also used for inline icons)</span>
-            <b>Highlight</b><span>Background behind text (execCommand hiliteColor)</span>
-            <b>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
-            <b>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
-            <b>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color (also used for inline icons)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Background behind text (execCommand hiliteColor)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-button-color"></span>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Lists</h4>
           <div class="pix-note-help-grid">
-            <b>&bull; List</b><span>Bulleted list — click again to toggle off</span>
-            <b>1. List</b><span>Numbered list — click again to toggle off</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-list-dot"></span>Bulleted</b><span>Click again to toggle off</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-list-number"></span>Numbered</b><span>Click again to toggle off</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Inserts</h4>
           <div class="pix-note-help-grid">
-            <b>Link</b><span>http, https, or mailto URLs only. Opens in new tab.</span>
-            <b>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
-            <b>Separator</b><span>&lt;hr&gt; horizontal rule</span>
-            <b>Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
-            <b>Icon</b><span>SVG from assets/icons/note/. Takes current A color on insert</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-link"></span>Link</b><span>http, https, or mailto URLs only. Opens in new tab.</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-code"></span>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>&lt;hr&gt; horizontal rule</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>SVG from assets/icons/note/. Takes current A color on insert</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Pixaroma Blocks</h4>
           <div class="pix-note-help-grid">
-            <b>Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
             <b>Download pill</b><span>On canvas: click opens URL in new tab AND copies the folder path to clipboard</span>
-            <b>YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
-            <b>Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -775,8 +775,8 @@ export class NoteEditor {
           <h4>Keyboard</h4>
           <div class="pix-note-help-grid">
             <b>Ctrl+B / I / U</b><span>Bold / Italic / Underline</span>
-            <b>Ctrl+Z</b><span>Undo</span>
-            <b>Ctrl+Y / Ctrl+Shift+Z</b><span>Redo</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/undo.svg">Ctrl+Z</b><span>Undo</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/redo.svg">Ctrl+Y / Ctrl+Shift+Z</b><span>Redo</span>
             <b>Ctrl+S</b><span>Save</span>
             <b>Tab / Shift+Tab</b><span>Move between grid cells (when inside one)</span>
             <b>Esc</b><span>Close editor (prompts if unsaved)</span>
