@@ -451,12 +451,17 @@ function renderCustomPanel(node, state) {
   const closeSnapPop = () => {
     if (_snapPop) { _snapPop.remove(); _snapPop = null; }
     document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("wheel", onDocWheel, true);
   };
   function onDocDown(e) {
     if (_snapPop && !_snapPop.contains(e.target) && e.target !== snapPill) {
       closeSnapPop();
     }
   }
+  // Wheel-pan / wheel-zoom of the LiteGraph canvas doesn't fire a mousedown,
+  // so the popup would visually detach from the pill as the canvas moved
+  // under it. Close on any wheel event while the popup is open.
+  function onDocWheel() { closeSnapPop(); }
   function openSnapPop() {
     closeSnapPop();
     const cur = readState(node);
@@ -482,6 +487,7 @@ function renderCustomPanel(node, state) {
     popup.style.left = `${r.left}px`;
     _snapPop = popup;
     document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("wheel", onDocWheel, { capture: true, passive: true });
   }
   snapPill.addEventListener("click", (e) => {
     e.stopPropagation();
