@@ -677,7 +677,11 @@ export function injectCSS() {
    instead of color swatches. */
 .pix-note-iconpop {
   position: absolute;
-  z-index: 1002;
+  /* Must sit above .pix-note-overlay (z-index 99990) — otherwise the
+     popup renders UNDERNEATH the editor backdrop and is invisible.
+     Matches .pix-note-colorpop (100000) so all picker popups stack
+     the same way. */
+  z-index: 100000;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 6px;
