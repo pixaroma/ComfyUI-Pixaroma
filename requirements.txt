@@ -1,2 +1,0 @@
-rembg>=2.0.50
-onnxruntime>=1.14.0
