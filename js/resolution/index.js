@@ -183,6 +183,17 @@ const SIZES = {
   "2:3":  [[512,768],[680,1024],[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
 };
 
+// Default size auto-selected when the user clicks a ratio chip. Picked to be
+// the most common/useful starting point per ratio — not the smallest entry.
+const DEFAULT_PER_RATIO = {
+  "1:1":  [1024, 1024],
+  "16:9": [1280, 720],
+  "9:16": [720, 1280],
+  "2:1":  [1280, 640],
+  "3:2":  [1152, 768],
+  "2:3":  [768, 1152],
+};
+
 function gcd(a, b) {
   a = Math.abs(a); b = Math.abs(b);
   while (b) { const t = b; b = a % b; a = t; }
@@ -409,7 +420,7 @@ function setupResolutionNode(node) {
       } else {
         const sizes = SIZES[id];
         if (!sizes) return;
-        const [w, h] = sizes[0];
+        const [w, h] = DEFAULT_PER_RATIO[id] || sizes[0];
         writeState(node, { ...cur, mode: "preset", ratio: id, w, h });
       }
       renderUI(node);

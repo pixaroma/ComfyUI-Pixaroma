@@ -102,7 +102,7 @@ A single hidden widget on the node holds JSON:
 
 | Action | Fields written |
 |---|---|
-| Click ratio chip `R` | `mode = "preset"`, `ratio = R`, `w / h = first size of R`. `custom_w / custom_h` untouched. |
+| Click ratio chip `R` | `mode = "preset"`, `ratio = R`, `w / h = DEFAULT_PER_RATIO[R]` (most useful starting point per ratio, NOT the smallest entry). `custom_w / custom_h` untouched. |
 | Click size row in preset list | `w / h = row values`. `custom_w / custom_h` untouched. |
 | Click `Custom Resolution` chip | `mode = "custom"`, `w = custom_w`, `h = custom_h`. `ratio` untouched (preserved so returning to a preset chip keeps a sensible last-active ratio if needed for future polish — not currently surfaced in UI). |
 | Edit Width / Height in Custom mode | `w / h = new values` AND `custom_w / custom_h = new values` (kept in sync so the saved-Custom memory always reflects what's on screen). |
