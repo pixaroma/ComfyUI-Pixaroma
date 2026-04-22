@@ -453,6 +453,16 @@ app.registerExtension({
       this._pixResRoot = root;
     };
 
+    // onConfigure fires AFTER widget values are restored from a saved workflow.
+    // onNodeCreated runs first with default widget values, so the initial UI is
+    // built from defaults — re-render here so restored state shows up correctly.
+    const _origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (info) {
+      const r = _origConfigure?.call(this, info);
+      if (this._pixResRoot) renderUI(this);
+      return r;
+    };
+
     // Re-clamp on every resize attempt so the node can never grow / shrink.
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
