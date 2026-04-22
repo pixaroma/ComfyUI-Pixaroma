@@ -336,8 +336,26 @@ function renderCustomPanel(node, state) {
 
 function renderUI(node) {
   const state = readState(node);
-  const root = node._pixResRoot;
-  if (!root || !root.isConnected) return;
+  let root = node._pixResRoot;
+  if (!root || !root.isConnected) {
+    // Vue may have detached the original element. Re-find via the DOM widget.
+    const w = (node.widgets || []).find((x) => x.name === "resolution_ui");
+    if (w?.element?.isConnected) {
+      const found = w.element.querySelector(".pix-res-root");
+      if (found) {
+        node._pixResRoot = found;
+        root = found;
+      } else {
+        // Container exists but our root is gone — append a new one.
+        root = document.createElement("div");
+        root.className = "pix-res-root";
+        w.element.appendChild(root);
+        node._pixResRoot = root;
+      }
+    } else {
+      return; // nothing to render into
+    }
+  }
 
   root.innerHTML = "";
   root.appendChild(renderChipGrid(state));
@@ -369,17 +387,26 @@ app.registerExtension({
       const state = readState(this);
       writeState(this, state); // normalize back so widget value is canonical
 
-      // Build the UI: chip grid + size list (Task 5 swaps list for Custom panel when active).
+      // Build the UI: chip grid + (size list OR Custom panel based on mode).
       const root = document.createElement("div");
       root.className = "pix-res-root";
 
-      root.addEventListener("click", (e) => {
+      const _widget = this.addDOMWidget("resolution_ui", "custom", root, {
+        getValue: () => readState(this),
+        setValue: (_v) => {},
+        getMinHeight: () => 240,
+        getMaxHeight: () => 240,
+        margin: 4,
+      });
+
+      const _node = this;
+      const _onClick = (e) => {
         const chip = e.target.closest(".pix-res-chip");
         if (chip) {
           const id = chip.dataset.chipId;
-          const cur = readState(this);
+          const cur = readState(_node);
           if (id === "custom") {
-            writeState(this, {
+            writeState(_node, {
               ...cur,
               mode: "custom",
               w: cur.custom_w ?? 1024,
@@ -389,29 +416,24 @@ app.registerExtension({
             const sizes = SIZES[id];
             if (!sizes) return;
             const [w, h] = sizes[0];
-            writeState(this, { ...cur, mode: "preset", ratio: id, w, h });
+            writeState(_node, { ...cur, mode: "preset", ratio: id, w, h });
           }
-          renderUI(this);
+          renderUI(_node);
           return;
         }
         const row = e.target.closest(".pix-res-row");
         if (row && !row.classList.contains("empty") && row.dataset.w) {
           const w = parseInt(row.dataset.w, 10);
           const h = parseInt(row.dataset.h, 10);
-          const cur = readState(this);
-          writeState(this, { ...cur, w, h });
-          renderUI(this);
-          return;
+          const cur = readState(_node);
+          writeState(_node, { ...cur, w, h });
+          renderUI(_node);
         }
-      });
+      };
 
-      this.addDOMWidget("resolution_ui", "custom", root, {
-        getValue: () => readState(this),
-        setValue: (_v) => {},
-        getMinHeight: () => 240,
-        getMaxHeight: () => 240,
-        margin: 4,
-      });
+      // Attach to both root and the widget container so a Vue rebuild still routes events
+      root.addEventListener("click", _onClick);
+      if (_widget?.element) _widget.element.addEventListener("click", _onClick);
 
       this._pixResRoot = root;
       renderUI(this);
