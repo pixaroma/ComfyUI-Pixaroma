@@ -261,10 +261,11 @@ export function injectCSS() {
    Default: solid 1.2em×1.2em colored rectangle when no matching
    per-icon rule is present — deliberately visible to signal a
    missing / unknown icon rather than rendering invisibly.
-   The span gets contenteditable="false" in renderIconHTML, which
-   makes it atomic (single backspace, caret can't land inside,
-   and browsers DO let execCommand("foreColor") recolor it —
-   unlike user-select:none which blocked selection entirely). */
+   user-select: all makes a single click on the icon select the
+   whole element as one unit (like a hyperlink), so the text-color
+   picker / Backspace / Delete all act on it atomically. Tried
+   contenteditable="false" first — it broke H1/H2/H3 formatBlock
+   when the caret was adjacent, so it was removed. */
 .pix-note-ic {
   display: inline-block;
   width: 1.2em;
@@ -277,6 +278,8 @@ export function injectCSS() {
           mask-repeat: no-repeat;
   -webkit-mask-position: center;
           mask-position: center;
+  -webkit-user-select: all;
+          user-select: all;
 }
 
 /* Hover-reveal Edit button */

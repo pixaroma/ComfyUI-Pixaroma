@@ -120,14 +120,19 @@ export function deriveLabel(stem) {
 export function renderIconHTML(id, color) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
   const safeColor = /^#[0-9a-f]{3,8}$/i.test(color) ? color : "#f66744";
-  // contenteditable="false" makes the empty span behave as a single
-  // atomic unit: backspace deletes it whole, the caret never lands
-  // "inside" the empty element, and crucially — the browser lets
-  // execCommand("foreColor") recolor it via the text-color picker.
-  // Without this the CSS user-select:none made the icon unselectable
-  // and therefore uncolorable.
+  // Plain inline span — no contenteditable="false". Initially tried
+  // that approach for "atomic" behavior, but it broke two things:
+  //   1. Clicking the icon didn't select it — caret was placed
+  //      adjacent, so the text-color picker had nothing to act on.
+  //   2. execCommand("formatBlock") (H1/H2/H3) became unreliable
+  //      when the caret was adjacent to a contenteditable="false"
+  //      child — the block-detection walked up through the atom
+  //      and lost its target.
+  // Instead we rely on CSS user-select:all (in css.mjs) so a click
+  // on the icon selects the whole 1.2em element as one unit, ready
+  // for any execCommand (foreColor, backspace, etc.) to act on.
   return `<span data-ic="${safeId}" class="pix-note-ic" ` +
-    `contenteditable="false" style="color:${safeColor}"></span>`;
+    `style="color:${safeColor}"></span>`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
@@ -200,6 +205,12 @@ function openIconPop(anchorBtn, icons, onPick) {
 // stays sticky for the next keystroke (Pattern #25).
 NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   if (!this._editArea) return;
+  // Ensure loose root-level text is wrapped in <p> before inserting.
+  // Without this, inserting an icon into a brand-new note leaves the
+  // icon as a direct child of editArea (no block wrapper) — then
+  // H1/H2/H3 formatBlock has no block to retarget. Same guard the
+  // code-block insert uses (toolbar.mjs::_normalizeEditArea).
+  this._normalizeEditArea?.();
   // Capture the caret position synchronously so the async fetch
   // below doesn't lose it (focus moves to the body while loading).
   const savedRange = (() => {
