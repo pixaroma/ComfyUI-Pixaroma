@@ -45,7 +45,7 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      min-height: 120px;
+      min-height: 170px;
       display: flex;
       flex-direction: column;
     }
@@ -130,8 +130,8 @@ injectCSS();
 
 // Locked node dimensions. Tuned by eye in the Vue frontend.
 const NODE_W = 240;
-const NODE_H = 296;   // total node height
-const WIDGET_H = 250; // DOM widget area height (inside title + ports)
+const NODE_H = 346;   // total node height (was 296 for 6 rows; +50 for 8 rows)
+const WIDGET_H = 300; // DOM widget area height (was 250 for 6 rows)
 
 const STATE_WIDGET = "ResolutionState";
 
@@ -171,14 +171,16 @@ const CHIPS = [
   { id: "custom", label: "Custom Resolution", span3: true },
 ];
 
-// Sizes per ratio — exactly 6 entries each. 1:1 was extended in the spec to 2048×2048.
+// Sizes per ratio — 8 entries each. The first two of 16:9/9:16/2:1 are the
+// de facto AI-video standards (Wan 2.2, CogVideoX, AnimateDiff) and aren't
+// mathematically exact for the ratio (e.g. 832×480 ≈ 1.733 vs 16:9 = 1.778).
 const SIZES = {
-  "1:1":  [[1024,1024],[1280,1280],[1328,1328],[1408,1408],[1536,1536],[2048,2048]],
-  "16:9": [[1344,768],[1536,864],[1600,896],[1664,928],[1792,1008],[1920,1088]],
-  "9:16": [[768,1344],[864,1536],[896,1600],[928,1664],[1008,1792],[1088,1920]],
-  "2:1":  [[1280,640],[1536,768],[1600,800],[1792,896],[1920,960],[2048,1024]],
-  "3:2":  [[1152,768],[1344,896],[1536,1024],[1632,1088],[1728,1152],[1920,1280]],
-  "2:3":  [[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
+  "1:1":  [[512,512],[768,768],[1024,1024],[1280,1280],[1328,1328],[1408,1408],[1536,1536],[2048,2048]],
+  "16:9": [[832,480],[1280,720],[1344,768],[1536,864],[1600,896],[1664,928],[1792,1008],[1920,1088]],
+  "9:16": [[480,832],[720,1280],[768,1344],[864,1536],[896,1600],[928,1664],[1008,1792],[1088,1920]],
+  "2:1":  [[512,256],[1024,512],[1280,640],[1536,768],[1600,800],[1792,896],[1920,960],[2048,1024]],
+  "3:2":  [[768,512],[1024,680],[1152,768],[1344,896],[1536,1024],[1632,1088],[1728,1152],[1920,1280]],
+  "2:3":  [[512,768],[680,1024],[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
 };
 
 function gcd(a, b) {
@@ -226,8 +228,8 @@ function renderSizeList(state) {
   wrap.className = "pix-res-list";
   if (state.mode !== "preset") return wrap; // Custom mode handled in Task 5
   const sizes = SIZES[state.ratio] || [];
-  // Render 6 rows; pad with .empty rows if the ratio has fewer than 6
-  for (let i = 0; i < 6; i++) {
+  // Render 8 rows; pad with .empty rows if the ratio has fewer than 8
+  for (let i = 0; i < 8; i++) {
     const row = document.createElement("div");
     row.className = "pix-res-row";
     if (i >= sizes.length) {

@@ -110,16 +110,18 @@ A single hidden widget on the node holds JSON:
 | Workflow load with unknown `ratio` (not in the 6-key set) | Fall back to default state (`1:1`, `1024 × 1024`), preserve `custom_w / custom_h` if valid. |
 | Workflow load with `mode` != `"preset"` and != `"custom"` | Fall back to default state entirely. |
 
-## Sizes per ratio (6 each)
+## Sizes per ratio (8 each)
+
+Extended from the original 6-each (post-implementation, 2026-04-22) to cover AI-video model standards (Wan 2.2, CogVideoX, AnimateDiff). The first two entries of 16:9 / 9:16 / 2:1 are the de facto video sizes and aren't mathematically exact for the ratio (e.g. 832×480 ≈ 1.733 vs 16:9 = 1.778) but are grouped under the closest preset.
 
 | Ratio | Sizes |
 |---|---|
-| 1:1 | `1024×1024`, `1280×1280`, `1328×1328`, `1408×1408`, `1536×1536`, `2048×2048` |
-| 16:9 | `1344×768`, `1536×864`, `1600×896`, `1664×928`, `1792×1008`, `1920×1088` |
-| 9:16 | `768×1344`, `864×1536`, `896×1600`, `928×1664`, `1008×1792`, `1088×1920` |
-| 2:1 | `1280×640`, `1536×768`, `1600×800`, `1792×896`, `1920×960`, `2048×1024` |
-| 3:2 | `1152×768`, `1344×896`, `1536×1024`, `1632×1088`, `1728×1152`, `1920×1280` |
-| 2:3 | `768×1152`, `896×1344`, `1024×1536`, `1088×1632`, `1152×1728`, `1280×1920` |
+| 1:1 | `512×512`, `768×768`, `1024×1024`, `1280×1280`, `1328×1328`, `1408×1408`, `1536×1536`, `2048×2048` |
+| 16:9 | `832×480`, `1280×720`, `1344×768`, `1536×864`, `1600×896`, `1664×928`, `1792×1008`, `1920×1088` |
+| 9:16 | `480×832`, `720×1280`, `768×1344`, `864×1536`, `896×1600`, `928×1664`, `1008×1792`, `1088×1920` |
+| 2:1 | `512×256`, `1024×512`, `1280×640`, `1536×768`, `1600×800`, `1792×896`, `1920×960`, `2048×1024` |
+| 3:2 | `768×512`, `1024×680`, `1152×768`, `1344×896`, `1536×1024`, `1632×1088`, `1728×1152`, `1920×1280` |
+| 2:3 | `512×768`, `680×1024`, `768×1152`, `896×1344`, `1024×1536`, `1088×1632`, `1152×1728`, `1280×1920` |
 
 These live as a single JS const (`SIZES` keyed by ratio) — the source of truth for both the chip → list rendering and the "first size of new ratio" default.
 
