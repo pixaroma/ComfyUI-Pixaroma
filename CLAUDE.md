@@ -13,7 +13,7 @@ No test suite or linting configuration exists in this project.
 
 ### Entry Points
 - `__init__.py` — Aggregates all node classes, registers routes, exports `WEB_DIRECTORY = "./js"`
-- `server_routes.py` — 9 aiohttp HTTP routes for file I/O and AI features
+- `server_routes.py` — aiohttp HTTP routes for file I/O, asset serving, and AI features
 - `nodes/*.py` — Individual node implementations (one per editor, all under 100 lines)
 
 ### Node → ComfyUI Integration
@@ -37,10 +37,7 @@ Nodes are `OUTPUT_NODE = True` and receive editor state as a serialized JSON str
 | `/pixaroma/api/crop/save` | Save crop result |
 | `/pixaroma/remove_bg` | AI background removal (rembg) |
 | `/pixaroma/assets/{filename}` | Serve logo/assets |
-| `/pixaroma/api/note/check_folder` | (dead — kept only for back-compat; no JS caller) |
-| `/pixaroma/api/note/open_folder` | (dead — kept only for back-compat; no JS caller) |
-
-The two `note/*_folder` routes are leftover from an earlier iteration where the Note Pixaroma Download pill would open the target ComfyUI folder in the OS file explorer. Design changed to "folder path is purely informational text under the pill" — the JS no longer fetches these routes. Safe to delete after confirming no workflow depends on them.
+| `/pixaroma/api/note/icons/list` | List inline-icon SVGs in `assets/icons/note/` |
 
 ### Frontend Directory Structure
 The frontend is organized into **directory-per-editor** modules under `js/`. Each directory is self-contained with files split by concern (~300 lines max per file).

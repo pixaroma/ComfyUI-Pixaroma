@@ -14,6 +14,31 @@ export class NoteEditor {
   }
 
   open() {
+    // Sync cfg.backgroundColor to node.bgcolor on open when they
+    // differ. Happens when the user picks a color via ComfyUI's
+    // native right-click Colors menu between saves: node.bgcolor is
+    // updated directly (native menu doesn't know about our cfg
+    // object), but our cfg still holds the hex from the last Bg-
+    // picker save. Without this sync, the canvas shows the native
+    // color while the editor body opens at the stale cfg color —
+    // visual disagreement, and the next save would clobber the
+    // native pick back to the cfg value.
+    //
+    // Guard conditions: cfg has a concrete hex (not undefined / null /
+    // "transparent" — in those states _applyEditAreaBg already falls
+    // back to node.bgcolor cleanly), AND node.bgcolor is set, AND
+    // they differ. Mark dirty so closing via Cancel prompts to save,
+    // persisting the sync into the widget JSON.
+    if (
+      this.node?.bgcolor &&
+      typeof this.cfg.backgroundColor === "string" &&
+      this.cfg.backgroundColor &&
+      this.cfg.backgroundColor !== "transparent" &&
+      this.cfg.backgroundColor !== this.node.bgcolor
+    ) {
+      this.cfg.backgroundColor = this.node.bgcolor;
+      this._dirty = true;
+    }
     // Preload inline-icon list + inject per-icon CSS rules so the toolbar
     // picker opens instantly without a round-trip fetch. Both calls are
     // idempotent (cache + one-time injection guards). Fire-and-forget —
