@@ -117,18 +117,22 @@ export function deriveLabel(stem) {
 // `id` must match the sanitizer slug regex. If it doesn't, we emit a
 // span with the bad id stripped — sanitizer would do the same at save
 // time, so pre-strip keeps the DOM consistent.
-export function renderIconHTML(id, color) {
+export function renderIconHTML(id) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
-  const safeColor = /^#[0-9a-f]{3,8}$/i.test(color) ? color : "#f66744";
-  // Plain inline span followed by a non-breaking space. The trailing
-  // &nbsp; matters: Chrome has trouble reliably placing the caret
-  // immediately after an empty inline-block element, so clicking
-  // below the icon in the editor would sometimes appear to do
-  // nothing. The &nbsp; is a concrete landing character for the
-  // caret — same trick the Button Design pills already use. It
-  // renders as a single space of width, which is visually fine.
-  return `<span data-ic="${safeId}" class="pix-note-ic" ` +
-    `style="color:${safeColor}"></span>&nbsp;`;
+  // No inline style="color:..." — the .pix-note-ic CSS uses
+  // background-color: currentColor, so the icon automatically
+  // inherits whatever the surrounding text color is. Users who pick
+  // a color via the text-color picker get that color applied to the
+  // icon for free (because the icon lives inside the colored span
+  // that execCommand("foreColor") created). Simpler than shipping a
+  // per-icon color override.
+  //
+  // Trailing &nbsp; matters: Chrome has trouble reliably placing the
+  // caret immediately after an empty inline-block element, so
+  // clicking below the icon in the editor would sometimes appear to
+  // do nothing. The &nbsp; is a concrete landing character for the
+  // caret — same trick the Button Design pills already use.
+  return `<span data-ic="${safeId}" class="pix-note-ic"></span>&nbsp;`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
@@ -169,7 +173,10 @@ function openIconPop(anchorBtn, icons, onPick) {
       const glyph = document.createElement("span");
       glyph.className = "pix-note-ic";
       glyph.setAttribute("data-ic", ic.id);
-      glyph.style.color = "#f66744"; // preview in insert-color
+      // No inline color — the glyph inherits currentColor from the
+      // popup, which is set to the editor's default text color (see
+      // .pix-note-iconpop in css.mjs). Matches the insert-time icon
+      // color so the picker is WYSIWYG for what will actually land.
       tile.appendChild(glyph);
       grid.appendChild(tile);
     }
@@ -230,8 +237,29 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
     document.execCommand(
       "insertHTML",
       false,
-      renderIconHTML(id, "#f66744"),
+      renderIconHTML(id),
     );
+    // Fresh-editor cleanup: if the containing block originally had
+    // just a trailing <br> (Chrome's "empty-paragraph marker"), that
+    // <br> survives the insert and ends up AFTER our &nbsp;. Visually
+    // that creates a phantom empty line below the icon — and when
+    // the user then presses H1, the caret can snap to that trailing
+    // empty line and appear to "jump down" below the icon. Walk up
+    // to the containing block and strip any trailing <br> that sits
+    // as the last meaningful child.
+    const sel2 = window.getSelection();
+    if (sel2 && sel2.rangeCount > 0) {
+      let block = sel2.getRangeAt(0).startContainer;
+      while (block && block.parentNode !== this._editArea && block !== this._editArea) {
+        block = block.parentNode;
+      }
+      if (block && block.parentNode === this._editArea) {
+        const last = block.lastChild;
+        if (last && last.nodeType === 1 && last.tagName === "BR") {
+          block.removeChild(last);
+        }
+      }
+    }
     this._restageColors?.();
     this._dirty = true;
     this._refreshActiveStates?.();

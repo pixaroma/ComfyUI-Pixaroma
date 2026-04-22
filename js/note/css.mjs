@@ -704,6 +704,11 @@ export function injectCSS() {
      the same way. */
   z-index: 100000;
   background: #1a1a1a;
+  /* Popup inherits this color down to .pix-note-iconswatch .pix-note-ic
+     — tile previews show what the icon will look like when inserted
+     (which is currentColor = surrounding text color ≈ editor default).
+     Matches the editor's default text color on .pix-note-editarea. */
+  color: #e4e4e4;
   border: 1px solid #333;
   border-radius: 6px;
   padding: 8px;
