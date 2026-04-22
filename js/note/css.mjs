@@ -457,19 +457,24 @@ export function injectCSS() {
    class. Unused visually once task 2 lands. */
 .pix-note-codearea { display: none; }
 
-/* In-panel help overlay — mirrors the framework's pxf-help-overlay
-   look (composer, paint, etc.) so the Note editor's Help dialog has
-   the same visual language: centered modal, two-column content grid,
-   orange section headers, footer with credit. Positioned absolute
-   over the editor panel; covers the toolbar and body, leaves the
-   header/footer bars visible underneath the backdrop. */
+/* Help modal — mirrors the framework's pxf-help-overlay look
+   (composer, paint, etc.) so the Note editor's Help dialog has the
+   same visual language: centered modal, two-column content grid,
+   orange section headers, footer with credit. Appended to the
+   editor overlay (viewport-sized, position:fixed) rather than the
+   inner panel; uses position:fixed itself so it's centered on the
+   viewport regardless of panel height. Without this, a tall help
+   (12+ sections) inside a shorter panel got its top clipped and
+   the user couldn't see the header / close button. */
 .pix-note-help-overlay {
-  position: absolute; top: 50%; left: 50%;
+  position: fixed; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   background: #171718; border: 1px solid ${BRAND};
   border-radius: 10px; padding: 0;
-  width: 960px; max-width: 95%; max-height: 86vh;
-  z-index: 10; overflow: hidden;
+  width: 960px; max-width: 95vw; max-height: 86vh;
+  /* Above editor panel (.pix-note-overlay is 99990) but below the
+     transient popups at 100000 (color / icon). */
+  z-index: 99995; overflow: hidden;
   display: flex; flex-direction: column;
   box-shadow: 0 12px 40px rgba(0,0,0,0.6);
 }

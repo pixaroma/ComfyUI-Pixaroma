@@ -655,7 +655,7 @@ export class NoteEditor {
     const footer = el("div", "pix-note-footer");
     const helpBtn = el("button", "pix-note-btn ghost");
     helpBtn.textContent = "? Help";
-    helpBtn.onclick = () => this._showHelp(panel);
+    helpBtn.onclick = () => this._showHelp();
     const cancelBtn = el("button", "pix-note-btn");
     cancelBtn.textContent = "Cancel";
     cancelBtn.onclick = () => this.close();
@@ -670,8 +670,17 @@ export class NoteEditor {
     this._el = overlay;
   }
 
-  _showHelp(panel) {
-    if (panel.querySelector(".pix-note-help-overlay")) return;
+  _showHelp() {
+    // Append to the editor overlay (viewport-sized, position:fixed),
+    // NOT the inner panel. If it's inside the panel, position:absolute
+    // top/left 50% centers the modal on the PANEL — which for a tall
+    // help (12 sections) often means the top of the modal is clipped
+    // ABOVE the panel's top edge, hiding the header + close button.
+    // Appending to the overlay makes top:50% + translate(-50%) center
+    // on the actual viewport so the whole modal is always visible.
+    const host = this._el;
+    if (!host) return;
+    if (host.querySelector(".pix-note-help-overlay")) return;
     const h = document.createElement("div");
     h.className = "pix-note-help-overlay";
     h.innerHTML = `
@@ -793,7 +802,7 @@ export class NoteEditor {
     `;
     const close = h.querySelector(".pix-note-help-close");
     if (close) close.addEventListener("click", () => h.remove());
-    panel.appendChild(h);
+    host.appendChild(h);
   }
 }
 
