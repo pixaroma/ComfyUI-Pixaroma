@@ -181,6 +181,29 @@ const SIZES = {
   "2:3":  [[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
 };
 
+function gcd(a, b) {
+  a = Math.abs(a); b = Math.abs(b);
+  while (b) { const t = b; b = a % b; a = t; }
+  return a || 1;
+}
+
+function ratioLabel(w, h) {
+  const g = gcd(w, h);
+  const rw = w / g, rh = h / g;
+  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3"];
+  const simple = `${rw}:${rh}`;
+  if (known.includes(simple)) return simple;
+  const r = w / h;
+  return r >= 1 ? `~${r.toFixed(2)}:1` : `~1:${(1 / r).toFixed(2)}`;
+}
+
+function megapixels(w, h) {
+  return ((w * h) / 1_000_000).toFixed(2);
+}
+
+function snap16(n) { return Math.round(n / 16) * 16; }
+function clampDim(n) { return Math.max(256, Math.min(4096, n)); }
+
 function renderChipGrid(state) {
   const wrap = document.createElement("div");
   wrap.className = "pix-res-chips";
@@ -223,15 +246,106 @@ function renderSizeList(state) {
   return wrap;
 }
 
+function renderCustomPanel(node, state) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-res-list pix-res-custom";
+
+  const row = document.createElement("div");
+  row.className = "pix-res-custom-row";
+
+  const wField = document.createElement("div");
+  wField.className = "pix-res-custom-field";
+  const wLabel = document.createElement("label");
+  wLabel.textContent = "Width";
+  const wInput = document.createElement("input");
+  wInput.type = "number";
+  wInput.min = "256";
+  wInput.max = "4096";
+  wInput.step = "16";
+  wInput.value = String(state.w);
+
+  const hField = document.createElement("div");
+  hField.className = "pix-res-custom-field";
+  const hLabel = document.createElement("label");
+  hLabel.textContent = "Height";
+  const hInput = document.createElement("input");
+  hInput.type = "number";
+  hInput.min = "256";
+  hInput.max = "4096";
+  hInput.step = "16";
+  hInput.value = String(state.h);
+
+  wField.append(wLabel, wInput);
+  hField.append(hLabel, hInput);
+  row.append(wField, hField);
+
+  const swap = document.createElement("button");
+  swap.type = "button";
+  swap.className = "pix-res-swap";
+  swap.textContent = "⇄  Swap W ↔ H";
+
+  const readout = document.createElement("div");
+  readout.className = "pix-res-readout";
+
+  function refreshReadout(w, h) {
+    readout.innerHTML =
+      `snaps to 16 px · <span class="accent">${ratioLabel(w, h)}</span> · ${megapixels(w, h)} MP`;
+  }
+  refreshReadout(state.w, state.h);
+
+  function commit() {
+    const wRaw = parseInt(wInput.value, 10);
+    const hRaw = parseInt(hInput.value, 10);
+    const wNew = clampDim(snap16(Number.isFinite(wRaw) ? wRaw : 1024));
+    const hNew = clampDim(snap16(Number.isFinite(hRaw) ? hRaw : 1024));
+    wInput.value = String(wNew);
+    hInput.value = String(hNew);
+    refreshReadout(wNew, hNew);
+    const cur = readState(node);
+    writeState(node, { ...cur, w: wNew, h: hNew, custom_w: wNew, custom_h: hNew });
+  }
+
+  function liveUpdate() {
+    const wLive = parseInt(wInput.value, 10);
+    const hLive = parseInt(hInput.value, 10);
+    if (Number.isFinite(wLive) && Number.isFinite(hLive)) refreshReadout(wLive, hLive);
+  }
+  wInput.addEventListener("input", liveUpdate);
+  hInput.addEventListener("input", liveUpdate);
+
+  wInput.addEventListener("blur", commit);
+  hInput.addEventListener("blur", commit);
+  wInput.addEventListener("keydown", (e) => { if (e.key === "Enter") wInput.blur(); });
+  hInput.addEventListener("keydown", (e) => { if (e.key === "Enter") hInput.blur(); });
+
+  for (const inp of [wInput, hInput]) {
+    inp.addEventListener("keydown", (e) => e.stopPropagation());
+  }
+
+  swap.addEventListener("click", () => {
+    const w = parseInt(wInput.value, 10) || state.w;
+    const h = parseInt(hInput.value, 10) || state.h;
+    wInput.value = String(h);
+    hInput.value = String(w);
+    commit();
+  });
+
+  wrap.append(row, swap, readout);
+  return wrap;
+}
+
 function renderUI(node) {
   const state = readState(node);
   const root = node._pixResRoot;
-  if (!root || !root.isConnected) return; // Vue may have detached us — Task 6 handles re-resolve
+  if (!root || !root.isConnected) return;
 
-  // Rebuild children: chip grid + size list (Custom panel comes in Task 5)
   root.innerHTML = "";
   root.appendChild(renderChipGrid(state));
-  root.appendChild(renderSizeList(state));
+  if (state.mode === "custom") {
+    root.appendChild(renderCustomPanel(node, state));
+  } else {
+    root.appendChild(renderSizeList(state));
+  }
 }
 
 app.registerExtension({
@@ -265,8 +379,12 @@ app.registerExtension({
           const id = chip.dataset.chipId;
           const cur = readState(this);
           if (id === "custom") {
-            // Custom mode UI lands in Task 5; for now flip mode and let render show empty list.
-            writeState(this, { ...cur, mode: "custom" });
+            writeState(this, {
+              ...cur,
+              mode: "custom",
+              w: cur.custom_w ?? 1024,
+              h: cur.custom_h ?? 1024,
+            });
           } else {
             const sizes = SIZES[id];
             if (!sizes) return;
