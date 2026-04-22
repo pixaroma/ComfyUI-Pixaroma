@@ -123,6 +123,11 @@ js/
 │   ├── sanitize.mjs    # Allowlist-based HTML sanitizer (tags, attrs, classes, styles, href)
 │   └── css.mjs         # injectCSS — all note styles (overlay, editarea, pills, toggles)
 │
+├── resolution/         # Resolution Pixaroma (single file, ~640 lines)
+│   └── index.js        # 3x3 ratio chip grid + 8-row size list + Custom mode
+│                       #  (W/H inputs, swap, snap chips, aspect preview).
+│                       #  State on node.properties + graphToPrompt hook.
+│
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
 │
@@ -195,6 +200,13 @@ ComfyUI's new Vue 3 frontend introduces several behavioral differences from the 
    See `js/note/core.mjs` for the full pattern (also neuters `graph.undo/redo`, `Comfy.Undo`/`Comfy.Redo` commands, plus a `node.onRemoved` resurrection-close safety net). Always debug this class of bug with a stack trace from `onRemoved` — it will show you the exact path that needs wrapping.
 
 7. **`installFocusTrap` and contenteditable don't mix** — Paint/Composer/3D call `installFocusTrap(overlay)` so their hidden textarea absorbs focus for keyboard-shortcut isolation. For rich-text editors that use a contenteditable (Note Pixaroma), do NOT call `installFocusTrap`: its `mouseup` handler refocuses the hidden textarea whenever the event target isn't INPUT/TEXTAREA/SELECT, which steals focus on every toolbar-button click (user has to re-click into the editor to type) and wipes the text selection when a drag-select ends outside the panel. Use the `loadGraphData` / `graph.configure` neutering pattern from point 6 instead.
+
+8. **`nodeCreated` fires BEFORE `configure()` — defer initial DOM widget population via `queueMicrotask`** — In Vue's new frontend, the extension-level `nodeCreated(node)` hook fires DURING node construction, BEFORE ComfyUI calls `configure(data)` to restore saved widget values. If you render the DOM widget contents synchronously inside `nodeCreated`, you render from the Python default and then flash to the saved state when `onConfigure`'s re-render hook fires milliseconds later. The fix: create an empty `root` div, call `addDOMWidget(..., root, ...)`, wire event listeners, cache `node._xxxRoot = root`, and **defer the initial populate to `queueMicrotask(() => { ... })`** so the restored widget value is visible by the time we read it. Keep the `onConfigure` re-render for the "open a different workflow into an already-constructed node" case. Pattern applies to any hidden-JSON-widget node (Resolution Pixaroma is the reference implementation; Note Pixaroma's timing happens to mask the flash because its initial render is visually lighter). Full diagnostic path: add `console.log` of the widget value in both `nodeCreated` setup and `onConfigure` — if the first shows defaults and the second shows the saved value, you have this bug.
+
+9. **For hidden state, prefer Python `hidden` inputs + `node.properties` + `graphToPrompt` over hidden STRING widgets — eliminates both the input dot and the persistence fragility.** Vue auto-exposes primitive-type *required* inputs (STRING/INT/FLOAT) as convertible input slots that flash a grey dot on hover. Two ways to suppress the dot:
+   - **Wrong**: `node.removeInput(idx)` on the auto-created slot. Causes saved JSON to have `"inputs": []`, and on workflow RELOAD Vue fails to reconnect the saved `widgets_values[0]` to the hidden STRING widget — silent revert to defaults on every workflow open.
+   - **Right (Resolution Pixaroma pattern)**: Define the input as `"hidden"` (not `"required"`) in Python — no widget, no slot, no dot. Store state on `node.properties[YOUR_KEY]` (LiteGraph serializes `properties` natively in workflow JSON). At extension scope, monkey-patch `app.graphToPrompt` to inject the saved state into each node's `inputs.YourHiddenName` right before submission. Read state via `node.properties[YOUR_KEY]` in setup; include a one-time migration that scans `node.widgets_values` for the old JSON format if you're upgrading from a widget-based architecture.
+   - **Acceptable (Note Pixaroma pattern)**: keep the required STRING widget + `hideJsonWidget`. The hover dot remains but persistence is rock-solid via the standard widget value flow. Use this when no extra prompt-time injection is desired.
 
 ### ComfyUI Settings Integration
 Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `settings` array inside `app.registerExtension()`. Settings appear under the **👑 Pixaroma** category.
@@ -401,6 +413,7 @@ Files are named by concern. Match the task to the file:
 | Add a new composite (multi-mesh) 3D shape | `js/3d/composites.mjs` + `js/3d/picker.mjs` SECTIONS |
 | Change the per-object Shape panel | `js/3d/shape_params.mjs` |
 | Handle GLB/OBJ import behavior | `js/3d/importer.mjs` |
+| Add / change Resolution Pixaroma sizes per ratio | `js/resolution/index.js` `SIZES` const + `DEFAULT_PER_RATIO` (per-ratio click default) — keep the spec doc table in sync. Layout sizing (NODE_H / WIDGET_H / list min-height) lives at the top of the same file. State schema on `node.properties.resolutionState` + `app.graphToPrompt` injection hook at the bottom of the file (Pattern #9). |
 | Fix / extend Note toolbar (buttons, pickers) | `js/note/toolbar.mjs` |
 | Add / change a toolbar mask-icon | `js/note/css.mjs` (`.pix-note-tbtn-maskicon` for single-layer, `.pix-note-tbtn-maskicon-multi` for two-layer color pickers) + SVG files in `assets/icons/ui/` (two-layer icons need `<name>-outline.svg` + `<name>-drop.svg`) + `makeMaskIcon`/`makeMaskIconMulti` call in `toolbar.mjs` |
 | Change per-note colour pickers (Btn, Ln, Bg, text, highlight) | `js/note/toolbar.mjs` (`makeColorPicker` factory for Btn/Ln; inline pickers for text / highlight / Bg in G3); `js/note/render.mjs` writes CSS vars on canvas body; `core.mjs` `_applyCfgColorsToEditArea` writes same vars on the editor's contenteditable on each open |

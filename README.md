@@ -55,6 +55,9 @@ Rich-text annotation node for documenting your workflow inline. Full WYSIWYG edi
 ![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
 ![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
 
+### 📐 Resolution Pixaroma
+One-click resolution picker that outputs clean `width` and `height` INTs for any `EmptyLatent` or size-driven downstream node. 3×3 ratio chip grid (1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3 + Custom Resolution) with 8 curated sizes per ratio — including AI-video standards (832×480, 1280×720 for 16:9; 480×832, 720×1280 for 9:16; Wan 2.2 / CogVideoX / AnimateDiff friendly). Each ratio auto-selects a sensible default on click (e.g. 16:9 → 1280×720). **Custom Resolution** mode opens W/H number inputs with an inline **swap** icon between them, picks snap-step (8 / 16 / 32 / 64 px) with brand-orange active chip, arrow keys nudge by the picked step, plus a live aspect-ratio preview rectangle and ratio + megapixel readout. Locked node size (no accidental resize), workflow save/load round-trips the full state (ratio, picked size, custom values, snap choice).
+
 ---
 
 ## 🚀 Getting Started
@@ -104,6 +107,17 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **April 22, 2026 — Resolution Pixaroma**
+A one-click resolution picker that outputs `width` + `height` as plain INTs for any latent / size-driven downstream node.
+
+- 📐 **3×3 ratio chip grid** — 1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3 + full-width **Custom Resolution** row. Active chip highlighted in brand orange.
+- 🎬 **8 curated sizes per ratio** including AI-video standards (832×480, 1280×720 for 16:9; 480×832, 720×1280 for 9:16 — Wan 2.2 / CogVideoX / AnimateDiff friendly).
+- 🎯 **Per-ratio default on click** — 16:9 → 1280×720, 9:16 → 720×1280, 2:1 → 1280×640, etc. Not the smallest entry.
+- ✏️ **Custom mode** — W/H number inputs with an inline swap-icon button between them (Figma-style), 4 inline snap-step chips (8 / 16 / 32 / 64 px) with brand-orange active state, arrow keys nudge by the chosen step, live aspect-ratio preview rectangle, ratio + megapixel readout.
+- 🔒 **Locked node size** — no accidental resize; the layout never breaks.
+- 💾 **Round-trip save/load** — workflow file restores the exact ratio, picked size, custom values, and snap choice with no flash on open.
+- 🌑 **Brand-default dark colors** — nodes come up with a dark title + body out of the box; ComfyUI's native right-click Colors menu still works if you want to change.
 
 ### **April 22, 2026 — Note Pixaroma**
 A brand-new rich-text annotation node. Replaces the "wall of Markdown as a comment" approach with a full WYSIWYG editor + sanitized Code view.
