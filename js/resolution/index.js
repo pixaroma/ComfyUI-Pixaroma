@@ -171,6 +171,16 @@ const CHIPS = [
   { id: "custom", label: "Custom Resolution", span3: true },
 ];
 
+// Sizes per ratio — exactly 6 entries each. 1:1 was extended in the spec to 2048×2048.
+const SIZES = {
+  "1:1":  [[1024,1024],[1280,1280],[1328,1328],[1408,1408],[1536,1536],[2048,2048]],
+  "16:9": [[1344,768],[1536,864],[1600,896],[1664,928],[1792,1008],[1920,1088]],
+  "9:16": [[768,1344],[864,1536],[896,1600],[928,1664],[1008,1792],[1088,1920]],
+  "2:1":  [[1280,640],[1536,768],[1600,800],[1792,896],[1920,960],[2048,1024]],
+  "3:2":  [[1152,768],[1344,896],[1536,1024],[1632,1088],[1728,1152],[1920,1280]],
+  "2:3":  [[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
+};
+
 function renderChipGrid(state) {
   const wrap = document.createElement("div");
   wrap.className = "pix-res-chips";
@@ -186,6 +196,42 @@ function renderChipGrid(state) {
     wrap.appendChild(el);
   }
   return wrap;
+}
+
+function renderSizeList(state) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-res-list";
+  if (state.mode !== "preset") return wrap; // Custom mode handled in Task 5
+  const sizes = SIZES[state.ratio] || [];
+  // Render 6 rows; pad with .empty rows if the ratio has fewer than 6
+  for (let i = 0; i < 6; i++) {
+    const row = document.createElement("div");
+    row.className = "pix-res-row";
+    if (i >= sizes.length) {
+      row.classList.add("empty");
+      row.textContent = "";
+      wrap.appendChild(row);
+      continue;
+    }
+    const [w, h] = sizes[i];
+    row.textContent = `${w} × ${h}`;
+    row.dataset.w = String(w);
+    row.dataset.h = String(h);
+    if (state.w === w && state.h === h) row.classList.add("active");
+    wrap.appendChild(row);
+  }
+  return wrap;
+}
+
+function renderUI(node) {
+  const state = readState(node);
+  const root = node._pixResRoot;
+  if (!root || !root.isConnected) return; // Vue may have detached us — Task 6 handles re-resolve
+
+  // Rebuild children: chip grid + size list (Custom panel comes in Task 5)
+  root.innerHTML = "";
+  root.appendChild(renderChipGrid(state));
+  root.appendChild(renderSizeList(state));
 }
 
 app.registerExtension({
@@ -209,24 +255,48 @@ app.registerExtension({
       const state = readState(this);
       writeState(this, state); // normalize back so widget value is canonical
 
-      // Build the UI: chip grid + (empty) list placeholder. Task 4 fills the list, Task 5 swaps it for Custom.
+      // Build the UI: chip grid + size list (Task 5 swaps list for Custom panel when active).
       const root = document.createElement("div");
       root.className = "pix-res-root";
-      root.appendChild(renderChipGrid(state));
-      // Empty list placeholder for Task 4
-      const listPlaceholder = document.createElement("div");
-      listPlaceholder.className = "pix-res-list";
-      root.appendChild(listPlaceholder);
+
+      root.addEventListener("click", (e) => {
+        const chip = e.target.closest(".pix-res-chip");
+        if (chip) {
+          const id = chip.dataset.chipId;
+          const cur = readState(this);
+          if (id === "custom") {
+            // Custom mode UI lands in Task 5; for now flip mode and let render show empty list.
+            writeState(this, { ...cur, mode: "custom" });
+          } else {
+            const sizes = SIZES[id];
+            if (!sizes) return;
+            const [w, h] = sizes[0];
+            writeState(this, { ...cur, mode: "preset", ratio: id, w, h });
+          }
+          renderUI(this);
+          return;
+        }
+        const row = e.target.closest(".pix-res-row");
+        if (row && !row.classList.contains("empty") && row.dataset.w) {
+          const w = parseInt(row.dataset.w, 10);
+          const h = parseInt(row.dataset.h, 10);
+          const cur = readState(this);
+          writeState(this, { ...cur, w, h });
+          renderUI(this);
+          return;
+        }
+      });
 
       this.addDOMWidget("resolution_ui", "custom", root, {
         getValue: () => readState(this),
-        setValue: (_v) => {}, // we read from the JSON widget, not from this DOM widget value
+        setValue: (_v) => {},
         getMinHeight: () => 240,
         getMaxHeight: () => 240,
         margin: 4,
       });
 
       this._pixResRoot = root;
+      renderUI(this);
     };
 
     // Re-clamp on every resize attempt so the node can never grow / shrink.
