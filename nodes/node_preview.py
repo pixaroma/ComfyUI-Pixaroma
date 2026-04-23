@@ -22,7 +22,7 @@ class PixaromaPreview:
     RETURN_NAMES = ("image",)
     FUNCTION = "preview"
     OUTPUT_NODE = True
-    CATEGORY = "👑 Pixaroma/Utils"
+    CATEGORY = "Pixaroma"
 
     def preview(self, image, filename_prefix):
         # Only the first frame of the batch is previewed (matches Image Compare).

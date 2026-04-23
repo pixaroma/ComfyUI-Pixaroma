@@ -302,5 +302,32 @@ app.registerExtension({
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
+
+    // Node-level hover tracking. The widget's own `mouse` callback does not
+    // receive pointermove events on the Vue frontend, so we track hover at
+    // the node level and hit-test against the last-drawn button rects
+    // (which the widget stores on node._pixaromaButtonRects each draw).
+    const origMouseMove = nodeType.prototype.onMouseMove;
+    nodeType.prototype.onMouseMove = function (e, localPos) {
+      const rects = this._pixaromaButtonRects || [];
+      let newHover = null;
+      for (const r of rects) {
+        if (hitTest(r, localPos[0], localPos[1])) { newHover = r.id; break; }
+      }
+      if (newHover !== this._pixaromaHoverId) {
+        this._pixaromaHoverId = newHover;
+        this.setDirtyCanvas(true, true);
+      }
+      return origMouseMove ? origMouseMove.apply(this, arguments) : false;
+    };
+
+    const origMouseLeave = nodeType.prototype.onMouseLeave;
+    nodeType.prototype.onMouseLeave = function () {
+      if (this._pixaromaHoverId) {
+        this._pixaromaHoverId = null;
+        this.setDirtyCanvas(true, true);
+      }
+      return origMouseLeave ? origMouseLeave.apply(this, arguments) : false;
+    };
   },
 });
