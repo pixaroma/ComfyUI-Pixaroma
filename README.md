@@ -55,6 +55,9 @@ Rich-text annotation node for documenting your workflow inline. Full WYSIWYG edi
 ![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
 ![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
 
+### 🖼️ Preview Image Pixaroma
+A preview-plus-save checkpoint for any workflow. Shows the image inline in the node body like ComfyUI's built-in PreviewImage, but adds two orange canvas buttons: **Save to Disk** (native OS save dialog — pick any folder, anywhere on your drive, via the File System Access API) and **Save to Output** (writes to ComfyUI's `output/` folder with an auto-incremented counter). Both saved PNGs embed the full workflow + prompt as tEXt metadata chunks — drag any saved image back onto the ComfyUI canvas and the workflow restores. Editable `filename_prefix` widget (default `Preview`). Passthrough IMAGE output that is **optional** — terminate the workflow at this node for a "preview-only" run, or wire downstream and keep going without any error. Buttons enforce a minimum node size so they never clip, and fall back to the Downloads folder on Firefox / Safari <15.1 where `showSaveFilePicker` isn't available.
+
 ### 📐 Resolution Pixaroma
 One-click resolution picker that outputs clean `width` and `height` INTs for any `EmptyLatent` or size-driven downstream node. 3×3 ratio chip grid (1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3 + Custom Resolution) with 8 curated sizes per ratio — including AI-video standards (832×480, 1280×720 for 16:9; 480×832, 720×1280 for 9:16; Wan 2.2 / CogVideoX / AnimateDiff friendly). Each ratio auto-selects a sensible default on click (e.g. 16:9 → 1280×720). **Custom Resolution** mode opens W/H number inputs with an inline **swap** icon between them, picks snap-step (8 / 16 / 32 / 64 px) with brand-orange active chip, arrow keys nudge by the picked step, plus a live aspect-ratio preview rectangle and ratio + megapixel readout. Locked node size (no accidental resize), workflow save/load round-trips the full state (ratio, picked size, custom values, snap choice).
 
@@ -107,6 +110,18 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **April 23, 2026 — Preview Image Pixaroma**
+A new preview-plus-save checkpoint node — the missing middle ground between ComfyUI's `PreviewImage` (shows but can't save anywhere) and `SaveImage` (saves to `output/` only, no preview).
+
+- 🖼️ **In-node preview** — image renders inline in the node body, same UX as ComfyUI's built-in PreviewImage.
+- 💾 **Save to Disk** — native OS save dialog (Chrome/Edge via File System Access API); pick any folder, anywhere on your drive. Falls back to the Downloads folder on Firefox / Safari <15.1.
+- 📁 **Save to Output** — writes to ComfyUI's `output/` folder with an auto-incremented counter (`Preview_00001_.png`, `Preview_00002_.png`, …). Editable `filename_prefix` widget — change once, the counter follows.
+- 🏷️ **Workflow metadata embedded** — both save paths write the full workflow + prompt as PNG tEXt chunks, byte-compatible with ComfyUI's built-in SaveImage. Drag the saved PNG back onto the canvas to restore the whole workflow.
+- 🔗 **Optional passthrough output** — terminate the workflow at this node, or chain forward to another node. Zero errors either way. Useful as a mid-stream eyeball-and-decide checkpoint.
+- 🎨 **Brand-orange buttons** — match Image Compare's styling, sit above the preview image as a reserved widget strip, hover-brighten on pointer in, disabled gray state before the first queue with a "Run the workflow first" toast.
+- 📏 **Min-size clamp** — buttons never clip; you can't shrink the node below the two-buttons-plus-padding floor.
+- 👑 **Unified menu** — all Pixaroma nodes now share the `👑 Pixaroma` submenu (crown prefix for visibility in ComfyUI's Add Node list). Previously Resolution lived in its own `👑 Pixaroma/Utils` branch — merged in this release for one clean entry point.
 
 ### **April 22, 2026 — Resolution Pixaroma**
 A one-click resolution picker that outputs `width` + `height` as plain INTs for any latent / size-driven downstream node.

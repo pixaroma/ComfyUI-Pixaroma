@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node) directly inside ComfyUI workflows. It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node, Preview Image Pixaroma — an in-node image previewer with save-to-disk / save-to-output buttons) directly inside ComfyUI workflows. It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -35,6 +35,8 @@ Nodes are `OUTPUT_NODE = True` and receive editor state as a serialized JSON str
 | `/pixaroma/api/3d/save` | Save 3D render |
 | `/pixaroma/api/3d/bg_upload` | Upload 3D background |
 | `/pixaroma/api/crop/save` | Save crop result |
+| `/pixaroma/api/preview/save` | Preview Image Pixaroma — write PNG with workflow metadata to ComfyUI `output/` with auto-increment counter |
+| `/pixaroma/api/preview/prepare` | Preview Image Pixaroma — return in-memory PNG bytes with workflow metadata embedded (for Save-to-Disk via File System Access API) |
 | `/pixaroma/remove_bg` | AI background removal (rembg) |
 | `/pixaroma/assets/{filename}` | Serve logo/assets |
 | `/pixaroma/api/note/icons/list` | List inline-icon SVGs in `assets/icons/note/` |
@@ -130,6 +132,16 @@ js/
 │
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
+│
+├── preview/            # Preview Image Pixaroma (single file, ~320 lines)
+│   └── index.js        # Two orange buttons (Save to Disk / Save to Output) as
+│                       #  an addCustomWidget placed between filename_prefix and
+│                       #  the ComfyUI-native preview image. saveToOutput posts
+│                       #  to /pixaroma/api/preview/save; saveToDisk posts to
+│                       #  /pixaroma/api/preview/prepare then writes via
+│                       #  window.showSaveFilePicker with <a download> fallback.
+│                       #  Node-level onMouseMove/onMouseLeave for hover (widget
+│                       #  mouse() doesn't get pointermove on Vue).
 │
 ├── showtext/           # Show Text node (single file, 97 lines)
 │   └── index.js
@@ -427,6 +439,8 @@ Files are named by concern. Match the task to the file:
 | Add a new Python node | `nodes/node_<name>.py` |
 | Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
 | Paint AI Background Removal panel | `js/paint/core.mjs` `_buildBgRemovalPanel` + `_removeBgFromActiveLayer` (button gated on `ly.sourceKind === "image"`, set by the `onAddImage` handler and serialized as `source_kind` in the layer project JSON). Reuses the `/pixaroma/remove_bg` backend route via `PaintAPI.removeBg`. |
+| Preview Image Pixaroma — change button layout / geometry / colors | `js/preview/index.js` constants at the top (`BTN_H`, `BTN_GAP`, `MIN_W`, `MIN_H`, `DEFAULT_W`, `DEFAULT_H`, `COLOR_ACTIVE_*` / `COLOR_DISABLED_*`). Button rects computed in `computeButtonRects`, painted in `paintBtn`. Buttons live as an `addCustomWidget` (so they reserve vertical space above the image) — don't switch back to `onDrawForeground` overlay; it collides with ComfyUI's native preview + dimension label. |
+| Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → temp PNG for preview display) + `server_routes.py` helpers `_embed_workflow_metadata`, `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in Python only (single source of truth). |
 
 ### 3. When adding a new method to an editor class
 - Add it to the most relevant existing `.mjs` file by concern (tools, events, render, etc.)
