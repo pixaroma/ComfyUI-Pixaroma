@@ -571,3 +571,53 @@ async def remove_bg(request):
         return web.json_response({"error": f"Background removal failed: {e}"}, status=500)
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/preview/save")
+async def api_preview_save(request):
+    """Save a base64 PNG to ComfyUI's output/ folder with workflow metadata.
+
+    Request JSON: {
+        image_b64:       data-URI PNG string (required),
+        filename_prefix: string 1-64 chars, [A-Za-z0-9_-] (default "Preview"),
+        workflow:        JSON object from app.graph.serialize() (optional),
+        prompt:          JSON object from app.graphToPrompt().output (optional),
+    }
+    Response JSON: { status: "success", filename, subfolder } on 200,
+                   { error: "<message>" } on 400/500.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    image_b64 = data.get("image_b64", "")
+    prefix_raw = data.get("filename_prefix", "Preview")
+    workflow = data.get("workflow")
+    prompt = data.get("prompt")
+
+    if not isinstance(prefix_raw, str) or not prefix_raw:
+        return web.json_response({"error": "filename_prefix required"}, status=400)
+    if len(prefix_raw) > _MAX_ID_LEN or not _SAFE_ID_RE.match(prefix_raw):
+        return web.json_response(
+            {"error": "filename_prefix must match [A-Za-z0-9_-]{1,64}"}, status=400
+        )
+
+    pil = _decode_image(image_b64)
+    if pil is None:
+        return web.json_response({"error": "invalid image data"}, status=400)
+
+    try:
+        output_dir = folder_paths.get_output_directory()
+        full_folder, name, counter, subfolder, _ = folder_paths.get_save_image_path(
+            prefix_raw, output_dir, pil.width, pil.height
+        )
+        os.makedirs(full_folder, exist_ok=True)
+        fname = f"{name}_{counter:05}_.png"
+        full_path = os.path.join(full_folder, fname)
+        pnginfo = _embed_workflow_metadata(workflow, prompt)
+        pil.save(full_path, "PNG", pnginfo=pnginfo)
+    except Exception as e:
+        return web.json_response({"error": f"save failed: {e}"}, status=500)
+
+    return web.json_response(
+        {"status": "success", "filename": fname, "subfolder": subfolder}
+    )
