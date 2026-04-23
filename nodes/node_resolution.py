@@ -39,7 +39,7 @@ class PixaromaResolution:
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
     FUNCTION = "get_resolution"
-    CATEGORY = "👑 Pixaroma/Utils"
+    CATEGORY = "Pixaroma"
 
     def get_resolution(self, ResolutionState: str):
         try:
