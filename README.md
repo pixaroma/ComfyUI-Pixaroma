@@ -67,11 +67,14 @@ One-click resolution picker that outputs clean `width` and `height` INTs for any
 
 ### 1. Installation
 
-#### **Method A: ComfyUI Manager (Recommended)**
+#### **Method A: ComfyUI Easy Install (Zero-Config)**
+If you're using [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Install) — a one-click ComfyUI launcher for Windows — **Pixaroma is already included**. You get it on first install and every time you run the built-in **Update** button, Pixaroma updates alongside ComfyUI and the other bundled custom nodes. Nothing to clone, nothing to configure. Just start ComfyUI and the 👑 Pixaroma nodes are in the Add Node menu.
+
+#### **Method B: ComfyUI Manager**
 1. Search for **Pixaroma** in the ComfyUI Manager.
 2. Click **Install** and restart ComfyUI.
 
-#### **Method B: Manual Installation**
+#### **Method C: Manual Installation**
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
