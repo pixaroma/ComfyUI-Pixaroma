@@ -25,7 +25,7 @@ class PixaromaReferenceNode:
             "optional": FlexibleOptionalInputType(any_type),
         }
 
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("output",)

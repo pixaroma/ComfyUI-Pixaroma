@@ -15,7 +15,7 @@ class PixaromaShowText:
     RETURN_TYPES = ()
     FUNCTION = "show"
     OUTPUT_NODE = True
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
 
     def show(self, source):
         try:

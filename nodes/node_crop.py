@@ -18,7 +18,7 @@ class PixaromaCrop:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_crop"
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
     OUTPUT_NODE = True
 
     @classmethod

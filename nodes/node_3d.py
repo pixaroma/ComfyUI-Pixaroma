@@ -14,7 +14,7 @@ class Pixaroma3D:
             "optional": FlexibleOptionalInputType(any_type),
         }
 
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_render"

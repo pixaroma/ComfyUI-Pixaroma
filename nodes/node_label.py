@@ -12,7 +12,7 @@ class PixaromaLabel:
     RETURN_TYPES = ()
     FUNCTION = "noop"
     OUTPUT_NODE = True
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
 
     def noop(self, label_json):
         return {}

@@ -24,7 +24,7 @@ class PixaromaNote:
     RETURN_TYPES = ()
     FUNCTION = "noop"
     OUTPUT_NODE = True
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
 
     def noop(self, note_json):
         return {}

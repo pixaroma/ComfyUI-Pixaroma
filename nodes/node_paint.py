@@ -18,7 +18,7 @@ class PixaromaPaint:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
     FUNCTION = "load_painting"
-    CATEGORY = "Pixaroma"
+    CATEGORY = "👑 Pixaroma"
     OUTPUT_NODE = True
 
     @classmethod
