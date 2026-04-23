@@ -1,11 +1,13 @@
 import os
 import io
 import re
+import json
 import base64
 import uuid
 from server import PromptServer
 from aiohttp import web
 from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
 # --- PORTABLE COMFYUI FIX ---
@@ -208,6 +210,18 @@ def _decode_image(b64_data: str) -> Image.Image | None:
         return Image.open(io.BytesIO(image_data))
     except Exception:
         return None
+
+
+def _embed_workflow_metadata(workflow, prompt) -> PngInfo:
+    """Return a PngInfo with `prompt` and `workflow` tEXt chunks,
+    matching the byte format ComfyUI's built-in SaveImage writes.
+    Either argument may be None (chunk is then skipped)."""
+    pnginfo = PngInfo()
+    if prompt is not None:
+        pnginfo.add_text("prompt", json.dumps(prompt))
+    if workflow is not None:
+        pnginfo.add_text("workflow", json.dumps(workflow))
+    return pnginfo
 
 
 @PromptServer.instance.routes.post("/pixaroma/api/layer/upload")
