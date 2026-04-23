@@ -149,6 +149,64 @@ async function saveToOutput(node) {
   }
 }
 
+async function saveToDisk(node) {
+  if (!node.imgs?.length) {
+    showToast(node, "Run the workflow first");
+    return;
+  }
+  let preparedBlob;
+  try {
+    const blob = await getPreviewBlob(node);
+    if (!blob) throw new Error("no preview blob");
+    const dataURL = await blobToDataURL(blob);
+    const { workflow, prompt } = await getWorkflowAndPrompt();
+    const resp = await fetch("/pixaroma/api/preview/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image_b64: dataURL, workflow, prompt }),
+    });
+    if (!resp.ok) {
+      const errJson = await resp.json().catch(() => ({}));
+      showToast(node, `Prepare failed: ${errJson.error || resp.status}`);
+      return;
+    }
+    preparedBlob = await resp.blob();
+  } catch (err) {
+    showToast(node, `Prepare failed: ${err.message || err}`);
+    return;
+  }
+
+  const suggestedName = `${readFilenamePrefix(node)}.png`;
+
+  if (typeof window.showSaveFilePicker === "function") {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(preparedBlob);
+      await writable.close();
+      showToast(node, `Saved: ${handle.name}`);
+    } catch (err) {
+      if (err?.name === "AbortError") return; // user cancelled, silent
+      showToast(node, `Save failed: ${err.message || err}`);
+    }
+    return;
+  }
+
+  // Fallback: <a download> → Downloads folder
+  const url = URL.createObjectURL(preparedBlob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = suggestedName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+  showToast(node, "Saved to Downloads (browser has no folder picker)");
+}
+
 // ---- extension ----
 app.registerExtension({
   name: "Pixaroma.Preview",
@@ -181,7 +239,7 @@ app.registerExtension({
       for (const r of rects) {
         if (hitTest(r, localPos[0], localPos[1])) {
           if (r.id === "output") saveToOutput(this);
-          // disk handler wired in Task 8
+          else if (r.id === "disk") saveToDisk(this);
           return true;
         }
       }
