@@ -621,3 +621,39 @@ async def api_preview_save(request):
     return web.json_response(
         {"status": "success", "filename": fname, "subfolder": subfolder}
     )
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/preview/prepare")
+async def api_preview_prepare(request):
+    """Return an in-memory PNG with workflow metadata embedded.
+    Used by the Save-to-Disk flow to keep metadata-embedding logic in Python.
+
+    Request JSON: {
+        image_b64: data-URI PNG string (required),
+        workflow:  JSON object (optional),
+        prompt:    JSON object (optional),
+    }
+    Response: image/png bytes on 200, JSON error on 400.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    image_b64 = data.get("image_b64", "")
+    workflow = data.get("workflow")
+    prompt = data.get("prompt")
+
+    pil = _decode_image(image_b64)
+    if pil is None:
+        return web.json_response({"error": "invalid image data"}, status=400)
+
+    try:
+        pnginfo = _embed_workflow_metadata(workflow, prompt)
+        buf = io.BytesIO()
+        pil.save(buf, "PNG", pnginfo=pnginfo)
+        body = buf.getvalue()
+    except Exception as e:
+        return web.json_response({"error": f"prepare failed: {e}"}, status=500)
+
+    return web.Response(body=body, content_type="image/png")
