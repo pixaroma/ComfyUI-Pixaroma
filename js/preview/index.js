@@ -248,8 +248,24 @@ function createButtonsWidget() {
     },
     mouse(event, pos, node) {
       const type = event?.type;
-      if (type !== "pointerdown" && type !== "mousedown") return false;
       const rects = node._pixaromaButtonRects || [];
+
+      // Hover tracking — update which button the pointer is over and redraw
+      // when that changes. Only triggers a redraw on state transitions to
+      // avoid thrashing the canvas on every pointermove pixel.
+      if (type === "pointermove" || type === "mousemove") {
+        let newHover = null;
+        for (const r of rects) {
+          if (hitTest(r, pos[0], pos[1])) { newHover = r.id; break; }
+        }
+        if (newHover !== node._pixaromaHoverId) {
+          node._pixaromaHoverId = newHover;
+          node.setDirtyCanvas(true, true);
+        }
+        return false;
+      }
+
+      if (type !== "pointerdown" && type !== "mousedown") return false;
       for (const r of rects) {
         if (hitTest(r, pos[0], pos[1])) {
           if (r.id === "output") saveToOutput(node);
