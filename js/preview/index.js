@@ -2,19 +2,18 @@ import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/utils.mjs";
 
 // ---- button / node sizing ----
-const BTN_W = 120;
-const BTN_H = 24;
+const BTN_H = 26;
 const BTN_GAP = 8;
-// Leave room below the buttons for ComfyUI's dimension label (e.g. "1024 × 1024")
-// which is drawn at the very bottom of the preview area.
-const BTN_BOTTOM_MARGIN = 24;
-const SIDE_PAD = 8;
+const BTN_MIN_W = 100;
+const BTN_MAX_W = 160;
+const STRIP_V_PAD = 6;              // vertical padding inside the button strip
+const SIDE_PAD = 8;                 // side margin inside the widget strip
 
-// Minimum node size so the two buttons always fit fully with padding.
-const MIN_W = BTN_W * 2 + BTN_GAP + SIDE_PAD * 2; // 264
+// Minimum node size so the two buttons always fit fully.
+const MIN_W = BTN_MIN_W * 2 + BTN_GAP + SIDE_PAD * 2;   // 224
 const MIN_H = 260;
-const DEFAULT_W = 300;
-const DEFAULT_H = 360;
+const DEFAULT_W = 320;
+const DEFAULT_H = 380;
 
 const COLOR_ACTIVE_FILL = BRAND;
 const COLOR_ACTIVE_FILL_HOVER = "#ff8a5e";
@@ -26,16 +25,18 @@ const COLOR_DISABLED_TEXT = "#999";
 
 const TOAST_MS = 2000;
 
-// ---- geometry ----
-function getButtonRects(node) {
-  const w = node.size[0];
-  const h = node.size[1];
-  const totalW = BTN_W * 2 + BTN_GAP;
-  const x0 = (w - totalW) / 2;
-  const y = h - BTN_H - BTN_BOTTOM_MARGIN;
+// ---- geometry (widget-local coords) ----
+function computeButtonRects(widgetWidth, stripY) {
+  const gap = BTN_GAP;
+  const maxTotal = widgetWidth - SIDE_PAD * 2;
+  let btnW = Math.floor((maxTotal - gap) / 2);
+  btnW = Math.max(BTN_MIN_W, Math.min(BTN_MAX_W, btnW));
+  const totalW = btnW * 2 + gap;
+  const x0 = Math.max(SIDE_PAD, (widgetWidth - totalW) / 2);
+  const y = stripY + STRIP_V_PAD;
   return [
-    { id: "disk",   x: x0,                     y, w: BTN_W, h: BTN_H, label: "Save to Disk" },
-    { id: "output", x: x0 + BTN_W + BTN_GAP,   y, w: BTN_W, h: BTN_H, label: "Save to Output" },
+    { id: "disk",   x: x0,              y, w: btnW, h: BTN_H, label: "Save to Disk" },
+    { id: "output", x: x0 + btnW + gap, y, w: btnW, h: BTN_H, label: "Save to Output" },
   ];
 }
 
@@ -53,7 +54,7 @@ function paintBtn(ctx, rect, active, hovered) {
   ctx.strokeStyle = active ? COLOR_ACTIVE_STROKE : COLOR_DISABLED_STROKE;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 3);
+  ctx.roundRect(x, y, w, h, 4);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = active ? COLOR_ACTIVE_TEXT : COLOR_DISABLED_TEXT;
@@ -64,18 +65,17 @@ function paintBtn(ctx, rect, active, hovered) {
   ctx.restore();
 }
 
-function paintToast(ctx, node, text) {
-  const rects = getButtonRects(node);
+function paintToast(ctx, rects, text) {
   const x = rects[0].x;
   const y = rects[0].y;
   const w = rects[1].x + rects[1].w - x;
   const h = rects[0].h;
   ctx.save();
-  ctx.fillStyle = "rgba(0,0,0,0.85)";
+  ctx.fillStyle = "rgba(0,0,0,0.86)";
   ctx.strokeStyle = BRAND;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(x, y, w, h, 3);
+  ctx.roundRect(x, y, w, h, 4);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = "#fff";
@@ -218,6 +218,50 @@ async function saveToDisk(node) {
   showToast(node, "Saved to Downloads (browser has no folder picker)");
 }
 
+// ---- custom widget (buttons sit above the preview image) ----
+// Using addCustomWidget rather than onDrawForeground so:
+//  (a) buttons redraw with every widget-area repaint — visible immediately on
+//      node add, no polling or setDirtyCanvas hack needed
+//  (b) LiteGraph reserves vertical space — preview image renders below, never
+//      overlaps the buttons or ComfyUI's dimension label
+//  (c) identical behavior on legacy and Vue frontends (CLAUDE.md Vue Compat #1)
+function createButtonsWidget() {
+  return {
+    name: "pixaroma_buttons",
+    type: "custom",
+    value: null,
+    serialize: false,
+    computeSize(width) {
+      return [width, BTN_H + STRIP_V_PAD * 2];
+    },
+    draw(ctx, node, widget_width, y) {
+      const active = !!(node.imgs && node.imgs.length > 0);
+      const rects = computeButtonRects(widget_width, y);
+      node._pixaromaButtonRects = rects;
+      const hoverId = node._pixaromaHoverId || null;
+      for (const r of rects) paintBtn(ctx, r, active, hoverId === r.id);
+
+      const toast = node._pixaromaToast;
+      if (toast && toast.until > Date.now()) {
+        paintToast(ctx, rects, toast.text);
+      }
+    },
+    mouse(event, pos, node) {
+      const type = event?.type;
+      if (type !== "pointerdown" && type !== "mousedown") return false;
+      const rects = node._pixaromaButtonRects || [];
+      for (const r of rects) {
+        if (hitTest(r, pos[0], pos[1])) {
+          if (r.id === "output") saveToOutput(node);
+          else if (r.id === "disk") saveToDisk(node);
+          return true;
+        }
+      }
+      return false;
+    },
+  };
+}
+
 // ---- extension ----
 app.registerExtension({
   name: "Pixaroma.Preview",
@@ -225,61 +269,22 @@ app.registerExtension({
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaPreview") return;
 
-    // Default / minimum size — follows Compare's pattern
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
+      this.addCustomWidget(createButtonsWidget());
+      // Sensible default + minimum size
       if (!this.size || this.size[0] < DEFAULT_W) this.size[0] = DEFAULT_W;
       if (!this.size[1] || this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
-      // Force a redraw so disabled buttons paint immediately on node add.
       this.setDirtyCanvas(true, true);
     };
 
-    // Clamp min size on manual resize (Compare pattern).
+    // Clamp minimum size on manual resize (Compare pattern).
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
-      this.setDirtyCanvas(true, true);
-    };
-
-    // Paint buttons overlaid on the image (onDrawForeground runs AFTER the
-    // native preview image is drawn, so buttons sit on top of it).
-    const origDraw = nodeType.prototype.onDrawForeground;
-    nodeType.prototype.onDrawForeground = function (ctx) {
-      if (origDraw) origDraw.apply(this, arguments);
-      if (this.flags?.collapsed) return;
-
-      // Belt-and-braces: enforce min size at paint time too (Compare does this).
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
-
-      const active = !!(this.imgs && this.imgs.length > 0);
-      const rects = getButtonRects(this);
-      const hoverId = this._pixaromaHoverId || null;
-      for (const r of rects) paintBtn(ctx, r, active, hoverId === r.id);
-
-      const toast = this._pixaromaToast;
-      if (toast && toast.until > Date.now()) {
-        paintToast(ctx, this, toast.text);
-      }
-    };
-
-    const origMouseDown = nodeType.prototype.onMouseDown;
-    nodeType.prototype.onMouseDown = function (e, localPos) {
-      if (this.flags?.collapsed) {
-        return origMouseDown ? origMouseDown.apply(this, arguments) : false;
-      }
-      const rects = getButtonRects(this);
-      for (const r of rects) {
-        if (hitTest(r, localPos[0], localPos[1])) {
-          if (r.id === "output") saveToOutput(this);
-          else if (r.id === "disk") saveToDisk(this);
-          return true;
-        }
-      }
-      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
     };
   },
 });

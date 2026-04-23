@@ -45,4 +45,4 @@ class PixaromaPreview:
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaPreview": PixaromaPreview}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaPreview": "Preview Pixaroma"}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaPreview": "Preview Image Pixaroma"}
