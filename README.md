@@ -112,90 +112,62 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 ### **April 23, 2026 — Preview Image Pixaroma**
-A new preview-plus-save checkpoint node — the missing middle ground between ComfyUI's `PreviewImage` (shows but can't save anywhere) and `SaveImage` (saves to `output/` only, no preview).
-
-- 🖼️ **In-node preview** — image renders inline in the node body, same UX as ComfyUI's built-in PreviewImage.
-- 💾 **Save to Disk** — native OS save dialog (Chrome/Edge via File System Access API); pick any folder, anywhere on your drive. Falls back to the Downloads folder on Firefox / Safari <15.1.
-- 📁 **Save to Output** — writes to ComfyUI's `output/` folder with an auto-incremented counter (`Preview_00001_.png`, `Preview_00002_.png`, …). Editable `filename_prefix` widget — change once, the counter follows.
-- 🏷️ **Workflow metadata embedded** — both save paths write the full workflow + prompt as PNG tEXt chunks, byte-compatible with ComfyUI's built-in SaveImage. Drag the saved PNG back onto the canvas to restore the whole workflow.
-- 🔗 **Optional passthrough output** — terminate the workflow at this node, or chain forward to another node. Zero errors either way. Useful as a mid-stream eyeball-and-decide checkpoint.
-- 🎨 **Brand-orange buttons** — match Image Compare's styling, sit above the preview image as a reserved widget strip, hover-brighten on pointer in, disabled gray state before the first queue with a "Run the workflow first" toast.
-- 📏 **Min-size clamp** — buttons never clip; you can't shrink the node below the two-buttons-plus-padding floor.
-- 👑 **Unified menu** — all Pixaroma nodes now share the `👑 Pixaroma` submenu (crown prefix for visibility in ComfyUI's Add Node list). Previously Resolution lived in its own `👑 Pixaroma/Utils` branch — merged in this release for one clean entry point.
+A new node that shows the image inline and adds two orange buttons: **Save to Disk** (native OS file dialog — pick any folder) and **Save to Output** (writes to `ComfyUI/output/` with an auto-incremented counter). Both PNGs embed the full workflow — drag any saved image back onto the canvas to restore it. Optional passthrough output: terminate the workflow here or keep chaining. All Pixaroma nodes now live under a unified `👑 Pixaroma` menu.
 
 ### **April 22, 2026 — Resolution Pixaroma**
-A one-click resolution picker that outputs `width` + `height` as plain INTs for any latent / size-driven downstream node.
-
-- 📐 **3×3 ratio chip grid** — 1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3 + full-width **Custom Resolution** row. Active chip highlighted in brand orange.
-- 🎬 **8 curated sizes per ratio** including AI-video standards (832×480, 1280×720 for 16:9; 480×832, 720×1280 for 9:16 — Wan 2.2 / CogVideoX / AnimateDiff friendly).
-- 🎯 **Per-ratio default on click** — 16:9 → 1280×720, 9:16 → 720×1280, 2:1 → 1280×640, etc. Not the smallest entry.
-- ✏️ **Custom mode** — W/H number inputs with an inline swap-icon button between them (Figma-style), 4 inline snap-step chips (8 / 16 / 32 / 64 px) with brand-orange active state, arrow keys nudge by the chosen step, live aspect-ratio preview rectangle, ratio + megapixel readout.
-- 🔒 **Locked node size** — no accidental resize; the layout never breaks.
-- 💾 **Round-trip save/load** — workflow file restores the exact ratio, picked size, custom values, and snap choice with no flash on open.
-- 🌑 **Brand-default dark colors** — nodes come up with a dark title + body out of the box; ComfyUI's native right-click Colors menu still works if you want to change.
+One-click resolution picker that outputs `width` + `height` INTs for any latent. 3×3 ratio grid (1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3), 8 curated sizes per ratio including AI-video standards (Wan 2.2 / CogVideoX / AnimateDiff friendly), plus a **Custom** mode with W/H inputs, inline swap, snap-step chips (8/16/32/64 px), and live aspect preview.
 
 ### **April 22, 2026 — Note Pixaroma**
-A brand-new rich-text annotation node. Replaces the "wall of Markdown as a comment" approach with a full WYSIWYG editor + sanitized Code view.
+Rich-text annotation node — replaces "wall of Markdown in a comment" with a full WYSIWYG editor.
+[Youtube Tutorial](https://www.youtube.com/watch?v=XCgmEodQlIU)
 
-- 📝 **WYSIWYG editor** — Bold / Italic / Underline / Strikethrough, headings H1-H3, bulleted and numbered lists, tables (2-4 cols × 1-10 rows with Tab navigation between cells), code blocks (`<pre><code>`), horizontal rules, inline text color, highlight color.
-- 🎨 **Per-note colors** — Bg picker drives both the editor interior AND the on-canvas node (title bar auto-darkens for readable contrast). Separate Btn picker for button-pill backgrounds and Ln picker for line accents (grid borders, HR, folder hints).
-- 🔗 **Pixaroma blocks** — Button Design dialog produces Download / View Page / Read More pills with optional folder hints ("Place in: ComfyUI/models/...") and file-size tags. Preset YouTube and Discord pills with Pixaroma defaults.
-- 🎯 **Inline icon library** — 42 SVG icons shipped (CLIP / GGUF / LORA / VAE acronyms + 38 workflow glyphs). Drop more SVGs into `assets/icons/note/` and they auto-appear in the picker. Size auto-scales with surrounding font, color follows the text picker.
-- ✏️ **Click-to-edit pencils** — Every inserted block (link, pill, code, grid-free block) has a hover pencil that re-opens its dialog pre-filled for edits.
-- 🧰 **Code view** — Edit raw sanitized HTML with syntax highlighting when you need precise control. Pretty-printed on entry, re-sanitized on exit.
-- ❓ **Help + Code Reference modals** — Two built-in popup dialogs document every feature, every shortcut, and every allowed HTML tag / class / inline style — so even users hand-editing HTML know exactly what survives the sanitizer.
-- 🛡️ **Allowlist sanitizer** — Strips `<script>`, `<iframe>`, `<img>`, all event handlers (onclick, onerror, …), and `javascript:` URLs automatically. Classes, styles, and `href` protocols are all explicitly allowlisted.
-- 🌐 **Plays nicely with ComfyUI's native color menu** — Pick a color from the right-click Colors menu and our editor respects it across save/reload. Sync logic prevents the editor body from disagreeing with the canvas when both color sources are in play.
-- 🎹 **Keyboard shortcuts** — Ctrl+B / I / U formatting, Ctrl+Z / Y undo/redo (with manual history for direct-DOM mutations), Ctrl+S save, Tab / Shift+Tab to navigate grid cells, Backspace to delete an inline icon in a single keystroke.
+- 📝 WYSIWYG: Bold / Italic / Underline / Strikethrough, H1-H3, lists, tables with Tab navigation, code blocks, horizontal rules, per-text color and highlight.
+- 🎨 Per-note colors (Bg / Btn / Ln pickers) with title bar auto-darkening for readable contrast.
+- 🔗 Pixaroma blocks: Download / View Page / Read More pills with folder hints + size tags; preset YouTube and Discord pills.
+- 🎯 42 inline SVG icons shipped; drop more into `assets/icons/note/` to extend the picker.
+- ✏️ Click-to-edit pencil on every inserted block (re-opens its dialog pre-filled).
+- 🧰 Code view with syntax highlighting + an allowlist sanitizer that strips scripts, event handlers, and unsafe URLs on save/paste.
+- 🎹 Standard shortcuts (Ctrl+B/I/U, Ctrl+Z/Y, Ctrl+S).
 
 ### **April 19, 2026**
-- 🚪 **Clearer editor close button:** The titlebar's `✕` in every Pixaroma editor (Paint, 3D, Crop, Composer, Compare, Label) is now labeled `✕ Close <EditorName>` (e.g. "✕ Close Paint Pixaroma") and styled in red. This avoids confusion with the host window's close X — especially inside desktop launchers like ComfyUI-EZi where the two X icons sit next to each other. Hover tooltip confirms it only closes the editor, not ComfyUI.
-- 🔌 **3D Builder works offline:** Three.js is now bundled with the node instead of being downloaded from the internet each time. No more blank 3D canvas when you're offline, on a flaky connection, or behind a firewall that blocks CDNs. Nothing to configure — it just works after you update and restart ComfyUI.
-- 🖌️ **Paint cursor fix:** The brush ring preview could disappear after opening the 3D Builder once in the same session (a CSS rule from the 3D editor was leaking into Paint). The brush, pencil, eraser, and smudge cursors now stay visible no matter which editor you open first.
-- 🎨 **Image Composer — Blend modes are back:** Per-layer blend modes (Multiply, Screen, Overlay, Soft Light, etc.) now round-trip correctly through save → reopen → workflow execution. Previously a layer set to Multiply would quietly revert to Normal on reopen, the Preview Image output would lose the blend whenever a layer had auto-rembg / placeholder / mask (the Python compositor ignored blend modes), and the node's mini-preview would overwrite itself with a Normal recomposite ~300 ms after execution. Fixed on all four touch points: project JSON save, in-editor restore + dropdown sync, Python compositor (full W3C Compositing L1 with proper Porter-Duff alpha — all 16 modes), and the post-execution client-side recomposite.
-- 🎨 **Paint Studio — AI Background Removal panel:** New sidebar section mirrors the Image Composer's — Remove Background button, model dropdown (Auto / Fast / Balanced / Best), rembg status line. Shares the same backend route and model catalog. **Safer scope:** the button is only enabled on layers that started from an imported image (Add Image / drag-drop). Layers drawn from scratch with the brush stay grayed out so you can't accidentally rembg a stroke composition. Painting on top of an imported image keeps the layer rembg-eligible. One Ctrl+Z after a removal restores the original pixels.
-- 🎮 **Blender-style shortcuts in 3D Builder** (all original shortcuts still work — these are added on top):
-  - `G` — Move tool (Blender "Grab")
-  - `Shift+D` — Duplicate selected
-  - `Shift+A` — Open the Add 3D Object picker
-  - `Alt+A` — Deselect all
-  - `Esc` — Deselect all (or close the help overlay if it's open)
-  - `.` / `Numpad .` — Focus on selected object
+- 🚪 **Clearer editor close button:** `✕` in every editor now reads `✕ Close <EditorName>` in red, so it's not confused with the host window's close X.
+- 🔌 **3D Builder works offline:** Three.js is now bundled — no more CDN fetch on startup.
+- 🖌️ **Paint cursor fix:** Brush ring preview no longer disappears after opening 3D Builder in the same session.
+- 🎨 **Image Composer — blend modes restored:** Per-layer blend modes (Multiply, Screen, Overlay, etc.) now round-trip correctly through save → reopen → workflow execution.
+- 🎨 **Paint Studio — AI Background Removal panel:** Remove Background button with model selector. Only enabled on layers that started from an imported image.
+- 🎮 **Blender-style 3D shortcuts:** `G` move, `Shift+D` duplicate, `Shift+A` add-object picker, `Alt+A` deselect, `Esc` deselect/close-help, `.` focus-on-selected (all original shortcuts still work).
 
 ### **April 15, 2026 — 3D Builder v2**
-A major overhaul turning 3D Builder from a primitives-only tool into a full scene editor. 
-Check Tutorial on [Youtube Ep13](https://www.youtube.com/watch?v=DnKM-Np0fFw)
+A major overhaul turning 3D Builder into a full scene editor.
+[Youtube Ep13 Tutorial](https://www.youtube.com/watch?v=DnKM-Np0fFw)
 
-- 🧊 **18 primitive shapes** — Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain. Every shape has its own slider panel with per-parameter control (height, radius, segments, seed, smoothness, etc.) and a "Reset Shape Defaults" button.
-- 🌿 **16 composite shapes** — Multi-mesh groups that look like real objects: Tree, Pine Tree, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf. Each has its own set of sliders (trunk height, tier overlap, window shape, shelf count, …) and a re-roll seed for variety.
-- 🏺 **5 vessels with wall thickness** — Vase, Bottle, Goblet, Bowl, Plant Pot. All hollow, with a Thickness slider so you can actually see inside. Goblet is modeled as solid foot + solid stem + hollow cup.
-- 🐇 **Bundled Bunny** — Stanford bunny as a one-click add, rendered with its original material.
-- 📦 **GLB/OBJ import** — Load your own textured 3D models (supports MTL + companion textures for OBJ). Models load asynchronously, with a "Use Original Material" toggle to switch between the model's baked materials and your own color/roughness/metalness override.
-- ➕ **"Add 3D Object" picker** — Categorised modal grid (Primitives / Organic / Nature / Architecture / Furniture / Vessels). One click drops the object into the scene.
-- 🌍 **Greatly expanded Terrain** — 13 sliders for any kind of landscape: Size, Detail, Height, Scale, Octaves, Persistence, Lacunarity, Ridge (for mountains), Power, Flatness (for plateaus/fields), Edge Fall (for islands), Warp, Seed.
-- 🎥 **Camera shortcuts & views** — `1` front, `2` side, `3` back, `4` top, `5` perspective, `6` isometric, `7` other side, `0` focus-on-selected. SVG icons on the camera panel buttons.
-- 🎛️ **Transform sliders** — X / Y / Z sliders under the gizmo for Move, Rotate, and Scale modes. Bidirectional sync with the gizmo. "Lock Proportions" checkbox for uniform scaling. "Reset Transform" does a full reset + drop-to-floor.
-- 🏷️ **Layer panel thumbnails** — Every layer row now shows a mini 3D render of the actual object (28×28, rendered off-screen at 2× then downscaled) instead of a colored dot. Cached per object, invalidates on geometry/color/scale changes.
-- 🦶 **Drop to Floor** — Button in the layers panel that snaps any object's lowest vertex to y=0, even if rotated or scaled. Uses precise vertex AABB so rotated objects land flush on the grid.
-- 🌅 **Studio Lighting + PMREM** — HDR environment map for realistic PBR lighting. Checkbox saves with the scene.
-- ⏪ **Instant undo/redo for imports** — Imported models and composites are preserved across undo/redo (no more 2-3s flicker while the GLB/OBJ refetches). Composites rebuild synchronously — no placeholder sphere flicker.
-- 💾 **Robust save format** — All params (including ones added in later versions) round-trip safely. Old v1 scenes load with new defaults for any missing fields.
-- ⚙️ **ComfyUI Setting:** Pick your default background color for new 3D scenes under 👑 Pixaroma → 3D Builder.
+- 🧊 **18 primitive shapes** with per-shape slider panels (Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain).
+- 🌿 **16 composite shapes** — multi-mesh groups that look like real objects (Tree, Pine, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf).
+- 🏺 **5 hollow vessels** with wall-thickness slider (Vase, Bottle, Goblet, Bowl, Plant Pot).
+- 🐇 **Bundled Stanford Bunny** as a one-click add.
+- 📦 **GLB/OBJ import** with textures + "Use Original Material" toggle.
+- ➕ **"Add 3D Object" picker** — categorised modal grid, one click drops the object in.
+- 🌍 **Expanded Terrain** with 13 sliders for anything from plateaus to islands.
+- 🎥 **Camera views**: `1` front, `2` side, `3` back, `4` top, `5` perspective, `6` iso, `7` other side, `0` focus-on-selected.
+- 🎛️ **Transform sliders** (X/Y/Z) for Move/Rotate/Scale with bidirectional gizmo sync + Lock Proportions.
+- 🏷️ **Layer thumbnails** showing mini 3D renders of the actual object.
+- 🦶 **Drop to Floor** — snaps the lowest vertex to y=0 even when rotated/scaled.
+- 🌅 **Studio HDR lighting** for realistic PBR materials.
+- ⏪ **Instant undo/redo** — imports no longer refetch the GLB.
+- ⚙️ **ComfyUI Setting:** default background color for new 3D scenes under 👑 Pixaroma → 3D Builder.
 
 ### **April 14, 2026**
-- 🖼️ **Transparent Background Save:** Paint Studio, Image Composer, and 3D Builder now have a "Transparent BG (Save to Disk)" checkbox next to the BG color picker. When enabled, "Save to Disk" exports a PNG with transparent background. The regular "Save" (workflow) is unchanged — existing workflows stay fully compatible.
+- 🖼️ **Transparent Background Save:** Paint, Composer, and 3D Builder all have a "Transparent BG (Save to Disk)" checkbox. Workflow "Save" path is unchanged — existing workflows stay compatible.
 
 ### **April 13, 2026**
-- 🎨 **Paint Studio Overhaul:** Custom tool cursors, smoother color picker (fixed HSL sliders, redesigned swatches), instant brush resize, locked layers enforced across all tools.
-- 🌓 **Image Compare Redesign:** New control order with Right Left mode and solo-image toggle.
-- ⚙️ **ComfyUI Settings Panel:** Pixaroma now has its own section (👑 Pixaroma) — first setting lets you pick the default compare mode.
-- 🔄 **Composer Auto-Update & Fixes:** Preview refreshes automatically after execution, duplicate-layer mask bug fixed, placeholder ratio reset fixed.
-- 🛠 **General:** X button closes without saving, keyboard shortcuts no longer blocked after slider use, Vue frontend compatibility fixes.
+- 🎨 **Paint Studio overhaul:** custom tool cursors, smoother color picker, instant brush resize, locked layers enforced across all tools.
+- 🌓 **Image Compare redesign** with new control order and solo-image toggle.
+- ⚙️ **ComfyUI Settings panel** — Pixaroma now has its own section under `👑 Pixaroma`.
+- 🔄 **Composer:** preview refreshes automatically after execution; duplicate-layer mask bug fixed.
 
 ### **April 02, 2026**
-- 🔄 **ComfyUI 2.0 Compatibility:** Core nodes updated for the latest engine.
-- 🏷 **Labels Node:** Stability fixes and performance improvements.
-- 🐛 **General Fixes:** Targeted bug resolutions for a smoother experience.
+- 🔄 **ComfyUI 2.0 compatibility** — core nodes updated for the latest engine.
+- 🏷 **Labels node** stability and performance fixes.
 
 ### **April 01, 2026**
 - 🎉 **Official Release:** Initial public rollout of the Pixaroma suite.
