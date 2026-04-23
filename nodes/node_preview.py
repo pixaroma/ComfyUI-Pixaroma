@@ -1,8 +1,13 @@
+import os
+import uuid
+import numpy as np
+from PIL import Image
+import folder_paths
+
+
 class PixaromaPreview:
     """Preview an image inline in the node body, with buttons for Save-to-Disk
-    and Save-to-Output. Implementation of the preview tensor-to-temp logic
-    is completed in Task 2; save flows live in the JS side (Tasks 7-8) and
-    backend routes (Tasks 4-5)."""
+    and Save-to-Output. The image is also exposed on the output edge."""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -20,8 +25,23 @@ class PixaromaPreview:
     CATEGORY = "👑 Pixaroma/Utils"
 
     def preview(self, image, filename_prefix):
-        # Task 2 replaces this stub with temp-save + UI dict.
-        return {"ui": {"images": []}, "result": (image,)}
+        # Only the first frame of the batch is previewed (matches Image Compare).
+        # The full batch is still passed through via `result`.
+        tensor = image[0]
+        arr = (tensor.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+        pil = Image.fromarray(arr)
+
+        temp_dir = folder_paths.get_temp_directory()
+        os.makedirs(temp_dir, exist_ok=True)
+        fname = f"pixaroma_preview_{uuid.uuid4().hex}.png"
+        pil.save(os.path.join(temp_dir, fname), "PNG")
+
+        return {
+            "ui": {
+                "images": [{"filename": fname, "subfolder": "", "type": "temp"}]
+            },
+            "result": (image,),
+        }
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaPreview": PixaromaPreview}
