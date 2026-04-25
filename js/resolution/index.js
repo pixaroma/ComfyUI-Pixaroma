@@ -58,6 +58,8 @@ function injectCSS() {
     .pix-res-list::-webkit-scrollbar { width: 6px; }
     .pix-res-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
     .pix-res-list::-webkit-scrollbar-track { background: transparent; }
+    /* Subtle focus indicator: brand-tinted border (no outline ring overflow). */
+    .pix-res-list:focus { outline: none; border-color: ${BRAND}; }
     .pix-res-row {
       flex: 1 0 auto; /* grow to fill; never shrink below natural height — if 8 rows can't fit, the list scrolls */
       min-height: 24px;
@@ -367,6 +369,10 @@ function renderChipGrid(state) {
 function renderSizeList(state) {
   const wrap = document.createElement("div");
   wrap.className = "pix-res-list";
+  // Make the list focusable so ArrowUp/Down/Home/End change the active row.
+  // Custom mode renders its own .pix-res-list (with .pix-res-custom) and
+  // doesn't need this — its W/H inputs own keyboard input.
+  wrap.tabIndex = 0;
   if (state.mode !== "preset") return wrap; // Custom mode handled in Task 5
   const sizes = SIZES[state.ratio] || [];
   // Render 8 rows; pad with .empty rows if the ratio has fewer than 8
@@ -660,12 +666,51 @@ function setupResolutionNode(node) {
       const cur = readState(node);
       writeState(node, { ...cur, w, h });
       renderUI(node);
+      // Focus the freshly-rendered list so the next ArrowUp/Down keystroke is
+      // captured by the list — without this, the click moves focus to the
+      // overlay/canvas and arrows don't reach us.
+      const list = root.querySelector(".pix-res-list:not(.pix-res-custom)");
+      list?.focus();
+      list?.querySelector(".pix-res-row.active")?.scrollIntoView({ block: "nearest" });
     }
+  };
+
+  // Arrow-key navigation in preset mode. The list is `tabindex=0` so it can
+  // receive focus; we delegate at root level so the listener survives every
+  // re-render. `stopPropagation` prevents ComfyUI's canvas from interpreting
+  // the arrow keys as graph pan.
+  const _onKeydown = (e) => {
+    const list = e.target.closest(".pix-res-list");
+    if (!list || list.classList.contains("pix-res-custom")) return;
+    if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
+    const cur = readState(node);
+    if (cur.mode !== "preset") return;
+    const sizes = SIZES[cur.ratio] || [];
+    if (sizes.length === 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let idx = sizes.findIndex(([w, h]) => w === cur.w && h === cur.h);
+    if (idx < 0) idx = 0;
+    if (e.key === "ArrowUp")        idx = Math.max(0, idx - 1);
+    else if (e.key === "ArrowDown") idx = Math.min(sizes.length - 1, idx + 1);
+    else if (e.key === "Home")      idx = 0;
+    else if (e.key === "End")       idx = sizes.length - 1;
+    const [w, h] = sizes[idx];
+    if (w === cur.w && h === cur.h) return; // no-op (already at boundary)
+    writeState(node, { ...cur, w, h });
+    renderUI(node);
+    const newList = root.querySelector(".pix-res-list:not(.pix-res-custom)");
+    newList?.focus();
+    newList?.querySelector(".pix-res-row.active")?.scrollIntoView({ block: "nearest" });
   };
 
   // Attach to both root and the widget container so a Vue rebuild still routes events.
   root.addEventListener("click", _onClick);
-  if (_widget?.element) _widget.element.addEventListener("click", _onClick);
+  root.addEventListener("keydown", _onKeydown);
+  if (_widget?.element) {
+    _widget.element.addEventListener("click", _onClick);
+    _widget.element.addEventListener("keydown", _onKeydown);
+  }
 
   node._pixResRoot = root;
 
