@@ -17,49 +17,51 @@
 
 ## 🎨 Creative Suite
 
-Pixaroma transforms ComfyUI into a powerful design environment, bringing professional editing capabilities directly into your node-based workflows.
+Pixaroma turns ComfyUI into a powerful, easy-to-use design space. It brings professional editing right into your workflow!
 
 ### 🧊 3D Builder
-A complete WebGL 3D scene editor inside ComfyUI. Drop in primitives, procedural shapes, or composite assets (trees, houses, furniture, vessels, and more) and craft reference scenes for ControlNet, depth maps, or compositions. Import your own GLB/OBJ models with textures. Full camera control (perspective + isometric + axis views), interactive lighting with studio HDR, shape-specific slider panels, undo/redo, transform sliders, drop-to-floor, and live layer thumbnails.
+A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furniture, or import your own 3D models. You get easy camera controls, realistic lighting, undo/redo, and live previews. Perfect for making reference scenes for ControlNet or depth maps!
 ![3D Builder — Node](workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
 ![3D Builder — Editor](workflows/3D%20Builder%20Pixaroma%20Workflow%20v2.jpg)
 
 ### ✨ Image Composer
-Advanced layer-based composition. Move, scale, and rotate multiple images with a visual interface. Use the eraser tool with a soft brush for manual masking, or leverage the built-in AI background removal for instant object isolation. Perfect for pre-processing or final touch-ups.
+Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
 ![Image Composer — Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
 ![Image Composer — Editor](workflows/Image%20Composer%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🖌️ Paint Studio
-A professional-grade painting suite optimized for performance. Features a robust layer system, customizable brushes, blend modes, and a dedicated smudge tool for seamless blending. Ideal for inpainting, custom masks, or creating textures from scratch.
+A fast, easy-to-use painting tool. It features layers, custom brushes, and a smudge tool for smooth blending. Perfect for fixing details, drawing custom masks, or painting from scratch.
 ![Paint — Node](workflows/Paint%20Pixaroma%20Workflow.jpg)
 ![Paint — Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg)
 
 ### ✂️ Precision Crop
-No more guessing crop coordinates. Graphically define your crop area with interactive handles. Includes standard aspect ratio presets (1:1, 16:9, 9:16) to ensure your output is perfectly framed for its final destination.
+No more guessing crop sizes with numbers! Visually draw your crop box. It includes standard presets (like 1:1 or 16:9) so your image is always framed perfectly for social media or video.
 ![Image Crop — Node](workflows/Crop%20Pixaroma%20Workflow.jpg)
 ![Image Crop — Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🌓 Interactive Compare
-The ultimate tool for model testing and workflow optimization. Compare two images side-by-side with a slider, vertically, via overlay blending, or using a difference map to highlight identical pixels vs. changes.
+The best way to see the difference between two images. Easily compare them side-by-side with a slider, overlap them, or highlight exactly what changed between the two versions.
 ![Image Compare — Node](workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
 ![Image Compare — Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 📝 Note Pixaroma
-Rich-text annotation node for documenting your workflow inline. Full WYSIWYG editor with a **Preview / Code** toggle — write like a normal doc, or drop into sanitized HTML when you want precise control. Bold / italic / underline / strikethrough, headings H1-H3, bulleted & numbered lists, tables (2-4 cols × 1-10 rows with Tab navigation between cells), code blocks, horizontal rules, per-text color and highlight. Per-note **Bg** color drives both the editor interior and the on-canvas node (title bar auto-darkens for readable contrast). Dedicated **Btn** and **Ln** pickers for pill backgrounds and line accents. **Button-Design pills** (Download / View Page / Read More) with optional folder hints ("Place in: ComfyUI/models/checkpoints") and size tags, plus preset **YouTube** and **Discord** pills. **42 inline SVG icons** shipped (CLIP / GGUF / LORA / VAE acronyms plus 38 workflow glyphs) in a drop-and-discover folder — drop more SVGs into `assets/icons/note/` and they appear in the picker, auto-scaled to surrounding font size. Click-to-edit pencil on every inserted block re-opens its dialog pre-filled. Built-in **Help** and **Code Reference** modals document every feature and every allowed HTML tag. Allowlist-based sanitizer strips scripts, event handlers, and unsafe URLs on save and paste.
+A beautiful, simple text editor to document your workflows right on the canvas. Write normally using bold, italics, lists, and headings. Add custom colored buttons, icons, or links to YouTube and Discord. You can even color-code your notes to match your style. It perfectly saves and restores exactly how you styled it.
 ![Note Pixaroma — Node](workflows/Note%20Pixaroma%20Workflow.jpg)
 ![Note Pixaroma — Editor](workflows/Note%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🏷️ Label & Utility
-- **Label Tool:** Organize massive workflows with clean, customizable labels to keep your logic readable.
-- **Show Text:** A vital debugging tool that displays the raw content of any input—be it tensors, latents, or string values.
+A simple tool to keep your workflows tidy.
+- **Label Tool:** Keep your workflows tidy with clean, custom labels.
+- **Show Text:** Easily see what text or data is flowing through your nodes.
+
 ![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
 ![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🖼️ Preview Image Pixaroma
-A preview-plus-save checkpoint for any workflow. Shows the image inline in the node body like ComfyUI's built-in PreviewImage, but adds two orange canvas buttons: **Save to Disk** (native OS save dialog — pick any folder, anywhere on your drive, via the File System Access API) and **Save to Output** (writes to ComfyUI's `output/` folder with an auto-incremented counter). Both saved PNGs embed the full workflow + prompt as tEXt metadata chunks — drag any saved image back onto the ComfyUI canvas and the workflow restores. Editable `filename_prefix` widget (default `Preview`). Passthrough IMAGE output that is **optional** — terminate the workflow at this node for a "preview-only" run, or wire downstream and keep going without any error. Buttons enforce a minimum node size so they never clip, and fall back to the Downloads folder on Firefox / Safari <15.1 where `showSaveFilePicker` isn't available.
+A handy way to preview your image right on the node, but better! It gives you two simple buttons: **Save to Disk** (choose any folder on your computer) and **Save to Output** (saves to your ComfyUI output folder). Both options safely embed your workflow into the image, so you can drag the image back in later to restore everything.
 
 ### 📐 Resolution Pixaroma
-One-click resolution picker that outputs clean `width` and `height` INTs for any `EmptyLatent` or size-driven downstream node. 3×3 ratio chip grid (1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3 + Custom Resolution) with 8 curated sizes per ratio — including AI-video standards (832×480, 1280×720 for 16:9; 480×832, 720×1280 for 9:16; Wan 2.2 / CogVideoX / AnimateDiff friendly). Each ratio auto-selects a sensible default on click (e.g. 16:9 → 1280×720). **Custom Resolution** mode opens W/H number inputs with an inline **swap** icon between them, picks snap-step (8 / 16 / 32 / 64 px) with brand-orange active chip, arrow keys nudge by the picked step, plus a live aspect-ratio preview rectangle and ratio + megapixel readout. Locked node size (no accidental resize), workflow save/load round-trips the full state (ratio, picked size, custom values, snap choice).
+A simple, one-click resolution picker. Choose from standard aspect ratios (like 1:1, 16:9, or 9:16) and instantly get the exact width and height you need, including popular sizes for AI video. Or, use Custom mode to type in your exact dimensions. It perfectly saves all your settings with your workflow!
 
 ---
 
@@ -68,7 +70,7 @@ One-click resolution picker that outputs clean `width` and `height` INTs for any
 ### 1. Installation
 
 #### **Method A: ComfyUI Easy Install (Zero-Config)**
-If you're using [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Install) — a one-click ComfyUI launcher for Windows — **Pixaroma is already included**. You get it on first install and every time you run the built-in **Update Easy-Install.bat** , Pixaroma updates alongside ComfyUI and the other bundled custom nodes. Nothing to clone, nothing to configure. Just start ComfyUI and the 👑 Pixaroma nodes are in the Add Node menu.
+If you use [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Install) for Windows, **Pixaroma is already included!** Just update via the built-in updater and you're good to go.
 
 #### **Method B: ComfyUI Manager**
 1. Search for **Pixaroma** in the ComfyUI Manager.
@@ -81,7 +83,7 @@ git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
 ```
 
 ### 2. Optional: AI Background Removal
-Enable the **AI Remove Background** button in the Image Composer by installing `rembg`:
+Want to use the **AI Remove Background** button in the Image Composer? Just install `rembg`:
 
 ```bash
 # Windows Portable
@@ -91,16 +93,14 @@ python.exe -m pip install rembg
 pip install rembg
 ```
 
-Once installed, the panel's **Model** dropdown shows what's available in your rembg version:
+Once installed, you can pick from different AI models depending on the quality you need:
 
-| Option | Model | Size | Notes |
-|--------|-------|------|-------|
-| **Auto (recommended)** | picks the best available | — | tries BiRefNet → isnet → u2net |
-| **Fast** | `u2net` | ~176 MB | works on any rembg install |
-| **Balanced** | `isnet-general-use` | ~170 MB | cleaner edges, needs rembg 2.0.27+ |
-| **Best** | `birefnet-general` | ~900 MB | highest quality, needs rembg 2.0.56+ |
-
-Models download automatically on first use to `ComfyUI/models/rembg/`. Options requiring a newer `rembg` are shown greyed out with the minimum version needed — upgrade with `python.exe -m pip install -U rembg` to unlock them.
+| Option | Size | What it is |
+|--------|------|------------|
+| **Auto (recommended)** | — | Automatically picks the best available model for you. |
+| **Fast** | ~176 MB | Works on any setup, great for quick cutouts. |
+| **Balanced** | ~170 MB | Cleaner edges. |
+| **Best** | ~900 MB | Highest quality cutouts. |
 
 ---
 
@@ -114,70 +114,40 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **April 25, 2026 — 3D Builder runs much smoother**
-Spinning, panning, and zooming around your 3D scene now feels noticeably faster and less laggy. Behind the scenes, the editor was redoing a lot of work on every single frame — re-baking shadows, drawing a selection glow even when nothing was selected, and rendering at higher detail than needed. Those frame-by-frame chores have been trimmed back so the picture now updates only what actually changed. Same look, same features, just a smoother ride when you're moving the camera.
+### **April 25, 2026**
+- **Smoother 3D Builder:** Moving the camera, spinning, and zooming in your 3D scenes is now much faster and less laggy!
 
-### **April 23, 2026 — Preview Image Pixaroma**
-A new node that shows the image inline and adds two orange buttons: **Save to Disk** (native OS file dialog — pick any folder) and **Save to Output** (writes to `ComfyUI/output/` with an auto-incremented counter). Both PNGs embed the full workflow — drag any saved image back onto the canvas to restore it. Optional passthrough output: terminate the workflow here or keep chaining. All Pixaroma nodes now live under a unified `👑 Pixaroma` menu.
+### **April 23, 2026**
+- **New Preview Node:** Added Preview Image Pixaroma with simple buttons to save your image anywhere on your computer.
+- **Organized Menu:** All our nodes now live under a single `👑 Pixaroma` menu.
 
-### **April 22, 2026 — Resolution Pixaroma**
-One-click resolution picker that outputs `width` + `height` INTs for any latent. 3×3 ratio grid (1:1 / 16:9 / 9:16 / 2:1 / 3:2 / 2:3), 8 curated sizes per ratio including AI-video standards (Wan 2.2 / CogVideoX / AnimateDiff friendly), plus a **Custom** mode with W/H inputs, inline swap, snap-step chips (8/16/32/64 px), and live aspect preview.
-
-### **April 22, 2026 — Note Pixaroma**
-Rich-text annotation node — replaces "wall of Markdown in a comment" with a full WYSIWYG editor.
-[Youtube Tutorial](https://www.youtube.com/watch?v=XCgmEodQlIU)
-
-- 📝 WYSIWYG: Bold / Italic / Underline / Strikethrough, H1-H3, lists, tables with Tab navigation, code blocks, horizontal rules, per-text color and highlight.
-- 🎨 Per-note colors (Bg / Btn / Ln pickers) with title bar auto-darkening for readable contrast.
-- 🔗 Pixaroma blocks: Download / View Page / Read More pills with folder hints + size tags; preset YouTube and Discord pills.
-- 🎯 42 inline SVG icons shipped; drop more into `assets/icons/note/` to extend the picker.
-- ✏️ Click-to-edit pencil on every inserted block (re-opens its dialog pre-filled).
-- 🧰 Code view with syntax highlighting + an allowlist sanitizer that strips scripts, event handlers, and unsafe URLs on save/paste.
-- 🎹 Standard shortcuts (Ctrl+B/I/U, Ctrl+Z/Y, Ctrl+S).
+### **April 22, 2026**
+- **New Resolution Node:** A simple, one-click resolution picker for your aspect ratios.
+- **New Note Node:** A beautiful rich-text editor for adding notes directly to your canvas. [Watch the tutorial](https://www.youtube.com/watch?v=XCgmEodQlIU).
 
 ### **April 19, 2026**
-- 🚪 **Clearer editor close button:** `✕` in every editor now reads `✕ Close <EditorName>` in red, so it's not confused with the host window's close X.
-- 🔌 **3D Builder works offline:** Three.js is now bundled — no more CDN fetch on startup.
-- 🖌️ **Paint cursor fix:** Brush ring preview no longer disappears after opening 3D Builder in the same session.
-- 🎨 **Image Composer — blend modes restored:** Per-layer blend modes (Multiply, Screen, Overlay, etc.) now round-trip correctly through save → reopen → workflow execution.
-- 🎨 **Paint Studio — AI Background Removal panel:** Remove Background button with model selector. Only enabled on layers that started from an imported image.
-- 🎮 **Blender-style 3D shortcuts:** `G` move, `Shift+D` duplicate, `Shift+A` add-object picker, `Alt+A` deselect, `Esc` deselect/close-help, `.` focus-on-selected (all original shortcuts still work).
+- **Clearer Close Buttons:** Pop-up editors now have an obvious red "Close" button.
+- **Offline 3D Builder:** The 3D Builder no longer needs an internet connection to start.
+- **Paint Fixes:** Fixed the brush cursor disappearing, and added a new "Remove Background" AI button.
+- **Composer Fixes:** Layer blend modes (like Multiply or Screen) now save and load correctly.
+- **3D Shortcuts:** Added Blender-style keyboard shortcuts (G to move, Shift+D to duplicate, etc.).
 
-### **April 15, 2026 — 3D Builder v2**
-A major overhaul turning 3D Builder into a full scene editor.
-[Youtube Ep13 Tutorial](https://www.youtube.com/watch?v=DnKM-Np0fFw)
-
-- 🧊 **18 primitive shapes** with per-shape slider panels (Cube, Sphere, Cylinder, Cone, Torus, Plane, Pyramid, Capsule, Tube, Ring, Prism, Crystal, Dome, Gear, Teapot, Blob, Rock, Terrain).
-- 🌿 **16 composite shapes** — multi-mesh groups that look like real objects (Tree, Pine, Flower, Mushroom, Cactus, Cloud, House, Lamp Post, Fence, Signpost, Arch, Table, Chair, Bed, Couch, Bookshelf).
-- 🏺 **5 hollow vessels** with wall-thickness slider (Vase, Bottle, Goblet, Bowl, Plant Pot).
-- 🐇 **Bundled Stanford Bunny** as a one-click add.
-- 📦 **GLB/OBJ import** with textures + "Use Original Material" toggle.
-- ➕ **"Add 3D Object" picker** — categorised modal grid, one click drops the object in.
-- 🌍 **Expanded Terrain** with 13 sliders for anything from plateaus to islands.
-- 🎥 **Camera views**: `1` front, `2` side, `3` back, `4` top, `5` perspective, `6` iso, `7` other side, `0` focus-on-selected.
-- 🎛️ **Transform sliders** (X/Y/Z) for Move/Rotate/Scale with bidirectional gizmo sync + Lock Proportions.
-- 🏷️ **Layer thumbnails** showing mini 3D renders of the actual object.
-- 🦶 **Drop to Floor** — snaps the lowest vertex to y=0 even when rotated/scaled.
-- 🌅 **Studio HDR lighting** for realistic PBR materials.
-- ⏪ **Instant undo/redo** — imports no longer refetch the GLB.
-- ⚙️ **ComfyUI Setting:** default background color for new 3D scenes under 👑 Pixaroma → 3D Builder.
+### **April 15, 2026**
+- **Huge 3D Builder Update:** Added 18 basic shapes, 16 complex objects (trees, furniture), 5 hollow vessels, and custom 3D model imports. Added camera views, a drop-to-floor button, and instant undo/redo. [Watch the tutorial](https://www.youtube.com/watch?v=DnKM-Np0fFw).
 
 ### **April 14, 2026**
-- 🖼️ **Transparent Background Save:** Paint, Composer, and 3D Builder all have a "Transparent BG (Save to Disk)" checkbox. Workflow "Save" path is unchanged — existing workflows stay compatible.
+- **Transparent Saves:** Added a checkbox to save images with transparent backgrounds in Paint, Composer, and 3D Builder.
 
 ### **April 13, 2026**
-- 🎨 **Paint Studio overhaul:** custom tool cursors, smoother color picker, instant brush resize, locked layers enforced across all tools.
-- 🌓 **Image Compare redesign** with new control order and solo-image toggle.
-- ⚙️ **ComfyUI Settings panel** — Pixaroma now has its own section under `👑 Pixaroma`.
-- 🔄 **Composer:** preview refreshes automatically after execution; duplicate-layer mask bug fixed.
+- **Paint Improvements:** Better cursors, smoother color picking, and quick brush resizing.
+- **Compare Tool Updates:** Better controls and a new solo-image view.
+- **Settings:** Pixaroma now has its own section in the ComfyUI settings menu.
 
 ### **April 02, 2026**
-- 🔄 **ComfyUI 2.0 compatibility** — core nodes updated for the latest engine.
-- 🏷 **Labels node** stability and performance fixes.
+- **ComfyUI 2.0 Compatibility:** Updated all nodes to run smoothly on the latest ComfyUI version.
 
 ### **April 01, 2026**
-- 🎉 **Official Release:** Initial public rollout of the Pixaroma suite.
-- 📺 **Launch Video:** See it in action in [Episode 11](https://www.youtube.com/watch?v=Lmxf8pK-H1k).
+- **Launch Day:** Initial release of the Pixaroma suite! [Watch the video](https://www.youtube.com/watch?v=Lmxf8pK-H1k).
 
 ---
 
