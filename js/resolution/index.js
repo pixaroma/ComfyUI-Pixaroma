@@ -45,14 +45,22 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      overflow: hidden; /* clip active-row orange tint to the rounded border */
+      /* x clipped (active-row orange tint stays inside rounded border);
+         y scrolls when rows would overflow at small node heights / large zoom. */
+      overflow-x: hidden;
+      overflow-y: auto;
       min-height: 160px;
       flex: 1; /* fill remaining widget space so size-list and custom panel match outer height */
       display: flex;
       flex-direction: column;
     }
+    /* Slim, theme-matched scrollbar so the list doesn't get a fat default bar. */
+    .pix-res-list::-webkit-scrollbar { width: 6px; }
+    .pix-res-list::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
+    .pix-res-list::-webkit-scrollbar-track { background: transparent; }
     .pix-res-row {
-      flex: 1;
+      flex: 1 0 auto; /* grow to fill; never shrink below natural height — if 8 rows can't fit, the list scrolls */
+      min-height: 24px;
       padding: 4px 8px;
       border-bottom: 1px solid #2f2f2f;
       font-size: 11px;
@@ -218,10 +226,18 @@ function injectCSS() {
 }
 injectCSS();
 
-// Locked node dimensions. Tuned by eye in the Vue frontend.
+// Node dimensions. Width is locked (the chip grid + size-list layout is tuned
+// for 240px). Height has a minimum (default starting size) but the user can
+// drag to make it taller — useful at high browser zoom or when the OS / Vue
+// theme renders rows with extra line-height that would otherwise clip the
+// last preset row. Saved workflow heights survive node creation.
 const NODE_W = 240;
-const NODE_H = 336;   // total node height
-const WIDGET_H = 290; // DOM widget area height (inside title + ports)
+const MIN_NODE_H = 336;       // minimum + default total node height
+const CHROME_H = 46;          // titlebar + port row + DOM widget margins (NODE_H − WIDGET_H)
+const MIN_WIDGET_H = MIN_NODE_H - CHROME_H; // 290 — preserves the original tuned baseline
+function widgetHFor(nodeH) {
+  return Math.max(MIN_WIDGET_H, (nodeH || MIN_NODE_H) - CHROME_H);
+}
 
 // Python uses `hidden` inputs (no widget, no slot dot). State lives on
 // node.properties[STATE_PROP] which LiteGraph serializes natively in the
@@ -586,9 +602,14 @@ function setupResolutionNode(node) {
   if (!node.color)   node.color   = "#1d1d1d";
   if (!node.bgcolor) node.bgcolor = "#2a2a2a";
 
-  // Lock the node size and disable resize handle.
-  node.resizable = false;
-  node.size = [NODE_W, NODE_H];
+  // Lock the width (chip grid is tuned for 240px), allow vertical resize so
+  // the user can grow the node when zoom or font scaling clips the bottom row.
+  // Saved-workflow heights survive: configure() runs before nodeCreated, so
+  // we only seed the height when it's missing/below minimum.
+  node.resizable = true;
+  if (!Array.isArray(node.size) || node.size.length < 2) node.size = [NODE_W, MIN_NODE_H];
+  node.size[0] = NODE_W;
+  if (!node.size[1] || node.size[1] < MIN_NODE_H) node.size[1] = MIN_NODE_H;
 
   // Empty root — we do NOT populate it synchronously. In Vue's new frontend,
   // nodeCreated fires BEFORE configure restores widget values from saved
@@ -602,8 +623,11 @@ function setupResolutionNode(node) {
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
     getValue: () => readState(node),
     setValue: (_v) => {},
-    getMinHeight: () => WIDGET_H,
-    getMaxHeight: () => WIDGET_H,
+    // Widget grows with the node so the size-list (flex: 1) absorbs any extra
+    // height the user gives it. Both callbacks return the same value so the
+    // DOM widget exactly fills the area between titlebar and node bottom.
+    getMinHeight: () => widgetHFor(node.size?.[1]),
+    getMaxHeight: () => widgetHFor(node.size?.[1]),
     margin: 4,
     serialize: false, // DOM widget itself does not serialize; the hidden STRING widget owns the state
   });
@@ -677,11 +701,14 @@ app.registerExtension({
       return r;
     };
 
-    // Re-clamp on every resize attempt so the node can never grow / shrink.
+    // Lock the width and enforce a minimum height; allow vertical growth.
+    // (The DOM widget's getMin/getMaxHeight read node.size on each layout pass,
+    // so the chips + size-list flex container fills whatever extra space we
+    // give it.)
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       this.size[0] = NODE_W;
-      this.size[1] = NODE_H;
+      if (this.size[1] < MIN_NODE_H) this.size[1] = MIN_NODE_H;
       if (_origResize) return _origResize.call(this, size);
     };
   },
