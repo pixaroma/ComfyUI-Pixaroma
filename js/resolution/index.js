@@ -50,9 +50,18 @@ function injectCSS() {
       overflow-x: hidden;
       overflow-y: auto;
       min-height: 160px;
-      flex: 1; /* fill remaining widget space so size-list and custom panel match outer height */
+      /* Preset list takes its natural size (8 fixed-height rows): widget is
+         sized so that fits without scroll, and growing the node leaves the
+         extra space empty BELOW the list — rows never bloat. flex-shrink: 1
+         keeps the scrollbar working at unusually small widget heights (large
+         browser zoom). Custom panel overrides to flex:1 so its preview rect
+         can absorb the extra space. */
+      flex: 0 1 auto;
       display: flex;
       flex-direction: column;
+    }
+    .pix-res-list.pix-res-custom {
+      flex: 1;
     }
     /* Slim, theme-matched scrollbar so the list doesn't get a fat default bar. */
     .pix-res-list::-webkit-scrollbar { width: 6px; }
@@ -61,8 +70,12 @@ function injectCSS() {
     /* Subtle focus indicator: brand-tinted border (no outline ring overflow). */
     .pix-res-list:focus { outline: none; border-color: ${BRAND}; }
     .pix-res-row {
-      flex: 1 0 auto; /* grow to fill; never shrink below natural height — if 8 rows can't fit, the list scrolls */
-      min-height: 24px;
+      /* Fixed row height — must NOT grow with the node, otherwise resizing
+         taller bloats every row to a giant cell. flex-shrink: 0 + the parent
+         list's overflow-y: auto means rows stay readable and the list scrolls
+         instead when the widget is too short to fit all 8. */
+      flex: 0 0 28px;
+      box-sizing: border-box;
       padding: 4px 8px;
       border-bottom: 1px solid #2f2f2f;
       font-size: 11px;
@@ -230,13 +243,22 @@ injectCSS();
 
 // Node dimensions. Width is locked (the chip grid + size-list layout is tuned
 // for 240px). Height has a minimum (default starting size) but the user can
-// drag to make it taller — useful at high browser zoom or when the OS / Vue
-// theme renders rows with extra line-height that would otherwise clip the
-// last preset row. Saved workflow heights survive node creation.
+// drag to make it taller; rows are fixed-height so the size list keeps its
+// natural size and the extra space appears below the list (rows never bloat).
+//
+// MIN_NODE_H is sized so all 8 preset rows fit at 100% browser zoom WITHOUT
+// the scrollbar appearing — content breakdown:
+//   chrome (titlebar + ports + margins) ......... 46
+//   root padding (8 top + 8 bottom) .............. 16
+//   chip grid (3 rows × 26 + 2 × 5 gap) .......... 88
+//   gap between chips and list ....................8
+//   size list (8 rows × 28 + 2 borders) ......... 226
+//                                                ----
+//                                                 384
 const NODE_W = 240;
-const MIN_NODE_H = 336;       // minimum + default total node height
+const MIN_NODE_H = 384;       // minimum + default total node height
 const CHROME_H = 46;          // titlebar + port row + DOM widget margins (NODE_H − WIDGET_H)
-const MIN_WIDGET_H = MIN_NODE_H - CHROME_H; // 290 — preserves the original tuned baseline
+const MIN_WIDGET_H = MIN_NODE_H - CHROME_H; // 338 — fits chips + 8 fixed-height rows
 function widgetHFor(nodeH) {
   return Math.max(MIN_WIDGET_H, (nodeH || MIN_NODE_H) - CHROME_H);
 }
