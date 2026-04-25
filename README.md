@@ -114,6 +114,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **April 25, 2026 — 3D Builder runs much smoother**
+Spinning, panning, and zooming around your 3D scene now feels noticeably faster and less laggy. Behind the scenes, the editor was redoing a lot of work on every single frame — re-baking shadows, drawing a selection glow even when nothing was selected, and rendering at higher detail than needed. Those frame-by-frame chores have been trimmed back so the picture now updates only what actually changed. Same look, same features, just a smoother ride when you're moving the camera.
+
 ### **April 23, 2026 — Preview Image Pixaroma**
 A new node that shows the image inline and adds two orange buttons: **Save to Disk** (native OS file dialog — pick any folder) and **Save to Output** (writes to `ComfyUI/output/` with an auto-incremented counter). Both PNGs embed the full workflow — drag any saved image back onto the canvas to restore it. Optional passthrough output: terminate the workflow here or keep chaining. All Pixaroma nodes now live under a unified `👑 Pixaroma` menu.
 
