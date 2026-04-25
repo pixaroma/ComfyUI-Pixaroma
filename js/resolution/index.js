@@ -46,22 +46,21 @@ function injectCSS() {
       border: 1px solid #444;
       border-radius: 4px;
       /* x clipped (active-row orange tint stays inside rounded border);
-         y scrolls when rows would overflow at small node heights / large zoom. */
+         y scrolls if at large browser zoom the rows still wouldn't fit
+         (node height is locked, so this is a defensive fallback only). */
       overflow-x: hidden;
       overflow-y: auto;
-      min-height: 160px;
-      /* Preset list takes its natural size (8 fixed-height rows): widget is
-         sized so that fits without scroll, and growing the node leaves the
-         extra space empty BELOW the list — rows never bloat. flex-shrink: 1
-         keeps the scrollbar working at unusually small widget heights (large
-         browser zoom). Custom panel overrides to flex:1 so its preview rect
-         can absorb the extra space. */
+      /* Preset list takes its natural size (8 fixed-height rows + borders);
+         since the widget is sized to exactly accommodate that, no extra space
+         appears in either direction. Custom panel overrides to flex:1 so its
+         preview rect can absorb the panel's vertical space. */
       flex: 0 1 auto;
       display: flex;
       flex-direction: column;
     }
     .pix-res-list.pix-res-custom {
       flex: 1;
+      min-height: 160px;
     }
     /* Slim, theme-matched scrollbar so the list doesn't get a fat default bar. */
     .pix-res-list::-webkit-scrollbar { width: 6px; }
@@ -241,27 +240,35 @@ function injectCSS() {
 }
 injectCSS();
 
-// Node dimensions. Width is locked (the chip grid + size-list layout is tuned
-// for 240px). Height has a minimum (default starting size) but the user can
-// drag to make it taller; rows are fixed-height so the size list keeps its
-// natural size and the extra space appears below the list (rows never bloat).
+// Node dimensions are LOCKED — width and height. The original "make it
+// resizable" attempt was a workaround for the default height being too small
+// to show all 8 preset rows; once that's fixed, there's no real reason to
+// resize, and a resizable node just produces an awkward dark empty band when
+// dragged taller. Locking matches the canvas-side res-node pattern and is
+// honest: the node draws exactly what fits its content.
 //
-// MIN_NODE_H is sized so all 8 preset rows fit at 100% browser zoom WITHOUT
-// the scrollbar appearing — content breakdown:
-//   chrome (titlebar + ports + margins) ......... 46
-//   root padding (8 top + 8 bottom) .............. 16
-//   chip grid (3 rows × 26 + 2 × 5 gap) .......... 88
-//   gap between chips and list ....................8
-//   size list (8 rows × 28 + 2 borders) ......... 226
-//                                                ----
-//                                                 384
+// NODE_H sized so all 8 preset rows fit at 100% browser zoom with NO
+// scrollbar — exact content breakdown (in pixels of widget area):
+//   root padding (8 top + 8 bottom) ............... 16
+//   chip grid (3 rows × 26 + 2 × 5 gap) ........... 88
+//   gap between chips and list ..................... 8
+//   size list ..................................... 233
+//     ├─ borders (1 top + 1 bottom) ........  2
+//     ├─ rows (8 × 28 fixed-height) ....... 224
+//     └─ inter-row borders (7 × 1) .........  7
+//   DOM widget `margin: 4` (top + bottom) ........... 8
+//                                                  ----
+//   widget content total ......................... 353
+//   chrome (titlebar + port row + frame margins) ... 46
+//                                                  ----
+//   NODE_H ....................................... 399
+//
+// 404 chosen with a 5-px safety margin for sub-pixel rounding, font metric
+// variance across browsers, and the focus-state border swap. Earlier 336/384
+// values both produced a thin scrollbar because they undercounted the 7
+// inter-row borders and the addDOMWidget margin.
 const NODE_W = 240;
-const MIN_NODE_H = 384;       // minimum + default total node height
-const CHROME_H = 46;          // titlebar + port row + DOM widget margins (NODE_H − WIDGET_H)
-const MIN_WIDGET_H = MIN_NODE_H - CHROME_H; // 338 — fits chips + 8 fixed-height rows
-function widgetHFor(nodeH) {
-  return Math.max(MIN_WIDGET_H, (nodeH || MIN_NODE_H) - CHROME_H);
-}
+const NODE_H = 404;
 
 // Python uses `hidden` inputs (no widget, no slot dot). State lives on
 // node.properties[STATE_PROP] which LiteGraph serializes natively in the
@@ -630,14 +637,12 @@ function setupResolutionNode(node) {
   if (!node.color)   node.color   = "#1d1d1d";
   if (!node.bgcolor) node.bgcolor = "#2a2a2a";
 
-  // Lock the width (chip grid is tuned for 240px), allow vertical resize so
-  // the user can grow the node when zoom or font scaling clips the bottom row.
-  // Saved-workflow heights survive: configure() runs before nodeCreated, so
-  // we only seed the height when it's missing/below minimum.
-  node.resizable = true;
-  if (!Array.isArray(node.size) || node.size.length < 2) node.size = [NODE_W, MIN_NODE_H];
-  node.size[0] = NODE_W;
-  if (!node.size[1] || node.size[1] < MIN_NODE_H) node.size[1] = MIN_NODE_H;
+  // Lock both dimensions. The chip grid is tuned for 240px wide, and the
+  // height is sized to fit all 8 preset rows + chips with no scrollbar (see
+  // NODE_H comment block). Resize would only ever produce empty space — see
+  // also onResize below which re-clamps if LiteGraph attempts a resize.
+  node.resizable = false;
+  node.size = [NODE_W, NODE_H];
 
   // Empty root — we do NOT populate it synchronously. In Vue's new frontend,
   // nodeCreated fires BEFORE configure restores widget values from saved
@@ -648,14 +653,15 @@ function setupResolutionNode(node) {
   const root = document.createElement("div");
   root.className = "pix-res-root";
 
+  // DOM widget gets a constant slot of space — chrome (titlebar + ports +
+  // margins) takes the rest. Both callbacks return the same value so the
+  // widget exactly fills the area between titlebar and node bottom.
+  const WIDGET_H = NODE_H - 46; // 358 — keep in sync with the chrome estimate in NODE_H comment
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
     getValue: () => readState(node),
     setValue: (_v) => {},
-    // Widget grows with the node so the size-list (flex: 1) absorbs any extra
-    // height the user gives it. Both callbacks return the same value so the
-    // DOM widget exactly fills the area between titlebar and node bottom.
-    getMinHeight: () => widgetHFor(node.size?.[1]),
-    getMaxHeight: () => widgetHFor(node.size?.[1]),
+    getMinHeight: () => WIDGET_H,
+    getMaxHeight: () => WIDGET_H,
     margin: 4,
     serialize: false, // DOM widget itself does not serialize; the hidden STRING widget owns the state
   });
@@ -768,14 +774,15 @@ app.registerExtension({
       return r;
     };
 
-    // Lock the width and enforce a minimum height; allow vertical growth.
-    // (The DOM widget's getMin/getMaxHeight read node.size on each layout pass,
-    // so the chips + size-list flex container fills whatever extra space we
-    // give it.)
+    // Re-clamp on every resize attempt so the node can never grow / shrink.
+    // (Belt-and-braces with `node.resizable = false` — Vue/LiteGraph still
+    // emit onResize during workflow load with the saved size, which may not
+    // match our locked dimensions if the lock value was bumped between
+    // versions.)
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       this.size[0] = NODE_W;
-      if (this.size[1] < MIN_NODE_H) this.size[1] = MIN_NODE_H;
+      this.size[1] = NODE_H;
       if (_origResize) return _origResize.call(this, size);
     };
   },
