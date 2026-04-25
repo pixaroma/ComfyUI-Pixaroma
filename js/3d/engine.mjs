@@ -124,7 +124,9 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this._outlinePass.edgeGlow = 0;
   this._outlinePass.edgeThickness = 2;
   this._outlinePass.pulsePeriod = 0;
-  this._outlinePass.downSampleRatio = 1;
+  // Half-res edge detection — visually identical for a 2px outline and
+  // halves the OutlinePass fragment cost on every frame.
+  this._outlinePass.downSampleRatio = 2;
   // Use the SAME Pixaroma orange for both visible and hidden passes.
   // hiddenEdgeColor = black was causing parts of the silhouette to
   // vanish whenever a pixel was even slightly occluded (contact edges
@@ -380,6 +382,12 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.light.shadow.camera.right = 10;
   this.light.shadow.camera.top = 10;
   this.light.shadow.camera.bottom = -10;
+  // Don't re-render the 2048² VSM shadow map every frame — it's the
+  // single biggest per-frame cost during orbit/pan/zoom and the scene
+  // hasn't changed. We flip needsUpdate=true at every mutation point
+  // (scene edits via _updateShadowFrustum, light dir via _applyLightDir).
+  this.light.shadow.autoUpdate = false;
+  this.light.shadow.needsUpdate = true;
   this.scene.add(this.light);
 
   this._groundMesh = new THREE.Mesh(
@@ -469,7 +477,11 @@ Pixaroma3DEditor.prototype._animate = function () {
   // Composer renders scene + OutlinePass for live preview. Save path
   // bypasses this and calls renderer.render() directly so exported
   // PNGs don't have the selection highlight baked in.
-  if (this._composer) this._composer.render();
+  // When nothing is selected, skip the composer entirely — OutlinePass
+  // + OutputPass still bind RTs and run shaders even on an empty
+  // selection, wasting GPU on every orbit/pan/zoom frame.
+  const hasOutline = this._outlinePass?.selectedObjects?.length > 0;
+  if (this._composer && hasOutline) this._composer.render();
   else this.renderer.render(this.scene, this.camera);
 
   // ── Axis HUD overlay ─────────────────────────────────────
@@ -508,7 +520,8 @@ Pixaroma3DEditor.prototype._animate = function () {
 
     // Renderer viewport uses CSS pixels; getSize() returns the same.
     // Three.js viewport Y is 0 at the BOTTOM, so top-right means y = H - size - margin.
-    const sz = this.renderer.getSize(new THREE.Vector2());
+    if (!this._axisHudSize) this._axisHudSize = new THREE.Vector2();
+    const sz = this.renderer.getSize(this._axisHudSize);
     const s = hud.size;
     const m = hud.margin;
     const vx = sz.x - s - m;
@@ -537,6 +550,7 @@ Pixaroma3DEditor.prototype._applyLightDir = function () {
     d * Math.cos(phi),
     d * Math.sin(phi) * Math.cos(theta),
   );
+  this.light.shadow.needsUpdate = true;
 };
 
 Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
@@ -574,4 +588,7 @@ Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
   sc.near = 0.1;
   sc.far = halfMax * 4 + 10;
   sc.updateProjectionMatrix();
+  // Flag the shadow map for refresh — autoUpdate is off, so this is
+  // the single funnel through which scene edits trigger a shadow re-bake.
+  this.light.shadow.needsUpdate = true;
 };
