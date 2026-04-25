@@ -30,7 +30,11 @@ Pixaroma3DEditor.prototype._setToolMode = function (mode) {
   this._updateTransformSliders?.();
 };
 
-Pixaroma3DEditor.prototype._camView = function (id) {
+Pixaroma3DEditor.prototype._camView = function (id, opts = {}) {
+  if (this._camLock && !opts.force) {
+    this._setStatus?.("Camera locked");
+    return;
+  }
   const dist = 6;
   // Orthographic-only zoom override — default is 1 (the camera's own
   // frustum bounds), but the iso view needs ~2× zoom so objects
@@ -102,7 +106,11 @@ Pixaroma3DEditor.prototype._camView = function (id) {
   this.orbitCtrl.update();
 };
 
-Pixaroma3DEditor.prototype._setPerspective = function (persp) {
+Pixaroma3DEditor.prototype._setPerspective = function (persp, opts = {}) {
+  if (this._camLock && !opts.force) {
+    this._setStatus?.("Camera locked");
+    return;
+  }
   const THREE = getTHREE();
   if (persp === !this._isOrtho) return; // Already in this mode
   const vp = this.el.viewport,
@@ -156,6 +164,98 @@ Pixaroma3DEditor.prototype._setPerspective = function (persp) {
   if (this.el.fovVal) this.el.fovVal.disabled = this._isOrtho;
 };
 
+
+Pixaroma3DEditor.prototype._setKeyLock = function (locked) {
+  this._keyLock = !!locked;
+  this._refreshLockButtons?.();
+};
+
+Pixaroma3DEditor.prototype._setCamLock = function (locked) {
+  this._camLock = !!locked;
+  this._refreshLockButtons?.();
+  this._applyCamLockState?.();
+};
+
+Pixaroma3DEditor.prototype._refreshLockButtons = function () {
+  const setBtn = (btn, locked) => {
+    if (!btn) return;
+    btn.classList.toggle("active", !!locked);
+    const img = btn.querySelector("img");
+    if (img) {
+      img.src = locked
+        ? "/pixaroma/assets/icons/layers/lock-locked.svg"
+        : "/pixaroma/assets/icons/layers/lock-unlocked.svg";
+    }
+  };
+  setBtn(this.el.keyLockBtn, this._keyLock);
+  setBtn(this.el.camLockBtn, this._camLock);
+};
+
+Pixaroma3DEditor.prototype._applyCamLockState = function () {
+  const locked = !!this._camLock;
+  if (this.orbitCtrl) {
+    this.orbitCtrl.enabled = !locked && !this._gizmoDragging;
+    this.orbitCtrl.enableRotate = !locked;
+    this.orbitCtrl.enablePan = !locked;
+    this.orbitCtrl.enableZoom = !locked;
+  }
+  const setDisabled = (el) => el?.classList?.toggle("p3d-camera-disabled", locked);
+  this.el.cameraViewButtons?.forEach(setDisabled);
+  setDisabled(this.el.perspBtn);
+  setDisabled(this.el.isoBtn);
+  setDisabled(this.el.focusBtn);
+};
+
+Pixaroma3DEditor.prototype._setFineMode = function (active) {
+  const next = !!active;
+  if (this._fineMode === next) return;
+  this._fineMode = next;
+  this._applyOrbitFineMode?.();
+};
+
+Pixaroma3DEditor.prototype._applyOrbitFineMode = function () {
+  if (!this.orbitCtrl || !this._orbitBaseSpeeds) return;
+  const f = this._fineMode ? 0.15 : 1;
+  this.orbitCtrl.rotateSpeed = this._orbitBaseSpeeds.rotate * f;
+  this.orbitCtrl.zoomSpeed = this._orbitBaseSpeeds.zoom * f;
+  this.orbitCtrl.panSpeed = this._orbitBaseSpeeds.pan * f;
+};
+
+Pixaroma3DEditor.prototype._wireFineSlider = function (slider, numInput) {
+  if (!slider || slider._p3dFineWired) return;
+  slider._p3dFineWired = true;
+  slider._p3dFineNumInput = numInput || null;
+  const start = () => {
+    slider._p3dFineDrag = {
+      raw: parseFloat(slider.value) || 0,
+      value: parseFloat(slider.value) || 0,
+    };
+  };
+  const end = () => {
+    slider._p3dFineDrag = null;
+  };
+  slider.addEventListener("pointerdown", start);
+  slider.addEventListener("mousedown", start);
+  slider.addEventListener("touchstart", start, { passive: true });
+  slider.addEventListener("pointerup", end);
+  slider.addEventListener("mouseup", end);
+  slider.addEventListener("touchend", end);
+  slider.addEventListener("change", end);
+};
+
+Pixaroma3DEditor.prototype._getFineSliderValue = function (slider, rawValue) {
+  const raw = parseFloat(rawValue);
+  if (!slider || !this._fineMode || !slider._p3dFineDrag || isNaN(raw)) return rawValue;
+  const st = slider._p3dFineDrag;
+  const v = st.value + (raw - st.raw) * 0.15;
+  slider.value = v;
+  if (slider._p3dFineNumInput) {
+    const formatted = this._formatXformValue ? this._formatXformValue(v) : String(v);
+    slider._p3dFineNumInput.value = formatted;
+  }
+  return v;
+};
+
 // ─── Interaction ──────────────────────────────────────────
 
 Pixaroma3DEditor.prototype._onClick = function (e) {
@@ -199,6 +299,15 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
   const k = e.key,
     kl = k.toLowerCase(),
     ctrl = e.ctrlKey || e.metaKey;
+  const isTypeableForSpace =
+    (tag === "INPUT" && ae?.type !== "range" &&
+     ae?.type !== "checkbox" && ae?.type !== "radio") ||
+    tag === "TEXTAREA" || tag === "SELECT";
+  if (e.code === "Space" && !isTypeableForSpace && !isTrap) {
+    e.preventDefault();
+    this._setFineMode(true);
+    return;
+  }
   if (ctrl && kl === "a") {
     e.preventDefault();
     // Blur any focused input first
@@ -315,13 +424,23 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
   if (kl === "m" || kl === "g") this._setToolMode("move");
   else if (kl === "r") this._setToolMode("rotate");
   else if (kl === "s") this._setToolMode("scale");
+  const isCameraShortcut = [
+    "Digit0", "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7",
+    "Numpad0", "Numpad1", "Numpad2", "Numpad3", "Numpad4", "Numpad5", "Numpad6", "Numpad7",
+    "Period", "NumpadDecimal",
+  ].includes(e.code);
+  if (isCameraShortcut && (this._keyLock || this._camLock)) {
+    e.preventDefault();
+    this._setStatus?.(this._camLock ? "Camera locked" : "Camera shortcuts locked");
+    return;
+  }
   // Camera shortcuts — use e.code so they work on every keyboard layout
   // (e.g. French AZERTY puts symbols on the number row in default mode;
   // e.key would be "&" "é" "\"" etc., but e.code stays "Digit1" "Digit2"…).
   //   1 Front · 2 Side (right) · 3 Back · 4 Top
   //   5 Perspective · 6 Isometric · 7 Other Side (left)
   //   0 Focus on selected
-  else if (e.code === "Digit1" || e.code === "Numpad1") this._camView("front");
+  if (e.code === "Digit1" || e.code === "Numpad1") this._camView("front");
   else if (e.code === "Digit2" || e.code === "Numpad2") this._camView("side");
   else if (e.code === "Digit3" || e.code === "Numpad3") this._camView("back");
   else if (e.code === "Digit4" || e.code === "Numpad4") this._camView("top");
@@ -342,6 +461,10 @@ Pixaroma3DEditor.prototype._handleKey = function (e) {
   else if (e.code === "Digit0" || e.code === "Numpad0") this._camView("focus");
   // Blender uses Numpad . (Period) to frame the active object — alias for 0.
   else if (e.code === "Period" || e.code === "NumpadDecimal") this._camView("focus");
+};
+
+Pixaroma3DEditor.prototype._handleKeyUp = function (e) {
+  if (e.code === "Space") this._setFineMode(false);
 };
 
 Pixaroma3DEditor.prototype._deselectAll = function () {

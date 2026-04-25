@@ -22,6 +22,8 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
     fov: this._fov,
     shadows: this._shadows,
     isOrtho: this._isOrtho,
+    key_lock: this._keyLock,
+    cam_lock: this._camLock,
     // Studio Lighting checkbox state — default ON if key is missing
     // on restore (preserves pre-v2 scene look).
     studioLighting: this._studioEnvOn !== false,
@@ -93,6 +95,7 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
             y: this.orbitCtrl.target.y,
             z: this.orbitCtrl.target.z,
           },
+          zoom: this.camera.zoom ?? 1,
         }
       : null,
     light: {
@@ -111,8 +114,12 @@ Pixaroma3DEditor.prototype._serializeScene = function () {
           scale: this._bgImg.scale,
           rotation: this._bgImg.rotation,
           opacity: this._bgImg.opacity,
+          flipH: !!this._bgImg._flipH,
+          flipV: !!this._bgImg._flipV,
         }
       : null,
+    camera_templates: [...(this._presetState?.().camera_templates || [])],
+    background_templates: [...(this._presetState?.().background_templates || [])],
   };
 };
 
@@ -127,6 +134,17 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
   this._isRestoring = true;
   try {
     const d = JSON.parse(jsonStr);
+    if (Array.isArray(d.camera_templates) || Array.isArray(d.background_templates)) {
+      const prevPresetState = this._presetState?.() || {};
+      this._setPresetState?.({
+        camera_templates: Array.isArray(prevPresetState.camera_templates) && prevPresetState.camera_templates.length
+          ? prevPresetState.camera_templates
+          : (Array.isArray(d.camera_templates) ? d.camera_templates : []),
+        background_templates: Array.isArray(prevPresetState.background_templates) && prevPresetState.background_templates.length
+          ? prevPresetState.background_templates
+          : (Array.isArray(d.background_templates) ? d.background_templates : []),
+      });
+    }
     if (d.doc_w) {
       this.docW = d.doc_w;
     }
@@ -156,7 +174,11 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
       if (this.el.shadowCheck) this.el.shadowCheck.checked = d.shadows;
       if (this._groundMesh) this._groundMesh.visible = d.shadows;
     }
-    if (d.isOrtho) this._setPerspective(false);
+    if (d.isOrtho) this._setPerspective(false, { force: true });
+    if (d.key_lock !== undefined) this._keyLock = !!d.key_lock;
+    if (d.cam_lock !== undefined) this._camLock = !!d.cam_lock;
+    this._refreshLockButtons?.();
+    this._applyCamLockState?.();
     // Restore Studio Lighting state. If the saved scene predates this
     // field (v1), leave it ON (the default). If it's explicitly false,
     // drop the PMREM env off the scene so lighting matches what the
@@ -187,6 +209,10 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
           d.camera.target.y,
           d.camera.target.z,
         );
+      if (d.camera.zoom !== undefined && this.camera.zoom !== undefined) {
+        this.camera.zoom = d.camera.zoom;
+        this.camera.updateProjectionMatrix?.();
+      }
       this.orbitCtrl.update();
     }
     if (d.light) {
@@ -243,6 +269,8 @@ Pixaroma3DEditor.prototype._restoreScene = function (jsonStr) {
         scale: d.bgImage.scale || 100,
         rotation: d.bgImage.rotation || 0,
         opacity: d.bgImage.opacity ?? 100,
+        _flipH: !!d.bgImage.flipH,
+        _flipV: !!d.bgImage.flipV,
         _natW: 0,
         _natH: 0,
       };
@@ -728,6 +756,7 @@ Pixaroma3DEditor.prototype._close = function () {
   if (this._animId) cancelAnimationFrame(this._animId);
   this._animId = null;
   window.removeEventListener("keydown", this._onKey, { capture: true });
+  window.removeEventListener("keyup", this._onKeyUp, { capture: true });
   if (this._resizeObs) this._resizeObs.disconnect();
   if (this.transformCtrl) {
     this.transformCtrl.detach();
@@ -756,6 +785,313 @@ Pixaroma3DEditor.prototype._close = function () {
   this.camera = null;
   this.renderer = null;
   if (this.onClose) this.onClose();
+};
+
+
+// ─── Workflow Presets (Camera / Background) ─────────────────
+
+Pixaroma3DEditor.prototype._presetState = function () {
+  let state = null;
+  try { state = this.getSharedState?.(); } catch {}
+  if (!state || typeof state !== "object") state = this._sharedPresetFallback;
+  if (!Array.isArray(state.camera_templates)) state.camera_templates = [];
+  if (!Array.isArray(state.background_templates)) state.background_templates = [];
+  return state;
+};
+
+Pixaroma3DEditor.prototype._setPresetState = function (patch) {
+  const prev = this._presetState();
+  const next = {
+    ...prev,
+    ...patch,
+    camera_templates: patch.camera_templates || prev.camera_templates || [],
+    background_templates: patch.background_templates || prev.background_templates || [],
+  };
+  this._sharedPresetFallback = next;
+  try { this.setSharedState?.(next); } catch {}
+  this._refreshCameraTemplateUI?.();
+  this._refreshBackgroundTemplateUI?.();
+};
+
+Pixaroma3DEditor.prototype._syncPresetStateToSceneJson = function () {
+  if (this._isRestoring || !this.onSave) return;
+  try {
+    const sd = this._serializeScene();
+    this.onSave(JSON.stringify(sd), null);
+  } catch (e) {
+    console.warn("[P3D] preset state sync failed", e);
+  }
+};
+
+Pixaroma3DEditor.prototype._makePresetId = function (prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+};
+
+Pixaroma3DEditor.prototype._nextTemplateName = function (base, templates) {
+  const names = new Set((templates || []).map((t) => String(t.name || "")));
+  let i = 1;
+  let name = `${base} ${i}`;
+  while (names.has(name)) {
+    i += 1;
+    name = `${base} ${i}`;
+  }
+  return name;
+};
+
+Pixaroma3DEditor.prototype._promptTemplateName = function (label, fallback) {
+  let name = fallback || "Preset";
+  try {
+    const entered = window.prompt(`${label} name`, name);
+    if (entered === null) return null;
+    name = String(entered).trim();
+  } catch {}
+  if (!name) {
+    this._setStatus?.(`${label} name missing`);
+    return null;
+  }
+  return name;
+};
+
+Pixaroma3DEditor.prototype._refreshTemplateSelect = function (select, templates, emptyLabel) {
+  if (!select) return;
+  const old = select.value;
+  select.innerHTML = "";
+  if (!templates.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = emptyLabel;
+    select.appendChild(opt);
+    return;
+  }
+  for (const t of templates) {
+    const opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name || "Preset";
+    select.appendChild(opt);
+  }
+  if (templates.some((t) => t.id === old)) select.value = old;
+};
+
+Pixaroma3DEditor.prototype._refreshCameraTemplateUI = function () {
+  const templates = this._presetState().camera_templates || [];
+  this._refreshTemplateSelect(this.el.cameraPresetSelect, templates, "No views");
+};
+
+Pixaroma3DEditor.prototype._refreshBackgroundTemplateUI = function () {
+  const templates = this._presetState().background_templates || [];
+  this._refreshTemplateSelect(this.el.bgPresetSelect, templates, "No BG presets");
+};
+
+Pixaroma3DEditor.prototype._cameraSnapshot = function (name, id = null) {
+  if (!this.camera || !this.orbitCtrl) return null;
+  return {
+    id: id || this._makePresetId("cam"),
+    name,
+    position: {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      z: this.camera.position.z,
+    },
+    target: {
+      x: this.orbitCtrl.target.x,
+      y: this.orbitCtrl.target.y,
+      z: this.orbitCtrl.target.z,
+    },
+    isOrtho: !!this._isOrtho,
+    fov: this._fov,
+    zoom: this.camera.zoom ?? 1,
+  };
+};
+
+Pixaroma3DEditor.prototype._saveCameraTemplate = function () {
+  const templates = [...(this._presetState().camera_templates || [])];
+  const fallback = this._nextTemplateName?.("View", templates) || `View ${templates.length + 1}`;
+  const name = this._promptTemplateName?.("Camera preset", fallback);
+  if (!name) return;
+  const existingIdx = templates.findIndex((t) => (t.name || "") === name);
+  const snap = this._cameraSnapshot(name, existingIdx >= 0 ? templates[existingIdx].id : null);
+  if (!snap) {
+    this._setStatus?.("Camera preset save failed");
+    return;
+  }
+  if (existingIdx >= 0) templates[existingIdx] = snap;
+  else templates.push(snap);
+  this._setPresetState({ camera_templates: templates });
+  if (this.el.cameraPresetSelect) this.el.cameraPresetSelect.value = snap.id;
+  this._syncPresetStateToSceneJson();
+  this._setStatus?.(existingIdx >= 0 ? "Camera preset updated" : "Camera preset saved");
+};
+
+Pixaroma3DEditor.prototype._selectedCameraTemplate = function () {
+  const id = this.el.cameraPresetSelect?.value;
+  return (this._presetState().camera_templates || []).find((t) => t.id === id) || null;
+};
+
+Pixaroma3DEditor.prototype._applyCameraTemplate = function () {
+  if (this._camLock) {
+    this._setStatus?.("Camera locked");
+    return;
+  }
+  const t = this._selectedCameraTemplate();
+  if (!t) return;
+  this._setPerspective(!t.isOrtho);
+  if (t.position) this.camera.position.set(t.position.x, t.position.y, t.position.z);
+  if (t.target) this.orbitCtrl.target.set(t.target.x, t.target.y, t.target.z);
+  if (t.fov !== undefined) {
+    this._fov = t.fov;
+    if (this.el.fovSlider) this.el.fovSlider.value = t.fov;
+    if (this.el.fovVal) this.el.fovVal.value = t.fov;
+    if (this.camera.fov !== undefined) this.camera.fov = t.fov;
+  }
+  if (t.zoom !== undefined && this.camera.zoom !== undefined) this.camera.zoom = t.zoom;
+  this.camera.lookAt(this.orbitCtrl.target);
+  this.camera.updateProjectionMatrix?.();
+  this.camera.updateMatrixWorld?.();
+  this.orbitCtrl.update();
+  this._setStatus?.("Camera preset applied");
+};
+
+Pixaroma3DEditor.prototype._deleteCameraTemplate = function () {
+  const id = this.el.cameraPresetSelect?.value;
+  if (!id) return;
+  const templates = (this._presetState().camera_templates || []).filter((t) => t.id !== id);
+  this._setPresetState({ camera_templates: templates });
+  this._syncPresetStateToSceneJson();
+  this._setStatus?.("Camera preset deleted");
+};
+
+Pixaroma3DEditor.prototype._bgTemplateSnapshot = function (name, path, id = null) {
+  return {
+    id: id || this._makePresetId("bg"),
+    name,
+    path,
+    x: this._bgImg.x || 0,
+    y: this._bgImg.y || 0,
+    scale: this._bgImg.scale || 100,
+    rotation: this._bgImg.rotation || 0,
+    opacity: this._bgImg.opacity ?? 100,
+    flipH: !!this._bgImg._flipH,
+    flipV: !!this._bgImg._flipV,
+  };
+};
+
+Pixaroma3DEditor.prototype._bgPathToSrc = function (path) {
+  if (!path) return null;
+  const parts = path.replace(/\\/g, "/").split("/");
+  const fname = parts.pop();
+  const subfolder = parts.join("/") || "pixaroma";
+  return "/view?filename=" +
+    encodeURIComponent(fname) +
+    "&type=input&subfolder=" +
+    encodeURIComponent(subfolder) +
+    "&t=" +
+    Date.now();
+};
+
+Pixaroma3DEditor.prototype._bgImageDataURL = async function () {
+  const img = this.el.bgImgEl;
+  if (!img?.src) return null;
+  if (img.src.startsWith("data:image")) return img.src;
+  try {
+    const res = await fetch(img.src, { cache: "no-store" });
+    if (res.ok) {
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {}
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth || this._bgImg._natW;
+    canvas.height = img.naturalHeight || this._bgImg._natH;
+    if (!canvas.width || !canvas.height) return null;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0);
+    return canvas.toDataURL("image/png");
+  } catch (e) {
+    console.warn("[P3D] background preset copy failed", e);
+    return null;
+  }
+};
+
+Pixaroma3DEditor.prototype._saveBackgroundTemplate = async function () {
+  if (!this.el.bgImgEl || !this._bgImg.path) {
+    this._setStatus?.("Background image missing");
+    return;
+  }
+  const templates = [...(this._presetState().background_templates || [])];
+  const fallback = this._nextTemplateName?.("Background", templates) || `Background ${templates.length + 1}`;
+  const name = this._promptTemplateName?.("Background preset", fallback);
+  if (!name) return;
+  this._setStatus?.("Saving background preset...");
+  const dataURL = await this._bgImageDataURL();
+  if (!dataURL) {
+    this._setStatus?.("Background image missing");
+    return;
+  }
+  const uploadId = `${this.projectId}_${this._makePresetId("bgpreset")}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+  try {
+    const res = await ThreeDAPI.uploadBgImage(uploadId, dataURL);
+    if (res.status !== "success" || !res.path) {
+      this._setStatus?.("Background preset save failed");
+      return;
+    }
+    const existingIdx = templates.findIndex((t) => (t.name || "") === name);
+    const snap = this._bgTemplateSnapshot(name, res.path, existingIdx >= 0 ? templates[existingIdx].id : null);
+    if (existingIdx >= 0) templates[existingIdx] = snap;
+    else templates.push(snap);
+    this._setPresetState({ background_templates: templates });
+    if (this.el.bgPresetSelect) this.el.bgPresetSelect.value = snap.id;
+    this._syncPresetStateToSceneJson();
+    this._setStatus?.(existingIdx >= 0 ? "Background preset updated" : "Background preset saved");
+  } catch (e) {
+    console.warn("[P3D] bg preset upload", e);
+    this._setStatus?.("Background preset save error");
+  }
+};
+
+Pixaroma3DEditor.prototype._selectedBackgroundTemplate = function () {
+  const id = this.el.bgPresetSelect?.value;
+  return (this._presetState().background_templates || []).find((t) => t.id === id) || null;
+};
+
+Pixaroma3DEditor.prototype._applyBgTemplateState = function (t) {
+  if (!t?.path) return;
+  this._bgImg = {
+    path: t.path,
+    x: t.x || 0,
+    y: t.y || 0,
+    scale: t.scale || 100,
+    rotation: t.rotation || 0,
+    opacity: t.opacity ?? 100,
+    _flipH: !!t.flipH,
+    _flipV: !!t.flipV,
+    _natW: 0,
+    _natH: 0,
+  };
+  this._syncBgSliders();
+  const src = this._bgPathToSrc(t.path);
+  if (src) this._showBgImage(src, false);
+};
+
+Pixaroma3DEditor.prototype._applyBackgroundTemplate = function () {
+  const t = this._selectedBackgroundTemplate();
+  if (!t) return;
+  this._applyBgTemplateState(t);
+  this._setStatus?.("Background preset applied");
+};
+
+Pixaroma3DEditor.prototype._deleteBackgroundTemplate = function () {
+  const id = this.el.bgPresetSelect?.value;
+  if (!id) return;
+  const templates = (this._presetState().background_templates || []).filter((t) => t.id !== id);
+  this._setPresetState({ background_templates: templates });
+  this._syncPresetStateToSceneJson();
+  this._setStatus?.("Background preset deleted");
 };
 
 // ─── Background Image (CSS 2D) ─────────────────────────────

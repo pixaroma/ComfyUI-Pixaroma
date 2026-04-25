@@ -141,6 +141,13 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.orbitCtrl.enableDamping = true;
   this.orbitCtrl.dampingFactor = 0.08;
   this.orbitCtrl.target.set(0, 0.5, 0);
+  this._orbitBaseSpeeds = {
+    rotate: this.orbitCtrl.rotateSpeed ?? 1,
+    zoom: this.orbitCtrl.zoomSpeed ?? 1,
+    pan: this.orbitCtrl.panSpeed ?? 1,
+  };
+  this._applyOrbitFineMode?.();
+  this._applyCamLockState?.();
 
   this.transformCtrl = new TransformControls(
     this.camera,
@@ -149,7 +156,7 @@ Pixaroma3DEditor.prototype._initThree = function () {
   this.transformCtrl.setMode("translate");
   this.transformCtrl.setSize(0.85);
   this.transformCtrl.addEventListener("dragging-changed", (e) => {
-    this.orbitCtrl.enabled = !e.value;
+    this.orbitCtrl.enabled = !e.value && !this._camLock;
     this._gizmoDragging = e.value;
     // Show the custom gray drag indicator line during drag only.
     // Orient it along the axis currently being manipulated.
@@ -404,7 +411,9 @@ Pixaroma3DEditor.prototype._initThree = function () {
   });
 
   this._onKey = (e) => this._handleKey(e);
+  this._onKeyUp = (e) => this._handleKeyUp(e);
   window.addEventListener("keydown", this._onKey, { capture: true });
+  window.addEventListener("keyup", this._onKeyUp, { capture: true });
   this._resizeObs = new ResizeObserver(() => this._onResize());
   this._resizeObs.observe(vp);
   this._applyLightDir();
