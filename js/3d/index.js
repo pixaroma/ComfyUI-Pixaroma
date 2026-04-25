@@ -13,6 +13,7 @@ import "./interaction.mjs";
 import "./persistence.mjs";
 import "./importer.mjs";
 
+
 import {
   allow_debug,
   createNodePreview,
@@ -21,6 +22,32 @@ import {
   activateNodePreview,
   downloadDataURL,
 } from "../shared/index.mjs";
+const PIXAROMA_3D_WORKFLOW_STATE_KEY = "pixaroma_3d_builder";
+
+function getWorkflow3DState() {
+  const graph = app.graph;
+  if (!graph) return { camera_templates: [], background_templates: [] };
+  if (!graph.extra || typeof graph.extra !== "object") graph.extra = {};
+  if (!graph.extra[PIXAROMA_3D_WORKFLOW_STATE_KEY] ||
+      typeof graph.extra[PIXAROMA_3D_WORKFLOW_STATE_KEY] !== "object") {
+    graph.extra[PIXAROMA_3D_WORKFLOW_STATE_KEY] = {};
+  }
+  const state = graph.extra[PIXAROMA_3D_WORKFLOW_STATE_KEY];
+  if (!Array.isArray(state.camera_templates)) state.camera_templates = [];
+  if (!Array.isArray(state.background_templates)) state.background_templates = [];
+  return state;
+}
+
+function setWorkflow3DState(next) {
+  const state = getWorkflow3DState();
+  state.camera_templates = Array.isArray(next?.camera_templates)
+    ? next.camera_templates
+    : state.camera_templates;
+  state.background_templates = Array.isArray(next?.background_templates)
+    ? next.background_templates
+    : state.background_templates;
+}
+
 
 app.registerExtension({
   name: "Pixaroma.3DEditor",
@@ -67,6 +94,11 @@ app.registerExtension({
     // ── Separate button widget ──
     node.addWidget("button", "Open 3D Builder", null, () => {
       const editor = new Pixaroma3DEditor();
+      editor.getSharedState = () => getWorkflow3DState();
+      editor.setSharedState = (next) => {
+        setWorkflow3DState(next);
+        node.setDirtyCanvas(true, true);
+      };
 
       // Apply default BG from ComfyUI settings (if user configured it).
       // ComfyUI's `color` setting type returns values without the leading
