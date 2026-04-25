@@ -701,18 +701,60 @@ app.registerExtension({
 // from the workflow JSON (no widget exists). Patch app.graphToPrompt so each
 // PixaromaResolution node's prompt entry gets its `inputs.ResolutionState`
 // populated from node.properties[STATE_PROP] right before submission.
+//
+// Subgraph-safe lookup: ComfyUI's new subgraph system flattens contained nodes
+// into the API prompt with composite string IDs (e.g. "5:12"), and `app.graph`
+// only exposes top-level nodes — so the previous `parseInt(id) + getNodeById`
+// path silently missed any PixaromaResolution placed inside a subgraph and
+// the user got a TypeError at execution. Identify pixaroma entries directly
+// by `class_type` in the API prompt, and resolve their state via a recursive
+// walk over every nested subgraph. Falls back to DEFAULT_STATE if a node
+// can't be found so the workflow never crashes — worst case the user sees the
+// 1024×1024 default instead of their pick.
+function buildPixaromaNodeIndex() {
+  const index = new Map(); // String(node.id) → node
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === "PixaromaResolution" || n.type === "PixaromaResolution") {
+        index.set(String(n.id), n);
+      }
+      // ComfyUI subgraph instances expose their inner graph at one of these
+      // keys depending on frontend version; check all known shapes.
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+
+function findPixaromaNode(index, promptId) {
+  // Try exact match first; then strip any subgraph prefix ("5:12" → "12") so
+  // we still hit the inner node when ComfyUI prefixes IDs in the API prompt.
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   const out = result?.output;
   if (out) {
-    const graph = app.graph;
+    let index = null;
     for (const id in out) {
-      const n = graph?.getNodeById?.(parseInt(id, 10));
-      if (!n || (n.comfyClass !== "PixaromaResolution" && n.type !== "PixaromaResolution")) continue;
-      const state = n.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
-      out[id].inputs = out[id].inputs || {};
-      out[id].inputs[HIDDEN_INPUT_NAME] = state;
+      const entry = out[id];
+      if (!entry || entry.class_type !== "PixaromaResolution") continue;
+      if (!index) index = buildPixaromaNodeIndex();
+      const node = findPixaromaNode(index, id);
+      const state = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
+      entry.inputs = entry.inputs || {};
+      entry.inputs[HIDDEN_INPUT_NAME] = state;
     }
   }
   return result;
