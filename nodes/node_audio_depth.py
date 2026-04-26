@@ -108,6 +108,24 @@ _AUDIO_BANDS_HZ = {
 }
 
 
+def _gaussian_blur_2d(x, kernel_size):
+    """Separable Gaussian blur on a [H, W] tensor. kernel_size in pixels."""
+    k = int(kernel_size)
+    if k <= 0:
+        return x
+    if k % 2 == 0:
+        k += 1
+    sigma = k / 6.0
+    half = k // 2
+    coords = torch.arange(k, device=x.device, dtype=x.dtype) - half
+    g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+    g = g / g.sum()
+    x = x.unsqueeze(0).unsqueeze(0)
+    x = F.conv2d(F.pad(x, (half, half, 0, 0), mode="reflect"), g.view(1, 1, 1, k))
+    x = F.conv2d(F.pad(x, (0, 0, half, half), mode="reflect"), g.view(1, 1, k, 1))
+    return x.squeeze(0).squeeze(0)
+
+
 def _bandpass_fft(waveform, sample_rate, low_hz, high_hz):
     """FFT-based bandpass on the last dim. waveform: [..., samples]."""
     n = waveform.shape[-1]
@@ -171,6 +189,16 @@ class PixaromaAudioDepth:
                     "tooltip": "Which frequency band drives the motion envelope. full = whole spectrum (default). bass = drum-driven cinematic feel (20–250 Hz). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz)."}),
                 "loop_safe": ("BOOLEAN", {"default": False,
                     "tooltip": "Ramp motion to zero across the first and last 0.5 s so the rendered clip loops with no visible jump. Slightly reduces motion at the very start and end."}),
+                "motion_speed": ("FLOAT", {"default": 0.25, "min": 0.05, "max": 1.0, "step": 0.05,
+                    "tooltip": "Sway/bob frequency in Hz (cycles per second). 0.25 = one full cycle every 4 s (default, cinematic). 0.5 = 2 s. 1.0 = fast pulse. Only affects horizontal/vertical/combined modes — radial ignores this."}),
+                "base_motion": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.5, "step": 0.01,
+                    "tooltip": "Always-on motion floor (0–0.5). 0 = motion fully gated by audio (silence = freeze). 0.3 = camera always drifts at 30% strength even at silence. Mimics how cinematic camera moves never fully stop."}),
+                "depth_blur": ("INT", {"default": 0, "min": 0, "max": 30, "step": 1,
+                    "tooltip": "Gaussian blur on the depth map in pixels. 0 = off (sharp edges). Higher = softer warp around object silhouettes, kills jagged geometry from sharp depth edges. Try 5–15 with DPT_Large."}),
+                "smoothing": ("INT", {"default": 3, "min": 1, "max": 15, "step": 1,
+                    "tooltip": "Audio envelope moving-average window in frames. 1 = punchy, reacts to every transient (good for beats). 3 = default. 8–15 = fluid, slow camera response (cinematic)."}),
+                "camera_shake": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.5, "step": 0.01,
+                    "tooltip": "Per-frame random jitter independent of audio. 0 = off. 0.1 = subtle handheld feel. 0.5 = strong shake. Deterministic (same input = same shake)."}),
             }
         }
 
@@ -221,7 +249,7 @@ class PixaromaAudioDepth:
         image = image.permute(0, 2, 3, 1)
         return image
 
-    def _audio_envelope(self, audio, target_frames, fps, device, audio_band):
+    def _audio_envelope(self, audio, target_frames, fps, device, audio_band, smoothing):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
         if waveform.shape[1] > 1:
@@ -247,14 +275,21 @@ class PixaromaAudioDepth:
         else:
             rms = torch.zeros_like(rms)
 
-        kernel = torch.ones(1, 1, 3, device=rms.device) / 3.0
-        rms_padded = F.pad(rms.unsqueeze(0).unsqueeze(0), (1, 1), mode="replicate")
+        sw = max(1, int(smoothing))
+        if sw % 2 == 0:
+            sw += 1
+        if sw == 1:
+            return rms.to(device)
+        pad = sw // 2
+        kernel = torch.ones(1, 1, sw, device=rms.device) / sw
+        rms_padded = F.pad(rms.unsqueeze(0).unsqueeze(0), (pad, pad), mode="replicate")
         rms_smoothed = F.conv1d(rms_padded, kernel).squeeze()
         return rms_smoothed.to(device)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  pulse_intensity, fps, midas_model, motion_mode, depth_contrast,
-                 depth_invert, audio_band, loop_safe):
+                 depth_invert, audio_band, loop_safe,
+                 motion_speed, base_motion, depth_blur, smoothing, camera_shake):
         device = comfy.model_management.get_torch_device()
 
         image = self._process_aspect(image, aspect_ratio, custom_width, custom_height)
@@ -263,7 +298,7 @@ class PixaromaAudioDepth:
 
         audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
         total_frames = int(audio_duration * fps)
-        envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band)
+        envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
 
         if loop_safe and total_frames > 0:
             fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
@@ -271,6 +306,9 @@ class PixaromaAudioDepth:
             envelope = envelope.clone()
             envelope[:fade_n] = envelope[:fade_n] * ramp
             envelope[-fade_n:] = envelope[-fade_n:] * ramp.flip(0)
+
+        if base_motion > 0.0:
+            envelope = base_motion + envelope * (1.0 - base_motion)
 
         midas, transform = _get_midas(midas_model, device)
 
@@ -291,6 +329,8 @@ class PixaromaAudioDepth:
             depth_map = 1.0 - depth_map
         if depth_contrast != 1.0:
             depth_map = depth_map.clamp(min=0.0) ** depth_contrast
+        if depth_blur > 0:
+            depth_map = _gaussian_blur_2d(depth_map, depth_blur)
 
         del input_batch, prediction
         comfy.model_management.soft_empty_cache()
@@ -303,14 +343,28 @@ class PixaromaAudioDepth:
         )
         base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)
 
-        # Per-frame motion phase for sway / bob modes (one cycle per 4s)
-        sway_freq = 0.25
+        # Per-frame motion phase for sway / bob modes
         t = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
-        sway = torch.sin(t * 2 * math.pi * sway_freq)
-        bob = torch.cos(t * 2 * math.pi * sway_freq)
+        sway = torch.sin(t * 2 * math.pi * motion_speed)
+        bob = torch.cos(t * 2 * math.pi * motion_speed)
+
+        # Camera shake: deterministic per-frame jitter, smoothed for organic feel
+        if camera_shake > 0.0 and total_frames > 0:
+            g = torch.Generator().manual_seed(0)
+            shake_x = torch.randn(total_frames, generator=g) * camera_shake * 0.02
+            shake_y = torch.randn(total_frames, generator=g) * camera_shake * 0.02
+            sk = 3
+            kernel = torch.ones(1, 1, sk) / sk
+            shake_x = F.conv1d(F.pad(shake_x.view(1, 1, -1), (sk // 2, sk // 2), mode="replicate"), kernel).squeeze().to(device)
+            shake_y = F.conv1d(F.pad(shake_y.view(1, 1, -1), (sk // 2, sk // 2), mode="replicate"), kernel).squeeze().to(device)
+        else:
+            shake_x = torch.zeros(total_frames, device=device)
+            shake_y = torch.zeros(total_frames, device=device)
 
         print(f"[Pixaroma] Audio Depth: {total_frames} frames @ {fps}fps, "
-              f"{W}x{H}, {midas_model}, mode={motion_mode}, band={audio_band}")
+              f"{W}x{H}, {midas_model}, mode={motion_mode}, band={audio_band}, "
+              f"speed={motion_speed}Hz, base={base_motion}, blur={depth_blur}px, "
+              f"smooth={smoothing}, shake={camera_shake}")
         pbar = comfy.utils.ProgressBar(total_frames)
 
         frames = []
@@ -326,6 +380,9 @@ class PixaromaAudioDepth:
                     grid[..., 0] = grid[..., 0] - depth_map * amp * sway[i]
                 if motion_mode in ("vertical", "combined"):
                     grid[..., 1] = grid[..., 1] - depth_map * amp * bob[i]
+            if camera_shake > 0.0:
+                grid[..., 0] = grid[..., 0] - shake_x[i]
+                grid[..., 1] = grid[..., 1] - shake_y[i]
             warped = F.grid_sample(
                 img_tensor, grid,
                 mode="bilinear", padding_mode="reflection", align_corners=False,
