@@ -223,8 +223,8 @@ class PixaromaDepthMap:
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("depth_map",)
+    RETURN_TYPES = ("IMAGE", "IMAGE")
+    RETURN_NAMES = ("image", "depth_map")
     FUNCTION = "generate"
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
@@ -276,7 +276,7 @@ class PixaromaDepthMap:
 
         return {
             "ui": {"images": [{"filename": fname, "subfolder": "", "type": "temp"}]},
-            "result": (depth_image,),
+            "result": (image, depth_image),
         }
 
 

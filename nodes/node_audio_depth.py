@@ -38,9 +38,9 @@ class PixaromaAudioDepth:
     def INPUT_TYPES(s):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "Source still image to animate (the actual pixels that get warped)."}),
+                "image": ("IMAGE", {"tooltip": "Source still image to animate (the actual pixels that get warped). Wire Depth Map Pixaroma's image output here for a clean two-wire setup."}),
+                "depth_map": ("IMAGE", {"tooltip": "Depth map driving the parallax. Wire Depth Map Pixaroma's depth_map output here, or feed any grayscale IMAGE where white = near and black = far. Resized to match the render dimensions automatically."}),
                 "audio": ("AUDIO", {"tooltip": "Driver audio. Clip length = audio_duration × fps."}),
-                "depth_map": ("IMAGE", {"tooltip": "Depth map driving the parallax. Wire Depth Map Pixaroma here, or feed any grayscale IMAGE where white = near and black = far. Resized to match the render dimensions automatically."}),
                 "aspect_ratio": ([
                     "Original",
                     "Custom (Use Width & Height below)",
@@ -189,7 +189,7 @@ class PixaromaAudioDepth:
         rms_smoothed = F.conv1d(rms_padded, kernel).squeeze()
         return rms_smoothed.to(device)
 
-    def generate(self, image, audio, depth_map, aspect_ratio, custom_width, custom_height,
+    def generate(self, image, depth_map, audio, aspect_ratio, custom_width, custom_height,
                  pulse_intensity, fps, motion_mode, audio_band, loop_safe,
                  motion_speed, base_motion, smoothing, camera_shake,
                  edge_headroom):
