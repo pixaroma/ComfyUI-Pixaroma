@@ -11,7 +11,7 @@ import comfy.model_management
 import folder_paths
 
 
-_MIDAS_CACHE = {}
+_DEPTH_CACHE = {}
 
 _MIDAS_WEIGHT_URLS = {
     "MiDaS_small": (
@@ -27,6 +27,28 @@ _MIDAS_WEIGHT_URLS = {
         "https://github.com/isl-org/MiDaS/releases/download/v3/dpt_hybrid_384.pt",
     ),
 }
+
+_DA2_REPOS = {
+    "DepthAnythingV2_Small": "depth-anything/Depth-Anything-V2-Small-hf",
+    "DepthAnythingV2_Base":  "depth-anything/Depth-Anything-V2-Base-hf",
+    "DepthAnythingV2_Large": "depth-anything/Depth-Anything-V2-Large-hf",
+}
+
+
+def _da2_install_hint(model_name, original_error):
+    repo = _DA2_REPOS.get(model_name, "<unknown>")
+    return (
+        f"\n[Pixaroma] Audio Depth — '{model_name}' failed to load.\n"
+        f"   Reason: {original_error}\n\n"
+        f"   This model uses Hugging Face transformers. To install:\n"
+        f"     pip install transformers\n\n"
+        f"   The weights download automatically on first use:\n"
+        f"     repo: {repo}\n"
+        f"     cache dir: ~/.cache/huggingface/hub/  (or HF_HOME env var)\n"
+        f"     size: ~100 MB Small / ~400 MB Base / ~1.3 GB Large\n\n"
+        f"   If you don't want transformers, switch depth_model to\n"
+        f"   DPT_Large or MiDaS_small (loaded via torch.hub instead).\n"
+    )
 
 
 def _midas_install_hint(model_name, hub_dir, original_error):
@@ -69,11 +91,7 @@ def _safe_hub_load(repo, model, trust_repo=True):
             sys.modules[name] = mod
 
 
-def _get_midas(model_name, device):
-    cached = _MIDAS_CACHE.get(model_name)
-    if cached is not None and cached.get("device") == str(device):
-        return cached["model"], cached["transform"]
-
+def _build_midas_predictor(model_name, device):
     portable_hub_dir = os.path.join(folder_paths.models_dir, "torch_hub")
     os.makedirs(portable_hub_dir, exist_ok=True)
     torch.hub.set_dir(portable_hub_dir)
@@ -92,12 +110,68 @@ def _get_midas(model_name, device):
     else:
         transform = transforms_mod.small_transform
 
-    _MIDAS_CACHE[model_name] = {
-        "model": model,
-        "transform": transform,
-        "device": str(device),
-    }
-    return model, transform
+    def predict(img_uint8):
+        with torch.no_grad():
+            input_batch = transform(img_uint8).to(device)
+            pred = model(input_batch)
+        # MiDaS returns [1, h, w] — squeeze batch
+        if pred.dim() == 3:
+            pred = pred.squeeze(0)
+        return pred.float()
+
+    return predict
+
+
+def _build_da2_predictor(model_name, device):
+    try:
+        from transformers import pipeline
+    except Exception as e:
+        msg = _da2_install_hint(model_name, e)
+        print(msg)
+        raise RuntimeError(msg) from e
+
+    try:
+        pipe = pipeline(
+            "depth-estimation",
+            model=_DA2_REPOS[model_name],
+            device=device,
+        )
+    except Exception as e:
+        msg = _da2_install_hint(model_name, e)
+        print(msg)
+        raise RuntimeError(msg) from e
+
+    def predict(img_uint8):
+        from PIL import Image
+        pil = Image.fromarray(img_uint8)
+        with torch.no_grad():
+            result = pipe(pil)
+        depth = result["predicted_depth"]
+        if not isinstance(depth, torch.Tensor):
+            depth = torch.as_tensor(depth)
+        if depth.dim() == 3:
+            depth = depth.squeeze(0)
+        return depth.to(device).float()
+
+    return predict
+
+
+def _get_depth_predictor(model_name, device):
+    """Returns a callable predict(img_uint8 [H,W,3]) -> depth tensor on `device`
+    at the model's output spatial size. Cached process-wide by model name + device."""
+    cached = _DEPTH_CACHE.get(model_name)
+    if cached is not None and cached.get("device") == str(device):
+        return cached["fn"]
+
+    if model_name in _MIDAS_WEIGHT_URLS:
+        fn = _build_midas_predictor(model_name, device)
+    elif model_name in _DA2_REPOS:
+        fn = _build_da2_predictor(model_name, device)
+    else:
+        raise ValueError(f"[Pixaroma] Audio Depth — unknown depth_model: {model_name!r}")
+
+    _DEPTH_CACHE[model_name] = {"fn": fn, "device": str(device)}
+    return fn
 
 
 _AUDIO_BANDS_HZ = {
@@ -172,7 +246,7 @@ class PixaromaAudioDepth:
                     "1440x2560 (Portrait 2K)",
                     "3840x2160 (Landscape 4K)",
                     "2160x3840 (Portrait 4K)",
-                ], {"default": "Original", "tooltip": "Output framing. 'Original' keeps the input image's ratio. Fixed presets crop + resize to that exact size. 'Custom Ratio …' uses custom_width and computes height from the ratio. 'Custom (W & H)' uses both custom_width and custom_height as-is. 2K / 4K need a lot of VRAM — drop to MiDaS_small if you OOM."}),
+                ], {"default": "Original", "tooltip": "Output framing. 'Original' keeps the input image's ratio. Fixed presets crop + resize to that exact size. 'Custom Ratio …' uses custom_width and computes height from the ratio. 'Custom (W & H)' uses both custom_width and custom_height as-is. 2K / 4K need a lot of VRAM — drop depth_model to a smaller variant (DepthAnythingV2_Small or MiDaS_small) if you OOM."}),
                 "custom_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8,
                     "tooltip": "Used by 'Custom Ratio …' presets and 'Custom (W & H)'. Ignored by 'Original' and fixed-size presets."}),
                 "custom_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8,
@@ -181,8 +255,20 @@ class PixaromaAudioDepth:
                     "tooltip": "How strongly audio amplitude drives motion. 0 = still, 0.8 = default cinematic, 2 = extreme."}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1,
                     "tooltip": "Output frames per second. Higher = smoother + larger file + longer render time."}),
-                "midas_model": (["DPT_Large", "MiDaS_small"], {"default": "DPT_Large",
-                    "tooltip": "Depth estimator. DPT_Large ≈ 10 GB+ VRAM, slower, sharper edges (default — better quality). MiDaS_small ≈ 6 GB VRAM, fast (use if you hit OOM or want quick previews)."}),
+                "depth_model": ([
+                    "DepthAnythingV2_Large",
+                    "DepthAnythingV2_Base",
+                    "DepthAnythingV2_Small",
+                    "DPT_Large",
+                    "MiDaS_small",
+                ], {"default": "DepthAnythingV2_Base",
+                    "tooltip": (
+                        "Depth estimator.\n"
+                        "DepthAnythingV2_Base (default, ~6GB VRAM, ~400MB weights) — best quality/cost tradeoff. Sharper edges than DPT_Large at lower VRAM.\n"
+                        "DepthAnythingV2_Large (~10GB VRAM, ~1.3GB weights) — top quality.\n"
+                        "DepthAnythingV2_Small (~4GB VRAM, ~100MB weights) — fast previews.\n"
+                        "DPT_Large / MiDaS_small — older MiDaS models via torch.hub. Use if you don't have the `transformers` package installed."
+                    )}),
                 "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial",
                     "tooltip": "radial = pulsing zoom from center (default — the original Pixaroma2 effect). horizontal = camera dolly left↔right (cinematic Ken Burns feel). vertical = camera bob up↕down. combined = both with 90° phase offset (orbital feel)."}),
                 "depth_contrast": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 3.0, "step": 0.05,
@@ -307,7 +393,7 @@ class PixaromaAudioDepth:
         return rms_smoothed.to(device)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
-                 pulse_intensity, fps, midas_model, motion_mode, depth_contrast,
+                 pulse_intensity, fps, depth_model, motion_mode, depth_contrast,
                  depth_invert, audio_band, loop_safe,
                  motion_speed, base_motion, depth_blur, smoothing, camera_shake,
                  edge_headroom):
@@ -350,18 +436,16 @@ class PixaromaAudioDepth:
             envelope[:fade_n] = envelope[:fade_n] * loop_ramp
             envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
 
-        midas, transform = _get_midas(midas_model, device)
+        predict_depth = _get_depth_predictor(depth_model, device)
 
-        with torch.no_grad():
-            img_uint8 = (image[0].cpu().numpy() * 255).astype("uint8")
-            input_batch = transform(img_uint8).to(device)
-            prediction = midas(input_batch)
-            prediction = F.interpolate(
-                prediction.unsqueeze(1),
-                size=(H, W),
-                mode="bicubic",
-                align_corners=False,
-            ).squeeze()
+        img_uint8 = (image[0].cpu().numpy() * 255).astype("uint8")
+        raw_depth = predict_depth(img_uint8)
+        prediction = F.interpolate(
+            raw_depth.unsqueeze(0).unsqueeze(0),
+            size=(H, W),
+            mode="bicubic",
+            align_corners=False,
+        ).squeeze(0).squeeze(0)
 
         depth_min, depth_max = prediction.min(), prediction.max()
         depth_map = (prediction - depth_min) / (depth_max - depth_min + 1e-6)
@@ -372,7 +456,7 @@ class PixaromaAudioDepth:
         if depth_blur > 0:
             depth_map = _gaussian_blur_2d(depth_map, depth_blur)
 
-        del input_batch, prediction
+        del raw_depth, prediction
         comfy.model_management.soft_empty_cache()
         gc.collect()
 
@@ -416,7 +500,7 @@ class PixaromaAudioDepth:
             shake_y = torch.zeros(total_frames, device=device)
 
         print(f"[Pixaroma] Audio Depth: {total_frames} frames @ {fps}fps, "
-              f"{W}x{H}, {midas_model}, mode={motion_mode}, band={audio_band}, "
+              f"{W}x{H}, {depth_model}, mode={motion_mode}, band={audio_band}, "
               f"speed={motion_speed}Hz, base={base_motion}, blur={depth_blur}px, "
               f"smooth={smoothing}, shake={camera_shake}")
         pbar = comfy.utils.ProgressBar(total_frames)
