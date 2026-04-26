@@ -203,6 +203,8 @@ class PixaromaAudioDepth:
                     "tooltip": "Audio envelope moving-average window in frames. 5 = default — balanced. 1 = punchy, reacts to every transient (good for beats). 8–15 = fluid, slow camera response (cinematic)."}),
                 "camera_shake": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.5, "step": 0.01,
                     "tooltip": "Slow handheld camera drift independent of audio (~1 anchor/sec, cosine-interpolated for smooth motion). 0 = off (default). 0.1 = subtle drift. 0.3 = noticeable handheld feel. 0.5 = strong drift. Deterministic (same input = same shake)."}),
+                "edge_headroom": ("FLOAT", {"default": 1.05, "min": 1.0, "max": 1.3, "step": 0.01,
+                    "tooltip": "Render at slightly larger dimensions then center-crop back, giving motion a safety zone outside the visible frame. 1.0 = no headroom (motion can clip subjects at edges). 1.05 = 5% margin (default, kills most clipping at imperceptible cost). 1.2 = wide margin for very strong motion. Higher = more VRAM."}),
             }
         }
 
@@ -211,31 +213,45 @@ class PixaromaAudioDepth:
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
 
-    def _process_aspect(self, image, aspect_ratio, custom_w, custom_h):
-        if aspect_ratio == "Original":
-            return image
-
+    def _process_aspect(self, image, aspect_ratio, custom_w, custom_h, headroom=1.0):
+        """Returns (image_at_render_size, base_w, base_h).
+        `image_at_render_size` is sized to base_w*headroom × base_h*headroom
+        (snapped to multiples of 8). Caller should center-crop the warped
+        frames back to base_w × base_h for the final output."""
         _, h, w, _ = image.shape
-        if aspect_ratio == "Custom (Use Width & Height below)":
-            target_w, target_h = custom_w, custom_h
+
+        if aspect_ratio == "Original":
+            base_w, base_h = w, h
+        elif aspect_ratio == "Custom (Use Width & Height below)":
+            base_w, base_h = custom_w, custom_h
         elif "Custom Ratio" in aspect_ratio:
-            target_w = custom_w
+            base_w = custom_w
             if "16:9" in aspect_ratio:
-                target_h = int(target_w * 9 / 16)
+                base_h = int(base_w * 9 / 16)
             elif "9:16" in aspect_ratio:
-                target_h = int(target_w * 16 / 9)
+                base_h = int(base_w * 16 / 9)
             elif "4:3" in aspect_ratio:
-                target_h = int(target_w * 3 / 4)
+                base_h = int(base_w * 3 / 4)
             elif "1:1" in aspect_ratio:
-                target_h = target_w
+                base_h = base_w
             else:
-                target_h = custom_h
+                base_h = custom_h
         else:
             dim = aspect_ratio.split(" ")[0]
-            target_w, target_h = map(int, dim.split("x"))
+            base_w, base_h = map(int, dim.split("x"))
 
-        target_w = (target_w // 8) * 8
-        target_h = (target_h // 8) * 8
+        base_w = (base_w // 8) * 8
+        base_h = (base_h // 8) * 8
+
+        if headroom > 1.0:
+            target_w = ((int(base_w * headroom) + 7) // 8) * 8
+            target_h = ((int(base_h * headroom) + 7) // 8) * 8
+        else:
+            target_w, target_h = base_w, base_h
+
+        # Original + no headroom = pass image through untouched
+        if aspect_ratio == "Original" and headroom <= 1.0:
+            return image, base_w, base_h
 
         target_ratio = target_w / target_h
         current_ratio = w / h
@@ -251,7 +267,7 @@ class PixaromaAudioDepth:
         image = image.permute(0, 3, 1, 2)
         image = F.interpolate(image, size=(target_h, target_w), mode="bilinear", align_corners=False)
         image = image.permute(0, 2, 3, 1)
-        return image
+        return image, base_w, base_h
 
     def _audio_envelope(self, audio, target_frames, fps, device, audio_band, smoothing):
         waveform = audio["waveform"]
@@ -293,12 +309,20 @@ class PixaromaAudioDepth:
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  pulse_intensity, fps, midas_model, motion_mode, depth_contrast,
                  depth_invert, audio_band, loop_safe,
-                 motion_speed, base_motion, depth_blur, smoothing, camera_shake):
+                 motion_speed, base_motion, depth_blur, smoothing, camera_shake,
+                 edge_headroom):
         device = comfy.model_management.get_torch_device()
 
-        image = self._process_aspect(image, aspect_ratio, custom_width, custom_height)
+        image, out_w, out_h = self._process_aspect(
+            image, aspect_ratio, custom_width, custom_height, edge_headroom,
+        )
         img_tensor = image[0].permute(2, 0, 1).unsqueeze(0).to(device)
         _, _, H, W = img_tensor.shape
+
+        # Where to center-crop the rendered (H, W) frames back to (out_h, out_w).
+        crop_h_off = max(0, (H - out_h) // 2)
+        crop_w_off = max(0, (W - out_w) // 2)
+        needs_crop = (H != out_h) or (W != out_w)
 
         audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
         total_frames = int(audio_duration * fps)
@@ -415,13 +439,19 @@ class PixaromaAudioDepth:
                 grid[..., 1] = grid[..., 1] - shake_y[i]
             warped = F.grid_sample(
                 img_tensor, grid,
-                mode="bilinear", padding_mode="reflection", align_corners=False,
+                mode="bilinear", padding_mode="border", align_corners=False,
             )
-            frames.append(warped.squeeze(0).permute(1, 2, 0).cpu())
+            frame = warped.squeeze(0).permute(1, 2, 0)
+            if needs_crop:
+                frame = frame[crop_h_off:crop_h_off + out_h, crop_w_off:crop_w_off + out_w, :]
+            frames.append(frame.cpu())
             pbar.update(1)
 
         output_video = torch.stack(frames, dim=0)
-        depth_image = depth_map.detach().unsqueeze(-1).expand(-1, -1, 3).contiguous().unsqueeze(0).cpu()
+        depth_for_output = depth_map
+        if needs_crop:
+            depth_for_output = depth_map[crop_h_off:crop_h_off + out_h, crop_w_off:crop_w_off + out_w]
+        depth_image = depth_for_output.detach().unsqueeze(-1).expand(-1, -1, 3).contiguous().unsqueeze(0).cpu()
         return (output_video, audio, float(fps), depth_image)
 
 
