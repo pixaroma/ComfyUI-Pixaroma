@@ -156,6 +156,22 @@ def _gaussian_blur_2d(x, kernel_size):
     return x.squeeze(0).squeeze(0)
 
 
+def _erode_2d(x, radius):
+    """Morphological erosion (min-pool) on a [H, W] tensor. Pushes high
+    values down toward neighboring lows — used to shrink the depth-map
+    foreground inward so the warp boundary moves inside the silhouette,
+    eliminating ghost-edge artifacts on parallax."""
+    r = int(radius)
+    if r <= 0:
+        return x
+    k = 2 * r + 1
+    # min-pool via -max-pool(-x)
+    return -F.max_pool2d(
+        -x.unsqueeze(0).unsqueeze(0),
+        kernel_size=k, stride=1, padding=r,
+    ).squeeze(0).squeeze(0)
+
+
 class PixaromaDepthMap:
     """Estimates a depth map from an image using Depth Anything V2 (Small /
     Base / Large), applies invert / contrast / blur, and outputs an IMAGE
@@ -186,8 +202,10 @@ class PixaromaDepthMap:
                     "tooltip": "Flip the depth map (near ↔ far). Use when the model gets it backwards on stylized or unusual images."}),
                 "depth_contrast": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 3.0, "step": 0.05,
                     "tooltip": "Power curve on the depth map. 1.0 = unchanged. >1 = stronger near/far separation (more dramatic parallax — default 1.5). <1 = flatter, gentler motion."}),
-                "depth_blur": ("INT", {"default": 5, "min": 0, "max": 30, "step": 1,
-                    "tooltip": "Gaussian blur on the depth map in pixels. Default 5 — softens warp along object silhouettes, kills jagged geometry from sharp depth edges. Increase to 10–15 if edges still look noisy. 0 = off."}),
+                "depth_feather": ("INT", {"default": 0, "min": 0, "max": 30, "step": 1,
+                    "tooltip": "Erode the depth-map foreground inward by N pixels (morphological min-pool). Pushes the depth boundary INSIDE the visible silhouette so the foreground edge gets background-depth shift — kills the 'ghost outline' artifact you see on cables / hair / thin shapes during heavy parallax. 0 = off (default). 5–15 = mild, hides most edge artifacts. 20–30 = aggressive (shrinks the whole foreground)."}),
+                "depth_blur": ("INT", {"default": 5, "min": 0, "max": 100, "step": 1,
+                    "tooltip": "Gaussian blur on the depth map in pixels (applied AFTER feather). Default 5 — softens depth transitions, smooths jagged warp geometry. Push higher (20–60) if you still see edge seams in the rendered video. 0 = off."}),
             },
         }
 
@@ -197,7 +215,7 @@ class PixaromaDepthMap:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
-    def generate(self, image, depth_model, depth_invert, depth_contrast, depth_blur):
+    def generate(self, image, depth_model, depth_invert, depth_contrast, depth_feather, depth_blur):
         device = comfy.model_management.get_torch_device()
 
         _, H, W, _ = image.shape
@@ -219,11 +237,16 @@ class PixaromaDepthMap:
         d_min, d_max = depth.min(), depth.max()
         depth = (depth - d_min) / (d_max - d_min + 1e-6)
 
-        # Post-process
+        # Post-process: invert → contrast → feather (shrinks foreground inward
+        # so warp boundary lives inside the silhouette) → blur (softens what's
+        # left). Order matters: feather BEFORE blur so the eroded edge gets
+        # smoothed, not the original sharp edge.
         if depth_invert:
             depth = 1.0 - depth
         if depth_contrast != 1.0:
             depth = depth.clamp(min=0.0) ** depth_contrast
+        if depth_feather > 0:
+            depth = _erode_2d(depth, depth_feather)
         if depth_blur > 0:
             depth = _gaussian_blur_2d(depth, depth_blur)
 
@@ -239,7 +262,8 @@ class PixaromaDepthMap:
         pil.save(os.path.join(temp_dir, fname), "PNG")
 
         print(f"[Pixaroma] Depth Map — {depth_model}, {W}x{H}, "
-              f"invert={depth_invert}, contrast={depth_contrast}, blur={depth_blur}px")
+              f"invert={depth_invert}, contrast={depth_contrast}, "
+              f"feather={depth_feather}px, blur={depth_blur}px")
 
         return {
             "ui": {"images": [{"filename": fname, "subfolder": "", "type": "temp"}]},
