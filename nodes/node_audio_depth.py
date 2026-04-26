@@ -100,6 +100,28 @@ def _get_midas(model_name, device):
     return model, transform
 
 
+_AUDIO_BANDS_HZ = {
+    "full":   (None, None),
+    "bass":   (20, 250),
+    "mids":   (250, 4000),
+    "treble": (4000, 20000),
+}
+
+
+def _bandpass_fft(waveform, sample_rate, low_hz, high_hz):
+    """FFT-based bandpass on the last dim. waveform: [..., samples]."""
+    n = waveform.shape[-1]
+    spec = torch.fft.rfft(waveform, dim=-1)
+    freqs = torch.fft.rfftfreq(n, d=1.0 / sample_rate, device=waveform.device)
+    mask = torch.ones_like(freqs)
+    if low_hz is not None:
+        mask = mask * (freqs >= low_hz).float()
+    if high_hz is not None:
+        mask = mask * (freqs <= high_hz).float()
+    spec = spec * mask
+    return torch.fft.irfft(spec, n=n, dim=-1)
+
+
 class PixaromaAudioDepth:
     """Audio-reactive depth parallax: animates a still image with motion
     that pulses to the audio waveform. Outputs frames + audio + fps."""
@@ -131,14 +153,19 @@ class PixaromaAudioDepth:
                 ], {"default": "Original"}),
                 "custom_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
                 "custom_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
-                "pulse_intensity": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1}),
+                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial"}),
+                "pulse_intensity": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05}),
+                "depth_contrast": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 3.0, "step": 0.05}),
+                "depth_invert": ("BOOLEAN", {"default": False}),
+                "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "full"}),
+                "loop_safe": ("BOOLEAN", {"default": False}),
                 "midas_model": (["MiDaS_small", "DPT_Large"], {"default": "MiDaS_small"}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT")
-    RETURN_NAMES = ("video_frames", "audio_out", "fps_float")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "IMAGE")
+    RETURN_NAMES = ("video_frames", "audio", "fps", "depth_map")
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
 
@@ -184,11 +211,15 @@ class PixaromaAudioDepth:
         image = image.permute(0, 2, 3, 1)
         return image
 
-    def _audio_envelope(self, audio, target_frames, fps, device):
+    def _audio_envelope(self, audio, target_frames, fps, device, audio_band):
         waveform = audio["waveform"]
         sample_rate = audio["sample_rate"]
         if waveform.shape[1] > 1:
             waveform = waveform.mean(dim=1, keepdim=True)
+
+        if audio_band != "full":
+            low_hz, high_hz = _AUDIO_BANDS_HZ[audio_band]
+            waveform = _bandpass_fft(waveform, sample_rate, low_hz, high_hz)
 
         total_samples = waveform.shape[-1]
         samples_per_frame = sample_rate // fps
@@ -212,7 +243,8 @@ class PixaromaAudioDepth:
         return rms_smoothed.to(device)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
-                 pulse_intensity, fps, midas_model):
+                 fps, motion_mode, pulse_intensity, depth_contrast, depth_invert,
+                 audio_band, loop_safe, midas_model):
         device = comfy.model_management.get_torch_device()
 
         image = self._process_aspect(image, aspect_ratio, custom_width, custom_height)
@@ -221,7 +253,14 @@ class PixaromaAudioDepth:
 
         audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
         total_frames = int(audio_duration * fps)
-        envelope = self._audio_envelope(audio, total_frames, fps, device)
+        envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band)
+
+        if loop_safe and total_frames > 0:
+            fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
+            ramp = torch.linspace(0.0, 1.0, fade_n, device=envelope.device)
+            envelope = envelope.clone()
+            envelope[:fade_n] = envelope[:fade_n] * ramp
+            envelope[-fade_n:] = envelope[-fade_n:] * ramp.flip(0)
 
         midas, transform = _get_midas(midas_model, device)
 
@@ -238,6 +277,10 @@ class PixaromaAudioDepth:
 
         depth_min, depth_max = prediction.min(), prediction.max()
         depth_map = (prediction - depth_min) / (depth_max - depth_min + 1e-6)
+        if depth_invert:
+            depth_map = 1.0 - depth_map
+        if depth_contrast != 1.0:
+            depth_map = depth_map.clamp(min=0.0) ** depth_contrast
 
         del input_batch, prediction
         comfy.model_management.soft_empty_cache()
@@ -250,15 +293,29 @@ class PixaromaAudioDepth:
         )
         base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)
 
-        print(f"[Pixaroma] Audio Depth: {total_frames} frames @ {fps}fps, {W}x{H}, {midas_model}")
+        # Per-frame motion phase for sway / bob modes (one cycle per 4s)
+        sway_freq = 0.25
+        t = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
+        sway = torch.sin(t * 2 * math.pi * sway_freq)
+        bob = torch.cos(t * 2 * math.pi * sway_freq)
+
+        print(f"[Pixaroma] Audio Depth: {total_frames} frames @ {fps}fps, "
+              f"{W}x{H}, {midas_model}, mode={motion_mode}, band={audio_band}")
         pbar = comfy.utils.ProgressBar(total_frames)
 
         frames = []
         for i in range(total_frames):
-            shift = (depth_map * envelope[i] * (pulse_intensity * 0.1)).unsqueeze(0)
+            amp = envelope[i] * pulse_intensity * 0.1
             grid = base_grid.clone()
-            grid[..., 0] = grid[..., 0] - (grid[..., 0] * shift)
-            grid[..., 1] = grid[..., 1] - (grid[..., 1] * shift)
+            if motion_mode == "radial":
+                s = depth_map * amp
+                grid[..., 0] = grid[..., 0] - (grid[..., 0] * s)
+                grid[..., 1] = grid[..., 1] - (grid[..., 1] * s)
+            else:
+                if motion_mode in ("horizontal", "combined"):
+                    grid[..., 0] = grid[..., 0] - depth_map * amp * sway[i]
+                if motion_mode in ("vertical", "combined"):
+                    grid[..., 1] = grid[..., 1] - depth_map * amp * bob[i]
             warped = F.grid_sample(
                 img_tensor, grid,
                 mode="bilinear", padding_mode="reflection", align_corners=False,
@@ -267,7 +324,8 @@ class PixaromaAudioDepth:
             pbar.update(1)
 
         output_video = torch.stack(frames, dim=0)
-        return (output_video, audio, float(fps))
+        depth_image = depth_map.detach().unsqueeze(-1).expand(-1, -1, 3).contiguous().unsqueeze(0).cpu()
+        return (output_video, audio, float(fps), depth_image)
 
 
 NODE_CLASS_MAPPINGS = {
