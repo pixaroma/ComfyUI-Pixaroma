@@ -316,10 +316,12 @@ class PixaromaAudioDepth:
             envelope = base_motion + envelope * (1.0 - base_motion)
 
         # Reused below for camera_shake when loop_safe is on, so build it once.
+        # Pin to `device` explicitly so the shake-side multiply doesn't depend
+        # on envelope.device matching the compute device.
         loop_ramp = None
         if loop_safe:
             fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
-            loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=envelope.device)
+            loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
             envelope = envelope.detach().clone()
             envelope[:fade_n] = envelope[:fade_n] * loop_ramp
             envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)

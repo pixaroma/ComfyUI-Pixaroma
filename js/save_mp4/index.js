@@ -15,10 +15,11 @@ function buildViewUrl(entry) {
     filename: entry.filename,
     subfolder: entry.subfolder || "",
     type: entry.type || "output",
+    // Cache-bust so the browser doesn't reuse a stale file when the
+    // counter happens to land on the same name.
+    t: String(Date.now()),
   });
-  // Cache-bust so the browser doesn't reuse a stale file when the
-  // counter happens to land on the same name.
-  return `/view?${params.toString()}&t=${Date.now()}`;
+  return `/view?${params.toString()}`;
 }
 
 app.registerExtension({
@@ -49,7 +50,7 @@ app.registerExtension({
 
       const video = document.createElement("video");
       video.controls = true;
-      video.loop = true;
+      video.loop = true;  // auto-loop so the user can preview without re-clicking
       video.style.cssText = `
         display: none;
         width: 100%;
@@ -95,7 +96,11 @@ api.addEventListener("executed", ({ detail }) => {
   if (!node && typeof detail.node === "string") {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
-  if (!node || !node._pixaromaVideo) return;
+  // CLAUDE.md Vue compat note 5: Vue can tear down a node's DOM widget while
+  // we still hold a stale element reference. Skip if the cached <video> isn't
+  // actually in the live DOM — its .src write would otherwise be a no-op
+  // network fetch into a detached element.
+  if (!node || !node._pixaromaVideo || !node._pixaromaVideo.isConnected) return;
   const url = buildViewUrl(entries[0]);
   node._pixaromaVideo.src = url;
   node._pixaromaVideo.style.display = "block";

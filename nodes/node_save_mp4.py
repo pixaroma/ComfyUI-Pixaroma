@@ -194,9 +194,19 @@ class PixaromaSaveMp4:
                     f"{stderr}"
                 )
         finally:
+            # On the exception path the explicit close above never ran. Close
+            # the pipe so the OS handle isn't leaked (Windows is sensitive to
+            # this) before killing.
+            try:
+                if proc.stdin and not proc.stdin.closed:
+                    proc.stdin.close()
+            except OSError:
+                pass
             if proc.poll() is None:
                 proc.kill()
                 proc.wait()
+            if drain_thread.is_alive():
+                drain_thread.join(timeout=2)
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
