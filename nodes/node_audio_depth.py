@@ -209,6 +209,31 @@ class PixaromaAudioDepth:
                  pulse_intensity, fps, motion_mode, audio_band, loop_safe,
                  motion_speed, base_motion, smoothing, camera_shake,
                  edge_headroom):
+        # Early input validation — ComfyUI's required-input check has been
+        # known to slip through on the Vue frontend (e.g. when an upstream
+        # node hasn't been wired). Surface a clear, actionable message
+        # instead of crashing on None.subscript or NoneType.shape later.
+        if image is None:
+            raise ValueError(
+                "[Pixaroma] Audio Depth — no image connected. Wire an IMAGE "
+                "source (e.g. Load Image, or Depth Map Pixaroma's image "
+                "passthrough output) to the 'image' input."
+            )
+        if depth_map is None:
+            raise ValueError(
+                "[Pixaroma] Audio Depth — no depth_map connected. Wire "
+                "Depth Map Pixaroma's 'depth_map' output (or any grayscale "
+                "IMAGE) to the 'depth_map' input."
+            )
+        if audio is None or not isinstance(audio, dict) \
+                or "waveform" not in audio or "sample_rate" not in audio:
+            raise ValueError(
+                "[Pixaroma] Audio Depth — no audio connected. Wire a Load "
+                "Audio (or any AUDIO source) to the 'audio' input. The "
+                "audio drives the per-frame motion envelope and sets the "
+                "clip length (frames = audio_duration × fps)."
+            )
+
         device = comfy.model_management.get_torch_device()
 
         image, out_w, out_h = self._process_aspect(
