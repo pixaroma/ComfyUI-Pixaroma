@@ -72,8 +72,24 @@ class PixaromaAudioDepth:
                     "tooltip": "How strongly audio amplitude drives motion. 0 = still, 0.8 = default cinematic, 2 = extreme."}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1,
                     "tooltip": "Output frames per second. Higher = smoother + larger file + longer render time."}),
-                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial",
-                    "tooltip": "radial = pulsing zoom from center (default — the original Pixaroma2 effect). horizontal = camera dolly left↔right (cinematic Ken Burns feel). vertical = camera bob up↕down. combined = both with 90° phase offset (orbital feel)."}),
+                "motion_mode": ([
+                    "radial",
+                    "horizontal",
+                    "vertical",
+                    "combined",
+                    "diagonal",
+                    "figure_8",
+                    "zoom_breath",
+                ], {"default": "radial",
+                    "tooltip": (
+                        "radial = pulsing zoom inward from center (default — the original Pixaroma2 effect).\n"
+                        "horizontal = camera dolly left↔right (cinematic Ken Burns).\n"
+                        "vertical = camera bob up↕down.\n"
+                        "combined = horizontal + vertical with 90° phase offset (circular / orbital feel).\n"
+                        "diagonal = sway along a 45° NW↔SE axis (different from horizontal/vertical).\n"
+                        "figure_8 = Lissajous figure-8 path (sin(t) on x, sin(2t) on y) — organic, surreal.\n"
+                        "zoom_breath = slow zoom in→out cycle following motion_speed (distinct from beat-driven radial — feels like breathing)."
+                    )}),
                 "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "full",
                     "tooltip": "Which frequency band drives the motion envelope. full = whole spectrum (default — works on any audio). bass = drum-driven cinematic feel (20–250 Hz, best for music). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz)."}),
                 "loop_safe": ("BOOLEAN", {"default": False,
@@ -257,10 +273,13 @@ class PixaromaAudioDepth:
         )
         base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)
 
-        # Per-frame motion phase for sway / bob modes
+        # Per-frame motion phase for sway / bob / figure-8 modes.
+        # `sway`, `bob` cycle at motion_speed Hz (sin/cos pair). `fig8_y`
+        # runs at 2× for the classic figure-8 Lissajous (x=sin(t), y=sin(2t)).
         t = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
         sway = torch.sin(t * 2 * math.pi * motion_speed)
         bob = torch.cos(t * 2 * math.pi * motion_speed)
+        fig8_y = torch.sin(t * 4 * math.pi * motion_speed)
 
         # Camera shake: slow drift via random anchors (1 per second) with cosine
         # interpolation. Deterministic (seed=0), independent of audio.
@@ -303,6 +322,18 @@ class PixaromaAudioDepth:
                 s = depth_map_2d * amp
                 grid[..., 0] = grid[..., 0] - (grid[..., 0] * s)
                 grid[..., 1] = grid[..., 1] - (grid[..., 1] * s)
+            elif motion_mode == "zoom_breath":
+                # signed amp via sway sign — alternates zoom in / zoom out
+                s = depth_map_2d * amp * sway[i]
+                grid[..., 0] = grid[..., 0] - (grid[..., 0] * s)
+                grid[..., 1] = grid[..., 1] - (grid[..., 1] * s)
+            elif motion_mode == "diagonal":
+                shift = depth_map_2d * amp * sway[i]
+                grid[..., 0] = grid[..., 0] - shift
+                grid[..., 1] = grid[..., 1] - shift
+            elif motion_mode == "figure_8":
+                grid[..., 0] = grid[..., 0] - depth_map_2d * amp * sway[i]
+                grid[..., 1] = grid[..., 1] - depth_map_2d * amp * fig8_y[i]
             else:
                 if motion_mode in ("horizontal", "combined"):
                     grid[..., 0] = grid[..., 0] - depth_map_2d * amp * sway[i]
