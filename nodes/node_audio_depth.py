@@ -298,12 +298,17 @@ class PixaromaAudioDepth:
 
         audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
         total_frames = int(audio_duration * fps)
+        if total_frames <= 0:
+            raise ValueError(
+                f"Audio is too short to produce any frames at {fps} fps "
+                f"(audio_duration={audio_duration:.3f}s, need at least 1/{fps}s)."
+            )
         envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
 
-        if loop_safe and total_frames > 0:
+        if loop_safe:
             fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
             ramp = torch.linspace(0.0, 1.0, fade_n, device=envelope.device)
-            envelope = envelope.clone()
+            envelope = envelope.detach().clone()
             envelope[:fade_n] = envelope[:fade_n] * ramp
             envelope[-fade_n:] = envelope[-fade_n:] * ramp.flip(0)
 
