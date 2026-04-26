@@ -309,15 +309,20 @@ class PixaromaAudioDepth:
             )
         envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
 
-        if loop_safe:
-            fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
-            ramp = torch.linspace(0.0, 1.0, fade_n, device=envelope.device)
-            envelope = envelope.detach().clone()
-            envelope[:fade_n] = envelope[:fade_n] * ramp
-            envelope[-fade_n:] = envelope[-fade_n:] * ramp.flip(0)
-
+        # base_motion BEFORE loop_safe so the ramp can pull the floor down to
+        # true zero at the loop boundaries (otherwise envelope[0] ends up at
+        # `base_motion` and the loop has a visible jump).
         if base_motion > 0.0:
             envelope = base_motion + envelope * (1.0 - base_motion)
+
+        # Reused below for camera_shake when loop_safe is on, so build it once.
+        loop_ramp = None
+        if loop_safe:
+            fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
+            loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=envelope.device)
+            envelope = envelope.detach().clone()
+            envelope[:fade_n] = envelope[:fade_n] * loop_ramp
+            envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
 
         midas, transform = _get_midas(midas_model, device)
 
@@ -371,6 +376,15 @@ class PixaromaAudioDepth:
             frac_smooth = (1.0 - torch.cos(frac * math.pi)) * 0.5
             shake_x = (anchors_x[i_low] * (1.0 - frac_smooth) + anchors_x[i_high] * frac_smooth).to(device)
             shake_y = (anchors_y[i_low] * (1.0 - frac_smooth) + anchors_y[i_high] * frac_smooth).to(device)
+            # Apply the same loop-safe fade so shake also collapses to zero at
+            # both ends — otherwise the random anchors at frame 0 vs N-1 don't
+            # match and the loop has a visible jolt.
+            if loop_ramp is not None:
+                fade_n = loop_ramp.shape[0]
+                shake_x[:fade_n] = shake_x[:fade_n] * loop_ramp
+                shake_x[-fade_n:] = shake_x[-fade_n:] * loop_ramp.flip(0)
+                shake_y[:fade_n] = shake_y[:fade_n] * loop_ramp
+                shake_y[-fade_n:] = shake_y[-fade_n:] * loop_ramp.flip(0)
         else:
             shake_x = torch.zeros(total_frames, device=device)
             shake_y = torch.zeros(total_frames, device=device)
