@@ -58,23 +58,22 @@ class PixaromaSaveMp4:
     ComfyUI's output/ folder. No conflict with VHS Video Combine — separate
     class, separate category, fewer knobs, opinionated defaults."""
 
+    # Hardcoded encoder defaults — exposed as widgets earlier, removed for a
+    # cleaner UI. Bring them back to INPUT_TYPES if a workflow needs control.
+    _CRF = 19
+    _PIX_FMT = "yuv420p"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "images": ("IMAGE", {"tooltip": "Frame batch to encode (output of Audio Depth Pixaroma or any IMAGE source)."}),
-                "fps": ("INT", {"default": 24, "min": 1, "max": 120, "step": 1,
-                    "tooltip": "Output frame rate. Should match what produced the frames (Audio Depth Pixaroma's fps output)."}),
-                "filename_prefix": ("STRING", {"default": "AudioDepth",
-                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. AudioDepth_00001.mp4). Saved into ComfyUI's output/ folder."}),
-                "crf": ("INT", {"default": 19, "min": 14, "max": 30, "step": 1,
-                    "tooltip": "H.264 quality (Constant Rate Factor). Lower = better quality + larger file. 14 = visually lossless. 19 = high quality (default). 23 = web default. 28 = small file, visible artifacts."}),
-                "pix_fmt": (["yuv420p", "yuv444p"], {"default": "yuv420p",
-                    "tooltip": "Pixel format. yuv420p = max compatibility (web, social, mobile — default). yuv444p = no chroma subsampling, sharper colour but won't play in browsers / many players."}),
+                "video_frames": ("IMAGE", {"tooltip": "Frame batch to encode. Wire Audio Depth Pixaroma's video_frames output here."}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
+                    "tooltip": "Output frame rate. Wire Audio Depth Pixaroma's fps output here so it always matches what produced the frames."}),
+                "filename_prefix": ("STRING", {"default": "Video",
+                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Saved into ComfyUI's output/ folder."}),
                 "trim_to_audio": ("BOOLEAN", {"default": True,
                     "tooltip": "When audio is connected, end the video at the audio's length (uses ffmpeg -shortest). Off = keep all video frames even if longer than audio."}),
-                "pingpong": ("BOOLEAN", {"default": False,
-                    "tooltip": "Append the frames in reverse to make a seamless A→B→A loop. Doubles the rendered length (minus one frame at each end)."}),
             },
             "optional": {
                 "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio Depth Pixaroma's audio output here."}),
@@ -86,33 +85,25 @@ class PixaromaSaveMp4:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
-    def save(self, images, fps, filename_prefix, crf, pix_fmt,
-             trim_to_audio, pingpong, audio=None):
-        if images is None or images.shape[0] == 0:
-            raise ValueError("[Pixaroma] Save Mp4 — input image batch is empty.")
+    def save(self, video_frames, fps, filename_prefix, trim_to_audio, audio=None):
+        if video_frames is None or video_frames.shape[0] == 0:
+            raise ValueError("[Pixaroma] Save Mp4 — input video_frames batch is empty.")
 
         ffmpeg_path = _resolve_ffmpeg()
+        crf = self._CRF
+        pix_fmt = self._PIX_FMT
+        fps_int = max(1, int(round(float(fps))))
 
-        # Pingpong: append reversed frames excluding the duplicates at each end
-        # so playback looks like A→B→A with no visible repeated frame.
-        if pingpong and images.shape[0] > 2:
-            # indices N-2..1 — excludes both endpoints to avoid duplicate-frame stutter
-            reversed_tail = images[-2:0:-1]
-            frames = torch.cat([images, reversed_tail], dim=0)
-        else:
-            if pingpong:
-                print(f"[Pixaroma] Save Mp4 — pingpong skipped: need >2 frames, got {images.shape[0]}.")
-            frames = images
-
+        frames = video_frames
         n_frames, H, W, _ = frames.shape
 
         # yuv420p requires even dimensions; surface a clear error rather than
         # the opaque "height not divisible by 2" ffmpeg crash.
         if pix_fmt == "yuv420p" and (W % 2 != 0 or H % 2 != 0):
             raise ValueError(
-                f"[Pixaroma] Save Mp4 — pix_fmt yuv420p requires even width and "
-                f"height, got {W}x{H}. Switch pix_fmt to yuv444p, or resize the "
-                f"input frames to even dimensions."
+                f"[Pixaroma] Save Mp4 — encoder requires even width and "
+                f"height, got {W}x{H}. Resize input frames to even dimensions "
+                f"(Audio Depth Pixaroma snaps to multiples of 8 automatically)."
             )
 
         # Resolve output path with auto-incrementing counter (matches Comfy
@@ -144,7 +135,7 @@ class PixaromaSaveMp4:
             "-vcodec", "rawvideo",
             "-pix_fmt", "rgb24",
             "-s", f"{W}x{H}",
-            "-r", str(int(fps)),
+            "-r", str(fps_int),
             "-i", "-",
         ]
         if temp_audio_path is not None:
@@ -152,7 +143,7 @@ class PixaromaSaveMp4:
         cmd += [
             "-c:v", "libx264",
             "-preset", "medium",
-            "-crf", str(int(crf)),
+            "-crf", str(crf),
             "-pix_fmt", pix_fmt,
         ]
         if temp_audio_path is not None:
@@ -161,10 +152,9 @@ class PixaromaSaveMp4:
                 cmd += ["-shortest"]
         cmd += [out_path]
 
-        print(f"[Pixaroma] Save Mp4 — writing {n_frames} frames @ {fps}fps "
+        print(f"[Pixaroma] Save Mp4 — writing {n_frames} frames @ {fps_int}fps "
               f"({W}x{H}, crf={crf}, {pix_fmt}"
-              f"{', +audio' if temp_audio_path else ''}"
-              f"{', pingpong' if pingpong else ''}) -> {out_filename}")
+              f"{', +audio' if temp_audio_path else ''}) -> {out_filename}")
 
         proc = subprocess.Popen(
             cmd,
@@ -215,15 +205,16 @@ class PixaromaSaveMp4:
 
         print(f"[Pixaroma] Save Mp4 — saved {out_path}")
 
-        # Return as a UI image-style entry so the saved file shows up in the
-        # workflow's output panel. Comfy's frontend handles mp4 type.
-        return {
-            "ui": {
-                "images": [
-                    {"filename": out_filename, "subfolder": subfolder, "type": "output"}
-                ]
-            }
+        # Two output keys so the file is visible BOTH in ComfyUI's standard
+        # output panel and in our in-node <video> preview (js/save_mp4/index.js
+        # listens for `pixaroma_videos`).
+        entry = {
+            "filename": out_filename,
+            "subfolder": subfolder,
+            "type": "output",
+            "format": "video/mp4",
         }
+        return {"ui": {"images": [entry], "pixaroma_videos": [entry]}}
 
 
 NODE_CLASS_MAPPINGS = {
