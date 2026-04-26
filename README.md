@@ -49,13 +49,14 @@ A beautiful, simple text editor to document your workflows right on the canvas. 
 ![Note Pixaroma — Node](workflows/Note%20Pixaroma%20Workflow.jpg)
 ![Note Pixaroma — Editor](workflows/Note%20Pixaroma%20Workflow%20v2.jpg)
 
-### 🏷️ Label & Utility
-A simple tool to keep your workflows tidy.
-- **Label Tool:** Keep your workflows tidy with clean, custom labels.
-- **Show Text:** Easily see what text or data is flowing through your nodes.
+### 🏷️ Label Pixaroma
+Keep your workflows tidy with clean, custom labels.
 
 ![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
 ![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
+
+### 💬 Show Text Pixaroma
+Easily see what text or data is flowing through your nodes.
 
 ### 🖼️ Preview Image Pixaroma
 A handy way to preview your image right on the node, but better! It gives you two simple buttons: **Save to Disk** (choose any folder on your computer) and **Save to Output** (saves to your ComfyUI output folder). Both options safely embed your workflow into the image, so you can drag the image back in later to restore everything.
