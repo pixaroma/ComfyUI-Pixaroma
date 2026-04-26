@@ -33,6 +33,9 @@ def _resolve_ffmpeg():
     )
 
 
+_COUNTER_LOCK = threading.Lock()
+
+
 def _next_mp4_counter(folder, prefix):
     """Find the next free counter N for `<folder>/<prefix>_<N:05d>.mp4`.
     folder_paths.get_save_image_path's built-in counter assumes Comfy's
@@ -140,9 +143,24 @@ class PixaromaSaveMp4:
             filename_prefix, out_dir, W, H,
         )
         os.makedirs(full_folder, exist_ok=True)
-        counter = _next_mp4_counter(full_folder, fname)
-        out_filename = f"{fname}_{counter:05d}.mp4"
-        out_path = os.path.join(full_folder, out_filename)
+        # Hold a lock around scan + claim so two save_mp4 nodes in the
+        # same workflow can't both pick the same counter and overwrite
+        # each other. Touch the file inside the lock to claim it.
+        with _COUNTER_LOCK:
+            counter = _next_mp4_counter(full_folder, fname)
+            out_filename = f"{fname}_{counter:05d}.mp4"
+            out_path = os.path.join(full_folder, out_filename)
+            try:
+                # O_EXCL guarantees atomic create-if-not-exists across processes too
+                fd = os.open(out_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+            except FileExistsError:
+                # Extremely unlikely: counter scan saw N as the max, but
+                # something else just created N+1 in the same instant.
+                # Bump and retry once.
+                counter += 1
+                out_filename = f"{fname}_{counter:05d}.mp4"
+                out_path = os.path.join(full_folder, out_filename)
 
         # If audio is supplied, write it to a temp wav alongside so ffmpeg can
         # mux both inputs in a single pass.

@@ -10,6 +10,39 @@ const MIN_W = 320;
 const MIN_H = 360;
 const PLACEHOLDER_H = 180;
 
+// Vue can tear down a node's DOM widget and rebuild it (e.g. when the
+// user switches workflow tabs and back). The cached node._pixaromaVideo
+// then points at the OLD detached element. Look up the live <video> via
+// the widget element and re-cache + re-attach the loadedmetadata
+// listener so subsequent runs work.
+function getLiveVideo(node) {
+  if (node._pixaromaVideo?.isConnected) return node._pixaromaVideo;
+  const w = node.widgets?.find((x) => x.name === "pixaroma_video_preview");
+  const root = w?.element;
+  if (!root || !root.isConnected) return null;
+  const vid = root.querySelector("video");
+  const placeholder = root.querySelector("div");
+  if (!vid?.isConnected) return null;
+  node._pixaromaVideo = vid;
+  node._pixaromaPlaceholder = placeholder;
+  // Re-attach metadata listener so the freshly-found element drives the
+  // aspect-ratio resize on the next loaded video.
+  if (!vid._pixaromaMetadataAttached) {
+    vid.addEventListener("loadedmetadata", () => {
+      if (vid.videoWidth > 0 && vid.videoHeight > 0) {
+        node._pixaromaAspect = vid.videoWidth / vid.videoHeight;
+        if (typeof node.computeSize === "function") {
+          const sz = node.computeSize();
+          node.setSize([Math.max(sz[0], MIN_W), Math.max(sz[1], MIN_H)]);
+        }
+        node.setDirtyCanvas?.(true, true);
+      }
+    });
+    vid._pixaromaMetadataAttached = true;
+  }
+  return vid;
+}
+
 function buildViewUrl(entry) {
   const params = new URLSearchParams({
     filename: entry.filename,
@@ -90,6 +123,7 @@ app.registerExtension({
           node.setDirtyCanvas?.(true, true);
         }
       });
+      video._pixaromaMetadataAttached = true;
 
       this.addDOMWidget("pixaroma_video_preview", "video_preview", wrap, {
         serialize: false,
@@ -122,14 +156,17 @@ api.addEventListener("executed", ({ detail }) => {
   if (!node && typeof detail.node === "string") {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
-  // CLAUDE.md Vue compat note 5: Vue can tear down a node's DOM widget while
-  // we still hold a stale element reference. Skip if the cached <video> isn't
-  // actually in the live DOM — its .src write would otherwise be a no-op
-  // network fetch into a detached element.
-  if (!node || !node._pixaromaVideo || !node._pixaromaVideo.isConnected) return;
+  if (!node) return;
+  // Vue may have torn down the original <video> + placeholder; getLiveVideo
+  // re-finds the live elements from the widget and re-attaches the
+  // metadata listener so subsequent runs work correctly.
+  const video = getLiveVideo(node);
+  if (!video) return;
   const url = buildViewUrl(entries[0]);
-  node._pixaromaVideo.src = url;
-  node._pixaromaVideo.style.display = "block";
-  node._pixaromaPlaceholder.style.display = "none";
-  node._pixaromaVideo.load();
+  video.src = url;
+  video.style.display = "block";
+  if (node._pixaromaPlaceholder?.isConnected) {
+    node._pixaromaPlaceholder.style.display = "none";
+  }
+  video.load();
 });

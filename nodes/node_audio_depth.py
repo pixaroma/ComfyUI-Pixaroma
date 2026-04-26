@@ -202,7 +202,10 @@ class PixaromaAudioDepth:
         pad = sw // 2
         kernel = torch.ones(1, 1, sw, device=rms.device) / sw
         rms_padded = F.pad(rms.unsqueeze(0).unsqueeze(0), (pad, pad), mode="replicate")
-        rms_smoothed = F.conv1d(rms_padded, kernel).squeeze()
+        # `.view(-1)` not `.squeeze()` — for total_frames == 1 the conv1d
+        # output is [1,1,1] and squeeze() collapses to a 0-dim scalar,
+        # which then breaks envelope[i] indexing later.
+        rms_smoothed = F.conv1d(rms_padded, kernel).view(-1)
         return rms_smoothed.to(device)
 
     def generate(self, image, depth_map, audio, aspect_ratio, custom_width, custom_height,
@@ -225,13 +228,17 @@ class PixaromaAudioDepth:
                 "Depth Map Pixaroma's 'depth_map' output (or any grayscale "
                 "IMAGE) to the 'depth_map' input."
             )
-        if audio is None or not isinstance(audio, dict) \
-                or "waveform" not in audio or "sample_rate" not in audio:
+        if (audio is None or not isinstance(audio, dict)
+                or "waveform" not in audio or "sample_rate" not in audio
+                or audio["waveform"] is None
+                or not isinstance(audio["sample_rate"], (int, float))
+                or audio["sample_rate"] <= 0):
             raise ValueError(
-                "[Pixaroma] Audio Depth — no audio connected. Wire a Load "
-                "Audio (or any AUDIO source) to the 'audio' input. The "
-                "audio drives the per-frame motion envelope and sets the "
-                "clip length (frames = audio_duration × fps)."
+                "[Pixaroma] Audio Depth — no valid audio connected. Wire a "
+                "Load Audio (or any AUDIO source with a non-empty waveform "
+                "and sample_rate > 0) to the 'audio' input. The audio "
+                "drives the per-frame motion envelope and sets the clip "
+                "length (frames = audio_duration × fps)."
             )
 
         device = comfy.model_management.get_torch_device()
@@ -359,11 +366,19 @@ class PixaromaAudioDepth:
             elif motion_mode == "figure_8":
                 grid[..., 0] = grid[..., 0] - depth_map_2d * amp * sway[i]
                 grid[..., 1] = grid[..., 1] - depth_map_2d * amp * fig8_y[i]
-            else:
+            elif motion_mode in ("horizontal", "vertical", "combined"):
                 if motion_mode in ("horizontal", "combined"):
                     grid[..., 0] = grid[..., 0] - depth_map_2d * amp * sway[i]
                 if motion_mode in ("vertical", "combined"):
                     grid[..., 1] = grid[..., 1] - depth_map_2d * amp * bob[i]
+            else:
+                # Defensive: if a new mode is added to INPUT_TYPES but
+                # forgotten here, surface it loudly instead of silently
+                # rendering a still clip (only camera_shake would apply).
+                raise ValueError(
+                    f"[Pixaroma] Audio Depth — unhandled motion_mode "
+                    f"{motion_mode!r}. Update generate() dispatch."
+                )
             if camera_shake > 0.0:
                 grid[..., 0] = grid[..., 0] - shake_x[i]
                 grid[..., 1] = grid[..., 1] - shake_y[i]

@@ -1,4 +1,5 @@
 import os
+import gc
 import uuid
 
 import numpy as np
@@ -57,8 +58,16 @@ def _da2_install_hint(model_name, target_dir, original_error):
 def _ensure_da2_local(model_name, target_dir):
     """Download the three required files into target_dir if missing.
     Raises RuntimeError with manual-install instructions on failure."""
-    have_all = all(
-        os.path.isfile(os.path.join(target_dir, f)) for f in _DA2_FILES
+    # Check existence AND that the safetensors weights aren't a truncated
+    # file from an interrupted prior download (configs are tiny, weights
+    # are 100 MB+). A truncated safetensors will pass isfile() but
+    # from_pretrained will then raise a confusing "not a valid safetensors"
+    # error on every run with no automated recovery path.
+    weights_path = os.path.join(target_dir, "model.safetensors")
+    weights_min_bytes = 50 * 1024 * 1024  # 50 MB — Small is ~100 MB, so this is a generous floor
+    have_all = (
+        all(os.path.isfile(os.path.join(target_dir, f)) for f in _DA2_FILES)
+        and os.path.getsize(weights_path) >= weights_min_bytes
     )
     if have_all:
         return
@@ -123,7 +132,12 @@ def _get_depth_predictor(model_name, device):
     """Returns a callable predict(img_uint8 [H,W,3]) -> depth tensor on `device`
     at the model's native output spatial size. Cached process-wide by model
     name + device — first call may download weights, subsequent calls are
-    just inference."""
+    just inference.
+
+    Only ONE depth model is kept in the cache at a time. Switching from
+    Base -> Large would otherwise leave Base resident in VRAM (each model
+    object is held alive by the predict closure), risking OOM on a 10 GB
+    card the moment the second model loads."""
     cached = _DEPTH_CACHE.get(model_name)
     if cached is not None and cached.get("device") == str(device):
         return cached["fn"]
@@ -133,6 +147,16 @@ def _get_depth_predictor(model_name, device):
             f"[Pixaroma] Depth Map — unknown depth_model: {model_name!r}. "
             f"Expected one of {list(_DA2.keys())}."
         )
+
+    # Evict any other cached models BEFORE loading the new one so the old
+    # one's VRAM is freed first. del + gc + empty_cache reliably releases
+    # the underlying weights (no lingering closure refs anywhere).
+    if _DEPTH_CACHE:
+        _DEPTH_CACHE.clear()
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     fn = _build_predictor(model_name, device)
     _DEPTH_CACHE[model_name] = {"fn": fn, "device": str(device)}
     return fn
@@ -151,8 +175,13 @@ def _gaussian_blur_2d(x, kernel_size):
     g = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
     g = g / g.sum()
     x = x.unsqueeze(0).unsqueeze(0)
-    x = F.conv2d(F.pad(x, (half, half, 0, 0), mode="reflect"), g.view(1, 1, 1, k))
-    x = F.conv2d(F.pad(x, (0, 0, half, half), mode="reflect"), g.view(1, 1, k, 1))
+    # `replicate` not `reflect` — reflect requires the padded dim to be
+    # strictly larger than half-kernel, which fails for small images at
+    # high depth_blur (e.g. 64x64 image with depth_blur=100). replicate
+    # has no minimum-dimension constraint and gives indistinguishable
+    # results on a normalized depth map.
+    x = F.conv2d(F.pad(x, (half, half, 0, 0), mode="replicate"), g.view(1, 1, 1, k))
+    x = F.conv2d(F.pad(x, (0, 0, half, half), mode="replicate"), g.view(1, 1, k, 1))
     return x.squeeze(0).squeeze(0)
 
 
