@@ -4,6 +4,8 @@ from .nodes.node_composition import NODE_CLASS_MAPPINGS as _MAPS_COMPOSITION
 from .nodes.node_composition import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPOSITION
 from .nodes.node_3d import NODE_CLASS_MAPPINGS as _MAPS_3D
 from .nodes.node_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_3D
+from .nodes.node_audio_depth import NODE_CLASS_MAPPINGS as _MAPS_AUDIO_DEPTH
+from .nodes.node_audio_depth import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_AUDIO_DEPTH
 from .nodes.node_compare import NODE_CLASS_MAPPINGS as _MAPS_COMPARE
 from .nodes.node_compare import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPARE
 from .nodes.node_crop import NODE_CLASS_MAPPINGS as _MAPS_CROP
@@ -33,6 +35,7 @@ else:
 # combine all node mappings
 NODE_CLASS_MAPPINGS = {
     **_MAPS_3D,
+    **_MAPS_AUDIO_DEPTH,
     **_MAPS_COMPOSITION,
     **_MAPS_PAINT,
     **_MAPS_PREVIEW,
@@ -49,6 +52,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMPOSITION,
     **_NAMES_3D,
+    **_NAMES_AUDIO_DEPTH,
     **_NAMES_COMPARE,
     **_NAMES_CROP,
     **_NAMES_LABEL,
