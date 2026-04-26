@@ -84,8 +84,8 @@ class PixaromaAudioDepth:
                     "tooltip": "Always-on motion floor (0–0.5). 0.15 = default — gentle camera drift even at silence (mimics cinematic camera moves that never fully stop). 0 = motion fully gated by audio (silence = freeze)."}),
                 "smoothing": ("INT", {"default": 5, "min": 1, "max": 15, "step": 1,
                     "tooltip": "Audio envelope moving-average window in frames. 5 = default — balanced. 1 = punchy, reacts to every transient (good for beats). 8–15 = fluid, slow camera response (cinematic)."}),
-                "camera_shake": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.5, "step": 0.01,
-                    "tooltip": "Slow handheld camera drift independent of audio (~1 anchor/sec, cosine-interpolated for smooth motion). 0 = off (default). 0.1 = subtle drift. 0.3 = noticeable handheld feel. 0.5 = strong drift. Deterministic (same input = same shake)."}),
+                "camera_shake": ("FLOAT", {"default": 0.2, "min": 0.0, "max": 0.5, "step": 0.01,
+                    "tooltip": "Slow handheld camera drift independent of audio (~1 anchor/sec, cosine-interpolated for smooth motion). 0 = off. 0.1 = subtle drift. 0.2 = noticeable handheld feel (default). 0.5 = strong drift. Deterministic (same input = same shake)."}),
                 "edge_headroom": ("FLOAT", {"default": 1.05, "min": 1.0, "max": 1.3, "step": 0.01,
                     "tooltip": "Render at slightly larger dimensions then center-crop back, giving motion a safety zone outside the visible frame. 1.0 = no headroom (motion can clip subjects at edges). 1.05 = 5% margin (default, kills most clipping at imperceptible cost). 1.2 = wide margin for very strong motion. Higher = more VRAM."}),
             }
