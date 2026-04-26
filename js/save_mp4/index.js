@@ -31,9 +31,10 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const ret = onNodeCreated?.apply(this, arguments);
 
-      // Flex container that fills the widget area; video stretches inside
-      // it via object-fit so resizing the node grows the player without
-      // leaving an empty black bar below.
+      // Wrapper that holds the video element + placeholder. The widget's
+      // actual height is driven by computeSize (below) which returns the
+      // exact pixel height needed for the loaded video's aspect ratio at
+      // the current node width — so the player fits with no black bars.
       const wrap = document.createElement("div");
       wrap.style.cssText = `
         width: 100%;
@@ -72,11 +73,36 @@ app.registerExtension({
 
       this._pixaromaVideo = video;
       this._pixaromaPlaceholder = placeholder;
+      this._pixaromaAspect = null;  // set when video metadata loads
+
+      // When metadata arrives, capture aspect ratio and ask ComfyUI to
+      // re-size the node so the widget area matches the video exactly.
+      const node = this;
+      video.addEventListener("loadedmetadata", () => {
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          node._pixaromaAspect = video.videoWidth / video.videoHeight;
+          // Force layout recompute. computeSize() will pick up the new
+          // aspect via the widget's computeSize callback below.
+          if (typeof node.computeSize === "function") {
+            const sz = node.computeSize();
+            node.setSize([Math.max(sz[0], MIN_W), Math.max(sz[1], MIN_H)]);
+          }
+          node.setDirtyCanvas?.(true, true);
+        }
+      });
 
       this.addDOMWidget("pixaroma_video_preview", "video_preview", wrap, {
         serialize: false,
         hideOnZoom: false,
         getMinHeight: () => PLACEHOLDER_H,
+        // Drive the widget's own height from the video aspect ratio so the
+        // player fills it exactly (no letterbox bars).
+        computeSize: function (width) {
+          const aspect = node._pixaromaAspect;
+          if (!aspect || width <= 0) return [width, PLACEHOLDER_H];
+          const h = Math.max(PLACEHOLDER_H, Math.round(width / aspect));
+          return [width, h];
+        },
       });
 
       const w = (this.size && this.size[0]) || MIN_W;
