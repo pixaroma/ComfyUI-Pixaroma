@@ -179,14 +179,14 @@ class PixaromaAudioDepth:
                     "tooltip": "Output frames per second. Higher = smoother + larger file + longer render time."}),
                 "midas_model": (["DPT_Large", "MiDaS_small"], {"default": "DPT_Large",
                     "tooltip": "Depth estimator. DPT_Large ≈ 10 GB+ VRAM, slower, sharper edges (default — better quality). MiDaS_small ≈ 6 GB VRAM, fast (use if you hit OOM or want quick previews)."}),
-                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "horizontal",
-                    "tooltip": "horizontal = camera dolly left↔right (default — cinematic Ken Burns feel). vertical = camera bob up↕down. combined = both with 90° phase offset (orbital feel). radial = pulsing zoom from center (the original Pixaroma2 effect)."}),
+                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial",
+                    "tooltip": "radial = pulsing zoom from center (default — the original Pixaroma2 effect). horizontal = camera dolly left↔right (cinematic Ken Burns feel). vertical = camera bob up↕down. combined = both with 90° phase offset (orbital feel)."}),
                 "depth_contrast": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 3.0, "step": 0.05,
                     "tooltip": "Power curve on the depth map. 1.0 = unchanged. >1 = stronger near/far separation (more dramatic parallax — default 1.5). <1 = flatter, gentler motion."}),
                 "depth_invert": ("BOOLEAN", {"default": False,
                     "tooltip": "Flip the depth map (near ↔ far). Use when MiDaS gets it backwards on stylized or unusual images."}),
-                "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "bass",
-                    "tooltip": "Which frequency band drives the motion envelope. bass = drum-driven cinematic feel (20–250 Hz, default — best for music). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz). full = whole spectrum (use if your audio has no bass content)."}),
+                "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "full",
+                    "tooltip": "Which frequency band drives the motion envelope. full = whole spectrum (default — works on any audio). bass = drum-driven cinematic feel (20–250 Hz, best for music). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz)."}),
                 "loop_safe": ("BOOLEAN", {"default": False,
                     "tooltip": "Ramp motion to zero across the first and last 0.5 s so the rendered clip loops with no visible jump. Slightly reduces motion at the very start and end."}),
                 "motion_speed": ("FLOAT", {"default": 0.2, "min": 0.05, "max": 1.0, "step": 0.05,
@@ -198,7 +198,7 @@ class PixaromaAudioDepth:
                 "smoothing": ("INT", {"default": 5, "min": 1, "max": 15, "step": 1,
                     "tooltip": "Audio envelope moving-average window in frames. 5 = default — balanced. 1 = punchy, reacts to every transient (good for beats). 8–15 = fluid, slow camera response (cinematic)."}),
                 "camera_shake": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 0.5, "step": 0.01,
-                    "tooltip": "Per-frame random jitter independent of audio. 0 = off (default). 0.1 = subtle handheld feel. 0.5 = strong shake. Deterministic (same input = same shake)."}),
+                    "tooltip": "Slow handheld camera drift independent of audio (~1 anchor/sec, cosine-interpolated for smooth motion). 0 = off (default). 0.1 = subtle drift. 0.3 = noticeable handheld feel. 0.5 = strong drift. Deterministic (same input = same shake)."}),
             }
         }
 
@@ -348,15 +348,20 @@ class PixaromaAudioDepth:
         sway = torch.sin(t * 2 * math.pi * motion_speed)
         bob = torch.cos(t * 2 * math.pi * motion_speed)
 
-        # Camera shake: deterministic per-frame jitter, smoothed for organic feel
+        # Camera shake: slow drift via random anchors (1 per second) with cosine
+        # interpolation. Deterministic (seed=0), independent of audio.
         if camera_shake > 0.0 and total_frames > 0:
+            n_anchors = max(2, int(audio_duration) + 2)
             g = torch.Generator().manual_seed(0)
-            shake_x = torch.randn(total_frames, generator=g) * camera_shake * 0.02
-            shake_y = torch.randn(total_frames, generator=g) * camera_shake * 0.02
-            sk = 3
-            kernel = torch.ones(1, 1, sk) / sk
-            shake_x = F.conv1d(F.pad(shake_x.view(1, 1, -1), (sk // 2, sk // 2), mode="replicate"), kernel).squeeze().to(device)
-            shake_y = F.conv1d(F.pad(shake_y.view(1, 1, -1), (sk // 2, sk // 2), mode="replicate"), kernel).squeeze().to(device)
+            anchors_x = torch.randn(n_anchors, generator=g) * camera_shake * 0.05
+            anchors_y = torch.randn(n_anchors, generator=g) * camera_shake * 0.05
+            t_pos = torch.linspace(0, n_anchors - 1, total_frames)
+            i_low = t_pos.long().clamp(max=n_anchors - 2)
+            i_high = i_low + 1
+            frac = t_pos - i_low.float()
+            frac_smooth = (1.0 - torch.cos(frac * math.pi)) * 0.5
+            shake_x = (anchors_x[i_low] * (1.0 - frac_smooth) + anchors_x[i_high] * frac_smooth).to(device)
+            shake_y = (anchors_y[i_low] * (1.0 - frac_smooth) + anchors_y[i_high] * frac_smooth).to(device)
         else:
             shake_x = torch.zeros(total_frames, device=device)
             shake_y = torch.zeros(total_frames, device=device)
