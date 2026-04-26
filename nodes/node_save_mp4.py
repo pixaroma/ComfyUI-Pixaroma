@@ -33,6 +33,30 @@ def _resolve_ffmpeg():
     )
 
 
+def _next_mp4_counter(folder, prefix):
+    """Find the next free counter N for `<folder>/<prefix>_<N:05d>.mp4`.
+    folder_paths.get_save_image_path's built-in counter assumes Comfy's
+    `<prefix>_<N>_.<ext>` pattern (note the trailing underscore) and parses
+    `int("00001.mp4")` for our cleaner `<prefix>_<N>.mp4` — which raises and
+    silently returns 1, so every save overwrites Video_00001.mp4. We scan
+    ourselves instead."""
+    if not os.path.isdir(folder):
+        return 1
+    pat = prefix + "_"
+    max_n = 0
+    for f in os.listdir(folder):
+        if not f.startswith(pat) or not f.endswith(".mp4"):
+            continue
+        middle = f[len(pat):-len(".mp4")]
+        try:
+            n = int(middle)
+        except ValueError:
+            continue
+        if n > max_n:
+            max_n = n
+    return max_n + 1
+
+
 def _write_wav_pcm16(path, waveform, sample_rate):
     """Write a Comfy AUDIO waveform tensor [C, samples] (or [B, C, samples])
     as 16-bit PCM WAV using only stdlib + numpy. Avoids torchaudio backend
@@ -106,13 +130,17 @@ class PixaromaSaveMp4:
                 f"(Audio Depth Pixaroma snaps to multiples of 8 automatically)."
             )
 
-        # Resolve output path with auto-incrementing counter (matches Comfy
-        # convention used by SaveImage / Preview Image Pixaroma).
+        # Resolve subfolder + base filename via folder_paths (handles
+        # filename_prefix that contains a subfolder like "videos/clip"); use
+        # our own counter scan because Comfy's built-in one assumes the
+        # `<prefix>_<N>_.<ext>` trailing-underscore convention and silently
+        # returns 1 for our cleaner `<prefix>_<N>.mp4` naming.
         out_dir = folder_paths.get_output_directory()
-        full_folder, fname, counter, subfolder, _ = folder_paths.get_save_image_path(
+        full_folder, fname, _ignored, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, out_dir, W, H,
         )
         os.makedirs(full_folder, exist_ok=True)
+        counter = _next_mp4_counter(full_folder, fname)
         out_filename = f"{fname}_{counter:05d}.mp4"
         out_path = os.path.join(full_folder, out_filename)
 
