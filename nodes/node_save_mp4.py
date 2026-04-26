@@ -4,11 +4,13 @@ import uuid
 import wave
 import shutil
 import subprocess
+import threading
 
 import numpy as np
 import torch
 
 import folder_paths
+import comfy.model_management
 
 
 def _resolve_ffmpeg():
@@ -37,12 +39,15 @@ def _write_wav_pcm16(path, waveform, sample_rate):
     issues on Windows."""
     if waveform.dim() == 3:
         waveform = waveform[0]
+    n_ch = int(waveform.shape[0])
+    if n_ch == 0:
+        raise ValueError("[Pixaroma] Save Mp4 — audio waveform has 0 channels.")
     samples = waveform.detach().cpu().numpy()
     samples = np.clip(samples, -1.0, 1.0)
     samples = (samples * 32767.0).astype(np.int16)
     interleaved = samples.T.tobytes()
     with wave.open(path, "wb") as f:
-        f.setnchannels(int(waveform.shape[0]))
+        f.setnchannels(n_ch)
         f.setsampwidth(2)
         f.setframerate(int(sample_rate))
         f.writeframes(interleaved)
@@ -91,12 +96,24 @@ class PixaromaSaveMp4:
         # Pingpong: append reversed frames excluding the duplicates at each end
         # so playback looks like A→B→A with no visible repeated frame.
         if pingpong and images.shape[0] > 2:
+            # indices N-2..1 — excludes both endpoints to avoid duplicate-frame stutter
             reversed_tail = images[-2:0:-1]
             frames = torch.cat([images, reversed_tail], dim=0)
         else:
+            if pingpong:
+                print(f"[Pixaroma] Save Mp4 — pingpong skipped: need >2 frames, got {images.shape[0]}.")
             frames = images
 
         n_frames, H, W, _ = frames.shape
+
+        # yuv420p requires even dimensions; surface a clear error rather than
+        # the opaque "height not divisible by 2" ffmpeg crash.
+        if pix_fmt == "yuv420p" and (W % 2 != 0 or H % 2 != 0):
+            raise ValueError(
+                f"[Pixaroma] Save Mp4 — pix_fmt yuv420p requires even width and "
+                f"height, got {W}x{H}. Switch pix_fmt to yuv444p, or resize the "
+                f"input frames to even dimensions."
+            )
 
         # Resolve output path with auto-incrementing counter (matches Comfy
         # convention used by SaveImage / Preview Image Pixaroma).
@@ -156,21 +173,40 @@ class PixaromaSaveMp4:
             stdout=subprocess.DEVNULL,
         )
 
+        # Drain stderr in a background thread. Otherwise the OS pipe buffer
+        # (4 KB on Windows) fills if ffmpeg emits any output and the next
+        # stdin.write() blocks forever.
+        stderr_chunks = []
+
+        def _drain(pipe):
+            try:
+                for chunk in iter(lambda: pipe.read(4096), b""):
+                    stderr_chunks.append(chunk)
+            except Exception:
+                pass
+
+        drain_thread = threading.Thread(target=_drain, args=(proc.stderr,), daemon=True)
+        drain_thread.start()
+
         try:
             for i in range(n_frames):
+                comfy.model_management.throw_exception_if_processing_interrupted()
                 frame_u8 = (frames[i].clamp(0.0, 1.0).cpu().numpy() * 255.0
                             ).astype(np.uint8)
                 proc.stdin.write(frame_u8.tobytes())
             proc.stdin.close()
-            _, stderr = proc.communicate()
+            proc.wait()
+            drain_thread.join()
             if proc.returncode != 0:
+                stderr = b"".join(stderr_chunks).decode("utf-8", errors="replace")
                 raise RuntimeError(
                     f"[Pixaroma] Save Mp4 — ffmpeg failed (exit {proc.returncode}):\n"
-                    f"{stderr.decode('utf-8', errors='replace')}"
+                    f"{stderr}"
                 )
         finally:
             if proc.poll() is None:
                 proc.kill()
+                proc.wait()
             if temp_audio_path is not None and os.path.exists(temp_audio_path):
                 try:
                     os.remove(temp_audio_path)
