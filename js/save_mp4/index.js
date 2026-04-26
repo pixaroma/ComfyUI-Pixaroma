@@ -30,12 +30,17 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const ret = onNodeCreated?.apply(this, arguments);
 
+      // Flex container that fills the widget area; video stretches inside
+      // it via object-fit so resizing the node grows the player without
+      // leaving an empty black bar below.
       const wrap = document.createElement("div");
       wrap.style.cssText = `
         width: 100%;
+        height: 100%;
         display: flex;
         flex-direction: column;
-        align-items: stretch;
+        align-items: center;
+        justify-content: center;
         background: #000;
         border-radius: 4px;
         overflow: hidden;
@@ -48,7 +53,8 @@ app.registerExtension({
       video.style.cssText = `
         display: none;
         width: 100%;
-        height: auto;
+        height: 100%;
+        object-fit: contain;
         background: #000;
       `;
       wrap.appendChild(video);
@@ -60,8 +66,6 @@ app.registerExtension({
         font-size: 12px;
         padding: 16px;
         text-align: center;
-        align-self: center;
-        margin: auto;
       `;
       wrap.appendChild(placeholder);
 
