@@ -460,12 +460,23 @@ Follow the existing directory structure:
 `js/framework/theme.mjs` is ~660 lines but ~580 are a CSS string literal. You almost never need to read it. Only read it if you're adding a new CSS class or changing the color theme.
 
 ## Important Note
-Only after major changes, please update this file (@CLUADE.me). Keep this file up-to-date with the project's status.
+After major changes, please update this file (@CLUADE.me). Keep this file up-to-date with the project's status.
 
-## Critical Files (Do not modify)
-- `LICENSE`
-- `.clauderules`
-- `.github/workflows/publish.yml`
+## Git Workflow (Ioan branch)
 
-## Critical Files (Do not modify unless explicitly asked to)
-- `pyproject.toml`
+The user works on the `Ioan` branch. Two commit destinations:
+
+1. **Local commits** — after any non-trivial working change, create a local commit on `Ioan` as a checkpoint. This is the **default** — no confirmation needed, just do it. The user relies on these to roll back if something breaks (`git stash`, `git reset --hard HEAD~1`, or `git checkout <sha>`).
+
+2. **Push to Ioan on GitHub** — only when the user **explicitly** says "push to Ioan", "push to github", "commit to Ioan github", or similar. Never push proactively.
+
+**Pattern:**
+- Make the edit → verify it parses / works → `git add -A && git commit -m "scope: description"` LOCAL
+- Keep commits small and focused: one coherent change per commit
+- Never amend a pushed commit; only amend local-only commits if still WIP
+- If work breaks something, the user can roll back to the previous local checkpoint
+
+**Do not** push to origin unless asked. **Do** commit locally after every working change.
+
+## Publishing
+CI/CD auto-publishes to the ComfyUI registry when `pyproject.toml` is pushed to `main`. Do not modify `pyproject.toml`, `LICENSE`, or `.clauderules` or `.github/workflows/publish.yml`.
