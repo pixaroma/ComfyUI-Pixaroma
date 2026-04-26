@@ -153,14 +153,14 @@ class PixaromaAudioDepth:
                 ], {"default": "Original"}),
                 "custom_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
                 "custom_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
-                "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1}),
-                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial"}),
                 "pulse_intensity": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05}),
+                "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1}),
+                "midas_model": (["MiDaS_small", "DPT_Large"], {"default": "MiDaS_small"}),
+                "motion_mode": (["radial", "horizontal", "vertical", "combined"], {"default": "radial"}),
                 "depth_contrast": ("FLOAT", {"default": 1.0, "min": 0.5, "max": 3.0, "step": 0.05}),
                 "depth_invert": ("BOOLEAN", {"default": False}),
                 "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "full"}),
                 "loop_safe": ("BOOLEAN", {"default": False}),
-                "midas_model": (["MiDaS_small", "DPT_Large"], {"default": "MiDaS_small"}),
             }
         }
 
@@ -243,8 +243,8 @@ class PixaromaAudioDepth:
         return rms_smoothed.to(device)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
-                 fps, motion_mode, pulse_intensity, depth_contrast, depth_invert,
-                 audio_band, loop_safe, midas_model):
+                 pulse_intensity, fps, midas_model, motion_mode, depth_contrast,
+                 depth_invert, audio_band, loop_safe):
         device = comfy.model_management.get_torch_device()
 
         image = self._process_aspect(image, aspect_ratio, custom_width, custom_height)
