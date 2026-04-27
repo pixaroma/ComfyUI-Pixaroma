@@ -429,6 +429,121 @@ async def upload_crop_source(request):
     return web.json_response({"status": "success", "path": relative_path})
 
 
+# ────────────────────────────────────────────────────────────
+# Audio Studio Pixaroma — inline image / audio upload
+# ────────────────────────────────────────────────────────────
+
+ALLOWED_AUDIO_STUDIO_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
+ALLOWED_AUDIO_STUDIO_AUDIO_EXTS = {"wav"}  # WAV only — browser converts before upload
+_AUDIO_STUDIO_NODE_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]+$")
+_AUDIO_STUDIO_MAX_FILE_BYTES = 50 * 1024 * 1024   # 50 MB per file
+_AUDIO_STUDIO_MAX_DIR_BYTES  = 100 * 1024 * 1024  # 100 MB combined per node
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/audio_studio/upload")
+async def audio_studio_upload(request):
+    reader = await request.multipart()
+
+    node_id = None
+    kind = None
+    file_bytes = None
+    file_filename = None
+
+    while True:
+        field = await reader.next()
+        if field is None:
+            break
+        if field.name == "node_id":
+            node_id = (await field.text()).strip()
+        elif field.name == "kind":
+            kind = (await field.text()).strip()
+        elif field.name == "file":
+            file_filename = field.filename or ""
+            file_bytes = await field.read(decode=False)
+
+    if not node_id or not _AUDIO_STUDIO_NODE_ID_RE.match(node_id) or len(node_id) > 64:
+        return web.json_response(
+            {"error": "Invalid node_id (must match [a-zA-Z0-9_-]{1,64})."},
+            status=400,
+        )
+    if kind not in ("image", "audio"):
+        return web.json_response(
+            {"error": "kind must be 'image' or 'audio'."}, status=400,
+        )
+    if not file_bytes or not file_filename:
+        return web.json_response({"error": "file field is missing."}, status=400)
+    if len(file_bytes) > _AUDIO_STUDIO_MAX_FILE_BYTES:
+        return web.json_response(
+            {"error": f"file too large (>{_AUDIO_STUDIO_MAX_FILE_BYTES} bytes)."},
+            status=400,
+        )
+
+    ext = file_filename.rsplit(".", 1)[-1].lower() if "." in file_filename else ""
+    if kind == "image" and ext not in ALLOWED_AUDIO_STUDIO_IMAGE_EXTS:
+        return web.json_response(
+            {"error": (
+                f"image extension {ext!r} not allowed; use one of "
+                f"{sorted(ALLOWED_AUDIO_STUDIO_IMAGE_EXTS)}."
+            )},
+            status=400,
+        )
+    if kind == "audio" and ext not in ALLOWED_AUDIO_STUDIO_AUDIO_EXTS:
+        return web.json_response(
+            {"error": (
+                "audio extension " + repr(ext) + " not allowed; only WAV is "
+                "accepted (the browser converts other formats before upload)."
+            )},
+            status=400,
+        )
+
+    # Build the per-node directory path and containment-check it.
+    rel_dir = os.path.join("audio_studio", node_id)
+    target_dir = _safe_path(rel_dir)
+    if target_dir is None:
+        return web.json_response({"error": "path traversal blocked."}, status=400)
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Replace any existing files of the same kind (potentially different ext).
+    import glob as _glob
+    for existing in _glob.glob(os.path.join(target_dir, kind + ".*")):
+        try:
+            os.unlink(existing)
+        except OSError:
+            pass
+
+    rel_target = os.path.join("audio_studio", node_id, f"{kind}.{ext}")
+    target_path = _safe_path(rel_target)
+    if target_path is None:
+        return web.json_response({"error": "path traversal blocked."}, status=400)
+
+    # Combined-size cap: everything already in the dir (excluding the file
+    # we're about to overwrite, which was already removed above) plus the
+    # incoming file.
+    target_basename = os.path.basename(target_path)
+    try:
+        other_size = sum(
+            os.path.getsize(f)
+            for f in _glob.glob(os.path.join(target_dir, "*"))
+            if os.path.isfile(f) and os.path.basename(f) != target_basename
+        )
+    except OSError:
+        other_size = 0
+    if other_size + len(file_bytes) > _AUDIO_STUDIO_MAX_DIR_BYTES:
+        return web.json_response(
+            {"error": (
+                f"per-node combined size cap "
+                f"({_AUDIO_STUDIO_MAX_DIR_BYTES} bytes) exceeded."
+            )},
+            status=400,
+        )
+
+    with open(target_path, "wb") as fh:
+        fh.write(file_bytes)
+
+    rel = f"audio_studio/{node_id}/{kind}.{ext}"
+    return web.json_response({"path": rel})
+
+
 # Canonical list of bg-removal models shown in the Image Composer
 # dropdown. Each entry carries:
 #   id      — rembg session name (also dropdown `value`)
