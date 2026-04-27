@@ -1,5 +1,6 @@
 // js/audio_studio/core.mjs
 import { app } from "../../../../scripts/app.js";
+import { decodeAudio, computeAll } from "./audio_analysis.mjs";
 
 const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
@@ -311,8 +312,10 @@ export class AudioStudioEditor {
 
   _onCfgChanged() {
     this._refreshSaveBtnState();
-    // Render hook — currently a no-op stub. E2 mixin will define _render;
-    // audio analysis (F2) will recompute audio textures.
+    // fps / smoothing / loop_safe changes invalidate the cached envelope —
+    // recompute from the decoded buffer if we have one. Cheap (well under a
+    // second for typical clips) so no need to debounce yet.
+    if (this._audioBuffer) this._recomputeAudio();
     this._render?.();
   }
 
@@ -374,3 +377,39 @@ export class AudioStudioEditor {
     this.onClose?.();
   }
 }
+
+// ---------------------------------------------------------------------------
+// Audio loading + analysis (F2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Load an audio Blob, decode via Web Audio API, run analysis, push the
+ * result into the renderer's audio textures. Idempotent — replaces any
+ * previously-loaded audio. Source-loading UX (file picker, drag-drop,
+ * upstream-aware URL resolution) lands in Milestone H; this method is the
+ * common backend they all funnel into.
+ */
+AudioStudioEditor.prototype.loadAudioBlob = async function (blob) {
+  this._audioBlob = blob;
+  const ab = await blob.arrayBuffer();
+  const buf = await decodeAudio(ab);
+  this._audioBuffer = buf;
+  this._recomputeAudio();
+};
+
+/**
+ * Recompute envelope + onset from the cached AudioBuffer using the current
+ * cfg (fps / smoothing / loop_safe). Called on initial load and on every
+ * cfg change that affects analysis output.
+ */
+AudioStudioEditor.prototype._recomputeAudio = function () {
+  if (!this._audioBuffer) return;
+  const { envelope, onset, totalFrames } = computeAll(
+    this._audioBuffer, this.cfg.fps, this.cfg.smoothing, this.cfg.loop_safe,
+  );
+  if (totalFrames > 0) {
+    this._setAudioTextures(envelope, onset, totalFrames);
+    this._currentFrame = 0;
+    this._render();
+  }
+};
