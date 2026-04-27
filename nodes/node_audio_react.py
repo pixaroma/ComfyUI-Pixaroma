@@ -13,6 +13,8 @@ from ._audio_react_engine import (
     AUDIO_BANDS_HZ,
     MOTION_MODES,
     MotionContext,
+    OVERLAYS,
+    OverlayContext,
     audio_envelope,
     bandpass_fft,
     onset_track,
@@ -91,89 +93,6 @@ class PixaromaAudioReact:
     RETURN_NAMES = ("video_frames", "audio", "fps")
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
-
-    def _overlay_glitch(self, frame, onset_t, strength, H, W):
-        """RGB shift on transients + scanline swap on big spikes."""
-        if onset_t <= 0.001 or strength <= 0:
-            return frame
-        max_px = max(1, int(onset_t * strength * 0.012 * min(H, W)))
-        g = torch.Generator().manual_seed(int(onset_t * 1e6) & 0xFFFF)
-        signs = torch.randint(0, 2, (3,), generator=g) * 2 - 1
-        offsets = signs * max_px
-        out = frame.clone()
-        for c in range(3):
-            ox = int(offsets[c].item())
-            if ox > 0:
-                out[:, ox:, c] = frame[:, :W - ox, c]
-                # Replicate the leftmost moved-into column so the new edge
-                # doesn't leave a "frozen sliver" of the original frame.
-                out[:, :ox, c] = frame[:, 0:1, c].expand(-1, ox)
-            elif ox < 0:
-                ox = -ox
-                out[:, :W - ox, c] = frame[:, ox:, c]
-                out[:, W - ox:, c] = frame[:, W - 1:W, c].expand(-1, ox)
-
-        if onset_t * strength > 0.7:
-            n_swap = max(1, H // 20)
-            row_idx = torch.randint(0, H - 1, (n_swap,), generator=g)
-            for ri in row_idx.tolist():
-                tmp = out[ri].clone()
-                out[ri] = out[ri + 1]
-                out[ri + 1] = tmp
-        return out
-
-    def _overlay_bloom(self, frame, env_t, strength):
-        """Gaussian-glow add-blend pulsing with audio envelope."""
-        if env_t <= 0.001 or strength <= 0:
-            return frame
-        weight = env_t * strength * 0.6
-        x = frame.permute(2, 0, 1).unsqueeze(0)
-        small = F.interpolate(x, scale_factor=0.25, mode="bilinear", align_corners=False)
-        ksize = 9
-        sigma = 2.0
-        coords = torch.arange(ksize, dtype=torch.float32, device=x.device) - (ksize - 1) / 2
-        g1 = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
-        g1 = g1 / g1.sum()
-        kx = g1.view(1, 1, 1, ksize).expand(3, 1, 1, ksize)
-        ky = g1.view(1, 1, ksize, 1).expand(3, 1, ksize, 1)
-        small = F.conv2d(small, kx, padding=(0, ksize // 2), groups=3)
-        small = F.conv2d(small, ky, padding=(ksize // 2, 0), groups=3)
-        big = F.interpolate(small, size=x.shape[-2:], mode="bilinear", align_corners=False)
-        bloom_layer = (big * weight).clamp(0, 1)
-        out = 1.0 - (1.0 - x).clamp(0, 1) * (1.0 - bloom_layer)
-        out = out.clamp(0, 1).squeeze(0).permute(1, 2, 0)
-        return out
-
-    def _overlay_vignette(self, frame, env_t, strength, H, W, device):
-        """Audio-pulsing vignette."""
-        if env_t <= 0.001 or strength <= 0:
-            return frame
-        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
-        xs = torch.linspace(-1, 1, W, device=device).unsqueeze(0).expand(H, W)
-        r = torch.sqrt(xs ** 2 + ys ** 2).clamp(0, 1.4)
-        v = (r / 1.414).clamp(0, 1)
-        mask = 1.0 - (v * env_t * strength * 0.5)
-        return frame * mask.unsqueeze(-1)
-
-    def _overlay_hue_shift(self, frame, env_t, strength):
-        """Rotate hue by env_t · strength · 30° using the standard
-        rotation-around-grayscale-axis matrix."""
-        if env_t <= 0.001 or strength <= 0:
-            return frame
-        angle = env_t * strength * (30.0 * math.pi / 180.0)
-        c = math.cos(angle)
-        s = math.sin(angle)
-        # Canonical YIQ-derived hue rotation around the (1,1,1) gray axis.
-        # The 0.299 / 0.587 / 0.114 luma triples MUST be exact in every row
-        # — typos drift the gray axis and produce a tint on neutrals at high
-        # angles (review caught 0.300 / 0.588 / 0.302 typos here previously).
-        m = torch.tensor([
-            [0.299 + 0.701 * c + 0.168 * s, 0.587 - 0.587 * c + 0.330 * s, 0.114 - 0.114 * c - 0.497 * s],
-            [0.299 - 0.299 * c - 0.328 * s, 0.587 + 0.413 * c + 0.035 * s, 0.114 - 0.114 * c + 0.292 * s],
-            [0.299 - 0.299 * c + 1.250 * s, 0.587 - 0.587 * c - 1.050 * s, 0.114 + 0.886 * c - 0.203 * s],
-        ], device=frame.device, dtype=frame.dtype)
-        out = frame @ m.T
-        return out.clamp(0, 1)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
@@ -290,14 +209,19 @@ class PixaromaAudioReact:
             frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
 
             # Overlays (each is a no-op when strength == 0).
-            if glitch_strength > 0.0:
-                frame = self._overlay_glitch(frame, onset_t, glitch_strength, H, W)
-            if bloom_strength > 0.0:
-                frame = self._overlay_bloom(frame, env_t, bloom_strength)
-            if vignette_strength > 0.0:
-                frame = self._overlay_vignette(frame, env_t, vignette_strength, H, W, device)
-            if hue_shift_strength > 0.0:
-                frame = self._overlay_hue_shift(frame, env_t, hue_shift_strength)
+            overlay_strengths = {
+                "glitch":    glitch_strength,
+                "bloom":     bloom_strength,
+                "vignette":  vignette_strength,
+                "hue_shift": hue_shift_strength,
+            }
+            for ov_name, ov_fn in OVERLAYS.items():
+                s = overlay_strengths.get(ov_name, 0.0)
+                if s > 0.0:
+                    frame = ov_fn(OverlayContext(
+                        frame=frame, env_t=env_t, onset_t=onset_t,
+                        strength=s, H=H, W=W, device=device,
+                    ))
 
             frames.append(frame.cpu())
             pbar.update(1)
