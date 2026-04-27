@@ -302,7 +302,22 @@ class PixaromaAudioReact:
         return grid
 
     def _motion_slit_scan(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        raise NotImplementedError("slit_scan — Task 9")
+        """Vertical wave: each row offsets by sin(k·y_norm + omega·t) · audio.
+        Looks like a slit-scan time-displacement without needing a frame
+        buffer."""
+        device = base_grid.device
+        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
+        k = 4.0 * math.pi
+        omega = 2.0 * math.pi * max(motion_speed * 2.0, 0.4)
+        A = env_t * intensity * 0.04
+
+        dy = A * torch.sin(k * ys - omega * t)
+        dx = A * 0.5 * torch.cos(k * ys - omega * t)
+
+        grid = base_grid.clone()
+        grid[0, ..., 0] = grid[0, ..., 0] + dx
+        grid[0, ..., 1] = grid[0, ..., 1] + dy
+        return grid
 
     def _motion_kaleidoscope(self, base_grid, t, env_t, intensity, motion_speed, H, W):
         raise NotImplementedError("kaleidoscope — Task 10")
