@@ -203,6 +203,20 @@ export class AudioStudioEditor {
 
     document.body.appendChild(overlay);
 
+    // Initialise WebGL2 renderer now that canvasHost is in the DOM (so
+    // getBoundingClientRect() returns real dimensions). Mixin lives in
+    // render.mjs.
+    this._initRenderer();
+
+    // TEMP — remove in H1
+    // Load the parity test image so we have something to render until
+    // upstream / inline source resolution lands in Milestone H.
+    const testImg = new Image();
+    testImg.crossOrigin = "Anonymous";
+    testImg.onload = () => this._setImage?.(testImg);
+    testImg.onerror = () => console.warn("[Pixaroma] Audio Studio test image fetch failed");
+    testImg.src = "/extensions/ComfyUI-Pixaroma/assets/audio_studio_parity/test_image.png";
+
     // Top-level keydown handler — intercept Esc and Ctrl+S.
     this._keyHandler = (e) => {
       // Don't intercept when a confirm modal is open
@@ -347,6 +361,9 @@ export class AudioStudioEditor {
       window.removeEventListener("keydown", this._keyHandler, true);
       this._keyHandler = null;
     }
+    // Tear down GL resources before the overlay (and its canvas) leaves
+    // the DOM. Mixin lives in render.mjs.
+    this._destroyRenderer?.();
     if (this.overlay && this.overlay.parentNode) {
       this.overlay.parentNode.removeChild(this.overlay);
     }
