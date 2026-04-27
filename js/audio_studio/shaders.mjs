@@ -43,11 +43,13 @@ uniform float u_t;
 uniform float u_aspect;
 uniform vec2  u_resolution;
 
-float read_band(vec4 sample, int idx) {
-    if (idx == 0) return sample.r;
-    if (idx == 1) return sample.g;
-    if (idx == 2) return sample.b;
-    return sample.a;
+// NOTE: parameter is named 'tex' not 'sample' — 'sample' is a reserved
+// word in GLSL ES 3.00 (sample-rate qualifier).
+float read_band(vec4 tex, int idx) {
+    if (idx == 0) return tex.r;
+    if (idx == 1) return tex.g;
+    if (idx == 2) return tex.b;
+    return tex.a;
 }
 
 float env_at(int frame_idx) {
