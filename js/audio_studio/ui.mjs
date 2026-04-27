@@ -41,6 +41,12 @@ const MOTION_MODES = [
   { value: "swirl",        label: "Swirl" },
   { value: "slit_scan",    label: "Time Slice" },
   { value: "glitch",       label: "Glitch" },
+  { value: "pinch",        label: "Pinch" },
+  { value: "wave",         label: "Wave" },
+  { value: "tilt",         label: "Tilt" },
+  { value: "pixelate",     label: "Pixelate" },
+  { value: "rgb_split",    label: "RGB Split" },
+  { value: "squeeze",      label: "Squeeze" },
 ];
 
 // Motion modes that have a meaningful "direction" axis — rotation,
@@ -49,6 +55,9 @@ const MOTION_MODES = [
 // scale or random jitter), so flipping a sign would do nothing visible.
 const DIRECTIONAL_MOTION_MODES = new Set([
   "drift", "rotate_pulse", "ripple", "swirl", "slit_scan",
+  // Pass 3: pinch (bulge↔pinch), wave (travel direction), tilt (lean
+  // side), squeeze (zoom in vs out). pixelate / rgb_split are symmetric.
+  "pinch", "wave", "tilt", "squeeze",
 ]);
 
 // Audio band button group is also reused by the section reset list.
@@ -56,6 +65,11 @@ const SHAKE_AXES = [
   { value: "both", label: "Both" },
   { value: "x",    label: "X" },
   { value: "y",    label: "Y" },
+];
+
+const SQUEEZE_AXES = [
+  { value: "x", label: "Horizontal" },
+  { value: "y", label: "Vertical" },
 ];
 
 const AUDIO_BANDS = [
@@ -335,6 +349,7 @@ AudioStudioEditor.prototype._resetMotionDefaults = function () {
     "intensity", "motion_speed", "smoothing", "loop_safe",
     "motion_direction",
     "shake_axis", "ripple_density", "slit_density", "glitch_bands",
+    "wave_density", "pixelate_blocks", "squeeze_axis",
   ];
   let changed = false;
   for (const k of keys) {
@@ -627,6 +642,15 @@ const MODE_SPECIFIC_BUILDERS = {
   glitch(panel) {
     this._addSlider(panel, "Bands", "glitch_bands", 5, 100, 1);
   },
+  wave(panel) {
+    this._addSlider(panel, "Wave density", "wave_density", 0.3, 3.0, 0.1);
+  },
+  pixelate(panel) {
+    this._addSlider(panel, "Blocks", "pixelate_blocks", 5, 100, 1);
+  },
+  squeeze(panel) {
+    this._addButtonGroup(panel, "Axis", "squeeze_axis", SQUEEZE_AXES, { columns: 2 });
+  },
 };
 
 /**
@@ -703,10 +727,13 @@ AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {
   // the "Glitch" name for the new motion mode (which warps geometry,
   // whereas this overlay only offsets RGB channels). Internal cfg key
   // glitch_strength is unchanged for saved-workflow compatibility.
-  this._addSlider(panel, "Chroma Shift", "glitch_strength",    0.0, 1.0, 0.05);
-  this._addSlider(panel, "Bloom",        "bloom_strength",     0.0, 1.0, 0.05);
-  this._addSlider(panel, "Vignette",     "vignette_strength",  0.0, 1.0, 0.05);
-  this._addSlider(panel, "Hue shift",    "hue_shift_strength", 0.0, 1.0, 0.05);
+  this._addSlider(panel, "Chroma Shift", "glitch_strength",     0.0, 1.0, 0.05);
+  this._addSlider(panel, "Bloom",        "bloom_strength",      0.0, 1.0, 0.05);
+  this._addSlider(panel, "Vignette",     "vignette_strength",   0.0, 1.0, 0.05);
+  this._addSlider(panel, "Hue shift",    "hue_shift_strength",  0.0, 1.0, 0.05);
+  this._addSlider(panel, "Cinematic",    "cinematic_strength",  0.0, 1.0, 0.05);
+  this._addSlider(panel, "Scanlines",    "scanline_strength",   0.0, 1.0, 0.05);
+  this._addSlider(panel, "Film grain",   "grain_strength",      0.0, 1.0, 0.05);
 };
 
 AudioStudioEditor.prototype._buildAudioSection = function (panel) {

@@ -229,6 +229,12 @@ AudioStudioEditor.prototype._render = function () {
                this.cfg.slit_density ?? 1.0);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_glitch_bands"),
                this.cfg.glitch_bands ?? 30);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_wave_density"),
+               this.cfg.wave_density ?? 1.0);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_pixelate_blocks"),
+               this.cfg.pixelate_blocks ?? 24);
+  gl.uniform1i(gl.getUniformLocation(motionProg, "u_squeeze_axis"),
+               this.cfg.squeeze_axis === "y" ? 1 : 0);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -265,6 +271,9 @@ AudioStudioEditor.prototype._render = function () {
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_bloom_strength"), this.cfg.bloom_strength);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_vignette_strength"), this.cfg.vignette_strength);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_hue_shift_strength"), this.cfg.hue_shift_strength);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_cinematic_strength"), this.cfg.cinematic_strength ?? 0);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_scanline_strength"), this.cfg.scanline_strength ?? 0);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_grain_strength"), this.cfg.grain_strength ?? 0);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 };

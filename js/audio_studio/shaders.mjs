@@ -50,6 +50,9 @@ uniform int   u_shake_axis;          // 0=both, 1=x-only, 2=y-only
 uniform float u_ripple_density;       // multiplier on ripple's k (default 1.0)
 uniform float u_slit_density;         // multiplier on slit_scan's k (default 1.0)
 uniform float u_glitch_bands;         // motion glitch — number of horizontal bands
+uniform float u_wave_density;         // multiplier on wave's k (default 1.0)
+uniform float u_pixelate_blocks;      // motion pixelate — block count at peak
+uniform int   u_squeeze_axis;         // 0=x, 1=y
 
 // NOTE: parameter is named 'tex' not 'sample' — 'sample' is a reserved
 // word in GLSL ES 3.00 (sample-rate qualifier).
@@ -196,6 +199,99 @@ void main() {
 }
 `,
 
+  // Pinch (direction=-1) / Bulge (direction=+1) — radial squeeze with
+  // linear falloff. Center is most affected, edges are unchanged.
+  pinch: COMMON_PRELUDE + `
+void main() {
+    float env_t = env_at(u_frame_index);
+    vec2 p = (v_uv - 0.5) * 2.0;
+    p.x *= u_aspect;
+    float r = length(p);
+    float falloff = clamp(1.0 - r, 0.0, 1.0);
+    float s = env_t * u_intensity * 0.30 * u_motion_direction;
+    float factor = 1.0 - s * falloff;
+    vec2 q = p * factor;
+    q.x /= u_aspect;
+    vec2 uv = q * 0.5 + 0.5;
+    fragColor = sample_image(uv);
+}
+`,
+
+  // Wave — horizontal sine displacement that travels vertically. Like a flag.
+  wave: COMMON_PRELUDE + `
+void main() {
+    float env_t = env_at(u_frame_index);
+    float yn = (v_uv.y - 0.5) * 2.0;
+    float k = 4.0 * 3.14159265359 * u_wave_density;
+    float omega = 6.28318530718 * max(u_motion_speed * 2.0, 0.4) * u_motion_direction;
+    float A = env_t * u_intensity * 0.05;
+    float dx = A * sin(k * yn - omega * u_t);
+    vec2 uv = v_uv + vec2(dx * 0.5, 0.0);
+    fragColor = sample_image(uv);
+}
+`,
+
+  // Tilt — Dutch-angle pulse. y-dependent x-skew (top tilts one way,
+  // bottom the other), driven by sway × env. Direction flips lean side.
+  tilt: COMMON_PRELUDE + `
+void main() {
+    float env_t = env_at(u_frame_index);
+    float sway = sin(6.28318530718 * u_motion_speed * u_t);
+    float skew = sway * env_t * u_intensity * 0.20 * u_motion_direction;
+    vec2 p = (v_uv - 0.5) * 2.0;
+    p.x = p.x + skew * p.y;
+    vec2 uv = p * 0.5 + 0.5;
+    fragColor = sample_image(uv);
+}
+`,
+
+  // Pixelate — UV quantization to N×N blocks, gated by onset spike. Image
+  // is pristine at rest, snaps to chunky pixels on beat.
+  pixelate: COMMON_PRELUDE + `
+void main() {
+    float onset_t = onset_at(u_frame_index);
+    float spike = clamp(onset_t * u_intensity, 0.0, 1.0);
+    if (spike < 0.01) {
+        fragColor = sample_image(v_uv);
+        return;
+    }
+    float blocks = max(2.0, u_pixelate_blocks);
+    vec2 q = (floor(v_uv * blocks) + 0.5) / blocks;
+    vec2 uv = mix(v_uv, q, spike);
+    fragColor = sample_image(uv);
+}
+`,
+
+  // RGB Split — geometric chromatic aberration. R sampled with positive
+  // x offset, G center, B negative offset. env_t drives offset distance.
+  rgb_split: COMMON_PRELUDE + `
+void main() {
+    float env_t = env_at(u_frame_index);
+    float offset = env_t * u_intensity * 0.025;
+    float r = sample_image(v_uv + vec2(offset, 0.0)).r;
+    float g = sample_image(v_uv).g;
+    float b = sample_image(v_uv - vec2(offset, 0.0)).b;
+    fragColor = vec4(r, g, b, 1.0);
+}
+`,
+
+  // Squeeze — 1-D scale on the chosen axis. squeeze_axis: 0=x, 1=y.
+  // direction +1 zooms in (image stretches across the axis), -1 zooms out.
+  squeeze: COMMON_PRELUDE + `
+void main() {
+    float env_t = env_at(u_frame_index);
+    float s = env_t * u_intensity * 0.30 * u_motion_direction;
+    vec2 p = (v_uv - 0.5) * 2.0;
+    if (u_squeeze_axis == 1) {
+        p.y = p.y * (1.0 - s);
+    } else {
+        p.x = p.x * (1.0 - s);
+    }
+    vec2 uv = p * 0.5 + 0.5;
+    fragColor = sample_image(uv);
+}
+`,
+
   // Audio-reactive band displacement — see motion_glitch() docstring in
   // _audio_react_engine.py. Sparsity gate + magnitude curve + 2-frame
   // stutter make this read as "broken signal" rather than uniform
@@ -256,6 +352,9 @@ uniform float u_glitch_strength;
 uniform float u_bloom_strength;
 uniform float u_vignette_strength;
 uniform float u_hue_shift_strength;
+uniform float u_cinematic_strength;
+uniform float u_scanline_strength;
+uniform float u_grain_strength;
 
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -339,6 +438,36 @@ void main() {
     if (u_hue_shift_strength > 0.0 && env_t > 0.001) {
         float angle = env_t * u_hue_shift_strength * (30.0 * 3.14159265359 / 180.0);
         col = hueRotate(col, angle);
+    }
+
+    // ----- SCANLINES — CRT horizontal stripes pulsing with envelope -----
+    if (u_scanline_strength > 0.0 && env_t > 0.001) {
+        float line = sin(v_uv.y * 200.0 * 3.14159265359);
+        line = clamp((line - 0.7) / 0.3, 0.0, 1.0);
+        float darkness = line * env_t * u_scanline_strength * 0.4;
+        col *= 1.0 - darkness;
+    }
+
+    // ----- FILM GRAIN — per-pixel hash noise modulated by envelope -----
+    if (u_grain_strength > 0.0 && env_t > 0.001) {
+        float n = hash12(v_uv * u_resolution + float(u_frame_index)) - 0.5;
+        col += vec3(n * env_t * u_grain_strength * 0.30);
+    }
+
+    // ----- CINEMATIC — teal/orange grade + letterbox bars -----
+    // Steady (not env-gated) so the bars don't blink. Strength controls
+    // both grade intensity and bar height.
+    if (u_cinematic_strength > 0.0) {
+        float lum = dot(col, vec3(0.299, 0.587, 0.114));
+        vec3 highlightTint = vec3(1.20, 1.00, 0.85);
+        vec3 shadowTint    = vec3(0.85, 1.00, 1.15);
+        vec3 tinted = clamp(col * mix(shadowTint, highlightTint, lum), 0.0, 1.0);
+        col = mix(col, tinted, u_cinematic_strength);
+        // Letterbox AFTER grade so bars stay pure black.
+        float bar = 0.10 * u_cinematic_strength;
+        if (v_uv.y < bar || v_uv.y > 1.0 - bar) {
+            col = vec3(0.0);
+        }
     }
 
     fragColor = vec4(col, 1.0);

@@ -85,6 +85,11 @@ class Params:
     bloom_strength: float = 0.0
     vignette_strength: float = 0.0
     hue_shift_strength: float = 0.0
+    # New overlays (Pass 3): cinematic letterbox + teal/orange grade,
+    # CRT-style scanlines, animated film grain.
+    cinematic_strength: float = 0.0
+    scanline_strength: float = 0.0
+    grain_strength: float = 0.0
     aspect_ratio: str = "Original"
     custom_width: int = 1024
     custom_height: int = 1024
@@ -113,6 +118,15 @@ class Params:
     # of horizontal bands the image is sliced into. Each band offsets
     # horizontally by a per-frame random amount, gated by onset envelope.
     glitch_bands: int = 30
+    # wave: spatial-frequency multiplier (like ripple_density). Higher =
+    # more wave crests visible at once.
+    wave_density: float = 1.0
+    # pixelate: target block count per axis at peak onset. At rest the
+    # image is unaffected; on beat it quantizes to this many blocks.
+    pixelate_blocks: int = 24
+    # squeeze: which axis to scale. "x" → horizontal stretch on beat,
+    # "y" → vertical stretch.
+    squeeze_axis: str = "x"
 
 
 @dataclass
@@ -137,6 +151,9 @@ class MotionContext:
     ripple_density: float = 1.0
     slit_density: float = 1.0
     glitch_bands: int = 30
+    wave_density: float = 1.0
+    pixelate_blocks: int = 24
+    squeeze_axis: str = "x"
 
 
 @dataclass
@@ -547,6 +564,87 @@ def motion_glitch(ctx: MotionContext) -> torch.Tensor:
     return grid
 
 
+def motion_pinch(ctx: MotionContext) -> torch.Tensor:
+    """Radial squeeze: direction=+1 → bulge (image looks magnified at
+    center), direction=-1 → pinch (image looks pulled toward center).
+    Linear falloff so the effect tapers off at the edges."""
+    aspect = ctx.W / ctx.H
+    xs = ctx.base_grid[0, ..., 0] * aspect
+    ys = ctx.base_grid[0, ..., 1]
+    r = torch.sqrt(xs ** 2 + ys ** 2)
+    falloff = (1.0 - r).clamp(min=0.0, max=1.0)
+    s = ctx.env_t * ctx.intensity * 0.30 * ctx.direction
+    factor = 1.0 - s * falloff
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = (xs * factor) / aspect
+    grid[0, ..., 1] = ys * factor
+    return grid
+
+
+def motion_wave(ctx: MotionContext) -> torch.Tensor:
+    """Horizontal sine displacement traveling vertically — flag-flap look.
+    direction flips the wave's vertical travel direction. wave_density
+    multiplies the spatial frequency."""
+    device = ctx.base_grid.device
+    ys = torch.linspace(-1, 1, ctx.H, device=device).unsqueeze(1).expand(ctx.H, ctx.W)
+    k = 4.0 * math.pi * ctx.wave_density
+    omega = 2.0 * math.pi * max(ctx.motion_speed * 2.0, 0.4) * ctx.direction
+    A = ctx.env_t * ctx.intensity * 0.05
+    dx = A * torch.sin(k * ys - omega * ctx.t)
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = grid[0, ..., 0] + dx
+    return grid
+
+
+def motion_tilt(ctx: MotionContext) -> torch.Tensor:
+    """Camera Dutch-angle pulse: y-dependent x-skew. Top of image leans
+    one way, bottom the other. sway×env drives amount, direction flips
+    lean side."""
+    sway = math.sin(2.0 * math.pi * ctx.motion_speed * ctx.t)
+    skew = sway * ctx.env_t * ctx.intensity * 0.20 * ctx.direction
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = grid[0, ..., 0] + skew * grid[0, ..., 1]
+    return grid
+
+
+def motion_pixelate(ctx: MotionContext) -> torch.Tensor:
+    """UV quantization to N×N blocks, scaled by onset spike. At rest the
+    image is pristine; on beat it snaps to chunky pixels."""
+    spike = max(0.0, min(1.0, ctx.onset_t * ctx.intensity))
+    if spike < 0.01:
+        return ctx.base_grid
+    blocks = max(2.0, float(ctx.pixelate_blocks))
+    grid = ctx.base_grid.clone()
+    xs = grid[0, ..., 0]
+    ys = grid[0, ..., 1]
+    # Map [-1, 1] → [0, blocks], floor + 0.5 for block-center sampling, back to [-1, 1].
+    qx = (torch.floor((xs + 1.0) * 0.5 * blocks) + 0.5) / blocks * 2.0 - 1.0
+    qy = (torch.floor((ys + 1.0) * 0.5 * blocks) + 0.5) / blocks * 2.0 - 1.0
+    grid[0, ..., 0] = xs + (qx - xs) * spike
+    grid[0, ..., 1] = ys + (qy - ys) * spike
+    return grid
+
+
+def motion_rgb_split(ctx: MotionContext) -> torch.Tensor:
+    """Sentinel — actual RGB-split sampling happens in generate_video's
+    multi-pass branch (it can't be expressed as a single grid since each
+    color channel needs its own sample offset). This returns identity."""
+    return ctx.base_grid.clone()
+
+
+def motion_squeeze(ctx: MotionContext) -> torch.Tensor:
+    """1D scale — stretches image along squeeze_axis. Direction +1 zooms
+    in (factor < 1 makes us sample less of the axis = stretches across
+    output); -1 zooms out."""
+    s = ctx.env_t * ctx.intensity * 0.30 * ctx.direction
+    grid = ctx.base_grid.clone()
+    if ctx.squeeze_axis == "y":
+        grid[0, ..., 1] = grid[0, ..., 1] * (1.0 - s)
+    else:
+        grid[0, ..., 0] = grid[0, ..., 0] * (1.0 - s)
+    return grid
+
+
 # Register in MOTION_MODES — order here drives the dropdown order in both
 # Audio React's widget and Audio Pulse's sidebar.
 MOTION_MODES["scale_pulse"]  = motion_scale_pulse
@@ -558,6 +656,12 @@ MOTION_MODES["ripple"]       = motion_ripple
 MOTION_MODES["swirl"]        = motion_swirl
 MOTION_MODES["slit_scan"]    = motion_slit_scan
 MOTION_MODES["glitch"]       = motion_glitch
+MOTION_MODES["pinch"]        = motion_pinch
+MOTION_MODES["wave"]         = motion_wave
+MOTION_MODES["tilt"]         = motion_tilt
+MOTION_MODES["pixelate"]     = motion_pixelate
+MOTION_MODES["rgb_split"]    = motion_rgb_split
+MOTION_MODES["squeeze"]      = motion_squeeze
 
 
 # ---------------------------------------------------------------------
@@ -668,12 +772,65 @@ def overlay_hue_shift(ctx: OverlayContext) -> torch.Tensor:
     return out.clamp(0, 1)
 
 
+def overlay_scanlines(ctx: OverlayContext) -> torch.Tensor:
+    """CRT-style horizontal scanlines that pulse in darkness with the audio
+    envelope. Density is fixed at ~200 lines so the look stays recognizable
+    across resolutions; tune via overall strength slider."""
+    if ctx.env_t <= 0.001 or ctx.strength <= 0:
+        return ctx.frame
+    ys = torch.linspace(0.0, 1.0, ctx.H, device=ctx.device).unsqueeze(1).unsqueeze(2)
+    line = torch.sin(ys * 200.0 * math.pi)
+    line = ((line - 0.7) / 0.3).clamp(0.0, 1.0)
+    darkness = line * ctx.env_t * ctx.strength * 0.4
+    return (ctx.frame * (1.0 - darkness)).clamp(0.0, 1.0)
+
+
+def overlay_grain(ctx: OverlayContext) -> torch.Tensor:
+    """Animated film grain — fresh per-pixel noise per frame, modulated by
+    the audio envelope. torch.rand here is fine: grain is meant to be
+    non-deterministic and the WebGL preview uses a hash, so they differ
+    visually anyway (covered by the approximate-preview carve-out)."""
+    if ctx.env_t <= 0.001 or ctx.strength <= 0:
+        return ctx.frame
+    noise = (torch.rand(ctx.H, ctx.W, 1, device=ctx.device) - 0.5) * 2.0
+    grain = noise * ctx.env_t * ctx.strength * 0.15
+    return (ctx.frame + grain).clamp(0.0, 1.0)
+
+
+def overlay_cinematic(ctx: OverlayContext) -> torch.Tensor:
+    """Cinematic look: top/bottom letterbox bars + teal/orange grade.
+    Strength controls both bar height (max ~10% per side) and grade
+    intensity simultaneously. Not env-gated — letterbox should be steady."""
+    if ctx.strength <= 0:
+        return ctx.frame
+    H = ctx.H
+    out = ctx.frame.clone()
+
+    # Teal/orange grade — shadows pulled cool, highlights pulled warm.
+    lum = 0.299 * out[..., 0:1] + 0.587 * out[..., 1:2] + 0.114 * out[..., 2:3]
+    highlight_tint = torch.tensor([1.20, 1.00, 0.85], device=ctx.device).view(1, 1, 3)
+    shadow_tint    = torch.tensor([0.85, 1.00, 1.15], device=ctx.device).view(1, 1, 3)
+    tint = shadow_tint + (highlight_tint - shadow_tint) * lum
+    graded = (out * tint).clamp(0.0, 1.0)
+    out = out + (graded - out) * ctx.strength
+
+    # Letterbox bars — applied AFTER grading so the bars stay pure black.
+    bar = int(0.10 * ctx.strength * H)
+    if bar > 0:
+        out[:bar] = 0.0
+        out[H - bar:] = 0.0
+    return out.clamp(0.0, 1.0)
+
+
 # Register OVERLAYS — order here drives the per-frame iteration order in
 # generate_video(). Glitch reads onset_t (transients), the rest read env_t.
 OVERLAYS["glitch"]    = overlay_glitch
 OVERLAYS["bloom"]     = overlay_bloom
 OVERLAYS["vignette"]  = overlay_vignette
 OVERLAYS["hue_shift"] = overlay_hue_shift
+OVERLAYS["cinematic"] = overlay_cinematic
+OVERLAYS["scanlines"] = overlay_scanlines
+OVERLAYS["grain"]     = overlay_grain
 
 
 # ---------------------------------------------------------------------
@@ -775,6 +932,9 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
         "bloom":     params.bloom_strength,
         "vignette":  params.vignette_strength,
         "hue_shift": params.hue_shift_strength,
+        "cinematic": params.cinematic_strength,
+        "scanlines": params.scanline_strength,
+        "grain":     params.grain_strength,
     }
 
     frames = []
@@ -794,13 +954,33 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             ripple_density=params.ripple_density,
             slit_density=params.slit_density,
             glitch_bands=params.glitch_bands,
+            wave_density=params.wave_density,
+            pixelate_blocks=params.pixelate_blocks,
+            squeeze_axis=params.squeeze_axis,
         )
         grid = motion_fn(ctx)
 
-        warped = F.grid_sample(
-            img_tensor, grid,
-            mode="bilinear", padding_mode="border", align_corners=False,
-        )
+        if params.motion_mode == "rgb_split":
+            # Multi-pass channel sampling — R offset right, B offset left.
+            # The motion grid above is identity (motion_rgb_split returns
+            # base_grid). The actual chromatic warping happens here.
+            offset = env_t * params.intensity * 0.025
+            grid_r = grid.clone()
+            grid_r[..., 0] += offset
+            grid_b = grid.clone()
+            grid_b[..., 0] -= offset
+            sR = F.grid_sample(img_tensor, grid_r,
+                               mode="bilinear", padding_mode="border", align_corners=False)
+            sG = F.grid_sample(img_tensor, grid,
+                               mode="bilinear", padding_mode="border", align_corners=False)
+            sB = F.grid_sample(img_tensor, grid_b,
+                               mode="bilinear", padding_mode="border", align_corners=False)
+            warped = torch.cat([sR[:, 0:1], sG[:, 1:2], sB[:, 2:3]], dim=1)
+        else:
+            warped = F.grid_sample(
+                img_tensor, grid,
+                mode="bilinear", padding_mode="border", align_corners=False,
+            )
         frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
 
         for ov_name, ov_fn in OVERLAYS.items():

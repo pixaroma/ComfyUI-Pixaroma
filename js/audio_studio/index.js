@@ -29,6 +29,9 @@ const DEFAULT_CFG = {
   ripple_density: 1.0,      // multiplier on Ripple's wave frequency
   slit_density: 1.0,        // multiplier on Time Slice's bar count
   glitch_bands: 30,         // Glitch motion — horizontal slice count (5-100)
+  wave_density: 1.0,        // multiplier on Wave's spatial frequency
+  pixelate_blocks: 24,      // Pixelate motion — block count at peak onset
+  squeeze_axis: "x",        // "x" or "y" — Squeeze motion only
   smoothing: 5,
   loop_safe: true,
   fps: 24,
@@ -36,6 +39,9 @@ const DEFAULT_CFG = {
   bloom_strength: 0.0,
   vignette_strength: 0.0,
   hue_shift_strength: 0.0,
+  cinematic_strength: 0.0,
+  scanline_strength: 0.0,
+  grain_strength: 0.0,
   aspect_ratio: "Original",
   custom_width: 1024,
   custom_height: 1024,
