@@ -144,6 +144,59 @@ class PixaromaAudioReact:
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
 
+    def _process_aspect(self, image, aspect_ratio, custom_w, custom_h, headroom=1.0):
+        """Returns (image_at_render_size, base_w, base_h). Caller center-crops
+        the warped frames back to base_w × base_h after warping."""
+        _, h, w, _ = image.shape
+
+        if aspect_ratio == "Original":
+            base_w, base_h = w, h
+        elif aspect_ratio == "Custom (Use Width & Height below)":
+            base_w, base_h = custom_w, custom_h
+        elif "Custom Ratio" in aspect_ratio:
+            base_w = custom_w
+            if "16:9" in aspect_ratio:
+                base_h = int(base_w * 9 / 16)
+            elif "9:16" in aspect_ratio:
+                base_h = int(base_w * 16 / 9)
+            elif "4:3" in aspect_ratio:
+                base_h = int(base_w * 3 / 4)
+            elif "1:1" in aspect_ratio:
+                base_h = base_w
+            else:
+                base_h = custom_h
+        else:
+            dim = aspect_ratio.split(" ")[0]
+            base_w, base_h = map(int, dim.split("x"))
+
+        base_w = (base_w // 8) * 8
+        base_h = (base_h // 8) * 8
+
+        if headroom > 1.0:
+            target_w = ((int(base_w * headroom) + 7) // 8) * 8
+            target_h = ((int(base_h * headroom) + 7) // 8) * 8
+        else:
+            target_w, target_h = base_w, base_h
+
+        if aspect_ratio == "Original" and headroom <= 1.0:
+            return image, base_w, base_h
+
+        target_ratio = target_w / target_h
+        current_ratio = w / h
+        if current_ratio > target_ratio:
+            new_w = int(h * target_ratio)
+            left = (w - new_w) // 2
+            image = image[:, :, left:left + new_w, :]
+        elif current_ratio < target_ratio:
+            new_h = int(w / target_ratio)
+            top = (h - new_h) // 2
+            image = image[:, top:top + new_h, :, :]
+
+        image = image.permute(0, 3, 1, 2)
+        image = F.interpolate(image, size=(target_h, target_w), mode="bilinear", align_corners=False)
+        image = image.permute(0, 2, 3, 1)
+        return image, base_w, base_h
+
     def _audio_envelope(self, audio, target_frames, fps, device, audio_band, smoothing):
         """Returns a [target_frames] tensor in [0, 1] — per-frame audio energy."""
         waveform = audio["waveform"]
