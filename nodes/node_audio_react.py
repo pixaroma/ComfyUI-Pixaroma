@@ -241,7 +241,9 @@ class PixaromaAudioReact:
         return base_grid * (1.0 - s)
 
     def _motion_zoom_punch(self, base_grid, onset_t, intensity):
-        raise NotImplementedError("zoom_punch — Task 6")
+        """Fast zoom-in spike on each transient, ease back."""
+        s = onset_t * intensity * 0.30  # bigger amplitude than scale_pulse
+        return base_grid * (1.0 - s)
 
     def _motion_shake(self, base_grid, i, total_frames, onset, intensity, fps):
         raise NotImplementedError("shake — Task 7")
