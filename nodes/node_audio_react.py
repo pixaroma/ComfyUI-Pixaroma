@@ -277,7 +277,29 @@ class PixaromaAudioReact:
         return grid
 
     def _motion_ripple(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        raise NotImplementedError("ripple — Task 8")
+        """Concentric radial sine ripple from center."""
+        device = base_grid.device
+        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
+        xs = torch.linspace(-1, 1, W, device=device).unsqueeze(0).expand(H, W)
+        aspect = W / H
+        r = torch.sqrt((xs * aspect) ** 2 + ys ** 2)
+
+        k = 6.0 * math.pi
+        omega = 2.0 * math.pi * max(motion_speed * 4.0, 0.5)
+        # Spec: amplitude is 0.015·min(W,H) px → in normalized [-1,1] grid
+        # units (full range = 2 units across the smaller dim) → 0.015 * 2 / 2.
+        A = env_t * intensity * 0.015 * 2.0
+
+        dr = A * torch.sin(k * r - omega * t)
+
+        r_safe = r.clamp(min=1e-3)
+        dx = dr * (xs * aspect) / r_safe / aspect
+        dy = dr * ys / r_safe
+
+        grid = base_grid.clone()
+        grid[0, ..., 0] = grid[0, ..., 0] + dx
+        grid[0, ..., 1] = grid[0, ..., 1] + dy
+        return grid
 
     def _motion_slit_scan(self, base_grid, t, env_t, intensity, motion_speed, H, W):
         raise NotImplementedError("slit_scan — Task 9")
