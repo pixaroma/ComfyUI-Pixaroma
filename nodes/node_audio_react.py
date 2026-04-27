@@ -44,7 +44,10 @@ _MOTION_MODES = [
     "scale_pulse",
     "zoom_punch",
     "shake",
+    "drift",
+    "rotate_pulse",
     "ripple",
+    "swirl",
     "slit_scan",
     "kaleidoscope",
 ]
@@ -111,7 +114,10 @@ class PixaromaAudioReact:
                         "scale_pulse = uniform breathing zoom on audio amplitude (default — universal, looks good on any image).\n"
                         "zoom_punch = fast zoom-in spike on each transient, slow ease back. Drum-hit / drop aesthetic.\n"
                         "shake = translation jitter on transients, no rotation. Aggressive, hip-hop / rock.\n"
+                        "drift = slow Ken Burns circular pan; audio amplifies the drift amount. Subtle, cinematic — best on portraits / landscapes.\n"
+                        "rotate_pulse = image rocks CW↔CCW; audio amplifies the rocking angle (max ±15°). Hypnotic, music-box.\n"
                         "ripple = concentric ripples expand from center on each beat. Electronic / ambient.\n"
+                        "swirl = polar twist; image looks pulled into a vortex at center, audio drives the twist strength. Trippy / psychedelic.\n"
                         "slit_scan = rows time-displaced by audio envelope. Distinctive, modern, experimental.\n"
                         "kaleidoscope = radial 6-segment mirror; segment rotation reactive to audio. Club / abstract."
                     )}),
@@ -127,7 +133,7 @@ class PixaromaAudioReact:
                     "tooltip": "Ramp motion to zero across the first and last 0.5s of the clip so playback loops with no visible jump. ON by default — typical use case (audio-reactive music videos / social loops) benefits, the 0.5s fade is invisible on clips longer than ~5s. Turn OFF for one-shot renders that won't loop, or for very short clips where you want full motion at the boundaries. Automatically skipped when the clip is shorter than 4 frames."}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1,
                     "tooltip": "Output frames per second."}),
-                "glitch_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                "glitch_strength": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.05,
                     "tooltip": "RGB channels split apart on transients (chromatic-aberration tear), with occasional 5%-of-rows scanline swap on big spikes. Resolution-relative — same look at 720p as 4K. 0 = off (skipped entirely for performance). 0.3 = subtle. 0.6 = vintage VHS / cyberpunk. 1.0 = aggressive."}),
                 "bloom_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
                     "tooltip": "Gaussian-blurred glow screen-blended back over the frame, intensity tracks audio envelope. Highlights bloom outward on each beat. 0 = off (skipped — bloom is the most expensive overlay; leaving it at 0 saves ~20% per-frame). 0.4 = dreamy. 0.7 = strong neon glow."}),
@@ -281,6 +287,55 @@ class PixaromaAudioReact:
         grid = base_grid.clone()
         grid[..., 0] = grid[..., 0] - dx
         grid[..., 1] = grid[..., 1] - dy
+        return grid
+
+    def _motion_drift(self, base_grid, t, env_t, intensity, motion_speed):
+        """Slow Ken Burns circular pan — sway × bob with audio amplitude.
+        env_t=0 → no drift, so loop_safe collapses to identity at boundaries."""
+        sway = math.sin(2.0 * math.pi * motion_speed * t)
+        bob = math.cos(2.0 * math.pi * motion_speed * t)
+        amp = env_t * intensity * 0.04  # ~4% of half-frame at intensity=1
+        dx = sway * amp
+        dy = bob * amp
+        grid = base_grid.clone()
+        grid[..., 0] = grid[..., 0] - dx
+        grid[..., 1] = grid[..., 1] - dy
+        return grid
+
+    def _motion_rotate_pulse(self, base_grid, t, env_t, intensity, motion_speed, H, W):
+        """Image rocks CW↔CCW. sway×env drives angle, max ±15° at full
+        intensity+envelope. Aspect-corrected so non-square frames still
+        rotate visually circularly."""
+        aspect = W / H
+        sway = math.sin(2.0 * math.pi * motion_speed * t)
+        angle = sway * env_t * intensity * (math.pi / 12.0)  # max ±15°
+        c = math.cos(angle)
+        s = math.sin(angle)
+        xs = base_grid[0, ..., 0] * aspect
+        ys = base_grid[0, ..., 1]
+        new_x = (xs * c - ys * s) / aspect
+        new_y = xs * s + ys * c
+        grid = base_grid.clone()
+        grid[0, ..., 0] = new_x
+        grid[0, ..., 1] = new_y
+        return grid
+
+    def _motion_swirl(self, base_grid, env_t, intensity, H, W):
+        """Polar twist: rotation amount = (1-r)·intensity·env so center
+        twists hard and edges (r >= 1) don't twist at all. Vortex /
+        whirlpool look. env_t=0 → identity → loop_safe-friendly."""
+        aspect = W / H
+        xs = base_grid[0, ..., 0] * aspect
+        ys = base_grid[0, ..., 1]
+        r = torch.sqrt(xs ** 2 + ys ** 2)
+        theta = torch.atan2(ys, xs)
+        twist = env_t * intensity * (math.pi / 2.0) * (1.0 - r).clamp(min=0.0)
+        new_theta = theta + twist
+        new_x = r * torch.cos(new_theta) / aspect
+        new_y = r * torch.sin(new_theta)
+        grid = base_grid.clone()
+        grid[0, ..., 0] = new_x
+        grid[0, ..., 1] = new_y
         return grid
 
     def _motion_ripple(self, base_grid, t, env_t, intensity, motion_speed, H, W):
@@ -537,8 +592,14 @@ class PixaromaAudioReact:
                 grid = self._motion_zoom_punch(base_grid, onset_t, intensity)
             elif motion_mode == "shake":
                 grid = self._motion_shake(base_grid, i, total_frames, onset, intensity, fps)
+            elif motion_mode == "drift":
+                grid = self._motion_drift(base_grid, t_vec[i].item(), env_t, intensity, motion_speed)
+            elif motion_mode == "rotate_pulse":
+                grid = self._motion_rotate_pulse(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
             elif motion_mode == "ripple":
                 grid = self._motion_ripple(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
+            elif motion_mode == "swirl":
+                grid = self._motion_swirl(base_grid, env_t, intensity, H, W)
             elif motion_mode == "slit_scan":
                 grid = self._motion_slit_scan(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
             elif motion_mode == "kaleidoscope":
