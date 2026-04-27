@@ -6,6 +6,8 @@ from .nodes.node_3d import NODE_CLASS_MAPPINGS as _MAPS_3D
 from .nodes.node_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_3D
 from .nodes.node_audio_depth import NODE_CLASS_MAPPINGS as _MAPS_AUDIO_DEPTH
 from .nodes.node_audio_depth import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_AUDIO_DEPTH
+from .nodes.node_audio_react import NODE_CLASS_MAPPINGS as _MAPS_AUDIO_REACT
+from .nodes.node_audio_react import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_AUDIO_REACT
 from .nodes.node_depth_map import NODE_CLASS_MAPPINGS as _MAPS_DEPTH_MAP
 from .nodes.node_depth_map import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_DEPTH_MAP
 from .nodes.node_save_mp4 import NODE_CLASS_MAPPINGS as _MAPS_SAVE_MP4
@@ -40,6 +42,7 @@ else:
 NODE_CLASS_MAPPINGS = {
     **_MAPS_3D,
     **_MAPS_AUDIO_DEPTH,
+    **_MAPS_AUDIO_REACT,
     **_MAPS_DEPTH_MAP,
     **_MAPS_COMPOSITION,
     **_MAPS_PAINT,
@@ -59,6 +62,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMPOSITION,
     **_NAMES_3D,
     **_NAMES_AUDIO_DEPTH,
+    **_NAMES_AUDIO_REACT,
     **_NAMES_DEPTH_MAP,
     **_NAMES_COMPARE,
     **_NAMES_CROP,
