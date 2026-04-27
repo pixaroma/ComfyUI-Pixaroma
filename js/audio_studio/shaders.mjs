@@ -208,9 +208,91 @@ uniform float u_bloom_strength;
 uniform float u_vignette_strength;
 uniform float u_hue_shift_strength;
 
+float hash12(vec2 p) {
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+vec3 hueRotate(vec3 c, float angleRad) {
+    float co = cos(angleRad), si = sin(angleRad);
+    mat3 m = mat3(
+        0.299 + 0.701*co + 0.168*si,  0.299 - 0.299*co - 0.328*si,  0.299 - 0.299*co + 1.250*si,
+        0.587 - 0.587*co + 0.330*si,  0.587 + 0.413*co + 0.035*si,  0.587 - 0.587*co - 1.050*si,
+        0.114 - 0.114*co - 0.497*si,  0.114 - 0.114*co + 0.292*si,  0.114 + 0.886*co - 0.203*si
+    );
+    // GLSL mat3 is column-major; m * c expands the same way as Python frame @ m.T
+    return clamp(m * c, 0.0, 1.0);
+}
+
 void main() {
-    // Pass-through stub. Real overlays land in Task E10.
-    fragColor = texture(u_intermediate, v_uv);
+    float env_t = env_at(u_frame_index);
+    float onset_t = onset_at(u_frame_index);
+
+    // ----- GLITCH (math doc §7.1) -----
+    vec2 uvR = v_uv, uvG = v_uv, uvB = v_uv;
+    if (u_glitch_strength > 0.0 && onset_t > 0.001) {
+        float maxPx = max(1.0, onset_t * u_glitch_strength * 0.012 * min(u_resolution.x, u_resolution.y));
+        float seed = floor(onset_t * 1e6);
+        float sR = (hash12(vec2(seed, 1.0)) > 0.5 ? 1.0 : -1.0);
+        float sG = (hash12(vec2(seed, 2.0)) > 0.5 ? 1.0 : -1.0);
+        float sB = (hash12(vec2(seed, 3.0)) > 0.5 ? 1.0 : -1.0);
+        float dx = maxPx / u_resolution.x;
+        uvR.x += sR * dx;
+        uvG.x += sG * dx;
+        uvB.x += sB * dx;
+        // Scanline tear when onset_t * strength > 0.7
+        if (onset_t * u_glitch_strength > 0.7) {
+            float row = floor(v_uv.y * u_resolution.y);
+            // Random 5% of rows snap to neighbor — simulates tear
+            if (hash12(vec2(seed, row)) < 0.05) {
+                float dy = 1.0 / u_resolution.y;
+                uvR.y += dy; uvG.y += dy; uvB.y += dy;
+            }
+        }
+    }
+    vec4 base = vec4(
+        texture(u_intermediate, clamp(uvR, 0.0, 1.0)).r,
+        texture(u_intermediate, clamp(uvG, 0.0, 1.0)).g,
+        texture(u_intermediate, clamp(uvB, 0.0, 1.0)).b,
+        1.0
+    );
+    vec3 col = base.rgb;
+
+    // ----- BLOOM (math doc §7.2; approximate per §9) -----
+    if (u_bloom_strength > 0.0 && env_t > 0.001) {
+        float weight = env_t * u_bloom_strength * 0.6;
+        // 9-tap radial blur as cheap stand-in for separable Gaussian
+        vec3 acc = vec3(0.0);
+        const float OFF = 0.004;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                vec2 o = vec2(float(dx), float(dy)) * OFF;
+                acc += texture(u_intermediate, clamp(v_uv + o, 0.0, 1.0)).rgb;
+            }
+        }
+        acc /= 9.0;
+        vec3 bloomLayer = clamp(acc * weight, 0.0, 1.0);
+        col = 1.0 - (1.0 - col) * (1.0 - bloomLayer);
+        col = clamp(col, 0.0, 1.0);
+    }
+
+    // ----- VIGNETTE (math doc §7.3) -----
+    if (u_vignette_strength > 0.0 && env_t > 0.001) {
+        vec2 p = (v_uv - 0.5) * 2.0;
+        float r = clamp(length(p), 0.0, 1.4);
+        float v = clamp(r / 1.4142135, 0.0, 1.0);
+        float mask = 1.0 - v * env_t * u_vignette_strength * 0.5;
+        col *= mask;
+    }
+
+    // ----- HUE_SHIFT (math doc §7.4) -----
+    if (u_hue_shift_strength > 0.0 && env_t > 0.001) {
+        float angle = env_t * u_hue_shift_strength * (30.0 * 3.14159265359 / 180.0);
+        col = hueRotate(col, angle);
+    }
+
+    fragColor = vec4(col, 1.0);
 }
 `;
 
