@@ -145,6 +145,21 @@ app.registerExtension({
 
       return ret;
     };
+
+    // Once a video is loaded its aspect drives the node height: any user
+    // drag that would leave letterbox bars gets snapped back to the exact
+    // height that fills the widget. Width drag still works freely; height
+    // drag is effectively absorbed (the recomputed height wins).
+    const onResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      onResize?.apply(this, arguments);
+      const aspect = this._pixaromaAspect;
+      if (!aspect) return;
+      const desired = this.computeSize();
+      if (desired && desired[1]) {
+        size[1] = Math.max(MIN_H, desired[1]);
+      }
+    };
   },
 });
 
