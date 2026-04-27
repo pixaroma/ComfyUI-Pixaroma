@@ -131,48 +131,29 @@ class PixaromaAudioStudio:
         cfg = _migrate_cfg(cfg)
         params = params_from_dict(cfg)
 
-        # Source resolution.
-        image_source = cfg.get("image_source", "upstream")
-        if image_source == "inline":
-            image_path = cfg.get("image_path")
-            if not image_path:
+        # Source resolution: upstream wiring ALWAYS wins when present;
+        # inline path is the fallback when nothing is wired. cfg.image_source
+        # / cfg.audio_source are preserved for backwards compatibility but
+        # do NOT override the wire — matches user mental model that wiring
+        # an input means "use this". To use inline only, disconnect the
+        # upstream wire.
+        if image is None:
+            if cfg.get("image_path"):
+                image = _load_inline_image(cfg["image_path"])
+            else:
                 raise ValueError(
-                    "[Pixaroma] Audio Studio -- image_source is 'inline' but "
-                    "image_path is empty. Open the editor and re-pick."
+                    "[Pixaroma] Audio Studio -- no image source. Wire an "
+                    "IMAGE input or open the editor and load an inline image."
                 )
-            image = _load_inline_image(image_path)
-        elif image_source == "upstream":
-            if image is None:
-                raise ValueError(
-                    "[Pixaroma] Audio Studio -- image_source is 'upstream' but "
-                    "no image is wired. Wire an IMAGE input or open the editor "
-                    "and switch to 'Inline'."
-                )
-        else:
-            raise ValueError(
-                f"[Pixaroma] Audio Studio -- unknown image_source {image_source!r}."
-            )
 
-        audio_source = cfg.get("audio_source", "upstream")
-        if audio_source == "inline":
-            audio_path = cfg.get("audio_path")
-            if not audio_path:
+        if audio is None:
+            if cfg.get("audio_path"):
+                audio = _load_inline_audio(cfg["audio_path"])
+            else:
                 raise ValueError(
-                    "[Pixaroma] Audio Studio -- audio_source is 'inline' but "
-                    "audio_path is empty. Open the editor and re-pick."
+                    "[Pixaroma] Audio Studio -- no audio source. Wire an "
+                    "AUDIO input or open the editor and load an inline audio."
                 )
-            audio = _load_inline_audio(audio_path)
-        elif audio_source == "upstream":
-            if audio is None:
-                raise ValueError(
-                    "[Pixaroma] Audio Studio -- audio_source is 'upstream' but "
-                    "no audio is wired. Wire an AUDIO input or open the editor "
-                    "and switch to 'Inline'."
-                )
-        else:
-            raise ValueError(
-                f"[Pixaroma] Audio Studio -- unknown audio_source {audio_source!r}."
-            )
 
         for diag in validate_params(params):
             print(f"[Pixaroma] Audio Studio -- {diag}")

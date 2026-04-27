@@ -601,31 +601,29 @@ AudioStudioEditor.prototype._loadImageFromUrl = function (url) {
 };
 
 AudioStudioEditor.prototype._resolveImageSource = async function () {
-  if (this.cfg.image_source === "upstream") {
-    const url = getUpstreamImageUrl(app.graph, this.node);
-    if (!url) {
-      this._showCanvasMessage(
-        "Upstream image not ready — wire a Load Image, run the workflow once, or click the Image pill to load inline.",
-      );
-      this._updatePill(this.imgPill, "Image: Upstream", false);
-      return;
-    }
+  // Upstream wins when wired — matches user mental model (and Python side).
+  // Inline is the fallback when nothing is wired. cfg.image_source is
+  // preserved for backwards compat but doesn't override the wire.
+  const upstreamUrl = getUpstreamImageUrl(app.graph, this.node);
+  if (upstreamUrl) {
     try {
-      await this._loadImageFromUrl(url);
+      await this._loadImageFromUrl(upstreamUrl);
       this._updatePill(this.imgPill, "Image: Upstream", true);
-    } catch {}
-  } else if (this.cfg.image_source === "inline") {
-    if (!this.cfg.image_path) {
-      this._showCanvasMessage("Click the Image pill to load an image.");
-      this._updatePill(this.imgPill, "Image: Inline (load…)", false);
       return;
-    }
+    } catch {}
+  }
+  if (this.cfg.image_path) {
     const url = getInlineSourceUrl(this.cfg.image_path);
     try {
       await this._loadImageFromUrl(url);
       this._updatePill(this.imgPill, `Image: Inline (${this.cfg.image_path.split("/").pop()})`, false);
+      return;
     } catch {}
   }
+  this._showCanvasMessage(
+    "No image — wire an IMAGE input or click the Image pill to load inline.",
+  );
+  this._updatePill(this.imgPill, "Image: not loaded", false);
 };
 
 AudioStudioEditor.prototype._pickInlineImage = function () {
@@ -653,78 +651,60 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
 };
 
 AudioStudioEditor.prototype._onImagePillClick = function () {
-  // Toggle: upstream ↔ inline. If switching to inline and no image_path yet,
-  // open the picker. If switching to upstream and nothing wired, fall back
-  // to picker so click is never a dead-end.
-  if (this.cfg.image_source === "upstream") {
-    this._pickInlineImage();
-  } else {
-    const upstreamWired = !!getUpstreamImageUrl(app.graph, this.node);
-    if (upstreamWired) {
-      this.cfg.image_source = "upstream";
-      this._snapForUndo(true);
-      this._refreshSaveBtnState();
-      this._resolveImageSource();
-    } else {
-      this._pickInlineImage();
-    }
-  }
+  // Pill click sets / replaces the inline fallback image. To use upstream,
+  // wire an IMAGE input — wired upstream always wins. The inline image is
+  // the fallback used when nothing is wired.
+  this._pickInlineImage();
 };
 
 // --- Audio source resolution (H2) ---
 
 AudioStudioEditor.prototype._resolveAudioSource = async function () {
-  if (this.cfg.audio_source === "upstream") {
-    const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
-    if (audioInputIdx < 0) {
-      this._updatePill(this.audioPill, "Audio: Upstream", false);
-      return;
-    }
+  // Upstream wins when wired (same model as image — see _resolveImageSource).
+  // Try to fetch upstream first; fall back to inline path; else "not loaded".
+  const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
+  let upstreamUrl = null;
+  if (audioInputIdx >= 0) {
     const inp = this.node.inputs[audioInputIdx];
-    if (inp.link == null) {
-      this._updatePill(this.audioPill, "Audio: Upstream", false);
-      return;
-    }
-    // graph.links may be Map or plain object (CLAUDE.md Vue point #3)
-    let l = app.graph.links?.[inp.link];
-    if (!l && typeof app.graph.links?.get === "function") l = app.graph.links.get(inp.link);
-    if (!l) { this._updatePill(this.audioPill, "Audio: Upstream", false); return; }
-    const src = app.graph.getNodeById(l.origin_id);
-    let url = null;
-    if (src) {
-      const w = src.widgets?.find((w) => w.name === "audio" || w.name === "audio_file");
-      if (w && w.value) {
-        const fn = String(w.value).split(/[\\/]/).pop();
-        url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=&t=${Date.now()}`;
+    if (inp.link != null) {
+      // graph.links may be Map or plain object (CLAUDE.md Vue point #3)
+      let l = app.graph.links?.[inp.link];
+      if (!l && typeof app.graph.links?.get === "function") l = app.graph.links.get(inp.link);
+      if (l) {
+        const src = app.graph.getNodeById(l.origin_id);
+        if (src) {
+          const w = src.widgets?.find((w) => w.name === "audio" || w.name === "audio_file");
+          if (w && w.value) {
+            const fn = String(w.value).split(/[\\/]/).pop();
+            upstreamUrl = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=&t=${Date.now()}`;
+          }
+        }
       }
     }
-    if (!url) {
-      this._updatePill(this.audioPill, "Audio: Upstream (run workflow once)", false);
-      return;
-    }
+  }
+  if (upstreamUrl) {
     try {
-      const r = await fetch(url);
+      const r = await fetch(upstreamUrl);
       const blob = await r.blob();
       await this.loadAudioBlob(blob);
       this._updatePill(this.audioPill, "Audio: Upstream", true);
-    } catch (e) {
-      console.warn("[Pixaroma] Audio Studio upstream audio fetch failed:", e);
-      this._updatePill(this.audioPill, "Audio: Upstream (fetch failed)", false);
-    }
-  } else if (this.cfg.audio_source === "inline") {
-    if (!this.cfg.audio_path) {
-      this._updatePill(this.audioPill, "Audio: Inline (load…)", false);
       return;
+    } catch (e) {
+      console.warn("[Pixaroma] Audio Studio upstream audio fetch failed, falling back to inline if available:", e);
     }
+  }
+  if (this.cfg.audio_path) {
     try {
       const r = await fetch(getInlineSourceUrl(this.cfg.audio_path));
       const blob = await r.blob();
       await this.loadAudioBlob(blob);
       this._updatePill(this.audioPill, `Audio: Inline (${this.cfg.audio_path.split("/").pop()})`, false);
+      return;
     } catch (e) {
       console.warn("[Pixaroma] Audio Studio inline audio fetch failed:", e);
     }
   }
+  this._updatePill(this.audioPill, "Audio: not loaded", false);
 };
 
 /**
@@ -772,19 +752,9 @@ AudioStudioEditor.prototype._pickInlineAudio = function () {
 };
 
 AudioStudioEditor.prototype._onAudioPillClick = function () {
-  if (this.cfg.audio_source === "upstream") {
-    this._pickInlineAudio();
-  } else {
-    const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
-    if (audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null) {
-      this.cfg.audio_source = "upstream";
-      this._snapForUndo(true);
-      this._refreshSaveBtnState();
-      this._resolveAudioSource();
-    } else {
-      this._pickInlineAudio();
-    }
-  }
+  // Pill click sets / replaces the inline fallback audio. To use upstream,
+  // wire an AUDIO input — wired upstream always wins.
+  this._pickInlineAudio();
 };
 
 /**
