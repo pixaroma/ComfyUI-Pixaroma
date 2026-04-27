@@ -413,7 +413,20 @@ class PixaromaAudioReact:
         return frame * mask.unsqueeze(-1)
 
     def _overlay_hue_shift(self, frame, env_t, strength):
-        return frame  # Task 14
+        """Rotate hue by env_t · strength · 30° using the standard
+        rotation-around-grayscale-axis matrix."""
+        if env_t <= 0.001 or strength <= 0:
+            return frame
+        angle = env_t * strength * (30.0 * math.pi / 180.0)
+        c = math.cos(angle)
+        s = math.sin(angle)
+        m = torch.tensor([
+            [0.299 + 0.701 * c + 0.168 * s, 0.587 - 0.587 * c + 0.330 * s, 0.114 - 0.114 * c - 0.497 * s],
+            [0.299 - 0.299 * c - 0.328 * s, 0.587 + 0.413 * c + 0.035 * s, 0.114 - 0.114 * c + 0.292 * s],
+            [0.299 - 0.300 * c + 1.250 * s, 0.587 - 0.588 * c - 1.050 * s, 0.114 + 0.886 * c - 0.203 * s],
+        ], device=frame.device, dtype=frame.dtype)
+        out = frame @ m.T
+        return out.clamp(0, 1)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
