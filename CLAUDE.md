@@ -306,6 +306,8 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 6. **Overlay short-circuit at strength == 0 is mandatory for performance** — every overlay's first line is `if env_t <= 0.001 or strength <= 0: return frame`. Without the early-return, bloom (which does a Gaussian blur per frame) costs ~30% even at strength=0. The `generate()` loop also checks `if glitch_strength > 0.0:` etc. before calling. Both layers of guard are intentional.
 
+7. **No `edge_headroom` widget — deliberately omitted, do not add it back** — `audio_depth` needs headroom because depth-driven parallax can displace sample coords well beyond `[-1, 1]` (deep depth × strong intensity). `audio_react`'s motion modes don't have that problem: `scale_pulse` and `zoom_punch` pull inward (zoom-in only, range stays inside `[-1, 1]`), `kaleidoscope` does explicit `grid.clamp(-1, 1)`, and `shake` / `ripple` / `slit_scan` excurse by at most ~6% — `padding_mode="border"` handles those invisibly. Headroom would just render extra pixels that get cropped, wasting compute. `_process_aspect()` is still called (defaults `headroom=1.0`) so resize logic stays shared with `audio_depth`, but no crop pass after the per-frame loop.
+
 ### Note Pixaroma Patterns (do not regress)
 
 These patterns were hard-won during Note Pixaroma development. Regressing any of them reintroduces specific bugs, some silent.

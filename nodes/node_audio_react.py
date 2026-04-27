@@ -127,8 +127,6 @@ class PixaromaAudioReact:
                     "tooltip": "Ramp motion to zero across the first and last 0.5s of the clip so playback loops with no visible jump. ON by default — typical use case (audio-reactive music videos / social loops) benefits, the 0.5s fade is invisible on clips longer than ~5s. Turn OFF for one-shot renders that won't loop, or for very short clips where you want full motion at the boundaries. Automatically skipped when the clip is shorter than 4 frames."}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1,
                     "tooltip": "Output frames per second."}),
-                "edge_headroom": ("FLOAT", {"default": 1.05, "min": 1.0, "max": 1.3, "step": 0.01,
-                    "tooltip": "Render slightly larger then center-crop, giving motion a safety zone. 1.0 = none. 1.05 = default (kills edge-clipping). 1.2 = wide margin for strong motion."}),
                 "glitch_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
                     "tooltip": "RGB channels split apart on transients (chromatic-aberration tear), with occasional 5%-of-rows scanline swap on big spikes. Resolution-relative — same look at 720p as 4K. 0 = off (skipped entirely for performance). 0.3 = subtle. 0.6 = vintage VHS / cyberpunk. 1.0 = aggressive."}),
                 "bloom_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
@@ -445,7 +443,7 @@ class PixaromaAudioReact:
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
-                 loop_safe, fps, edge_headroom,
+                 loop_safe, fps,
                  glitch_strength, bloom_strength, vignette_strength, hue_shift_strength):
         # Input validation — clear actionable messages over crashes.
         if image is None:
@@ -466,15 +464,16 @@ class PixaromaAudioReact:
 
         device = comfy.model_management.get_torch_device()
 
+        # No edge_headroom in this node — see CLAUDE.md "Audio React Patterns".
+        # Every motion mode here either pulls inward (scale_pulse, zoom_punch),
+        # clamps explicitly (kaleidoscope), or excursions are <6% of frame
+        # (shake / ripple / slit_scan) — padding_mode="border" handles those
+        # invisibly. So we render at the exact target size, no crop pass.
         image, out_w, out_h = self._process_aspect(
-            image, aspect_ratio, custom_width, custom_height, edge_headroom,
+            image, aspect_ratio, custom_width, custom_height,
         )
         img_tensor = image[0].permute(2, 0, 1).unsqueeze(0).to(device)
         _, _, H, W = img_tensor.shape
-
-        crop_h_off = max(0, (H - out_h) // 2)
-        crop_w_off = max(0, (W - out_w) // 2)
-        needs_crop = (H != out_h) or (W != out_w)
 
         audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
         total_frames = int(audio_duration * fps)
@@ -563,8 +562,6 @@ class PixaromaAudioReact:
             if hue_shift_strength > 0.0:
                 frame = self._overlay_hue_shift(frame, env_t, hue_shift_strength)
 
-            if needs_crop:
-                frame = frame[crop_h_off:crop_h_off + out_h, crop_w_off:crop_w_off + out_w, :]
             frames.append(frame.cpu())
             pbar.update(1)
 
