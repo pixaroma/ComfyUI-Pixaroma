@@ -57,7 +57,7 @@ class PixaromaAudioReact:
                 "audio_band": (list(AUDIO_BANDS_HZ.keys()), {"default": "full",
                     "tooltip": "Frequency band that drives the motion envelope. full = whole spectrum (default). bass = drum-driven (20–250 Hz). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz)."}),
                 "motion_speed": ("FLOAT", {"default": 0.2, "min": 0.05, "max": 1.0, "step": 0.05,
-                    "tooltip": "Time advance for modes whose motion has its own oscillation independent of the audio (ripple, slit_scan, kaleidoscope). Hz / cycles per second. 0.2 = one full cycle every 5s (default, slow cinematic). 0.5 = 2s. 1.0 = fast pulse. Ignored by scale_pulse / zoom_punch / shake (those are 100% audio-driven)."}),
+                    "tooltip": "Time advance for modes whose motion has its own oscillation independent of the audio (drift, rotate_pulse, ripple, slit_scan). Hz / cycles per second. 0.2 = one full cycle every 5s (default, slow cinematic). 0.5 = 2s. 1.0 = fast pulse. Ignored by scale_pulse / zoom_punch / shake / swirl (those are 100% audio-driven)."}),
                 "smoothing": ("INT", {"default": 5, "min": 1, "max": 15, "step": 1,
                     "tooltip": "Audio envelope moving-average window in frames. 1 = punchy. 5 = balanced default. 8–15 = fluid / cinematic."}),
                 "loop_safe": ("BOOLEAN", {"default": True,

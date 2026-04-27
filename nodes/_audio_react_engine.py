@@ -624,8 +624,8 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
     total_frames = int(audio_duration * params.fps)
     if total_frames <= 0:
         raise ValueError(
-            f"Audio is too short to produce any frames at {params.fps} fps "
-            f"(audio_duration={audio_duration:.3f}s)."
+            f"[Pixaroma] Audio engine — audio is too short to produce any "
+            f"frames at {params.fps} fps (audio_duration={audio_duration:.3f}s)."
         )
 
     # Caches that depend on total_frames must be cleared per render.
