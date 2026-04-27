@@ -352,7 +352,32 @@ class PixaromaAudioReact:
         return grid
 
     def _overlay_glitch(self, frame, onset_t, strength, H, W):
-        return frame  # Task 11
+        """RGB shift on transients + scanline swap on big spikes."""
+        if onset_t <= 0.001 or strength <= 0:
+            return frame
+        max_px = max(1, int(onset_t * strength * 0.012 * min(H, W)))
+        g = torch.Generator().manual_seed(int(onset_t * 1e6) & 0xFFFF)
+        signs = torch.randint(0, 2, (3,), generator=g) * 2 - 1
+        offsets = signs * max_px
+        out = frame.clone()
+        for c in range(3):
+            ox = offsets[c].item()
+            if ox > 0:
+                out[:, ox:, c] = frame[:, :W - ox, c]
+                out[:, :ox, c] = frame[:, :ox, c]
+            elif ox < 0:
+                ox = -ox
+                out[:, :W - ox, c] = frame[:, ox:, c]
+                out[:, W - ox:, c] = frame[:, W - ox:, c]
+
+        if onset_t * strength > 0.7:
+            n_swap = max(1, H // 20)
+            row_idx = torch.randint(0, H - 1, (n_swap,), generator=g)
+            for ri in row_idx.tolist():
+                tmp = out[ri].clone()
+                out[ri] = out[ri + 1]
+                out[ri + 1] = tmp
+        return out
 
     def _overlay_bloom(self, frame, env_t, strength):
         return frame  # Task 12
