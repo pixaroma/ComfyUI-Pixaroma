@@ -320,7 +320,36 @@ class PixaromaAudioReact:
         return grid
 
     def _motion_kaleidoscope(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        raise NotImplementedError("kaleidoscope — Task 10")
+        """6-segment radial mirror, segment rotation driven by audio + slow
+        time advance. Renders best on roughly-square aspects."""
+        device = base_grid.device
+        segments = 6
+        seg_angle = 2.0 * math.pi / segments  # π/3
+
+        ys = base_grid[0, ..., 1]
+        xs = base_grid[0, ..., 0]
+        aspect = W / H
+
+        x_corr = xs * aspect
+        r = torch.sqrt(x_corr ** 2 + ys ** 2)
+        theta = torch.atan2(ys, x_corr)
+
+        rot = motion_speed * t * 0.5 + env_t * intensity * seg_angle * 0.5
+        theta_shifted = theta - rot
+
+        theta_mod = torch.remainder(theta_shifted, 2.0 * seg_angle)
+        mask = theta_mod > seg_angle
+        theta_mirror = torch.where(mask, 2.0 * seg_angle - theta_mod, theta_mod)
+        theta_final = theta_mirror
+
+        x_new = r * torch.cos(theta_final) / aspect
+        y_new = r * torch.sin(theta_final)
+
+        grid = base_grid.clone()
+        grid[0, ..., 0] = x_new
+        grid[0, ..., 1] = y_new
+        grid = grid.clamp(-1.0, 1.0)
+        return grid
 
     def _overlay_glitch(self, frame, onset_t, strength, H, W):
         return frame  # Task 11
