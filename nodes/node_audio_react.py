@@ -246,7 +246,35 @@ class PixaromaAudioReact:
         return base_grid * (1.0 - s)
 
     def _motion_shake(self, base_grid, i, total_frames, onset, intensity, fps):
-        raise NotImplementedError("shake — Task 7")
+        """Translation jitter. Random direction per onset, exponential settle."""
+        # Lazily compute (and cache) the dx/dy track on the instance once per
+        # call to generate(). i==0 builds it; later calls reuse.
+        if (not hasattr(self, "_shake_dx_cache")
+                or self._shake_dx_cache.shape[0] != total_frames):
+            g = torch.Generator().manual_seed(0)
+            dx_raw = torch.randn(total_frames, generator=g) * onset.cpu()
+            dy_raw = torch.randn(total_frames, generator=g) * onset.cpu()
+            dx = torch.zeros_like(dx_raw)
+            dy = torch.zeros_like(dy_raw)
+            decay = 0.7
+            for k in range(total_frames):
+                if k == 0:
+                    dx[k] = dx_raw[k]
+                    dy[k] = dy_raw[k]
+                else:
+                    dx[k] = dx[k-1] * decay + dx_raw[k] * (1.0 - decay)
+                    dy[k] = dy[k-1] * decay + dy_raw[k] * (1.0 - decay)
+            self._shake_dx_cache = dx.to(base_grid.device)
+            self._shake_dy_cache = dy.to(base_grid.device)
+
+        amp = intensity * 0.04  # 4% of half-frame at intensity=1, raw=±1
+        dx = self._shake_dx_cache[i].item() * amp
+        dy = self._shake_dy_cache[i].item() * amp
+
+        grid = base_grid.clone()
+        grid[..., 0] = grid[..., 0] - dx
+        grid[..., 1] = grid[..., 1] - dy
+        return grid
 
     def _motion_ripple(self, base_grid, t, env_t, intensity, motion_speed, H, W):
         raise NotImplementedError("ripple — Task 8")
