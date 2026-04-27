@@ -5,10 +5,32 @@ import { api } from "/scripts/api.js";
 // `{"ui": {"images": [...], "pixaroma_videos": [...]}}` after each encode;
 // we listen for the `executed` event, find our entry, and swap the
 // <video> element's src.
+//
+// Aspect-locking pattern (mirrors VHS_VideoCombine — the only thing the
+// Vue frontend honors):
+//   - The <video> has `width: 100%` and NO height / NO object-fit. Its
+//     intrinsic ratio drives its rendered height, so the wrap div ends up
+//     exactly the video's bounding box — no letterbox space ever exists.
+//   - The widget's `computeSize` callback writes `this.computedHeight`
+//     synchronously. Vue reads `widget.computedHeight` directly during
+//     layout (it does NOT call computeSize again), so this is the only
+//     value that actually affects the rendered widget area height.
+//   - `fitHeight(node)` calls `node.setSize` once on metadata-load and
+//     once per user resize, which forces LiteGraph to refresh
+//     computedHeight from computeSize and Vue to re-layout.
+//   - No ResizeObserver: that produced a feedback loop with the user's
+//     drag and made the player flicker.
 
 const MIN_W = 320;
-const MIN_H = 360;
 const PLACEHOLDER_H = 180;
+const WIDGET_PAD = 20;  // approx left+right padding ComfyUI adds around DOM widgets
+
+function fitHeight(node) {
+  if (!node || typeof node.computeSize !== "function") return;
+  const desired = node.computeSize([node.size[0], node.size[1]]);
+  node.setSize([node.size[0], desired[1]]);
+  node.graph?.setDirtyCanvas(true, true);
+}
 
 // Vue can tear down a node's DOM widget and rebuild it (e.g. when the
 // user switches workflow tabs and back). The cached node._pixaromaVideo
@@ -25,13 +47,11 @@ function getLiveVideo(node) {
   if (!vid?.isConnected) return null;
   node._pixaromaVideo = vid;
   node._pixaromaPlaceholder = placeholder;
-  // Re-attach metadata listener so the freshly-found element drives the
-  // aspect-ratio resize on the next loaded video.
   if (!vid._pixaromaMetadataAttached) {
     vid.addEventListener("loadedmetadata", () => {
       if (vid.videoWidth > 0 && vid.videoHeight > 0) {
         node._pixaromaAspect = vid.videoWidth / vid.videoHeight;
-        node._pixaromaEnforceAspect?.();
+        fitHeight(node);
       }
     });
     vid._pixaromaMetadataAttached = true;
@@ -60,33 +80,29 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       const ret = onNodeCreated?.apply(this, arguments);
 
-      // Wrapper that holds the video element + placeholder. The widget's
-      // actual height is driven by computeSize (below) which returns the
-      // exact pixel height needed for the loaded video's aspect ratio at
-      // the current node width — so the player fits with no black bars.
+      // Wrap sizes itself to its child <video>'s intrinsic dimensions —
+      // no fixed height, no background (so there's no surface to
+      // letterbox into).
       const wrap = document.createElement("div");
       wrap.style.cssText = `
         width: 100%;
-        height: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        background: #000;
         border-radius: 4px;
         overflow: hidden;
-        min-height: ${PLACEHOLDER_H}px;
       `;
 
+      // CRITICAL: width-only, no height, no object-fit. Lets the video's
+      // intrinsic aspect drive its rendered height.
       const video = document.createElement("video");
       video.controls = true;
-      video.loop = true;  // auto-loop so the user can preview without re-clicking
+      video.loop = true;
       video.style.cssText = `
         display: none;
         width: 100%;
-        height: 100%;
-        object-fit: contain;
         background: #000;
+        border-radius: 4px;
       `;
       wrap.appendChild(video);
 
@@ -97,83 +113,70 @@ app.registerExtension({
         font-size: 12px;
         padding: 16px;
         text-align: center;
+        width: 100%;
+        min-height: ${PLACEHOLDER_H}px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #1a1a1a;
+        border-radius: 4px;
       `;
       wrap.appendChild(placeholder);
 
       this._pixaromaVideo = video;
       this._pixaromaPlaceholder = placeholder;
-      this._pixaromaAspect = null;  // set when video metadata loads
+      this._pixaromaAspect = null;
 
       const node = this;
-
-      // Snap node height so the widget area is exactly width / aspect.
-      // Called from: loadedmetadata (initial), and ResizeObserver below
-      // (catches user drags + any other Vue-frontend layout change).
-      // rAF-debounced so RO -> setSize -> RO doesn't loop.
-      let aspectRafId = null;
-      const enforceAspect = () => {
-        if (aspectRafId !== null) return;
-        aspectRafId = requestAnimationFrame(() => {
-          aspectRafId = null;
-          const aspect = node._pixaromaAspect;
-          if (!aspect) return;
-          if (typeof node.computeSize !== "function") return;
-          const desired = node.computeSize();
-          if (!desired || !desired[1]) return;
-          const targetH = Math.max(MIN_H, desired[1]);
-          const targetW = Math.max(MIN_W, node.size?.[0] || MIN_W);
-          if (
-            Math.abs((node.size?.[1] || 0) - targetH) > 1 ||
-            Math.abs((node.size?.[0] || 0) - targetW) > 1
-          ) {
-            node.setSize([targetW, targetH]);
-            node.setDirtyCanvas?.(true, true);
-          }
-        });
-      };
-      node._pixaromaEnforceAspect = enforceAspect;
 
       video.addEventListener("loadedmetadata", () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           node._pixaromaAspect = video.videoWidth / video.videoHeight;
-          enforceAspect();
+          fitHeight(node);
         }
       });
       video._pixaromaMetadataAttached = true;
 
-      this.addDOMWidget("pixaroma_video_preview", "video_preview", wrap, {
-        serialize: false,
-        hideOnZoom: false,
-        getMinHeight: () => PLACEHOLDER_H,
-        // Drive the widget's own height from the video aspect ratio so the
-        // player fills it exactly (no letterbox bars).
-        computeSize: function (width) {
-          const aspect = node._pixaromaAspect;
-          if (!aspect || width <= 0) return [width, PLACEHOLDER_H];
-          const h = Math.max(PLACEHOLDER_H, Math.round(width / aspect));
-          return [width, h];
-        },
-      });
+      const widget = this.addDOMWidget(
+        "pixaroma_video_preview",
+        "video_preview",
+        wrap,
+        { serialize: false, hideOnZoom: false }
+      );
 
-      // Watch the wrap for any size change (Vue resize, manual drag, layout
-      // shift) and re-snap the node height. ResizeObserver is the only
-      // mechanism that fires for ALL Vue-frontend resize paths — onResize
-      // hooks miss some of them.
-      try {
-        const ro = new ResizeObserver(enforceAspect);
-        ro.observe(wrap);
-        node._pixaromaResizeObserver = ro;
-      } catch (_) { /* old browser, fall through */ }
-
-      const onRemoved = this.onRemoved;
-      this.onRemoved = function () {
-        try { node._pixaromaResizeObserver?.disconnect(); } catch (_) {}
-        return onRemoved?.apply(this, arguments);
+      // Vue's layout loop reads `widget.computedHeight` directly, NOT the
+      // return value of computeSize. We must SET it here every time the
+      // callback fires, and return [w, h] for legacy LiteGraph paths too.
+      widget.computeSize = function (width) {
+        const aspect = node._pixaromaAspect;
+        if (!aspect) {
+          this.computedHeight = PLACEHOLDER_H;
+          return [width, PLACEHOLDER_H];
+        }
+        const w = Math.max(0, (node.size?.[0] || width) - WIDGET_PAD);
+        const h = Math.max(PLACEHOLDER_H, Math.round(w / aspect));
+        this.computedHeight = h;
+        return [width, h];
       };
 
-      const w = (this.size && this.size[0]) || MIN_W;
-      const h = (this.size && this.size[1]) || MIN_H;
-      this.size = [Math.max(w, MIN_W), Math.max(h, MIN_H)];
+      // After a user drag, re-derive height from the new width so the
+      // node stays aspect-locked. No flicker because this fires only on
+      // commit (not on every animation frame like ResizeObserver did).
+      const origResize = nodeType.prototype.onResize;
+      const onResize = function (size) {
+        if (origResize) origResize.apply(this, arguments);
+        if (this._pixaromaAspect) {
+          const desired = this.computeSize([size[0], size[1]]);
+          size[1] = desired[1];
+        }
+      };
+      // Patch on the instance (not prototype) so subsequent
+      // beforeRegisterNodeDef calls don't double-wrap.
+      this.onResize = onResize;
+
+      if (!this.size || this.size[0] < MIN_W) {
+        this.size = [MIN_W, PLACEHOLDER_H + 100];
+      }
 
       return ret;
     };
@@ -183,15 +186,11 @@ app.registerExtension({
 api.addEventListener("executed", ({ detail }) => {
   const entries = detail?.output?.pixaroma_videos;
   if (!entries || !entries.length) return;
-  // Node id may be string or number depending on Comfy version.
   let node = app.graph.getNodeById(detail.node);
   if (!node && typeof detail.node === "string") {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
   if (!node) return;
-  // Vue may have torn down the original <video> + placeholder; getLiveVideo
-  // re-finds the live elements from the widget and re-attaches the
-  // metadata listener so subsequent runs work correctly.
   const video = getLiveVideo(node);
   if (!video) return;
   const url = buildViewUrl(entries[0]);
