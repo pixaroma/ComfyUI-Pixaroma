@@ -294,7 +294,12 @@ export class AudioStudioEditor {
       // Skip when a discard / native modal is open
       if (document.querySelector(".pxf-confirm-backdrop, .pix-as-confirm-backdrop")) return;
       const t = e.target;
-      const inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+      // The framework installs a hidden <textarea data-pixaroma-trap="1">
+      // for keyboard-shortcut isolation; it grabs focus when the user
+      // clicks on the workspace background. Don't treat it as a real text
+      // field or Space / arrows / Ctrl+Z would all be swallowed.
+      const isTrap = t && t.dataset?.pixaromaTrap === "1";
+      const inField = !isTrap && t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
 
       if (e.key === "Escape") {
         e.preventDefault(); e.stopImmediatePropagation();
