@@ -20,8 +20,10 @@ from ._audio_react_engine import (
     reset_motion_caches,
 )
 
-# Local list — A4 will register MOTION_MODES in the engine; for now keep this
-# list as the source for the dropdown.
+# Duplicates MOTION_MODES.keys() in _audio_react_engine.py — kept as a
+# top-level list because ComfyUI's INPUT_TYPES is evaluated at import
+# time and order matters for the dropdown. A6 will replace this with
+# list(MOTION_MODES.keys()) once import order is resolved.
 _MOTION_MODES = [
     "scale_pulse",
     "zoom_punch",
@@ -273,7 +275,13 @@ class PixaromaAudioReact:
                 fps=fps,
                 onset_arr=onset,
             )
-            grid = MOTION_MODES[motion_mode](ctx)
+            motion_fn = MOTION_MODES.get(motion_mode)
+            if motion_fn is None:
+                raise ValueError(
+                    f"[Pixaroma] Audio React — unhandled motion_mode {motion_mode!r}. "
+                    f"Known: {list(MOTION_MODES.keys())}"
+                )
+            grid = motion_fn(ctx)
 
             warped = F.grid_sample(
                 img_tensor, grid,
