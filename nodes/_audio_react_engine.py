@@ -14,11 +14,15 @@ Design notes:
 """
 from __future__ import annotations
 
+import gc
 import math
 from dataclasses import dataclass, fields
 
 import torch
 import torch.nn.functional as F
+
+import comfy.utils
+import comfy.model_management
 
 
 # ---------------------------------------------------------------------
@@ -585,6 +589,133 @@ OVERLAYS["hue_shift"] = overlay_hue_shift
 # Generate entry point — populated in Task A6.
 # ---------------------------------------------------------------------
 
-def generate_video(image, audio, params: Params) -> torch.Tensor:
-    """Render the full audio-reactive clip. Returns [F, H, W, 3] in [0, 1]."""
-    raise NotImplementedError("Implemented in Task A6")
+def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Tensor:
+    """Render the full audio-reactive clip. Returns [F, H, W, 3] in [0, 1].
+
+    Hard errors (no image, no audio, audio too short) raise ValueError with
+    actionable messages. Soft warnings (unusual params) are surfaced by
+    validate_params(); caller should log them before calling generate_video.
+    """
+    if image is None:
+        raise ValueError(
+            "[Pixaroma] Audio engine — no image. Wire an IMAGE input or "
+            "use Audio Studio's inline-image picker."
+        )
+    if (audio is None or not isinstance(audio, dict)
+            or "waveform" not in audio or "sample_rate" not in audio
+            or audio["waveform"] is None
+            or not isinstance(audio["sample_rate"], (int, float))
+            or audio["sample_rate"] <= 0):
+        raise ValueError(
+            "[Pixaroma] Audio engine — no valid audio. Wire AUDIO input or "
+            "use Audio Studio's inline-audio picker."
+        )
+
+    device = comfy.model_management.get_torch_device()
+
+    # process_aspect snaps to mult-of-8 and crops if needed
+    image_proc, out_w, out_h = process_aspect(
+        image, params.aspect_ratio, params.custom_width, params.custom_height,
+    )
+    img_tensor = image_proc[0].permute(2, 0, 1).unsqueeze(0).to(device)
+    _, _, H, W = img_tensor.shape
+
+    audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
+    total_frames = int(audio_duration * params.fps)
+    if total_frames <= 0:
+        raise ValueError(
+            f"Audio is too short to produce any frames at {params.fps} fps "
+            f"(audio_duration={audio_duration:.3f}s)."
+        )
+
+    # Caches that depend on total_frames must be cleared per render.
+    reset_motion_caches()
+
+    envelope = audio_envelope(
+        audio, total_frames, params.fps, device,
+        params.audio_band, params.smoothing,
+    )
+
+    # loop_safe needs at least 4 frames so fade_n is >= 2 — otherwise
+    # linspace(0, 1, 1) = [0] and the only frame gets zeroed out.
+    # Skip silently below 4 frames; user's tiny clip won't loop but
+    # also won't be all-zero. linspace(0, 1, fade_n) DELIBERATELY
+    # starts at 0 so envelope[0] and envelope[-1] become exactly 0 —
+    # that's what makes the playback loop seamless (motion is fully
+    # frozen at both ends, so the wrap-around looks identical to a
+    # held still frame).
+    if params.loop_safe and total_frames >= 4:
+        fade_n = max(2, min(int(params.fps * 0.5), total_frames // 2))
+        loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
+        envelope = envelope.detach().clone()
+        envelope[:fade_n] = envelope[:fade_n] * loop_ramp
+        envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
+
+    onset = onset_track(envelope)
+
+    comfy.model_management.soft_empty_cache()
+    gc.collect()
+
+    # Time vector for periodic motion (ripple / slit_scan).
+    t_vec = torch.arange(total_frames, device=device, dtype=torch.float32) / params.fps
+
+    # Normalized base sampling grid in [-1, 1]. grid_sample reads x first.
+    y, x = torch.meshgrid(
+        torch.linspace(-1, 1, H, device=device),
+        torch.linspace(-1, 1, W, device=device),
+        indexing="ij",
+    )
+    base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)  # [1, H, W, 2]
+
+    print(f"[Pixaroma] engine: {total_frames} frames @ {params.fps}fps, "
+          f"{W}x{H} -> {out_w}x{out_h}, mode={params.motion_mode}, "
+          f"band={params.audio_band}, intensity={params.intensity}, "
+          f"smooth={params.smoothing}")
+    pbar = comfy.utils.ProgressBar(total_frames)
+
+    motion_fn = MOTION_MODES.get(params.motion_mode)
+    if motion_fn is None:
+        raise ValueError(
+            f"[Pixaroma] engine — unhandled motion_mode {params.motion_mode!r}. "
+            f"Known: {list(MOTION_MODES.keys())}"
+        )
+    overlay_strengths = {
+        "glitch":    params.glitch_strength,
+        "bloom":     params.bloom_strength,
+        "vignette":  params.vignette_strength,
+        "hue_shift": params.hue_shift_strength,
+    }
+
+    frames = []
+    for i in range(total_frames):
+        env_t = envelope[i].item()
+        onset_t = onset[i].item()
+
+        ctx = MotionContext(
+            base_grid=base_grid, env_t=env_t, onset_t=onset_t,
+            t=t_vec[i].item(),
+            intensity=params.intensity, motion_speed=params.motion_speed,
+            H=H, W=W,
+            total_frames=total_frames, frame_index=i, fps=params.fps,
+            onset_arr=onset,
+        )
+        grid = motion_fn(ctx)
+
+        warped = F.grid_sample(
+            img_tensor, grid,
+            mode="bilinear", padding_mode="border", align_corners=False,
+        )
+        frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
+
+        for ov_name, ov_fn in OVERLAYS.items():
+            s = overlay_strengths.get(ov_name, 0.0)
+            if s > 0.0:
+                frame = ov_fn(OverlayContext(
+                    frame=frame, env_t=env_t, onset_t=onset_t,
+                    strength=s, H=H, W=W, device=device,
+                ))
+
+        frames.append(frame.cpu())
+        pbar.update(1)
+
+    return torch.stack(frames, dim=0)

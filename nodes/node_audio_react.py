@@ -1,40 +1,26 @@
 # nodes/node_audio_react.py
-import gc
-import math
+"""Audio-reactive image-to-video without depth — widgets-only narrow surface.
 
-import torch
-import torch.nn.functional as F
-
-import comfy.utils
-import comfy.model_management
-
+Effect math lives in nodes/_audio_react_engine.py. This file is a thin
+wrapper that surfaces the widget UI and delegates to the engine.
+"""
 from ._audio_react_engine import (
     ASPECT_OPTIONS,
     AUDIO_BANDS_HZ,
     MOTION_MODES,
-    MotionContext,
-    OVERLAYS,
-    OverlayContext,
-    audio_envelope,
-    bandpass_fft,
-    onset_track,
-    process_aspect,
-    reset_motion_caches,
+    Params,
+    generate_video,
+    validate_params,
 )
 
-# Duplicates MOTION_MODES.keys() in _audio_react_engine.py — kept as a
-# top-level list because ComfyUI's INPUT_TYPES is evaluated at import
-# time and order matters for the dropdown. A6 will replace this with
-# list(MOTION_MODES.keys()) once import order is resolved.
-_MOTION_MODES = [
-    "scale_pulse",
-    "zoom_punch",
-    "shake",
-    "drift",
-    "rotate_pulse",
-    "ripple",
-    "swirl",
-    "slit_scan",
+
+# Local list — duplicates MOTION_MODES.keys() in _audio_react_engine.py
+# but kept here because ComfyUI's INPUT_TYPES is evaluated at import time
+# and we want a stable explicit order for the dropdown.
+_MOTION_MODES = list(MOTION_MODES.keys()) or [
+    # Fallback for the unlikely case where MOTION_MODES isn't populated yet.
+    "scale_pulse", "zoom_punch", "shake", "drift", "rotate_pulse",
+    "ripple", "swirl", "slit_scan",
 ]
 
 
@@ -98,142 +84,20 @@ class PixaromaAudioReact:
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
                  loop_safe, fps,
                  glitch_strength, bloom_strength, vignette_strength, hue_shift_strength):
-        # Input validation — clear actionable messages over crashes.
-        if image is None:
-            raise ValueError(
-                "[Pixaroma] Audio React — no image connected. Wire an "
-                "IMAGE source (e.g. Load Image) to the 'image' input."
-            )
-        if (audio is None or not isinstance(audio, dict)
-                or "waveform" not in audio or "sample_rate" not in audio
-                or audio["waveform"] is None
-                or not isinstance(audio["sample_rate"], (int, float))
-                or audio["sample_rate"] <= 0):
-            raise ValueError(
-                "[Pixaroma] Audio React — no valid audio connected. Wire "
-                "a Load Audio (or any AUDIO source with non-empty "
-                "waveform and sample_rate > 0) to the 'audio' input."
-            )
-
-        device = comfy.model_management.get_torch_device()
-
-        # No edge_headroom in this node — see CLAUDE.md "Audio React Patterns".
-        # Every motion mode here either pulls inward (scale_pulse, zoom_punch),
-        # clamps explicitly (kaleidoscope), or excursions are <6% of frame
-        # (shake / ripple / slit_scan) — padding_mode="border" handles those
-        # invisibly. So we render at the exact target size, no crop pass.
-        image, out_w, out_h = process_aspect(
-            image, aspect_ratio, custom_width, custom_height,
+        params = Params(
+            motion_mode=motion_mode, intensity=intensity, audio_band=audio_band,
+            motion_speed=motion_speed, smoothing=smoothing, loop_safe=loop_safe,
+            fps=fps,
+            glitch_strength=glitch_strength, bloom_strength=bloom_strength,
+            vignette_strength=vignette_strength, hue_shift_strength=hue_shift_strength,
+            aspect_ratio=aspect_ratio,
+            custom_width=custom_width, custom_height=custom_height,
         )
-        img_tensor = image[0].permute(2, 0, 1).unsqueeze(0).to(device)
-        _, _, H, W = img_tensor.shape
-
-        audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
-        total_frames = int(audio_duration * fps)
-        if total_frames <= 0:
-            raise ValueError(
-                f"Audio is too short to produce any frames at {fps} fps "
-                f"(audio_duration={audio_duration:.3f}s)."
-            )
-
-        reset_motion_caches()
-
-        envelope = audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
-
-        # loop_safe needs at least 4 frames so fade_n is >= 2 — otherwise
-        # linspace(0, 1, 1) = [0] and the only frame gets zeroed out.
-        # Skip silently below 4 frames; user's tiny clip won't loop but
-        # also won't be all-zero. linspace(0, 1, fade_n) DELIBERATELY
-        # starts at 0 so envelope[0] and envelope[-1] become exactly 0 —
-        # that's what makes the playback loop seamless (motion is fully
-        # frozen at both ends, so the wrap-around looks identical to a
-        # held still frame).
-        if loop_safe and total_frames >= 4:
-            fade_n = max(2, min(int(fps * 0.5), total_frames // 2))
-            loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
-            envelope = envelope.detach().clone()
-            envelope[:fade_n] = envelope[:fade_n] * loop_ramp
-            envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
-
-        onset = onset_track(envelope)
-
-        comfy.model_management.soft_empty_cache()
-        gc.collect()
-
-        # Time vector for periodic motion (ripple / kaleidoscope / slit_scan).
-        t_vec = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
-
-        # Normalized base sampling grid in [-1, 1]. grid_sample reads x first.
-        y, x = torch.meshgrid(
-            torch.linspace(-1, 1, H, device=device),
-            torch.linspace(-1, 1, W, device=device),
-            indexing="ij",
-        )
-        base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)  # [1, H, W, 2]
-
-        print(f"[Pixaroma] Audio React: {total_frames} frames @ {fps}fps, "
-              f"{W}x{H} -> {out_w}x{out_h}, mode={motion_mode}, band={audio_band}, "
-              f"intensity={intensity}, smooth={smoothing}")
-        pbar = comfy.utils.ProgressBar(total_frames)
-
-        frames = []
-        for i in range(total_frames):
-            env_t = envelope[i].item()
-            onset_t = onset[i].item()
-
-            ctx = MotionContext(
-                base_grid=base_grid,
-                env_t=env_t,
-                onset_t=onset_t,
-                t=t_vec[i].item(),
-                intensity=intensity,
-                motion_speed=motion_speed,
-                H=H, W=W,
-                total_frames=total_frames,
-                frame_index=i,
-                fps=fps,
-                onset_arr=onset,
-            )
-            motion_fn = MOTION_MODES.get(motion_mode)
-            if motion_fn is None:
-                raise ValueError(
-                    f"[Pixaroma] Audio React — unhandled motion_mode {motion_mode!r}. "
-                    f"Known: {list(MOTION_MODES.keys())}"
-                )
-            grid = motion_fn(ctx)
-
-            warped = F.grid_sample(
-                img_tensor, grid,
-                mode="bilinear", padding_mode="border", align_corners=False,
-            )
-            frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
-
-            # Overlays (each is a no-op when strength == 0).
-            overlay_strengths = {
-                "glitch":    glitch_strength,
-                "bloom":     bloom_strength,
-                "vignette":  vignette_strength,
-                "hue_shift": hue_shift_strength,
-            }
-            for ov_name, ov_fn in OVERLAYS.items():
-                s = overlay_strengths.get(ov_name, 0.0)
-                if s > 0.0:
-                    frame = ov_fn(OverlayContext(
-                        frame=frame, env_t=env_t, onset_t=onset_t,
-                        strength=s, H=H, W=W, device=device,
-                    ))
-
-            frames.append(frame.cpu())
-            pbar.update(1)
-
-        output_video = torch.stack(frames, dim=0)
-        return (output_video, audio, float(fps))
+        for diag in validate_params(params):
+            print(f"[Pixaroma] Audio React — {diag}")
+        frames = generate_video(image, audio, params)
+        return (frames, audio, float(params.fps))
 
 
-NODE_CLASS_MAPPINGS = {
-    "PixaromaAudioReact": PixaromaAudioReact,
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "PixaromaAudioReact": "Audio React Pixaroma",
-}
+NODE_CLASS_MAPPINGS = {"PixaromaAudioReact": PixaromaAudioReact}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaAudioReact": "Audio React Pixaroma"}
