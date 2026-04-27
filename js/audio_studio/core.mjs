@@ -2,86 +2,68 @@
 import { app } from "../../../../scripts/app.js";
 import { decodeAudio, computeAll, encodeWav, getAudioContext } from "./audio_analysis.mjs";
 import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource } from "./api.mjs";
+import { createEditorLayout, createButton } from "../framework/index.mjs";
+import { UI_ICON } from "../framework/theme.mjs";
 
 const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
 
-function injectCSS() {
+/**
+ * Audio Studio specific styles. The Pixaroma framework (createEditorLayout)
+ * supplies the overlay / titlebar / sidebars / footer / discard prompt CSS;
+ * we only inject what's unique to this editor: the source-row in the top
+ * options bar, the canvas + transport bar inside the workspace, and the
+ * tabbed-controls layout inside the right sidebar.
+ */
+function injectAudioStudioCSS() {
   if (document.getElementById("pix-audiostudio-css")) return;
   const css = `
-    .pix-as-overlay {
-      position: fixed; inset: 0;
-      background: #1c1c1c;
-      z-index: 9999;
-      display: flex; flex-direction: column;
-      color: #e0e0e0;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      font-size: 13px;
+    /* Source row (in topOptionsBar) — image/audio upload buttons + status */
+    .pix-as-source-row {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%;
     }
-    .pix-as-header {
-      display: flex; align-items: center;
-      gap: 12px;
-      padding: 6px 12px;
-      background: #2a2a2a;
-      border-bottom: 1px solid #1a1a1a;
-      height: 32px;
-      flex-shrink: 0;
+    .pix-as-source-cell {
+      display: flex; align-items: center; gap: 6px;
+      padding: 2px 6px;
     }
-    .pix-as-close-x {
-      cursor: pointer;
-      width: 22px; height: 22px;
-      display: inline-flex; align-items: center; justify-content: center;
-      color: #aaa;
-      border-radius: 3px;
-      user-select: none;
+    .pix-as-source-cell-status {
+      color: #aaa; font-size: 11px;
+      min-width: 90px;
+      max-width: 220px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    .pix-as-close-x:hover { background: #3a3a3a; color: #fff; }
-    .pix-as-title {
-      color: ${BRAND_ORANGE};
-      font-weight: bold;
-      font-size: 14px;
+    .pix-as-source-cell-status.connected { color: #c8e6c9; }
+    .pix-as-source-divider {
+      width: 1px; height: 18px;
+      background: #3a3a3a;
+      margin: 0 4px;
     }
-    .pix-as-pill {
-      display: inline-flex; align-items: center;
-      padding: 3px 10px; border-radius: 12px;
-      background: #3a3a3a; color: #aaa;
-      font-size: 11px;
-      cursor: pointer; user-select: none;
-    }
-    .pix-as-pill.connected { background: #2d5a3d; color: #c8e6c9; }
-    .pix-as-pill:hover { filter: brightness(1.2); }
-    .pix-as-spacer { flex: 1; }
-    .pix-as-save-btn {
-      background: ${BRAND_ORANGE}; color: #fff;
-      padding: 5px 16px; border-radius: 4px;
-      font-weight: bold; cursor: pointer; user-select: none;
-      border: none; font-size: 13px;
-    }
-    .pix-as-save-btn:disabled,
-    .pix-as-save-btn.disabled {
-      background: #555; color: #888;
-      cursor: not-allowed;
-    }
-    .pix-as-save-btn:not(:disabled):not(.disabled):hover { filter: brightness(1.1); }
-    .pix-as-body {
-      display: flex; flex: 1; min-height: 0;
-    }
-    .pix-as-canvas-area {
-      flex: 1;
-      background: #111;
-      display: flex; flex-direction: column;
-      min-width: 0;
-    }
+
+    /* Canvas host inside framework workspace */
     .pix-as-canvas-host {
       flex: 1;
       display: flex; align-items: center; justify-content: center;
       color: #555;
       position: relative;
+      width: 100%;
     }
     .pix-as-canvas-host canvas {
       display: block;
       max-width: 100%; max-height: 100%;
     }
+
+    /* Wrap the workspace contents so canvas + transport stack vertically.
+       Framework's .pxf-workspace defaults to align-items:center, which
+       conflicts — we override here. */
+    .pix-as-workspace-stack {
+      flex: 1;
+      display: flex; flex-direction: column;
+      min-height: 0; min-width: 0;
+      width: 100%; height: 100%;
+    }
+
+    /* Transport bar (at bottom of workspace) */
     .pix-as-transport {
       flex-shrink: 0;
       background: #232323;
@@ -90,17 +72,12 @@ function injectCSS() {
       display: flex; align-items: center; gap: 10px;
       height: 36px;
     }
-    .pix-as-sidebar {
-      width: 280px;
-      background: #232323;
-      border-left: 1px solid #1a1a1a;
-      display: flex; flex-direction: column;
-      flex-shrink: 0;
-    }
+
+    /* Discard-changes modal (used by close() when there are unsaved edits). */
     .pix-as-confirm-backdrop {
       position: fixed; inset: 0;
       background: rgba(0, 0, 0, 0.6);
-      z-index: 10000;
+      z-index: 100000;
       display: flex; align-items: center; justify-content: center;
     }
     .pix-as-confirm-modal {
@@ -109,6 +86,9 @@ function injectCSS() {
       border-radius: 6px;
       max-width: 400px;
       box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+      color: #e0e0e0;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
     }
     .pix-as-confirm-modal h3 {
       margin: 0 0 12px 0;
@@ -167,7 +147,7 @@ export class AudioStudioEditor {
   }
 
   open() {
-    injectCSS();
+    injectAudioStudioCSS();
 
     // Vue-compat (CLAUDE.md Pattern #6): neuter Ctrl+Z escape paths while
     // editor is open. Patches restored in forceClose().
@@ -176,66 +156,105 @@ export class AudioStudioEditor {
     this._savedGraphConfigure = app.graph.configure.bind(app.graph);
     app.graph.configure = () => {};
 
-    const overlay = document.createElement("div");
-    overlay.className = "pix-as-overlay";
-    this.overlay = overlay;
+    // Build the standard Pixaroma editor shell. This gives us:
+    //   * .pxf-titlebar with logo + "Audio Studio Pixaroma" + undo/redo + close
+    //   * .pxf-top-options bar (we put image/audio source row here)
+    //   * .pxf-workspace (canvas + transport go here, stacked vertically)
+    //   * .pxf-sidebar-right (our tabbed controls go here)
+    //   * .pxf-sidebar-footer with the SAVE button
+    // Same shell as Paint Studio / Image Composer / Crop / 3D Builder so
+    // users get consistent close/save/undo positions across all editors.
+    const layout = createEditorLayout({
+      editorName: "Audio Studio",
+      editorId: "pixaroma-audio-studio-editor",
+      leftWidth: 0,                  // no left sidebar — controls live on the right
+      rightWidth: 280,
+      showZoomBar: false,            // canvas autosizes, no zoom needed
+      showUndoRedo: true,
+      showStatusBar: false,
+      showTopOptionsBar: true,
+      onSave: () => this._save(),
+      onClose: () => this.close(),
+      onUndo: () => this._undo(),
+      onRedo: () => this._redo(),
+      helpContent: `
+        <b>Play / pause:</b> <kbd>Space</kbd><br>
+        <b>Frame step:</b> <kbd>←</kbd> / <kbd>→</kbd><br>
+        <b>One-second jump:</b> <kbd>Shift+←</kbd> / <kbd>Shift+→</kbd><br>
+        <b>Undo / redo:</b> <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd><br>
+        <b>Save:</b> <kbd>Ctrl+S</kbd><br>
+        <b>Close:</b> <kbd>Esc</kbd><br>
+        <hr>
+        <b>Sources:</b> wire IMAGE / AUDIO into the node, OR click an upload
+        button to load inline. Uploading auto-disconnects the matching wire
+        so the graph reflects what's used.<br>
+        <b>Drag-drop:</b> drop an image or audio file on the canvas.
+      `,
+    });
+    this._layout = layout;
+    this.overlay = layout.overlay;
 
-    overlay.appendChild(this._buildHeader());
+    // ── Top options bar: image / audio source row ─────────────────
+    this._buildSourceRow(layout.topOptionsBar);
 
-    const body = document.createElement("div");
-    body.className = "pix-as-body";
-
-    const canvasArea = document.createElement("div");
-    canvasArea.className = "pix-as-canvas-area";
-    this.canvasArea = canvasArea;
+    // ── Workspace: vertical stack (canvas host + transport bar) ───
+    const stack = document.createElement("div");
+    stack.className = "pix-as-workspace-stack";
 
     const canvasHost = document.createElement("div");
     canvasHost.className = "pix-as-canvas-host";
-    canvasHost.textContent = "(canvas — WebGL preview lands in Milestone E)";
     this.canvasHost = canvasHost;
 
     const transport = document.createElement("div");
     transport.className = "pix-as-transport";
     this.transportEl = transport;
-    // Mixin lives in transport.mjs — built after overlay is in DOM (see below).
 
-    canvasArea.appendChild(canvasHost);
-    canvasArea.appendChild(transport);
+    stack.appendChild(canvasHost);
+    stack.appendChild(transport);
+    layout.workspace.appendChild(stack);
 
+    // ── Right sidebar: tabbed controls (mixin populates) ───────────
+    // The framework already appends a footer with Save button. Insert our
+    // tab controls BEFORE the footer so they don't push it out of view.
     const sidebar = document.createElement("div");
-    sidebar.className = "pix-as-sidebar";
-    // Assign BEFORE _buildSidebar() — the mixin reads `this.sidebar` to
-    // populate it. Reversing the order leaves `this.sidebar` undefined
-    // and the build throws on `sidebar.textContent = ""`, aborting open()
-    // silently before the overlay is appended.
+    sidebar.style.cssText = "display:flex;flex-direction:column;flex:1;min-height:0;";
+    layout.rightSidebar.insertBefore(sidebar, layout.sidebarFooter);
     this.sidebar = sidebar;
     this._buildSidebar();
 
-    body.appendChild(canvasArea);
-    body.appendChild(sidebar);
-    overlay.appendChild(body);
+    // Mount overlay into DOM (also installs framework focus trap +
+    // global keyboard blocker — we override its behavior below).
+    layout.mount();
 
-    document.body.appendChild(overlay);
+    // Audio Studio doesn't have a "Save to Disk" path (workflow output is
+    // an MP4 produced by Save Mp4 Pixaroma downstream, not a flat image).
+    // Hide the framework's secondary footer button so the Save button gets
+    // the full footer width.
+    if (layout.closeBtn) {
+      layout.closeBtn.style.display = "none";
+      if (layout.saveBtn) layout.saveBtn.style.flex = "1 1 100%";
+    }
 
-    // Initialise WebGL2 renderer now that canvasHost is in the DOM (so
-    // getBoundingClientRect() returns real dimensions). Mixin lives in
-    // render.mjs.
+    // The framework's mount() installs an aggressive keyboard blocker
+    // that swallows Space / arrows. Replace it with our own that only
+    // blocks Ctrl+Z escape paths and routes our shortcuts to the editor.
+    layout._kbBlock && window.removeEventListener("keydown", layout._kbBlock, { capture: true });
+    layout._kbBlock && window.removeEventListener("keyup",   layout._kbBlock, { capture: true });
+    layout._kbBlock && window.removeEventListener("keypress", layout._kbBlock, { capture: true });
+    layout._kbBlock = null;
+
+    // Init renderer once canvasHost is in DOM (getBoundingClientRect needs it)
     this._initRenderer();
-
-    // Build transport bar (mixin in transport.mjs). Needs canvasHost-adjacent
-    // DOM in place so getBoundingClientRect() resolves for the sparkline.
     this._buildTransport();
     this._refreshTransport();
+    this._refreshUndoButtonsState();
 
-    // Resolve image + audio sources from upstream / inline cfg. Both run
-    // async — UI shows messages while they're pending.
     this._resolveImageSource();
     this._resolveAudioSource();
 
-    // Drag-drop image OR audio onto the canvas — both switch the source to
-    // inline and upload via /pixaroma/api/audio_studio/upload.
-    this.canvasHost.addEventListener("dragover", (e) => { e.preventDefault(); });
-    this.canvasHost.addEventListener("drop", async (e) => {
+    // Drag-drop image / audio onto the canvas (or anywhere in the workspace).
+    layout.workspace.addEventListener("dragover", (e) => { e.preventDefault(); });
+    layout.workspace.addEventListener("drop", async (e) => {
       e.preventDefault();
       const file = e.dataTransfer?.files?.[0];
       if (!file) return;
@@ -246,10 +265,9 @@ export class AudioStudioEditor {
           const { path } = await uploadSource(this.node.id, "image", file, filename);
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
-          this.cfg.image_force_inline = false;   // wire gets disconnected below
+          this.cfg.image_force_inline = false;
           this.cfg.image_uploaded_at = Date.now();
           this._uploadDirty = true;
-          // Same auto-disconnect rationale as the pill picker path.
           this._disconnectUpstreamInput("image");
           this._snapForUndo(true);
           this._refreshSaveBtnState();
@@ -260,127 +278,117 @@ export class AudioStudioEditor {
       }
     });
 
-    // H4: react to upstream disconnect / reconnect while editor is open.
-    // Cache the original onConnectionsChange so forceClose can restore it.
+    // React to upstream disconnect / reconnect while editor is open.
     this._origOnConnectionsChange = this.node.onConnectionsChange?.bind(this.node);
     this.node.onConnectionsChange = (type, slotIndex, connected) => {
       this._origOnConnectionsChange?.(type, slotIndex, connected);
-      // LiteGraph.INPUT === 1 — hardcoded so we don't depend on a global symbol
-      if (type !== 1) return;
+      if (type !== 1) return;   // LiteGraph.INPUT === 1
       const inputName = this.node.inputs?.[slotIndex]?.name;
-      if (inputName === "image" && this.cfg.image_source === "upstream") {
-        this._resolveImageSource();
-      } else if (inputName === "audio" && this.cfg.audio_source === "upstream") {
-        this._resolveAudioSource();
-      }
+      if (inputName === "image") this._resolveImageSource();
+      else if (inputName === "audio") this._resolveAudioSource();
     };
 
-    // Top-level keydown handler — intercept Esc, Ctrl+S, Space, arrows,
-    // Ctrl+Z, Ctrl+Y. Inputs / textareas / dropdowns keep their default
-    // behavior (we check tagName before hijacking the key).
+    // Editor-scope keyboard shortcuts. Capture phase so they preempt
+    // ComfyUI shortcuts. Inputs / textareas / dropdowns keep default keys.
     this._keyHandler = (e) => {
-      // Don't intercept when a confirm modal is open
-      if (document.querySelector(".pix-as-confirm-backdrop")) return;
+      // Skip when a discard / native modal is open
+      if (document.querySelector(".pxf-confirm-backdrop, .pix-as-confirm-backdrop")) return;
       const t = e.target;
       const inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
 
       if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         this.close();
       } else if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         this._save();
       } else if (e.code === "Space" && !inField) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         this._togglePlay?.();
       } else if ((e.code === "ArrowLeft" || e.code === "ArrowRight") && !inField) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         const sign = e.code === "ArrowLeft" ? -1 : 1;
-        // Shift+arrow steps fps frames (1s); plain arrow steps 1 frame.
         const stepFrames = e.shiftKey ? Math.max(1, this.cfg.fps) : 1;
         this._stepFrame?.(sign * stepFrames);
       } else if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         this._undo?.();
       } else if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && (e.key === "Z" || e.key === "z")))) {
-        e.preventDefault();
-        e.stopImmediatePropagation();
+        e.preventDefault(); e.stopImmediatePropagation();
         this._redo?.();
       }
     };
     window.addEventListener("keydown", this._keyHandler, true);
-
-    // Block clicks on overlay backdrop from accidentally closing
-    // (defense-in-depth — primary close path is the x button or Esc)
-    overlay.addEventListener("mousedown", (e) => {
-      if (e.target === overlay && document.querySelector(".pix-as-confirm-backdrop")) {
-        e.stopImmediatePropagation();
-      }
-    }, true);
   }
 
-  _buildHeader() {
-    const header = document.createElement("div");
-    header.className = "pix-as-header";
+  /**
+   * Build the image/audio source row inside the topOptionsBar. Each side
+   * has an upload button (icon-only) + a status label that reflects the
+   * current resolved source ("Upstream", "Inline (filename)", or
+   * "not loaded"). Clicking the upload button opens the file picker;
+   * uploading sets the corresponding cfg fields and auto-disconnects the
+   * matching wire.
+   */
+  _buildSourceRow(host) {
+    host.textContent = "";
+    const row = document.createElement("div");
+    row.className = "pix-as-source-row";
 
-    const closeX = document.createElement("span");
-    closeX.className = "pix-as-close-x";
-    closeX.textContent = "×";
-    closeX.style.fontSize = "18px";
-    closeX.addEventListener("click", () => this.close());
-    header.appendChild(closeX);
+    // Image upload + status
+    const imgCell = document.createElement("div");
+    imgCell.className = "pix-as-source-cell";
+    const imgBtn = createButton("Upload Image", {
+      variant: "standard",
+      iconSrc: UI_ICON + "image.svg",
+      title: "Upload an image (auto-disconnects upstream IMAGE wire)",
+      onClick: () => this._pickInlineImage(),
+    });
+    const imgStatus = document.createElement("span");
+    imgStatus.className = "pix-as-source-cell-status";
+    imgStatus.textContent = "—";
+    imgCell.append(imgBtn, imgStatus);
+    this.imgPill = imgStatus;   // legacy name still used by source resolution
 
-    const title = document.createElement("span");
-    title.className = "pix-as-title";
-    title.textContent = "Audio Studio Pixaroma";
-    header.appendChild(title);
+    // Divider
+    const sep = document.createElement("div");
+    sep.className = "pix-as-source-divider";
 
-    // Image / Audio source pills — click toggles upstream<->inline (or
-    // opens the file picker if upstream isn't wired). Mixin handlers below.
-    this.imgPill = this._buildPill(
-      `Image: ${this.cfg.image_source === "upstream" ? "Upstream" : "Inline"}`,
-      this.cfg.image_source === "upstream",
-    );
-    this.imgPill.addEventListener("click", () => this._onImagePillClick());
-    this.audioPill = this._buildPill(
-      `Audio: ${this.cfg.audio_source === "upstream" ? "Upstream" : "Inline"}`,
-      this.cfg.audio_source === "upstream",
-    );
-    this.audioPill.addEventListener("click", () => this._onAudioPillClick());
-    header.appendChild(this.imgPill);
-    header.appendChild(this.audioPill);
+    // Audio upload + status
+    const audCell = document.createElement("div");
+    audCell.className = "pix-as-source-cell";
+    const audBtn = createButton("Upload Audio", {
+      variant: "standard",
+      iconSrc: UI_ICON + "audio.svg",
+      title: "Upload audio (auto-disconnects upstream AUDIO wire). MP3 / OGG / etc. converted to WAV.",
+      onClick: () => this._pickInlineAudio(),
+    });
+    const audStatus = document.createElement("span");
+    audStatus.className = "pix-as-source-cell-status";
+    audStatus.textContent = "—";
+    audCell.append(audBtn, audStatus);
+    this.audioPill = audStatus;
 
-    const spacer = document.createElement("span");
-    spacer.className = "pix-as-spacer";
-    header.appendChild(spacer);
-
-    const saveBtn = document.createElement("button");
-    saveBtn.className = "pix-as-save-btn disabled";
-    saveBtn.textContent = "SAVE";
-    saveBtn.disabled = true;   // enabled by ui.mjs / D4 when dirty
-    saveBtn.addEventListener("click", () => this._save());
-    this.saveBtn = saveBtn;
-    header.appendChild(saveBtn);
-
-    return header;
-  }
-
-  _buildPill(label, connected) {
-    const pill = document.createElement("span");
-    pill.className = "pix-as-pill" + (connected ? " connected" : "");
-    pill.textContent = label;
-    return pill;
+    row.append(imgCell, sep, audCell);
+    host.appendChild(row);
   }
 
   _refreshSaveBtnState() {
     const dirty = this.isDirty();
-    this.saveBtn.disabled = !dirty;
-    this.saveBtn.classList.toggle("disabled", !dirty);
+    const btn = this._layout?.saveBtn;
+    if (!btn) return;
+    btn.disabled = !dirty;
+    btn.classList.toggle("disabled", !dirty);
+  }
+
+  /**
+   * Refresh the framework's undo/redo button enabled state. Called after
+   * every edit / undo / redo.
+   */
+  _refreshUndoButtonsState() {
+    this._layout?.setUndoState({
+      canUndo: this._undoStack.length > 0,
+      canRedo: this._redoStack.length > 0,
+    });
   }
 
   _save() {
@@ -457,6 +465,7 @@ export class AudioStudioEditor {
       if (this._undoStack.length > 50) this._undoStack.shift();
       this._redoStack.length = 0;   // any new edit invalidates redo branch
       this._snapTimer = null;
+      this._refreshUndoButtonsState();
     };
     if (immediate) commit();
     else this._snapTimer = setTimeout(commit, 200);
@@ -490,6 +499,7 @@ export class AudioStudioEditor {
   _refreshAfterRestore() {
     this._buildSidebar();
     this._refreshSaveBtnState();
+    this._refreshUndoButtonsState();
     if (this._audioBuffer) this._recomputeAudio();
     this._render?.();
   }
@@ -547,20 +557,20 @@ export class AudioStudioEditor {
     // back into a removed overlay).
     this._pausePlayback?.();
     this._detachTransportListeners?.();
-    // Cancel any in-flight debounced timers so they don't fire against
-    // a torn-down editor instance.
+    // Cancel any in-flight debounced timers.
     if (this._recomputeTimer) { clearTimeout(this._recomputeTimer); this._recomputeTimer = null; }
     if (this._snapTimer)      { clearTimeout(this._snapTimer);      this._snapTimer = null; }
-    // Restore node.onConnectionsChange to whatever was there before open().
+    // Restore node.onConnectionsChange.
     if (this._origOnConnectionsChange !== undefined) {
       this.node.onConnectionsChange = this._origOnConnectionsChange;
       this._origOnConnectionsChange = undefined;
     }
-    // Tear down GL resources before the overlay (and its canvas) leaves
-    // the DOM. Mixin lives in render.mjs.
+    // Tear down GL before the overlay leaves the DOM.
     this._destroyRenderer?.();
-    if (this.overlay && this.overlay.parentNode) {
-      this.overlay.parentNode.removeChild(this.overlay);
+    // Framework unmount removes the overlay and runs onCleanup.
+    if (this._layout) {
+      try { this._layout.unmount(); } catch {}
+      this._layout = null;
     }
     this.overlay = null;
     this.onClose?.();

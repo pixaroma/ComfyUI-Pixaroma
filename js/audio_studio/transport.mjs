@@ -6,16 +6,50 @@ import { getAudioContext } from "./audio_analysis.mjs";
 function injectTransportCSS() {
   if (document.getElementById("pix-as-transport-css")) return;
   const css = `
+    /* Play button — circular, Pixaroma orange. The icon is rendered via
+       CSS mask so we can recolor a single SVG (white inside the circle)
+       and swap play/pause/stop without juggling images. */
     .pix-as-play-btn {
-      width: 22px; height: 22px;
-      background: #f66744; color: #fff;
+      width: 26px; height: 26px;
+      background: #f66744;
       border-radius: 50%;
       display: inline-flex; align-items: center; justify-content: center;
       cursor: pointer; user-select: none;
-      font-size: 11px;
       flex-shrink: 0;
+      border: none;
+      padding: 0;
+      transition: filter 0.1s;
     }
     .pix-as-play-btn:hover { filter: brightness(1.1); }
+    .pix-as-play-btn .pix-as-play-icon {
+      width: 12px; height: 12px;
+      background-color: #fff;
+      -webkit-mask: var(--pix-as-icon-url) center/contain no-repeat;
+              mask: var(--pix-as-icon-url) center/contain no-repeat;
+      pointer-events: none;
+    }
+
+    /* Stop button — same shape but next to play. */
+    .pix-as-stop-btn {
+      width: 26px; height: 26px;
+      background: #3a3a3a;
+      border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; user-select: none;
+      flex-shrink: 0;
+      border: none;
+      padding: 0;
+      transition: filter 0.1s, background 0.1s;
+    }
+    .pix-as-stop-btn:hover { background: #4a4a4a; }
+    .pix-as-stop-btn .pix-as-stop-icon {
+      width: 11px; height: 11px;
+      background-color: #f66744;
+      -webkit-mask: url(/pixaroma/assets/icons/ui/stop.svg) center/contain no-repeat;
+              mask: url(/pixaroma/assets/icons/ui/stop.svg) center/contain no-repeat;
+      pointer-events: none;
+    }
+
     .pix-as-time {
       color: #aaa;
       font-family: ui-monospace, monospace;
@@ -62,14 +96,27 @@ function injectTransportCSS() {
       font-family: ui-monospace, monospace;
       flex-shrink: 0;
     }
+    /* Frame step buttons — small icon-only buttons */
     .pix-as-frame-step {
-      color: #aaa;
+      width: 22px; height: 22px;
+      display: inline-flex; align-items: center; justify-content: center;
       cursor: pointer; user-select: none;
-      padding: 2px 6px;
-      border-radius: 3px;
       flex-shrink: 0;
+      border: none;
+      background: transparent;
+      border-radius: 3px;
+      padding: 0;
+      transition: background 0.1s;
     }
-    .pix-as-frame-step:hover { background: #3a3a3a; color: #fff; }
+    .pix-as-frame-step:hover { background: #3a3a3a; }
+    .pix-as-frame-step img {
+      width: 14px; height: 14px;
+      pointer-events: none;
+      filter: invert(78%) sepia(8%) saturate(0%) hue-rotate(180deg) brightness(95%) contrast(85%);
+    }
+    .pix-as-frame-step:hover img {
+      filter: invert(100%);
+    }
   `;
   const style = document.createElement("style");
   style.id = "pix-as-transport-css";
@@ -82,12 +129,30 @@ AudioStudioEditor.prototype._buildTransport = function () {
   const t = this.transportEl;
   t.textContent = "";
 
-  const playBtn = document.createElement("span");
+  // Play / pause button — orange circle with a white SVG icon. The icon is
+  // toggled via the --pix-as-icon-url CSS var so we don't replace the DOM
+  // element on every play/pause toggle.
+  const playBtn = document.createElement("button");
   playBtn.className = "pix-as-play-btn";
-  playBtn.textContent = "▶";    // ▶
+  playBtn.title = "Play / Pause (Space)";
+  const playIcon = document.createElement("span");
+  playIcon.className = "pix-as-play-icon";
+  playIcon.style.setProperty("--pix-as-icon-url", "url(/pixaroma/assets/icons/ui/play.svg)");
+  playBtn.appendChild(playIcon);
   playBtn.addEventListener("click", () => this._togglePlay());
   t.appendChild(playBtn);
   this._playBtn = playBtn;
+  this._playIcon = playIcon;
+
+  // Stop button — pause + reset to frame 0
+  const stopBtn = document.createElement("button");
+  stopBtn.className = "pix-as-stop-btn";
+  stopBtn.title = "Stop (pause and rewind to start)";
+  const stopIcon = document.createElement("span");
+  stopIcon.className = "pix-as-stop-icon";
+  stopBtn.appendChild(stopIcon);
+  stopBtn.addEventListener("click", () => this._stopPlayback());
+  t.appendChild(stopBtn);
 
   const curTime = document.createElement("span");
   curTime.className = "pix-as-time";
@@ -129,17 +194,26 @@ AudioStudioEditor.prototype._buildTransport = function () {
   t.appendChild(fpsEl);
   this._fpsEl = fpsEl;
 
-  const stepBack = document.createElement("span");
+  // Frame step buttons — small chevron-style icons. The play.svg from the
+  // shared icon library is reused (rotated for back) since we have no
+  // dedicated chevron-left/right icons; tinted via CSS filter so they
+  // don't shout.
+  const stepBack = document.createElement("button");
   stepBack.className = "pix-as-frame-step";
-  stepBack.textContent = "◀";   // ◀
-  stepBack.title = "Frame back";
+  stepBack.title = "Frame back (Left arrow; Shift+Left = 1s)";
+  const stepBackIcon = document.createElement("img");
+  stepBackIcon.src = "/pixaroma/assets/icons/ui/play.svg";
+  stepBackIcon.style.transform = "rotate(180deg)";
+  stepBack.appendChild(stepBackIcon);
   stepBack.addEventListener("click", () => this._stepFrame(-1));
   t.appendChild(stepBack);
 
-  const stepFwd = document.createElement("span");
+  const stepFwd = document.createElement("button");
   stepFwd.className = "pix-as-frame-step";
-  stepFwd.textContent = "▶";    // ▶
-  stepFwd.title = "Frame forward";
+  stepFwd.title = "Frame forward (Right arrow; Shift+Right = 1s)";
+  const stepFwdIcon = document.createElement("img");
+  stepFwdIcon.src = "/pixaroma/assets/icons/ui/play.svg";
+  stepFwd.appendChild(stepFwdIcon);
   stepFwd.addEventListener("click", () => this._stepFrame(1));
   t.appendChild(stepFwd);
 
@@ -226,6 +300,16 @@ AudioStudioEditor.prototype._togglePlay = function () {
   else this._startPlayback();
 };
 
+AudioStudioEditor.prototype._setPlayIcon = function (kind /* "play" | "pause" */) {
+  if (!this._playIcon) return;
+  this._playIcon.style.setProperty(
+    "--pix-as-icon-url",
+    kind === "pause"
+      ? "url(/pixaroma/assets/icons/ui/pause.svg)"
+      : "url(/pixaroma/assets/icons/ui/play.svg)",
+  );
+};
+
 AudioStudioEditor.prototype._startPlayback = function () {
   const fps = this.cfg.fps || 24;
   const offsetSec = (this._currentFrame || 0) / fps;
@@ -239,7 +323,7 @@ AudioStudioEditor.prototype._startPlayback = function () {
   this._playStartCtxTime = ctx.currentTime;
   this._playStartOffsetSec = offsetSec;
   this._isPlaying = true;
-  if (this._playBtn) this._playBtn.textContent = "⏸";   // ⏸
+  this._setPlayIcon("pause");
 
   const loop = () => {
     if (!this._isPlaying) return;
@@ -270,7 +354,7 @@ AudioStudioEditor.prototype._pausePlayback = function () {
   if (this._rafId) cancelAnimationFrame(this._rafId);
   this._rafId = 0;
   this._isPlaying = false;
-  if (this._playBtn) this._playBtn.textContent = "▶";   // ▶
+  this._setPlayIcon("play");
 };
 
 AudioStudioEditor.prototype._restartPlayback = function () {
@@ -278,6 +362,18 @@ AudioStudioEditor.prototype._restartPlayback = function () {
   // restarted, so we tear down and create a fresh source at the new offset.
   this._pausePlayback();
   this._startPlayback();
+};
+
+/**
+ * Stop = pause + rewind to frame 0. Convenience action for the stop button
+ * next to play/pause. Differs from pause (keeps current frame) in that the
+ * playhead resets and the canvas re-renders frame 0.
+ */
+AudioStudioEditor.prototype._stopPlayback = function () {
+  this._pausePlayback();
+  this._currentFrame = 0;
+  this._refreshTransport?.();
+  this._render?.();
 };
 
 AudioStudioEditor.prototype._detachTransportListeners = function () {
