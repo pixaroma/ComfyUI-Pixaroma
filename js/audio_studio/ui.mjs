@@ -58,6 +58,40 @@ function isCustomHeightAspect(v) {
   return v === "Custom (Use Width & Height below)";
 }
 
+/**
+ * Mirror of `process_aspect()` in nodes/_audio_react_engine.py — given the
+ * cfg's aspect_ratio + the user's stored custom_width / custom_height,
+ * return the {w, h} the engine will actually render at (snapped to mult-of-
+ * 8 the same way Python does). Returns null for "Original" because that
+ * size depends on the upstream image, which the editor doesn't know with
+ * certainty at config-edit time. Used to populate the read-only side of
+ * the Output W × H pair so users see the real numbers, not stale stored
+ * values.
+ */
+function computeEngineWH(ar, customW, customH) {
+  if (ar === "Original") return null;
+  let bw, bh;
+  if (ar === "Custom (Use Width & Height below)") {
+    bw = customW; bh = customH;
+  } else if (ar.startsWith("Custom Ratio")) {
+    bw = customW;
+    if      (ar.includes("16:9")) bh = Math.floor(bw * 9 / 16);
+    else if (ar.includes("9:16")) bh = Math.floor(bw * 16 / 9);
+    else if (ar.includes("4:3"))  bh = Math.floor(bw * 3 / 4);
+    else if (ar.includes("1:1"))  bh = bw;
+    else                          bh = customH;
+  } else {
+    // Fixed preset like "1280x720 (Landscape HD)" — first token is WxH.
+    const [wStr, hStr] = (ar.split(" ")[0] || "").split("x");
+    const w = parseInt(wStr, 10), h = parseInt(hStr, 10);
+    if (Number.isFinite(w) && Number.isFinite(h)) { bw = w; bh = h; }
+    else { bw = customW; bh = customH; }
+  }
+  bw = Math.floor(bw / 8) * 8;
+  bh = Math.floor(bh / 8) * 8;
+  return { w: bw, h: bh };
+}
+
 function injectSidebarCSS() {
   if (document.getElementById("pix-as-sidebar-css")) return;
   // Slider rows reuse the framework's `.pxf-slider-row` styling (label +
@@ -403,6 +437,10 @@ AudioStudioEditor.prototype._addInlineWH = function (panel, label1, key1, label2
       this.cfg[key] = v;
       inp.value = String(v);
       this._onCfgChanged();
+      // Custom Ratio mode: H is derived from W, so editing W must
+      // refresh the (read-only) H display. Cheaper to refresh both
+      // sides than to special-case which one changed.
+      this._refreshOutputState?.();
     });
     return { label: labEl, input: inp };
   };
@@ -461,8 +499,23 @@ AudioStudioEditor.prototype._refreshOutputState = function () {
   const ar = this.cfg.aspect_ratio || "Original";
   const wOn = isCustomWidthAspect(ar);
   const hOn = isCustomHeightAspect(ar);
-  this._outputWH.w.input.disabled = !wOn;
+
+  const wInput = this._outputWH.w.input;
+  const hInput = this._outputWH.h.input;
+  wInput.disabled = !wOn;
   this._outputWH.w.label.classList.toggle("disabled", !wOn);
-  this._outputWH.h.input.disabled = !hOn;
+  hInput.disabled = !hOn;
   this._outputWH.h.label.classList.toggle("disabled", !hOn);
+
+  // Editable side shows the user's stored cfg value (so they can edit it).
+  // Read-only side shows the engine's actual output dim — derived from the
+  // chosen aspect ratio + (for Custom Ratio modes) the typed Width — so
+  // users immediately see what their video will be sized to instead of a
+  // stale stored value. Original aspect can't be computed without knowing
+  // the upstream image, so we leave the cfg values visible there.
+  const eff = computeEngineWH(ar, this.cfg.custom_width, this.cfg.custom_height);
+  wInput.value = wOn ? String(this.cfg.custom_width)
+                     : String(eff?.w ?? this.cfg.custom_width);
+  hInput.value = hOn ? String(this.cfg.custom_height)
+                     : String(eff?.h ?? this.cfg.custom_height);
 };
