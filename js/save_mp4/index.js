@@ -31,11 +31,7 @@ function getLiveVideo(node) {
     vid.addEventListener("loadedmetadata", () => {
       if (vid.videoWidth > 0 && vid.videoHeight > 0) {
         node._pixaromaAspect = vid.videoWidth / vid.videoHeight;
-        if (typeof node.computeSize === "function") {
-          const sz = node.computeSize();
-          node.setSize([Math.max(sz[0], MIN_W), Math.max(sz[1], MIN_H)]);
-        }
-        node.setDirtyCanvas?.(true, true);
+        node._pixaromaEnforceAspect?.();
       }
     });
     vid._pixaromaMetadataAttached = true;
@@ -108,19 +104,39 @@ app.registerExtension({
       this._pixaromaPlaceholder = placeholder;
       this._pixaromaAspect = null;  // set when video metadata loads
 
-      // When metadata arrives, capture aspect ratio and ask ComfyUI to
-      // re-size the node so the widget area matches the video exactly.
       const node = this;
+
+      // Snap node height so the widget area is exactly width / aspect.
+      // Called from: loadedmetadata (initial), and ResizeObserver below
+      // (catches user drags + any other Vue-frontend layout change).
+      // rAF-debounced so RO -> setSize -> RO doesn't loop.
+      let aspectRafId = null;
+      const enforceAspect = () => {
+        if (aspectRafId !== null) return;
+        aspectRafId = requestAnimationFrame(() => {
+          aspectRafId = null;
+          const aspect = node._pixaromaAspect;
+          if (!aspect) return;
+          if (typeof node.computeSize !== "function") return;
+          const desired = node.computeSize();
+          if (!desired || !desired[1]) return;
+          const targetH = Math.max(MIN_H, desired[1]);
+          const targetW = Math.max(MIN_W, node.size?.[0] || MIN_W);
+          if (
+            Math.abs((node.size?.[1] || 0) - targetH) > 1 ||
+            Math.abs((node.size?.[0] || 0) - targetW) > 1
+          ) {
+            node.setSize([targetW, targetH]);
+            node.setDirtyCanvas?.(true, true);
+          }
+        });
+      };
+      node._pixaromaEnforceAspect = enforceAspect;
+
       video.addEventListener("loadedmetadata", () => {
         if (video.videoWidth > 0 && video.videoHeight > 0) {
           node._pixaromaAspect = video.videoWidth / video.videoHeight;
-          // Force layout recompute. computeSize() will pick up the new
-          // aspect via the widget's computeSize callback below.
-          if (typeof node.computeSize === "function") {
-            const sz = node.computeSize();
-            node.setSize([Math.max(sz[0], MIN_W), Math.max(sz[1], MIN_H)]);
-          }
-          node.setDirtyCanvas?.(true, true);
+          enforceAspect();
         }
       });
       video._pixaromaMetadataAttached = true;
@@ -139,26 +155,27 @@ app.registerExtension({
         },
       });
 
+      // Watch the wrap for any size change (Vue resize, manual drag, layout
+      // shift) and re-snap the node height. ResizeObserver is the only
+      // mechanism that fires for ALL Vue-frontend resize paths — onResize
+      // hooks miss some of them.
+      try {
+        const ro = new ResizeObserver(enforceAspect);
+        ro.observe(wrap);
+        node._pixaromaResizeObserver = ro;
+      } catch (_) { /* old browser, fall through */ }
+
+      const onRemoved = this.onRemoved;
+      this.onRemoved = function () {
+        try { node._pixaromaResizeObserver?.disconnect(); } catch (_) {}
+        return onRemoved?.apply(this, arguments);
+      };
+
       const w = (this.size && this.size[0]) || MIN_W;
       const h = (this.size && this.size[1]) || MIN_H;
       this.size = [Math.max(w, MIN_W), Math.max(h, MIN_H)];
 
       return ret;
-    };
-
-    // Once a video is loaded its aspect drives the node height: any user
-    // drag that would leave letterbox bars gets snapped back to the exact
-    // height that fills the widget. Width drag still works freely; height
-    // drag is effectively absorbed (the recomputed height wins).
-    const onResize = nodeType.prototype.onResize;
-    nodeType.prototype.onResize = function (size) {
-      onResize?.apply(this, arguments);
-      const aspect = this._pixaromaAspect;
-      if (!aspect) return;
-      const desired = this.computeSize();
-      if (desired && desired[1]) {
-        size[1] = Math.max(MIN_H, desired[1]);
-      }
     };
   },
 });
