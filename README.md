@@ -3,7 +3,7 @@
   <h1>ComfyUI Pixaroma</h1>
   <p align="center">
     <strong>Elevate your ComfyUI workflow with professional-grade creative tools.</strong><br />
-    3D scenes • Texture painting • Layered composition • Precision cropping • Rich notes • Side-by-side comparison
+    3D scenes • Texture painting • Layered composition • Audio-reactive video • Precision cropping • Rich notes • Side-by-side comparison
   </p>
 
   <p align="center">
@@ -21,53 +21,70 @@ Pixaroma turns ComfyUI into a powerful, easy-to-use design space. It brings prof
 
 ### 🧊 3D Builder
 A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furniture, or import your own 3D models. You get easy camera controls, realistic lighting, undo/redo, and live previews. Perfect for making reference scenes for ControlNet or depth maps!
+
+📥 [Download example workflow](workflows/3D%20Builder%20Pixaroma%20Workflow.json)
+
 ![3D Builder — Node](workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
 ![3D Builder — Editor](workflows/3D%20Builder%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🎚️ AudioReact Pixaroma
-Audio-reactive image-to-video render — **no extra models needed**, just an image and an audio track. Click **Open AudioReact** on the node to launch a fullscreen overlay:
+Audio-reactive image-to-video — **no extra models needed**, just an image and an audio track. Open the fullscreen editor, scrub the audio, and watch 15 motion modes (Pulse Zoom, Camera Shake, Glitch, Pinch, Wave, Tilt, Pixelate, RGB Split, and more) react to the beat in real time with a live WebGL preview. Stack 8 overlay effects on top — chroma shift, bloom, vignette, hue shift, cinematic teal/orange grade, letterbox, scanlines, and film grain. Pairs with **Save Mp4 Pixaroma** to write the clip directly to MP4 with audio muxed in. Requires WebGL2.
 
-- **WebGL preview canvas** — renders effects in real time as you scrub the audio. Tweak motion mode / intensity / overlay strengths and watch the result update instantly, no workflow run required.
-- **Collapsible sidebar** — Motion / Overlays / Audio / Output sections group every effect control.
-- **15 motion modes** — Pulse Zoom, Punch Zoom, Camera Shake, Drift, Pulse Spin, Ripple, Swirl, Time Slice, Glitch, Pinch, Wave, Tilt, Pixelate, RGB Split, Squeeze. Many have direction toggles + per-mode sliders (axis, density, bands).
-- **Stackable overlays** — Chroma Shift, Bloom, Vignette, Hue shift, Color grade (teal/orange), Letterbox, Scanlines, Film grain. The audio-reactive ones pulse with the envelope; the look effects (grade / letterbox / scanlines / grain) stay steady.
-- **Transport bar** — play / pause / loop / scrub / frame stepper, with the audio envelope shown as an inline sparkline so you can scrub straight to a beat.
-- **Keyboard shortcuts** — Space to play/pause, arrows to step a frame, Shift+arrows for one-second jumps, Ctrl+Z / Ctrl+Y for ~50 levels of param undo.
-- **Image + Audio sources** — connect an upstream `IMAGE` / `AUDIO` input, or load files from inside the editor (drag-drop on canvas or pick-file via the source buttons). Inline files survive workflow reloads.
-- **Pairs with `Save Mp4 Pixaroma`** to write the clip directly to MP4 with audio muxed in.
+📥 [Download example workflow](workflows/AudioReact%20Workflow.json)
 
-Requires WebGL2 (universal in modern browsers since 2017).
+![AudioReact — Node](workflows/AudioReact%20Workflow.jpg)
+![AudioReact — Editor](workflows/AudioReact%20Workflow%20v2.jpg)
 
 ### ✨ Image Composer
 Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
+
+📥 [Download example workflow](workflows/Image%20Composer%20Pixaroma%20Workflow.json)
+
 ![Image Composer — Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
 ![Image Composer — Editor](workflows/Image%20Composer%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🖌️ Paint Studio
 A fast, easy-to-use painting tool. It features layers, custom brushes, and a smudge tool for smooth blending. Perfect for fixing details, drawing custom masks, or painting from scratch.
+
+📥 [Download example workflow](workflows/Paint%20Pixaroma%20Workflow.json)
+
 ![Paint — Node](workflows/Paint%20Pixaroma%20Workflow.jpg)
 ![Paint — Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg)
 
 ### ✂️ Precision Crop
 No more guessing crop sizes with numbers! Visually draw your crop box. It includes standard presets (like 1:1 or 16:9) so your image is always framed perfectly for social media or video.
+
+📥 [Download example workflow](workflows/Crop%20Pixaroma%20Workflow.json)
+
 ![Image Crop — Node](workflows/Crop%20Pixaroma%20Workflow.jpg)
 ![Image Crop — Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🌓 Interactive Compare
 The best way to see the difference between two images. Easily compare them side-by-side with a slider, overlap them, or highlight exactly what changed between the two versions.
+
+📥 [Download example workflow](workflows/Image%20Compare%20Pixaroma%20Workflow.json)
+
 ![Image Compare — Node](workflows/Image%20Compare%20Pixaroma%20Workflow.jpg)
 ![Image Compare — Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 📝 Note Pixaroma
 A beautiful, simple text editor to document your workflows right on the canvas. Write normally using bold, italics, lists, and headings. Add custom colored buttons, icons, or links to YouTube and Discord. You can even color-code your notes to match your style. It perfectly saves and restores exactly how you styled it.
+
+📥 [Download example workflow](workflows/Note%20Pixaroma%20Workflow.json)
+
 ![Note Pixaroma — Node](workflows/Note%20Pixaroma%20Workflow.jpg)
 ![Note Pixaroma — Editor](workflows/Note%20Pixaroma%20Workflow%20v2.jpg)
 
 ### 🏷️ Label Pixaroma
 Keep your workflows tidy with clean, custom labels.
 
+📥 [Download example workflow](workflows/Labels%20Pixaroma%20Workflow.json)
+
 ![Labels — Node](workflows/Labels%20Pixaroma%20Workflow.jpg)
 ![Labels — Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg)
+
+### 🎬 Save Mp4 Pixaroma
+Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI. Pairs with AudioReact, but works with any source that produces frames + AUDIO.
 
 ### 💬 Show Text Pixaroma
 Easily see what text or data is flowing through your nodes.
@@ -129,6 +146,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **April 27, 2026**
+- **NEW: AudioReact Pixaroma** — turn an image into an audio-reactive video with a fullscreen WebGL editor. 15 motion modes, 8 stackable overlays, real-time scrubbable preview.
+- **NEW: Save Mp4 Pixaroma** — encode frames + audio straight to MP4, with an in-node video preview.
+
 ### **April 25, 2026**
 - **Smoother 3D Builder:** Moving the camera, spinning, and zooming in your 3D scenes is now much faster and less laggy!
 
@@ -173,4 +194,3 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 💬 **[Join our Discord Community](https://discord.gg/gggpkVgBf3)**  
 ⚖️ **Licensed under [MIT](https://github.com/pixaroma/ComfyUI-Pixaroma/blob/main/LICENSE)**
-

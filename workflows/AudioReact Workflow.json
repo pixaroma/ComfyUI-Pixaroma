@@ -1,0 +1,286 @@
+{
+  "id": "2461414c-34c1-4353-b6ec-317306eedd55",
+  "revision": 0,
+  "last_node_id": 32,
+  "last_link_id": 88,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadImage",
+      "pos": [
+        454.0291748046875,
+        202.1428985595703
+      ],
+      "size": [
+        282.798828125,
+        314
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            84
+          ]
+        },
+        {
+          "name": "MASK",
+          "type": "MASK",
+          "links": null
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.19.3",
+        "Node name for S&R": "LoadImage"
+      },
+      "widgets_values": [
+        "AudioDepthHeartExample.jpg",
+        "image"
+      ]
+    },
+    {
+      "id": 3,
+      "type": "LoadAudio",
+      "pos": [
+        455.111602577822,
+        563.7969339027553
+      ],
+      "size": [
+        278.82354824575134,
+        136
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "AUDIO",
+          "type": "AUDIO",
+          "links": [
+            85
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.19.3",
+        "Node name for S&R": "LoadAudio"
+      },
+      "widgets_values": [
+        "Enjoy the Beat.wav",
+        null,
+        null
+      ]
+    },
+    {
+      "id": 32,
+      "type": "PixaromaSaveMp4",
+      "pos": [
+        990.6676912853353,
+        199.7811275296057
+      ],
+      "size": [
+        320,
+        312
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "video_frames",
+          "type": "IMAGE",
+          "link": 86
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 87
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "widget": {
+            "name": "fps"
+          },
+          "link": 88
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "52daaba187bd9a1964938a73c60e72dffbb025c2",
+        "Node name for S&R": "PixaromaSaveMp4"
+      },
+      "widgets_values": [
+        24,
+        "Video",
+        true,
+        ""
+      ]
+    },
+    {
+      "id": 31,
+      "type": "PixaromaAudioStudio",
+      "pos": [
+        758.5539317126761,
+        200.35779869766887
+      ],
+      "size": [
+        210,
+        98
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "image",
+          "shape": 7,
+          "type": "IMAGE",
+          "link": 84
+        },
+        {
+          "name": "audio",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": 85
+        }
+      ],
+      "outputs": [
+        {
+          "name": "video_frames",
+          "type": "IMAGE",
+          "links": [
+            86
+          ]
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            87
+          ]
+        },
+        {
+          "name": "fps",
+          "type": "FLOAT",
+          "links": [
+            88
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "ComfyUI-Pixaroma",
+        "ver": "52daaba187bd9a1964938a73c60e72dffbb025c2",
+        "audioStudioState": {
+          "schema_version": 1,
+          "motion_mode": "scale_pulse",
+          "intensity": 0.8,
+          "audio_band": "full",
+          "motion_speed": 0.2,
+          "motion_direction": 1,
+          "shake_axis": "both",
+          "ripple_density": 1,
+          "slit_density": 1,
+          "glitch_bands": 30,
+          "wave_density": 1,
+          "pixelate_blocks": 24,
+          "squeeze_axis": "x",
+          "smoothing": 5,
+          "loop_safe": true,
+          "fps": 24,
+          "glitch_strength": 0,
+          "bloom_strength": 0,
+          "vignette_strength": 0,
+          "hue_shift_strength": 0,
+          "grade_strength": 0,
+          "letterbox_strength": 0,
+          "scanline_strength": 0,
+          "grain_strength": 0,
+          "aspect_ratio": "Original",
+          "custom_width": 1024,
+          "custom_height": 1024,
+          "image_source": "upstream",
+          "image_path": null,
+          "audio_source": "upstream",
+          "audio_path": null,
+          "image_force_inline": false,
+          "audio_force_inline": false,
+          "image_uploaded_at": 0,
+          "audio_uploaded_at": 0
+        },
+        "Node name for S&R": "PixaromaAudioStudio"
+      },
+      "widgets_values": [
+        null
+      ]
+    }
+  ],
+  "links": [
+    [
+      84,
+      1,
+      0,
+      31,
+      0,
+      "IMAGE"
+    ],
+    [
+      85,
+      3,
+      0,
+      31,
+      1,
+      "AUDIO"
+    ],
+    [
+      86,
+      31,
+      0,
+      32,
+      0,
+      "IMAGE"
+    ],
+    [
+      87,
+      31,
+      1,
+      32,
+      1,
+      "AUDIO"
+    ],
+    [
+      88,
+      31,
+      2,
+      32,
+      2,
+      "FLOAT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 1.0435975969774804,
+      "offset": [
+        -252.8324324292123,
+        -2.236167120124354
+      ]
+    },
+    "frontendVersion": "1.42.11",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
