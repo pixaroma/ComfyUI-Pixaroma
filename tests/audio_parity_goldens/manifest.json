@@ -36,7 +36,9 @@
     "custom_height": 512
   },
   "tolerance": {
+    "_comment_pre_refactor": "Used by Tasks A3-A6 to enforce that the engine extraction is byte-identical to the pre-refactor node. Not consumed by audio_parity_check.py in the current shape — A3-A6 add an explicit assertion against this field.",
     "rmse_max_pre_refactor_to_post_refactor": 0.0,
+    "_comment_python_release": "1.0 deliberately covers PyTorch float-precision drift across releases. Current measured RMSE is ~0.57 (pure float->uint8->PNG round-trip noise). Don't tighten without confirming the new value still passes on a clean PyTorch upgrade.",
     "rmse_max_python_to_python_release": 1.0
   }
 }

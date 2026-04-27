@@ -11,7 +11,6 @@ Usage:
 import argparse
 import importlib.util
 import json
-import math
 import sys
 from pathlib import Path
 
@@ -46,14 +45,18 @@ def load_test_image(path):
     return torch.from_numpy(img).unsqueeze(0)  # [1, H, W, 3]
 
 
-def synthesize_audio(duration_s, sample_rate, seed):
-    """Deterministic test audio: sine sweep + onset spikes at known frames."""
+def synthesize_audio(duration_s, sample_rate, seed, fps):
+    """Deterministic test audio: sine sweep + onset spikes at known frames.
+
+    Uses np.random.RandomState (NOT default_rng) — RandomState is the legacy
+    bit-stream guaranteed stable across NumPy versions, required for
+    parity-test reproducibility. Do NOT "modernize" to default_rng.
+    """
     n = int(duration_s * sample_rate)
     t = np.arange(n) / sample_rate
     f0, f1 = 100.0, 2000.0
     phase = 2 * np.pi * (f0 * t + (f1 - f0) * t * t / (2 * duration_s))
     sweep = 0.3 * np.sin(phase)
-    fps = 30
     spike_envelope = np.zeros(n, dtype=np.float32)
     for fr in (30, 60, 90):
         center = int(fr / fps * sample_rate)
@@ -71,7 +74,12 @@ def synthesize_audio(duration_s, sample_rate, seed):
 
 def render_frames(node, image, audio, params, motion_mode, glitch=0.0, bloom=0.0,
                   vignette=0.0, hue_shift=0.0):
-    """Run PixaromaAudioReact.generate() once and return the full [F, H, W, 3] tensor."""
+    """Run PixaromaAudioReact.generate() once and return the full [F, H, W, 3] tensor.
+
+    NOTE: kwarg names + types must match PixaromaAudioReact.INPUT_TYPES.
+    If a widget is renamed/removed in node_audio_react.py, update here AND
+    regenerate goldens with --regenerate (review the diff carefully).
+    """
     out = node.generate(
         image=image, audio=audio,
         aspect_ratio=params["aspect_ratio"],
@@ -110,11 +118,18 @@ def main():
     args = ap.parse_args()
 
     manifest = json.loads(MANIFEST_PATH.read_text())
+    # Defensive consistency check — synth-time fps and node-render fps must
+    # match, or audio onset spikes land on the wrong frames during analysis.
+    assert manifest["audio"]["fps"] == manifest["shared_params"]["fps"], (
+        f"manifest fps mismatch: audio.fps={manifest['audio']['fps']} "
+        f"!= shared_params.fps={manifest['shared_params']['fps']}"
+    )
     image = load_test_image(REPO_ROOT / manifest["test_image"])
     audio = synthesize_audio(
         manifest["audio"]["duration_s"],
         manifest["audio"]["sample_rate"],
         manifest["audio"]["seed"],
+        manifest["audio"]["fps"],
     )
 
     node = PixaromaAudioReact()
