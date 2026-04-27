@@ -14,15 +14,11 @@ Design notes:
 """
 from __future__ import annotations
 
-import gc
 import math
 from dataclasses import dataclass, fields
 
 import torch
 import torch.nn.functional as F
-
-import comfy.utils
-import comfy.model_management
 
 
 # ---------------------------------------------------------------------
@@ -111,7 +107,7 @@ def validate_params(params: Params) -> list[str]:
 
 
 # ---------------------------------------------------------------------
-# Helper functions — populated in subsequent tasks (A3).
+# Helper functions — pure, side-effect-free.
 # ---------------------------------------------------------------------
 
 def bandpass_fft(waveform, sample_rate, low_hz, high_hz):
@@ -136,9 +132,12 @@ def onset_track(envelope, decay=0.85):
         return envelope.clone()
     diff = torch.cat([torch.zeros(1, device=envelope.device), envelope[1:] - envelope[:-1]])
     diff = torch.clamp(diff, min=0.0)
+    # Threshold at top quartile of derivative + a small floor so quiet music
+    # still produces some onsets.
     thresh = max(0.05, torch.quantile(diff, 0.75).item())
-    spikes = (diff > thresh).float() * diff
+    spikes = (diff > thresh).float() * diff  # keep magnitude on hit frames
 
+    # Exponential decay: onset[t] = max(spikes[t], onset[t-1] * decay)
     out = torch.zeros_like(envelope)
     prev = 0.0
     for i in range(envelope.numel()):
@@ -146,7 +145,7 @@ def onset_track(envelope, decay=0.85):
         out[i] = prev
     out_max = out.max().item()
     if out_max > 0:
-        out = out / out_max
+        out = out / out_max  # peak-normalize to [0, 1]
     return out
 
 
@@ -184,6 +183,12 @@ def process_aspect(image, aspect_ratio, custom_w, custom_h, headroom=1.0):
     else:
         target_w, target_h = base_w, base_h
 
+    # Fast path: input already at the snapped size, no work to do.
+    # Without the `w == base_w and h == base_h` guard, an "Original"
+    # input with odd dims (e.g. 1672x941) returns the un-snapped image
+    # but advertises base_w/base_h that don't match — Save Mp4 then
+    # rejects the odd height. Falling through here center-crops to the
+    # nearest mult-of-8.
     if aspect_ratio == "Original" and headroom <= 1.0 and w == base_w and h == base_h:
         return image, base_w, base_h
 
@@ -207,7 +212,11 @@ def process_aspect(image, aspect_ratio, custom_w, custom_h, headroom=1.0):
 def audio_envelope(audio, target_frames, fps, device, audio_band, smoothing):
     """Returns a [target_frames] tensor in [0, 1] — per-frame audio energy."""
     waveform = audio["waveform"]
+    # Coerce sample_rate to int — the validation guard accepts float, but
+    # `view()` and integer divisions below need an int.
     sample_rate = int(audio["sample_rate"])
+    # Take the first batch entry only — multi-batch AUDIO is out of scope
+    # and would silently double-count samples below.
     if waveform.shape[0] > 1:
         waveform = waveform[:1]
     if waveform.shape[1] > 1:

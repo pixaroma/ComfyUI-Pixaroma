@@ -9,37 +9,16 @@ import comfy.utils
 import comfy.model_management
 
 from ._audio_react_engine import (
+    ASPECT_OPTIONS,
     AUDIO_BANDS_HZ,
+    audio_envelope,
     bandpass_fft,
     onset_track,
     process_aspect,
-    audio_envelope,
 )
 
-_ASPECT_OPTIONS = [
-    "Original",
-    "Custom (Use Width & Height below)",
-    "Custom Ratio 16:9 (Uses Width)",
-    "Custom Ratio 9:16 (Uses Width)",
-    "Custom Ratio 4:3 (Uses Width)",
-    "Custom Ratio 1:1 (Uses Width)",
-    "512x512 (Square)",
-    "768x512 (Landscape)",
-    "512x768 (Portrait)",
-    "832x480 (Landscape)",
-    "480x832 (Portrait)",
-    "1024x576 (Landscape 16:9)",
-    "576x1024 (Portrait 9:16)",
-    "1280x720 (Landscape HD)",
-    "720x1280 (Portrait HD)",
-    "1920x1080 (Landscape FHD)",
-    "1080x1920 (Portrait FHD)",
-    "2560x1440 (Landscape 2K)",
-    "1440x2560 (Portrait 2K)",
-    "3840x2160 (Landscape 4K)",
-    "2160x3840 (Portrait 4K)",
-]
-
+# Local list — A4 will register MOTION_MODES in the engine; for now keep this
+# list as the source for the dropdown.
 _MOTION_MODES = [
     "scale_pulse",
     "zoom_punch",
@@ -63,7 +42,7 @@ class PixaromaAudioReact:
             "required": {
                 "image": ("IMAGE", {"tooltip": "Source still image to animate."}),
                 "audio": ("AUDIO", {"tooltip": "Driver audio. Clip length = audio_duration × fps."}),
-                "aspect_ratio": (_ASPECT_OPTIONS, {"default": "Original",
+                "aspect_ratio": (ASPECT_OPTIONS, {"default": "Original",
                     "tooltip": "Output framing. 'Original' keeps the input image's ratio. Fixed presets crop+resize to that exact size. 'Custom Ratio …' uses custom_width and computes height from the ratio. 'Custom (W & H)' uses both as-is."}),
                 "custom_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8,
                     "tooltip": "Used by 'Custom Ratio …' presets and 'Custom (W & H)'. Ignored by 'Original' and fixed-size presets."}),
