@@ -247,6 +247,7 @@ export class AudioStudioEditor {
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
           this.cfg.image_force_inline = true;   // explicit user upload wins
+          this.cfg.image_uploaded_at = Date.now();   // invalidate ComfyUI prompt cache
           this._uploadDirty = true;
           this._snapForUndo(true);
           this._refreshSaveBtnState();
@@ -665,6 +666,11 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
       // Set the override so this fresh upload wins even if upstream is
       // wired. User can clear via pill click while overriding.
       this.cfg.image_force_inline = true;
+      // Bump upload timestamp so studio_json differs from the previous
+      // run even when the file path is identical (same node id + same
+      // extension overwrites in place). Without this, ComfyUI's prompt
+      // cache hits the prior result and shows the old MP4 unchanged.
+      this.cfg.image_uploaded_at = Date.now();
       this._uploadDirty = true;   // bytes-on-disk changed even if path matches
       this._snapForUndo(true);
       this._refreshSaveBtnState();
@@ -789,6 +795,9 @@ AudioStudioEditor.prototype._handleAudioFile = async function (file) {
     this.cfg.audio_path = path;
     // Same override semantics as image — fresh user upload wins over wired.
     this.cfg.audio_force_inline = true;
+    // Bump upload timestamp so studio_json differs from the previous run
+    // even when the file path is identical. See the image upload comment.
+    this.cfg.audio_uploaded_at = Date.now();
     this._uploadDirty = true;   // bytes-on-disk changed even if path matches
     this._snapForUndo(true);
     this._refreshSaveBtnState();

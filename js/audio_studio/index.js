@@ -40,6 +40,13 @@ const DEFAULT_CFG = {
   // it"). When false, upstream wins if wired and inline is the fallback.
   image_force_inline: false,
   audio_force_inline: false,
+  // Upload timestamps, bumped on every editor upload. They serialize into
+  // studio_json so re-uploading to the same path (same node id + same
+  // extension overwrites in place) still produces a different prompt JSON
+  // — otherwise ComfyUI's prompt cache hits the previous result and
+  // returns the old MP4 unchanged. The Python side ignores these fields.
+  image_uploaded_at: 0,
+  audio_uploaded_at: 0,
 };
 
 // Vue-compat: the editor overlay can be removed from the DOM by Vue
