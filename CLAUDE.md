@@ -362,6 +362,8 @@ These patterns were hard-won during Audio Studio v1 development. Regressing any 
 
 14. **Window-level scrub listeners (`mousemove` / `mouseup`) must be cached on the editor instance and detached in `forceClose`** — see `_detachTransportListeners` in `transport.mjs`. Without detach, the closure keeps the editor alive after close (memory leak + stale references on the next open). Same applies to debounced timers (`_recomputeTimer`, `_snapTimer`) — `forceClose` clears both.
 
+15. **Inline-upload wire disconnects are queued, not immediate — committed on Save, discarded on Cancel.** When the user uploads an image / audio inside the editor, the upstream wire is NOT torn down at upload time. Instead `_queueWireDisconnect(name)` records the input on `editor._pendingDisconnects`, and `cfg.<src>_force_inline = true` keeps the inline preview winning over the still-attached upstream during the session. `_save()` calls `_disconnectUpstreamInput(name)` for each queued entry before serializing. If the user picks Discard from the close prompt, `forceClose()` runs without `_save()` and the queued set is garbage-collected with the editor — the graph wire stays intact. The previous "disconnect immediately on upload" design left the user with a permanently disconnected wire whenever they uploaded by accident and discarded; that's the bug this pattern fixes. If you add a new inline-upload path, route through `_queueWireDisconnect` (not `_disconnectUpstreamInput`) and set `force_inline = true` so the in-session preview is correct.
+
 ### Note Pixaroma Patterns (do not regress)
 
 These patterns were hard-won during Note Pixaroma development. Regressing any of them reintroduces specific bugs, some silent.

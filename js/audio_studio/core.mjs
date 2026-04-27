@@ -186,8 +186,8 @@ export class AudioStudioEditor {
         <b>Close:</b> <kbd>Esc</kbd><br>
         <hr>
         <b>Sources:</b> wire IMAGE / AUDIO into the node, OR click an upload
-        button to load inline. Uploading auto-disconnects the matching wire
-        so the graph reflects what's used.<br>
+        button to load inline. Uploading queues a wire disconnect that
+        commits on Save (Discard keeps the wire intact).<br>
         <b>Drag-drop:</b> drop an image or audio file on the canvas.
       `,
     });
@@ -265,10 +265,10 @@ export class AudioStudioEditor {
           const { path } = await uploadSource(this.node.id, "image", file, filename);
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
-          this.cfg.image_force_inline = false;
+          this.cfg.image_force_inline = true;
           this.cfg.image_uploaded_at = Date.now();
           this._uploadDirty = true;
-          this._disconnectUpstreamInput("image");
+          this._queueWireDisconnect("image");
           this._snapForUndo(true);
           this._refreshSaveBtnState();
           await this._resolveImageSource();
@@ -393,14 +393,21 @@ export class AudioStudioEditor {
 
   _save() {
     if (!this.isDirty()) return;
+    // Commit any wire disconnects that were queued by inline uploads during
+    // the session. Deferring to save time means a Discard close leaves the
+    // upstream wire intact — uploads only affect the graph if the user
+    // confirms with Save.
+    if (this._pendingDisconnects && this._pendingDisconnects.size) {
+      for (const name of this._pendingDisconnects) {
+        this._disconnectUpstreamInput(name);
+      }
+      this._pendingDisconnects.clear();
+    }
     // Auto-clear force_inline at save time when no upstream is wired for
-    // that channel. Rationale: the override only matters when there's
-    // something to override. If the user uploaded inline with no wire,
-    // force_inline is just a stale flag that will silently ignore any
-    // upstream the user wires LATER. Clearing it makes "wire it later"
-    // work without forcing the user to re-open the editor and toggle
-    // the pill. When upstream IS wired at save time, the user clearly
-    // meant to override, so we preserve the flag.
+    // that channel. After the disconnects above this is almost always the
+    // case for channels the user uploaded inline. The override flag only
+    // matters while a wire is present; clearing it lets "wire it later"
+    // work without forcing the user to re-open the editor.
     const upstreamImg = !!getUpstreamImageUrl(app.graph, this.node);
     const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
     const upstreamAud = audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null;
@@ -613,21 +620,29 @@ AudioStudioEditor.prototype._showCanvasMessage = function (msg) {
 };
 
 /**
+ * Mark `inputName` ("image" or "audio") to be disconnected from its upstream
+ * wire when the user clicks Save. Called from the inline-upload paths so an
+ * upload doesn't permanently mutate the graph until the user confirms; if
+ * they Discard the editor instead, the queued disconnect is thrown away
+ * along with the editor instance.
+ */
+AudioStudioEditor.prototype._queueWireDisconnect = function (inputName) {
+  if (!this._pendingDisconnects) this._pendingDisconnects = new Set();
+  this._pendingDisconnects.add(inputName);
+};
+
+/**
  * Disconnect the upstream wire feeding `inputName` ("image" or "audio").
- * No-op if nothing is wired. Called when the user uploads an inline file
- * so the graph state stays unambiguous: a wired input means upstream is
- * being used, a disconnected input means the inline file is used.
+ * No-op if nothing is wired. Called from _save() to commit disconnects
+ * queued by inline uploads earlier in the editor session.
  */
 AudioStudioEditor.prototype._disconnectUpstreamInput = function (inputName) {
   const idx = (this.node.inputs || []).findIndex((i) => i.name === inputName);
   if (idx < 0) return;
   if (this.node.inputs[idx].link == null) return;
   // LiteGraph's standard disconnect API. Triggers onConnectionsChange,
-  // which our editor listens for — but our handler only re-resolves the
-  // affected source if cfg.<src>_source is "upstream". We just set it to
-  // "inline" before calling this, so the handler short-circuits and the
-  // explicit _resolveImageSource / _resolveAudioSource call below picks
-  // up the new state.
+  // which the editor's handler re-resolves the affected source for —
+  // harmless here since we're called from _save() right before close.
   try { this.node.disconnectInput(idx); } catch (e) {
     console.warn(`[Pixaroma] Audio Studio: disconnectInput(${inputName}) failed:`, e);
   }
@@ -709,21 +724,20 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
       const { path } = await uploadSource(this.node.id, "image", file, filename);
       this.cfg.image_source = "inline";
       this.cfg.image_path = path;
-      // No need for force_inline since we're disconnecting the wire below.
-      // The graph itself becomes the source of truth: wire connected = upstream,
-      // wire disconnected = inline. Less confusing than having the wire still
-      // show but be silently overridden.
-      this.cfg.image_force_inline = false;
+      // force_inline=true makes the inline upload win over a still-attached
+      // upstream wire during the session preview. The wire isn't physically
+      // disconnected until Save (see _queueWireDisconnect + _save) so a
+      // Discard leaves the graph untouched.
+      this.cfg.image_force_inline = true;
       // Bump upload timestamp so studio_json differs from the previous
       // run even when the file path is identical (same node id + same
       // extension overwrites in place). Without this, ComfyUI's prompt
       // cache hits the prior result and shows the old MP4 unchanged.
       this.cfg.image_uploaded_at = Date.now();
       this._uploadDirty = true;   // bytes-on-disk changed even if path matches
-      // Auto-disconnect upstream image wire — uploading inline means the
-      // user wants to use this file, not upstream. Keeping the wire would
-      // visually imply upstream is in use which is confusing.
-      this._disconnectUpstreamInput("image");
+      // Queue (don't immediately apply) the upstream wire disconnect. It
+      // commits in _save(); discarded if the user cancels the editor.
+      this._queueWireDisconnect("image");
       this._snapForUndo(true);
       this._refreshSaveBtnState();
       await this._resolveImageSource();
@@ -836,15 +850,17 @@ AudioStudioEditor.prototype._handleAudioFile = async function (file) {
     const { path } = await uploadSource(this.node.id, "audio", wavBlob, "audio.wav");
     this.cfg.audio_source = "inline";
     this.cfg.audio_path = path;
-    // No override flag needed — disconnecting the wire below makes the
-    // graph state unambiguous (same logic as image).
-    this.cfg.audio_force_inline = false;
+    // force_inline=true: same rationale as image upload — the inline file
+    // wins over a still-attached upstream wire during the session, but
+    // the wire is only physically disconnected on Save.
+    this.cfg.audio_force_inline = true;
     // Bump upload timestamp so studio_json differs from the previous run
     // even when the file path is identical. See the image upload comment.
     this.cfg.audio_uploaded_at = Date.now();
     this._uploadDirty = true;
-    // Auto-disconnect upstream audio wire so the graph reflects reality.
-    this._disconnectUpstreamInput("audio");
+    // Queue the upstream wire disconnect — applied in _save(), discarded
+    // if the user cancels.
+    this._queueWireDisconnect("audio");
     this._snapForUndo(true);
     this._refreshSaveBtnState();
     await this._resolveAudioSource();
