@@ -44,6 +44,12 @@ uniform float u_t;
 uniform float u_aspect;
 uniform vec2  u_resolution;
 
+// Per-mode params — declared globally so each shader can opt in. Unused
+// uniforms get optimized out of programs that don't reference them.
+uniform int   u_shake_axis;          // 0=both, 1=x-only, 2=y-only
+uniform float u_ripple_density;       // multiplier on ripple's k (default 1.0)
+uniform float u_slit_density;         // multiplier on slit_scan's k (default 1.0)
+
 // NOTE: parameter is named 'tex' not 'sample' — 'sample' is a reserved
 // word in GLSL ES 3.00 (sample-rate qualifier).
 float read_band(vec4 tex, int idx) {
@@ -110,7 +116,10 @@ void main() {
     float dxRaw = (hash11(fi * 7.0 + 1.0) - 0.5) * 2.0 * onset_t;
     float dyRaw = (hash11(fi * 7.0 + 2.0) - 0.5) * 2.0 * onset_t;
     float amp = u_intensity * 0.04;
-    vec2 uv = v_uv - vec2(dxRaw * amp, dyRaw * amp);
+    // u_shake_axis: 0=both, 1=x-only, 2=y-only. Locking an axis zeros its delta.
+    float xMul = (u_shake_axis == 2) ? 0.0 : 1.0;
+    float yMul = (u_shake_axis == 1) ? 0.0 : 1.0;
+    vec2 uv = v_uv - vec2(dxRaw * amp * xMul, dyRaw * amp * yMul);
     fragColor = sample_image(uv);
 }
 `,
@@ -155,7 +164,7 @@ void main() {
     float xs = p.x * u_aspect;
     float ys = p.y;
     float r = sqrt(xs*xs + ys*ys);
-    float k = 6.0 * 3.14159265359;
+    float k = 6.0 * 3.14159265359 * u_ripple_density;
     float omega = 6.28318530718 * max(u_motion_speed * 4.0, 0.5) * u_motion_direction;
     float A = env_t * u_intensity * 0.015 * 2.0;
     float dr = A * sin(k * r - omega * u_t);
@@ -192,7 +201,7 @@ void main() {
 void main() {
     float env_t = env_at(u_frame_index);
     float yn = (v_uv.y - 0.5) * 2.0;       // y in [-1,1]
-    float k = 4.0 * 3.14159265359;
+    float k = 4.0 * 3.14159265359 * u_slit_density;
     float omega = 6.28318530718 * max(u_motion_speed * 2.0, 0.4) * u_motion_direction;
     float A = env_t * u_intensity * 0.04;
     float dy = A * sin(k * yn - omega * u_t);

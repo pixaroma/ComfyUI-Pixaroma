@@ -50,6 +50,13 @@ const DIRECTIONAL_MOTION_MODES = new Set([
   "drift", "rotate_pulse", "ripple", "swirl", "slit_scan",
 ]);
 
+// Audio band button group is also reused by the section reset list.
+const SHAKE_AXES = [
+  { value: "both", label: "Both" },
+  { value: "x",    label: "X" },
+  { value: "y",    label: "Y" },
+];
+
 const AUDIO_BANDS = [
   { value: "full",   label: "Full" },
   { value: "bass",   label: "Bass" },
@@ -323,7 +330,11 @@ AudioStudioEditor.prototype._attachSectionAction = function (panelEl, action) {
  */
 AudioStudioEditor.prototype._resetMotionDefaults = function () {
   const d = this._defaults || {};
-  const keys = ["intensity", "motion_speed", "smoothing", "loop_safe", "motion_direction"];
+  const keys = [
+    "intensity", "motion_speed", "smoothing", "loop_safe",
+    "motion_direction",
+    "shake_axis", "ripple_density", "slit_density",
+  ];
   let changed = false;
   for (const k of keys) {
     if (d[k] !== undefined && this.cfg[k] !== d[k]) {
@@ -576,13 +587,55 @@ AudioStudioEditor.prototype._addInlineWH = function (panel, label1, key1, label2
 AudioStudioEditor.prototype._buildMotionSection = function (panel) {
   this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, {
     columns: 2,
-    onChange: () => this._refreshDirectionVisibility(),
+    onChange: () => this._refreshMotionModeUI(),
   });
   this._addDirectionToggle(panel);
+
+  // Per-mode params — populated by _refreshMotionModeUI based on current
+  // motion_mode. Sits above Intensity so mode-specific tuning is visually
+  // grouped with the mode picker.
+  this._modeSpecificPanel = document.createElement("div");
+  panel.appendChild(this._modeSpecificPanel);
+
   this._addSlider(panel, "Intensity",    "intensity",    0.0, 2.0, 0.05);
   this._addSlider(panel, "Motion speed", "motion_speed", 0.05, 1.0, 0.05);
   this._addSlider(panel, "Smoothing",    "smoothing",    1, 15, 1);
   this._addToggle(panel, "Loop safe",    "loop_safe");
+
+  this._refreshMotionModeUI();
+};
+
+/**
+ * Per-mode control builders. Each builder populates the mode-specific
+ * sub-panel with controls only relevant to that motion. Modes not listed
+ * here have no extra params — the panel is simply empty.
+ *
+ * Adding a new per-mode control = (1) add the field to Params + DEFAULT_CFG
+ * + render.mjs uniforms, (2) add a builder here.
+ */
+const MODE_SPECIFIC_BUILDERS = {
+  shake(panel) {
+    this._addButtonGroup(panel, "Axis", "shake_axis", SHAKE_AXES, { columns: 3 });
+  },
+  ripple(panel) {
+    this._addSlider(panel, "Wave density", "ripple_density", 0.3, 3.0, 0.1);
+  },
+  slit_scan(panel) {
+    this._addSlider(panel, "Bar density", "slit_density", 0.3, 3.0, 0.1);
+  },
+};
+
+/**
+ * Rebuild the per-mode panel + refresh the direction toggle's visibility
+ * after motion_mode changes. Cheaper than rebuilding the whole sidebar
+ * (other sections + their collapsed state aren't disturbed).
+ */
+AudioStudioEditor.prototype._refreshMotionModeUI = function () {
+  this._refreshDirectionVisibility();
+  if (!this._modeSpecificPanel) return;
+  this._modeSpecificPanel.textContent = "";
+  const builder = MODE_SPECIFIC_BUILDERS[this.cfg.motion_mode];
+  if (builder) builder.call(this, this._modeSpecificPanel);
 };
 
 /**

@@ -218,6 +218,15 @@ AudioStudioEditor.prototype._render = function () {
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_t"), t);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_aspect"), aspect);
   gl.uniform2f(gl.getUniformLocation(motionProg, "u_resolution"), outW, outH);
+  // Per-mode uniforms — only the active motion shader actually reads them.
+  // Unused-uniform locations come back as null and uniform calls no-op.
+  const axisVal = this.cfg.shake_axis === "x" ? 1
+               : this.cfg.shake_axis === "y" ? 2 : 0;
+  gl.uniform1i(gl.getUniformLocation(motionProg, "u_shake_axis"), axisVal);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_ripple_density"),
+               this.cfg.ripple_density ?? 1.0);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_slit_density"),
+               this.cfg.slit_density ?? 1.0);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 

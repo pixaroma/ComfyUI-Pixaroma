@@ -23,6 +23,11 @@ const DEFAULT_CFG = {
   // +1 = original direction, -1 = reversed (only affects rotational/wave
   // motion modes — see Params.motion_direction in _audio_react_engine.py).
   motion_direction: 1.0,
+  // Per-mode params — each is no-op for non-target modes. Defaults match
+  // Params(...) in nodes/_audio_react_engine.py (Pattern #1).
+  shake_axis: "both",       // "both" / "x" / "y" — Camera Shake only
+  ripple_density: 1.0,      // multiplier on Ripple's wave frequency
+  slit_density: 1.0,        // multiplier on Time Slice's bar count
   smoothing: 5,
   loop_safe: true,
   fps: 24,

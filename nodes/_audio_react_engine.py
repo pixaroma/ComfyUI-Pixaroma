@@ -96,6 +96,20 @@ class Params:
     # parity goldens stay valid.
     motion_direction: float = 1.0
 
+    # ── Per-mode params ─────────────────────────────────────────
+    # Each only affects its named mode; defaults are no-op so existing
+    # workflows + parity goldens stay valid.
+    #
+    # shake: lock the random jitter to one axis. "both" = current behavior,
+    # "x" = horizontal jitter only, "y" = vertical jitter only.
+    shake_axis: str = "both"
+    # ripple: multiplier on the spatial frequency `k`. Higher = tighter
+    # ripples (more concentric rings visible). 1.0 keeps the original look.
+    ripple_density: float = 1.0
+    # slit_scan: same idea — multiplier on the row-wave frequency. Higher
+    # = more horizontal bars visible at once.
+    slit_density: float = 1.0
+
 
 @dataclass
 class MotionContext:
@@ -114,6 +128,10 @@ class MotionContext:
     frame_index: int
     fps: int
     onset_arr: torch.Tensor   # [F] — full onset track (used by shake)
+    # Per-mode params (all default to a no-op for non-target modes).
+    shake_axis: str = "both"
+    ripple_density: float = 1.0
+    slit_density: float = 1.0
 
 
 @dataclass
@@ -363,8 +381,13 @@ def motion_shake(ctx: MotionContext) -> torch.Tensor:
     dy = dy_arr[ctx.frame_index] * amp
 
     grid = ctx.base_grid.clone()
-    grid[..., 0] = grid[..., 0] - dx
-    grid[..., 1] = grid[..., 1] - dy
+    # Axis lock: "both" → both X and Y jitter, "x" → horizontal-only,
+    # "y" → vertical-only. Unknown values fall back to "both".
+    axis = ctx.shake_axis if ctx.shake_axis in ("both", "x", "y") else "both"
+    if axis != "y":
+        grid[..., 0] = grid[..., 0] - dx
+    if axis != "x":
+        grid[..., 1] = grid[..., 1] - dy
     return grid
 
 
@@ -429,7 +452,7 @@ def motion_ripple(ctx: MotionContext) -> torch.Tensor:
     aspect = ctx.W / ctx.H
     r = torch.sqrt((xs * aspect) ** 2 + ys ** 2)
 
-    k = 6.0 * math.pi
+    k = 6.0 * math.pi * ctx.ripple_density
     omega = 2.0 * math.pi * max(ctx.motion_speed * 4.0, 0.5) * ctx.direction
     # Spec: amplitude is 0.015·min(W,H) px → in normalized [-1,1] grid
     # units (full range = 2 units across the smaller dim) → 0.015 * 2 / 2.
@@ -453,7 +476,7 @@ def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
     buffer."""
     device = ctx.base_grid.device
     ys = torch.linspace(-1, 1, ctx.H, device=device).unsqueeze(1).expand(ctx.H, ctx.W)
-    k = 4.0 * math.pi
+    k = 4.0 * math.pi * ctx.slit_density
     omega = 2.0 * math.pi * max(ctx.motion_speed * 2.0, 0.4) * ctx.direction
     A = ctx.env_t * ctx.intensity * 0.04
 
@@ -708,6 +731,9 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             H=H, W=W,
             total_frames=total_frames, frame_index=i, fps=params.fps,
             onset_arr=onset,
+            shake_axis=params.shake_axis,
+            ripple_density=params.ripple_density,
+            slit_density=params.slit_density,
         )
         grid = motion_fn(ctx)
 
