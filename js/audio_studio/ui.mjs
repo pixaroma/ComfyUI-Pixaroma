@@ -1,7 +1,8 @@
 // js/audio_studio/ui.mjs
-// Mixin: tabbed sidebar with all 16 controls.
-// Adds methods to AudioStudioEditor.prototype via the mixin pattern.
+// Mixin: collapsible-section sidebar (3D-Builder style) — Motion / Overlays /
+// Audio / Output. Adds methods to AudioStudioEditor.prototype.
 import { AudioStudioEditor } from "./core.mjs";
+import { createPanel } from "../framework/index.mjs";
 
 const ASPECT_OPTIONS = [
   "Original",
@@ -28,8 +29,8 @@ const ASPECT_OPTIONS = [
 ];
 
 // Internal id (left) goes to the engine + saved workflow; label (right) is
-// what users see in the dropdown. Renaming the label is safe; the id is
-// load-bearing and must NOT change without an explicit migration.
+// what users see. Renaming the label is safe; the id is load-bearing and
+// must NOT change without an explicit migration.
 const MOTION_MODES = [
   { value: "scale_pulse",  label: "Pulse Zoom" },
   { value: "zoom_punch",   label: "Punch Zoom" },
@@ -41,36 +42,28 @@ const MOTION_MODES = [
   { value: "slit_scan",    label: "Time Slice" },
 ];
 
-const AUDIO_BANDS = ["full", "bass", "mids", "treble"];
+const AUDIO_BANDS = [
+  { value: "full",   label: "Full" },
+  { value: "bass",   label: "Bass" },
+  { value: "mids",   label: "Mids" },
+  { value: "treble", label: "Treble" },
+];
+
+// Aspect-ratio values where Custom Width is editable.
+function isCustomWidthAspect(v) {
+  return typeof v === "string" && v.startsWith("Custom");
+}
+// Only this single value also makes Custom Height editable.
+function isCustomHeightAspect(v) {
+  return v === "Custom (Use Width & Height below)";
+}
 
 function injectSidebarCSS() {
   if (document.getElementById("pix-as-sidebar-css")) return;
   const css = `
-    .pix-as-tabs {
-      display: flex;
-      background: #1c1c1c;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .pix-as-tab {
-      flex: 1;
-      padding: 8px 6px;
-      text-align: center;
-      color: #888;
-      font-size: 11px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .pix-as-tab.active {
-      color: #f66744;
-      border-bottom: 2px solid #f66744;
-    }
-    .pix-as-tab:hover:not(.active) { color: #ccc; }
-    .pix-as-controls {
-      padding: 12px;
-      flex: 1;
-      overflow-y: auto;
-    }
+    .pix-as-controls { padding: 12px; flex: 1; overflow-y: auto; }
     .pix-as-control { margin-bottom: 12px; }
+    .pix-as-control:last-child { margin-bottom: 0; }
     .pix-as-control-row {
       display: flex; align-items: baseline; justify-content: space-between;
       margin-bottom: 4px;
@@ -81,6 +74,7 @@ function injectSidebarCSS() {
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
+    .pix-as-label.disabled { color: #555; }
     .pix-as-value {
       color: #ccc;
       font-size: 11px;
@@ -123,11 +117,41 @@ function injectSidebarCSS() {
     }
     .pix-as-dropdown:focus,
     .pix-as-input:focus { border-color: #f66744; }
+    .pix-as-input:disabled,
+    .pix-as-dropdown:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
     .pix-as-toggle {
       display: inline-flex; align-items: center; gap: 6px;
       cursor: pointer;
     }
     .pix-as-toggle input { cursor: pointer; }
+
+    /* Button group — used for small categorical pickers (motion mode,
+       audio band) in place of a dropdown. */
+    .pix-as-btn-group {
+      display: grid;
+      gap: 4px;
+    }
+    .pix-as-btn-group button {
+      padding: 6px 6px;
+      background: #1a1a1a;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 3px;
+      font-size: 11px;
+      cursor: pointer;
+      font-family: inherit;
+      text-align: center;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pix-as-btn-group button:hover { color: #ccc; border-color: #555; }
+    .pix-as-btn-group button.active {
+      background: #f66744;
+      color: #fff;
+      border-color: #f66744;
+    }
   `;
   const style = document.createElement("style");
   style.id = "pix-as-sidebar-css";
@@ -146,48 +170,22 @@ AudioStudioEditor.prototype._buildSidebar = function () {
   sidebar.style.display = "flex";
   sidebar.style.flexDirection = "column";
 
-  // Tab bar
-  const tabs = document.createElement("div");
-  tabs.className = "pix-as-tabs";
-  this._tabs = {};
-  this._tabPanels = {};
+  // Scrollable container so the collapsible sections can grow without
+  // pushing the framework's footer (Help / Save) off-screen.
+  const scroller = document.createElement("div");
+  scroller.style.cssText = "flex:1; overflow-y:auto; min-height:0;";
+  sidebar.appendChild(scroller);
 
-  const tabNames = ["Motion", "Overlays", "Audio", "Output"];
-  for (const name of tabNames) {
-    const tab = document.createElement("span");
-    tab.className = "pix-as-tab";
-    tab.textContent = name;
-    tab.addEventListener("click", () => this._activateTab(name));
-    tabs.appendChild(tab);
-    this._tabs[name] = tab;
-  }
-  sidebar.appendChild(tabs);
-
-  // One panel per tab
-  for (const name of tabNames) {
-    const panel = document.createElement("div");
-    panel.className = "pix-as-controls";
-    panel.style.display = "none";
-    sidebar.appendChild(panel);
-    this._tabPanels[name] = panel;
-  }
-
-  this._buildMotionTab(this._tabPanels.Motion);
-  this._buildOverlaysTab(this._tabPanels.Overlays);
-  this._buildAudioTab(this._tabPanels.Audio);
-  this._buildOutputTab(this._tabPanels.Output);
-
-  this._activateTab("Motion");
-};
-
-// ---------------------------------------------------------------------------
-// Tab switching
-// ---------------------------------------------------------------------------
-
-AudioStudioEditor.prototype._activateTab = function (name) {
-  for (const k of Object.keys(this._tabs)) {
-    this._tabs[k].classList.toggle("active", k === name);
-    this._tabPanels[k].style.display = k === name ? "block" : "none";
+  const sections = [
+    ["Motion",   this._buildMotionSection],
+    ["Overlays", this._buildOverlaysSection],
+    ["Audio",    this._buildAudioSection],
+    ["Output",   this._buildOutputSection],
+  ];
+  for (const [title, builder] of sections) {
+    const panel = createPanel(title, { collapsible: true });
+    scroller.appendChild(panel.el);
+    builder.call(this, panel.content);
   }
 };
 
@@ -233,13 +231,57 @@ AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, 
   panel.appendChild(ctl);
 };
 
-AudioStudioEditor.prototype._addDropdown = function (panel, label, key, options) {
+/**
+ * Render a categorical picker as a row of toggle-style buttons. options may
+ * be plain strings or `{value, label}` objects. The active button reflects
+ * cfg[key] and clicking commits the value via _onCfgChanged + optional
+ * onChange. opts.columns lets you control the grid (default 2).
+ */
+AudioStudioEditor.prototype._addButtonGroup = function (panel, label, key, options, opts = {}) {
   const ctl = document.createElement("div");
   ctl.className = "pix-as-control";
 
   const lab = document.createElement("div");
   lab.className = "pix-as-label";
   lab.textContent = label;
+  lab.style.marginBottom = "6px";
+  ctl.appendChild(lab);
+
+  const grid = document.createElement("div");
+  grid.className = "pix-as-btn-group";
+  grid.style.gridTemplateColumns = `repeat(${opts.columns || 2}, 1fr)`;
+
+  const buttons = [];
+  for (const opt of options) {
+    const value = typeof opt === "string" ? opt : opt.value;
+    const text  = typeof opt === "string" ? opt : opt.label;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = text;
+    btn.dataset.value = value;
+    btn.addEventListener("click", () => {
+      this.cfg[key] = value;
+      for (const b of buttons) b.classList.toggle("active", b.dataset.value === value);
+      if (opts.onChange) opts.onChange(value);
+      this._onCfgChanged();
+    });
+    grid.appendChild(btn);
+    buttons.push(btn);
+    if (this.cfg[key] === value) btn.classList.add("active");
+  }
+
+  ctl.appendChild(grid);
+  panel.appendChild(ctl);
+};
+
+AudioStudioEditor.prototype._addDropdown = function (panel, label, key, options, onChange) {
+  const ctl = document.createElement("div");
+  ctl.className = "pix-as-control";
+
+  const lab = document.createElement("div");
+  lab.className = "pix-as-label";
+  lab.textContent = label;
+  lab.style.marginBottom = "4px";
   ctl.appendChild(lab);
 
   const sel = document.createElement("select");
@@ -262,6 +304,7 @@ AudioStudioEditor.prototype._addDropdown = function (panel, label, key, options)
   sel.value = String(this.cfg[key]);
   sel.addEventListener("change", () => {
     this.cfg[key] = sel.value;
+    if (onChange) onChange(sel.value);
     this._onCfgChanged();
   });
 
@@ -294,6 +337,11 @@ AudioStudioEditor.prototype._addToggle = function (panel, label, key) {
   panel.appendChild(ctl);
 };
 
+/**
+ * Number input. Returns `{ ctl, label, input }` so callers that need to
+ * disable / re-style the control later (e.g. Output's W/H gating on aspect
+ * ratio) can grab references at build time.
+ */
 AudioStudioEditor.prototype._addNumberInput = function (panel, label, key, min, max, step) {
   const ctl = document.createElement("div");
   ctl.className = "pix-as-control";
@@ -301,6 +349,7 @@ AudioStudioEditor.prototype._addNumberInput = function (panel, label, key, min, 
   const lab = document.createElement("div");
   lab.className = "pix-as-label";
   lab.textContent = label;
+  lab.style.marginBottom = "4px";
   ctl.appendChild(lab);
 
   const inp = document.createElement("input");
@@ -321,46 +370,58 @@ AudioStudioEditor.prototype._addNumberInput = function (panel, label, key, min, 
 
   ctl.appendChild(inp);
   panel.appendChild(ctl);
+  return { ctl, label: lab, input: inp };
 };
 
 // ---------------------------------------------------------------------------
-// Per-tab builders
+// Per-section builders
 // ---------------------------------------------------------------------------
 
-AudioStudioEditor.prototype._buildMotionTab = function (panel) {
-  this._addDropdown(panel, "Motion mode",   "motion_mode",   MOTION_MODES);
-  this._addSlider(  panel, "Intensity",     "intensity",     0.0, 2.0, 0.05, v => v.toFixed(2));
-  this._addSlider(  panel, "Motion speed",  "motion_speed",  0.05, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(  panel, "Smoothing",     "smoothing",     1, 15, 1);
-  this._addToggle(  panel, "Loop safe",     "loop_safe");
+AudioStudioEditor.prototype._buildMotionSection = function (panel) {
+  this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, { columns: 2 });
+  this._addSlider(panel, "Intensity",    "intensity",    0.0, 2.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Motion speed", "motion_speed", 0.05, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Smoothing",    "smoothing",    1, 15, 1);
+  this._addToggle(panel, "Loop safe",    "loop_safe");
 };
 
-AudioStudioEditor.prototype._buildOverlaysTab = function (panel) {
-  this._addSlider(panel, "Glitch",     "glitch_strength",    0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Bloom",      "bloom_strength",     0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Vignette",   "vignette_strength",  0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Hue shift",  "hue_shift_strength", 0.0, 1.0, 0.05, v => v.toFixed(2));
+AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {
+  this._addSlider(panel, "Glitch",    "glitch_strength",    0.0, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Bloom",     "bloom_strength",     0.0, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Vignette",  "vignette_strength",  0.0, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Hue shift", "hue_shift_strength", 0.0, 1.0, 0.05, v => v.toFixed(2));
 };
 
-AudioStudioEditor.prototype._buildAudioTab = function (panel) {
-  this._addDropdown(panel, "Audio band", "audio_band", AUDIO_BANDS);
-
-  // Read-only source status — click paths land in Milestone H (pills in header)
-  const status = document.createElement("div");
-  status.style.color = "#888";
-  status.style.fontSize = "11px";
-  status.style.marginTop = "20px";
-  status.innerHTML = `
-    Image source: <code>${this.cfg.image_source}</code><br>
-    Audio source: <code>${this.cfg.audio_source}</code><br>
-    <em style="color:#666;font-size:10px">(Click pills in header to change &mdash; H1/H2)</em>
-  `;
-  panel.appendChild(status);
+AudioStudioEditor.prototype._buildAudioSection = function (panel) {
+  this._addButtonGroup(panel, "Audio band", "audio_band", AUDIO_BANDS, { columns: 4 });
 };
 
-AudioStudioEditor.prototype._buildOutputTab = function (panel) {
-  this._addDropdown(    panel, "Aspect ratio",  "aspect_ratio",  ASPECT_OPTIONS);
-  this._addNumberInput( panel, "Custom width",  "custom_width",  64, 4096, 8);
-  this._addNumberInput( panel, "Custom height", "custom_height", 64, 4096, 8);
-  this._addNumberInput( panel, "FPS",           "fps",            8,   60, 1);
+AudioStudioEditor.prototype._buildOutputSection = function (panel) {
+  this._addDropdown(panel, "Aspect ratio", "aspect_ratio", ASPECT_OPTIONS,
+    () => this._refreshOutputState());
+  this._outputW = this._addNumberInput(panel, "Custom width",  "custom_width",  64, 4096, 8);
+  this._outputH = this._addNumberInput(panel, "Custom height", "custom_height", 64, 4096, 8);
+  this._addSlider(panel, "FPS", "fps", 8, 60, 1);
+  this._refreshOutputState();
+};
+
+/**
+ * Gray out the Custom Width / Height inputs when the current aspect ratio
+ * doesn't use them. Called at build time and whenever Aspect Ratio changes.
+ *  - "Original" / fixed presets ("1280x720 ...") → both disabled.
+ *  - "Custom Ratio X:Y (Uses Width)"             → Width on, Height off.
+ *  - "Custom (Use Width & Height below)"         → both on.
+ */
+AudioStudioEditor.prototype._refreshOutputState = function () {
+  const ar = this.cfg.aspect_ratio || "Original";
+  const wOn = isCustomWidthAspect(ar);
+  const hOn = isCustomHeightAspect(ar);
+  if (this._outputW) {
+    this._outputW.input.disabled = !wOn;
+    this._outputW.label.classList.toggle("disabled", !wOn);
+  }
+  if (this._outputH) {
+    this._outputH.input.disabled = !hOn;
+    this._outputH.label.classList.toggle("disabled", !hOn);
+  }
 };
