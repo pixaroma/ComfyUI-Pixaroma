@@ -1,6 +1,7 @@
 // js/audio_studio/core.mjs
 import { app } from "../../../../scripts/app.js";
-import { decodeAudio, computeAll } from "./audio_analysis.mjs";
+import { decodeAudio, computeAll, encodeWav, getAudioContext } from "./audio_analysis.mjs";
+import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource } from "./api.mjs";
 
 const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
@@ -221,17 +222,48 @@ export class AudioStudioEditor {
     this._buildTransport();
     this._refreshTransport();
 
-    // TEMP — remove in H1
-    // Load the parity test image so we have something to render until
-    // upstream / inline source resolution lands in Milestone H.
-    const testImg = new Image();
-    testImg.crossOrigin = "Anonymous";
-    testImg.onload = () => this._setImage?.(testImg);
-    testImg.onerror = () => console.warn("[Pixaroma] Audio Studio test image fetch failed");
-    // Note: WEB_DIRECTORY only exposes ./js at /extensions/<plugin>/, NOT
-    // ./assets. Pixaroma serves assets via the /pixaroma/assets/.../ route
-    // family in server_routes.py.
-    testImg.src = "/pixaroma/assets/audio_studio_parity/test_image.png";
+    // Resolve image + audio sources from upstream / inline cfg. Both run
+    // async — UI shows messages while they're pending.
+    this._resolveImageSource();
+    this._resolveAudioSource();
+
+    // Drag-drop image OR audio onto the canvas — both switch the source to
+    // inline and upload via /pixaroma/api/audio_studio/upload.
+    this.canvasHost.addEventListener("dragover", (e) => { e.preventDefault(); });
+    this.canvasHost.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      const file = e.dataTransfer?.files?.[0];
+      if (!file) return;
+      if (file.type.startsWith("image/")) {
+        try {
+          const ext = (file.name.split(".").pop() || "png").toLowerCase();
+          const filename = `image.${ext === "jpg" ? "jpg" : ext}`;
+          const { path } = await uploadSource(this.node.id, "image", file, filename);
+          this.cfg.image_source = "inline";
+          this.cfg.image_path = path;
+          this._snapForUndo(true);
+          this._refreshSaveBtnState();
+          await this._resolveImageSource();
+        } catch (err) { alert("Image upload failed: " + err.message); }
+      } else if (file.type.startsWith("audio/") || /\.(wav|mp3|ogg|aac|flac|m4a)$/i.test(file.name)) {
+        await this._handleAudioFile(file);
+      }
+    });
+
+    // H4: react to upstream disconnect / reconnect while editor is open.
+    // Cache the original onConnectionsChange so forceClose can restore it.
+    this._origOnConnectionsChange = this.node.onConnectionsChange?.bind(this.node);
+    this.node.onConnectionsChange = (type, slotIndex, connected) => {
+      this._origOnConnectionsChange?.(type, slotIndex, connected);
+      // LiteGraph.INPUT === 1 — hardcoded so we don't depend on a global symbol
+      if (type !== 1) return;
+      const inputName = this.node.inputs?.[slotIndex]?.name;
+      if (inputName === "image" && this.cfg.image_source === "upstream") {
+        this._resolveImageSource();
+      } else if (inputName === "audio" && this.cfg.audio_source === "upstream") {
+        this._resolveAudioSource();
+      }
+    };
 
     // Top-level keydown handler — intercept Esc, Ctrl+S, Space, arrows,
     // Ctrl+Z, Ctrl+Y. Inputs / textareas / dropdowns keep their default
@@ -298,15 +330,18 @@ export class AudioStudioEditor {
     title.textContent = "Audio Studio Pixaroma";
     header.appendChild(title);
 
-    // Image / Audio source pills — full behavior in Milestone H
+    // Image / Audio source pills — click toggles upstream<->inline (or
+    // opens the file picker if upstream isn't wired). Mixin handlers below.
     this.imgPill = this._buildPill(
       `Image: ${this.cfg.image_source === "upstream" ? "Upstream" : "Inline"}`,
       this.cfg.image_source === "upstream",
     );
+    this.imgPill.addEventListener("click", () => this._onImagePillClick());
     this.audioPill = this._buildPill(
       `Audio: ${this.cfg.audio_source === "upstream" ? "Upstream" : "Inline"}`,
       this.cfg.audio_source === "upstream",
     );
+    this.audioPill.addEventListener("click", () => this._onAudioPillClick());
     header.appendChild(this.imgPill);
     header.appendChild(this.audioPill);
 
@@ -468,6 +503,11 @@ export class AudioStudioEditor {
     // back into a removed overlay).
     this._pausePlayback?.();
     this._detachTransportListeners?.();
+    // Restore node.onConnectionsChange to whatever was there before open().
+    if (this._origOnConnectionsChange !== undefined) {
+      this.node.onConnectionsChange = this._origOnConnectionsChange;
+      this._origOnConnectionsChange = undefined;
+    }
     // Tear down GL resources before the overlay (and its canvas) leaves
     // the DOM. Mixin lives in render.mjs.
     this._destroyRenderer?.();
@@ -496,6 +536,222 @@ AudioStudioEditor.prototype.loadAudioBlob = async function (blob) {
   const buf = await decodeAudio(ab);
   this._audioBuffer = buf;
   this._recomputeAudio();
+};
+
+// ---------------------------------------------------------------------------
+// Source resolution (H1 + H2)
+//
+// Both image and audio support two sources: "upstream" (walk node.inputs[].link
+// to a Load Image / Load Audio node) and "inline" (file uploaded by the user
+// via the source pill picker or drag-drop, served from input/pixaroma/...).
+// Pill click toggles between them; if upstream isn't wired, click opens the
+// file picker.
+// ---------------------------------------------------------------------------
+
+AudioStudioEditor.prototype._showCanvasMessage = function (msg) {
+  // Replaces the canvas with a text message — used when source resolution
+  // can't produce something to render. _setImage clears this back automatically.
+  this.canvasHost.textContent = msg;
+};
+
+AudioStudioEditor.prototype._updatePill = function (pillEl, text, connected) {
+  pillEl.textContent = text;
+  pillEl.classList.toggle("connected", connected);
+};
+
+AudioStudioEditor.prototype._loadImageFromUrl = function (url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.onload = () => { this._setImage(img); resolve(); };
+    img.onerror = () => { this._showCanvasMessage("Image load failed: " + url); reject(); };
+    img.src = url;
+  });
+};
+
+AudioStudioEditor.prototype._resolveImageSource = async function () {
+  if (this.cfg.image_source === "upstream") {
+    const url = getUpstreamImageUrl(app.graph, this.node);
+    if (!url) {
+      this._showCanvasMessage(
+        "Upstream image not ready — wire a Load Image, run the workflow once, or click the Image pill to load inline.",
+      );
+      this._updatePill(this.imgPill, "Image: Upstream", false);
+      return;
+    }
+    try {
+      await this._loadImageFromUrl(url);
+      this._updatePill(this.imgPill, "Image: Upstream", true);
+    } catch {}
+  } else if (this.cfg.image_source === "inline") {
+    if (!this.cfg.image_path) {
+      this._showCanvasMessage("Click the Image pill to load an image.");
+      this._updatePill(this.imgPill, "Image: Inline (load…)", false);
+      return;
+    }
+    const url = getInlineSourceUrl(this.cfg.image_path);
+    try {
+      await this._loadImageFromUrl(url);
+      this._updatePill(this.imgPill, `Image: Inline (${this.cfg.image_path.split("/").pop()})`, false);
+    } catch {}
+  }
+};
+
+AudioStudioEditor.prototype._pickInlineImage = function () {
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "image/png,image/jpeg,image/webp";
+  inp.addEventListener("change", async () => {
+    const file = inp.files?.[0];
+    if (!file) return;
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const filename = `image.${ext === "jpg" ? "jpg" : ext}`;
+      const { path } = await uploadSource(this.node.id, "image", file, filename);
+      this.cfg.image_source = "inline";
+      this.cfg.image_path = path;
+      this._snapForUndo(true);
+      this._refreshSaveBtnState();
+      await this._resolveImageSource();
+    } catch (e) {
+      alert("Image upload failed: " + e.message);
+    }
+  });
+  inp.click();
+};
+
+AudioStudioEditor.prototype._onImagePillClick = function () {
+  // Toggle: upstream ↔ inline. If switching to inline and no image_path yet,
+  // open the picker. If switching to upstream and nothing wired, fall back
+  // to picker so click is never a dead-end.
+  if (this.cfg.image_source === "upstream") {
+    this._pickInlineImage();
+  } else {
+    const upstreamWired = !!getUpstreamImageUrl(app.graph, this.node);
+    if (upstreamWired) {
+      this.cfg.image_source = "upstream";
+      this._snapForUndo(true);
+      this._refreshSaveBtnState();
+      this._resolveImageSource();
+    } else {
+      this._pickInlineImage();
+    }
+  }
+};
+
+// --- Audio source resolution (H2) ---
+
+AudioStudioEditor.prototype._resolveAudioSource = async function () {
+  if (this.cfg.audio_source === "upstream") {
+    const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
+    if (audioInputIdx < 0) {
+      this._updatePill(this.audioPill, "Audio: Upstream", false);
+      return;
+    }
+    const inp = this.node.inputs[audioInputIdx];
+    if (inp.link == null) {
+      this._updatePill(this.audioPill, "Audio: Upstream", false);
+      return;
+    }
+    // graph.links may be Map or plain object (CLAUDE.md Vue point #3)
+    let l = app.graph.links?.[inp.link];
+    if (!l && typeof app.graph.links?.get === "function") l = app.graph.links.get(inp.link);
+    if (!l) { this._updatePill(this.audioPill, "Audio: Upstream", false); return; }
+    const src = app.graph.getNodeById(l.origin_id);
+    let url = null;
+    if (src) {
+      const w = src.widgets?.find((w) => w.name === "audio" || w.name === "audio_file");
+      if (w && w.value) {
+        const fn = String(w.value).split(/[\\/]/).pop();
+        url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=&t=${Date.now()}`;
+      }
+    }
+    if (!url) {
+      this._updatePill(this.audioPill, "Audio: Upstream (run workflow once)", false);
+      return;
+    }
+    try {
+      const r = await fetch(url);
+      const blob = await r.blob();
+      await this.loadAudioBlob(blob);
+      this._updatePill(this.audioPill, "Audio: Upstream", true);
+    } catch (e) {
+      console.warn("[Pixaroma] Audio Studio upstream audio fetch failed:", e);
+      this._updatePill(this.audioPill, "Audio: Upstream (fetch failed)", false);
+    }
+  } else if (this.cfg.audio_source === "inline") {
+    if (!this.cfg.audio_path) {
+      this._updatePill(this.audioPill, "Audio: Inline (load…)", false);
+      return;
+    }
+    try {
+      const r = await fetch(getInlineSourceUrl(this.cfg.audio_path));
+      const blob = await r.blob();
+      await this.loadAudioBlob(blob);
+      this._updatePill(this.audioPill, `Audio: Inline (${this.cfg.audio_path.split("/").pop()})`, false);
+    } catch (e) {
+      console.warn("[Pixaroma] Audio Studio inline audio fetch failed:", e);
+    }
+  }
+};
+
+/**
+ * Convert any audio file to WAV (browser decode → encodeWav from F1) then
+ * upload as inline source. Server only accepts WAV — Python decode side
+ * stays dependency-free (stdlib `wave`).
+ */
+AudioStudioEditor.prototype._handleAudioFile = async function (file) {
+  let wavBlob;
+  if (file.type === "audio/wav" || /\.wav$/i.test(file.name)) {
+    wavBlob = file;
+  } else {
+    try {
+      const ab = await file.arrayBuffer();
+      const buf = await getAudioContext().decodeAudioData(ab.slice(0));
+      wavBlob = encodeWav(buf);
+    } catch (e) {
+      alert("Could not decode audio: " + e.message);
+      return;
+    }
+  }
+  try {
+    const { path } = await uploadSource(this.node.id, "audio", wavBlob, "audio.wav");
+    this.cfg.audio_source = "inline";
+    this.cfg.audio_path = path;
+    this._snapForUndo(true);
+    this._refreshSaveBtnState();
+    await this._resolveAudioSource();
+  } catch (e) {
+    alert("Audio upload failed: " + e.message);
+  }
+};
+
+AudioStudioEditor.prototype._pickInlineAudio = function () {
+  const inp = document.createElement("input");
+  inp.type = "file";
+  inp.accept = "audio/*";
+  inp.addEventListener("change", async () => {
+    const file = inp.files?.[0];
+    if (!file) return;
+    await this._handleAudioFile(file);
+  });
+  inp.click();
+};
+
+AudioStudioEditor.prototype._onAudioPillClick = function () {
+  if (this.cfg.audio_source === "upstream") {
+    this._pickInlineAudio();
+  } else {
+    const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
+    if (audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null) {
+      this.cfg.audio_source = "upstream";
+      this._snapForUndo(true);
+      this._refreshSaveBtnState();
+      this._resolveAudioSource();
+    } else {
+      this._pickInlineAudio();
+    }
+  }
 };
 
 /**
