@@ -1,5 +1,5 @@
 # scripts/audio_parity_check.py
-"""Audio React / Audio Studio parity check.
+"""Audio React / Audio Pulse parity check.
 
 Renders 64 reference frames using engine.generate_video() and
 diffs against committed goldens in tests/audio_parity_goldens/.

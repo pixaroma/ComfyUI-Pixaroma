@@ -1,5 +1,5 @@
 # nodes/_audio_react_engine.py
-"""Shared effect engine for Audio React Pixaroma and Audio Studio Pixaroma.
+"""Shared effect engine for Audio React Pixaroma and Audio Pulse Pixaroma.
 
 This module is the single source of truth for the audio-reactive video math.
 Both nodes are thin wrappers that build a `Params` dataclass and call
@@ -458,7 +458,7 @@ def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
 
 
 # Register in MOTION_MODES — order here drives the dropdown order in both
-# Audio React's widget and Audio Studio's sidebar.
+# Audio React's widget and Audio Pulse's sidebar.
 MOTION_MODES["scale_pulse"]  = motion_scale_pulse
 MOTION_MODES["zoom_punch"]   = motion_zoom_punch
 MOTION_MODES["shake"]        = motion_shake
@@ -599,7 +599,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
     if image is None:
         raise ValueError(
             "[Pixaroma] Audio engine — no image. Wire an IMAGE input or "
-            "use Audio Studio's inline-image picker."
+            "use Audio Pulse's inline-image picker."
         )
     if (audio is None or not isinstance(audio, dict)
             or "waveform" not in audio or "sample_rate" not in audio
@@ -608,7 +608,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             or audio["sample_rate"] <= 0):
         raise ValueError(
             "[Pixaroma] Audio engine — no valid audio. Wire AUDIO input or "
-            "use Audio Studio's inline-audio picker."
+            "use Audio Pulse's inline-audio picker."
         )
 
     device = comfy.model_management.get_torch_device()

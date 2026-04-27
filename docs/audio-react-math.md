@@ -1,7 +1,7 @@
-# Audio React / Audio Studio — Math Reference
+# Audio React / Audio Pulse — Math Reference
 
 Single source of truth for every formula in the Pixaroma audio-reactive
-nodes (Audio React, Audio Studio). Both the Python engine
+nodes (Audio React, Audio Pulse). Both the Python engine
 (`nodes/_audio_react_engine.py`) and the WebGL preview shaders
 (`js/audio_studio/shaders.mjs` — landed in Milestone E) implement the
 formulas defined here.

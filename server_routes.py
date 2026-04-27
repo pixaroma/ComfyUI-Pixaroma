@@ -430,7 +430,7 @@ async def upload_crop_source(request):
 
 
 # ────────────────────────────────────────────────────────────
-# Audio Studio Pixaroma — inline image / audio upload
+# Audio Pulse Pixaroma — inline image / audio upload
 # ────────────────────────────────────────────────────────────
 
 ALLOWED_AUDIO_STUDIO_IMAGE_EXTS = {"png", "jpg", "jpeg", "webp"}
