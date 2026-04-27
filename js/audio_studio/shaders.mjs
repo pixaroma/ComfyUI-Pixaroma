@@ -352,9 +352,11 @@ uniform float u_glitch_strength;
 uniform float u_bloom_strength;
 uniform float u_vignette_strength;
 uniform float u_hue_shift_strength;
-uniform float u_cinematic_strength;
+uniform float u_grade_strength;     // teal/orange color grade
+uniform float u_letterbox_strength; // top/bottom black bars
 uniform float u_scanline_strength;
 uniform float u_grain_strength;
+uniform float u_loop_factor;        // 0..1 ramp at boundaries when loop_safe is on, else 1.0
 
 float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -441,37 +443,41 @@ void main() {
     }
 
     // ----- SCANLINES — steady CRT stripes that drift slowly downward -----
-    // Not audio-reactive: treat scanlines as a constant look effect, with
-    // a slow vertical drift so the overlay reads as a CRT with imperfect
-    // vertical hold rather than a static mask. ~10 lines/sec at the 200-
-    // line density, matches the engine's drift speed.
-    if (u_scanline_strength > 0.0) {
+    // Not audio-reactive. loop_factor fades the lines out at the loop
+    // seam so the drift phase discontinuity doesn't pop.
+    float scanlineEff = u_scanline_strength * u_loop_factor;
+    if (scanlineEff > 0.0) {
         float drift = u_t * 0.05;
         float line = sin((v_uv.y + drift) * 200.0 * 3.14159265359);
         line = clamp((line - 0.7) / 0.3, 0.0, 1.0);
-        float darkness = line * u_scanline_strength * 0.4;
+        float darkness = line * scanlineEff * 0.4;
         col *= 1.0 - darkness;
     }
 
     // ----- FILM GRAIN — steady per-pixel noise (not audio-reactive) -----
-    // Hash seeded by uv + frame_index so the pattern shifts every frame
-    // (visible texture motion) but stays the same per-frame across runs.
-    if (u_grain_strength > 0.0) {
+    // loop_factor fades the noise out at the seam so the per-frame
+    // hash-pattern jump is masked.
+    float grainEff = u_grain_strength * u_loop_factor;
+    if (grainEff > 0.0) {
         float n = hash12(v_uv * u_resolution + float(u_frame_index)) - 0.5;
-        col += vec3(n * u_grain_strength * 0.20);
+        col += vec3(n * grainEff * 0.20);
     }
 
-    // ----- CINEMATIC — teal/orange grade + letterbox bars -----
-    // Steady (not env-gated) so the bars don't blink. Strength controls
-    // both grade intensity and bar height.
-    if (u_cinematic_strength > 0.0) {
+    // ----- COLOR GRADE — cinematic teal/orange tint -----
+    // Steady (not env-gated). Independent of letterbox so users can grade
+    // without bars or vice versa.
+    if (u_grade_strength > 0.0) {
         float lum = dot(col, vec3(0.299, 0.587, 0.114));
         vec3 highlightTint = vec3(1.20, 1.00, 0.85);
         vec3 shadowTint    = vec3(0.85, 1.00, 1.15);
         vec3 tinted = clamp(col * mix(shadowTint, highlightTint, lum), 0.0, 1.0);
-        col = mix(col, tinted, u_cinematic_strength);
-        // Letterbox AFTER grade so bars stay pure black.
-        float bar = 0.10 * u_cinematic_strength;
+        col = mix(col, tinted, u_grade_strength);
+    }
+
+    // ----- LETTERBOX — top/bottom black bars -----
+    // Applied AFTER grade so bars stay pure black, never tinted.
+    if (u_letterbox_strength > 0.0) {
+        float bar = 0.10 * u_letterbox_strength;
         if (v_uv.y < bar || v_uv.y > 1.0 - bar) {
             col = vec3(0.0);
         }

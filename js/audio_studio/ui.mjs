@@ -375,7 +375,7 @@ AudioStudioEditor.prototype._resetOverlaysDefaults = function () {
   const d = this._defaults || {};
   const keys = [
     "glitch_strength", "bloom_strength", "vignette_strength", "hue_shift_strength",
-    "cinematic_strength", "scanline_strength", "grain_strength",
+    "grade_strength", "letterbox_strength", "scanline_strength", "grain_strength",
   ];
   let changed = false;
   for (const k of keys) {
@@ -757,7 +757,8 @@ AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {
   this._addSlider(panel, "Bloom",        "bloom_strength",      0.0, 1.0, 0.05);
   this._addSlider(panel, "Vignette",     "vignette_strength",   0.0, 1.0, 0.05);
   this._addSlider(panel, "Hue shift",    "hue_shift_strength",  0.0, 1.0, 0.05);
-  this._addSlider(panel, "Cinematic",    "cinematic_strength",  0.0, 1.0, 0.05);
+  this._addSlider(panel, "Color grade",  "grade_strength",      0.0, 1.0, 0.05);
+  this._addSlider(panel, "Letterbox",    "letterbox_strength",  0.0, 1.0, 0.05);
   this._addSlider(panel, "Scanlines",    "scanline_strength",   0.0, 1.0, 0.05);
   this._addSlider(panel, "Film grain",   "grain_strength",      0.0, 1.0, 0.05);
 };

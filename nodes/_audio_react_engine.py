@@ -85,9 +85,11 @@ class Params:
     bloom_strength: float = 0.0
     vignette_strength: float = 0.0
     hue_shift_strength: float = 0.0
-    # New overlays (Pass 3): cinematic letterbox + teal/orange grade,
-    # CRT-style scanlines, animated film grain.
-    cinematic_strength: float = 0.0
+    # New overlays (Pass 3): teal/orange grade and letterbox bars are
+    # split into separate sliders so users can pick either independently.
+    # All steady (not audio-reactive). Plus CRT scanlines and film grain.
+    grade_strength: float = 0.0
+    letterbox_strength: float = 0.0
     scanline_strength: float = 0.0
     grain_strength: float = 0.0
     aspect_ratio: str = "Original"
@@ -169,6 +171,11 @@ class OverlayContext:
     device: torch.device
     frame_index: int = 0   # for overlays that need a deterministic per-frame seed
     t: float = 0.0         # seconds since clip start, for steady time-based motion
+    loop_factor: float = 1.0  # 0..1 ramp at loop boundaries when loop_safe is on,
+                              # otherwise always 1.0. Steady overlays (scanlines,
+                              # grain) multiply their strength by this so the loop
+                              # seam doesn't pop. Env-gated overlays ignore it
+                              # (the envelope is already ramped).
 
 
 def params_from_dict(cfg: dict) -> Params:
@@ -778,53 +785,67 @@ def overlay_scanlines(ctx: OverlayContext) -> torch.Tensor:
     """CRT-style horizontal scanlines. Constant darkness controlled by
     strength alone — NOT audio-reactive (treat as a steady look effect).
     The lines drift slowly downward so the overlay doesn't read as a
-    static mask but as a CRT with imperfect vertical hold."""
-    if ctx.strength <= 0:
+    static mask but as a CRT with imperfect vertical hold.
+
+    loop_factor multiplier hides the drift discontinuity at the loop
+    boundary when loop_safe is on (the line phase at frame 0 != frame N-1
+    in general, so we fade out at the seam)."""
+    eff = ctx.strength * ctx.loop_factor
+    if eff <= 0:
         return ctx.frame
     drift = ctx.t * 0.05  # ~10 lines per second downward at 200-line density
     ys = torch.linspace(0.0, 1.0, ctx.H, device=ctx.device).unsqueeze(1).unsqueeze(2)
     line = torch.sin((ys + drift) * 200.0 * math.pi)
     line = ((line - 0.7) / 0.3).clamp(0.0, 1.0)
-    darkness = line * ctx.strength * 0.4
+    darkness = line * eff * 0.4
     return (ctx.frame * (1.0 - darkness)).clamp(0.0, 1.0)
 
 
 def overlay_grain(ctx: OverlayContext) -> torch.Tensor:
     """Steady film grain. Constant intensity controlled by strength —
     NOT audio-reactive. Per-frame seed is deterministic (frame_index)
-    so re-renders of the same workflow produce identical grain pattern."""
-    if ctx.strength <= 0:
+    so re-renders of the same workflow produce identical grain pattern.
+
+    loop_factor multiplier handles the loop seam: noise at frame 0 has a
+    different seed than frame N-1, so without the boundary fade the loop
+    pops a single noise frame."""
+    eff = ctx.strength * ctx.loop_factor
+    if eff <= 0:
         return ctx.frame
     g = torch.Generator(device="cpu").manual_seed(ctx.frame_index * 7919 + 13)
     noise = (torch.rand(ctx.H, ctx.W, 1, generator=g) - 0.5) * 2.0
     noise = noise.to(ctx.device)
-    grain = noise * ctx.strength * 0.10
+    grain = noise * eff * 0.10
     return (ctx.frame + grain).clamp(0.0, 1.0)
 
 
-def overlay_cinematic(ctx: OverlayContext) -> torch.Tensor:
-    """Cinematic look: top/bottom letterbox bars + teal/orange grade.
-    Strength controls both bar height (max ~10% per side) and grade
-    intensity simultaneously. Not env-gated — letterbox should be steady."""
+def overlay_grade(ctx: OverlayContext) -> torch.Tensor:
+    """Cinematic teal/orange color grade — shadows pulled cool, highlights
+    pulled warm. Steady; not audio-reactive. Independent of the letterbox
+    overlay so users can grade without bars or vice versa."""
     if ctx.strength <= 0:
         return ctx.frame
-    H = ctx.H
-    out = ctx.frame.clone()
-
-    # Teal/orange grade — shadows pulled cool, highlights pulled warm.
+    out = ctx.frame
     lum = 0.299 * out[..., 0:1] + 0.587 * out[..., 1:2] + 0.114 * out[..., 2:3]
     highlight_tint = torch.tensor([1.20, 1.00, 0.85], device=ctx.device).view(1, 1, 3)
     shadow_tint    = torch.tensor([0.85, 1.00, 1.15], device=ctx.device).view(1, 1, 3)
     tint = shadow_tint + (highlight_tint - shadow_tint) * lum
     graded = (out * tint).clamp(0.0, 1.0)
-    out = out + (graded - out) * ctx.strength
+    return (out + (graded - out) * ctx.strength).clamp(0.0, 1.0)
 
-    # Letterbox bars — applied AFTER grading so the bars stay pure black.
-    bar = int(0.10 * ctx.strength * H)
-    if bar > 0:
-        out[:bar] = 0.0
-        out[H - bar:] = 0.0
-    return out.clamp(0.0, 1.0)
+
+def overlay_letterbox(ctx: OverlayContext) -> torch.Tensor:
+    """Top/bottom black bars proportional to strength. At strength=1 each
+    bar covers ~10% of the frame height. Steady; not audio-reactive."""
+    if ctx.strength <= 0:
+        return ctx.frame
+    bar = int(0.10 * ctx.strength * ctx.H)
+    if bar <= 0:
+        return ctx.frame
+    out = ctx.frame.clone()
+    out[:bar] = 0.0
+    out[ctx.H - bar:] = 0.0
+    return out
 
 
 # Register OVERLAYS — order here drives the per-frame iteration order in
@@ -833,7 +854,11 @@ OVERLAYS["glitch"]    = overlay_glitch
 OVERLAYS["bloom"]     = overlay_bloom
 OVERLAYS["vignette"]  = overlay_vignette
 OVERLAYS["hue_shift"] = overlay_hue_shift
-OVERLAYS["cinematic"] = overlay_cinematic
+# Grade is registered BEFORE letterbox so the iteration order in
+# generate_video applies grade first, then letterbox bars overlay on top.
+# (Bars staying pure black requires letterbox to be the last operation.)
+OVERLAYS["grade"]     = overlay_grade
+OVERLAYS["letterbox"] = overlay_letterbox
 OVERLAYS["scanlines"] = overlay_scanlines
 OVERLAYS["grain"]     = overlay_grain
 
@@ -897,12 +922,21 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
     # that's what makes the playback loop seamless (motion is fully
     # frozen at both ends, so the wrap-around looks identical to a
     # held still frame).
+    # loop_factor is a separate per-frame ramp (1.0 in the middle, 0.0 at
+    # both ends) for overlays that AREN'T env-gated — Scanlines drift +
+    # Film Grain. Without this, those steady effects would show a one-
+    # frame pop at the loop seam (different drift phase / different noise
+    # seed at frame 0 vs frame N-1). Env-gated overlays don't need it
+    # since their envelope is already ramped below.
+    loop_factor = torch.ones(total_frames, device=device)
     if params.loop_safe and total_frames >= 4:
         fade_n = max(2, min(int(params.fps * 0.5), total_frames // 2))
         loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
         envelope = envelope.detach().clone()
         envelope[:fade_n] = envelope[:fade_n] * loop_ramp
         envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
+        loop_factor[:fade_n] = loop_ramp
+        loop_factor[-fade_n:] = loop_ramp.flip(0)
 
     onset = onset_track(envelope)
 
@@ -937,7 +971,11 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
         "bloom":     params.bloom_strength,
         "vignette":  params.vignette_strength,
         "hue_shift": params.hue_shift_strength,
-        "cinematic": params.cinematic_strength,
+        # Grade BEFORE letterbox so the bars overlay on top of the tinted
+        # frame and stay pure black (not tinted). Iteration order = OVERLAYS
+        # registration order below.
+        "grade":     params.grade_strength,
+        "letterbox": params.letterbox_strength,
         "scanlines": params.scanline_strength,
         "grain":     params.grain_strength,
     }
@@ -995,6 +1033,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
                     frame=frame, env_t=env_t, onset_t=onset_t,
                     strength=s, H=H, W=W, device=device,
                     frame_index=i, t=t_vec[i].item(),
+                    loop_factor=loop_factor[i].item(),
                 ))
 
         frames.append(frame.cpu())

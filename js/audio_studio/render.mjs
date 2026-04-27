@@ -271,9 +271,24 @@ AudioStudioEditor.prototype._render = function () {
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_bloom_strength"), this.cfg.bloom_strength);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_vignette_strength"), this.cfg.vignette_strength);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_hue_shift_strength"), this.cfg.hue_shift_strength);
-  gl.uniform1f(gl.getUniformLocation(ovProg, "u_cinematic_strength"), this.cfg.cinematic_strength ?? 0);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_letterbox_strength"), this.cfg.letterbox_strength ?? 0);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_grade_strength"), this.cfg.grade_strength ?? 0);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_scanline_strength"), this.cfg.scanline_strength ?? 0);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_grain_strength"), this.cfg.grain_strength ?? 0);
+  // loop_factor fades steady overlays (scanlines, grain) to 0 at the
+  // loop seam so their drift / per-frame seed discontinuities don't
+  // pop. Mirrors the Python compute in generate_video.
+  let loopFactor = 1.0;
+  if (this.cfg.loop_safe && this._totalFrames >= 4) {
+    const fadeN = Math.max(2, Math.min(Math.floor((this.cfg.fps || 24) * 0.5), Math.floor(this._totalFrames / 2)));
+    if (frameIdx < fadeN) {
+      loopFactor = frameIdx / Math.max(1, fadeN - 1);
+    } else if (frameIdx >= this._totalFrames - fadeN) {
+      const off = frameIdx - (this._totalFrames - fadeN);
+      loopFactor = 1.0 - off / Math.max(1, fadeN - 1);
+    }
+  }
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_loop_factor"), loopFactor);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 };
