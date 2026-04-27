@@ -383,6 +383,19 @@ export class AudioStudioEditor {
 
   _save() {
     if (!this.isDirty()) return;
+    // Auto-clear force_inline at save time when no upstream is wired for
+    // that channel. Rationale: the override only matters when there's
+    // something to override. If the user uploaded inline with no wire,
+    // force_inline is just a stale flag that will silently ignore any
+    // upstream the user wires LATER. Clearing it makes "wire it later"
+    // work without forcing the user to re-open the editor and toggle
+    // the pill. When upstream IS wired at save time, the user clearly
+    // meant to override, so we preserve the flag.
+    const upstreamImg = !!getUpstreamImageUrl(app.graph, this.node);
+    const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
+    const upstreamAud = audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null;
+    if (!upstreamImg) this.cfg.image_force_inline = false;
+    if (!upstreamAud) this.cfg.audio_force_inline = false;
     this.onSave?.(JSON.parse(JSON.stringify(this.cfg)));
     this.savedSnapshot = JSON.stringify(this.cfg);
     this._uploadDirty = false;
