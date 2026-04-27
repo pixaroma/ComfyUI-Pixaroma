@@ -109,6 +109,10 @@ class Params:
     # slit_scan: same idea — multiplier on the row-wave frequency. Higher
     # = more horizontal bars visible at once.
     slit_density: float = 1.0
+    # glitch (motion mode, distinct from the chroma-shift overlay): number
+    # of horizontal bands the image is sliced into. Each band offsets
+    # horizontally by a per-frame random amount, gated by onset envelope.
+    glitch_bands: int = 30
 
 
 @dataclass
@@ -132,6 +136,7 @@ class MotionContext:
     shake_axis: str = "both"
     ripple_density: float = 1.0
     slit_density: float = 1.0
+    glitch_bands: int = 30
 
 
 @dataclass
@@ -489,6 +494,38 @@ def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
     return grid
 
 
+def motion_glitch(ctx: MotionContext) -> torch.Tensor:
+    """Audio-reactive band displacement. The image is sliced into
+    ``glitch_bands`` horizontal bands; each band shifts horizontally by a
+    per-frame deterministic-random amount, scaled by the onset envelope.
+    Result: clean image between beats, sharp slice-glitch on impacts.
+
+    Distinct from the "Chroma Shift" overlay, which only offsets the RGB
+    channels — this one warps the image geometry."""
+    device = ctx.base_grid.device
+    bands = max(2, int(ctx.glitch_bands))
+    H, W = ctx.H, ctx.W
+
+    # Per-band, per-frame deterministic hash → [-1, 1].
+    # Same fract(sin(...) * large) pattern the overlay uses, but seeded by
+    # band index instead of pixel coords.
+    ys = torch.linspace(0.0, 1.0, H, device=device)
+    band_idx = (ys * bands).floor()
+    seed = band_idx * 31.0 + float(ctx.frame_index) * 13.0
+    h = torch.sin(seed * 12.9898) * 43758.5453
+    h = h - torch.floor(h)              # [0, 1)
+    per_row = (h - 0.5) * 2.0           # [-1, 1]
+
+    # Onset-gated amplitude. onset_t spikes on hits and decays between, so
+    # glitch is sharp on beat and fades out cleanly.
+    amp = ctx.onset_t * ctx.intensity * 0.06
+    dx = (per_row * amp).unsqueeze(1).expand(H, W)
+
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = grid[0, ..., 0] + dx
+    return grid
+
+
 # Register in MOTION_MODES — order here drives the dropdown order in both
 # Audio React's widget and Audio Pulse's sidebar.
 MOTION_MODES["scale_pulse"]  = motion_scale_pulse
@@ -499,6 +536,7 @@ MOTION_MODES["rotate_pulse"] = motion_rotate_pulse
 MOTION_MODES["ripple"]       = motion_ripple
 MOTION_MODES["swirl"]        = motion_swirl
 MOTION_MODES["slit_scan"]    = motion_slit_scan
+MOTION_MODES["glitch"]       = motion_glitch
 
 
 # ---------------------------------------------------------------------
@@ -734,6 +772,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             shake_axis=params.shake_axis,
             ripple_density=params.ripple_density,
             slit_density=params.slit_density,
+            glitch_bands=params.glitch_bands,
         )
         grid = motion_fn(ctx)
 

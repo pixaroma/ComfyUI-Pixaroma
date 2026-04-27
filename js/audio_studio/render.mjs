@@ -227,6 +227,8 @@ AudioStudioEditor.prototype._render = function () {
                this.cfg.ripple_density ?? 1.0);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_slit_density"),
                this.cfg.slit_density ?? 1.0);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_glitch_bands"),
+               this.cfg.glitch_bands ?? 30);
 
   gl.drawArrays(gl.TRIANGLES, 0, 6);
 

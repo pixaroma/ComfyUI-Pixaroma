@@ -49,6 +49,7 @@ uniform vec2  u_resolution;
 uniform int   u_shake_axis;          // 0=both, 1=x-only, 2=y-only
 uniform float u_ripple_density;       // multiplier on ripple's k (default 1.0)
 uniform float u_slit_density;         // multiplier on slit_scan's k (default 1.0)
+uniform float u_glitch_bands;         // motion glitch — number of horizontal bands
 
 // NOTE: parameter is named 'tex' not 'sample' — 'sample' is a reserved
 // word in GLSL ES 3.00 (sample-rate qualifier).
@@ -191,6 +192,25 @@ void main() {
     float nx = r * cos(thp) / u_aspect;
     float ny = r * sin(thp);
     vec2 uv = vec2(nx, ny) * 0.5 + 0.5;
+    fragColor = sample_image(uv);
+}
+`,
+
+  // Audio-reactive band displacement. Image is sliced into N horizontal
+  // bands; each band shifts horizontally by a per-frame random amount,
+  // gated by the onset envelope. Mirrors motion_glitch in the engine.
+  glitch: COMMON_PRELUDE + `
+float hashGlitch(float band, float frame) {
+    return fract(sin((band * 31.0 + frame * 13.0) * 12.9898) * 43758.5453);
+}
+void main() {
+    float onset_t = onset_at(u_frame_index);
+    float bands = max(2.0, u_glitch_bands);
+    float band = floor(v_uv.y * bands);
+    float h = hashGlitch(band, float(u_frame_index));
+    float perRow = (h - 0.5) * 2.0;
+    float amp = onset_t * u_intensity * 0.06;
+    vec2 uv = v_uv + vec2(perRow * amp, 0.0);
     fragColor = sample_image(uv);
 }
 `,

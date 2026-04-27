@@ -28,6 +28,7 @@ const DEFAULT_CFG = {
   shake_axis: "both",       // "both" / "x" / "y" — Camera Shake only
   ripple_density: 1.0,      // multiplier on Ripple's wave frequency
   slit_density: 1.0,        // multiplier on Time Slice's bar count
+  glitch_bands: 30,         // Glitch motion — horizontal slice count (5-100)
   smoothing: 5,
   loop_safe: true,
   fps: 24,

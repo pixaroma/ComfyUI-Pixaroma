@@ -40,6 +40,7 @@ const MOTION_MODES = [
   { value: "ripple",       label: "Ripple" },
   { value: "swirl",        label: "Swirl" },
   { value: "slit_scan",    label: "Time Slice" },
+  { value: "glitch",       label: "Glitch" },
 ];
 
 // Motion modes that have a meaningful "direction" axis — rotation,
@@ -333,7 +334,7 @@ AudioStudioEditor.prototype._resetMotionDefaults = function () {
   const keys = [
     "intensity", "motion_speed", "smoothing", "loop_safe",
     "motion_direction",
-    "shake_axis", "ripple_density", "slit_density",
+    "shake_axis", "ripple_density", "slit_density", "glitch_bands",
   ];
   let changed = false;
   for (const k of keys) {
@@ -586,7 +587,7 @@ AudioStudioEditor.prototype._addInlineWH = function (panel, label1, key1, label2
 
 AudioStudioEditor.prototype._buildMotionSection = function (panel) {
   this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, {
-    columns: 2,
+    columns: 3,
     onChange: () => this._refreshMotionModeUI(),
   });
   this._addDirectionToggle(panel);
@@ -622,6 +623,9 @@ const MODE_SPECIFIC_BUILDERS = {
   },
   slit_scan(panel) {
     this._addSlider(panel, "Bar density", "slit_density", 0.3, 3.0, 0.1);
+  },
+  glitch(panel) {
+    this._addSlider(panel, "Bands", "glitch_bands", 5, 100, 1);
   },
 };
 
@@ -695,10 +699,14 @@ AudioStudioEditor.prototype._refreshDirectionVisibility = function () {
 };
 
 AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {
-  this._addSlider(panel, "Glitch",    "glitch_strength",    0.0, 1.0, 0.05);
-  this._addSlider(panel, "Bloom",     "bloom_strength",     0.0, 1.0, 0.05);
-  this._addSlider(panel, "Vignette",  "vignette_strength",  0.0, 1.0, 0.05);
-  this._addSlider(panel, "Hue shift", "hue_shift_strength", 0.0, 1.0, 0.05);
+  // "Chroma Shift" was previously labeled "Glitch" — renamed to free up
+  // the "Glitch" name for the new motion mode (which warps geometry,
+  // whereas this overlay only offsets RGB channels). Internal cfg key
+  // glitch_strength is unchanged for saved-workflow compatibility.
+  this._addSlider(panel, "Chroma Shift", "glitch_strength",    0.0, 1.0, 0.05);
+  this._addSlider(panel, "Bloom",        "bloom_strength",     0.0, 1.0, 0.05);
+  this._addSlider(panel, "Vignette",     "vignette_strength",  0.0, 1.0, 0.05);
+  this._addSlider(panel, "Hue shift",    "hue_shift_strength", 0.0, 1.0, 0.05);
 };
 
 AudioStudioEditor.prototype._buildAudioSection = function (panel) {
