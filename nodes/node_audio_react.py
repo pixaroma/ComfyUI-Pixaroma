@@ -181,7 +181,13 @@ class PixaromaAudioReact:
         else:
             target_w, target_h = base_w, base_h
 
-        if aspect_ratio == "Original" and headroom <= 1.0:
+        # Fast path: input already at the snapped size, no work to do.
+        # Without the `w == base_w and h == base_h` guard, an "Original"
+        # input with odd dims (e.g. 1672x941) returns the un-snapped image
+        # but advertises base_w/base_h that don't match — Save Mp4 then
+        # rejects the odd height. Falling through here center-crops to the
+        # nearest mult-of-8.
+        if aspect_ratio == "Original" and headroom <= 1.0 and w == base_w and h == base_h:
             return image, base_w, base_h
 
         target_ratio = target_w / target_h
