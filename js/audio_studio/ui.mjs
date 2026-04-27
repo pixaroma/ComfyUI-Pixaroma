@@ -60,70 +60,23 @@ function isCustomHeightAspect(v) {
 
 function injectSidebarCSS() {
   if (document.getElementById("pix-as-sidebar-css")) return;
+  // Slider rows reuse the framework's `.pxf-slider-row` styling (label +
+  // range + boxed number input on one line) so we look identical to 3D
+  // Builder. The only Audio-Studio-specific rules below cover the
+  // dropdown, toggle, button-group, and W×H pair — none of which the
+  // framework provides directly.
   const css = `
     .pix-as-controls { padding: 12px; flex: 1; overflow-y: auto; }
-    .pix-as-control { margin-bottom: 12px; }
+    .pix-as-control { margin-bottom: 8px; }
     .pix-as-control:last-child { margin-bottom: 0; }
-    .pix-as-control-row {
-      display: flex; align-items: baseline; justify-content: space-between;
-      margin-bottom: 4px;
-    }
     .pix-as-label {
       color: #aaa;
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.4px;
     }
     .pix-as-label.disabled { color: #555; }
-    .pix-as-value {
-      color: #ccc;
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-    }
-    /* Editable numeric value next to a slider — visually identical to the
-       read-only span, but clickable + typeable so users can dial in an
-       exact value instead of dragging. */
-    .pix-as-value-input {
-      background: transparent;
-      border: none;
-      color: #ccc;
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-      text-align: right;
-      outline: none;
-      width: 56px;
-      padding: 0 2px;
-      -moz-appearance: textfield;
-    }
-    .pix-as-value-input::-webkit-outer-spin-button,
-    .pix-as-value-input::-webkit-inner-spin-button {
-      -webkit-appearance: none; margin: 0;
-    }
-    .pix-as-value-input:hover { background: #1a1a1a; border-radius: 2px; }
-    .pix-as-value-input:focus { background: #1a1a1a; border-radius: 2px; }
-    .pix-as-slider {
-      width: 100%;
-      -webkit-appearance: none;
-      appearance: none;
-      height: 4px;
-      background: #1a1a1a;
-      border-radius: 2px;
-      outline: none;
-    }
-    .pix-as-slider::-webkit-slider-thumb {
-      -webkit-appearance: none;
-      width: 14px; height: 14px;
-      background: #f66744;
-      border-radius: 50%;
-      cursor: pointer;
-    }
-    .pix-as-slider::-moz-range-thumb {
-      width: 14px; height: 14px;
-      background: #f66744;
-      border-radius: 50%;
-      border: none;
-      cursor: pointer;
-    }
+
     .pix-as-dropdown,
     .pix-as-input {
       width: 100%;
@@ -173,6 +126,34 @@ function injectSidebarCSS() {
       color: #fff;
       border-color: #f66744;
     }
+
+    /* Inline W × H pair (Output section) — single row to save vertical
+       space vs. two stacked number inputs. */
+    .pix-as-wh-row {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pix-as-wh-label {
+      font-size: 10px; color: #aaa; flex-shrink: 0;
+      text-transform: uppercase; letter-spacing: 0.4px;
+    }
+    .pix-as-wh-label.disabled { color: #555; }
+    .pix-as-wh-input {
+      flex: 1; min-width: 0;
+      background: #1a1a1a; color: #ccc;
+      border: 1px solid #333; border-radius: 4px;
+      padding: 3px 4px;
+      font-size: 11px; font-family: ui-monospace, monospace;
+      text-align: center;
+      outline: none;
+      -moz-appearance: textfield;
+    }
+    .pix-as-wh-input::-webkit-outer-spin-button,
+    .pix-as-wh-input::-webkit-inner-spin-button {
+      -webkit-appearance: none; margin: 0;
+    }
+    .pix-as-wh-input:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pix-as-wh-input:focus { border-color: #f66744; }
+    .pix-as-wh-sep { color: #666; font-size: 11px; flex-shrink: 0; }
   `;
   const style = document.createElement("style");
   style.id = "pix-as-sidebar-css";
@@ -215,73 +196,75 @@ AudioStudioEditor.prototype._buildSidebar = function () {
 // ---------------------------------------------------------------------------
 
 AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, step) {
+  // pxf-slider-row gives us the framework's label + slider + boxed
+  // number input on one line, the same look 3D Builder uses. The
+  // framework auto-styles range + number children of this row inside
+  // the .pxf-overlay scope (theme.mjs § "Slider row").
   const ctl = document.createElement("div");
-  ctl.className = "pix-as-control";
+  ctl.className = "pxf-slider-row pix-as-control";
 
-  const row = document.createElement("div");
-  row.className = "pix-as-control-row";
-
-  const lab = document.createElement("span");
-  lab.className = "pix-as-label";
+  const lab = document.createElement("label");
+  lab.className = "pxf-slider-label";
   lab.textContent = label;
+  ctl.appendChild(lab);
 
-  // Typeable value input. The pair (slider + input) stays in sync:
-  // - slider input → updates input
-  // - input change → clamps + updates slider
   const isInt = step % 1 === 0;
   const parse = (s) => (isInt ? parseInt(s, 10) : parseFloat(s));
   const clamp = (v) => Math.max(min, Math.min(max, v));
 
-  const val = document.createElement("input");
-  val.type = "number";
-  val.className = "pix-as-value-input";
-  val.min = String(min);
-  val.max = String(max);
-  val.step = String(step);
-  val.value = String(this.cfg[key]);
-
-  row.appendChild(lab);
-  row.appendChild(val);
-
   const slider = document.createElement("input");
   slider.type = "range";
-  slider.className = "pix-as-slider";
   slider.min = String(min);
   slider.max = String(max);
   slider.step = String(step);
   slider.value = String(this.cfg[key]);
 
+  const numInput = document.createElement("input");
+  numInput.type = "number";
+  numInput.min = String(min);
+  numInput.max = String(max);
+  numInput.step = String(step);
+  numInput.value = String(this.cfg[key]);
+
+  // The framework's slider draws the orange progress fill via a CSS
+  // gradient driven by --pxf-fill (a percent string).
+  const updateFill = () => {
+    const pct = ((parse(slider.value) - min) / (max - min)) * 100;
+    slider.style.setProperty("--pxf-fill", pct + "%");
+  };
+  updateFill();
+
   slider.addEventListener("input", () => {
     const v = parse(slider.value);
     this.cfg[key] = v;
-    val.value = String(v);
+    numInput.value = String(v);
+    updateFill();
     this._onCfgChanged();
   });
-
-  // input event = while typing. Don't clamp yet (would break partial entry
-  // like "" or "0."), just push valid numbers through so the preview tracks.
-  val.addEventListener("input", () => {
-    const v = parse(val.value);
+  // While typing — don't clamp yet (would break partial entry like ""),
+  // just push valid numbers through so the preview tracks live.
+  numInput.addEventListener("input", () => {
+    const v = parse(numInput.value);
     if (isNaN(v)) return;
     this.cfg[key] = clamp(v);
     slider.value = String(this.cfg[key]);
+    updateFill();
     this._onCfgChanged();
   });
-
-  // change event = on blur / Enter. Final commit — normalize displayed
-  // value so out-of-range input gets snapped back into the visible bounds.
-  val.addEventListener("change", () => {
-    let v = parse(val.value);
+  // On blur / Enter — final commit, snap to range + sync display.
+  numInput.addEventListener("change", () => {
+    let v = parse(numInput.value);
     if (isNaN(v)) v = this.cfg[key];
     v = clamp(v);
     this.cfg[key] = v;
-    val.value = String(v);
+    numInput.value = String(v);
     slider.value = String(v);
+    updateFill();
     this._onCfgChanged();
   });
 
-  ctl.appendChild(row);
   ctl.appendChild(slider);
+  ctl.appendChild(numInput);
   panel.appendChild(ctl);
 };
 
@@ -392,39 +375,47 @@ AudioStudioEditor.prototype._addToggle = function (panel, label, key) {
 };
 
 /**
- * Number input. Returns `{ ctl, label, input }` so callers that need to
- * disable / re-style the control later (e.g. Output's W/H gating on aspect
- * ratio) can grab references at build time.
+ * Inline pair of number inputs separated by "×" — used for Output's
+ * Custom Width × Custom Height to save a row of vertical space and signal
+ * that they belong together. Returns `{w: {label, input}, h: {label,
+ * input}}` so callers can toggle disabled state per-side.
  */
-AudioStudioEditor.prototype._addNumberInput = function (panel, label, key, min, max, step) {
+AudioStudioEditor.prototype._addInlineWH = function (panel, label1, key1, label2, key2, min, max, step) {
   const ctl = document.createElement("div");
-  ctl.className = "pix-as-control";
+  ctl.className = "pix-as-control pix-as-wh-row";
 
-  const lab = document.createElement("div");
-  lab.className = "pix-as-label";
-  lab.textContent = label;
-  lab.style.marginBottom = "4px";
-  ctl.appendChild(lab);
+  const mkSide = (text, key) => {
+    const labEl = document.createElement("label");
+    labEl.className = "pix-as-wh-label";
+    labEl.textContent = text;
 
-  const inp = document.createElement("input");
-  inp.type = "number";
-  inp.className = "pix-as-input";
-  inp.min = String(min);
-  inp.max = String(max);
-  inp.step = String(step);
-  inp.value = String(this.cfg[key]);
-  inp.addEventListener("change", () => {
-    let v = step % 1 === 0 ? parseInt(inp.value, 10) : parseFloat(inp.value);
-    if (isNaN(v)) v = this.cfg[key];
-    v = Math.max(min, Math.min(max, v));
-    this.cfg[key] = v;
-    inp.value = String(v);
-    this._onCfgChanged();
-  });
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.className = "pix-as-wh-input";
+    inp.min = String(min);
+    inp.max = String(max);
+    inp.step = String(step);
+    inp.value = String(this.cfg[key]);
+    inp.addEventListener("change", () => {
+      let v = parseInt(inp.value, 10);
+      if (isNaN(v)) v = this.cfg[key];
+      v = Math.max(min, Math.min(max, v));
+      this.cfg[key] = v;
+      inp.value = String(v);
+      this._onCfgChanged();
+    });
+    return { label: labEl, input: inp };
+  };
 
-  ctl.appendChild(inp);
+  const w = mkSide(label1, key1);
+  const sep = document.createElement("span");
+  sep.className = "pix-as-wh-sep";
+  sep.textContent = "×";
+  const h = mkSide(label2, key2);
+
+  ctl.append(w.label, w.input, sep, h.label, h.input);
   panel.appendChild(ctl);
-  return { ctl, label: lab, input: inp };
+  return { w, h };
 };
 
 // ---------------------------------------------------------------------------
@@ -453,8 +444,7 @@ AudioStudioEditor.prototype._buildAudioSection = function (panel) {
 AudioStudioEditor.prototype._buildOutputSection = function (panel) {
   this._addDropdown(panel, "Aspect ratio", "aspect_ratio", ASPECT_OPTIONS,
     () => this._refreshOutputState());
-  this._outputW = this._addNumberInput(panel, "Custom width",  "custom_width",  64, 4096, 8);
-  this._outputH = this._addNumberInput(panel, "Custom height", "custom_height", 64, 4096, 8);
+  this._outputWH = this._addInlineWH(panel, "W", "custom_width", "H", "custom_height", 64, 4096, 8);
   this._addSlider(panel, "FPS", "fps", 8, 60, 1);
   this._refreshOutputState();
 };
@@ -467,15 +457,12 @@ AudioStudioEditor.prototype._buildOutputSection = function (panel) {
  *  - "Custom (Use Width & Height below)"         → both on.
  */
 AudioStudioEditor.prototype._refreshOutputState = function () {
+  if (!this._outputWH) return;
   const ar = this.cfg.aspect_ratio || "Original";
   const wOn = isCustomWidthAspect(ar);
   const hOn = isCustomHeightAspect(ar);
-  if (this._outputW) {
-    this._outputW.input.disabled = !wOn;
-    this._outputW.label.classList.toggle("disabled", !wOn);
-  }
-  if (this._outputH) {
-    this._outputH.input.disabled = !hOn;
-    this._outputH.label.classList.toggle("disabled", !hOn);
-  }
+  this._outputWH.w.input.disabled = !wOn;
+  this._outputWH.w.label.classList.toggle("disabled", !wOn);
+  this._outputWH.h.input.disabled = !hOn;
+  this._outputWH.h.label.classList.toggle("disabled", !hOn);
 };
