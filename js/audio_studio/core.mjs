@@ -246,9 +246,11 @@ export class AudioStudioEditor {
           const { path } = await uploadSource(this.node.id, "image", file, filename);
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
-          this.cfg.image_force_inline = true;   // explicit user upload wins
-          this.cfg.image_uploaded_at = Date.now();   // invalidate ComfyUI prompt cache
+          this.cfg.image_force_inline = false;   // wire gets disconnected below
+          this.cfg.image_uploaded_at = Date.now();
           this._uploadDirty = true;
+          // Same auto-disconnect rationale as the pill picker path.
+          this._disconnectUpstreamInput("image");
           this._snapForUndo(true);
           this._refreshSaveBtnState();
           await this._resolveImageSource();
@@ -600,6 +602,27 @@ AudioStudioEditor.prototype._showCanvasMessage = function (msg) {
   this.canvasHost.textContent = msg;
 };
 
+/**
+ * Disconnect the upstream wire feeding `inputName` ("image" or "audio").
+ * No-op if nothing is wired. Called when the user uploads an inline file
+ * so the graph state stays unambiguous: a wired input means upstream is
+ * being used, a disconnected input means the inline file is used.
+ */
+AudioStudioEditor.prototype._disconnectUpstreamInput = function (inputName) {
+  const idx = (this.node.inputs || []).findIndex((i) => i.name === inputName);
+  if (idx < 0) return;
+  if (this.node.inputs[idx].link == null) return;
+  // LiteGraph's standard disconnect API. Triggers onConnectionsChange,
+  // which our editor listens for — but our handler only re-resolves the
+  // affected source if cfg.<src>_source is "upstream". We just set it to
+  // "inline" before calling this, so the handler short-circuits and the
+  // explicit _resolveImageSource / _resolveAudioSource call below picks
+  // up the new state.
+  try { this.node.disconnectInput(idx); } catch (e) {
+    console.warn(`[Pixaroma] Audio Studio: disconnectInput(${inputName}) failed:`, e);
+  }
+};
+
 AudioStudioEditor.prototype._updatePill = function (pillEl, text, connected) {
   pillEl.textContent = text;
   pillEl.classList.toggle("connected", connected);
@@ -676,15 +699,21 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
       const { path } = await uploadSource(this.node.id, "image", file, filename);
       this.cfg.image_source = "inline";
       this.cfg.image_path = path;
-      // Set the override so this fresh upload wins even if upstream is
-      // wired. User can clear via pill click while overriding.
-      this.cfg.image_force_inline = true;
+      // No need for force_inline since we're disconnecting the wire below.
+      // The graph itself becomes the source of truth: wire connected = upstream,
+      // wire disconnected = inline. Less confusing than having the wire still
+      // show but be silently overridden.
+      this.cfg.image_force_inline = false;
       // Bump upload timestamp so studio_json differs from the previous
       // run even when the file path is identical (same node id + same
       // extension overwrites in place). Without this, ComfyUI's prompt
       // cache hits the prior result and shows the old MP4 unchanged.
       this.cfg.image_uploaded_at = Date.now();
       this._uploadDirty = true;   // bytes-on-disk changed even if path matches
+      // Auto-disconnect upstream image wire — uploading inline means the
+      // user wants to use this file, not upstream. Keeping the wire would
+      // visually imply upstream is in use which is confusing.
+      this._disconnectUpstreamInput("image");
       this._snapForUndo(true);
       this._refreshSaveBtnState();
       await this._resolveImageSource();
@@ -696,19 +725,10 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
 };
 
 AudioStudioEditor.prototype._onImagePillClick = function () {
-  // Two modes:
-  //   * If image_force_inline is active AND upstream is wired, clicking the
-  //     pill clears the override so upstream wins again. (Single click out
-  //     of override mode.)
-  //   * Otherwise, open the file picker — uploading sets force_inline so
-  //     the new file wins immediately, even when upstream is wired.
-  if (this.cfg.image_force_inline && getUpstreamImageUrl(app.graph, this.node)) {
-    this.cfg.image_force_inline = false;
-    this._snapForUndo(true);
-    this._refreshSaveBtnState();
-    this._resolveImageSource();
-    return;
-  }
+  // Click always opens the file picker. Uploading auto-disconnects any
+  // upstream wire so the graph state is unambiguous (one source at a
+  // time). To use upstream instead of the inline pick, re-wire the
+  // IMAGE input externally.
   this._pickInlineImage();
 };
 
@@ -806,12 +826,15 @@ AudioStudioEditor.prototype._handleAudioFile = async function (file) {
     const { path } = await uploadSource(this.node.id, "audio", wavBlob, "audio.wav");
     this.cfg.audio_source = "inline";
     this.cfg.audio_path = path;
-    // Same override semantics as image — fresh user upload wins over wired.
-    this.cfg.audio_force_inline = true;
+    // No override flag needed — disconnecting the wire below makes the
+    // graph state unambiguous (same logic as image).
+    this.cfg.audio_force_inline = false;
     // Bump upload timestamp so studio_json differs from the previous run
     // even when the file path is identical. See the image upload comment.
     this.cfg.audio_uploaded_at = Date.now();
-    this._uploadDirty = true;   // bytes-on-disk changed even if path matches
+    this._uploadDirty = true;
+    // Auto-disconnect upstream audio wire so the graph reflects reality.
+    this._disconnectUpstreamInput("audio");
     this._snapForUndo(true);
     this._refreshSaveBtnState();
     await this._resolveAudioSource();
@@ -833,18 +856,7 @@ AudioStudioEditor.prototype._pickInlineAudio = function () {
 };
 
 AudioStudioEditor.prototype._onAudioPillClick = function () {
-  // Same dual-mode as image pill — see _onImagePillClick.
-  // Resolve upstream-wired by walking the input slot (cheaper than re-running
-  // _resolveAudioSource just for the boolean).
-  const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
-  const wired = audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null;
-  if (this.cfg.audio_force_inline && wired) {
-    this.cfg.audio_force_inline = false;
-    this._snapForUndo(true);
-    this._refreshSaveBtnState();
-    this._resolveAudioSource();
-    return;
-  }
+  // Click always opens the file picker — see _onImagePillClick.
   this._pickInlineAudio();
 };
 
