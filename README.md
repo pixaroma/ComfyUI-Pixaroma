@@ -28,6 +28,9 @@ A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furn
 Bring still images to life with audio-reactive depth parallax. The image pulses, sways, or orbits in sync with your music. Companion nodes: **Depth Map Pixaroma** estimates the depth pass with Depth Anything V2 (Small / Base / Large) and shows it inline; **Save Mp4 Pixaroma** writes the result directly to mp4 with audio muxed in and an in-node video player. Seven motion modes (radial, horizontal, vertical, combined, diagonal, figure-8, zoom-breath), audio-band filtering, loop-safe rendering, camera shake, and edge headroom — built for music videos and social loops.
 ![Audio Depth — Workflow](workflows/Audio%20Depth%20Pixaroma%20Workflow.png)
 
+### 🎶 Audio React Pixaroma
+A faster, simpler audio-reactive image-to-video — **no depth model needed**. Drop in an image + audio, pick from six motion modes (`scale_pulse`, `zoom_punch`, `shake`, `ripple`, `slit_scan`, `kaleidoscope`), and stack up to four overlay effects (glitch, bloom, vignette, hue shift) to taste. Same sizing controls and audio-band filter as Audio Depth Pixaroma, same `Save Mp4 Pixaroma` output pipeline. Use this when you don't have (or don't want) a depth pass and just want something fast and good-looking out of the box.
+
 ### ✨ Image Composer
 Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
 ![Image Composer — Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
