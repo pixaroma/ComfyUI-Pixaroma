@@ -80,6 +80,27 @@ function injectSidebarCSS() {
       font-size: 11px;
       font-family: ui-monospace, monospace;
     }
+    /* Editable numeric value next to a slider — visually identical to the
+       read-only span, but clickable + typeable so users can dial in an
+       exact value instead of dragging. */
+    .pix-as-value-input {
+      background: transparent;
+      border: none;
+      color: #ccc;
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      text-align: right;
+      outline: none;
+      width: 56px;
+      padding: 0 2px;
+      -moz-appearance: textfield;
+    }
+    .pix-as-value-input::-webkit-outer-spin-button,
+    .pix-as-value-input::-webkit-inner-spin-button {
+      -webkit-appearance: none; margin: 0;
+    }
+    .pix-as-value-input:hover { background: #1a1a1a; border-radius: 2px; }
+    .pix-as-value-input:focus { background: #1a1a1a; border-radius: 2px; }
     .pix-as-slider {
       width: 100%;
       -webkit-appearance: none;
@@ -193,7 +214,7 @@ AudioStudioEditor.prototype._buildSidebar = function () {
 // Control helpers
 // ---------------------------------------------------------------------------
 
-AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, step, fmt) {
+AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, step) {
   const ctl = document.createElement("div");
   ctl.className = "pix-as-control";
 
@@ -204,10 +225,20 @@ AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, 
   lab.className = "pix-as-label";
   lab.textContent = label;
 
-  const val = document.createElement("span");
-  val.className = "pix-as-value";
-  const refresh = () => { val.textContent = fmt ? fmt(this.cfg[key]) : String(this.cfg[key]); };
-  refresh();
+  // Typeable value input. The pair (slider + input) stays in sync:
+  // - slider input → updates input
+  // - input change → clamps + updates slider
+  const isInt = step % 1 === 0;
+  const parse = (s) => (isInt ? parseInt(s, 10) : parseFloat(s));
+  const clamp = (v) => Math.max(min, Math.min(max, v));
+
+  const val = document.createElement("input");
+  val.type = "number";
+  val.className = "pix-as-value-input";
+  val.min = String(min);
+  val.max = String(max);
+  val.step = String(step);
+  val.value = String(this.cfg[key]);
 
   row.appendChild(lab);
   row.appendChild(val);
@@ -219,10 +250,33 @@ AudioStudioEditor.prototype._addSlider = function (panel, label, key, min, max, 
   slider.max = String(max);
   slider.step = String(step);
   slider.value = String(this.cfg[key]);
+
   slider.addEventListener("input", () => {
-    const v = step % 1 === 0 ? parseInt(slider.value, 10) : parseFloat(slider.value);
+    const v = parse(slider.value);
     this.cfg[key] = v;
-    refresh();
+    val.value = String(v);
+    this._onCfgChanged();
+  });
+
+  // input event = while typing. Don't clamp yet (would break partial entry
+  // like "" or "0."), just push valid numbers through so the preview tracks.
+  val.addEventListener("input", () => {
+    const v = parse(val.value);
+    if (isNaN(v)) return;
+    this.cfg[key] = clamp(v);
+    slider.value = String(this.cfg[key]);
+    this._onCfgChanged();
+  });
+
+  // change event = on blur / Enter. Final commit — normalize displayed
+  // value so out-of-range input gets snapped back into the visible bounds.
+  val.addEventListener("change", () => {
+    let v = parse(val.value);
+    if (isNaN(v)) v = this.cfg[key];
+    v = clamp(v);
+    this.cfg[key] = v;
+    val.value = String(v);
+    slider.value = String(v);
     this._onCfgChanged();
   });
 
@@ -379,17 +433,17 @@ AudioStudioEditor.prototype._addNumberInput = function (panel, label, key, min, 
 
 AudioStudioEditor.prototype._buildMotionSection = function (panel) {
   this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, { columns: 2 });
-  this._addSlider(panel, "Intensity",    "intensity",    0.0, 2.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Motion speed", "motion_speed", 0.05, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Intensity",    "intensity",    0.0, 2.0, 0.05);
+  this._addSlider(panel, "Motion speed", "motion_speed", 0.05, 1.0, 0.05);
   this._addSlider(panel, "Smoothing",    "smoothing",    1, 15, 1);
   this._addToggle(panel, "Loop safe",    "loop_safe");
 };
 
 AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {
-  this._addSlider(panel, "Glitch",    "glitch_strength",    0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Bloom",     "bloom_strength",     0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Vignette",  "vignette_strength",  0.0, 1.0, 0.05, v => v.toFixed(2));
-  this._addSlider(panel, "Hue shift", "hue_shift_strength", 0.0, 1.0, 0.05, v => v.toFixed(2));
+  this._addSlider(panel, "Glitch",    "glitch_strength",    0.0, 1.0, 0.05);
+  this._addSlider(panel, "Bloom",     "bloom_strength",     0.0, 1.0, 0.05);
+  this._addSlider(panel, "Vignette",  "vignette_strength",  0.0, 1.0, 0.05);
+  this._addSlider(panel, "Hue shift", "hue_shift_strength", 0.0, 1.0, 0.05);
 };
 
 AudioStudioEditor.prototype._buildAudioSection = function (panel) {
