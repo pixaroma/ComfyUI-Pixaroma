@@ -496,9 +496,18 @@ def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
 
 def motion_glitch(ctx: MotionContext) -> torch.Tensor:
     """Audio-reactive band displacement. The image is sliced into
-    ``glitch_bands`` horizontal bands; each band shifts horizontally by a
-    per-frame deterministic-random amount, scaled by the onset envelope.
-    Result: clean image between beats, sharp slice-glitch on impacts.
+    ``glitch_bands`` horizontal bands; on each onset, a sparse subset of
+    bands shifts horizontally by varying amounts, then locks for a couple
+    of frames (stutter) before re-rolling.
+
+    Three tricks make this read as "broken signal" instead of "uniform
+    scanline":
+      1. **Sparsity** — a per-band gate hash leaves ~70% of bands unmoved
+         each step, mirroring how real glitches corrupt only a few rows.
+      2. **Magnitude curve** — abs(offset)^1.5 skews the active subset
+         toward small slips with occasional large jumps.
+      3. **Stutter** — the pattern refreshes every 2 frames, not every
+         frame, so the eye reads discrete corruption frames.
 
     Distinct from the "Chroma Shift" overlay, which only offsets the RGB
     channels — this one warps the image geometry."""
@@ -506,20 +515,32 @@ def motion_glitch(ctx: MotionContext) -> torch.Tensor:
     bands = max(2, int(ctx.glitch_bands))
     H, W = ctx.H, ctx.W
 
-    # Per-band, per-frame deterministic hash → [-1, 1].
-    # Same fract(sin(...) * large) pattern the overlay uses, but seeded by
-    # band index instead of pixel coords.
+    # Stutter: refresh the random pattern every 2 frames so adjacent
+    # frames look like the same corrupted state, not smooth motion.
+    frame_step = float(ctx.frame_index // 2)
+
     ys = torch.linspace(0.0, 1.0, H, device=device)
     band_idx = (ys * bands).floor()
-    seed = band_idx * 31.0 + float(ctx.frame_index) * 13.0
-    h = torch.sin(seed * 12.9898) * 43758.5453
-    h = h - torch.floor(h)              # [0, 1)
-    per_row = (h - 0.5) * 2.0           # [-1, 1]
 
-    # Onset-gated amplitude. onset_t spikes on hits and decays between, so
-    # glitch is sharp on beat and fades out cleanly.
-    amp = ctx.onset_t * ctx.intensity * 0.06
-    dx = (per_row * amp).unsqueeze(1).expand(H, W)
+    # Gate hash — separate seed from offset so they're independent. Threshold
+    # 0.7 means roughly 30% of bands fire per step.
+    gate_seed = band_idx * 17.0 + frame_step * 23.0
+    gh = torch.sin(gate_seed * 12.9898) * 43758.5453
+    gh = gh - torch.floor(gh)
+    active = (gh > 0.7).float()
+
+    # Per-band signed offset, then magnitude-curve so most active bands
+    # slip a little and a few jump hard.
+    seed = band_idx * 31.0 + frame_step * 13.0
+    h = torch.sin(seed * 12.9898) * 43758.5453
+    h = h - torch.floor(h)
+    per_row = (h - 0.5) * 2.0
+    per_row = torch.sign(per_row) * per_row.abs().pow(1.5)
+
+    # Amp bumped from 0.06 → 0.10 to compensate for the sparsity gate
+    # (fewer bands fire, but the ones that do should land harder).
+    amp = ctx.onset_t * ctx.intensity * 0.10
+    dx = (per_row * active * amp).unsqueeze(1).expand(H, W)
 
     grid = ctx.base_grid.clone()
     grid[0, ..., 0] = grid[0, ..., 0] + dx

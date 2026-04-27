@@ -196,21 +196,36 @@ void main() {
 }
 `,
 
-  // Audio-reactive band displacement. Image is sliced into N horizontal
-  // bands; each band shifts horizontally by a per-frame random amount,
-  // gated by the onset envelope. Mirrors motion_glitch in the engine.
+  // Audio-reactive band displacement — see motion_glitch() docstring in
+  // _audio_react_engine.py. Sparsity gate + magnitude curve + 2-frame
+  // stutter make this read as "broken signal" rather than uniform
+  // scanlines. Three tricks must stay in sync with the Python engine.
   glitch: COMMON_PRELUDE + `
-float hashGlitch(float band, float frame) {
-    return fract(sin((band * 31.0 + frame * 13.0) * 12.9898) * 43758.5453);
+float hashG(float a, float b) {
+    return fract(sin((a + b * 31.0) * 12.9898) * 43758.5453);
 }
 void main() {
     float onset_t = onset_at(u_frame_index);
     float bands = max(2.0, u_glitch_bands);
     float band = floor(v_uv.y * bands);
-    float h = hashGlitch(band, float(u_frame_index));
+
+    // Stutter: refresh every 2 frames. Without this, every frame randomizes
+    // and the result looks like smooth jitter instead of discrete glitch.
+    float frameStep = floor(float(u_frame_index) / 2.0);
+
+    // Gate ~30% of bands per step — sparsity is what sells the "corruption"
+    // look. Most rows stay clean, only a few are displaced.
+    float gh = hashG(band * 17.0, frameStep * 23.0);
+    float active = step(0.7, gh);
+
+    // Per-band signed offset with magnitude curve. abs()^1.5 keeps small
+    // slips small and lets a few rare large jumps through.
+    float h = hashG(band * 31.0, frameStep * 13.0);
     float perRow = (h - 0.5) * 2.0;
-    float amp = onset_t * u_intensity * 0.06;
-    vec2 uv = v_uv + vec2(perRow * amp, 0.0);
+    perRow = sign(perRow) * pow(abs(perRow), 1.5);
+
+    float amp = onset_t * u_intensity * 0.10;
+    vec2 uv = v_uv + vec2(perRow * amp * active, 0.0);
     fragColor = sample_image(uv);
 }
 `,
