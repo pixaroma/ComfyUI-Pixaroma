@@ -213,6 +213,8 @@ AudioStudioEditor.prototype._render = function () {
   gl.uniform1i(gl.getUniformLocation(motionProg, "u_audio_band_idx"), this._audioBandIndex());
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_intensity"), this.cfg.intensity);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_motion_speed"), this.cfg.motion_speed);
+  gl.uniform1f(gl.getUniformLocation(motionProg, "u_motion_direction"),
+               (this.cfg.motion_direction ?? 1.0) >= 0 ? 1.0 : -1.0);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_t"), t);
   gl.uniform1f(gl.getUniformLocation(motionProg, "u_aspect"), aspect);
   gl.uniform2f(gl.getUniformLocation(motionProg, "u_resolution"), outW, outH);
@@ -242,6 +244,8 @@ AudioStudioEditor.prototype._render = function () {
   gl.uniform1i(gl.getUniformLocation(ovProg, "u_audio_band_idx"), this._audioBandIndex());
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_intensity"), this.cfg.intensity);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_motion_speed"), this.cfg.motion_speed);
+  gl.uniform1f(gl.getUniformLocation(ovProg, "u_motion_direction"),
+               (this.cfg.motion_direction ?? 1.0) >= 0 ? 1.0 : -1.0);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_t"), t);
   gl.uniform1f(gl.getUniformLocation(ovProg, "u_aspect"), aspect);
   gl.uniform2f(gl.getUniformLocation(ovProg, "u_resolution"), outW, outH);

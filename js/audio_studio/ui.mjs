@@ -42,6 +42,14 @@ const MOTION_MODES = [
   { value: "slit_scan",    label: "Time Slice" },
 ];
 
+// Motion modes that have a meaningful "direction" axis — rotation,
+// translation, or wave-travel. The Direction toggle is only shown for
+// these. scale_pulse / zoom_punch / shake have no directional axis (pure
+// scale or random jitter), so flipping a sign would do nothing visible.
+const DIRECTIONAL_MOTION_MODES = new Set([
+  "drift", "rotate_pulse", "ripple", "swirl", "slit_scan",
+]);
+
 const AUDIO_BANDS = [
   { value: "full",   label: "Full" },
   { value: "bass",   label: "Bass" },
@@ -214,6 +222,37 @@ function injectSidebarCSS() {
       pointer-events: none;
     }
     .pix-as-section-action:hover .pix-as-section-action-icon { background-color: #fff; }
+
+    /* Direction toggle — two icon buttons (CW / CCW) shown side-by-side
+       under the motion-mode grid for modes that have a directional axis. */
+    .pix-as-direction {
+      display: flex; gap: 6px; align-items: center;
+    }
+    .pix-as-direction-buttons { display: flex; gap: 4px; flex: 1; }
+    .pix-as-direction button {
+      flex: 1;
+      padding: 6px 8px;
+      background: #1a1a1a;
+      color: #aaa;
+      border: 1px solid #333;
+      border-radius: 3px;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+      font-family: inherit;
+      font-size: 11px;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pix-as-direction button:hover { color: #ccc; border-color: #555; }
+    .pix-as-direction button.active {
+      background: #f66744; color: #fff; border-color: #f66744;
+    }
+    .pix-as-direction button .pix-as-dir-icon {
+      width: 12px; height: 12px;
+      background-color: currentColor;
+      -webkit-mask: var(--pix-as-icon-url) center/contain no-repeat;
+              mask: var(--pix-as-icon-url) center/contain no-repeat;
+      pointer-events: none;
+    }
   `;
   const style = document.createElement("style");
   style.id = "pix-as-sidebar-css";
@@ -284,7 +323,7 @@ AudioStudioEditor.prototype._attachSectionAction = function (panelEl, action) {
  */
 AudioStudioEditor.prototype._resetMotionDefaults = function () {
   const d = this._defaults || {};
-  const keys = ["intensity", "motion_speed", "smoothing", "loop_safe"];
+  const keys = ["intensity", "motion_speed", "smoothing", "loop_safe", "motion_direction"];
   let changed = false;
   for (const k of keys) {
     if (d[k] !== undefined && this.cfg[k] !== d[k]) {
@@ -535,11 +574,71 @@ AudioStudioEditor.prototype._addInlineWH = function (panel, label1, key1, label2
 // ---------------------------------------------------------------------------
 
 AudioStudioEditor.prototype._buildMotionSection = function (panel) {
-  this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, { columns: 2 });
+  this._addButtonGroup(panel, "Motion mode", "motion_mode", MOTION_MODES, {
+    columns: 2,
+    onChange: () => this._refreshDirectionVisibility(),
+  });
+  this._addDirectionToggle(panel);
   this._addSlider(panel, "Intensity",    "intensity",    0.0, 2.0, 0.05);
   this._addSlider(panel, "Motion speed", "motion_speed", 0.05, 1.0, 0.05);
   this._addSlider(panel, "Smoothing",    "smoothing",    1, 15, 1);
   this._addToggle(panel, "Loop safe",    "loop_safe");
+};
+
+/**
+ * Direction toggle (forward / reverse) — only visually present for motion
+ * modes whose axis has a sign (see DIRECTIONAL_MOTION_MODES). For other
+ * modes the row hides itself; cfg.motion_direction is preserved in case
+ * the user switches back to a directional mode.
+ */
+AudioStudioEditor.prototype._addDirectionToggle = function (panel) {
+  const ctl = document.createElement("div");
+  ctl.className = "pix-as-control pix-as-direction";
+
+  const lab = document.createElement("div");
+  lab.className = "pix-as-label";
+  lab.textContent = "Direction";
+  lab.style.minWidth = "60px";
+  ctl.appendChild(lab);
+
+  const group = document.createElement("div");
+  group.className = "pix-as-direction-buttons";
+
+  const mkBtn = (val, iconFile, title) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.title = title;
+    const ic = document.createElement("span");
+    ic.className = "pix-as-dir-icon";
+    ic.style.setProperty("--pix-as-icon-url", `url(${UI_ICON}${iconFile})`);
+    b.appendChild(ic);
+    b.dataset.value = String(val);
+    b.addEventListener("click", () => {
+      this.cfg.motion_direction = val;
+      fwd.classList.toggle("active", val > 0);
+      rev.classList.toggle("active", val < 0);
+      this._onCfgChanged();
+    });
+    return b;
+  };
+  const fwd = mkBtn(+1, "rotate-cw.svg",  "Forward / clockwise (default)");
+  const rev = mkBtn(-1, "rotate-ccw.svg", "Reverse / counter-clockwise");
+  const cur = (this.cfg.motion_direction ?? 1.0) >= 0 ? +1 : -1;
+  fwd.classList.toggle("active", cur > 0);
+  rev.classList.toggle("active", cur < 0);
+
+  group.append(fwd, rev);
+  ctl.appendChild(group);
+  panel.appendChild(ctl);
+
+  this._directionRow = ctl;
+  this._refreshDirectionVisibility();
+};
+
+AudioStudioEditor.prototype._refreshDirectionVisibility = function () {
+  if (!this._directionRow) return;
+  const supported = DIRECTIONAL_MOTION_MODES.has(this.cfg.motion_mode);
+  this._directionRow.style.display = supported ? "" : "none";
 };
 
 AudioStudioEditor.prototype._buildOverlaysSection = function (panel) {

@@ -20,6 +20,9 @@ const DEFAULT_CFG = {
   intensity: 0.8,
   audio_band: "full",
   motion_speed: 0.2,
+  // +1 = original direction, -1 = reversed (only affects rotational/wave
+  // motion modes — see Params.motion_direction in _audio_react_engine.py).
+  motion_direction: 1.0,
   smoothing: 5,
   loop_safe: true,
   fps: 24,

@@ -88,6 +88,13 @@ class Params:
     aspect_ratio: str = "Original"
     custom_width: int = 1024
     custom_height: int = 1024
+    # Sign of the directional axis for motion modes that have one
+    # (drift / rotate_pulse / swirl / ripple / slit_scan). +1.0 keeps the
+    # original behavior; -1.0 flips the rotation / pan / wave direction.
+    # Modes with no directional axis (scale_pulse / zoom_punch / shake)
+    # ignore this. Default is the no-op value so existing workflows and
+    # parity goldens stay valid.
+    motion_direction: float = 1.0
 
 
 @dataclass
@@ -100,6 +107,7 @@ class MotionContext:
     t: float                   # seconds since clip start
     intensity: float
     motion_speed: float
+    direction: float           # +1 or -1, see Params.motion_direction
     H: int
     W: int
     total_frames: int
@@ -363,8 +371,9 @@ def motion_shake(ctx: MotionContext) -> torch.Tensor:
 def motion_drift(ctx: MotionContext) -> torch.Tensor:
     """Slow Ken Burns circular pan — sway × bob with audio amplitude.
     env_t=0 → no drift, so loop_safe collapses to identity at boundaries."""
-    sway = math.sin(2.0 * math.pi * ctx.motion_speed * ctx.t)
-    bob = math.cos(2.0 * math.pi * ctx.motion_speed * ctx.t)
+    phase = 2.0 * math.pi * ctx.motion_speed * ctx.t * ctx.direction
+    sway = math.sin(phase)
+    bob = math.cos(phase)
     amp = ctx.env_t * ctx.intensity * 0.04  # ~4% of half-frame at intensity=1
     dx = sway * amp
     dy = bob * amp
@@ -380,7 +389,7 @@ def motion_rotate_pulse(ctx: MotionContext) -> torch.Tensor:
     rotate visually circularly."""
     aspect = ctx.W / ctx.H
     sway = math.sin(2.0 * math.pi * ctx.motion_speed * ctx.t)
-    angle = sway * ctx.env_t * ctx.intensity * (math.pi / 12.0)  # max ±15°
+    angle = sway * ctx.env_t * ctx.intensity * (math.pi / 12.0) * ctx.direction  # max ±15°
     c = math.cos(angle)
     s = math.sin(angle)
     xs = ctx.base_grid[0, ..., 0] * aspect
@@ -402,7 +411,7 @@ def motion_swirl(ctx: MotionContext) -> torch.Tensor:
     ys = ctx.base_grid[0, ..., 1]
     r = torch.sqrt(xs ** 2 + ys ** 2)
     theta = torch.atan2(ys, xs)
-    twist = ctx.env_t * ctx.intensity * (math.pi / 2.0) * (1.0 - r).clamp(min=0.0)
+    twist = ctx.env_t * ctx.intensity * (math.pi / 2.0) * (1.0 - r).clamp(min=0.0) * ctx.direction
     new_theta = theta + twist
     new_x = r * torch.cos(new_theta) / aspect
     new_y = r * torch.sin(new_theta)
@@ -421,7 +430,7 @@ def motion_ripple(ctx: MotionContext) -> torch.Tensor:
     r = torch.sqrt((xs * aspect) ** 2 + ys ** 2)
 
     k = 6.0 * math.pi
-    omega = 2.0 * math.pi * max(ctx.motion_speed * 4.0, 0.5)
+    omega = 2.0 * math.pi * max(ctx.motion_speed * 4.0, 0.5) * ctx.direction
     # Spec: amplitude is 0.015·min(W,H) px → in normalized [-1,1] grid
     # units (full range = 2 units across the smaller dim) → 0.015 * 2 / 2.
     A = ctx.env_t * ctx.intensity * 0.015 * 2.0
@@ -445,7 +454,7 @@ def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
     device = ctx.base_grid.device
     ys = torch.linspace(-1, 1, ctx.H, device=device).unsqueeze(1).expand(ctx.H, ctx.W)
     k = 4.0 * math.pi
-    omega = 2.0 * math.pi * max(ctx.motion_speed * 2.0, 0.4)
+    omega = 2.0 * math.pi * max(ctx.motion_speed * 2.0, 0.4) * ctx.direction
     A = ctx.env_t * ctx.intensity * 0.04
 
     dy = A * torch.sin(k * ys - omega * ctx.t)
@@ -695,6 +704,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             base_grid=base_grid, env_t=env_t, onset_t=onset_t,
             t=t_vec[i].item(),
             intensity=params.intensity, motion_speed=params.motion_speed,
+            direction=1.0 if params.motion_direction >= 0 else -1.0,
             H=H, W=W,
             total_frames=total_frames, frame_index=i, fps=params.fps,
             onset_arr=onset,

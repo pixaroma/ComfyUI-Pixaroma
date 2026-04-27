@@ -39,6 +39,7 @@ uniform int   u_frame_index;
 uniform int   u_audio_band_idx;
 uniform float u_intensity;
 uniform float u_motion_speed;
+uniform float u_motion_direction;   // +1 default, -1 reverses rotational/wave axis
 uniform float u_t;
 uniform float u_aspect;
 uniform vec2  u_resolution;
@@ -118,8 +119,9 @@ void main() {
   drift: COMMON_PRELUDE + `
 void main() {
     float env_t = env_at(u_frame_index);
-    float sway = sin(6.28318530718 * u_motion_speed * u_t);
-    float bob  = cos(6.28318530718 * u_motion_speed * u_t);
+    float phase = 6.28318530718 * u_motion_speed * u_t * u_motion_direction;
+    float sway = sin(phase);
+    float bob  = cos(phase);
     float amp = env_t * u_intensity * 0.04;
     vec2 uv = v_uv - vec2(sway * amp, bob * amp);
     fragColor = sample_image(uv);
@@ -133,7 +135,7 @@ void main() {
 void main() {
     float env_t = env_at(u_frame_index);
     float sway = sin(6.28318530718 * u_motion_speed * u_t);
-    float angle = sway * env_t * u_intensity * (3.14159265359 / 12.0);
+    float angle = sway * env_t * u_intensity * (3.14159265359 / 12.0) * u_motion_direction;
     float c = cos(angle), s = sin(angle);
     vec2 p = (v_uv - 0.5);
     float xs = p.x * u_aspect;
@@ -154,7 +156,7 @@ void main() {
     float ys = p.y;
     float r = sqrt(xs*xs + ys*ys);
     float k = 6.0 * 3.14159265359;
-    float omega = 6.28318530718 * max(u_motion_speed * 4.0, 0.5);
+    float omega = 6.28318530718 * max(u_motion_speed * 4.0, 0.5) * u_motion_direction;
     float A = env_t * u_intensity * 0.015 * 2.0;
     float dr = A * sin(k * r - omega * u_t);
     float r_safe = max(r, 1e-3);
@@ -175,7 +177,7 @@ void main() {
     float ys = p.y;
     float r = sqrt(xs*xs + ys*ys);
     float theta = atan(ys, xs);
-    float twist = env_t * u_intensity * (3.14159265359 / 2.0) * max(0.0, 1.0 - r);
+    float twist = env_t * u_intensity * (3.14159265359 / 2.0) * max(0.0, 1.0 - r) * u_motion_direction;
     float thp = theta + twist;
     float nx = r * cos(thp) / u_aspect;
     float ny = r * sin(thp);
@@ -191,7 +193,7 @@ void main() {
     float env_t = env_at(u_frame_index);
     float yn = (v_uv.y - 0.5) * 2.0;       // y in [-1,1]
     float k = 4.0 * 3.14159265359;
-    float omega = 6.28318530718 * max(u_motion_speed * 2.0, 0.4);
+    float omega = 6.28318530718 * max(u_motion_speed * 2.0, 0.4) * u_motion_direction;
     float A = env_t * u_intensity * 0.04;
     float dy = A * sin(k * yn - omega * u_t);
     float dx = A * 0.5 * cos(k * yn - omega * u_t);
