@@ -190,8 +190,12 @@ export class AudioStudioEditor {
 
     const sidebar = document.createElement("div");
     sidebar.className = "pix-as-sidebar";
-    this._buildSidebar();
+    // Assign BEFORE _buildSidebar() — the mixin reads `this.sidebar` to
+    // populate it. Reversing the order leaves `this.sidebar` undefined
+    // and the build throws on `sidebar.textContent = ""`, aborting open()
+    // silently before the overlay is appended.
     this.sidebar = sidebar;
+    this._buildSidebar();
 
     body.appendChild(canvasArea);
     body.appendChild(sidebar);
