@@ -129,13 +129,13 @@ export function createEditorLayout(config) {
   if (showUndoRedo) {
     undoBtn = createButton("Undo", {
       variant: "accent",
-      iconSrc: UI_ICON + "rotate-ccw.svg",
+      iconSrc: UI_ICON + "undo.svg",
       title: "Undo (Ctrl+Z)",
       onClick: onUndo,
     });
     redoBtn = createButton("Redo", {
       variant: "accent",
-      iconSrc: UI_ICON + "rotate-cw.svg",
+      iconSrc: UI_ICON + "redo.svg",
       title: "Redo (Ctrl+Shift+Z)",
       onClick: onRedo,
     });
