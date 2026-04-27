@@ -167,6 +167,11 @@ export function injectFrameworkStyles() {
   max-width: 80%;
   transition: color 0.15s ease;
 }
+/* Editors that never write status text (Audio Studio) leave this element
+   empty — its padding + dark background still rendered a small box that
+   overlapped Audio Studio's bottom-left transport buttons. :empty hides it
+   until an editor actually writes text via setStatusText(). */
+.pxf-tool-info:empty { display: none; }
 .pxf-tool-info.warn { color: #f66744; }
 .pxf-tool-info.error { color: #f08080; }
 
