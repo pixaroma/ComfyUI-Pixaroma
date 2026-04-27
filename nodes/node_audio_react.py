@@ -63,6 +63,31 @@ def _bandpass_fft(waveform, sample_rate, low_hz, high_hz):
     return torch.fft.irfft(spec, n=n, dim=-1)
 
 
+def _onset_track(envelope, decay=0.85):
+    """From a [T] envelope in [0,1], produce a [T] onset/transient track.
+    Detects positive spikes (env increases above its 75th percentile by
+    >0.05), then exponential-decays between hits. Output in [0, 1]."""
+    if envelope.numel() == 0:
+        return envelope.clone()
+    diff = torch.cat([torch.zeros(1, device=envelope.device), envelope[1:] - envelope[:-1]])
+    diff = torch.clamp(diff, min=0.0)
+    # Threshold at top quartile of derivative + a small floor so quiet music
+    # still produces some onsets.
+    thresh = max(0.05, torch.quantile(diff, 0.75).item())
+    spikes = (diff > thresh).float() * diff  # keep magnitude on hit frames
+
+    # Exponential decay: onset[t] = max(spikes[t], onset[t-1] * decay)
+    out = torch.zeros_like(envelope)
+    prev = 0.0
+    for i in range(envelope.numel()):
+        prev = max(spikes[i].item(), prev * decay)
+        out[i] = prev
+    out_max = out.max().item()
+    if out_max > 0:
+        out = out / out_max  # peak-normalize to [0, 1]
+    return out
+
+
 class PixaromaAudioReact:
     """Audio-reactive image-to-video without depth. One opinionated node:
     pick a motion mode, optionally stack overlay effects, get an animated
