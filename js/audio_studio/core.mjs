@@ -396,15 +396,29 @@ export class AudioStudioEditor {
     this._refreshSaveBtnState();
     // Only recompute audio when an analysis-affecting param changed. The
     // FFT + 4-band envelope on a 60s clip is ~6k samples per band; running
-    // it on every intensity / motion_mode / overlay tick made the sliders
-    // feel jumpy. audio_band is just a uniform read by the shader, doesn't
-    // re-analyse. _audioParamsKey caches the current key inside
-    // _recomputeAudio.
+    // it on every tick made the smoothing slider feel sticky in particular,
+    // because each tick of the slider re-ran the full bandpass + envelope.
+    // Debouncing 200ms means the work runs once after the slider settles.
+    // audio_band is just a uniform read by the shader, doesn't re-analyse.
     if (this._audioBuffer) {
       const key = `${this.cfg.fps}|${this.cfg.smoothing}|${this.cfg.loop_safe}`;
-      if (key !== this._audioParamsKey) this._recomputeAudio();
+      if (key !== this._audioParamsKey) this._scheduleRecomputeAudio();
     }
     this._render?.();
+  }
+
+  /**
+   * Debounced wrapper around _recomputeAudio — collapses bursts of
+   * fps / smoothing / loop_safe slider ticks into one analysis pass after
+   * the user stops dragging. 200ms matches the undo-snap debounce so a
+   * settled drag triggers exactly one recompute and one undo entry.
+   */
+  _scheduleRecomputeAudio() {
+    if (this._recomputeTimer) clearTimeout(this._recomputeTimer);
+    this._recomputeTimer = setTimeout(() => {
+      this._recomputeTimer = null;
+      this._recomputeAudio();
+    }, 200);
   }
 
   // ---------------- Undo / redo (G4) ----------------
@@ -516,6 +530,10 @@ export class AudioStudioEditor {
     // back into a removed overlay).
     this._pausePlayback?.();
     this._detachTransportListeners?.();
+    // Cancel any in-flight debounced timers so they don't fire against
+    // a torn-down editor instance.
+    if (this._recomputeTimer) { clearTimeout(this._recomputeTimer); this._recomputeTimer = null; }
+    if (this._snapTimer)      { clearTimeout(this._snapTimer);      this._snapTimer = null; }
     // Restore node.onConnectionsChange to whatever was there before open().
     if (this._origOnConnectionsChange !== undefined) {
       this.node.onConnectionsChange = this._origOnConnectionsChange;
