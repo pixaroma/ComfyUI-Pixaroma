@@ -380,7 +380,26 @@ class PixaromaAudioReact:
         return out
 
     def _overlay_bloom(self, frame, env_t, strength):
-        return frame  # Task 12
+        """Gaussian-glow add-blend pulsing with audio envelope."""
+        if env_t <= 0.001 or strength <= 0:
+            return frame
+        weight = env_t * strength * 0.6
+        x = frame.permute(2, 0, 1).unsqueeze(0)
+        small = F.interpolate(x, scale_factor=0.25, mode="bilinear", align_corners=False)
+        ksize = 9
+        sigma = 2.0
+        coords = torch.arange(ksize, dtype=torch.float32, device=x.device) - (ksize - 1) / 2
+        g1 = torch.exp(-(coords ** 2) / (2 * sigma ** 2))
+        g1 = g1 / g1.sum()
+        kx = g1.view(1, 1, 1, ksize).expand(3, 1, 1, ksize)
+        ky = g1.view(1, 1, ksize, 1).expand(3, 1, ksize, 1)
+        small = F.conv2d(small, kx, padding=(0, ksize // 2), groups=3)
+        small = F.conv2d(small, ky, padding=(ksize // 2, 0), groups=3)
+        big = F.interpolate(small, size=x.shape[-2:], mode="bilinear", align_corners=False)
+        bloom_layer = (big * weight).clamp(0, 1)
+        out = 1.0 - (1.0 - x).clamp(0, 1) * (1.0 - bloom_layer)
+        out = out.clamp(0, 1).squeeze(0).permute(1, 2, 0)
+        return out
 
     def _overlay_vignette(self, frame, env_t, strength, H, W, device):
         return frame  # Task 13
