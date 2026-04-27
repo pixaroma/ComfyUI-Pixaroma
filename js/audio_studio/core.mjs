@@ -158,6 +158,11 @@ export class AudioStudioEditor {
   }
 
   isDirty() {
+    // _uploadDirty covers the case where an upload replaced bytes at an
+    // already-saved path (same node id + same extension overwrites the
+    // existing audio_studio/<id>/image.png) — the cfg JSON didn't change
+    // but the actual file did, so we still need to let the user save.
+    if (this._uploadDirty) return true;
     return JSON.stringify(this.cfg) !== this.savedSnapshot;
   }
 
@@ -241,6 +246,7 @@ export class AudioStudioEditor {
           const { path } = await uploadSource(this.node.id, "image", file, filename);
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
+          this._uploadDirty = true;
           this._snapForUndo(true);
           this._refreshSaveBtnState();
           await this._resolveImageSource();
@@ -377,6 +383,7 @@ export class AudioStudioEditor {
     if (!this.isDirty()) return;
     this.onSave?.(JSON.parse(JSON.stringify(this.cfg)));
     this.savedSnapshot = JSON.stringify(this.cfg);
+    this._uploadDirty = false;
     this._refreshSaveBtnState();
     this.close();
   }
@@ -387,10 +394,16 @@ export class AudioStudioEditor {
     // flood the stack — only the settled value is captured.
     this._snapForUndo(false);
     this._refreshSaveBtnState();
-    // fps / smoothing / loop_safe changes invalidate the cached envelope —
-    // recompute from the decoded buffer if we have one. Cheap (well under a
-    // second for typical clips) so no need to debounce yet.
-    if (this._audioBuffer) this._recomputeAudio();
+    // Only recompute audio when an analysis-affecting param changed. The
+    // FFT + 4-band envelope on a 60s clip is ~6k samples per band; running
+    // it on every intensity / motion_mode / overlay tick made the sliders
+    // feel jumpy. audio_band is just a uniform read by the shader, doesn't
+    // re-analyse. _audioParamsKey caches the current key inside
+    // _recomputeAudio.
+    if (this._audioBuffer) {
+      const key = `${this.cfg.fps}|${this.cfg.smoothing}|${this.cfg.loop_safe}`;
+      if (key !== this._audioParamsKey) this._recomputeAudio();
+    }
     this._render?.();
   }
 
@@ -610,6 +623,7 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
       const { path } = await uploadSource(this.node.id, "image", file, filename);
       this.cfg.image_source = "inline";
       this.cfg.image_path = path;
+      this._uploadDirty = true;   // bytes-on-disk changed even if path matches
       this._snapForUndo(true);
       this._refreshSaveBtnState();
       await this._resolveImageSource();
@@ -718,6 +732,7 @@ AudioStudioEditor.prototype._handleAudioFile = async function (file) {
     const { path } = await uploadSource(this.node.id, "audio", wavBlob, "audio.wav");
     this.cfg.audio_source = "inline";
     this.cfg.audio_path = path;
+    this._uploadDirty = true;   // bytes-on-disk changed even if path matches
     this._snapForUndo(true);
     this._refreshSaveBtnState();
     await this._resolveAudioSource();
@@ -764,6 +779,9 @@ AudioStudioEditor.prototype._recomputeAudio = function () {
   const { envelope, onset, totalFrames } = computeAll(
     this._audioBuffer, this.cfg.fps, this.cfg.smoothing, this.cfg.loop_safe,
   );
+  // Stamp the params key so _onCfgChanged can short-circuit when no
+  // analysis-affecting param changed since the last compute.
+  this._audioParamsKey = `${this.cfg.fps}|${this.cfg.smoothing}|${this.cfg.loop_safe}`;
   if (totalFrames > 0) {
     // Cache the envelope so transport.mjs's _drawSparkline can read it
     // (avoids passing it in or recomputing).

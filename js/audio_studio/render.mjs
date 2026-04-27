@@ -110,6 +110,17 @@ AudioStudioEditor.prototype._resizeRenderTargets = function (w, h) {
 AudioStudioEditor.prototype._setImage = function (imageEl) {
   // imageEl is an HTMLImageElement or HTMLCanvasElement, fully loaded.
   const gl = this._gl;
+
+  // Restore canvas to the DOM if a previous _showCanvasMessage replaced
+  // canvasHost.textContent with a status string (which removes ALL
+  // children, including our canvas). Without this, a fresh inline image
+  // pick would render to an orphaned canvas — invisible until the editor
+  // is re-opened from saved state.
+  if (this.canvas && !this.canvas.isConnected) {
+    this.canvasHost.textContent = "";
+    this.canvasHost.appendChild(this.canvas);
+  }
+
   gl.bindTexture(gl.TEXTURE_2D, this._imageTex);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, imageEl);
