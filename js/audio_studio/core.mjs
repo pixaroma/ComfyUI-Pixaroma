@@ -147,6 +147,13 @@ export class AudioStudioEditor {
     this.overlay = null;
     this.onSave = null;
     this.onClose = null;
+    // Undo / redo (G4) — bounded LIFO of JSON snapshots, ~50 entries.
+    // _lastSnapshot is the cfg at the most recent commit point (initial
+    // open OR latest debounced snap), used as the diff baseline.
+    this._undoStack = [];
+    this._redoStack = [];
+    this._lastSnapshot = JSON.stringify(this.cfg);
+    this._snapTimer = null;
   }
 
   isDirty() {
@@ -226,10 +233,15 @@ export class AudioStudioEditor {
     // family in server_routes.py.
     testImg.src = "/pixaroma/assets/audio_studio_parity/test_image.png";
 
-    // Top-level keydown handler — intercept Esc and Ctrl+S.
+    // Top-level keydown handler — intercept Esc, Ctrl+S, Space, arrows,
+    // Ctrl+Z, Ctrl+Y. Inputs / textareas / dropdowns keep their default
+    // behavior (we check tagName before hijacking the key).
     this._keyHandler = (e) => {
       // Don't intercept when a confirm modal is open
       if (document.querySelector(".pix-as-confirm-backdrop")) return;
+      const t = e.target;
+      const inField = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT");
+
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -238,6 +250,25 @@ export class AudioStudioEditor {
         e.preventDefault();
         e.stopImmediatePropagation();
         this._save();
+      } else if (e.code === "Space" && !inField) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this._togglePlay?.();
+      } else if ((e.code === "ArrowLeft" || e.code === "ArrowRight") && !inField) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        const sign = e.code === "ArrowLeft" ? -1 : 1;
+        // Shift+arrow steps fps frames (1s); plain arrow steps 1 frame.
+        const stepFrames = e.shiftKey ? Math.max(1, this.cfg.fps) : 1;
+        this._stepFrame?.(sign * stepFrames);
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this._undo?.();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.shiftKey && (e.key === "Z" || e.key === "z")))) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        this._redo?.();
       }
     };
     window.addEventListener("keydown", this._keyHandler, true);
@@ -316,10 +347,70 @@ export class AudioStudioEditor {
   }
 
   _onCfgChanged() {
+    // Snap for undo BEFORE other side-effects so Ctrl+Z restores to the
+    // pre-change state. Debounced (200ms) so dragging a slider doesn't
+    // flood the stack — only the settled value is captured.
+    this._snapForUndo(false);
     this._refreshSaveBtnState();
     // fps / smoothing / loop_safe changes invalidate the cached envelope —
     // recompute from the decoded buffer if we have one. Cheap (well under a
     // second for typical clips) so no need to debounce yet.
+    if (this._audioBuffer) this._recomputeAudio();
+    this._render?.();
+  }
+
+  // ---------------- Undo / redo (G4) ----------------
+
+  /**
+   * Push the current cfg onto the undo stack so a later Ctrl+Z can restore
+   * it. immediate=false debounces (200ms) — used by slider drags so a
+   * smooth drag captures only the settled value. immediate=true commits
+   * right away — used by source-file changes (image/audio load) where the
+   * snap is one discrete event.
+   */
+  _snapForUndo(immediate) {
+    const snapshot = JSON.stringify(this.cfg);
+    if (this._lastSnapshot === snapshot) return;
+    if (this._snapTimer) clearTimeout(this._snapTimer);
+    const commit = () => {
+      this._undoStack.push(this._lastSnapshot ?? snapshot);
+      this._lastSnapshot = JSON.stringify(this.cfg);
+      if (this._undoStack.length > 50) this._undoStack.shift();
+      this._redoStack.length = 0;   // any new edit invalidates redo branch
+      this._snapTimer = null;
+    };
+    if (immediate) commit();
+    else this._snapTimer = setTimeout(commit, 200);
+  }
+
+  _undo() {
+    if (this._undoStack.length === 0) return;
+    const cur = JSON.stringify(this.cfg);
+    this._redoStack.push(cur);
+    const prev = this._undoStack.pop();
+    this.cfg = JSON.parse(prev);
+    this._lastSnapshot = prev;
+    this._refreshAfterRestore();
+  }
+
+  _redo() {
+    if (this._redoStack.length === 0) return;
+    const cur = JSON.stringify(this.cfg);
+    this._undoStack.push(cur);
+    const nxt = this._redoStack.pop();
+    this.cfg = JSON.parse(nxt);
+    this._lastSnapshot = nxt;
+    this._refreshAfterRestore();
+  }
+
+  /**
+   * Rebuild sidebar (cheapest way to ensure widgets reflect this.cfg) +
+   * recompute audio (envelope depends on fps/smoothing/loop_safe) +
+   * rerender. Save button state derived from the same dirty check.
+   */
+  _refreshAfterRestore() {
+    this._buildSidebar();
+    this._refreshSaveBtnState();
     if (this._audioBuffer) this._recomputeAudio();
     this._render?.();
   }
