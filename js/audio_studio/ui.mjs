@@ -2,7 +2,7 @@
 // Mixin: collapsible-section sidebar (3D-Builder style) — Motion / Overlays /
 // Audio / Output. Adds methods to AudioStudioEditor.prototype.
 import { AudioStudioEditor } from "./core.mjs";
-import { createPanel } from "../framework/index.mjs";
+import { createPanel, UI_ICON } from "../framework/index.mjs";
 
 const ASPECT_OPTIONS = [
   "Original",
@@ -188,6 +188,32 @@ function injectSidebarCSS() {
     .pix-as-wh-input:disabled { opacity: 0.4; cursor: not-allowed; }
     .pix-as-wh-input:focus { border-color: #f66744; }
     .pix-as-wh-sep { color: #666; font-size: 11px; flex-shrink: 0; }
+
+    /* Per-section action button on the right side of a panel title
+       (currently used for the Motion section's Reset). Visually small +
+       muted so it doesn't compete with the title text. */
+    .pix-as-section-action {
+      margin-left: auto;
+      width: 18px; height: 18px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 3px;
+      padding: 0;
+      cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: background 0.1s, border-color 0.1s;
+    }
+    .pix-as-section-action:hover {
+      background: #2a2a2a; border-color: #3a3a3a;
+    }
+    .pix-as-section-action .pix-as-section-action-icon {
+      width: 12px; height: 12px;
+      background-color: #aaa;
+      -webkit-mask: var(--pix-as-icon-url) center/contain no-repeat;
+              mask: var(--pix-as-icon-url) center/contain no-repeat;
+      pointer-events: none;
+    }
+    .pix-as-section-action:hover .pix-as-section-action-icon { background-color: #fff; }
   `;
   const style = document.createElement("style");
   style.id = "pix-as-sidebar-css";
@@ -213,16 +239,64 @@ AudioStudioEditor.prototype._buildSidebar = function () {
   sidebar.appendChild(scroller);
 
   const sections = [
-    ["Motion",   this._buildMotionSection],
-    ["Overlays", this._buildOverlaysSection],
-    ["Audio",    this._buildAudioSection],
-    ["Output",   this._buildOutputSection],
+    { title: "Motion",   build: this._buildMotionSection,
+      action: { icon: "reset.svg", title: "Reset Motion sliders to defaults",
+                onClick: () => this._resetMotionDefaults() } },
+    { title: "Overlays", build: this._buildOverlaysSection },
+    { title: "Audio",    build: this._buildAudioSection },
+    { title: "Output",   build: this._buildOutputSection },
   ];
-  for (const [title, builder] of sections) {
-    const panel = createPanel(title, { collapsible: true });
+  for (const sec of sections) {
+    const panel = createPanel(sec.title, { collapsible: true });
+    if (sec.action) this._attachSectionAction(panel.el, sec.action);
     scroller.appendChild(panel.el);
-    builder.call(this, panel.content);
+    sec.build.call(this, panel.content);
   }
+};
+
+/**
+ * Attach a small icon button to a collapsible-section's title bar (right
+ * side, pushed by margin-left:auto). Click handler is wrapped to
+ * stopPropagation so it doesn't toggle the section's collapsed state.
+ */
+AudioStudioEditor.prototype._attachSectionAction = function (panelEl, action) {
+  const titleEl = panelEl.querySelector(".pxf-panel-title");
+  if (!titleEl) return;
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pix-as-section-action";
+  btn.title = action.title || "";
+  const icon = document.createElement("span");
+  icon.className = "pix-as-section-action-icon";
+  icon.style.setProperty("--pix-as-icon-url", `url(${UI_ICON}${action.icon})`);
+  btn.appendChild(icon);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    action.onClick(e);
+  });
+  titleEl.appendChild(btn);
+};
+
+/**
+ * Restore the Motion-section sliders + toggle to the editor's stored
+ * DEFAULT_CFG values. motion_mode is preserved (the user explicitly chose
+ * it). Snaps undo so the reset is one Ctrl+Z away.
+ */
+AudioStudioEditor.prototype._resetMotionDefaults = function () {
+  const d = this._defaults || {};
+  const keys = ["intensity", "motion_speed", "smoothing", "loop_safe"];
+  let changed = false;
+  for (const k of keys) {
+    if (d[k] !== undefined && this.cfg[k] !== d[k]) {
+      this.cfg[k] = d[k];
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  this._snapForUndo(true);
+  this._buildSidebar();
+  this._refreshSaveBtnState();
+  this._onCfgChanged();
 };
 
 // ---------------------------------------------------------------------------

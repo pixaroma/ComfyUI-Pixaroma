@@ -123,10 +123,13 @@ function injectAudioStudioCSS() {
 
 
 export class AudioStudioEditor {
-  constructor(node, cfg) {
+  constructor(node, cfg, defaults) {
     this.node = node;
     // Deep-clone cfg so live edits don't mutate node.properties until Save.
     this.cfg = JSON.parse(JSON.stringify(cfg));
+    // Frozen reference to the original defaults, used by the per-section
+    // Reset buttons. Cloned so caller mutations to DEFAULT_CFG can't reach us.
+    this._defaults = defaults ? JSON.parse(JSON.stringify(defaults)) : {};
     this.savedSnapshot = JSON.stringify(cfg);   // for dirty detection
     this.overlay = null;
     this.onSave = null;

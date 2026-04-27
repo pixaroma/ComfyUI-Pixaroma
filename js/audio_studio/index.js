@@ -125,7 +125,7 @@ app.registerExtension({
     node.addWidget("button", "Open Audio Pulse", null, () => {
       if (isEditorOpen(node)) return; // guard double-open
       const cfg = node.properties[STATE_KEY] || { ...DEFAULT_CFG };
-      const editor = new AudioStudioEditor(node, cfg);
+      const editor = new AudioStudioEditor(node, cfg, DEFAULT_CFG);
       node._audioStudioEditor = editor;
 
       editor.onSave = (newCfg) => {
