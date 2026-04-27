@@ -131,13 +131,22 @@ class PixaromaAudioStudio:
         cfg = _migrate_cfg(cfg)
         params = params_from_dict(cfg)
 
-        # Source resolution: upstream wiring ALWAYS wins when present;
-        # inline path is the fallback when nothing is wired. cfg.image_source
-        # / cfg.audio_source are preserved for backwards compatibility but
-        # do NOT override the wire — matches user mental model that wiring
-        # an input means "use this". To use inline only, disconnect the
-        # upstream wire.
-        if image is None:
+        # Source resolution priority:
+        #   1. cfg.image_force_inline + cfg.image_path  -> inline (override)
+        #   2. upstream wired (image is not None)        -> upstream
+        #   3. cfg.image_path                            -> inline (fallback)
+        #   4. else                                       -> error
+        #
+        # The force_inline flag is set by the JS editor when the user
+        # explicitly picks/drag-drops a file in the studio while upstream
+        # is wired -- that user action signals "use this new upload, not
+        # the wire". Toggled off by clicking the pill again. This handles
+        # both directions: wiring a new upstream auto-takes effect (since
+        # force_inline is false by default), AND a fresh in-editor upload
+        # wins even when upstream is wired.
+        if cfg.get("image_force_inline") and cfg.get("image_path"):
+            image = _load_inline_image(cfg["image_path"])
+        elif image is None:
             if cfg.get("image_path"):
                 image = _load_inline_image(cfg["image_path"])
             else:
@@ -146,7 +155,9 @@ class PixaromaAudioStudio:
                     "IMAGE input or open the editor and load an inline image."
                 )
 
-        if audio is None:
+        if cfg.get("audio_force_inline") and cfg.get("audio_path"):
+            audio = _load_inline_audio(cfg["audio_path"])
+        elif audio is None:
             if cfg.get("audio_path"):
                 audio = _load_inline_audio(cfg["audio_path"])
             else:

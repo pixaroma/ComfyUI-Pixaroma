@@ -34,6 +34,12 @@ const DEFAULT_CFG = {
   image_path: null,
   audio_source: "upstream",
   audio_path: null,
+  // Force-inline override flags. Set to true when the user explicitly picks
+  // an inline file inside the editor — that upload then overrides any
+  // upstream wire (matches the user expectation: "I just picked this, use
+  // it"). When false, upstream wins if wired and inline is the fallback.
+  image_force_inline: false,
+  audio_force_inline: false,
 };
 
 // Vue-compat: the editor overlay can be removed from the DOM by Vue

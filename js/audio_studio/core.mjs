@@ -246,6 +246,7 @@ export class AudioStudioEditor {
           const { path } = await uploadSource(this.node.id, "image", file, filename);
           this.cfg.image_source = "inline";
           this.cfg.image_path = path;
+          this.cfg.image_force_inline = true;   // explicit user upload wins
           this._uploadDirty = true;
           this._snapForUndo(true);
           this._refreshSaveBtnState();
@@ -601,10 +602,32 @@ AudioStudioEditor.prototype._loadImageFromUrl = function (url) {
 };
 
 AudioStudioEditor.prototype._resolveImageSource = async function () {
-  // Upstream wins when wired — matches user mental model (and Python side).
-  // Inline is the fallback when nothing is wired. cfg.image_source is
-  // preserved for backwards compat but doesn't override the wire.
+  // Priority:
+  //   1. force_inline + image_path  -> inline (explicit user override)
+  //   2. upstream wired             -> upstream
+  //   3. image_path                  -> inline (fallback when no wire)
+  //   4. else                        -> "not loaded" message
+  //
+  // force_inline is set when the user explicitly picks a file in the editor
+  // while upstream is wired — that fresh user action overrides the wire.
+  // Click the pill while in override mode to clear the flag and revert to
+  // upstream.
   const upstreamUrl = getUpstreamImageUrl(app.graph, this.node);
+  const wired = !!upstreamUrl;
+  const fname = this.cfg.image_path ? this.cfg.image_path.split("/").pop() : "";
+
+  if (this.cfg.image_force_inline && this.cfg.image_path) {
+    const url = getInlineSourceUrl(this.cfg.image_path);
+    try {
+      await this._loadImageFromUrl(url);
+      this._updatePill(
+        this.imgPill,
+        wired ? `Image: Inline override (${fname})` : `Image: Inline (${fname})`,
+        false,
+      );
+      return;
+    } catch {}
+  }
   if (upstreamUrl) {
     try {
       await this._loadImageFromUrl(upstreamUrl);
@@ -616,7 +639,7 @@ AudioStudioEditor.prototype._resolveImageSource = async function () {
     const url = getInlineSourceUrl(this.cfg.image_path);
     try {
       await this._loadImageFromUrl(url);
-      this._updatePill(this.imgPill, `Image: Inline (${this.cfg.image_path.split("/").pop()})`, false);
+      this._updatePill(this.imgPill, `Image: Inline (${fname})`, false);
       return;
     } catch {}
   }
@@ -639,6 +662,9 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
       const { path } = await uploadSource(this.node.id, "image", file, filename);
       this.cfg.image_source = "inline";
       this.cfg.image_path = path;
+      // Set the override so this fresh upload wins even if upstream is
+      // wired. User can clear via pill click while overriding.
+      this.cfg.image_force_inline = true;
       this._uploadDirty = true;   // bytes-on-disk changed even if path matches
       this._snapForUndo(true);
       this._refreshSaveBtnState();
@@ -651,17 +677,30 @@ AudioStudioEditor.prototype._pickInlineImage = function () {
 };
 
 AudioStudioEditor.prototype._onImagePillClick = function () {
-  // Pill click sets / replaces the inline fallback image. To use upstream,
-  // wire an IMAGE input — wired upstream always wins. The inline image is
-  // the fallback used when nothing is wired.
+  // Two modes:
+  //   * If image_force_inline is active AND upstream is wired, clicking the
+  //     pill clears the override so upstream wins again. (Single click out
+  //     of override mode.)
+  //   * Otherwise, open the file picker — uploading sets force_inline so
+  //     the new file wins immediately, even when upstream is wired.
+  if (this.cfg.image_force_inline && getUpstreamImageUrl(app.graph, this.node)) {
+    this.cfg.image_force_inline = false;
+    this._snapForUndo(true);
+    this._refreshSaveBtnState();
+    this._resolveImageSource();
+    return;
+  }
   this._pickInlineImage();
 };
 
 // --- Audio source resolution (H2) ---
 
 AudioStudioEditor.prototype._resolveAudioSource = async function () {
-  // Upstream wins when wired (same model as image — see _resolveImageSource).
-  // Try to fetch upstream first; fall back to inline path; else "not loaded".
+  // Same priority as image — see _resolveImageSource for the rationale.
+  // 1. force_inline + audio_path  -> inline (explicit user override)
+  // 2. upstream wired             -> upstream
+  // 3. audio_path                  -> inline (fallback)
+  // 4. else                        -> "not loaded"
   const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
   let upstreamUrl = null;
   if (audioInputIdx >= 0) {
@@ -682,6 +721,24 @@ AudioStudioEditor.prototype._resolveAudioSource = async function () {
       }
     }
   }
+  const wired = !!upstreamUrl;
+  const fname = this.cfg.audio_path ? this.cfg.audio_path.split("/").pop() : "";
+
+  if (this.cfg.audio_force_inline && this.cfg.audio_path) {
+    try {
+      const r = await fetch(getInlineSourceUrl(this.cfg.audio_path));
+      const blob = await r.blob();
+      await this.loadAudioBlob(blob);
+      this._updatePill(
+        this.audioPill,
+        wired ? `Audio: Inline override (${fname})` : `Audio: Inline (${fname})`,
+        false,
+      );
+      return;
+    } catch (e) {
+      console.warn("[Pixaroma] Audio Studio inline-override fetch failed:", e);
+    }
+  }
   if (upstreamUrl) {
     try {
       const r = await fetch(upstreamUrl);
@@ -698,7 +755,7 @@ AudioStudioEditor.prototype._resolveAudioSource = async function () {
       const r = await fetch(getInlineSourceUrl(this.cfg.audio_path));
       const blob = await r.blob();
       await this.loadAudioBlob(blob);
-      this._updatePill(this.audioPill, `Audio: Inline (${this.cfg.audio_path.split("/").pop()})`, false);
+      this._updatePill(this.audioPill, `Audio: Inline (${fname})`, false);
       return;
     } catch (e) {
       console.warn("[Pixaroma] Audio Studio inline audio fetch failed:", e);
@@ -730,6 +787,8 @@ AudioStudioEditor.prototype._handleAudioFile = async function (file) {
     const { path } = await uploadSource(this.node.id, "audio", wavBlob, "audio.wav");
     this.cfg.audio_source = "inline";
     this.cfg.audio_path = path;
+    // Same override semantics as image — fresh user upload wins over wired.
+    this.cfg.audio_force_inline = true;
     this._uploadDirty = true;   // bytes-on-disk changed even if path matches
     this._snapForUndo(true);
     this._refreshSaveBtnState();
@@ -752,8 +811,18 @@ AudioStudioEditor.prototype._pickInlineAudio = function () {
 };
 
 AudioStudioEditor.prototype._onAudioPillClick = function () {
-  // Pill click sets / replaces the inline fallback audio. To use upstream,
-  // wire an AUDIO input — wired upstream always wins.
+  // Same dual-mode as image pill — see _onImagePillClick.
+  // Resolve upstream-wired by walking the input slot (cheaper than re-running
+  // _resolveAudioSource just for the boolean).
+  const audioInputIdx = (this.node.inputs || []).findIndex((i) => i.name === "audio");
+  const wired = audioInputIdx >= 0 && this.node.inputs[audioInputIdx].link != null;
+  if (this.cfg.audio_force_inline && wired) {
+    this.cfg.audio_force_inline = false;
+    this._snapForUndo(true);
+    this._refreshSaveBtnState();
+    this._resolveAudioSource();
+    return;
+  }
   this._pickInlineAudio();
 };
 
