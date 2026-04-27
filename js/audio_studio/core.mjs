@@ -190,7 +190,7 @@ export class AudioStudioEditor {
 
     const sidebar = document.createElement("div");
     sidebar.className = "pix-as-sidebar";
-    sidebar.textContent = "(sidebar — tabs land in D4)";
+    this._buildSidebar();
     this.sidebar = sidebar;
 
     body.appendChild(canvasArea);
@@ -286,6 +286,13 @@ export class AudioStudioEditor {
     this.savedSnapshot = JSON.stringify(this.cfg);
     this._refreshSaveBtnState();
     this.close();
+  }
+
+  _onCfgChanged() {
+    this._refreshSaveBtnState();
+    // Render hook — currently a no-op stub. E2 mixin will define _render;
+    // audio analysis (F2) will recompute audio textures.
+    this._render?.();
   }
 
   close() {
