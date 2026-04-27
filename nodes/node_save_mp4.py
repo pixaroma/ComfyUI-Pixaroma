@@ -94,16 +94,16 @@ class PixaromaSaveMp4:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "video_frames": ("IMAGE", {"tooltip": "Frame batch to encode. Wire Audio Depth Pixaroma's video_frames output here."}),
+                "video_frames": ("IMAGE", {"tooltip": "Frame batch to encode. Wire Audio React Pixaroma's video_frames output here."}),
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
-                    "tooltip": "Output frame rate. Wire Audio Depth Pixaroma's fps output here so it always matches what produced the frames."}),
+                    "tooltip": "Output frame rate. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames."}),
                 "filename_prefix": ("STRING", {"default": "Video",
                     "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Saved into ComfyUI's output/ folder."}),
                 "trim_to_audio": ("BOOLEAN", {"default": True,
                     "tooltip": "When audio is connected, end the video at the audio's length (uses ffmpeg -shortest). Off = keep all video frames even if longer than audio."}),
             },
             "optional": {
-                "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio Depth Pixaroma's audio output here."}),
+                "audio": ("AUDIO", {"tooltip": "Optional audio track to mux into the mp4 as AAC 192k. Connect Audio React Pixaroma's audio output here."}),
             },
         }
 
@@ -130,7 +130,7 @@ class PixaromaSaveMp4:
             raise ValueError(
                 f"[Pixaroma] Save Mp4 — encoder requires even width and "
                 f"height, got {W}x{H}. Resize input frames to even dimensions "
-                f"(Audio Depth Pixaroma snaps to multiples of 8 automatically)."
+                f"(Audio React Pixaroma snaps to multiples of 8 automatically)."
             )
 
         # Resolve subfolder + base filename via folder_paths (handles
