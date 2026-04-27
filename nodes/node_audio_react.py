@@ -1,4 +1,5 @@
 # nodes/node_audio_react.py
+import gc
 import math
 
 import torch
@@ -115,27 +116,27 @@ class PixaromaAudioReact:
                         "kaleidoscope = radial 6-segment mirror; segment rotation reactive to audio. Club / abstract."
                     )}),
                 "intensity": ("FLOAT", {"default": 0.8, "min": 0.0, "max": 2.0, "step": 0.05,
-                    "tooltip": "Master strength. 0 = still, 0.8 = default (cinematic), 2 = extreme."}),
+                    "tooltip": "How strongly the audio drives the chosen motion mode and the four overlays. 0 = completely still output (matches the input image exactly, useful for previewing overlays alone). 0.8 = cinematic default (visible but tasteful). 1.0–1.5 = energetic. 2.0 = extreme — verges on cartoony for scale-based modes."}),
                 "audio_band": (list(_AUDIO_BANDS_HZ.keys()), {"default": "full",
                     "tooltip": "Frequency band that drives the motion envelope. full = whole spectrum (default). bass = drum-driven (20–250 Hz). mids = vocal-driven (250–4000 Hz). treble = cymbals/hi-hats (4000–20000 Hz)."}),
                 "motion_speed": ("FLOAT", {"default": 0.2, "min": 0.05, "max": 1.0, "step": 0.05,
-                    "tooltip": "Base oscillation frequency in Hz for modes that need it (ripple, kaleidoscope, slit_scan). 0.2 = one cycle every 5s (cinematic)."}),
+                    "tooltip": "Time advance for modes whose motion has its own oscillation independent of the audio (ripple, slit_scan, kaleidoscope). Hz / cycles per second. 0.2 = one full cycle every 5s (default, slow cinematic). 0.5 = 2s. 1.0 = fast pulse. Ignored by scale_pulse / zoom_punch / shake (those are 100% audio-driven)."}),
                 "smoothing": ("INT", {"default": 5, "min": 1, "max": 15, "step": 1,
                     "tooltip": "Audio envelope moving-average window in frames. 1 = punchy. 5 = balanced default. 8–15 = fluid / cinematic."}),
                 "loop_safe": ("BOOLEAN", {"default": True,
-                    "tooltip": "Ramp the first and last 0.5s of motion to zero so the clip loops with no visible jump. Default ON."}),
+                    "tooltip": "Ramp motion to zero across the first and last 0.5s of the clip so playback loops with no visible jump. ON by default — typical use case (audio-reactive music videos / social loops) benefits, the 0.5s fade is invisible on clips longer than ~5s. Turn OFF for one-shot renders that won't loop, or for very short clips where you want full motion at the boundaries. Automatically skipped when the clip is shorter than 4 frames."}),
                 "fps": ("INT", {"default": 24, "min": 8, "max": 60, "step": 1,
                     "tooltip": "Output frames per second."}),
                 "edge_headroom": ("FLOAT", {"default": 1.05, "min": 1.0, "max": 1.3, "step": 0.01,
                     "tooltip": "Render slightly larger then center-crop, giving motion a safety zone. 1.0 = none. 1.05 = default (kills edge-clipping). 1.2 = wide margin for strong motion."}),
                 "glitch_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "RGB-channel offset spikes on transients + occasional scanline tear. 0 = off."}),
+                    "tooltip": "RGB channels split apart on transients (chromatic-aberration tear), with occasional 5%-of-rows scanline swap on big spikes. Resolution-relative — same look at 720p as 4K. 0 = off (skipped entirely for performance). 0.3 = subtle. 0.6 = vintage VHS / cyberpunk. 1.0 = aggressive."}),
                 "bloom_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Gaussian glow that pulses with bass. 0 = off."}),
+                    "tooltip": "Gaussian-blurred glow screen-blended back over the frame, intensity tracks audio envelope. Highlights bloom outward on each beat. 0 = off (skipped — bloom is the most expensive overlay; leaving it at 0 saves ~20% per-frame). 0.4 = dreamy. 0.7 = strong neon glow."}),
                 "vignette_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Edges darken in pulses with audio. 0 = off."}),
+                    "tooltip": "Radial darkening that pulses inward with audio. Center stays at full brightness; corners darken. 0 = off. 0.3 = cinematic safety. 0.7 = heavy mood / horror. 1.0 = corners go ~50% dark on peaks."}),
                 "hue_shift_strength": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05,
-                    "tooltip": "Color rotation cycles with audio amplitude. 0 = off."}),
+                    "tooltip": "Cycles the image's hue around the gray axis as audio plays. Max rotation is 30° at full strength + full envelope (deliberately gentle — bigger angles look gimmicky). 0 = off. 0.5 = noticeable color cycle. 1.0 = full ±30° swing on peaks."}),
             }
         }
 
@@ -200,7 +201,13 @@ class PixaromaAudioReact:
     def _audio_envelope(self, audio, target_frames, fps, device, audio_band, smoothing):
         """Returns a [target_frames] tensor in [0, 1] — per-frame audio energy."""
         waveform = audio["waveform"]
-        sample_rate = audio["sample_rate"]
+        # Coerce sample_rate to int — the validation guard accepts float, but
+        # `view()` and integer divisions below need an int.
+        sample_rate = int(audio["sample_rate"])
+        # Take the first batch entry only — multi-batch AUDIO is out of scope
+        # and would silently double-count samples below.
+        if waveform.shape[0] > 1:
+            waveform = waveform[:1]
         if waveform.shape[1] > 1:
             waveform = waveform.mean(dim=1, keepdim=True)
 
@@ -209,7 +216,7 @@ class PixaromaAudioReact:
             waveform = _bandpass_fft(waveform, sample_rate, low_hz, high_hz)
 
         total_samples = waveform.shape[-1]
-        samples_per_frame = sample_rate // fps
+        samples_per_frame = max(1, sample_rate // int(fps))
         required_samples = target_frames * samples_per_frame
         if total_samples < required_samples:
             repeats = math.ceil(required_samples / total_samples)
@@ -268,8 +275,10 @@ class PixaromaAudioReact:
             self._shake_dy_cache = dy.to(base_grid.device)
 
         amp = intensity * 0.04  # 4% of half-frame at intensity=1, raw=±1
-        dx = self._shake_dx_cache[i].item() * amp
-        dy = self._shake_dy_cache[i].item() * amp
+        # Tensor-only path: avoid .item() to keep the full per-frame loop
+        # GPU-resident on CUDA devices (no GPU↔CPU sync per frame).
+        dx = self._shake_dx_cache[i] * amp
+        dy = self._shake_dy_cache[i] * amp
 
         grid = base_grid.clone()
         grid[..., 0] = grid[..., 0] - dx
@@ -361,14 +370,16 @@ class PixaromaAudioReact:
         offsets = signs * max_px
         out = frame.clone()
         for c in range(3):
-            ox = offsets[c].item()
+            ox = int(offsets[c].item())
             if ox > 0:
                 out[:, ox:, c] = frame[:, :W - ox, c]
-                out[:, :ox, c] = frame[:, :ox, c]
+                # Replicate the leftmost moved-into column so the new edge
+                # doesn't leave a "frozen sliver" of the original frame.
+                out[:, :ox, c] = frame[:, 0:1, c].expand(-1, ox)
             elif ox < 0:
                 ox = -ox
                 out[:, :W - ox, c] = frame[:, ox:, c]
-                out[:, W - ox:, c] = frame[:, W - ox:, c]
+                out[:, W - ox:, c] = frame[:, W - 1:W, c].expand(-1, ox)
 
         if onset_t * strength > 0.7:
             n_swap = max(1, H // 20)
@@ -420,10 +431,14 @@ class PixaromaAudioReact:
         angle = env_t * strength * (30.0 * math.pi / 180.0)
         c = math.cos(angle)
         s = math.sin(angle)
+        # Canonical YIQ-derived hue rotation around the (1,1,1) gray axis.
+        # The 0.299 / 0.587 / 0.114 luma triples MUST be exact in every row
+        # — typos drift the gray axis and produce a tint on neutrals at high
+        # angles (review caught 0.300 / 0.588 / 0.302 typos here previously).
         m = torch.tensor([
             [0.299 + 0.701 * c + 0.168 * s, 0.587 - 0.587 * c + 0.330 * s, 0.114 - 0.114 * c - 0.497 * s],
             [0.299 - 0.299 * c - 0.328 * s, 0.587 + 0.413 * c + 0.035 * s, 0.114 - 0.114 * c + 0.292 * s],
-            [0.299 - 0.300 * c + 1.250 * s, 0.587 - 0.588 * c - 1.050 * s, 0.114 + 0.886 * c - 0.203 * s],
+            [0.299 - 0.299 * c + 1.250 * s, 0.587 - 0.587 * c - 1.050 * s, 0.114 + 0.886 * c - 0.203 * s],
         ], device=frame.device, dtype=frame.dtype)
         out = frame @ m.T
         return out.clamp(0, 1)
@@ -476,14 +491,25 @@ class PixaromaAudioReact:
 
         envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
 
-        if loop_safe:
-            fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
+        # loop_safe needs at least 4 frames so fade_n is >= 2 — otherwise
+        # linspace(0, 1, 1) = [0] and the only frame gets zeroed out.
+        # Skip silently below 4 frames; user's tiny clip won't loop but
+        # also won't be all-zero. linspace(0, 1, fade_n) DELIBERATELY
+        # starts at 0 so envelope[0] and envelope[-1] become exactly 0 —
+        # that's what makes the playback loop seamless (motion is fully
+        # frozen at both ends, so the wrap-around looks identical to a
+        # held still frame).
+        if loop_safe and total_frames >= 4:
+            fade_n = max(2, min(int(fps * 0.5), total_frames // 2))
             loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
             envelope = envelope.detach().clone()
             envelope[:fade_n] = envelope[:fade_n] * loop_ramp
             envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
 
         onset = _onset_track(envelope)
+
+        comfy.model_management.soft_empty_cache()
+        gc.collect()
 
         # Time vector for periodic motion (ripple / kaleidoscope / slit_scan).
         t_vec = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
