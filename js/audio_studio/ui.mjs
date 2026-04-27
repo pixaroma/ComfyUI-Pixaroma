@@ -27,9 +27,18 @@ const ASPECT_OPTIONS = [
   "2160x3840 (Portrait 4K)",
 ];
 
+// Internal id (left) goes to the engine + saved workflow; label (right) is
+// what users see in the dropdown. Renaming the label is safe; the id is
+// load-bearing and must NOT change without an explicit migration.
 const MOTION_MODES = [
-  "scale_pulse", "zoom_punch", "shake", "drift",
-  "rotate_pulse", "ripple", "swirl", "slit_scan",
+  { value: "scale_pulse",  label: "Pulse Zoom" },
+  { value: "zoom_punch",   label: "Punch Zoom" },
+  { value: "shake",        label: "Camera Shake" },
+  { value: "drift",        label: "Drift" },
+  { value: "rotate_pulse", label: "Pulse Spin" },
+  { value: "ripple",       label: "Ripple" },
+  { value: "swirl",        label: "Swirl" },
+  { value: "slit_scan",    label: "Time Slice" },
 ];
 
 const AUDIO_BANDS = ["full", "bass", "mids", "treble"];
@@ -235,10 +244,19 @@ AudioStudioEditor.prototype._addDropdown = function (panel, label, key, options)
 
   const sel = document.createElement("select");
   sel.className = "pix-as-dropdown";
+  // Each option may be a plain string (value === label) or an object
+  // {value, label}. The object form lets us show friendlier labels in the
+  // UI while keeping the internal id (which Python + saved workflows
+  // depend on) stable. See MOTION_MODES.
   for (const opt of options) {
     const o = document.createElement("option");
-    o.value = opt;
-    o.textContent = opt;
+    if (typeof opt === "string") {
+      o.value = opt;
+      o.textContent = opt;
+    } else {
+      o.value = opt.value;
+      o.textContent = opt.label;
+    }
     sel.appendChild(o);
   }
   sel.value = String(this.cfg[key]);
