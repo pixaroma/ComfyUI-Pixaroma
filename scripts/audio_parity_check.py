@@ -12,6 +12,7 @@ import argparse
 import importlib.util
 import json
 import sys
+import types
 from pathlib import Path
 
 import numpy as np
@@ -23,20 +24,31 @@ MANIFEST_PATH = REPO_ROOT / "tests" / "audio_parity_goldens" / "manifest.json"
 GOLDENS_DIR  = REPO_ROOT / "tests" / "audio_parity_goldens"
 
 
-def _load_module_from_file(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+# The plugin folder is named ComfyUI-Pixaroma (dash, invalid Python package
+# name) so we can't import via the regular package machinery. Instead we
+# create a synthetic 'nodes' package in sys.modules and load both the engine
+# and the node into it. Order matters: engine first so the node's
+# `from ._audio_react_engine import ...` finds it already in sys.modules.
+def _make_nodes_package_and_load():
+    nodes_pkg = types.ModuleType("nodes")
+    nodes_pkg.__path__ = [str(REPO_ROOT / "nodes")]
+    sys.modules["nodes"] = nodes_pkg
+
+    def _load_sub(name, filename):
+        spec = importlib.util.spec_from_file_location(
+            f"nodes.{name}",
+            REPO_ROOT / "nodes" / filename,
+        )
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[f"nodes.{name}"] = mod
+        spec.loader.exec_module(mod)
+        return mod
+
+    _load_sub("_audio_react_engine", "_audio_react_engine.py")
+    return _load_sub("node_audio_react", "node_audio_react.py")
 
 
-# Load node_audio_react.py directly to dodge the ComfyUI-Pixaroma dash
-# (Python package names cannot contain dashes).
-_node_mod = _load_module_from_file(
-    "_pixaroma_node_audio_react",
-    REPO_ROOT / "nodes" / "node_audio_react.py",
-)
+_node_mod = _make_nodes_package_and_load()
 PixaromaAudioReact = _node_mod.PixaromaAudioReact
 
 
