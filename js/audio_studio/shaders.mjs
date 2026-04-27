@@ -215,8 +215,9 @@ void main() {
 
     // Gate ~30% of bands per step — sparsity is what sells the "corruption"
     // look. Most rows stay clean, only a few are displaced.
+    // (Local var name avoids 'active' which is reserved in GLSL ES 3.00.)
     float gh = hashG(band * 17.0, frameStep * 23.0);
-    float active = step(0.7, gh);
+    float gateOn = step(0.7, gh);
 
     // Per-band signed offset with magnitude curve. abs()^1.5 keeps small
     // slips small and lets a few rare large jumps through.
@@ -225,7 +226,7 @@ void main() {
     perRow = sign(perRow) * pow(abs(perRow), 1.5);
 
     float amp = onset_t * u_intensity * 0.10;
-    vec2 uv = v_uv + vec2(perRow * amp * active, 0.0);
+    vec2 uv = v_uv + vec2(perRow * amp * gateOn, 0.0);
     fragColor = sample_image(uv);
 }
 `,
