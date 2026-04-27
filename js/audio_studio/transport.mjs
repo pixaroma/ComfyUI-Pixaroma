@@ -68,8 +68,8 @@ function injectTransportCSS() {
     .pix-as-loop-btn .pix-as-loop-icon {
       width: 13px; height: 13px;
       background-color: #666;
-      -webkit-mask: url(/pixaroma/assets/icons/ui/reset.svg) center/contain no-repeat;
-              mask: url(/pixaroma/assets/icons/ui/reset.svg) center/contain no-repeat;
+      -webkit-mask: url(/pixaroma/assets/icons/ui/loop.svg) center/contain no-repeat;
+              mask: url(/pixaroma/assets/icons/ui/loop.svg) center/contain no-repeat;
       pointer-events: none;
       transition: background-color 0.1s;
     }
