@@ -402,7 +402,15 @@ class PixaromaAudioReact:
         return out
 
     def _overlay_vignette(self, frame, env_t, strength, H, W, device):
-        return frame  # Task 13
+        """Audio-pulsing vignette."""
+        if env_t <= 0.001 or strength <= 0:
+            return frame
+        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
+        xs = torch.linspace(-1, 1, W, device=device).unsqueeze(0).expand(H, W)
+        r = torch.sqrt(xs ** 2 + ys ** 2).clamp(0, 1.4)
+        v = (r / 1.414).clamp(0, 1)
+        mask = 1.0 - (v * env_t * strength * 0.5)
+        return frame * mask.unsqueeze(-1)
 
     def _overlay_hue_shift(self, frame, env_t, strength):
         return frame  # Task 14
