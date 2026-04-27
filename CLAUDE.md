@@ -143,6 +143,28 @@ js/
 │                       #  Node-level onMouseMove/onMouseLeave for hover (widget
 │                       #  mouse() doesn't get pointermove on Vue).
 │
+├── audio_studio/       # Audio Studio Pixaroma — fullscreen editor for Audio React effects
+│   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
+│   │                   #  (Pattern #9), nodeCreated lifecycle. DEFAULT_CFG mirrors
+│   │                   #  Params() defaults in nodes/_audio_react_engine.py.
+│   ├── core.mjs        # AudioStudioEditor class — open/close/save/discard,
+│   │                   #  Vue-compat Ctrl+Z neutering, undo/redo stack, source
+│   │                   #  resolution + drag-drop, header/sidebar building.
+│   ├── transport.mjs   # Mixin — transport bar UI (play/scrub/sparkline/frame
+│   │                   #  stepper), Web Audio playback synced to playhead.
+│   ├── audio_analysis.mjs # Decode (Web Audio API), inline Cooley-Tukey real
+│   │                   #  FFT (no deps), 4-band envelope/onset packed for
+│   │                   #  RGBA32F upload, encodeWav() for upload conversion.
+│   ├── render.mjs      # Mixin — WebGL2 pipeline init + 2-pass render
+│   │                   #  (motion → intermediate FBO → overlay → screen).
+│   ├── shaders.mjs     # 8 motion shader fragments + combined-overlay shader,
+│   │                   #  compileProgram() with WeakMap cache.
+│   ├── ui.mjs          # Mixin — tabbed sidebar (Motion / Overlays / Audio /
+│   │                   #  Output), control factories, helpers.
+│   └── api.mjs         # Backend wrappers — uploadSource (multipart POST),
+│                       #  getUpstreamImageUrl (Vue links Map/object dual access),
+│                       #  getInlineSourceUrl.
+│
 ├── showtext/           # Show Text node (single file, 97 lines)
 │   └── index.js
 │
@@ -298,7 +320,7 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 2. **`shake` motion mode caches dx/dy on `self`, must be cleared at the top of `generate()`** — the cache size depends on `total_frames`, which differs per audio length. `generate()` does `if hasattr(self, "_shake_dx_cache"): del ...` before computing the envelope. Without that, switching audio (different total_frames) reuses stale jitter and crashes on index OOB.
 
-3. **`_audio_envelope`, `_bandpass_fft`, `_onset_track`, `_process_aspect` live in this single file** — there used to be a sibling `audio_depth` node these were ported from; that node was removed when the project pivoted to focus on `audio_react`. If you ever introduce another audio-driven node, copy these helpers locally rather than reaching into `node_audio_react.py` — the file is the single source of truth and adding cross-file imports would couple unrelated nodes.
+3. **`audio_envelope`, `bandpass_fft`, `onset_track`, `process_aspect`, `Params`, all motion functions, all overlay functions live in `nodes/_audio_react_engine.py` — and ONLY there.** Both `node_audio_react.py` and `node_audio_studio.py` are thin wrappers that build a `Params` and call `engine.generate_video()`. Do NOT copy helpers back into either node file (or any future node) — divergence breaks parity between the basic node, the editor preview (via `js/audio_studio/shaders.mjs`), and the regression goldens. The math is locked behind one file by design.
 
 4. **Print line uses ASCII `->`, not `→` (U+2192)** — Windows console default codec (cp1252) can't encode the arrow. Crashes the generate() call before frame 1.
 
@@ -307,6 +329,38 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 6. **Overlay short-circuit at strength == 0 is mandatory for performance** — every overlay's first line is `if env_t <= 0.001 or strength <= 0: return frame`. Without the early-return, bloom (which does a Gaussian blur per frame) costs ~30% even at strength=0. The `generate()` loop also checks `if glitch_strength > 0.0:` etc. before calling. Both layers of guard are intentional.
 
 7. **No `edge_headroom` widget — deliberately omitted, do not add it back** — depth-based parallax nodes (which this project no longer ships) need headroom because depth × strong intensity can displace sample coords well beyond `[-1, 1]`. `audio_react`'s motion modes don't have that problem: `scale_pulse` and `zoom_punch` pull inward (zoom-in only, range stays inside `[-1, 1]`), and `shake` / `drift` / `rotate_pulse` / `ripple` / `swirl` / `slit_scan` excurse by at most ~6% — `padding_mode="border"` handles those invisibly. Headroom would just render extra pixels that get cropped, wasting compute. `_process_aspect()` is still called (defaults `headroom=1.0`) so the helper stays general-purpose, but no crop pass after the per-frame loop.
+
+### Audio Studio Patterns (do not regress)
+
+These patterns were hard-won during Audio Studio v1 development. Regressing any of them reintroduces specific bugs.
+
+1. **`DEFAULT_CFG` in `js/audio_studio/index.js` MUST stay in sync with `Params` defaults in `nodes/_audio_react_engine.py`.** ComfyUI doesn't pre-fill a hidden input's value; the JS extension is the source of truth for first-time-on-canvas defaults. If the two diverge, the editor opens with one set of defaults and the workflow runs with another. Same risk class as Note Pixaroma Pattern #3 — keep them in sync at the same commit.
+
+2. **Engine math lives in `nodes/_audio_react_engine.py` ONLY** — `node_audio_react.py` and `node_audio_studio.py` are thin wrappers that build a `Params` and call `generate_video()`. If you ever feel the urge to "just inline this one helper" in either node file, don't — every formula must travel through the engine so both nodes stay in sync. This is also enforced by Audio React Pattern #3.
+
+3. **Math doc (`docs/audio-react-math.md`) is the single source of truth for formulas.** When changing a formula: (1) update the doc first; (2) update the Python implementation in the engine; (3) update the matching GLSL shader in `js/audio_studio/shaders.mjs`; (4) run `scripts/audio_parity_check.py --regenerate` to refresh goldens; (5) run the browser parity harness manually (`assets/audio_studio_parity/index.html`) to confirm the WebGL side still matches. Skipping any step risks editor preview drifting from MP4 output.
+
+4. **Approximate-preview carve-outs are documented, not silent.** Math doc §9 lists `shake` and `bloom` explicitly. The browser harness exempts these from the ΔE check. If you add a new "the WebGL side can't bit-match this" effect, update §9 AND the harness — silently exempting tests has misled debugging in the past.
+
+5. **Audio is WAV-only on disk.** The browser converts MP3 / OGG / AAC / etc. via `decodeAudio` + `encodeWav` in `js/audio_studio/audio_analysis.mjs` BEFORE upload. Server only accepts `.wav` — keeps Python dependency-free (stdlib `wave` module). Don't add server-side ffmpeg / pydub / etc. to "support more formats." Adding a heavy dep ripple-effects through the project's "no extra deps" promise.
+
+6. **WebGL2 required, no fallback.** If `getContext("webgl2")` returns null, the editor shows a clear error suggesting the basic Audio React node. Don't add WebGL1 fallback — none of the modern browsers we target lack WebGL2, and the fallback complexity buys nothing.
+
+7. **Pattern #9 persistence** (CLAUDE.md Vue Frontend Compatibility point #9) — `studio_json` is declared `hidden` in `INPUT_TYPES`, state lives on `node.properties.audioStudioState`, `app.graphToPrompt` hook in `js/audio_studio/index.js` injects it at submission. Same as Resolution Pixaroma. If the input ever shows up as a slot dot, Pattern #9 has been broken — likely by `removeInput()` or by re-declaring as `required STRING`.
+
+8. **`shake` motion shader uses a deterministic JS RNG (mulberry32-like hash seeded by frame index) — NOT a port of `torch.Generator(0)`.** Browser preview is approximate for shake. This is documented behavior — if you "fix" the shader to use Python's exact sequence, you'll discover torch's RNG cannot be reproduced cross-platform and break parity in a different way.
+
+9. **Audio analysis runs ONCE per audio load**, packing all 4 bands into one RGBA32F texture (R=full, G=bass, B=mids, A=treble). Toggling `audio_band` in the sidebar is a free uniform swap (`u_audio_band_idx`), not a recompute. Don't add a "recompute on band change" path — it slows the editor and adds latency to a click that should be instant.
+
+10. **`_onCfgChanged` only triggers `_recomputeAudio` when `fps` / `smoothing` / `loop_safe` actually changed**, AND the recompute is debounced 200ms. Cached as `_audioParamsKey`. Without this guard, dragging intensity / overlay sliders would re-run the 4-band FFT on every tick — the smoothing slider especially felt sticky before this was added.
+
+11. **`_setImage` MUST re-attach `this.canvas` to `canvasHost` if it's been disconnected** — `_showCanvasMessage` sets `canvasHost.textContent`, which removes the `<canvas>` from the DOM. Without the re-attach, picking an inline image after seeing the "upstream not ready" message renders to an orphaned canvas that's invisible until the editor is closed and re-opened.
+
+12. **`isDirty()` must OR a `_uploadDirty` flag, not just compare cfg JSON** — re-uploading a source replaces bytes at the same path (`audio_studio/<id>/<kind>.<ext>`), so `cfg.image_path` / `audio_path` doesn't change between picks. Without `_uploadDirty`, the SAVE button stays grey after the second image upload. The flag is set on every upload and cleared in `_save()`.
+
+13. **Vue-compat: editor patches `app.loadGraphData` AND `app.graph.configure`** while open (Pattern #6 in Vue Frontend Compatibility) — Ctrl+Z would otherwise tear down the workflow under the editor. `forceClose` restores both. Plus `node.onRemoved` resurrection-close safety net. Plus we cache `node.onConnectionsChange` to react to upstream wire/disconnect mid-edit (re-resolves the affected source) and restore the original handler on close.
+
+14. **Window-level scrub listeners (`mousemove` / `mouseup`) must be cached on the editor instance and detached in `forceClose`** — see `_detachTransportListeners` in `transport.mjs`. Without detach, the closure keeps the editor alive after close (memory leak + stale references on the next open). Same applies to debounced timers (`_recomputeTimer`, `_snapTimer`) — `forceClose` clears both.
 
 ### Note Pixaroma Patterns (do not regress)
 
@@ -453,7 +507,14 @@ Files are named by concern. Match the task to the file:
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
-| Audio React Pixaroma — change motion mode or overlay effect | `nodes/node_audio_react.py` (single file, ~600 lines, all the audio math + motion + overlays + per-frame loop). Motion modes are `_motion_*` methods (`scale_pulse`, `zoom_punch`, `shake`, `drift`, `rotate_pulse`, `ripple`, `swirl`, `slit_scan`); overlays are `_overlay_*` methods (`glitch`, `bloom`, `vignette`, `hue_shift`). Audio helpers in the same file: `_bandpass_fft`, `_audio_envelope`, `_onset_track`. Sizing helper: `_process_aspect`. Per-frame loop in `generate()` dispatches motion mode → `F.grid_sample` warp with `padding_mode="border"` → overlay chain (each overlay short-circuits when strength == 0) → stack. Outputs `(video_frames, audio, fps)`. No JS frontend, no server route. |
+| Audio React Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). `nodes/node_audio_react.py` is a thin wrapper (~100 lines) that builds a `Params` from widgets and calls `generate_video()`. NEVER inline math back into the node file — Audio Studio uses the same engine, divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |
+| Audio Studio Pixaroma — change effect math | DO NOT change in node files. Update `nodes/_audio_react_engine.py` only — both Audio React and Audio Studio share it. Mirror the change to `js/audio_studio/shaders.mjs` (GLSL). Update `docs/audio-react-math.md` (single source of truth). Re-run the parity scripts. |
+| Audio Studio Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save/discard, source resolution, undo, header pills). |
+| Audio Studio Pixaroma — transport / playback | `js/audio_studio/transport.mjs` (play / pause / scrub / sparkline / Web Audio sync). |
+| Audio Studio Pixaroma — WebGL pipeline | `js/audio_studio/render.mjs` (orchestration: framebuffer setup, motion + overlay passes, uniform binding) + `js/audio_studio/shaders.mjs` (per-mode GLSL). Reload page (Ctrl+F5) after shader edits — module cache is sticky. |
+| Audio Studio Pixaroma — Python entry point | `nodes/node_audio_studio.py` (thin wrapper — `optional` image/audio inputs + `hidden` studio_json; engine math lives in `nodes/_audio_react_engine.py`; `_migrate_cfg` for forward-compatible schema bumps). |
+| Audio Studio Pixaroma — upload route | `server_routes.py` `/pixaroma/api/audio_studio/upload`. Image: PNG / JPG / JPEG / WebP. Audio: WAV only (browser converts MP3 / OGG / etc. via `decodeAudio` + `encodeWav` in `js/audio_studio/audio_analysis.mjs` before upload — keeps Python dep-free). 50MB per file, 100MB combined per node dir. |
+| Audio Studio Pixaroma — config schema | `js/audio_studio/index.js` `DEFAULT_CFG` MUST stay in sync with `Params` defaults in `nodes/_audio_react_engine.py` (Audio Studio Pattern #1). `nodes/node_audio_studio.py` `_migrate_cfg` handles version bumps. |
 | Save Mp4 Pixaroma — change widgets / encoder flags / output naming | `nodes/node_save_mp4.py`. ffmpeg binary resolved via `_resolve_ffmpeg` (imageio-ffmpeg first, ffmpeg on PATH fallback, clear install hint on failure). Frames piped to ffmpeg's stdin as raw rgb24 (no temp PNGs). Audio (optional) is written to a temp WAV via `_write_wav_pcm16` (stdlib `wave` + numpy, NO torchaudio dep) and passed as a second `-i` input so muxing is one ffmpeg call. Stderr drained in a daemon thread to avoid Windows pipe-buffer deadlock. `trim_to_audio` adds `-shortest` only when audio is present. Output naming via `folder_paths.get_save_image_path` so it auto-increments. `OUTPUT_NODE = True` (terminal). Encoder defaults are baked into class attrs `_CRF` (19) + `_PIX_FMT` (yuv420p) — promote them back to INPUT_TYPES if a workflow needs control. Returns `{"ui": {"images": [...], "pixaroma_videos": [...]}}`; the `pixaroma_videos` key is consumed by `js/save_mp4/index.js` to render the in-node `<video>` preview. |
 | Save Mp4 Pixaroma — in-node video preview | `js/save_mp4/index.js`. Single index.js entry. On `nodeCreated` adds a DOM widget containing a `<video>` element + a placeholder div, both attached via `addDOMWidget(name, type, element, {serialize: false, getMinHeight: () => 180})`. Subscribes to `api.addEventListener("executed", ...)` and looks for `detail.output.pixaroma_videos` from our Python node — when found, sets the `<video>.src` to `/view?filename=...&subfolder=...&type=output&t=<timestamp>` (cache-busted) and toggles placeholder off. Node id resolved with both string and parseInt fallbacks for cross-version compat. |
 | Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
