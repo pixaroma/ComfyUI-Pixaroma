@@ -23,7 +23,16 @@ import { api } from "/scripts/api.js";
 
 const MIN_W = 320;
 const PLACEHOLDER_H = 180;
-const WIDGET_PAD = 20;  // approx left+right padding ComfyUI adds around DOM widgets
+// ComfyUI's modern Vue frontend renders DOM widgets nearly edge-to-edge.
+// 20 was overshooting → the height we computed for a SMALLER assumed
+// width was also smaller than the real video render height, and the
+// wrap's overflow:hidden clipped a few pixels off the bottom.
+const WIDGET_PAD = 4;
+// Small buffer added to the computed height so floating-point rounding
+// + sub-pixel layout differences never under-allocate. Cheap insurance
+// against the same clipping bug recurring; visually a couple pixels of
+// dark strip below the video in worst case.
+const HEIGHT_BUFFER = 4;
 
 function fitHeight(node) {
   if (!node || typeof node.computeSize !== "function") return;
@@ -154,7 +163,10 @@ app.registerExtension({
           return [width, PLACEHOLDER_H];
         }
         const w = Math.max(0, (node.size?.[0] || width) - WIDGET_PAD);
-        const h = Math.max(PLACEHOLDER_H, Math.round(w / aspect));
+        // ceil + buffer so we never under-allocate. If the computed area
+        // ends up slightly taller than the video, the wrap shows a thin
+        // dark strip below — strictly better than clipping the bottom.
+        const h = Math.max(PLACEHOLDER_H, Math.ceil(w / aspect) + HEIGHT_BUFFER);
         this.computedHeight = h;
         return [width, h];
       };
