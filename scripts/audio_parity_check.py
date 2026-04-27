@@ -1,7 +1,7 @@
 # scripts/audio_parity_check.py
 """Audio React / Audio Studio parity check.
 
-Renders 64 reference frames using PixaromaAudioReact.generate() and
+Renders 64 reference frames using engine.generate_video() and
 diffs against committed goldens in tests/audio_parity_goldens/.
 
 Usage:
@@ -25,31 +25,30 @@ GOLDENS_DIR  = REPO_ROOT / "tests" / "audio_parity_goldens"
 
 
 # The plugin folder is named ComfyUI-Pixaroma (dash, invalid Python package
-# name) so we can't import via the regular package machinery. Instead we
-# create a synthetic 'nodes' package in sys.modules and load both the engine
-# and the node into it. Order matters: engine first so the node's
-# `from ._audio_react_engine import ...` finds it already in sys.modules.
-def _make_nodes_package_and_load():
+# name) so we can't import via the regular package machinery. We create a
+# synthetic 'nodes' package in sys.modules and load only the engine module —
+# no need to load node_audio_react.py; the engine is the public API now.
+def _load_engine_module():
+    """Load nodes/_audio_react_engine.py into a synthetic 'nodes' package
+    so its `from __future__ import annotations` and any internal imports
+    resolve. We don't need node_audio_react.py — the engine is the public
+    API now."""
     nodes_pkg = types.ModuleType("nodes")
     nodes_pkg.__path__ = [str(REPO_ROOT / "nodes")]
     sys.modules["nodes"] = nodes_pkg
-
-    def _load_sub(name, filename):
-        spec = importlib.util.spec_from_file_location(
-            f"nodes.{name}",
-            REPO_ROOT / "nodes" / filename,
-        )
-        mod = importlib.util.module_from_spec(spec)
-        sys.modules[f"nodes.{name}"] = mod
-        spec.loader.exec_module(mod)
-        return mod
-
-    _load_sub("_audio_react_engine", "_audio_react_engine.py")
-    return _load_sub("node_audio_react", "node_audio_react.py")
+    spec = importlib.util.spec_from_file_location(
+        "nodes._audio_react_engine",
+        REPO_ROOT / "nodes" / "_audio_react_engine.py",
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["nodes._audio_react_engine"] = mod
+    spec.loader.exec_module(mod)
+    return mod
 
 
-_node_mod = _make_nodes_package_and_load()
-PixaromaAudioReact = _node_mod.PixaromaAudioReact
+_engine = _load_engine_module()
+Params = _engine.Params
+generate_video = _engine.generate_video
 
 
 def load_test_image(path):
@@ -84,32 +83,31 @@ def synthesize_audio(duration_s, sample_rate, seed, fps):
     }
 
 
-def render_frames(node, image, audio, params, motion_mode, glitch=0.0, bloom=0.0,
+def render_frames(image, audio, params_dict, motion_mode, glitch=0.0, bloom=0.0,
                   vignette=0.0, hue_shift=0.0):
-    """Run PixaromaAudioReact.generate() once and return the full [F, H, W, 3] tensor.
+    """Build a Params from the manifest's shared_params + the per-test
+    overrides, call engine.generate_video, return the [F, H, W, 3] tensor.
 
-    NOTE: kwarg names + types must match PixaromaAudioReact.INPUT_TYPES.
-    If a widget is renamed/removed in node_audio_react.py, update here AND
-    regenerate goldens with --regenerate (review the diff carefully).
+    NOTE: Params field names are stable engine API. If they change in the
+    engine, update both here AND regenerate goldens with --regenerate.
     """
-    out = node.generate(
-        image=image, audio=audio,
-        aspect_ratio=params["aspect_ratio"],
-        custom_width=params["custom_width"],
-        custom_height=params["custom_height"],
+    p = Params(
         motion_mode=motion_mode,
-        intensity=params["intensity"],
-        audio_band=params["audio_band"],
-        motion_speed=params["motion_speed"],
-        smoothing=params["smoothing"],
-        loop_safe=params["loop_safe"],
-        fps=params["fps"],
+        intensity=params_dict["intensity"],
+        audio_band=params_dict["audio_band"],
+        motion_speed=params_dict["motion_speed"],
+        smoothing=params_dict["smoothing"],
+        loop_safe=params_dict["loop_safe"],
+        fps=params_dict["fps"],
         glitch_strength=glitch,
         bloom_strength=bloom,
         vignette_strength=vignette,
         hue_shift_strength=hue_shift,
+        aspect_ratio=params_dict["aspect_ratio"],
+        custom_width=params_dict["custom_width"],
+        custom_height=params_dict["custom_height"],
     )
-    return out[0]  # [F, H, W, 3]
+    return generate_video(image, audio, p)
 
 
 def save_frame(tensor_hw3, path):
@@ -144,7 +142,6 @@ def main():
         manifest["audio"]["fps"],
     )
 
-    node = PixaromaAudioReact()
     params = manifest["shared_params"]
 
     fails = []
@@ -157,7 +154,7 @@ def main():
     for test in manifest["motion_tests"]:
         mode = test["mode"]
         approximate = test.get("approximate", False)
-        frames = render_frames(node, image, audio, params, motion_mode=mode)
+        frames = render_frames(image, audio, params, motion_mode=mode)
         for fr in test["frames"]:
             golden_path = GOLDENS_DIR / f"motion_{mode}_{fr:03d}.png"
             if args.regenerate:
@@ -181,7 +178,7 @@ def main():
         name = test["name"]
         strength = test["strength"]
         frames = render_frames(
-            node, image, audio, params, motion_mode="scale_pulse",
+            image, audio, params, motion_mode="scale_pulse",
             glitch=strength if name == "glitch" else 0.0,
             bloom=strength if name == "bloom" else 0.0,
             vignette=strength if name == "vignette" else 0.0,
