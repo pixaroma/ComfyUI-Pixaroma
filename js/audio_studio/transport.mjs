@@ -50,6 +50,31 @@ function injectTransportCSS() {
       pointer-events: none;
     }
 
+    /* Loop toggle — same shape as Stop but tints the icon orange when ON.
+       Default ON so end-of-clip restarts playback automatically (good for
+       quick A/B testing); click to disable for a single play-through. */
+    .pix-as-loop-btn {
+      width: 26px; height: 26px;
+      background: #3a3a3a;
+      border-radius: 50%;
+      display: inline-flex; align-items: center; justify-content: center;
+      cursor: pointer; user-select: none;
+      flex-shrink: 0;
+      border: none;
+      padding: 0;
+      transition: background 0.1s;
+    }
+    .pix-as-loop-btn:hover { background: #4a4a4a; }
+    .pix-as-loop-btn .pix-as-loop-icon {
+      width: 13px; height: 13px;
+      background-color: #666;
+      -webkit-mask: url(/pixaroma/assets/icons/ui/reset.svg) center/contain no-repeat;
+              mask: url(/pixaroma/assets/icons/ui/reset.svg) center/contain no-repeat;
+      pointer-events: none;
+      transition: background-color 0.1s;
+    }
+    .pix-as-loop-btn.active .pix-as-loop-icon { background-color: #f66744; }
+
     .pix-as-time {
       color: #aaa;
       font-family: ui-monospace, monospace;
@@ -153,6 +178,29 @@ AudioStudioEditor.prototype._buildTransport = function () {
   stopBtn.appendChild(stopIcon);
   stopBtn.addEventListener("click", () => this._stopPlayback());
   t.appendChild(stopBtn);
+
+  // Loop toggle — when ON, end-of-track restarts playback at frame 0 instead
+  // of pausing. ON by default since most use is iterative tweaking against
+  // a short clip. Transient state — resets to ON every editor open.
+  if (this._loopPlayback === undefined) this._loopPlayback = true;
+  const loopBtn = document.createElement("button");
+  loopBtn.type = "button";
+  loopBtn.className = "pix-as-loop-btn" + (this._loopPlayback ? " active" : "");
+  loopBtn.title = this._loopPlayback
+    ? "Loop is ON — click to play once and stop"
+    : "Loop is OFF — click to repeat playback";
+  const loopIcon = document.createElement("span");
+  loopIcon.className = "pix-as-loop-icon";
+  loopBtn.appendChild(loopIcon);
+  loopBtn.addEventListener("click", () => {
+    this._loopPlayback = !this._loopPlayback;
+    loopBtn.classList.toggle("active", this._loopPlayback);
+    loopBtn.title = this._loopPlayback
+      ? "Loop is ON — click to play once and stop"
+      : "Loop is OFF — click to repeat playback";
+  });
+  t.appendChild(loopBtn);
+  this._loopBtn = loopBtn;
 
   const curTime = document.createElement("span");
   curTime.className = "pix-as-time";
@@ -331,6 +379,15 @@ AudioStudioEditor.prototype._startPlayback = function () {
     const sec = this._playStartOffsetSec + elapsed;
     const newFrame = Math.floor(sec * fps);
     if (newFrame >= this._totalFrames) {
+      // End of clip — loop button decides what happens next.
+      // Stop / pause buttons still bypass this branch (they hit
+      // _pausePlayback / _stopPlayback directly), so loop only triggers
+      // on natural end-of-track.
+      if (this._loopPlayback) {
+        this._currentFrame = 0;
+        this._restartPlayback();
+        return;
+      }
       this._pausePlayback();
       this._currentFrame = 0;
       this._refreshTransport();
