@@ -24,18 +24,17 @@ A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furn
 ![3D Builder — Node](workflows/3D%20Builder%20Pixaroma%20Workflow.jpg)
 ![3D Builder — Editor](workflows/3D%20Builder%20Pixaroma%20Workflow%20v2.jpg)
 
-### 🎶 Audio React Pixaroma
-Bring still images to life with an audio-reactive image-to-video render — **no extra models needed**, just an image and an audio track. Pick from eight opinionated motion modes (`scale_pulse`, `zoom_punch`, `shake`, `drift`, `rotate_pulse`, `ripple`, `swirl`, `slit_scan`) and stack up to four overlay effects (glitch, bloom, vignette, hue shift). Same audio-band filter, sizing controls, and loop-safe rendering you'd want for music videos and social loops. Pairs with `Save Mp4 Pixaroma` to write the clip directly to MP4 with audio muxed in.
-
-### 🎚️ Audio Pulse Pixaroma
-Sibling node to **Audio React Pixaroma** — same effect engine, but with a full live editor. Click **Open Audio Pulse** on the node to launch a fullscreen overlay:
+### 🎚️ AudioReact Pixaroma
+Audio-reactive image-to-video render — **no extra models needed**, just an image and an audio track. Click **Open AudioReact** on the node to launch a fullscreen overlay:
 
 - **WebGL preview canvas** — renders effects in real time as you scrub the audio. Tweak motion mode / intensity / overlay strengths and watch the result update instantly, no workflow run required.
-- **Tabbed sidebar** — Motion / Overlays / Audio / Output groups all 16 effect controls.
-- **Transport bar** — play / pause / scrub / frame stepper, with the audio envelope shown as an inline sparkline so you can scrub straight to a beat.
+- **Collapsible sidebar** — Motion / Overlays / Audio / Output sections group every effect control.
+- **15 motion modes** — Pulse Zoom, Punch Zoom, Camera Shake, Drift, Pulse Spin, Ripple, Swirl, Time Slice, Glitch, Pinch, Wave, Tilt, Pixelate, RGB Split, Squeeze. Many have direction toggles + per-mode sliders (axis, density, bands).
+- **Stackable overlays** — Chroma Shift, Bloom, Vignette, Hue shift, Color grade (teal/orange), Letterbox, Scanlines, Film grain. The audio-reactive ones pulse with the envelope; the look effects (grade / letterbox / scanlines / grain) stay steady.
+- **Transport bar** — play / pause / loop / scrub / frame stepper, with the audio envelope shown as an inline sparkline so you can scrub straight to a beat.
 - **Keyboard shortcuts** — Space to play/pause, arrows to step a frame, Shift+arrows for one-second jumps, Ctrl+Z / Ctrl+Y for ~50 levels of param undo.
-- **Image + Audio sources** — connect an upstream `IMAGE` / `AUDIO` input, or load files from inside the editor (drag-drop on canvas or pick-file via the source pills). Inline files survive workflow reloads.
-- **Same engine as Audio React** — the workflow renders identical frames in Python, ready for `Save Mp4 Pixaroma`. Use Audio React for fast scripted runs; use Audio Pulse when you want to dial in the look interactively.
+- **Image + Audio sources** — connect an upstream `IMAGE` / `AUDIO` input, or load files from inside the editor (drag-drop on canvas or pick-file via the source buttons). Inline files survive workflow reloads.
+- **Pairs with `Save Mp4 Pixaroma`** to write the clip directly to MP4 with audio muxed in.
 
 Requires WebGL2 (universal in modern browsers since 2017).
 

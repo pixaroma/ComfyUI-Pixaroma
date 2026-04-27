@@ -13,7 +13,7 @@ const STATE_KEY = "audioStudioState";
 
 // Default config — MUST stay in sync with Params() defaults in
 // nodes/_audio_react_engine.py. When updating one, update the other
-// (CLAUDE.md "Audio Pulse Patterns" #1 calls this risk out).
+// (CLAUDE.md "AudioReact Patterns" #1 calls this risk out).
 const DEFAULT_CFG = {
   schema_version: 1,
   motion_mode: "scale_pulse",
@@ -139,7 +139,7 @@ app.registerExtension({
 
     node.size = node.size || [240, 100];
 
-    node.addWidget("button", "Open Audio Pulse", null, () => {
+    node.addWidget("button", "Open AudioReact", null, () => {
       if (isEditorOpen(node)) return; // guard double-open
       // Forward-compat: spread DEFAULT_CFG under the saved state so any
       // keys added after this workflow was last saved get sane defaults

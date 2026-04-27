@@ -4,8 +4,6 @@ from .nodes.node_composition import NODE_CLASS_MAPPINGS as _MAPS_COMPOSITION
 from .nodes.node_composition import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMPOSITION
 from .nodes.node_3d import NODE_CLASS_MAPPINGS as _MAPS_3D
 from .nodes.node_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_3D
-from .nodes.node_audio_react import NODE_CLASS_MAPPINGS as _MAPS_AUDIO_REACT
-from .nodes.node_audio_react import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_AUDIO_REACT
 from .nodes.node_audio_studio import NODE_CLASS_MAPPINGS as _MAPS_AUDIO_STUDIO
 from .nodes.node_audio_studio import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_AUDIO_STUDIO
 from .nodes.node_save_mp4 import NODE_CLASS_MAPPINGS as _MAPS_SAVE_MP4
@@ -39,7 +37,6 @@ else:
 # combine all node mappings
 NODE_CLASS_MAPPINGS = {
     **_MAPS_3D,
-    **_MAPS_AUDIO_REACT,
     **_MAPS_AUDIO_STUDIO,
     **_MAPS_COMPOSITION,
     **_MAPS_PAINT,
@@ -58,7 +55,6 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMPOSITION,
     **_NAMES_3D,
-    **_NAMES_AUDIO_REACT,
     **_NAMES_AUDIO_STUDIO,
     **_NAMES_COMPARE,
     **_NAMES_CROP,

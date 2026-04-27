@@ -9,7 +9,7 @@ const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
 
 /**
- * Audio Pulse specific styles. The Pixaroma framework (createEditorLayout)
+ * AudioReact specific styles. The Pixaroma framework (createEditorLayout)
  * supplies the overlay / titlebar / sidebars / footer / discard prompt CSS;
  * we only inject what's unique to this editor: the source-row in the top
  * options bar, the canvas + transport bar inside the workspace, and the
@@ -163,7 +163,7 @@ export class AudioStudioEditor {
     app.graph.configure = () => {};
 
     // Build the standard Pixaroma editor shell. This gives us:
-    //   * .pxf-titlebar with logo + "Audio Pulse Pixaroma" + undo/redo + close
+    //   * .pxf-titlebar with logo + "AudioReact Pixaroma" + undo/redo + close
     //   * .pxf-top-options bar (we put image/audio source row here)
     //   * .pxf-workspace (canvas + transport go here, stacked vertically)
     //   * .pxf-sidebar-right (our tabbed controls go here)
@@ -171,7 +171,7 @@ export class AudioStudioEditor {
     // Same shell as Paint Studio / Image Composer / Crop / 3D Builder so
     // users get consistent close/save/undo positions across all editors.
     const layout = createEditorLayout({
-      editorName: "Audio Pulse",
+      editorName: "AudioReact",
       editorId: "pixaroma-audio-studio-editor",
       leftWidth: 0,                  // no left sidebar — controls live on the right
       rightWidth: 280,
@@ -232,7 +232,7 @@ export class AudioStudioEditor {
     // global keyboard blocker — we override its behavior below).
     layout.mount();
 
-    // Audio Pulse doesn't have a "Save to Disk" path (workflow output is
+    // AudioReact doesn't have a "Save to Disk" path (workflow output is
     // an MP4 produced by Save Mp4 Pixaroma downstream, not a flat image).
     // Hide the framework's secondary footer button so the Save button gets
     // the full footer width.
@@ -537,7 +537,7 @@ export class AudioStudioEditor {
     modal.className = "pix-as-confirm-modal";
     modal.innerHTML = `
       <h3>Unsaved changes</h3>
-      <p>Close the Audio Pulse without saving? Your edits will be lost.</p>
+      <p>Close the AudioReact without saving? Your edits will be lost.</p>
       <div class="pix-as-confirm-actions">
         <button class="pix-as-btn pix-as-btn-cancel">Keep editing</button>
         <button class="pix-as-btn pix-as-btn-discard">Discard &amp; close</button>
@@ -655,7 +655,7 @@ AudioStudioEditor.prototype._disconnectUpstreamInput = function (inputName) {
   // which the editor's handler re-resolves the affected source for —
   // harmless here since we're called from _save() right before close.
   try { this.node.disconnectInput(idx); } catch (e) {
-    console.warn(`[Pixaroma] Audio Pulse: disconnectInput(${inputName}) failed:`, e);
+    console.warn(`[Pixaroma] AudioReact: disconnectInput(${inputName}) failed:`, e);
   }
 };
 
@@ -810,7 +810,7 @@ AudioStudioEditor.prototype._resolveAudioSource = async function () {
       );
       return;
     } catch (e) {
-      console.warn("[Pixaroma] Audio Pulse inline-override fetch failed:", e);
+      console.warn("[Pixaroma] AudioReact inline-override fetch failed:", e);
     }
   }
   if (upstreamUrl) {
@@ -821,7 +821,7 @@ AudioStudioEditor.prototype._resolveAudioSource = async function () {
       this._updatePill(this.audioPill, "Audio: Upstream", true);
       return;
     } catch (e) {
-      console.warn("[Pixaroma] Audio Pulse upstream audio fetch failed, falling back to inline if available:", e);
+      console.warn("[Pixaroma] AudioReact upstream audio fetch failed, falling back to inline if available:", e);
     }
   }
   if (this.cfg.audio_path) {
@@ -832,7 +832,7 @@ AudioStudioEditor.prototype._resolveAudioSource = async function () {
       this._updatePill(this.audioPill, `Audio: Inline (${fname})`, false);
       return;
     } catch (e) {
-      console.warn("[Pixaroma] Audio Pulse inline audio fetch failed:", e);
+      console.warn("[Pixaroma] AudioReact inline audio fetch failed:", e);
     }
   }
   this._updatePill(this.audioPill, "Audio: not loaded", false);

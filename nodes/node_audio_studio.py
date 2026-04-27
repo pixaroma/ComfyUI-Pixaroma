@@ -1,11 +1,11 @@
 # nodes/node_audio_studio.py
-"""Audio Pulse Pixaroma -- sibling to Audio React Pixaroma.
+"""AudioReact Pixaroma -- audio-reactive image-to-video with a live editor.
 
-Same effect math (shared engine in _audio_react_engine.py). Different UX:
-a fullscreen browser editor with live WebGL preview replaces the
-widgets-only surface. The editor saves config to a hidden `studio_json`
-input via Pattern #9 (extension-scope app.graphToPrompt injection) -- JS
-side lands in Milestone D.
+Effect math lives in the shared engine (_audio_react_engine.py). This
+node ships a fullscreen browser editor with WebGL preview as the only
+config surface (no on-canvas widgets). The editor saves to a hidden
+`studio_json` input via Pattern #9 (extension-scope app.graphToPrompt
+injection).
 
 Source resolution at exec time:
 - image: optional upstream IMAGE input. If unwired, loaded from disk at
@@ -50,7 +50,7 @@ def _load_inline_image(rel_path: str) -> torch.Tensor:
     abs_path = PIXAROMA_INPUT_ROOT / rel_path
     if not abs_path.exists():
         raise ValueError(
-            f"[Pixaroma] Audio Pulse -- inline image missing at {abs_path}. "
+            f"[Pixaroma] AudioReact -- inline image missing at {abs_path}. "
             f"Re-open the editor and re-pick the image."
         )
     arr = np.array(Image.open(abs_path).convert("RGB"), dtype=np.float32) / 255.0
@@ -68,7 +68,7 @@ def _load_inline_audio(rel_path: str) -> dict:
     abs_path = PIXAROMA_INPUT_ROOT / rel_path
     if not abs_path.exists():
         raise ValueError(
-            f"[Pixaroma] Audio Pulse -- inline audio missing at {abs_path}. "
+            f"[Pixaroma] AudioReact -- inline audio missing at {abs_path}. "
             f"Re-open the editor and re-pick the audio."
         )
     with wave.open(str(abs_path), "rb") as wf:
@@ -85,7 +85,7 @@ def _load_inline_audio(rel_path: str) -> dict:
         data = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
     else:
         raise ValueError(
-            f"[Pixaroma] Audio Pulse -- unsupported WAV sample width "
+            f"[Pixaroma] AudioReact -- unsupported WAV sample width "
             f"{sample_width} bytes. Re-encode to 16-bit PCM WAV."
         )
     if n_channels > 1:
@@ -125,7 +125,7 @@ class PixaromaAudioStudio:
             cfg = json.loads(studio_json or "{}")
         except json.JSONDecodeError as exc:
             raise ValueError(
-                f"[Pixaroma] Audio Pulse -- could not parse studio_json: {exc}. "
+                f"[Pixaroma] AudioReact -- could not parse studio_json: {exc}. "
                 f"Open the editor and re-save."
             ) from exc
         cfg = _migrate_cfg(cfg)
@@ -151,7 +151,7 @@ class PixaromaAudioStudio:
                 image = _load_inline_image(cfg["image_path"])
             else:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse -- no image source. Wire an "
+                    "[Pixaroma] AudioReact -- no image source. Wire an "
                     "IMAGE input or open the editor and load an inline image."
                 )
 
@@ -162,15 +162,15 @@ class PixaromaAudioStudio:
                 audio = _load_inline_audio(cfg["audio_path"])
             else:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse -- no audio source. Wire an "
+                    "[Pixaroma] AudioReact -- no audio source. Wire an "
                     "AUDIO input or open the editor and load an inline audio."
                 )
 
         for diag in validate_params(params):
-            print(f"[Pixaroma] Audio Pulse -- {diag}")
+            print(f"[Pixaroma] AudioReact -- {diag}")
         frames = generate_video(image, audio, params)
         return (frames, audio, float(params.fps))
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaAudioStudio": PixaromaAudioStudio}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaAudioStudio": "Audio Pulse Pixaroma"}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaAudioStudio": "AudioReact Pixaroma"}

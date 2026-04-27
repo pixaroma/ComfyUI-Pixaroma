@@ -1,4 +1,4 @@
-# Audio Pulse Pixaroma — Design Spec
+# AudioReact Pixaroma — Design Spec
 
 **Date:** 2026-04-27
 **Author:** brainstorming session
@@ -7,19 +7,19 @@
 
 ## 1. Concept
 
-Audio Pulse Pixaroma is a sibling node to the existing **Audio React Pixaroma**.
+AudioReact Pixaroma is a sibling node to the existing **Audio React Pixaroma**.
 Same effect math, very different UX:
 
 - **Audio React Pixaroma** — widgets-only, fast tweak-and-run scripted use (existing,
   unchanged).
-- **Audio Pulse Pixaroma (NEW)** — full live editor in a fullscreen browser overlay.
-  Click "Open Audio Pulse" on the node → WebGL preview canvas + transport bar +
+- **AudioReact Pixaroma (NEW)** — full live editor in a fullscreen browser overlay.
+  Click "Open AudioReact" on the node → WebGL preview canvas + transport bar +
   tabbed sidebar → scrub the audio and watch effects respond in real time → click
   Save → workflow execution renders identical frames in Python.
 
 The two nodes share a single effect engine (`nodes/_audio_react_engine.py`) so
 bug fixes and new effects propagate to both. Audio React keeps its current
-widget surface; Audio Pulse exposes the same effect set in a richer interactive
+widget surface; AudioReact exposes the same effect set in a richer interactive
 shell, with the registry architecture ready for additional effects in v1.1+.
 
 ## 2. Why this, why now
@@ -92,8 +92,8 @@ Routing into Save Mp4 Pixaroma is identical to the basic Audio React flow.
 | `nodes/node_audio_react.py` | Refactor: import `_audio_react_engine`, drop inlined math. ~600 → ~100 lines. **No algorithmic changes** — extraction is mechanical. |
 | `__init__.py` | Register `PixaromaAudioStudio` in `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS`; add `js/audio_studio/index.js` to the extension load list (auto-loaded by ComfyUI from `WEB_DIRECTORY`). |
 | `server_routes.py` | Adds `/pixaroma/api/audio_studio/upload` route. |
-| `CLAUDE.md` | Adds Audio Pulse entries to: Architecture / Frontend Directory Structure, Vue Frontend Compatibility (any new patterns discovered), Token-Saving Rules table, "do not regress" patterns section. |
-| `README.md` | Adds Audio Pulse Pixaroma feature blurb. |
+| `CLAUDE.md` | Adds AudioReact entries to: Architecture / Frontend Directory Structure, Vue Frontend Compatibility (any new patterns discovered), Token-Saving Rules table, "do not regress" patterns section. |
+| `README.md` | Adds AudioReact Pixaroma feature blurb. |
 
 ## 5. Architecture — Python engine
 
@@ -187,10 +187,10 @@ class PixaromaAudioStudio:
             image = _load_inline_image(cfg["image_path"])
         if cfg.get("audio_source") == "inline":
             audio = _load_inline_audio(cfg["audio_path"])
-        if image is None: raise ValueError("[Pixaroma] Audio Pulse — no image (no upstream wired and no inline image saved). Open the editor to load one.")
-        if audio is None: raise ValueError("[Pixaroma] Audio Pulse — no audio (no upstream wired and no inline audio saved). Open the editor to load one.")
+        if image is None: raise ValueError("[Pixaroma] AudioReact — no image (no upstream wired and no inline image saved). Open the editor to load one.")
+        if audio is None: raise ValueError("[Pixaroma] AudioReact — no audio (no upstream wired and no inline audio saved). Open the editor to load one.")
         for diag in validate_params(params):
-            print(f"[Pixaroma] Audio Pulse — {diag}")
+            print(f"[Pixaroma] AudioReact — {diag}")
         frames = generate_video(image, audio, params)
         return (frames, audio, float(params.fps))
 ```
@@ -314,7 +314,7 @@ edge cases (window length, padding, normalization).
 
 If `canvas.getContext("webgl2")` returns null, the editor's button-click handler
 shows a clear error in a modal:
-> "Audio Pulse requires WebGL2, which is not available in this browser. Use
+> "AudioReact requires WebGL2, which is not available in this browser. Use
 > the basic Audio React Pixaroma node — it has the same effects, runs entirely
 > in Python, and is shipped alongside this node."
 
@@ -334,7 +334,7 @@ slow-motion modes.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│ × Audio Pulse Pixaroma   [Image: Upstream] [Audio: Inline]    [SAVE]   │  ← header (32px)
+│ × AudioReact Pixaroma   [Image: Upstream] [Audio: Inline]    [SAVE]   │  ← header (32px)
 ├──────────────────────────────────────────┬──────────────────────────────┤
 │                                          │  Motion / Overlays / Audio   │  ← sidebar tabs
 │                                          │  / Output                    │
@@ -353,7 +353,7 @@ slow-motion modes.
 ### Header
 
 - × close button (left)
-- Title "Audio Pulse Pixaroma" — orange (`#f66744`) accent
+- Title "AudioReact Pixaroma" — orange (`#f66744`) accent
 - Two upstream pills:
   - `Image: Upstream` (green when wired) / `Image: Inline (load…)` (gray) / `Image: Inline ✓` (with thumbnail mini-icon when loaded)
   - Same three states for audio. Click pill → toggle source mode (with file picker if switching to Inline).
@@ -511,11 +511,11 @@ production-proven in this codebase.
 The fallback (required STRING + `hideJsonWidget`) was considered. We're not
 using it because it leaves a visible input dot on the node and Resolution
 Pixaroma already proved Pattern #9 works for hidden state with optional input
-slots — there's no reason to expect Audio Pulse to behave differently.
+slots — there's no reason to expect AudioReact to behave differently.
 
 ### Open-editor flow
 
-1. User clicks **"Open Audio Pulse"** button on the node.
+1. User clicks **"Open AudioReact"** button on the node.
 2. JS reads `node.properties.audioStudioState` → parses → fills missing keys
    with defaults. (Includes a one-time migration that scans `node.widgets_values`
    for any older format if the persistence layer is ever revised.)
@@ -561,7 +561,7 @@ slots — there's no reason to expect Audio Pulse to behave differently.
 
 - × Close (or Esc) with `state != saved_state` → modal:
   - Title: "Discard changes?"
-  - Body: "You have unsaved changes to the Audio Pulse. Discard them and close?"
+  - Body: "You have unsaved changes to the AudioReact. Discard them and close?"
   - Buttons: **Cancel** (orange, default focus, keeps editor open) / **Discard** (red, closes without saving)
 - No dirty changes → close immediately, no modal.
 
@@ -692,7 +692,7 @@ shader-precision rounding).
 ## 11. Out of scope (v1)
 
 - **`overlay_preset` widget** — deferred to its own follow-up spec; will apply
-  to Audio React AND Audio Pulse uniformly.
+  to Audio React AND AudioReact uniformly.
 - **WebGL1 fallback** — WebGL2 is universal in modern browsers.
 - **Per-band routing** (e.g., bass→motion, treble→glitch) — interesting v2.
 - **Custom param keyframe / curve editing** — v2+.
@@ -709,7 +709,7 @@ shader-precision rounding).
 
 A v1 release is shippable when:
 
-1. **Editor opens** from the node's "Open Audio Pulse" button. Restores all
+1. **Editor opens** from the node's "Open AudioReact" button. Restores all
    params + sources from saved `studio_json`. Defaults match Audio React's
    widget defaults when JSON is empty / missing.
 2. **WebGL preview** renders all 8 motion modes + 4 overlays at ≥30 fps on a

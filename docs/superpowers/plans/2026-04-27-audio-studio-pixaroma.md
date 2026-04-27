@@ -1,8 +1,8 @@
-# Audio Pulse Pixaroma Implementation Plan
+# AudioReact Pixaroma Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. **Dispatch each task subagent with `model: "sonnet"` (heavy code-writing) or `model: "opus"` (planning/review). Do not use cheaper default models — quality matters.**
 
-**Goal:** Add a sibling node (Audio Pulse Pixaroma) to Audio React Pixaroma. Same effect math; full live editor in a fullscreen browser overlay (WebGL preview + transport bar + tabbed sidebar). Both nodes share a registry-based effect engine. ~3500 LOC across multiple files.
+**Goal:** Add a sibling node (AudioReact Pixaroma) to Audio React Pixaroma. Same effect math; full live editor in a fullscreen browser overlay (WebGL preview + transport bar + tabbed sidebar). Both nodes share a registry-based effect engine. ~3500 LOC across multiple files.
 
 **Architecture:** Three pieces: (1) Python — extract effect math from `nodes/node_audio_react.py` into `nodes/_audio_react_engine.py` (registries + helpers + `Params` dataclass + `generate_video()`); add thin `nodes/node_audio_studio.py` wrapper; refactor existing Audio React node to delegate to the engine. (2) JS — new `js/audio_studio/` directory mirroring the Image Composer / 3D Builder editor pattern (mixin-class shell, fullscreen overlay, tabbed sidebar, transport bar, WebGL renderer). (3) Parity — `docs/audio-react-math.md` (math doc), `scripts/audio_parity_check.py` (Python golden test), 64 reference PNGs, `assets/audio_studio_parity/index.html` (manual browser parity harness).
 
@@ -48,8 +48,8 @@
 | `assets/audio_studio_parity/test_image.png` | NEW | 1 file | Fixed parity test image (committed) |
 | `server_routes.py` | MODIFY | +120 | New `/pixaroma/api/audio_studio/upload` route |
 | `__init__.py` | MODIFY | +5 | Register `PixaromaAudioStudio` |
-| `CLAUDE.md` | MODIFY | +200 | Audio Pulse section + new "do not regress" patterns |
-| `README.md` | MODIFY | +30 | Audio Pulse feature blurb |
+| `CLAUDE.md` | MODIFY | +200 | AudioReact section + new "do not regress" patterns |
+| `README.md` | MODIFY | +30 | AudioReact feature blurb |
 
 ---
 
@@ -141,7 +141,7 @@ This script renders frames using the *currently-installed* `PixaromaAudioReact.g
 
 ```python
 # scripts/audio_parity_check.py
-"""Audio React / Audio Pulse parity check.
+"""Audio React / AudioReact parity check.
 
 Renders 64 reference frames using PixaromaAudioReact and compares against
 committed goldens in tests/audio_parity_goldens/.
@@ -364,7 +364,7 @@ Print: `DONE: A1 (parity baseline captured — 64 PNG goldens, regression target
 
 ```python
 # nodes/_audio_react_engine.py
-"""Shared effect engine for Audio React Pixaroma and Audio Pulse Pixaroma.
+"""Shared effect engine for Audio React Pixaroma and AudioReact Pixaroma.
 
 This module is the single source of truth for the audio-reactive video math.
 Both nodes are thin wrappers that build a `Params` dataclass and call
@@ -908,7 +908,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
     if image is None:
         raise ValueError(
             "[Pixaroma] Audio engine — no image. Wire an IMAGE input or "
-            "use Audio Pulse's inline-image picker."
+            "use AudioReact's inline-image picker."
         )
     if (audio is None or not isinstance(audio, dict)
             or "waveform" not in audio or "sample_rate" not in audio
@@ -917,7 +917,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             or audio["sample_rate"] <= 0):
         raise ValueError(
             "[Pixaroma] Audio engine — no valid audio. Wire AUDIO input or "
-            "use Audio Pulse's inline-audio picker."
+            "use AudioReact's inline-audio picker."
         )
 
     device = comfy.model_management.get_torch_device()
@@ -1119,7 +1119,7 @@ Audio React node is now a ~100-line thin wrapper. All math lives in
 _audio_react_engine.py. Parity confirms byte-identical output across all
 64 goldens.
 
-This is the foundation for the upcoming Audio Pulse Pixaroma sibling
+This is the foundation for the upcoming AudioReact Pixaroma sibling
 node, which will share the same engine."
 ```
 
@@ -1127,9 +1127,9 @@ Print: `DONE: A6 (engine extraction complete; node_audio_react.py is now a thin 
 
 ---
 
-## Milestone B — Audio Pulse Python node + upload route
+## Milestone B — AudioReact Python node + upload route
 
-**Goal:** Land the Python side of Audio Pulse: a new node `PixaromaAudioStudio` that takes optional image / audio inputs + a hidden `studio_json` config, resolves sources, and calls the engine. Plus the new upload server route.
+**Goal:** Land the Python side of AudioReact: a new node `PixaromaAudioStudio` that takes optional image / audio inputs + a hidden `studio_json` config, resolves sources, and calls the engine. Plus the new upload server route.
 
 After this milestone, the node is registered in ComfyUI but has no JS yet — dropping it onto the canvas shows just the input slots and runs the engine on whatever is wired upstream + default params (since `studio_json` is empty).
 
@@ -1143,7 +1143,7 @@ After this milestone, the node is registered in ComfyUI but has no JS yet — dr
 
 ```python
 # nodes/node_audio_studio.py
-"""Audio Pulse Pixaroma — sibling to Audio React Pixaroma.
+"""AudioReact Pixaroma — sibling to Audio React Pixaroma.
 
 Same effect math (shared engine in _audio_react_engine.py). Different UX:
 a fullscreen browser editor with live WebGL preview replaces the
@@ -1192,7 +1192,7 @@ def _load_inline_image(rel_path: str) -> torch.Tensor:
     abs_path = PIXAROMA_INPUT_ROOT / rel_path
     if not abs_path.exists():
         raise ValueError(
-            f"[Pixaroma] Audio Pulse — inline image missing at {abs_path}. "
+            f"[Pixaroma] AudioReact — inline image missing at {abs_path}. "
             f"Re-open the editor and re-pick the image."
         )
     arr = np.array(Image.open(abs_path).convert("RGB"), dtype=np.float32) / 255.0
@@ -1206,7 +1206,7 @@ def _load_inline_audio(rel_path: str) -> dict:
     abs_path = PIXAROMA_INPUT_ROOT / rel_path
     if not abs_path.exists():
         raise ValueError(
-            f"[Pixaroma] Audio Pulse — inline audio missing at {abs_path}. "
+            f"[Pixaroma] AudioReact — inline audio missing at {abs_path}. "
             f"Re-open the editor and re-pick the audio."
         )
     with wave.open(str(abs_path), "rb") as wf:
@@ -1223,7 +1223,7 @@ def _load_inline_audio(rel_path: str) -> dict:
         data = (np.frombuffer(raw, dtype=np.uint8).astype(np.float32) - 128.0) / 128.0
     else:
         raise ValueError(
-            f"[Pixaroma] Audio Pulse — unsupported WAV sample width "
+            f"[Pixaroma] AudioReact — unsupported WAV sample width "
             f"{sample_width} bytes. Re-encode to 16-bit PCM WAV."
         )
     if n_channels > 1:
@@ -1257,7 +1257,7 @@ class PixaromaAudioStudio:
             cfg = json.loads(studio_json or "{}")
         except json.JSONDecodeError as exc:
             raise ValueError(
-                f"[Pixaroma] Audio Pulse — could not parse studio_json: {exc}. "
+                f"[Pixaroma] AudioReact — could not parse studio_json: {exc}. "
                 f"Open the editor and re-save."
             ) from exc
         cfg = _migrate_cfg(cfg)
@@ -1270,20 +1270,20 @@ class PixaromaAudioStudio:
             image_path = cfg.get("image_path")
             if not image_path:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse — image_source is 'inline' but "
+                    "[Pixaroma] AudioReact — image_source is 'inline' but "
                     "image_path is empty. Open the editor and re-pick."
                 )
             image = _load_inline_image(image_path)
         elif image_source == "upstream":
             if image is None:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse — image_source is 'upstream' but "
+                    "[Pixaroma] AudioReact — image_source is 'upstream' but "
                     "no image is wired. Wire an IMAGE input or open the editor "
                     "and switch to 'Inline'."
                 )
         else:
             raise ValueError(
-                f"[Pixaroma] Audio Pulse — unknown image_source {image_source!r}."
+                f"[Pixaroma] AudioReact — unknown image_source {image_source!r}."
             )
 
         audio_source = cfg.get("audio_source", "upstream")
@@ -1291,30 +1291,30 @@ class PixaromaAudioStudio:
             audio_path = cfg.get("audio_path")
             if not audio_path:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse — audio_source is 'inline' but "
+                    "[Pixaroma] AudioReact — audio_source is 'inline' but "
                     "audio_path is empty. Open the editor and re-pick."
                 )
             audio = _load_inline_audio(audio_path)
         elif audio_source == "upstream":
             if audio is None:
                 raise ValueError(
-                    "[Pixaroma] Audio Pulse — audio_source is 'upstream' but "
+                    "[Pixaroma] AudioReact — audio_source is 'upstream' but "
                     "no audio is wired. Wire an AUDIO input or open the editor "
                     "and switch to 'Inline'."
                 )
         else:
             raise ValueError(
-                f"[Pixaroma] Audio Pulse — unknown audio_source {audio_source!r}."
+                f"[Pixaroma] AudioReact — unknown audio_source {audio_source!r}."
             )
 
         for diag in validate_params(params):
-            print(f"[Pixaroma] Audio Pulse — {diag}")
+            print(f"[Pixaroma] AudioReact — {diag}")
         frames = generate_video(image, audio, params)
         return (frames, audio, float(params.fps))
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaAudioStudio": PixaromaAudioStudio}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaAudioStudio": "Audio Pulse Pixaroma"}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaAudioStudio": "AudioReact Pixaroma"}
 ```
 
 - [ ] **Step 2: Register in `__init__.py`**
@@ -1345,7 +1345,7 @@ The exact structure depends on the current `__init__.py` — open it first, mirr
 
 - [ ] **Step 3: Smoke test**
 
-Restart ComfyUI. In the Add-Node menu, navigate to `👑 Pixaroma`. Verify "Audio Pulse Pixaroma" appears.
+Restart ComfyUI. In the Add-Node menu, navigate to `👑 Pixaroma`. Verify "AudioReact Pixaroma" appears.
 
 Drop the node onto the canvas. Verify: shows two optional input slots (`image`, `audio`) + no other widgets. The hidden `studio_json` input must NOT show as a slot — Pattern #9 is wired in JS later (Milestone D), so for now the input isn't injected and Python receives the default `"{}"`. **Expected error if you try to run the node** (since `image` is None and `studio_json` defaults to `{}` so `image_source` defaults to `"upstream"`): clear actionable message about wiring an IMAGE input.
 
@@ -1531,9 +1531,9 @@ Print: `DONE: B2 (upload route smoke-tested)`
 
 ---
 
-## Milestone C — Math doc + parity infrastructure for Audio Pulse
+## Milestone C — Math doc + parity infrastructure for AudioReact
 
-**Goal:** Author `docs/audio-react-math.md` (single source of truth for every formula), expand the parity script to include Audio Pulse's Python entry point, and lock the goldens against the post-refactor engine. After this milestone the Python side is shippable on its own — JS work in Milestone D+ proceeds against a stable target.
+**Goal:** Author `docs/audio-react-math.md` (single source of truth for every formula), expand the parity script to include AudioReact's Python entry point, and lock the goldens against the post-refactor engine. After this milestone the Python side is shippable on its own — JS work in Milestone D+ proceeds against a stable target.
 
 ### Task C1: Write `docs/audio-react-math.md`
 
@@ -1545,10 +1545,10 @@ Print: `DONE: B2 (upload route smoke-tested)`
 - [ ] **Step 1: Write the math doc**
 
 ```markdown
-# Audio React / Audio Pulse — Math Reference
+# Audio React / AudioReact — Math Reference
 
 Single source of truth for every formula in the Pixaroma audio-reactive
-nodes (Audio React, Audio Pulse). Both the Python engine
+nodes (Audio React, AudioReact). Both the Python engine
 (`nodes/_audio_react_engine.py`) and the WebGL preview shaders
 (`js/audio_studio/shaders.mjs`) implement the formulas defined here.
 
@@ -1926,7 +1926,7 @@ Print: `DONE: C1 (math doc committed)`
 
 ### Task C2: Re-baseline goldens against the post-refactor engine
 
-**Goal:** The goldens captured in A1 came from the un-refactored Audio React. After Milestone A, the engine produces (still byte-identical) frames. To make Audio Pulse's own parity story crisp, regenerate the goldens through the explicit engine entry point and verify they match the A1 snapshot.
+**Goal:** The goldens captured in A1 came from the un-refactored Audio React. After Milestone A, the engine produces (still byte-identical) frames. To make AudioReact's own parity story crisp, regenerate the goldens through the explicit engine entry point and verify they match the A1 snapshot.
 
 - [ ] **Step 1: Modify the parity script to call the engine directly (cleaner)**
 
@@ -1990,14 +1990,14 @@ Print: `DONE: C2 (parity script targets engine; goldens locked)`
 
 ## Milestone D — JS editor scaffolding (no rendering yet)
 
-**Goal:** Build the editor shell — extension entry, fullscreen overlay, header, sidebar tabs, persistence Pattern #9. After this milestone, clicking "Open Audio Pulse" on the node opens the editor, you can switch tabs, drag sliders (state updates locally), and save/discard buttons work — but there's no canvas rendering yet (added in Milestone E) and no audio playback (Milestone G).
+**Goal:** Build the editor shell — extension entry, fullscreen overlay, header, sidebar tabs, persistence Pattern #9. After this milestone, clicking "Open AudioReact" on the node opens the editor, you can switch tabs, drag sliders (state updates locally), and save/discard buttons work — but there's no canvas rendering yet (added in Milestone E) and no audio playback (Milestone G).
 
 ### Task D1: `js/audio_studio/index.js` — extension entry
 
 **Files:**
 - Create: `js/audio_studio/index.js`
 
-**Goal:** Register the extension, add an "Open Audio Pulse" button to the node, wire up Pattern #9 persistence (`graphToPrompt` injection of `studio_json` from `node.properties.audioStudioState`).
+**Goal:** Register the extension, add an "Open AudioReact" button to the node, wire up Pattern #9 persistence (`graphToPrompt` injection of `studio_json` from `node.properties.audioStudioState`).
 
 - [ ] **Step 1: Write the extension entry**
 
@@ -2091,14 +2091,14 @@ app.registerExtension({
     // Pattern #8: defer to queueMicrotask so configure() has restored
     // node.properties[STATE_KEY] from saved workflow JSON before we read it.
     queueMicrotask(() => {
-      // Nothing to render yet — node has only the "Open Audio Pulse" button.
+      // Nothing to render yet — node has only the "Open AudioReact" button.
       // Adding the DOM widget for status / preview happens in Milestone H
       // (source resolution adds an upstream-aware preview).
     });
 
     node.size = node.size || [240, 100];
 
-    node.addWidget("button", "Open Audio Pulse", null, () => {
+    node.addWidget("button", "Open AudioReact", null, () => {
       const cfg = node.properties[STATE_KEY] || { ...DEFAULT_CFG };
       const editor = new AudioStudioEditor(node, cfg);
       node._audioStudioEditor = editor;
@@ -2175,8 +2175,8 @@ export class AudioStudioEditor {
 
 - [ ] **Step 3: Smoke test**
 
-Restart ComfyUI. Drop the Audio Pulse node. Verify:
-- "Open Audio Pulse" button appears.
+Restart ComfyUI. Drop the AudioReact node. Verify:
+- "Open AudioReact" button appears.
 - Clicking it logs `[Pixaroma] AudioStudio: open() — stub.` to console (no editor opens yet — that's D2).
 - No errors in the console.
 
@@ -2202,7 +2202,7 @@ This confirms the `graphToPrompt` hook runs. If `studio_json` is missing in the 
 git add js/audio_studio/index.js js/audio_studio/core.mjs js/audio_studio/ui.mjs js/audio_studio/transport.mjs js/audio_studio/render.mjs
 git commit -m "audio_studio: extension entry + Pattern #9 persistence hook
 
-js/audio_studio/index.js wires the 'Open Audio Pulse' button on the node
+js/audio_studio/index.js wires the 'Open AudioReact' button on the node
 and monkey-patches app.graphToPrompt to inject studio_json from
 node.properties.audioStudioState. Stub files for the mixin modules so
 imports resolve while subsequent tasks land the real implementations."
@@ -2459,7 +2459,7 @@ export class AudioStudioEditor {
 
     const title = document.createElement("span");
     title.className = "pix-as-title";
-    title.textContent = "Audio Pulse Pixaroma";
+    title.textContent = "AudioReact Pixaroma";
     header.appendChild(title);
 
     // Image / Audio source pills — full behavior in Milestone H
@@ -2525,7 +2525,7 @@ export class AudioStudioEditor {
     modal.className = "pix-as-confirm-modal";
     modal.innerHTML = `
       <h3>Discard changes?</h3>
-      <p>You have unsaved changes to the Audio Pulse. Discard them and close?</p>
+      <p>You have unsaved changes to the AudioReact. Discard them and close?</p>
       <div class="pix-as-confirm-actions">
         <button class="pix-as-btn pix-as-btn-cancel">Cancel</button>
         <button class="pix-as-btn pix-as-btn-discard">Discard</button>
@@ -2566,9 +2566,9 @@ export class AudioStudioEditor {
 
 - [ ] **Step 2: Smoke test**
 
-Restart ComfyUI. Drop the node. Click "Open Audio Pulse".
+Restart ComfyUI. Drop the node. Click "Open AudioReact".
 - ✅ Fullscreen overlay opens.
-- ✅ Header shows × close + "Audio Pulse Pixaroma" + Image/Audio pills + grayed-out SAVE button.
+- ✅ Header shows × close + "AudioReact Pixaroma" + Image/Audio pills + grayed-out SAVE button.
 - ✅ Body shows canvas placeholder + transport placeholder + sidebar placeholder.
 - Click × → editor closes (no dirty changes, no prompt).
 - Reopen, mutate `editor.cfg.intensity = 1.5` from console:
@@ -3286,7 +3286,7 @@ AudioStudioEditor.prototype._initRenderer = function () {
 
   const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, antialias: false });
   if (!gl) {
-    this.canvasHost.textContent = "WebGL2 unavailable — Audio Pulse requires WebGL2. Use the basic Audio React node instead.";
+    this.canvasHost.textContent = "WebGL2 unavailable — AudioReact requires WebGL2. Use the basic Audio React node instead.";
     return;
   }
   // Required for R32F / RGBA32F texture filtering (renderable). Audio
@@ -3397,7 +3397,7 @@ AudioStudioEditor.prototype._getMotionProgram = function (mode) {
   if (this._motionPrograms[mode]) return this._motionPrograms[mode];
   const src = MOTION_SHADERS[mode];
   if (!src) {
-    console.warn(`[Pixaroma] Audio Pulse: motion mode ${mode} has no shader yet — using scale_pulse fallback`);
+    console.warn(`[Pixaroma] AudioReact: motion mode ${mode} has no shader yet — using scale_pulse fallback`);
     return this._getMotionProgram("scale_pulse");
   }
   const prog = compileProgram(gl, VERTEX_SHADER, src, `motion_${mode}`);
@@ -3557,7 +3557,7 @@ Mark this with a `// TEMP — remove in H1` comment so we can find and delete in
 
 - [ ] **Step 3: Smoke test**
 
-Restart ComfyUI. Drop the node. Click Open Audio Pulse.
+Restart ComfyUI. Drop the node. Click Open AudioReact.
 - ✅ Canvas area shows the parity test image.
 - ✅ Drag the Intensity slider in the sidebar — image very subtly zooms (env=0 means s=0, so no change). To force visible motion, temporarily edit `_render` to use `env_t = 1.0` or similar — verify the formula triggers.
 
@@ -4990,7 +4990,7 @@ this._resolveImageSource();
 
 - [ ] **Step 5: Smoke test**
 
-In ComfyUI, drop the Audio Pulse node + Load Image upstream + connect. Click button to open.
+In ComfyUI, drop the AudioReact node + Load Image upstream + connect. Click button to open.
 - ✅ Image visible (upstream).
 - Disconnect Load Image. Reopen.
 - ✅ Canvas shows "Upstream image not ready" message.
@@ -5172,9 +5172,9 @@ Print: `DONE: H2 (audio sources work end-to-end, MP3/OGG/AAC convert to WAV)`
 - [ ] **Step 1: Manual smoke test**
 
 In ComfyUI:
-1. Drop: Load Image → Audio Pulse Pixaroma ← Load Audio
-2. Drop: Save Mp4 Pixaroma, wire Audio Pulse's outputs (frames, audio, fps) to it.
-3. Click "Open Audio Pulse" on the node.
+1. Drop: Load Image → AudioReact Pixaroma ← Load Audio
+2. Drop: Save Mp4 Pixaroma, wire AudioReact's outputs (frames, audio, fps) to it.
+3. Click "Open AudioReact" on the node.
 4. Tweak motion mode, intensity, an overlay or two.
 5. Click Save.
 6. ✅ Editor closes. The node's `properties.audioStudioState` reflects the config.
@@ -5285,7 +5285,7 @@ Print: `DONE: H4 (upstream disconnect + schema_version migration)`
 <!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<title>Audio Pulse — WebGL Parity Harness</title>
+<title>AudioReact — WebGL Parity Harness</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #1c1c1c; color: #ddd; padding: 16px; }
   h1 { color: #f66744; }
@@ -5299,7 +5299,7 @@ Print: `DONE: H4 (upstream disconnect + schema_version migration)`
 </style>
 </head><body>
 
-<h1>Audio Pulse — WebGL Parity Harness</h1>
+<h1>AudioReact — WebGL Parity Harness</h1>
 <p>Compares Python golden frames vs the live WebGL pipeline using the same
 params. Mean ΔE ≤ 5.0 = pass for non-shake / non-bloom tests; shake + bloom
 are flagged as approximate (math doc §9).</p>
@@ -5591,7 +5591,7 @@ Print: `DONE: I1 (browser parity harness landed)`
 Find the section `### Frontend Directory Structure` in `CLAUDE.md`. After the `compare/` block (or wherever fits the alphabetical ordering), add:
 
 ```
-├── audio_studio/       # Audio Pulse Pixaroma — fullscreen editor for Audio React effects
+├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for Audio React effects
 │   ├── index.js        # Entry: button on node, app.graphToPrompt hook (Pattern #9)
 │   ├── core.mjs        # AudioStudioEditor class — open/close/save/discard, Vue-compat
 │   ├── transport.mjs   # Mixin — transport bar UI, Web Audio playback, sparkline
@@ -5606,23 +5606,23 @@ Find the section `### Frontend Directory Structure` in `CLAUDE.md`. After the `c
 
 Find the Token-Saving Rules table. Add:
 ```
-| Audio Pulse Pixaroma — change effect math | `nodes/_audio_react_engine.py` (shared engine — math is here, not in nodes_audio_*.py) + sync update to `docs/audio-react-math.md` (single source of truth) + matching change to `js/audio_studio/shaders.mjs` (GLSL mirror) + browser parity harness (Task I1) re-run |
-| Audio Pulse Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save flow) |
-| Audio Pulse Pixaroma — transport / playback | `js/audio_studio/transport.mjs` |
-| Audio Pulse Pixaroma — WebGL pipeline | `js/audio_studio/render.mjs` (orchestration) + `js/audio_studio/shaders.mjs` (per-mode shaders) |
-| Audio Pulse Pixaroma — Python entry point | `nodes/node_audio_studio.py` (thin wrapper); engine math lives in `nodes/_audio_react_engine.py` |
-| Audio Pulse Pixaroma — upload route | `server_routes.py` `/pixaroma/api/audio_studio/upload` |
-| Audio Pulse Pixaroma — config schema | `nodes/node_audio_studio.py` `_migrate_cfg` + `js/audio_studio/index.js` `DEFAULT_CFG` (keep these in sync — Pattern #3 risk) |
+| AudioReact Pixaroma — change effect math | `nodes/_audio_react_engine.py` (shared engine — math is here, not in nodes_audio_*.py) + sync update to `docs/audio-react-math.md` (single source of truth) + matching change to `js/audio_studio/shaders.mjs` (GLSL mirror) + browser parity harness (Task I1) re-run |
+| AudioReact Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save flow) |
+| AudioReact Pixaroma — transport / playback | `js/audio_studio/transport.mjs` |
+| AudioReact Pixaroma — WebGL pipeline | `js/audio_studio/render.mjs` (orchestration) + `js/audio_studio/shaders.mjs` (per-mode shaders) |
+| AudioReact Pixaroma — Python entry point | `nodes/node_audio_studio.py` (thin wrapper); engine math lives in `nodes/_audio_react_engine.py` |
+| AudioReact Pixaroma — upload route | `server_routes.py` `/pixaroma/api/audio_studio/upload` |
+| AudioReact Pixaroma — config schema | `nodes/node_audio_studio.py` `_migrate_cfg` + `js/audio_studio/index.js` `DEFAULT_CFG` (keep these in sync — Pattern #3 risk) |
 ```
 
-- [ ] **Step 3: Add "Audio Pulse Patterns (do not regress)" section**
+- [ ] **Step 3: Add "AudioReact Patterns (do not regress)" section**
 
 Add a new patterns section after the "Audio React Patterns (do not regress)" block:
 
 ```markdown
-### Audio Pulse Patterns (do not regress)
+### AudioReact Patterns (do not regress)
 
-These patterns were hard-won during Audio Pulse v1 development. Regressing
+These patterns were hard-won during AudioReact v1 development. Regressing
 any of them reintroduces specific bugs.
 
 1. **`DEFAULT_CFG` in `js/audio_studio/index.js` MUST stay in sync with
@@ -5698,10 +5698,10 @@ any of them reintroduces specific bugs.
 
 ```bash
 git add CLAUDE.md
-git commit -m "docs: CLAUDE.md updates for Audio Pulse Pixaroma
+git commit -m "docs: CLAUDE.md updates for AudioReact Pixaroma
 
 Adds Frontend Directory Structure entry, Token-Saving Rules table rows,
-and 'Audio Pulse Patterns (do not regress)' section with 10 patterns
+and 'AudioReact Patterns (do not regress)' section with 10 patterns
 that surfaced during v1 development."
 ```
 
@@ -5712,15 +5712,15 @@ Print: `DONE: I2 (CLAUDE.md updated)`
 **Files:**
 - Modify: `README.md`
 
-- [ ] **Step 1: Add Audio Pulse feature blurb**
+- [ ] **Step 1: Add AudioReact feature blurb**
 
 Find the Audio React Pixaroma section in `README.md`. Add a parallel section right after it:
 
 ```markdown
-### Audio Pulse Pixaroma
+### AudioReact Pixaroma
 
 Sibling node to **Audio React Pixaroma** with the same effect math but a
-full live editor. Click **Open Audio Pulse** on the node to launch a
+full live editor. Click **Open AudioReact** on the node to launch a
 fullscreen overlay:
 
 - **WebGL preview canvas** — renders effects in real time as you scrub
@@ -5737,7 +5737,7 @@ fullscreen overlay:
   they survive workflow reloads.
 - **Same engine as Audio React** — the workflow renders identical frames
   in Python, ready for **Save Mp4 Pixaroma**. Use Audio React for fast
-  scripted runs; use Audio Pulse when you want to dial in the look
+  scripted runs; use AudioReact when you want to dial in the look
   interactively.
 
 Requires WebGL2 (universal in modern browsers since 2017).
@@ -5747,7 +5747,7 @@ Requires WebGL2 (universal in modern browsers since 2017).
 
 ```bash
 git add README.md
-git commit -m "docs: README — Audio Pulse Pixaroma feature section"
+git commit -m "docs: README — AudioReact Pixaroma feature section"
 ```
 
 Print: `DONE: I3 (README updated)`
@@ -5769,8 +5769,8 @@ Open `assets/audio_studio_parity/index.html` in a browser (file:// or via local 
 
 - [ ] **Step 3: Full workflow smoke test**
 
-1. ComfyUI: drop Load Image + Load Audio + Audio Pulse Pixaroma + Save Mp4 Pixaroma. Wire them.
-2. Open Audio Pulse. Tweak motion mode, intensity, an overlay or two.
+1. ComfyUI: drop Load Image + Load Audio + AudioReact Pixaroma + Save Mp4 Pixaroma. Wire them.
+2. Open AudioReact. Tweak motion mode, intensity, an overlay or two.
 3. Click Save.
 4. Run workflow.
 5. ✅ MP4 produced. Frames look like the editor preview.
@@ -5801,7 +5801,7 @@ git add <files>
 git commit -m "audio_studio: final acceptance-criteria fixes — <specifics>"
 ```
 
-Print: `DONE: I4 (v1 acceptance criteria pass — Audio Pulse Pixaroma is ready to ship)`
+Print: `DONE: I4 (v1 acceptance criteria pass — AudioReact Pixaroma is ready to ship)`
 
 ---
 
@@ -5832,9 +5832,9 @@ After completing all milestones, run through this checklist before declaring v1 
    - Persistence: `node.properties.audioStudioState` everywhere.
    - Server route: `/pixaroma/api/audio_studio/upload`.
 
-4. **Scope check** — single feature (Audio Pulse + engine refactor + parity infra). Multi-session execution is built into the milestone structure.
+4. **Scope check** — single feature (AudioReact + engine refactor + parity infra). Multi-session execution is built into the milestone structure.
 
-5. **Cross-file consistency** — `DEFAULT_CFG` in `js/audio_studio/index.js` must mirror `Params` defaults in `_audio_react_engine.py`. Called out as Pattern #1 in the new "Audio Pulse Patterns" CLAUDE.md section.
+5. **Cross-file consistency** — `DEFAULT_CFG` in `js/audio_studio/index.js` must mirror `Params` defaults in `_audio_react_engine.py`. Called out as Pattern #1 in the new "AudioReact Patterns" CLAUDE.md section.
 
 If the implementer encounters a discrepancy or undefined name, that's a plan bug — note it, fix it inline, continue.
 
@@ -5851,7 +5851,7 @@ When ready to start implementation in a future session, the user can pick:
 - **Subagent-Driven (recommended for this scale).** Use `superpowers:subagent-driven-development`. Each task → fresh subagent (model: `sonnet` for code-heavy tasks, `opus` for review). Plan checkboxes track progress.
 - **Inline Execution.** Use `superpowers:executing-plans`. Batch milestone-by-milestone; pause for review between milestones.
 
-Either way, the natural session breaks are at milestone boundaries (A → B → C → D → E → F → G → H → I). Milestone A (engine extraction) is the highest-priority foundation — it makes the existing Audio React workflow byte-identical regression-tested, and it's a complete, shippable improvement on its own even if Audio Pulse is paused after.
+Either way, the natural session breaks are at milestone boundaries (A → B → C → D → E → F → G → H → I). Milestone A (engine extraction) is the highest-priority foundation — it makes the existing Audio React workflow byte-identical regression-tested, and it's a complete, shippable improvement on its own even if AudioReact is paused after.
 
 
 

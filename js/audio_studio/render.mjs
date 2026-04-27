@@ -20,7 +20,7 @@ AudioStudioEditor.prototype._initRenderer = function () {
 
   const gl = canvas.getContext("webgl2", { premultipliedAlpha: false, antialias: false });
   if (!gl) {
-    this.canvasHost.textContent = "WebGL2 unavailable — Audio Pulse requires WebGL2. Use the basic Audio React node instead.";
+    this.canvasHost.textContent = "WebGL2 unavailable — AudioReact requires WebGL2. Use the basic Audio React node instead.";
     return;
   }
   // Required for R32F / RGBA32F texture filtering (renderable). Audio
@@ -142,7 +142,7 @@ AudioStudioEditor.prototype._getMotionProgram = function (mode) {
   if (this._motionPrograms[mode]) return this._motionPrograms[mode];
   const src = MOTION_SHADERS[mode];
   if (!src) {
-    console.warn(`[Pixaroma] Audio Pulse: motion mode ${mode} has no shader yet — using scale_pulse fallback`);
+    console.warn(`[Pixaroma] AudioReact: motion mode ${mode} has no shader yet — using scale_pulse fallback`);
     return this._getMotionProgram("scale_pulse");
   }
   const prog = compileProgram(gl, VERTEX_SHADER, src, `motion_${mode}`);

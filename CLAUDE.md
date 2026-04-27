@@ -143,7 +143,7 @@ js/
 │                       #  Node-level onMouseMove/onMouseLeave for hover (widget
 │                       #  mouse() doesn't get pointermove on Vue).
 │
-├── audio_studio/       # Audio Pulse Pixaroma — fullscreen editor for Audio React effects
+├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for audio-reactive effects
 │   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
 │   │                   #  (Pattern #9), nodeCreated lifecycle. DEFAULT_CFG mirrors
 │   │                   #  Params() defaults in nodes/_audio_react_engine.py.
@@ -314,13 +314,13 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 11. **Keyboard shortcuts use `e.code`, not `e.key`** — `Digit1`, `Digit2`, `Numpad1` etc. This is layout-independent. `e.key` depends on the user's keyboard layout and breaks for non-QWERTY users.
 
-### Audio React Patterns (do not regress)
+### AudioReact Engine Patterns (do not regress)
 
 1. **`slit_scan` is a per-row time-evolving sine wave, NOT a frame-buffer pull** — the spec at `docs/superpowers/specs/2026-04-27-audio-react-pixaroma-design.md` originally described slit_scan as pulling rows from past frames in a buffer (`num_frames × H × W × 3` memory). The implementation simplifies this to per-row vertical sine displacement at row-shifted phase, audio-modulated amplitude — visually the same kind of "time-displaced rows" effect at zero extra memory cost. If you ever switch to a real frame buffer, clamp lookback to ≤ 0.5s of frames or memory blows up at high fps / 4K.
 
 2. **`shake` motion mode caches dx/dy on `self`, must be cleared at the top of `generate()`** — the cache size depends on `total_frames`, which differs per audio length. `generate()` does `if hasattr(self, "_shake_dx_cache"): del ...` before computing the envelope. Without that, switching audio (different total_frames) reuses stale jitter and crashes on index OOB.
 
-3. **`audio_envelope`, `bandpass_fft`, `onset_track`, `process_aspect`, `Params`, all motion functions, all overlay functions live in `nodes/_audio_react_engine.py` — and ONLY there.** Both `node_audio_react.py` and `node_audio_studio.py` are thin wrappers that build a `Params` and call `engine.generate_video()`. Do NOT copy helpers back into either node file (or any future node) — divergence breaks parity between the basic node, the editor preview (via `js/audio_studio/shaders.mjs`), and the regression goldens. The math is locked behind one file by design.
+3. **`audio_envelope`, `bandpass_fft`, `onset_track`, `process_aspect`, `Params`, all motion functions, all overlay functions live in `nodes/_audio_react_engine.py` — and ONLY there.** `node_audio_studio.py` is a thin wrapper that builds a `Params` and calls `engine.generate_video()`. Do NOT copy helpers into the node file — divergence breaks parity between the Python render and the editor preview (via `js/audio_studio/shaders.mjs`) and the regression goldens. The math is locked behind one file by design.
 
 4. **Print line uses ASCII `->`, not `→` (U+2192)** — Windows console default codec (cp1252) can't encode the arrow. Crashes the generate() call before frame 1.
 
@@ -330,13 +330,13 @@ These patterns were hard-won during 3D Builder v2 development. Regressing any of
 
 7. **No `edge_headroom` widget — deliberately omitted, do not add it back** — depth-based parallax nodes (which this project no longer ships) need headroom because depth × strong intensity can displace sample coords well beyond `[-1, 1]`. `audio_react`'s motion modes don't have that problem: `scale_pulse` and `zoom_punch` pull inward (zoom-in only, range stays inside `[-1, 1]`), and `shake` / `drift` / `rotate_pulse` / `ripple` / `swirl` / `slit_scan` excurse by at most ~6% — `padding_mode="border"` handles those invisibly. Headroom would just render extra pixels that get cropped, wasting compute. `_process_aspect()` is still called (defaults `headroom=1.0`) so the helper stays general-purpose, but no crop pass after the per-frame loop.
 
-### Audio Pulse Patterns (do not regress)
+### AudioReact Patterns (do not regress)
 
-These patterns were hard-won during Audio Pulse v1 development. Regressing any of them reintroduces specific bugs.
+These patterns were hard-won during AudioReact v1 development. Regressing any of them reintroduces specific bugs.
 
 1. **`DEFAULT_CFG` in `js/audio_studio/index.js` MUST stay in sync with `Params` defaults in `nodes/_audio_react_engine.py`.** ComfyUI doesn't pre-fill a hidden input's value; the JS extension is the source of truth for first-time-on-canvas defaults. If the two diverge, the editor opens with one set of defaults and the workflow runs with another. Same risk class as Note Pixaroma Pattern #3 — keep them in sync at the same commit.
 
-2. **Engine math lives in `nodes/_audio_react_engine.py` ONLY** — `node_audio_react.py` and `node_audio_studio.py` are thin wrappers that build a `Params` and call `generate_video()`. If you ever feel the urge to "just inline this one helper" in either node file, don't — every formula must travel through the engine so both nodes stay in sync. This is also enforced by Audio React Pattern #3.
+2. **Engine math lives in `nodes/_audio_react_engine.py` ONLY** — `node_audio_studio.py` is a thin wrapper that builds a `Params` and calls `generate_video()`. If you ever feel the urge to "just inline this one helper" in the node file, don't — every formula must travel through the engine.
 
 3. **Math doc (`docs/audio-react-math.md`) is the single source of truth for formulas.** When changing a formula: (1) update the doc first; (2) update the Python implementation in the engine; (3) update the matching GLSL shader in `js/audio_studio/shaders.mjs`; (4) run `scripts/audio_parity_check.py --regenerate` to refresh goldens; (5) run the browser parity harness manually (`assets/audio_studio_parity/index.html`) to confirm the WebGL side still matches. Skipping any step risks editor preview drifting from MP4 output.
 
@@ -344,7 +344,7 @@ These patterns were hard-won during Audio Pulse v1 development. Regressing any o
 
 5. **Audio is WAV-only on disk.** The browser converts MP3 / OGG / AAC / etc. via `decodeAudio` + `encodeWav` in `js/audio_studio/audio_analysis.mjs` BEFORE upload. Server only accepts `.wav` — keeps Python dependency-free (stdlib `wave` module). Don't add server-side ffmpeg / pydub / etc. to "support more formats." Adding a heavy dep ripple-effects through the project's "no extra deps" promise.
 
-6. **WebGL2 required, no fallback.** If `getContext("webgl2")` returns null, the editor shows a clear error suggesting the basic Audio React node. Don't add WebGL1 fallback — none of the modern browsers we target lack WebGL2, and the fallback complexity buys nothing.
+6. **WebGL2 required, no fallback.** If `getContext("webgl2")` returns null, the editor shows a clear error to the user. Don't add WebGL1 fallback — none of the modern browsers we target lack WebGL2, and the fallback complexity buys nothing.
 
 7. **Pattern #9 persistence** (CLAUDE.md Vue Frontend Compatibility point #9) — `studio_json` is declared `hidden` in `INPUT_TYPES`, state lives on `node.properties.audioStudioState`, `app.graphToPrompt` hook in `js/audio_studio/index.js` injects it at submission. Same as Resolution Pixaroma. If the input ever shows up as a slot dot, Pattern #9 has been broken — likely by `removeInput()` or by re-declaring as `required STRING`.
 
@@ -509,14 +509,14 @@ Files are named by concern. Match the task to the file:
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
-| Audio React Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). `nodes/node_audio_react.py` is a thin wrapper (~100 lines) that builds a `Params` from widgets and calls `generate_video()`. NEVER inline math back into the node file — Audio Pulse uses the same engine, divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |
-| Audio Pulse Pixaroma — change effect math | DO NOT change in node files. Update `nodes/_audio_react_engine.py` only — both Audio React and Audio Pulse share it. Mirror the change to `js/audio_studio/shaders.mjs` (GLSL). Update `docs/audio-react-math.md` (single source of truth). Re-run the parity scripts. |
-| Audio Pulse Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save/discard, source resolution, undo, header pills). |
-| Audio Pulse Pixaroma — transport / playback | `js/audio_studio/transport.mjs` (play / pause / scrub / sparkline / Web Audio sync). |
-| Audio Pulse Pixaroma — WebGL pipeline | `js/audio_studio/render.mjs` (orchestration: framebuffer setup, motion + overlay passes, uniform binding) + `js/audio_studio/shaders.mjs` (per-mode GLSL). Reload page (Ctrl+F5) after shader edits — module cache is sticky. |
-| Audio Pulse Pixaroma — Python entry point | `nodes/node_audio_studio.py` (thin wrapper — `optional` image/audio inputs + `hidden` studio_json; engine math lives in `nodes/_audio_react_engine.py`; `_migrate_cfg` for forward-compatible schema bumps). |
-| Audio Pulse Pixaroma — upload route | `server_routes.py` `/pixaroma/api/audio_studio/upload`. Image: PNG / JPG / JPEG / WebP. Audio: WAV only (browser converts MP3 / OGG / etc. via `decodeAudio` + `encodeWav` in `js/audio_studio/audio_analysis.mjs` before upload — keeps Python dep-free). 50MB per file, 100MB combined per node dir. |
-| Audio Pulse Pixaroma — config schema | `js/audio_studio/index.js` `DEFAULT_CFG` MUST stay in sync with `Params` defaults in `nodes/_audio_react_engine.py` (Audio Pulse Pattern #1). `nodes/node_audio_studio.py` `_migrate_cfg` handles version bumps. |
+| AudioReact Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). NEVER inline math into `node_audio_studio.py`; divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |
+| AudioReact Pixaroma — change effect math | DO NOT change in `node_audio_studio.py`. Update `nodes/_audio_react_engine.py` only. Mirror the change to `js/audio_studio/shaders.mjs` (GLSL). Update `docs/audio-react-math.md` (single source of truth). Re-run the parity scripts. |
+| AudioReact Pixaroma — editor UI / sidebar | `js/audio_studio/ui.mjs` (controls / tabs) + `js/audio_studio/core.mjs` (open/close/save/discard, source resolution, undo, header pills). |
+| AudioReact Pixaroma — transport / playback | `js/audio_studio/transport.mjs` (play / pause / scrub / sparkline / Web Audio sync). |
+| AudioReact Pixaroma — WebGL pipeline | `js/audio_studio/render.mjs` (orchestration: framebuffer setup, motion + overlay passes, uniform binding) + `js/audio_studio/shaders.mjs` (per-mode GLSL). Reload page (Ctrl+F5) after shader edits — module cache is sticky. |
+| AudioReact Pixaroma — Python entry point | `nodes/node_audio_studio.py` (thin wrapper — `optional` image/audio inputs + `hidden` studio_json; engine math lives in `nodes/_audio_react_engine.py`; `_migrate_cfg` for forward-compatible schema bumps). |
+| AudioReact Pixaroma — upload route | `server_routes.py` `/pixaroma/api/audio_studio/upload`. Image: PNG / JPG / JPEG / WebP. Audio: WAV only (browser converts MP3 / OGG / etc. via `decodeAudio` + `encodeWav` in `js/audio_studio/audio_analysis.mjs` before upload — keeps Python dep-free). 50MB per file, 100MB combined per node dir. |
+| AudioReact Pixaroma — config schema | `js/audio_studio/index.js` `DEFAULT_CFG` MUST stay in sync with `Params` defaults in `nodes/_audio_react_engine.py` (AudioReact Pattern #1). `nodes/node_audio_studio.py` `_migrate_cfg` handles version bumps. |
 | Save Mp4 Pixaroma — change widgets / encoder flags / output naming | `nodes/node_save_mp4.py`. ffmpeg binary resolved via `_resolve_ffmpeg` (imageio-ffmpeg first, ffmpeg on PATH fallback, clear install hint on failure). Frames piped to ffmpeg's stdin as raw rgb24 (no temp PNGs). Audio (optional) is written to a temp WAV via `_write_wav_pcm16` (stdlib `wave` + numpy, NO torchaudio dep) and passed as a second `-i` input so muxing is one ffmpeg call. Stderr drained in a daemon thread to avoid Windows pipe-buffer deadlock. `trim_to_audio` adds `-shortest` only when audio is present. Output naming via `folder_paths.get_save_image_path` so it auto-increments. `OUTPUT_NODE = True` (terminal). Encoder defaults are baked into class attrs `_CRF` (19) + `_PIX_FMT` (yuv420p) — promote them back to INPUT_TYPES if a workflow needs control. Returns `{"ui": {"images": [...], "pixaroma_videos": [...]}}`; the `pixaroma_videos` key is consumed by `js/save_mp4/index.js` to render the in-node `<video>` preview. |
 | Save Mp4 Pixaroma — in-node video preview | `js/save_mp4/index.js`. Single index.js entry. On `nodeCreated` adds a DOM widget containing a `<video>` element + a placeholder div, both attached via `addDOMWidget(name, type, element, {serialize: false, getMinHeight: () => 180})`. Subscribes to `api.addEventListener("executed", ...)` and looks for `detail.output.pixaroma_videos` from our Python node — when found, sets the `<video>.src` to `/view?filename=...&subfolder=...&type=output&t=<timestamp>` (cache-busted) and toggles placeholder off. Node id resolved with both string and parseInt fallbacks for cross-version compat. |
 | Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
