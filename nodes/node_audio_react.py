@@ -235,13 +235,154 @@ class PixaromaAudioReact:
         rms_smoothed = F.conv1d(rms_padded, kernel).view(-1)
         return rms_smoothed.to(device)
 
+    def _motion_scale_pulse(self, base_grid, env_t, intensity):
+        """Uniform breathing zoom. env_t in [0,1], intensity in [0,2]."""
+        s = env_t * intensity * 0.15  # max 30% zoom at intensity=2, env=1
+        return base_grid * (1.0 - s)
+
+    def _motion_zoom_punch(self, base_grid, onset_t, intensity):
+        raise NotImplementedError("zoom_punch — Task 6")
+
+    def _motion_shake(self, base_grid, i, total_frames, onset, intensity, fps):
+        raise NotImplementedError("shake — Task 7")
+
+    def _motion_ripple(self, base_grid, t, env_t, intensity, motion_speed, H, W):
+        raise NotImplementedError("ripple — Task 8")
+
+    def _motion_slit_scan(self, base_grid, t, env_t, intensity, motion_speed, H, W):
+        raise NotImplementedError("slit_scan — Task 9")
+
+    def _motion_kaleidoscope(self, base_grid, t, env_t, intensity, motion_speed, H, W):
+        raise NotImplementedError("kaleidoscope — Task 10")
+
+    def _overlay_glitch(self, frame, onset_t, strength, H, W):
+        return frame  # Task 11
+
+    def _overlay_bloom(self, frame, env_t, strength):
+        return frame  # Task 12
+
+    def _overlay_vignette(self, frame, env_t, strength, H, W, device):
+        return frame  # Task 13
+
+    def _overlay_hue_shift(self, frame, env_t, strength):
+        return frame  # Task 14
+
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
                  loop_safe, fps, edge_headroom,
                  glitch_strength, bloom_strength, vignette_strength, hue_shift_strength):
-        # STUB: passthrough one frame, ignore everything else for now.
-        # Each subsequent task fleshes this out.
-        return (image, audio, float(fps))
+        # Input validation — clear actionable messages over crashes.
+        if image is None:
+            raise ValueError(
+                "[Pixaroma] Audio React — no image connected. Wire an "
+                "IMAGE source (e.g. Load Image) to the 'image' input."
+            )
+        if (audio is None or not isinstance(audio, dict)
+                or "waveform" not in audio or "sample_rate" not in audio
+                or audio["waveform"] is None
+                or not isinstance(audio["sample_rate"], (int, float))
+                or audio["sample_rate"] <= 0):
+            raise ValueError(
+                "[Pixaroma] Audio React — no valid audio connected. Wire "
+                "a Load Audio (or any AUDIO source with non-empty "
+                "waveform and sample_rate > 0) to the 'audio' input."
+            )
+
+        device = comfy.model_management.get_torch_device()
+
+        image, out_w, out_h = self._process_aspect(
+            image, aspect_ratio, custom_width, custom_height, edge_headroom,
+        )
+        img_tensor = image[0].permute(2, 0, 1).unsqueeze(0).to(device)
+        _, _, H, W = img_tensor.shape
+
+        crop_h_off = max(0, (H - out_h) // 2)
+        crop_w_off = max(0, (W - out_w) // 2)
+        needs_crop = (H != out_h) or (W != out_w)
+
+        audio_duration = audio["waveform"].shape[-1] / audio["sample_rate"]
+        total_frames = int(audio_duration * fps)
+        if total_frames <= 0:
+            raise ValueError(
+                f"Audio is too short to produce any frames at {fps} fps "
+                f"(audio_duration={audio_duration:.3f}s)."
+            )
+
+        # Clear motion-mode caches that depend on total_frames.
+        if hasattr(self, "_shake_dx_cache"):
+            del self._shake_dx_cache
+            del self._shake_dy_cache
+
+        envelope = self._audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
+
+        if loop_safe:
+            fade_n = max(1, min(int(fps * 0.5), total_frames // 2))
+            loop_ramp = torch.linspace(0.0, 1.0, fade_n, device=device)
+            envelope = envelope.detach().clone()
+            envelope[:fade_n] = envelope[:fade_n] * loop_ramp
+            envelope[-fade_n:] = envelope[-fade_n:] * loop_ramp.flip(0)
+
+        onset = _onset_track(envelope)
+
+        # Time vector for periodic motion (ripple / kaleidoscope / slit_scan).
+        t_vec = torch.arange(total_frames, device=device, dtype=torch.float32) / fps
+
+        # Normalized base sampling grid in [-1, 1]. grid_sample reads x first.
+        y, x = torch.meshgrid(
+            torch.linspace(-1, 1, H, device=device),
+            torch.linspace(-1, 1, W, device=device),
+            indexing="ij",
+        )
+        base_grid = torch.stack([x, y], dim=-1).unsqueeze(0)  # [1, H, W, 2]
+
+        print(f"[Pixaroma] Audio React: {total_frames} frames @ {fps}fps, "
+              f"{W}x{H} -> {out_w}x{out_h}, mode={motion_mode}, band={audio_band}, "
+              f"intensity={intensity}, smooth={smoothing}")
+        pbar = comfy.utils.ProgressBar(total_frames)
+
+        frames = []
+        for i in range(total_frames):
+            env_t = envelope[i].item()
+            onset_t = onset[i].item()
+
+            if motion_mode == "scale_pulse":
+                grid = self._motion_scale_pulse(base_grid, env_t, intensity)
+            elif motion_mode == "zoom_punch":
+                grid = self._motion_zoom_punch(base_grid, onset_t, intensity)
+            elif motion_mode == "shake":
+                grid = self._motion_shake(base_grid, i, total_frames, onset, intensity, fps)
+            elif motion_mode == "ripple":
+                grid = self._motion_ripple(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
+            elif motion_mode == "slit_scan":
+                grid = self._motion_slit_scan(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
+            elif motion_mode == "kaleidoscope":
+                grid = self._motion_kaleidoscope(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
+            else:
+                raise ValueError(f"[Pixaroma] Audio React — unhandled motion_mode {motion_mode!r}.")
+
+            warped = F.grid_sample(
+                img_tensor, grid,
+                mode="bilinear", padding_mode="border", align_corners=False,
+            )
+            frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
+
+            # Overlays (each is a no-op when strength == 0).
+            if glitch_strength > 0.0:
+                frame = self._overlay_glitch(frame, onset_t, glitch_strength, H, W)
+            if bloom_strength > 0.0:
+                frame = self._overlay_bloom(frame, env_t, bloom_strength)
+            if vignette_strength > 0.0:
+                frame = self._overlay_vignette(frame, env_t, vignette_strength, H, W, device)
+            if hue_shift_strength > 0.0:
+                frame = self._overlay_hue_shift(frame, env_t, hue_shift_strength)
+
+            if needs_crop:
+                frame = frame[crop_h_off:crop_h_off + out_h, crop_w_off:crop_w_off + out_w, :]
+            frames.append(frame.cpu())
+            pbar.update(1)
+
+        output_video = torch.stack(frames, dim=0)
+        return (output_video, audio, float(fps))
 
 
 NODE_CLASS_MAPPINGS = {
