@@ -82,35 +82,38 @@ function injectAudioStudioCSS() {
     }
     .pix-as-confirm-modal {
       background: #2a2a2a;
-      padding: 20px 24px;
-      border-radius: 6px;
-      max-width: 400px;
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6);
+      padding: 24px 28px 20px;
+      border-radius: 8px;
+      max-width: 420px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6);
       color: #e0e0e0;
       font-family: 'Segoe UI', system-ui, sans-serif;
       font-size: 13px;
     }
     .pix-as-confirm-modal h3 {
-      margin: 0 0 12px 0;
+      margin: 0 0 10px 0;
       color: ${BRAND_ORANGE};
-      font-size: 16px;
+      font-size: 17px;
+      font-weight: 600;
     }
     .pix-as-confirm-modal p {
-      margin: 0 0 16px 0;
+      margin: 0 0 20px 0;
       color: #ccc;
-      line-height: 1.4;
+      line-height: 1.5;
     }
     .pix-as-confirm-actions {
-      display: flex; gap: 8px; justify-content: flex-end;
+      display: flex; gap: 10px; justify-content: flex-end;
     }
     .pix-as-btn {
-      padding: 6px 14px; border-radius: 3px;
+      padding: 8px 18px; border-radius: 5px;
       cursor: pointer; user-select: none;
-      border: none; font-size: 13px; font-weight: bold;
+      border: none; font-size: 13px; font-weight: 600;
+      transition: filter 0.1s, transform 0.05s;
     }
     .pix-as-btn-cancel { background: ${BRAND_ORANGE}; color: #fff; }
     .pix-as-btn-discard { background: ${BRAND_RED}; color: #fff; }
     .pix-as-btn:hover { filter: brightness(1.1); }
+    .pix-as-btn:active { transform: translateY(1px); }
   `;
   const style = document.createElement("style");
   style.id = "pix-audiostudio-css";
@@ -530,11 +533,11 @@ export class AudioStudioEditor {
     const modal = document.createElement("div");
     modal.className = "pix-as-confirm-modal";
     modal.innerHTML = `
-      <h3>Discard changes?</h3>
-      <p>You have unsaved changes to the Audio Studio. Discard them and close?</p>
+      <h3>Unsaved changes</h3>
+      <p>Close the Audio Studio without saving? Your edits will be lost.</p>
       <div class="pix-as-confirm-actions">
-        <button class="pix-as-btn pix-as-btn-cancel">Cancel</button>
-        <button class="pix-as-btn pix-as-btn-discard">Discard</button>
+        <button class="pix-as-btn pix-as-btn-cancel">Keep editing</button>
+        <button class="pix-as-btn pix-as-btn-discard">Discard &amp; close</button>
       </div>
     `;
     backdrop.appendChild(modal);
