@@ -86,6 +86,24 @@ class Params:
     custom_height: int = 1024
 
 
+@dataclass
+class MotionContext:
+    """Inputs a motion function might need. Functions ignore fields they
+    don't care about — keeps the dispatch uniform."""
+    base_grid: torch.Tensor   # [1, H, W, 2]
+    env_t: float
+    onset_t: float
+    t: float                   # seconds since clip start
+    intensity: float
+    motion_speed: float
+    H: int
+    W: int
+    total_frames: int
+    frame_index: int
+    fps: int
+    onset_arr: torch.Tensor   # [F] — full onset track (used by shake)
+
+
 def params_from_dict(cfg: dict) -> Params:
     """Build a Params from a dict, ignoring unknown keys, filling missing
     keys with defaults."""
@@ -252,6 +270,186 @@ def audio_envelope(audio, target_frames, fps, device, audio_band, smoothing):
     rms_padded = F.pad(rms.unsqueeze(0).unsqueeze(0), (pad, pad), mode="replicate")
     rms_smoothed = F.conv1d(rms_padded, kernel).view(-1)
     return rms_smoothed.to(device)
+
+
+# Module-level cache for shake's cumulative random walk. Keyed by
+# total_frames because the walk depends on clip length. generate_video()
+# (Task A6) calls reset_motion_caches() once per render — necessary because
+# switching audio clips changes total_frames and stale entries would either
+# hit the wrong walk or OOB on indexing.
+_SHAKE_CACHE: dict[int, tuple[torch.Tensor, torch.Tensor]] = {}
+
+
+def reset_motion_caches():
+    """Clear all motion-mode caches. Called by generate_video() at the
+    top of each render."""
+    _SHAKE_CACHE.clear()
+
+
+# ---------------------------------------------------------------------
+# Motion modes — registered in MOTION_MODES at module bottom.
+# Each function takes a MotionContext and returns a [1, H, W, 2]
+# sampling grid for F.grid_sample.
+# ---------------------------------------------------------------------
+
+def motion_scale_pulse(ctx: MotionContext) -> torch.Tensor:
+    """Uniform breathing zoom. env_t in [0,1], intensity in [0,2]."""
+    s = ctx.env_t * ctx.intensity * 0.15  # max 30% zoom at intensity=2, env=1
+    return ctx.base_grid * (1.0 - s)
+
+
+def motion_zoom_punch(ctx: MotionContext) -> torch.Tensor:
+    """Fast zoom-in spike on each transient, ease back."""
+    s = ctx.onset_t * ctx.intensity * 0.30  # bigger amplitude than scale_pulse
+    return ctx.base_grid * (1.0 - s)
+
+
+def motion_shake(ctx: MotionContext) -> torch.Tensor:
+    """Translation jitter. Random direction per onset, exponential settle.
+
+    Pre-renders a deterministic dx/dy walk for the whole clip on first call,
+    then samples it per-frame. Cache keyed by total_frames; call
+    reset_motion_caches() between distinct generate_video() invocations.
+    """
+    if ctx.total_frames not in _SHAKE_CACHE:
+        g = torch.Generator().manual_seed(0)
+        dx_raw = torch.randn(ctx.total_frames, generator=g) * ctx.onset_arr.cpu()
+        dy_raw = torch.randn(ctx.total_frames, generator=g) * ctx.onset_arr.cpu()
+        dx = torch.zeros_like(dx_raw)
+        dy = torch.zeros_like(dy_raw)
+        decay = 0.7
+        for k in range(ctx.total_frames):
+            if k == 0:
+                dx[k] = dx_raw[k]
+                dy[k] = dy_raw[k]
+            else:
+                dx[k] = dx[k-1] * decay + dx_raw[k] * (1.0 - decay)
+                dy[k] = dy[k-1] * decay + dy_raw[k] * (1.0 - decay)
+        _SHAKE_CACHE[ctx.total_frames] = (
+            dx.to(ctx.base_grid.device),
+            dy.to(ctx.base_grid.device),
+        )
+
+    dx_arr, dy_arr = _SHAKE_CACHE[ctx.total_frames]
+    amp = ctx.intensity * 0.04  # 4% of half-frame at intensity=1, raw=±1
+    # Tensor-only path: avoid .item() to keep the full per-frame loop
+    # GPU-resident on CUDA devices (no GPU↔CPU sync per frame).
+    dx = dx_arr[ctx.frame_index] * amp
+    dy = dy_arr[ctx.frame_index] * amp
+
+    grid = ctx.base_grid.clone()
+    grid[..., 0] = grid[..., 0] - dx
+    grid[..., 1] = grid[..., 1] - dy
+    return grid
+
+
+def motion_drift(ctx: MotionContext) -> torch.Tensor:
+    """Slow Ken Burns circular pan — sway × bob with audio amplitude.
+    env_t=0 → no drift, so loop_safe collapses to identity at boundaries."""
+    sway = math.sin(2.0 * math.pi * ctx.motion_speed * ctx.t)
+    bob = math.cos(2.0 * math.pi * ctx.motion_speed * ctx.t)
+    amp = ctx.env_t * ctx.intensity * 0.04  # ~4% of half-frame at intensity=1
+    dx = sway * amp
+    dy = bob * amp
+    grid = ctx.base_grid.clone()
+    grid[..., 0] = grid[..., 0] - dx
+    grid[..., 1] = grid[..., 1] - dy
+    return grid
+
+
+def motion_rotate_pulse(ctx: MotionContext) -> torch.Tensor:
+    """Image rocks CW↔CCW. sway×env drives angle, max ±15° at full
+    intensity+envelope. Aspect-corrected so non-square frames still
+    rotate visually circularly."""
+    aspect = ctx.W / ctx.H
+    sway = math.sin(2.0 * math.pi * ctx.motion_speed * ctx.t)
+    angle = sway * ctx.env_t * ctx.intensity * (math.pi / 12.0)  # max ±15°
+    c = math.cos(angle)
+    s = math.sin(angle)
+    xs = ctx.base_grid[0, ..., 0] * aspect
+    ys = ctx.base_grid[0, ..., 1]
+    new_x = (xs * c - ys * s) / aspect
+    new_y = xs * s + ys * c
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = new_x
+    grid[0, ..., 1] = new_y
+    return grid
+
+
+def motion_swirl(ctx: MotionContext) -> torch.Tensor:
+    """Polar twist: rotation amount = (1-r)·intensity·env so center
+    twists hard and edges (r >= 1) don't twist at all. Vortex /
+    whirlpool look. env_t=0 → identity → loop_safe-friendly."""
+    aspect = ctx.W / ctx.H
+    xs = ctx.base_grid[0, ..., 0] * aspect
+    ys = ctx.base_grid[0, ..., 1]
+    r = torch.sqrt(xs ** 2 + ys ** 2)
+    theta = torch.atan2(ys, xs)
+    twist = ctx.env_t * ctx.intensity * (math.pi / 2.0) * (1.0 - r).clamp(min=0.0)
+    new_theta = theta + twist
+    new_x = r * torch.cos(new_theta) / aspect
+    new_y = r * torch.sin(new_theta)
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = new_x
+    grid[0, ..., 1] = new_y
+    return grid
+
+
+def motion_ripple(ctx: MotionContext) -> torch.Tensor:
+    """Concentric radial sine ripple from center."""
+    device = ctx.base_grid.device
+    ys = torch.linspace(-1, 1, ctx.H, device=device).unsqueeze(1).expand(ctx.H, ctx.W)
+    xs = torch.linspace(-1, 1, ctx.W, device=device).unsqueeze(0).expand(ctx.H, ctx.W)
+    aspect = ctx.W / ctx.H
+    r = torch.sqrt((xs * aspect) ** 2 + ys ** 2)
+
+    k = 6.0 * math.pi
+    omega = 2.0 * math.pi * max(ctx.motion_speed * 4.0, 0.5)
+    # Spec: amplitude is 0.015·min(W,H) px → in normalized [-1,1] grid
+    # units (full range = 2 units across the smaller dim) → 0.015 * 2 / 2.
+    A = ctx.env_t * ctx.intensity * 0.015 * 2.0
+
+    dr = A * torch.sin(k * r - omega * ctx.t)
+
+    r_safe = r.clamp(min=1e-3)
+    dx = dr * (xs * aspect) / r_safe / aspect
+    dy = dr * ys / r_safe
+
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = grid[0, ..., 0] + dx
+    grid[0, ..., 1] = grid[0, ..., 1] + dy
+    return grid
+
+
+def motion_slit_scan(ctx: MotionContext) -> torch.Tensor:
+    """Vertical wave: each row offsets by sin(k·y_norm + omega·t) · audio.
+    Looks like a slit-scan time-displacement without needing a frame
+    buffer."""
+    device = ctx.base_grid.device
+    ys = torch.linspace(-1, 1, ctx.H, device=device).unsqueeze(1).expand(ctx.H, ctx.W)
+    k = 4.0 * math.pi
+    omega = 2.0 * math.pi * max(ctx.motion_speed * 2.0, 0.4)
+    A = ctx.env_t * ctx.intensity * 0.04
+
+    dy = A * torch.sin(k * ys - omega * ctx.t)
+    dx = A * 0.5 * torch.cos(k * ys - omega * ctx.t)
+
+    grid = ctx.base_grid.clone()
+    grid[0, ..., 0] = grid[0, ..., 0] + dx
+    grid[0, ..., 1] = grid[0, ..., 1] + dy
+    return grid
+
+
+# Register in MOTION_MODES — order here drives the dropdown order in both
+# Audio React's widget and Audio Studio's sidebar.
+MOTION_MODES["scale_pulse"]  = motion_scale_pulse
+MOTION_MODES["zoom_punch"]   = motion_zoom_punch
+MOTION_MODES["shake"]        = motion_shake
+MOTION_MODES["drift"]        = motion_drift
+MOTION_MODES["rotate_pulse"] = motion_rotate_pulse
+MOTION_MODES["ripple"]       = motion_ripple
+MOTION_MODES["swirl"]        = motion_swirl
+MOTION_MODES["slit_scan"]    = motion_slit_scan
 
 
 # ---------------------------------------------------------------------

@@ -11,10 +11,13 @@ import comfy.model_management
 from ._audio_react_engine import (
     ASPECT_OPTIONS,
     AUDIO_BANDS_HZ,
+    MOTION_MODES,
+    MotionContext,
     audio_envelope,
     bandpass_fft,
     onset_track,
     process_aspect,
+    reset_motion_caches,
 )
 
 # Local list — A4 will register MOTION_MODES in the engine; for now keep this
@@ -86,141 +89,6 @@ class PixaromaAudioReact:
     RETURN_NAMES = ("video_frames", "audio", "fps")
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
-
-    def _motion_scale_pulse(self, base_grid, env_t, intensity):
-        """Uniform breathing zoom. env_t in [0,1], intensity in [0,2]."""
-        s = env_t * intensity * 0.15  # max 30% zoom at intensity=2, env=1
-        return base_grid * (1.0 - s)
-
-    def _motion_zoom_punch(self, base_grid, onset_t, intensity):
-        """Fast zoom-in spike on each transient, ease back."""
-        s = onset_t * intensity * 0.30  # bigger amplitude than scale_pulse
-        return base_grid * (1.0 - s)
-
-    def _motion_shake(self, base_grid, i, total_frames, onset, intensity, fps):
-        """Translation jitter. Random direction per onset, exponential settle."""
-        # Lazily compute (and cache) the dx/dy track on the instance once per
-        # call to generate(). i==0 builds it; later calls reuse.
-        if (not hasattr(self, "_shake_dx_cache")
-                or self._shake_dx_cache.shape[0] != total_frames):
-            g = torch.Generator().manual_seed(0)
-            dx_raw = torch.randn(total_frames, generator=g) * onset.cpu()
-            dy_raw = torch.randn(total_frames, generator=g) * onset.cpu()
-            dx = torch.zeros_like(dx_raw)
-            dy = torch.zeros_like(dy_raw)
-            decay = 0.7
-            for k in range(total_frames):
-                if k == 0:
-                    dx[k] = dx_raw[k]
-                    dy[k] = dy_raw[k]
-                else:
-                    dx[k] = dx[k-1] * decay + dx_raw[k] * (1.0 - decay)
-                    dy[k] = dy[k-1] * decay + dy_raw[k] * (1.0 - decay)
-            self._shake_dx_cache = dx.to(base_grid.device)
-            self._shake_dy_cache = dy.to(base_grid.device)
-
-        amp = intensity * 0.04  # 4% of half-frame at intensity=1, raw=±1
-        # Tensor-only path: avoid .item() to keep the full per-frame loop
-        # GPU-resident on CUDA devices (no GPU↔CPU sync per frame).
-        dx = self._shake_dx_cache[i] * amp
-        dy = self._shake_dy_cache[i] * amp
-
-        grid = base_grid.clone()
-        grid[..., 0] = grid[..., 0] - dx
-        grid[..., 1] = grid[..., 1] - dy
-        return grid
-
-    def _motion_drift(self, base_grid, t, env_t, intensity, motion_speed):
-        """Slow Ken Burns circular pan — sway × bob with audio amplitude.
-        env_t=0 → no drift, so loop_safe collapses to identity at boundaries."""
-        sway = math.sin(2.0 * math.pi * motion_speed * t)
-        bob = math.cos(2.0 * math.pi * motion_speed * t)
-        amp = env_t * intensity * 0.04  # ~4% of half-frame at intensity=1
-        dx = sway * amp
-        dy = bob * amp
-        grid = base_grid.clone()
-        grid[..., 0] = grid[..., 0] - dx
-        grid[..., 1] = grid[..., 1] - dy
-        return grid
-
-    def _motion_rotate_pulse(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        """Image rocks CW↔CCW. sway×env drives angle, max ±15° at full
-        intensity+envelope. Aspect-corrected so non-square frames still
-        rotate visually circularly."""
-        aspect = W / H
-        sway = math.sin(2.0 * math.pi * motion_speed * t)
-        angle = sway * env_t * intensity * (math.pi / 12.0)  # max ±15°
-        c = math.cos(angle)
-        s = math.sin(angle)
-        xs = base_grid[0, ..., 0] * aspect
-        ys = base_grid[0, ..., 1]
-        new_x = (xs * c - ys * s) / aspect
-        new_y = xs * s + ys * c
-        grid = base_grid.clone()
-        grid[0, ..., 0] = new_x
-        grid[0, ..., 1] = new_y
-        return grid
-
-    def _motion_swirl(self, base_grid, env_t, intensity, H, W):
-        """Polar twist: rotation amount = (1-r)·intensity·env so center
-        twists hard and edges (r >= 1) don't twist at all. Vortex /
-        whirlpool look. env_t=0 → identity → loop_safe-friendly."""
-        aspect = W / H
-        xs = base_grid[0, ..., 0] * aspect
-        ys = base_grid[0, ..., 1]
-        r = torch.sqrt(xs ** 2 + ys ** 2)
-        theta = torch.atan2(ys, xs)
-        twist = env_t * intensity * (math.pi / 2.0) * (1.0 - r).clamp(min=0.0)
-        new_theta = theta + twist
-        new_x = r * torch.cos(new_theta) / aspect
-        new_y = r * torch.sin(new_theta)
-        grid = base_grid.clone()
-        grid[0, ..., 0] = new_x
-        grid[0, ..., 1] = new_y
-        return grid
-
-    def _motion_ripple(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        """Concentric radial sine ripple from center."""
-        device = base_grid.device
-        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
-        xs = torch.linspace(-1, 1, W, device=device).unsqueeze(0).expand(H, W)
-        aspect = W / H
-        r = torch.sqrt((xs * aspect) ** 2 + ys ** 2)
-
-        k = 6.0 * math.pi
-        omega = 2.0 * math.pi * max(motion_speed * 4.0, 0.5)
-        # Spec: amplitude is 0.015·min(W,H) px → in normalized [-1,1] grid
-        # units (full range = 2 units across the smaller dim) → 0.015 * 2 / 2.
-        A = env_t * intensity * 0.015 * 2.0
-
-        dr = A * torch.sin(k * r - omega * t)
-
-        r_safe = r.clamp(min=1e-3)
-        dx = dr * (xs * aspect) / r_safe / aspect
-        dy = dr * ys / r_safe
-
-        grid = base_grid.clone()
-        grid[0, ..., 0] = grid[0, ..., 0] + dx
-        grid[0, ..., 1] = grid[0, ..., 1] + dy
-        return grid
-
-    def _motion_slit_scan(self, base_grid, t, env_t, intensity, motion_speed, H, W):
-        """Vertical wave: each row offsets by sin(k·y_norm + omega·t) · audio.
-        Looks like a slit-scan time-displacement without needing a frame
-        buffer."""
-        device = base_grid.device
-        ys = torch.linspace(-1, 1, H, device=device).unsqueeze(1).expand(H, W)
-        k = 4.0 * math.pi
-        omega = 2.0 * math.pi * max(motion_speed * 2.0, 0.4)
-        A = env_t * intensity * 0.04
-
-        dy = A * torch.sin(k * ys - omega * t)
-        dx = A * 0.5 * torch.cos(k * ys - omega * t)
-
-        grid = base_grid.clone()
-        grid[0, ..., 0] = grid[0, ..., 0] + dx
-        grid[0, ..., 1] = grid[0, ..., 1] + dy
-        return grid
 
     def _overlay_glitch(self, frame, onset_t, strength, H, W):
         """RGB shift on transients + scanline swap on big spikes."""
@@ -347,10 +215,7 @@ class PixaromaAudioReact:
                 f"(audio_duration={audio_duration:.3f}s)."
             )
 
-        # Clear motion-mode caches that depend on total_frames.
-        if hasattr(self, "_shake_dx_cache"):
-            del self._shake_dx_cache
-            del self._shake_dy_cache
+        reset_motion_caches()
 
         envelope = audio_envelope(audio, total_frames, fps, device, audio_band, smoothing)
 
@@ -395,24 +260,20 @@ class PixaromaAudioReact:
             env_t = envelope[i].item()
             onset_t = onset[i].item()
 
-            if motion_mode == "scale_pulse":
-                grid = self._motion_scale_pulse(base_grid, env_t, intensity)
-            elif motion_mode == "zoom_punch":
-                grid = self._motion_zoom_punch(base_grid, onset_t, intensity)
-            elif motion_mode == "shake":
-                grid = self._motion_shake(base_grid, i, total_frames, onset, intensity, fps)
-            elif motion_mode == "drift":
-                grid = self._motion_drift(base_grid, t_vec[i].item(), env_t, intensity, motion_speed)
-            elif motion_mode == "rotate_pulse":
-                grid = self._motion_rotate_pulse(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
-            elif motion_mode == "ripple":
-                grid = self._motion_ripple(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
-            elif motion_mode == "swirl":
-                grid = self._motion_swirl(base_grid, env_t, intensity, H, W)
-            elif motion_mode == "slit_scan":
-                grid = self._motion_slit_scan(base_grid, t_vec[i].item(), env_t, intensity, motion_speed, H, W)
-            else:
-                raise ValueError(f"[Pixaroma] Audio React — unhandled motion_mode {motion_mode!r}.")
+            ctx = MotionContext(
+                base_grid=base_grid,
+                env_t=env_t,
+                onset_t=onset_t,
+                t=t_vec[i].item(),
+                intensity=intensity,
+                motion_speed=motion_speed,
+                H=H, W=W,
+                total_frames=total_frames,
+                frame_index=i,
+                fps=fps,
+                onset_arr=onset,
+            )
+            grid = MOTION_MODES[motion_mode](ctx)
 
             warped = F.grid_sample(
                 img_tensor, grid,
