@@ -27,6 +27,18 @@ A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furn
 ### 🎶 Audio React Pixaroma
 Bring still images to life with an audio-reactive image-to-video render — **no extra models needed**, just an image and an audio track. Pick from eight opinionated motion modes (`scale_pulse`, `zoom_punch`, `shake`, `drift`, `rotate_pulse`, `ripple`, `swirl`, `slit_scan`) and stack up to four overlay effects (glitch, bloom, vignette, hue shift). Same audio-band filter, sizing controls, and loop-safe rendering you'd want for music videos and social loops. Pairs with `Save Mp4 Pixaroma` to write the clip directly to MP4 with audio muxed in.
 
+### 🎚️ Audio Studio Pixaroma
+Sibling node to **Audio React Pixaroma** — same effect engine, but with a full live editor. Click **Open Audio Studio** on the node to launch a fullscreen overlay:
+
+- **WebGL preview canvas** — renders effects in real time as you scrub the audio. Tweak motion mode / intensity / overlay strengths and watch the result update instantly, no workflow run required.
+- **Tabbed sidebar** — Motion / Overlays / Audio / Output groups all 16 effect controls.
+- **Transport bar** — play / pause / scrub / frame stepper, with the audio envelope shown as an inline sparkline so you can scrub straight to a beat.
+- **Keyboard shortcuts** — Space to play/pause, arrows to step a frame, Shift+arrows for one-second jumps, Ctrl+Z / Ctrl+Y for ~50 levels of param undo.
+- **Image + Audio sources** — connect an upstream `IMAGE` / `AUDIO` input, or load files from inside the editor (drag-drop on canvas or pick-file via the source pills). Inline files survive workflow reloads.
+- **Same engine as Audio React** — the workflow renders identical frames in Python, ready for `Save Mp4 Pixaroma`. Use Audio React for fast scripted runs; use Audio Studio when you want to dial in the look interactively.
+
+Requires WebGL2 (universal in modern browsers since 2017).
+
 ### ✨ Image Composer
 Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
 ![Image Composer — Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg)
