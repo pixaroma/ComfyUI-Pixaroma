@@ -183,8 +183,8 @@ export class AudioStudioEditor {
 
     const transport = document.createElement("div");
     transport.className = "pix-as-transport";
-    transport.textContent = "(transport bar — lands in Milestone G)";
     this.transportEl = transport;
+    // Mixin lives in transport.mjs — built after overlay is in DOM (see below).
 
     canvasArea.appendChild(canvasHost);
     canvasArea.appendChild(transport);
@@ -208,6 +208,11 @@ export class AudioStudioEditor {
     // getBoundingClientRect() returns real dimensions). Mixin lives in
     // render.mjs.
     this._initRenderer();
+
+    // Build transport bar (mixin in transport.mjs). Needs canvasHost-adjacent
+    // DOM in place so getBoundingClientRect() resolves for the sparkline.
+    this._buildTransport();
+    this._refreshTransport();
 
     // TEMP — remove in H1
     // Load the parity test image so we have something to render until
@@ -367,6 +372,11 @@ export class AudioStudioEditor {
       window.removeEventListener("keydown", this._keyHandler, true);
       this._keyHandler = null;
     }
+    // Stop any active playback + detach window-level scrub listeners
+    // before the overlay leaves the DOM (otherwise they leak the closure
+    // back into a removed overlay).
+    this._pausePlayback?.();
+    this._detachTransportListeners?.();
     // Tear down GL resources before the overlay (and its canvas) leaves
     // the DOM. Mixin lives in render.mjs.
     this._destroyRenderer?.();
@@ -408,8 +418,13 @@ AudioStudioEditor.prototype._recomputeAudio = function () {
     this._audioBuffer, this.cfg.fps, this.cfg.smoothing, this.cfg.loop_safe,
   );
   if (totalFrames > 0) {
+    // Cache the envelope so transport.mjs's _drawSparkline can read it
+    // (avoids passing it in or recomputing).
+    this._envArray = envelope;
     this._setAudioTextures(envelope, onset, totalFrames);
     this._currentFrame = 0;
+    this._refreshTransport?.();
+    this._drawSparkline?.();
     this._render();
   }
 };
