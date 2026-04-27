@@ -49,6 +49,20 @@ _MOTION_MODES = [
 ]
 
 
+def _bandpass_fft(waveform, sample_rate, low_hz, high_hz):
+    """FFT-based bandpass on the last dim. waveform: [..., samples]."""
+    n = waveform.shape[-1]
+    spec = torch.fft.rfft(waveform, dim=-1)
+    freqs = torch.fft.rfftfreq(n, d=1.0 / sample_rate, device=waveform.device)
+    mask = torch.ones_like(freqs)
+    if low_hz is not None:
+        mask = mask * (freqs >= low_hz).float()
+    if high_hz is not None:
+        mask = mask * (freqs <= high_hz).float()
+    spec = spec * mask
+    return torch.fft.irfft(spec, n=n, dim=-1)
+
+
 class PixaromaAudioReact:
     """Audio-reactive image-to-video without depth. One opinionated node:
     pick a motion mode, optionally stack overlay effects, get an animated
@@ -104,6 +118,44 @@ class PixaromaAudioReact:
     RETURN_NAMES = ("video_frames", "audio", "fps")
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
+
+    def _audio_envelope(self, audio, target_frames, fps, device, audio_band, smoothing):
+        """Returns a [target_frames] tensor in [0, 1] — per-frame audio energy."""
+        waveform = audio["waveform"]
+        sample_rate = audio["sample_rate"]
+        if waveform.shape[1] > 1:
+            waveform = waveform.mean(dim=1, keepdim=True)
+
+        if audio_band != "full":
+            low_hz, high_hz = _AUDIO_BANDS_HZ[audio_band]
+            waveform = _bandpass_fft(waveform, sample_rate, low_hz, high_hz)
+
+        total_samples = waveform.shape[-1]
+        samples_per_frame = sample_rate // fps
+        required_samples = target_frames * samples_per_frame
+        if total_samples < required_samples:
+            repeats = math.ceil(required_samples / total_samples)
+            waveform = waveform.repeat(1, 1, repeats)
+        waveform = waveform[:, :, :required_samples]
+        waveform = waveform.view(-1, samples_per_frame)
+
+        rms = torch.sqrt(torch.mean(waveform ** 2, dim=1))
+        rms_min, rms_max = rms.min(), rms.max()
+        if rms_max > rms_min:
+            rms = (rms - rms_min) / (rms_max - rms_min)
+        else:
+            rms = torch.zeros_like(rms)
+
+        sw = max(1, int(smoothing))
+        if sw % 2 == 0:
+            sw += 1
+        if sw == 1:
+            return rms.to(device)
+        pad = sw // 2
+        kernel = torch.ones(1, 1, sw, device=rms.device) / sw
+        rms_padded = F.pad(rms.unsqueeze(0).unsqueeze(0), (pad, pad), mode="replicate")
+        rms_smoothed = F.conv1d(rms_padded, kernel).view(-1)
+        return rms_smoothed.to(device)
 
     def generate(self, image, audio, aspect_ratio, custom_width, custom_height,
                  motion_mode, intensity, audio_band, motion_speed, smoothing,
