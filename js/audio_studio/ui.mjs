@@ -303,7 +303,9 @@ AudioStudioEditor.prototype._buildSidebar = function () {
     { title: "Motion",   build: this._buildMotionSection,
       action: { icon: "reset.svg", title: "Reset Motion sliders to defaults",
                 onClick: () => this._resetMotionDefaults() } },
-    { title: "Overlays", build: this._buildOverlaysSection },
+    { title: "Overlays", build: this._buildOverlaysSection,
+      action: { icon: "reset.svg", title: "Reset Overlays to defaults (all off)",
+                onClick: () => this._resetOverlaysDefaults() } },
     { title: "Audio",    build: this._buildAudioSection },
     { title: "Output",   build: this._buildOutputSection },
   ];
@@ -350,6 +352,30 @@ AudioStudioEditor.prototype._resetMotionDefaults = function () {
     "motion_direction",
     "shake_axis", "ripple_density", "slit_density", "glitch_bands",
     "wave_density", "pixelate_blocks", "squeeze_axis",
+  ];
+  let changed = false;
+  for (const k of keys) {
+    if (d[k] !== undefined && this.cfg[k] !== d[k]) {
+      this.cfg[k] = d[k];
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  this._snapForUndo(true);
+  this._buildSidebar();
+  this._refreshSaveBtnState();
+  this._onCfgChanged();
+};
+
+/**
+ * Reset all overlay sliders to their DEFAULT_CFG values (which are now
+ * all 0 — overlays default off). Same shape as _resetMotionDefaults.
+ */
+AudioStudioEditor.prototype._resetOverlaysDefaults = function () {
+  const d = this._defaults || {};
+  const keys = [
+    "glitch_strength", "bloom_strength", "vignette_strength", "hue_shift_strength",
+    "cinematic_strength", "scanline_strength", "grain_strength",
   ];
   let changed = false;
   for (const k of keys) {

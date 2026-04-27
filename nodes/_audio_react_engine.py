@@ -81,7 +81,7 @@ class Params:
     smoothing: int = 5
     loop_safe: bool = True
     fps: int = 24
-    glitch_strength: float = 0.6
+    glitch_strength: float = 0.0
     bloom_strength: float = 0.0
     vignette_strength: float = 0.0
     hue_shift_strength: float = 0.0
@@ -167,6 +167,8 @@ class OverlayContext:
     H: int
     W: int
     device: torch.device
+    frame_index: int = 0   # for overlays that need a deterministic per-frame seed
+    t: float = 0.0         # seconds since clip start, for steady time-based motion
 
 
 def params_from_dict(cfg: dict) -> Params:
@@ -773,27 +775,30 @@ def overlay_hue_shift(ctx: OverlayContext) -> torch.Tensor:
 
 
 def overlay_scanlines(ctx: OverlayContext) -> torch.Tensor:
-    """CRT-style horizontal scanlines that pulse in darkness with the audio
-    envelope. Density is fixed at ~200 lines so the look stays recognizable
-    across resolutions; tune via overall strength slider."""
-    if ctx.env_t <= 0.001 or ctx.strength <= 0:
+    """CRT-style horizontal scanlines. Constant darkness controlled by
+    strength alone — NOT audio-reactive (treat as a steady look effect).
+    The lines drift slowly downward so the overlay doesn't read as a
+    static mask but as a CRT with imperfect vertical hold."""
+    if ctx.strength <= 0:
         return ctx.frame
+    drift = ctx.t * 0.05  # ~10 lines per second downward at 200-line density
     ys = torch.linspace(0.0, 1.0, ctx.H, device=ctx.device).unsqueeze(1).unsqueeze(2)
-    line = torch.sin(ys * 200.0 * math.pi)
+    line = torch.sin((ys + drift) * 200.0 * math.pi)
     line = ((line - 0.7) / 0.3).clamp(0.0, 1.0)
-    darkness = line * ctx.env_t * ctx.strength * 0.4
+    darkness = line * ctx.strength * 0.4
     return (ctx.frame * (1.0 - darkness)).clamp(0.0, 1.0)
 
 
 def overlay_grain(ctx: OverlayContext) -> torch.Tensor:
-    """Animated film grain — fresh per-pixel noise per frame, modulated by
-    the audio envelope. torch.rand here is fine: grain is meant to be
-    non-deterministic and the WebGL preview uses a hash, so they differ
-    visually anyway (covered by the approximate-preview carve-out)."""
-    if ctx.env_t <= 0.001 or ctx.strength <= 0:
+    """Steady film grain. Constant intensity controlled by strength —
+    NOT audio-reactive. Per-frame seed is deterministic (frame_index)
+    so re-renders of the same workflow produce identical grain pattern."""
+    if ctx.strength <= 0:
         return ctx.frame
-    noise = (torch.rand(ctx.H, ctx.W, 1, device=ctx.device) - 0.5) * 2.0
-    grain = noise * ctx.env_t * ctx.strength * 0.15
+    g = torch.Generator(device="cpu").manual_seed(ctx.frame_index * 7919 + 13)
+    noise = (torch.rand(ctx.H, ctx.W, 1, generator=g) - 0.5) * 2.0
+    noise = noise.to(ctx.device)
+    grain = noise * ctx.strength * 0.10
     return (ctx.frame + grain).clamp(0.0, 1.0)
 
 
@@ -989,6 +994,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
                 frame = ov_fn(OverlayContext(
                     frame=frame, env_t=env_t, onset_t=onset_t,
                     strength=s, H=H, W=W, device=device,
+                    frame_index=i, t=t_vec[i].item(),
                 ))
 
         frames.append(frame.cpu())

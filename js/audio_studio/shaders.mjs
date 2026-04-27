@@ -440,18 +440,25 @@ void main() {
         col = hueRotate(col, angle);
     }
 
-    // ----- SCANLINES — CRT horizontal stripes pulsing with envelope -----
-    if (u_scanline_strength > 0.0 && env_t > 0.001) {
-        float line = sin(v_uv.y * 200.0 * 3.14159265359);
+    // ----- SCANLINES — steady CRT stripes that drift slowly downward -----
+    // Not audio-reactive: treat scanlines as a constant look effect, with
+    // a slow vertical drift so the overlay reads as a CRT with imperfect
+    // vertical hold rather than a static mask. ~10 lines/sec at the 200-
+    // line density, matches the engine's drift speed.
+    if (u_scanline_strength > 0.0) {
+        float drift = u_t * 0.05;
+        float line = sin((v_uv.y + drift) * 200.0 * 3.14159265359);
         line = clamp((line - 0.7) / 0.3, 0.0, 1.0);
-        float darkness = line * env_t * u_scanline_strength * 0.4;
+        float darkness = line * u_scanline_strength * 0.4;
         col *= 1.0 - darkness;
     }
 
-    // ----- FILM GRAIN — per-pixel hash noise modulated by envelope -----
-    if (u_grain_strength > 0.0 && env_t > 0.001) {
+    // ----- FILM GRAIN — steady per-pixel noise (not audio-reactive) -----
+    // Hash seeded by uv + frame_index so the pattern shifts every frame
+    // (visible texture motion) but stays the same per-frame across runs.
+    if (u_grain_strength > 0.0) {
         float n = hash12(v_uv * u_resolution + float(u_frame_index)) - 0.5;
-        col += vec3(n * env_t * u_grain_strength * 0.30);
+        col += vec3(n * u_grain_strength * 0.20);
     }
 
     // ----- CINEMATIC — teal/orange grade + letterbox bars -----

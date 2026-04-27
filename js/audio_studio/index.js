@@ -35,7 +35,8 @@ const DEFAULT_CFG = {
   smoothing: 5,
   loop_safe: true,
   fps: 24,
-  glitch_strength: 0.6,
+  // All overlays default off — user enables what they want via sliders.
+  glitch_strength: 0.0,
   bloom_strength: 0.0,
   vignette_strength: 0.0,
   hue_shift_strength: 0.0,
@@ -139,7 +140,11 @@ app.registerExtension({
 
     node.addWidget("button", "Open Audio Pulse", null, () => {
       if (isEditorOpen(node)) return; // guard double-open
-      const cfg = node.properties[STATE_KEY] || { ...DEFAULT_CFG };
+      // Forward-compat: spread DEFAULT_CFG under the saved state so any
+      // keys added after this workflow was last saved get sane defaults
+      // instead of leaving sliders blank. Saved values still win.
+      const saved = node.properties[STATE_KEY] || {};
+      const cfg = { ...DEFAULT_CFG, ...saved };
       const editor = new AudioStudioEditor(node, cfg, DEFAULT_CFG);
       node._audioStudioEditor = editor;
 
