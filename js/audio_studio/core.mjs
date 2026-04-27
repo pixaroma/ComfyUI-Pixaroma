@@ -215,7 +215,10 @@ export class AudioStudioEditor {
     testImg.crossOrigin = "Anonymous";
     testImg.onload = () => this._setImage?.(testImg);
     testImg.onerror = () => console.warn("[Pixaroma] Audio Studio test image fetch failed");
-    testImg.src = "/extensions/ComfyUI-Pixaroma/assets/audio_studio_parity/test_image.png";
+    // Note: WEB_DIRECTORY only exposes ./js at /extensions/<plugin>/, NOT
+    // ./assets. Pixaroma serves assets via the /pixaroma/assets/.../ route
+    // family in server_routes.py.
+    testImg.src = "/pixaroma/assets/audio_studio_parity/test_image.png";
 
     // Top-level keydown handler — intercept Esc and Ctrl+S.
     this._keyHandler = (e) => {
