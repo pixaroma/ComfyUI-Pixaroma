@@ -81,9 +81,11 @@ def _write_wav_pcm16(path, waveform, sample_rate):
 
 
 class PixaromaSaveMp4:
-    """Encode an IMAGE batch (and optional AUDIO) to a single H.264 mp4 in
-    ComfyUI's output/ folder. No conflict with VHS Video Combine — separate
-    class, separate category, fewer knobs, opinionated defaults."""
+    """Encode an IMAGE batch (and optional AUDIO) to a single H.264 mp4.
+    save_mode=save writes to ComfyUI's output/ folder; save_mode=preview
+    writes to ComfyUI's temp/ folder (auto-cleared on restart) so users can
+    iterate without cluttering output/. No conflict with VHS Video Combine —
+    separate class, separate category, fewer knobs, opinionated defaults."""
 
     # Hardcoded encoder defaults — exposed as widgets earlier, removed for a
     # cleaner UI. Bring them back to INPUT_TYPES if a workflow needs control.
@@ -98,7 +100,9 @@ class PixaromaSaveMp4:
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
                     "tooltip": "Output frame rate. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames."}),
                 "filename_prefix": ("STRING", {"default": "Video",
-                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Saved into ComfyUI's output/ folder."}),
+                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4)."}),
+                "save_mode": (["save", "preview"], {"default": "save",
+                    "tooltip": "save: write to ComfyUI's output/ folder, kept across restarts. preview: write to ComfyUI's temp/ folder, auto-cleared on restart — use while iterating so you don't clutter output/. The in-node video preview works the same in both modes."}),
                 "trim_to_audio": ("BOOLEAN", {"default": True,
                     "tooltip": "When audio is connected, end the video at the audio's length (uses ffmpeg -shortest). Off = keep all video frames even if longer than audio."}),
             },
@@ -112,7 +116,7 @@ class PixaromaSaveMp4:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"
 
-    def save(self, video_frames, fps, filename_prefix, trim_to_audio, audio=None):
+    def save(self, video_frames, fps, filename_prefix, save_mode, trim_to_audio, audio=None):
         if video_frames is None or video_frames.shape[0] == 0:
             raise ValueError("[Pixaroma] Save Mp4 — input video_frames batch is empty.")
 
@@ -138,7 +142,15 @@ class PixaromaSaveMp4:
         # our own counter scan because Comfy's built-in one assumes the
         # `<prefix>_<N>_.<ext>` trailing-underscore convention and silently
         # returns 1 for our cleaner `<prefix>_<N>.mp4` naming.
-        out_dir = folder_paths.get_output_directory()
+        # save_mode picks the destination root: output/ for keepers, temp/
+        # for ad-hoc previews (auto-cleared on ComfyUI restart). The JS
+        # reads entry.type, so the in-node <video> works for both via /view.
+        if save_mode == "preview":
+            out_dir = folder_paths.get_temp_directory()
+            file_type = "temp"
+        else:
+            out_dir = folder_paths.get_output_directory()
+            file_type = "output"
         full_folder, fname, _ignored, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, out_dir, W, H,
         )
@@ -198,7 +210,7 @@ class PixaromaSaveMp4:
                 cmd += ["-shortest"]
         cmd += [out_path]
 
-        print(f"[Pixaroma] Save Mp4 — writing {n_frames} frames @ {fps_int}fps "
+        print(f"[Pixaroma] Save Mp4 [{save_mode}] — writing {n_frames} frames @ {fps_int}fps "
               f"({W}x{H}, crf={crf}, {pix_fmt}"
               f"{', +audio' if temp_audio_path else ''}) -> {out_filename}")
 
@@ -259,7 +271,10 @@ class PixaromaSaveMp4:
                 except OSError:
                     pass
 
-        print(f"[Pixaroma] Save Mp4 — saved {out_path}")
+        if save_mode == "preview":
+            print(f"[Pixaroma] Save Mp4 — preview written to temp/ (auto-cleared on restart): {out_path}")
+        else:
+            print(f"[Pixaroma] Save Mp4 — saved {out_path}")
 
         # Two output keys so the file is visible BOTH in ComfyUI's standard
         # output panel and in our in-node <video> preview (js/save_mp4/index.js
@@ -267,7 +282,7 @@ class PixaromaSaveMp4:
         entry = {
             "filename": out_filename,
             "subfolder": subfolder,
-            "type": "output",
+            "type": file_type,
             "format": "video/mp4",
         }
         return {"ui": {"images": [entry], "pixaroma_videos": [entry]}}
