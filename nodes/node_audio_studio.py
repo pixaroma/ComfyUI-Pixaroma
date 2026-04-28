@@ -118,7 +118,7 @@ class PixaromaAudioStudio:
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT")
     RETURN_NAMES = ("video_frames", "audio", "fps")
     FUNCTION = "generate"
-    CATEGORY = "\U0001f451 Pixaroma"
+    CATEGORY = "👑 Pixaroma"
 
     def generate(self, studio_json="{}", image=None, audio=None):
         try:
