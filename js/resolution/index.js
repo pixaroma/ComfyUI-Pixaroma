@@ -17,12 +17,15 @@ function injectCSS() {
       flex-direction: column;
       gap: 8px;
     }
+    /* 6-col grid lets us mix 1/3-width ratio chips (span 2) with 1/2-width
+       custom chips (span 3) on the same row. */
     .pix-res-chips {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 5px;
     }
     .pix-res-chip {
+      grid-column: span 2; /* default = 1/3 width (3 chips per row) */
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
@@ -40,7 +43,7 @@ function injectCSS() {
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-res-chip.span-3 { grid-column: span 3; }
+    .pix-res-chip.span-half { grid-column: span 3; } /* 1/2 width — used by Custom Ratio + Custom Resolution */
     .pix-res-list {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -250,7 +253,11 @@ injectCSS();
 // NODE_H sized so all 8 preset rows fit at 100% browser zoom with NO
 // scrollbar — exact content breakdown (in pixels of widget area):
 //   root padding (8 top + 8 bottom) ............... 16
-//   chip grid (3 rows × 26 + 2 × 5 gap) ........... 88
+//   chip grid (4 rows × 26 + 3 × 5 gap) ............ 119
+//     ├─ row 1: 1:1 / 16:9 / 9:16
+//     ├─ row 2: 2:1 / 3:2 / 2:3
+//     ├─ row 3: 4:3 / 3:4 / 4:5
+//     └─ row 4: Custom Ratio / Custom Resolution (half-width chips)
 //   gap between chips and list ..................... 8
 //   size list ..................................... 233
 //     ├─ borders (1 top + 1 bottom) ........  2
@@ -258,17 +265,15 @@ injectCSS();
 //     └─ inter-row borders (7 × 1) .........  7
 //   DOM widget `margin: 4` (top + bottom) ........... 8
 //                                                  ----
-//   widget content total ......................... 353
+//   widget content total ......................... 384
 //   chrome (titlebar + port row + frame margins) ... 46
 //                                                  ----
-//   NODE_H ....................................... 399
+//   NODE_H ....................................... 430
 //
-// 404 chosen with a 5-px safety margin for sub-pixel rounding, font metric
-// variance across browsers, and the focus-state border swap. Earlier 336/384
-// values both produced a thin scrollbar because they undercounted the 7
-// inter-row borders and the addDOMWidget margin.
+// 435 chosen with a 5-px safety margin for sub-pixel rounding, font metric
+// variance across browsers, and the focus-state border swap.
 const NODE_W = 240;
-const NODE_H = 404;
+const NODE_H = 435;
 
 // Python uses `hidden` inputs (no widget, no slot dot). State lives on
 // node.properties[STATE_PROP] which LiteGraph serializes natively in the
@@ -329,12 +334,19 @@ const CHIPS = [
   { id: "2:1",    label: "2:1" },
   { id: "3:2",    label: "3:2" },
   { id: "2:3",    label: "2:3" },
-  { id: "custom", label: "Custom Resolution", span3: true },
+  { id: "4:3",    label: "4:3" },
+  { id: "3:4",    label: "3:4" },
+  { id: "4:5",    label: "4:5" },
+  { id: "custom_ratio", label: "Custom Ratio", spanHalf: true },
+  { id: "custom",       label: "Custom Resolution", spanHalf: true },
 ];
 
 // Sizes per ratio — 8 entries each. The first two of 16:9/9:16/2:1 are the
 // de facto AI-video standards (Wan 2.2, CogVideoX, AnimateDiff) and aren't
 // mathematically exact for the ratio (e.g. 832×480 ≈ 1.733 vs 16:9 = 1.778).
+// 4:3, 3:4, 4:5 use strict ratios with /16-aligned dimensions (SDXL-friendly).
+// 4:5 includes 1152×1440 — the AI-friendly equivalent of Instagram portrait
+// (native 1080×1350), a frequent ask for social-media workflows.
 const SIZES = {
   "1:1":  [[512,512],[768,768],[1024,1024],[1280,1280],[1328,1328],[1408,1408],[1536,1536],[2048,2048]],
   "16:9": [[832,480],[1280,720],[1344,768],[1536,864],[1600,896],[1664,928],[1792,1008],[1920,1088]],
@@ -342,6 +354,9 @@ const SIZES = {
   "2:1":  [[512,256],[1024,512],[1280,640],[1536,768],[1600,800],[1792,896],[1920,960],[2048,1024]],
   "3:2":  [[768,512],[1024,680],[1152,768],[1344,896],[1536,1024],[1632,1088],[1728,1152],[1920,1280]],
   "2:3":  [[512,768],[680,1024],[768,1152],[896,1344],[1024,1536],[1088,1632],[1152,1728],[1280,1920]],
+  "4:3":  [[512,384],[640,480],[768,576],[1024,768],[1280,960],[1408,1056],[1600,1200],[1920,1440]],
+  "3:4":  [[384,512],[480,640],[576,768],[768,1024],[960,1280],[1056,1408],[1200,1600],[1440,1920]],
+  "4:5":  [[512,640],[640,800],[768,960],[832,1040],[1024,1280],[1152,1440],[1280,1600],[1536,1920]],
 };
 
 // Default size auto-selected when the user clicks a ratio chip. Picked to be
@@ -353,6 +368,9 @@ const DEFAULT_PER_RATIO = {
   "2:1":  [1280, 640],
   "3:2":  [1152, 768],
   "2:3":  [768, 1152],
+  "4:3":  [1024, 768],
+  "3:4":  [768, 1024],
+  "4:5":  [1024, 1280], // SDXL-friendly portrait + Instagram-portrait equivalent
 };
 
 function gcd(a, b) {
@@ -364,7 +382,7 @@ function gcd(a, b) {
 function ratioLabel(w, h) {
   const g = gcd(w, h);
   const rw = w / g, rh = h / g;
-  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3"];
+  const known = ["1:1","16:9","9:16","2:1","1:2","3:2","2:3","4:3","3:4","4:5","5:4"];
   const simple = `${rw}:${rh}`;
   if (known.includes(simple)) return simple;
   const r = w / h;
@@ -383,12 +401,14 @@ function renderChipGrid(state) {
   wrap.className = "pix-res-chips";
   for (const c of CHIPS) {
     const el = document.createElement("div");
-    el.className = "pix-res-chip" + (c.span3 ? " span-3" : "");
+    el.className = "pix-res-chip" + (c.spanHalf ? " span-half" : "");
     el.textContent = c.label;
     el.dataset.chipId = c.id;
     const isActive =
       (c.id === "custom" && state.mode === "custom") ||
-      (c.id !== "custom" && state.mode === "preset" && state.ratio === c.id);
+      (c.id === "custom_ratio" && state.mode === "custom_ratio") ||
+      (c.id !== "custom" && c.id !== "custom_ratio" &&
+       state.mode === "preset" && state.ratio === c.id);
     if (isActive) el.classList.add("active");
     wrap.appendChild(el);
   }
