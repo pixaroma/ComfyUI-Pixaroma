@@ -56,6 +56,60 @@ const EXPAND_DIM_COLOR = "#888";
 // keydown listener can route arrow-key navigation to the right node.
 let _activePreviewNode = null;
 
+// Shared click handler — called from both the strip widget's mouse()
+// callback (for clicks inside computeSize bounds) AND nodeType.onMouseDown
+// (for clicks in the extended-draw area beyond computeSize). Returns true
+// if the click was consumed, false otherwise.
+function handleStripClick(node, lx, ly) {
+  const cells = node._pixaromaCells;
+  if (!cells) return false;
+
+  // Expanded mode: X closes; click on image advances to next frame.
+  if (cells.expanded) {
+    const cr = cells.closeRect;
+    const ir = cells.imgRect;
+    if (cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h) {
+      node._pixaromaExpanded = false;
+      node.properties = node.properties || {};
+      node.properties.pixaromaExpanded = false;
+      if (_activePreviewNode === node) _activePreviewNode = null;
+      node.setDirtyCanvas(true, true);
+      return true;
+    }
+    if (ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h) {
+      const frames = node._pixaromaFrames || [];
+      if (frames.length > 1) {
+        const cur = node._pixaromaSelectedFrame ?? 0;
+        const next = (cur + 1) % frames.length;
+        node._pixaromaSelectedFrame = next;
+        node.properties = node.properties || {};
+        node.properties.pixaromaSelected = next;
+        _activePreviewNode = node;
+        node.setDirtyCanvas(true, true);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  // Strip mode: click thumbnail to select it AND expand it inline.
+  if (cells.slots?.length) {
+    for (const s of cells.slots) {
+      if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
+        node._pixaromaSelectedFrame = s.idx;
+        node._pixaromaExpanded = true;
+        node.properties = node.properties || {};
+        node.properties.pixaromaSelected = s.idx;
+        node.properties.pixaromaExpanded = true;
+        _activePreviewNode = node;
+        node.setDirtyCanvas(true, true);
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 // ---- geometry (widget-local coords) ----
 function computeButtonRects(widgetWidth, stripY) {
   const gap = BTN_GAP;
@@ -581,61 +635,17 @@ function createStripWidget() {
         }
       }
     },
-    // Click handling — LiteGraph routes clicks to widget.mouse() based on
-    // widget bounds (computed from `last_y` + `computedHeight`), and STOPS
-    // there. Returning false from a widget hit doesn't fall through to
-    // node.onMouseDown — so all click logic must live here.
+    // Click handling. LiteGraph routes clicks to widget.mouse() ONLY when
+    // the click falls within the widget's computeSize bounds. Our strip
+    // widget reports a constant 220 minHeight (matches native), but draws
+    // at `node.size[1] - y` (taller when user resizes node bigger) — so
+    // clicks in the extended-draw area never reach widget.mouse(). The
+    // shared handleStripClick helper is also called from node.onMouseDown
+    // below (which fires when no widget claimed the click) so clicks
+    // anywhere over visible thumbnails work at any node size.
     mouse(event, pos, node) {
       if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
-      const cells = node._pixaromaCells;
-      if (!cells) return false;
-      const lx = pos[0];
-      const ly = pos[1];
-
-      // Expanded mode: X closes; click on image advances to next frame.
-      if (cells.expanded) {
-        const cr = cells.closeRect;
-        const ir = cells.imgRect;
-        if (cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h) {
-          node._pixaromaExpanded = false;
-          node.properties = node.properties || {};
-          node.properties.pixaromaExpanded = false;
-          if (_activePreviewNode === node) _activePreviewNode = null;
-          node.setDirtyCanvas(true, true);
-          return true;
-        }
-        if (ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h) {
-          const frames = node._pixaromaFrames || [];
-          if (frames.length > 1) {
-            const cur = node._pixaromaSelectedFrame ?? 0;
-            const next = (cur + 1) % frames.length;
-            node._pixaromaSelectedFrame = next;
-            node.properties = node.properties || {};
-            node.properties.pixaromaSelected = next;
-            _activePreviewNode = node;
-            node.setDirtyCanvas(true, true);
-          }
-          return true;
-        }
-        return false;
-      }
-
-      // Strip mode: click thumbnail to select it AND expand it inline.
-      if (cells.slots?.length) {
-        for (const s of cells.slots) {
-          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
-            node._pixaromaSelectedFrame = s.idx;
-            node._pixaromaExpanded = true;
-            node.properties = node.properties || {};
-            node.properties.pixaromaSelected = s.idx;
-            node.properties.pixaromaExpanded = true;
-            _activePreviewNode = node;
-            node.setDirtyCanvas(true, true);
-            return true;
-          }
-        }
-      }
-      return false;
+      return handleStripClick(node, pos[0], pos[1]);
     },
   };
 }
@@ -680,6 +690,24 @@ app.registerExtension({
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+    };
+
+    // Node-level click fallback — fires when LiteGraph's widget hit-test
+    // didn't match (i.e. click in the extended-draw area below the strip
+    // widget's computeSize bound). Re-runs handleStripClick against the
+    // same _pixaromaCells.slots that the widget would test.
+    const origMouseDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function (e, localPos, graphCanvas) {
+      if (handleStripClick(this, localPos[0], localPos[1])) return true;
+      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
+    };
+
+    // Clear _activePreviewNode if THIS node is being removed, so the
+    // keydown listener doesn't hold a dangling reference to a deleted node.
+    const origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      if (_activePreviewNode === this) _activePreviewNode = null;
+      return origRemoved ? origRemoved.apply(this, arguments) : undefined;
     };
 
     // Node-level hover tracking. The widget's own `mouse` callback does not
