@@ -326,6 +326,7 @@ const IMG_STRIP_MIN_H = 180;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
+const IMG_CELL_MAX_H = 480;          // cap cell height so strip doesn't blow up on wide resizes
 const BADGE_PAD = 4;                 // px inside the counter badge
 const BADGE_H = 16;                  // px tall badge
 const BADGE_FONT = "11px sans-serif";
@@ -340,19 +341,31 @@ function layoutImgStrip(widgetWidth, widgetY, frames) {
   if (!n) return { rects: [], totalH: IMG_STRIP_MIN_H };
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
   const cellGap = IMG_STRIP_GAP;
-  const cellW = Math.max(40, Math.floor((innerW - cellGap * (n - 1)) / n));
+  const fitW = Math.max(40, Math.floor((innerW - cellGap * (n - 1)) / n));
   // Cell aspect: use first loaded frame's natural aspect if available
   const first = frames[0]?.img;
   let aspect = 1;
   if (first?.complete && first.naturalWidth > 0) {
     aspect = first.naturalWidth / first.naturalHeight;
   }
-  const cellH = Math.max(40, Math.round(cellW / aspect));
+  // Cap cellH at IMG_CELL_MAX_H. If aspect-driven height would exceed it,
+  // scale cellW DOWN to preserve aspect ratio (so the image isn't distorted
+  // and the strip doesn't grow taller than the cap on wide resizes).
+  let cellW = fitW;
+  let cellH = Math.max(40, Math.round(cellW / aspect));
+  if (cellH > IMG_CELL_MAX_H) {
+    cellH = IMG_CELL_MAX_H;
+    cellW = Math.max(40, Math.round(cellH * aspect));
+  }
   const totalH = cellH + 2 * IMG_STRIP_V_PAD;
+  // Centre the row of cells within innerW (left padding may exceed SIDE_PAD
+  // when cells were scaled down to fit IMG_CELL_MAX_H).
+  const totalCellsW = cellW * n + cellGap * (n - 1);
+  const xStart = SIDE_PAD + Math.max(0, Math.floor((innerW - totalCellsW) / 2));
   const rects = [];
   for (let i = 0; i < n; i++) {
     rects.push({
-      x: SIDE_PAD + i * (cellW + cellGap),
+      x: xStart + i * (cellW + cellGap),
       y: widgetY + IMG_STRIP_V_PAD,
       w: cellW,
       h: cellH,
@@ -455,11 +468,21 @@ app.registerExtension({
     };
 
     // Clamp minimum size on manual resize (Compare pattern).
+    // Also re-fit node height after a width drag — when the user makes the
+    // node wider, the strip's cell width grows (and its aspect-driven cell
+    // height grows with it). Without re-fit, the strip overflows the node
+    // body. fitNodeToWidgets only GROWS height, never shrinks, so the user
+    // can still manually shrink the node below the auto-fit size.
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (this._pixaromaFrames?.length) {
+        // Defer to next frame — calling setSize from inside onResize can
+        // fight the user's drag. RAF lets the drag commit first.
+        requestAnimationFrame(() => fitNodeToWidgets(this));
+      }
     };
 
     // Node-level click handler for the image strip. The widget's own
