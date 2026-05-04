@@ -449,8 +449,15 @@ function createStripWidget() {
           w: EXPAND_CLOSE_SIZE,
           h: EXPAND_CLOSE_SIZE,
         };
+        // Hover detection — read canvas-global mouse, convert to node-local.
+        // LiteGraph redraws on pointermove so this re-evaluates on every move.
+        const cm = app.canvas?.graph_mouse;
+        const mx = cm ? cm[0] - node.pos[0] : -1;
+        const my = cm ? cm[1] - node.pos[1] : -1;
+        const hoverClose = mx >= closeRect.x && mx <= closeRect.x + closeRect.w
+                        && my >= closeRect.y && my <= closeRect.y + closeRect.h;
         ctx.save();
-        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillStyle = hoverClose ? "rgba(255,103,68,0.95)" : "rgba(0,0,0,0.7)";
         ctx.beginPath();
         ctx.roundRect(visualX, visualY, EXPAND_CLOSE_VISUAL, EXPAND_CLOSE_VISUAL, 3);
         ctx.fill();
@@ -552,11 +559,62 @@ function createStripWidget() {
         }
       }
     },
-    // Click handling lives in the node-level onMouseDown override below
-    // (Vue Compat: widget.mouse() doesn't reliably fire for non-first
-    // custom widgets — buttons widget works because it's first; strip
-    // widget needs node-level routing).
-    mouse() { return false; },
+    // Click handling — LiteGraph routes clicks to widget.mouse() based on
+    // widget bounds (computed from `last_y` + `computedHeight`), and STOPS
+    // there. Returning false from a widget hit doesn't fall through to
+    // node.onMouseDown — so all click logic must live here.
+    mouse(event, pos, node) {
+      if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
+      const cells = node._pixaromaCells;
+      if (!cells) return false;
+      const lx = pos[0];
+      const ly = pos[1];
+
+      // Expanded mode: X closes; click on image advances to next frame.
+      if (cells.expanded) {
+        const cr = cells.closeRect;
+        const ir = cells.imgRect;
+        if (cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h) {
+          node._pixaromaExpanded = false;
+          node.properties = node.properties || {};
+          node.properties.pixaromaExpanded = false;
+          if (_activePreviewNode === node) _activePreviewNode = null;
+          node.setDirtyCanvas(true, true);
+          return true;
+        }
+        if (ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h) {
+          const frames = node._pixaromaFrames || [];
+          if (frames.length > 1) {
+            const cur = node._pixaromaSelectedFrame ?? 0;
+            const next = (cur + 1) % frames.length;
+            node._pixaromaSelectedFrame = next;
+            node.properties = node.properties || {};
+            node.properties.pixaromaSelected = next;
+            _activePreviewNode = node;
+            node.setDirtyCanvas(true, true);
+          }
+          return true;
+        }
+        return false;
+      }
+
+      // Strip mode: click thumbnail to select it AND expand it inline.
+      if (cells.slots?.length) {
+        for (const s of cells.slots) {
+          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
+            node._pixaromaSelectedFrame = s.idx;
+            node._pixaromaExpanded = true;
+            node.properties = node.properties || {};
+            node.properties.pixaromaSelected = s.idx;
+            node.properties.pixaromaExpanded = true;
+            _activePreviewNode = node;
+            node.setDirtyCanvas(true, true);
+            return true;
+          }
+        }
+      }
+      return false;
+    },
   };
 }
 
@@ -600,68 +658,6 @@ app.registerExtension({
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
-    };
-
-    // Node-level click handler for the image strip. The widget's own
-    // mouse() callback does not reliably fire on the Vue frontend for
-    // non-first custom widgets, so we route strip clicks here. Buttons
-    // are still handled by the buttons widget's mouse() (it's the first
-    // custom widget — Vue routes clicks to it correctly).
-    const origMouseDown = nodeType.prototype.onMouseDown;
-    nodeType.prototype.onMouseDown = function (e, localPos, graphCanvas) {
-      const cells = this._pixaromaCells;
-      if (!cells) return origMouseDown ? origMouseDown.apply(this, arguments) : false;
-      const lx = localPos[0];
-      const ly = localPos[1];
-
-      // Expanded mode: X closes; clicking the image advances to next frame.
-      if (cells.expanded) {
-        const cr = cells.closeRect;
-        const ir = cells.imgRect;
-        const inClose = cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h;
-        const inImage = ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h;
-        if (inClose) {
-          this._pixaromaExpanded = false;
-          this.properties = this.properties || {};
-          this.properties.pixaromaExpanded = false;
-          if (_activePreviewNode === this) _activePreviewNode = null;
-          this.setDirtyCanvas(true, true);
-          return true;
-        }
-        if (inImage) {
-          // Click on image (anywhere except the X) → next frame in batch
-          const frames = this._pixaromaFrames || [];
-          if (frames.length > 1) {
-            const cur = this._pixaromaSelectedFrame ?? 0;
-            const next = (cur + 1) % frames.length;
-            this._pixaromaSelectedFrame = next;
-            this.properties = this.properties || {};
-            this.properties.pixaromaSelected = next;
-            _activePreviewNode = this;
-            this.setDirtyCanvas(true, true);
-          }
-          return true;
-        }
-        // Click on header / widgets above passes through normally
-        return origMouseDown ? origMouseDown.apply(this, arguments) : false;
-      }
-
-      // Strip mode: click a thumbnail → select it AND expand it inline.
-      if (cells.slots?.length) {
-        for (const s of cells.slots) {
-          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
-            this._pixaromaSelectedFrame = s.idx;
-            this._pixaromaExpanded = true;
-            this.properties = this.properties || {};
-            this.properties.pixaromaSelected = s.idx;
-            this.properties.pixaromaExpanded = true;
-            _activePreviewNode = this;
-            this.setDirtyCanvas(true, true);
-            return true;
-          }
-        }
-      }
-      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
     };
 
     // Node-level hover tracking. The widget's own `mouse` callback does not
