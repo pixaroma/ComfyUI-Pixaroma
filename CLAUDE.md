@@ -35,8 +35,8 @@ Nodes are `OUTPUT_NODE = True` and receive editor state as a serialized JSON str
 | `/pixaroma/api/3d/save` | Save 3D render |
 | `/pixaroma/api/3d/bg_upload` | Upload 3D background |
 | `/pixaroma/api/crop/save` | Save crop result |
-| `/pixaroma/api/preview/save` | Preview Image Pixaroma — write PNG with workflow metadata to ComfyUI `output/` with auto-increment counter |
-| `/pixaroma/api/preview/prepare` | Preview Image Pixaroma — return in-memory PNG bytes with workflow metadata embedded (for Save-to-Disk via File System Access API) |
+| `/pixaroma/api/preview/save` | Preview Image Pixaroma — write PNG with workflow metadata to ComfyUI `output/` with auto-increment counter (filename_prefix supports `subfolder/prefix`) |
+| `/pixaroma/api/preview/prepare` | Preview Image Pixaroma — return JSON `{image_b64, suggested_filename}` with workflow metadata embedded; suggested_filename peeks the next free counter for Save-to-Disk |
 | `/pixaroma/remove_bg` | AI background removal (rembg) |
 | `/pixaroma/assets/{filename}` | Serve logo/assets |
 | `/pixaroma/api/note/icons/list` | List inline-icon SVGs in `assets/icons/note/` |
@@ -133,15 +133,20 @@ js/
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
 │
-├── preview/            # Preview Image Pixaroma (single file, ~320 lines)
-│   └── index.js        # Two orange buttons (Save to Disk / Save to Output) as
-│                       #  an addCustomWidget placed between filename_prefix and
-│                       #  the ComfyUI-native preview image. saveToOutput posts
-│                       #  to /pixaroma/api/preview/save; saveToDisk posts to
-│                       #  /pixaroma/api/preview/prepare then writes via
-│                       #  window.showSaveFilePicker with <a download> fallback.
-│                       #  Node-level onMouseMove/onMouseLeave for hover (widget
-│                       #  mouse() doesn't get pointermove on Vue).
+├── preview/            # Preview Image Pixaroma (single file, ~520 lines)
+│   └── index.js        # Two orange buttons (Save to Disk / Save to Output) +
+│                       #  custom strip widget rendering all batch frames with
+│                       #  click-to-select (orange BRAND border + "i / N" badge).
+│                       #  Listens to api.addEventListener("executed", ...) for
+│                       #  pixaroma_preview_frames (custom UI key — Save Mp4
+│                       #  pattern, NOT ui.images, so LiteGraph doesn't render
+│                       #  its native strip underneath). Save buttons act on
+│                       #  the SELECTED frame. saveToOutput posts to
+│                       #  /pixaroma/api/preview/save; saveToDisk posts to
+│                       #  /pixaroma/api/preview/prepare and uses the route's
+│                       #  suggested_filename (auto-counter peek) for the Save
+│                       #  dialog, then writes via window.showSaveFilePicker
+│                       #  with <a download> fallback.
 │
 ├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for audio-reactive effects
 │   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
@@ -521,8 +526,9 @@ Files are named by concern. Match the task to the file:
 | Save Mp4 Pixaroma — in-node video preview | `js/save_mp4/index.js`. Single index.js entry. On `nodeCreated` adds a DOM widget containing a `<video>` element + a placeholder div, both attached via `addDOMWidget(name, type, element, {serialize: false, getMinHeight: () => 180})`. Subscribes to `api.addEventListener("executed", ...)` and looks for `detail.output.pixaroma_videos` from our Python node — when found, sets the `<video>.src` to `/view?filename=...&subfolder=...&type=output&t=<timestamp>` (cache-busted) and toggles placeholder off. Node id resolved with both string and parseInt fallbacks for cross-version compat. |
 | Fix composer blend mode save/restore/execute | `js/composer/interaction.mjs` (save), `render.mjs` (restore), `ui.mjs` (dropdown sync), `nodes/node_composition.py` `_blend_over()` |
 | Paint AI Background Removal panel | `js/paint/core.mjs` `_buildBgRemovalPanel` + `_removeBgFromActiveLayer` (button gated on `ly.sourceKind === "image"`, set by the `onAddImage` handler and serialized as `source_kind` in the layer project JSON). Reuses the `/pixaroma/remove_bg` backend route via `PaintAPI.removeBg`. |
-| Preview Image Pixaroma — change button layout / geometry / colors | `js/preview/index.js` constants at the top (`BTN_H`, `BTN_GAP`, `MIN_W`, `MIN_H`, `DEFAULT_W`, `DEFAULT_H`, `COLOR_ACTIVE_*` / `COLOR_DISABLED_*`). Button rects computed in `computeButtonRects`, painted in `paintBtn`. Buttons live as an `addCustomWidget` (so they reserve vertical space above the image) — don't switch back to `onDrawForeground` overlay; it collides with ComfyUI's native preview + dimension label. |
-| Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → temp PNG for preview display) + `server_routes.py` helpers `_embed_workflow_metadata`, `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in Python only (single source of truth). |
+| Preview Image Pixaroma — change button or strip layout / geometry / colors | `js/preview/index.js` constants at the top (`BTN_H`, `BTN_GAP`, `MIN_W`, `MIN_H`, `DEFAULT_W`, `DEFAULT_H`, `IMG_STRIP_GAP`, `IMG_STRIP_V_PAD`, `IMG_STRIP_BORDER_W`, `BADGE_*`, `COLOR_ACTIVE_*` / `COLOR_DISABLED_*`). Button rects computed in `computeButtonRects`, painted in `paintBtn`. Strip rects computed in `layoutImgStrip`, painted in `createStripWidget().draw`. Buttons + strip live as `addCustomWidget`s (so they reserve vertical space, draw immediately on node-add, and Vue-compat works). Don't switch back to `onDrawForeground` (Vue Compat #1) and don't return `ui.images` from the Python node (LiteGraph would render its native strip underneath the custom one — use the `pixaroma_preview_frames` custom UI key instead, Save Mp4 pattern). |
+| Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → PNG, two modes: temp/ for preview, output/ for save with embedded metadata via shared `nodes/_save_helpers._build_pnginfo`) + `server_routes.py` helpers `_embed_workflow_metadata` (thin wrapper), `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Both routes validate `filename_prefix` via shared `nodes/_save_helpers._safe_prefix` (allows `subfolder/prefix` with `[A-Za-z0-9_-]` segments, no `..`). Prepare route returns JSON `{image_b64, suggested_filename}` — `suggested_filename` peeks `folder_paths.get_save_image_path` to pre-fill the Save-to-Disk picker with the next free counter. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk` read the SELECTED frame from `node._pixaromaFrames[node._pixaromaSelectedFrame]`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in `nodes/_save_helpers._build_pnginfo` only (single source of truth). |
+| Preview Image Pixaroma — add / change save_mode behavior or hidden inputs | `nodes/node_preview.py`. `INPUT_TYPES` declares `save_mode` as a required combo (`preview` / `save`, default `preview`) and `prompt: PROMPT, extra_pnginfo: EXTRA_PNGINFO` as hidden inputs. In `save` mode the node iterates the entire batch, calls `folder_paths.get_save_image_path`, and saves each frame to `output/{subfolder}/{name}_{counter+i:05}_.png` with embedded metadata — drop-in for native SaveImage. In `preview` mode it writes UUID-named PNGs to `temp/` (auto-cleared on ComfyUI restart). Either mode returns `ui.pixaroma_preview_frames` (custom key). |
 
 ### 3. When adding a new method to an editor class
 - Add it to the most relevant existing `.mjs` file by concern (tools, events, render, etc.)
