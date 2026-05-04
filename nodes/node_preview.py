@@ -32,7 +32,7 @@ class PixaromaPreview:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "filename_prefix": ("STRING", {"default": "Preview"}),
+                "filename_prefix": ("STRING", {"default": "img"}),
                 "save_mode": (["preview", "save"], {"default": "preview"}),
             },
             "hidden": {

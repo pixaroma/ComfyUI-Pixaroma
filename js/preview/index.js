@@ -156,8 +156,8 @@ async function getWorkflowAndPrompt() {
 
 function readFilenamePrefix(node) {
   const w = node.widgets?.find((x) => x.name === "filename_prefix");
-  const v = (w?.value ?? "Preview").toString().trim();
-  return v || "Preview";
+  const v = (w?.value ?? "img").toString().trim();
+  return v || "img";
 }
 
 // ---- save handlers ----
@@ -428,26 +428,11 @@ function createStripWidget() {
         }
       }
     },
-    mouse(event, pos, node) {
-      if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
-      const layout = node._pixaromaCells;
-      if (!layout?.rects?.length) return false;
-      // pos is node-local (same convention as the buttons widget); rects
-      // are now also node-local (absolute y from layoutImgStrip) — direct
-      // hit-test works in both Vue and legacy frontends.
-      const lx = pos[0];
-      const ly = pos[1];
-      for (const r of layout.rects) {
-        if (lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h) {
-          if ((node._pixaromaSelectedFrame ?? 0) !== r.idx) {
-            node._pixaromaSelectedFrame = r.idx;
-            node.setDirtyCanvas(true, true);
-          }
-          return true;
-        }
-      }
-      return false;
-    },
+    // Click handling lives in the node-level onMouseDown override below
+    // (Vue Compat: widget.mouse() doesn't reliably fire for non-first
+    // custom widgets — buttons widget works because it's first; strip
+    // widget needs node-level routing).
+    mouse() { return false; },
   };
 }
 
@@ -475,6 +460,30 @@ app.registerExtension({
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+    };
+
+    // Node-level click handler for the image strip. The widget's own
+    // mouse() callback does not reliably fire on the Vue frontend for
+    // non-first custom widgets, so we route strip clicks here. Buttons
+    // are still handled by the buttons widget's mouse() (it's the first
+    // custom widget — Vue routes clicks to it correctly).
+    const origMouseDown = nodeType.prototype.onMouseDown;
+    nodeType.prototype.onMouseDown = function (e, localPos, graphCanvas) {
+      const cells = this._pixaromaCells;
+      if (cells?.rects?.length) {
+        const lx = localPos[0];
+        const ly = localPos[1];
+        for (const r of cells.rects) {
+          if (lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h) {
+            if ((this._pixaromaSelectedFrame ?? 0) !== r.idx) {
+              this._pixaromaSelectedFrame = r.idx;
+              this.setDirtyCanvas(true, true);
+            }
+            return true; // consume the click so it doesn't bubble
+          }
+        }
+      }
+      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
     };
 
     // Node-level hover tracking. The widget's own `mouse` callback does not
@@ -526,12 +535,32 @@ api.addEventListener("executed", ({ detail }) => {
     return {
       ...f,
       url,
-      img: loadFrameImage(url, () => node.setDirtyCanvas(true, true)),
+      img: loadFrameImage(url, () => {
+        // After image loads, the strip widget's computeSize result changes
+        // (height now depends on actual aspect ratio). Force a layout
+        // refresh — Vue caches widget bounds from computeSize and won't
+        // re-call it on its own, which means clicks below the cached
+        // bound never route to the widget. Save Mp4 pattern.
+        fitNodeToWidgets(node);
+      }),
     };
   });
   // Reset selection if the new batch is smaller than the old one
   if ((node._pixaromaSelectedFrame ?? 0) >= frames.length) {
     node._pixaromaSelectedFrame = 0;
   }
-  node.setDirtyCanvas(true, true);
+  fitNodeToWidgets(node);
 });
+
+// Force LiteGraph + Vue to recompute widget bounds from computeSize.
+// Without this, the strip widget's clickable area stays at its initial
+// 180px even after frames load — and Vue routes clicks below that to
+// nothing instead of to the widget. Only grow the node, never shrink.
+function fitNodeToWidgets(node) {
+  if (!node || typeof node.computeSize !== "function") return;
+  const desired = node.computeSize([node.size[0], node.size[1]]);
+  if (node.size[1] < desired[1]) {
+    node.setSize([node.size[0], desired[1]]);
+  }
+  node.graph?.setDirtyCanvas(true, true);
+}
