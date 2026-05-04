@@ -67,6 +67,68 @@ const DEFAULT_MODE_OPTIONS = [
   "Up Down", "Overlay", "Difference",
 ];
 
+// Persistence (Vue Compat #11 / Preview Image Pattern #4): view state and
+// loaded image refs live on node.properties so the comparison survives Vue
+// workflow tab switching. LiteGraph serializes properties to workflow JSON
+// natively, so the temp/ PNGs (which survive tab switching but not ComfyUI
+// restart) stay paired to the right node.
+const STATE_KEY = "compareState";
+
+function buildCmpUrl(d) {
+  return `/view?filename=${encodeURIComponent(d.filename)}&type=${encodeURIComponent(d.type)}&subfolder=${encodeURIComponent(d.subfolder || "")}&t=${Date.now()}`;
+}
+
+function loadCmpImage(node, meta, idx) {
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    if (idx === 0) node._cmpImg1 = img;
+    else node._cmpImg2 = img;
+    node.imgs = null;
+    app.graph.setDirtyCanvas(true, true);
+  };
+  img.src = buildCmpUrl(meta);
+}
+
+function saveCompareState(node) {
+  node.properties = node.properties || {};
+  const prev = node.properties[STATE_KEY] || {};
+  node.properties[STATE_KEY] = {
+    mode: node._cmpMode ?? 0,
+    showWhich: node._cmpShowWhich ?? 0,
+    opacity: node._cmpOpacity ?? 0.5,
+    images: prev.images || [],
+  };
+}
+
+function saveCompareImagesToProps(node, outputImages) {
+  node.properties = node.properties || {};
+  node.properties[STATE_KEY] = {
+    mode: node._cmpMode ?? 0,
+    showWhich: node._cmpShowWhich ?? 0,
+    opacity: node._cmpOpacity ?? 0.5,
+    images: outputImages.slice(0, 2).map((d) => ({
+      filename: d.filename,
+      subfolder: d.subfolder || "",
+      type: d.type || "temp",
+    })),
+  };
+}
+
+function restoreCompareFromProperties(node) {
+  if (node._cmpImg1 || node._cmpImg2) return; // idempotent
+  const s = node.properties?.[STATE_KEY];
+  if (!s) return;
+  if (typeof s.mode === "number") node._cmpMode = s.mode;
+  if (typeof s.showWhich === "number") node._cmpShowWhich = s.showWhich;
+  if (typeof s.opacity === "number") node._cmpOpacity = s.opacity;
+  if (Array.isArray(s.images) && s.images.length === 2) {
+    loadCmpImage(node, s.images[0], 0);
+    loadCmpImage(node, s.images[1], 1);
+  }
+  app.graph.setDirtyCanvas(true, true);
+}
+
 app.registerExtension({
   name: "Pixaroma.Compare",
   settings: [
@@ -110,6 +172,20 @@ app.registerExtension({
       this._cmpImg2 = null;
       this.size[0] = INIT_W;
       this.size[1] = INIT_H;
+
+      // Restore view state + image refs from properties AFTER configure()
+      // runs (Vue Compat #8 — nodeCreated fires before configure, so defer
+      // via microtask). Survives Vue workflow tab switching.
+      queueMicrotask(() => restoreCompareFromProperties(this));
+    };
+
+    // Belt-and-braces: also restore on explicit configure (workflow JSON
+    // load). Idempotent via the early-return guard inside the helper.
+    const _origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+      const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
+      restoreCompareFromProperties(this);
+      return r;
     };
 
     // ── Execution — DO NOT call origExecuted (it creates preview widgets that shift layout)
@@ -118,20 +194,11 @@ app.registerExtension({
       this.imgs = null;
 
       if (!output?.images || output.images.length < 2) return;
-      const load = (d, idx) => {
-        const url = `/view?filename=${encodeURIComponent(d.filename)}&type=${encodeURIComponent(d.type)}&subfolder=${encodeURIComponent(d.subfolder || "")}&t=${Date.now()}`;
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => {
-          if (idx === 0) this._cmpImg1 = img;
-          else this._cmpImg2 = img;
-          this.imgs = null; // keep suppressing
-          app.graph.setDirtyCanvas(true, true);
-        };
-        img.src = url;
-      };
-      load(output.images[0], 0);
-      load(output.images[1], 1);
+      // Persist image refs to node.properties before loading so a Vue tab
+      // switch immediately after execution still restores correctly.
+      saveCompareImagesToProps(this, output.images);
+      loadCmpImage(this, output.images[0], 0);
+      loadCmpImage(this, output.images[1], 1);
     };
 
     // Suppress default background image rendering
@@ -362,6 +429,7 @@ app.registerExtension({
       // Show toggle: toggles between Show 1 and Show 2
       if (inside(pos, showRect())) {
         this._cmpShowWhich = this._cmpShowWhich === 2 ? 1 : 2;
+        saveCompareState(this);
         app.graph.setDirtyCanvas(true, true);
         return true;
       }
@@ -371,6 +439,7 @@ app.registerExtension({
         if (inside(pos, modeRect(i))) {
           this._cmpMode = i;
           this._cmpShowWhich = 0;
+          saveCompareState(this);
           app.graph.setDirtyCanvas(true, true);
           return true;
         }
@@ -420,6 +489,7 @@ app.registerExtension({
 
     const _origUp = nodeType.prototype.onMouseUp;
     nodeType.prototype.onMouseUp = function (e, pos) {
+      if (this._cmpDragging) saveCompareState(this); // persist final opacity
       this._cmpDragging = false;
       if (_origUp) return _origUp.call(this, e, pos);
     };
@@ -431,6 +501,7 @@ app.registerExtension({
           0,
           Math.min(1, this._cmpOpacity + (e.deltaY > 0 ? -0.05 : 0.05)),
         );
+        saveCompareState(this);
         app.graph.setDirtyCanvas(true, true);
         return true;
       }
@@ -439,6 +510,7 @@ app.registerExtension({
 
     const _origLeave = nodeType.prototype.onMouseLeave;
     nodeType.prototype.onMouseLeave = function (e) {
+      if (this._cmpDragging) saveCompareState(this); // mouseup may not fire
       this._cmpDragging = false;
       if (this._cmpMode <= 1) {
         this._cmpSplitX = 0;
