@@ -53,28 +53,39 @@ function ensureLightboxStyle() {
   const style = document.createElement("style");
   style.id = "pixaroma-preview-lightbox-style";
   style.textContent = `
+    /* Click-catcher fills the viewport but is transparent — clicking
+       outside the image-card closes the popup. */
     .pixaroma-preview-lightbox {
       position: fixed; inset: 0; z-index: 99999;
-      background: rgba(0,0,0,0.92);
       display: flex; align-items: center; justify-content: center;
       cursor: pointer;
       animation: pixaromaLightboxIn 0.12s ease-out;
     }
     @keyframes pixaromaLightboxIn { from { opacity: 0; } to { opacity: 1; } }
+    /* The "card" is just the image plus its controls; no background
+       blackout. Image renders at natural size up to viewport bounds. */
+    .pixaroma-preview-lightbox .pixaroma-lb-card {
+      position: relative;
+      cursor: default;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+      border-radius: 4px;
+      overflow: hidden;
+      max-width: 92vw; max-height: 92vh;
+      display: flex;
+    }
     .pixaroma-preview-lightbox img {
+      display: block;
       max-width: 92vw; max-height: 92vh;
       object-fit: contain;
-      cursor: default;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.7);
     }
     .pixaroma-preview-lightbox .pixaroma-lb-close {
-      position: absolute; top: 16px; right: 20px;
+      position: absolute; top: 8px; right: 8px;
       color: #fff;
-      font: 500 22px/1 sans-serif;
+      font: 500 18px/1 sans-serif;
       background: rgba(0,0,0,0.55);
-      width: 36px; height: 36px;
+      width: 28px; height: 28px;
       display: flex; align-items: center; justify-content: center;
-      border-radius: 6px;
+      border-radius: 4px;
       cursor: pointer;
       user-select: none;
       transition: background 0.1s;
@@ -83,20 +94,20 @@ function ensureLightboxStyle() {
       background: rgba(255,103,68,0.9);
     }
     .pixaroma-preview-lightbox .pixaroma-lb-info {
-      position: absolute; bottom: 16px; left: 50%;
+      position: absolute; bottom: 8px; left: 50%;
       transform: translateX(-50%);
       color: #fff;
-      font: 13px/1.4 sans-serif;
+      font: 12px/1.4 sans-serif;
       background: rgba(0,0,0,0.55);
-      padding: 6px 12px;
+      padding: 4px 10px;
       border-radius: 4px;
     }
     .pixaroma-preview-lightbox .pixaroma-lb-counter {
-      position: absolute; bottom: 16px; right: 20px;
+      position: absolute; bottom: 8px; right: 8px;
       color: #fff;
-      font: 13px/1.4 sans-serif;
+      font: 12px/1.4 sans-serif;
       background: rgba(0,0,0,0.55);
-      padding: 6px 12px;
+      padding: 4px 10px;
       border-radius: 4px;
     }
   `;
@@ -111,12 +122,15 @@ function openLightbox(node, idx) {
   const overlay = document.createElement("div");
   overlay.className = "pixaroma-preview-lightbox";
 
+  const card = document.createElement("div");
+  card.className = "pixaroma-lb-card";
+
   const img = document.createElement("img");
   img.src = frame.url;
 
   const close = document.createElement("div");
   close.className = "pixaroma-lb-close";
-  close.textContent = "×"; // ×
+  close.textContent = "×";
 
   const info = document.createElement("div");
   info.className = "pixaroma-lb-info";
@@ -133,10 +147,11 @@ function openLightbox(node, idx) {
     counter.textContent = `${idx + 1} / ${total}`;
   }
 
-  overlay.appendChild(img);
-  overlay.appendChild(close);
-  overlay.appendChild(info);
-  if (counter) overlay.appendChild(counter);
+  card.appendChild(img);
+  card.appendChild(close);
+  card.appendChild(info);
+  if (counter) card.appendChild(counter);
+  overlay.appendChild(card);
 
   function destroy() {
     overlay.remove();
@@ -148,9 +163,11 @@ function openLightbox(node, idx) {
       destroy();
     }
   }
-  // Click on backdrop or close button = close. Click on image = stay open.
+  // Click outside the card (anywhere on viewport overlay) = close.
+  // Click inside the card = stay open, EXCEPT on the close button.
   overlay.addEventListener("click", (e) => {
-    if (e.target === img) return;
+    if (e.target === close) { destroy(); return; }
+    if (card.contains(e.target)) return;
     destroy();
   });
   document.addEventListener("keydown", onKey, true);
