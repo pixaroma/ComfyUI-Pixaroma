@@ -160,6 +160,16 @@ async function dataURLToBlob(dataURL) {
   return await resp.blob();
 }
 
+// Add `offset` to the numeric counter part of an "img_00002_.png"-style
+// name. Preserves zero-padding width. If the pattern doesn't match,
+// returns the input unchanged.
+function bumpFilenameCounter(name, offset) {
+  const m = name.match(/^(.+?_)(\d+)(_\.[^.]+)$/);
+  if (!m) return name;
+  const newN = String(parseInt(m[2], 10) + offset).padStart(m[2].length, "0");
+  return `${m[1]}${newN}${m[3]}`;
+}
+
 async function getWorkflowAndPrompt() {
   // app.graphToPrompt() returns { workflow, output }; "output" is the prompt.
   const { workflow, output } = await app.graphToPrompt();
@@ -232,7 +242,17 @@ async function saveToDisk(node) {
       return;
     }
     const { image_b64, suggested_filename } = await resp.json();
-    if (suggested_filename) suggestedName = suggested_filename;
+    if (suggested_filename) {
+      // Save-to-Disk writes to the user's chosen folder (not ComfyUI's
+      // output/), so folder_paths.get_save_image_path can't observe those
+      // files and always returns the same counter — every click would
+      // suggest the same name. Track a per-node click offset and bump
+      // the counter portion of the suggestion locally.
+      const offset = node._pixaromaDiskOffset ?? 0;
+      suggestedName = offset > 0
+        ? bumpFilenameCounter(suggested_filename, offset)
+        : suggested_filename;
+    }
     preparedBlob = await dataURLToBlob(image_b64);
   } catch (err) {
     showToast(node, `Prepare failed: ${err.message || err}`);
@@ -248,6 +268,7 @@ async function saveToDisk(node) {
       const writable = await handle.createWritable();
       await writable.write(preparedBlob);
       await writable.close();
+      node._pixaromaDiskOffset = (node._pixaromaDiskOffset ?? 0) + 1;
       showToast(node, `Saved: ${handle.name}`);
     } catch (err) {
       if (err?.name === "AbortError") return; // user cancelled, silent
@@ -265,6 +286,7 @@ async function saveToDisk(node) {
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1500);
+  node._pixaromaDiskOffset = (node._pixaromaDiskOffset ?? 0) + 1;
   showToast(node, "Saved to Downloads (browser has no folder picker)");
 }
 
@@ -789,5 +811,9 @@ api.addEventListener("executed", ({ detail }) => {
     node._pixaromaSelectedFrame = 0;
   }
   node.properties.pixaromaSelected = node._pixaromaSelectedFrame ?? 0;
+  // New run = fresh counter base. Output/ counter has advanced (if save_mode
+  // was on) so suggested filename will be naturally newer; reset the local
+  // offset so we don't double-jump.
+  node._pixaromaDiskOffset = 0;
   hydrateFrames(node, node.properties.pixaromaFrames);
 });
