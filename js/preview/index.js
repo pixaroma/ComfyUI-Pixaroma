@@ -325,6 +325,10 @@ function createButtonsWidget() {
 const IMG_STRIP_MIN_H = 180;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
+const IMG_STRIP_BORDER_W = 2;       // selection border thickness
+const BADGE_PAD = 4;                 // px inside the counter badge
+const BADGE_H = 16;                  // px tall badge
+const BADGE_FONT = "11px sans-serif";
 
 function layoutImgStrip(widgetWidth, frames) {
   const n = frames.length;
@@ -371,6 +375,8 @@ function createStripWidget() {
       if (!frames.length) return;
       const layout = layoutImgStrip(widget_width, frames);
       node._pixaromaCells = layout;
+      const sel = node._pixaromaSelectedFrame ?? 0;
+      const total = frames.length;
       for (const r of layout.rects) {
         const f = frames[r.idx];
         if (f?.img?.complete && f.img.naturalWidth > 0) {
@@ -381,9 +387,59 @@ function createStripWidget() {
           ctx.fillRect(r.x, y + r.y, r.w, r.h);
           ctx.restore();
         }
+        if (total > 1) {
+          // Counter badge in bottom-right; BRAND fill if selected, dark otherwise
+          const isSel = r.idx === sel;
+          const badgeText = `${r.idx + 1} / ${total}`;
+          ctx.save();
+          ctx.font = BADGE_FONT;
+          const textW = ctx.measureText(badgeText).width;
+          const badgeW = textW + BADGE_PAD * 2;
+          const bx = r.x + r.w - badgeW - 4;
+          const by = y + r.y + r.h - BADGE_H - 4;
+          ctx.fillStyle = isSel ? BRAND : "rgba(0,0,0,0.72)";
+          ctx.beginPath();
+          ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.textBaseline = "middle";
+          ctx.textAlign = "left";
+          ctx.fillText(badgeText, bx + BADGE_PAD, by + BADGE_H / 2 + 1);
+          ctx.restore();
+          if (isSel) {
+            // Orange selection border drawn inside the cell (avoids clipping)
+            ctx.save();
+            ctx.strokeStyle = BRAND;
+            ctx.lineWidth = IMG_STRIP_BORDER_W;
+            ctx.strokeRect(
+              r.x + IMG_STRIP_BORDER_W / 2,
+              y + r.y + IMG_STRIP_BORDER_W / 2,
+              r.w - IMG_STRIP_BORDER_W,
+              r.h - IMG_STRIP_BORDER_W,
+            );
+            ctx.restore();
+          }
+        }
       }
     },
-    mouse() { return false; },  // selection added in Task 6
+    mouse(event, pos, node) {
+      if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
+      const layout = node._pixaromaCells;
+      if (!layout?.rects?.length) return false;
+      // pos is widget-local; rects are also widget-local — direct hit-test.
+      const lx = pos[0];
+      const ly = pos[1];
+      for (const r of layout.rects) {
+        if (lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h) {
+          if ((node._pixaromaSelectedFrame ?? 0) !== r.idx) {
+            node._pixaromaSelectedFrame = r.idx;
+            node.setDirtyCanvas(true, true);
+          }
+          return true;
+        }
+      }
+      return false;
+    },
   };
 }
 
