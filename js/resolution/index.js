@@ -396,6 +396,66 @@ function megapixels(w, h) {
 function snapTo(n, step) { return Math.round(n / step) * step; }
 function clampDim(n) { return Math.max(256, Math.min(4096, n)); }
 
+// Tiny safe math evaluator for the W/H inputs — supports `+ - * / ( )` and
+// decimals only. Hand-rolled recursive descent. NEVER use eval() / Function()
+// here: even though the field is per-node, accepting arbitrary JS would let a
+// shared workflow execute code on import. Returns NaN for any invalid input.
+// Examples: "1024", "1024+128", "512*2", "(1024+128)/2", "1024 + 128".
+function safeMathEval(str) {
+  if (typeof str !== "string") return NaN;
+  const s = str.trim();
+  if (!s) return NaN;
+  // Whitelist all chars up front so the parser never sees a stray identifier.
+  if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN;
+
+  let pos = 0;
+  const skipWs = () => { while (pos < s.length && s[pos] === " ") pos++; };
+  const eat = (ch) => { skipWs(); if (s[pos] === ch) { pos++; return true; } return false; };
+
+  function parseExpr() {
+    let v = parseTerm();
+    for (;;) {
+      skipWs();
+      if (eat("+")) v += parseTerm();
+      else if (eat("-")) v -= parseTerm();
+      else break;
+    }
+    return v;
+  }
+  function parseTerm() {
+    let v = parseFactor();
+    for (;;) {
+      skipWs();
+      if (eat("*")) v *= parseFactor();
+      else if (eat("/")) {
+        const d = parseFactor();
+        if (d === 0) return NaN;
+        v /= d;
+      } else break;
+    }
+    return v;
+  }
+  function parseFactor() {
+    skipWs();
+    if (eat("+")) return parseFactor();
+    if (eat("-")) return -parseFactor();
+    if (eat("(")) {
+      const v = parseExpr();
+      if (!eat(")")) return NaN;
+      return v;
+    }
+    let num = "";
+    while (pos < s.length && /[0-9.]/.test(s[pos])) num += s[pos++];
+    if (!num) return NaN;
+    return parseFloat(num);
+  }
+
+  const v = parseExpr();
+  skipWs();
+  if (pos !== s.length) return NaN; // trailing garbage
+  return v;
+}
+
 function renderChipGrid(state) {
   const wrap = document.createElement("div");
   wrap.className = "pix-res-chips";
@@ -451,15 +511,21 @@ function renderCustomPanel(node, state) {
   const row = document.createElement("div");
   row.className = "pix-res-custom-row";
 
+  // Inputs are `type="text"` (not `number`) so users can type math expressions
+  // like `1024+128` or `512*2`. We evaluate via safeMathEval on commit and on
+  // ArrowUp/Down (custom snap-stepping). `inputmode="decimal"` keeps mobile
+  // keypads numeric; the visible spinner buttons are gone but Up/Down arrows
+  // step by snap (replacing the native HTML5 number-input stepper).
   const wField = document.createElement("div");
   wField.className = "pix-res-custom-field";
   const wLabel = document.createElement("label");
   wLabel.textContent = "Width";
   const wInput = document.createElement("input");
-  wInput.type = "number";
-  wInput.min = "256";
-  wInput.max = "4096";
-  wInput.step = String(state.snap || 16);
+  wInput.type = "text";
+  wInput.inputMode = "decimal";
+  wInput.spellcheck = false;
+  wInput.autocomplete = "off";
+  wInput.title = "Math allowed: 1024+128, 512*2, (1024+128)/2";
   wInput.value = String(state.w);
 
   const hField = document.createElement("div");
@@ -467,10 +533,11 @@ function renderCustomPanel(node, state) {
   const hLabel = document.createElement("label");
   hLabel.textContent = "Height";
   const hInput = document.createElement("input");
-  hInput.type = "number";
-  hInput.min = "256";
-  hInput.max = "4096";
-  hInput.step = String(state.snap || 16);
+  hInput.type = "text";
+  hInput.inputMode = "decimal";
+  hInput.spellcheck = false;
+  hInput.autocomplete = "off";
+  hInput.title = "Math allowed: 1024+128, 512*2, (1024+128)/2";
   hInput.value = String(state.h);
 
   wField.append(wLabel, wInput);
@@ -517,8 +584,9 @@ function renderCustomPanel(node, state) {
     for (const b of snapBtnEls) {
       b.classList.toggle("active", parseInt(b.dataset.v, 10) === v);
     }
-    wInput.step = String(v);
-    hInput.step = String(v);
+    // Inputs are type="text" now (math support); no native step attr to update.
+    // Arrow-key stepping reads the snap value at keypress time, so this just
+    // needs to land in state and re-commit so the W/H snap to the new step.
     const cur = readState(node);
     writeState(node, { ...cur, snap: v });
     commit();
@@ -569,10 +637,12 @@ function renderCustomPanel(node, state) {
   function commit() {
     const cur = readState(node);
     const step = cur.snap || 16;
-    const wRaw = parseInt(wInput.value, 10);
-    const hRaw = parseInt(hInput.value, 10);
-    const wNew = clampDim(snapTo(Number.isFinite(wRaw) ? wRaw : 1024, step));
-    const hNew = clampDim(snapTo(Number.isFinite(hRaw) ? hRaw : 1024, step));
+    const wRaw = safeMathEval(wInput.value);
+    const hRaw = safeMathEval(hInput.value);
+    // Invalid expression / empty → fall back to the LAST committed value so a
+    // typo doesn't replace the user's working state with a default.
+    const wNew = clampDim(snapTo(Number.isFinite(wRaw) && wRaw > 0 ? wRaw : cur.w, step));
+    const hNew = clampDim(snapTo(Number.isFinite(hRaw) && hRaw > 0 ? hRaw : cur.h, step));
     wInput.value = String(wNew);
     hInput.value = String(hNew);
     refreshReadout(wNew, hNew);
@@ -581,27 +651,60 @@ function renderCustomPanel(node, state) {
 
 
   function liveUpdate() {
-    const wLive = parseInt(wInput.value, 10);
-    const hLive = parseInt(hInput.value, 10);
-    if (Number.isFinite(wLive) && Number.isFinite(hLive)) refreshReadout(wLive, hLive);
+    const wLive = safeMathEval(wInput.value);
+    const hLive = safeMathEval(hInput.value);
+    // Only refresh the readout/preview when BOTH expressions evaluate cleanly.
+    // Otherwise the preview rectangle would jitter between valid keystrokes.
+    if (Number.isFinite(wLive) && Number.isFinite(hLive) && wLive > 0 && hLive > 0) {
+      refreshReadout(wLive, hLive);
+    }
   }
   wInput.addEventListener("input", liveUpdate);
   hInput.addEventListener("input", liveUpdate);
 
   wInput.addEventListener("blur", commit);
   hInput.addEventListener("blur", commit);
-  wInput.addEventListener("keydown", (e) => { if (e.key === "Enter") wInput.blur(); });
-  hInput.addEventListener("keydown", (e) => { if (e.key === "Enter") hInput.blur(); });
+
+  // Replace native HTML5 number-input stepping with snap-aware arrow stepping.
+  // Up/Down increments by the current snap value (8/16/32/64); Shift+Up/Down
+  // by 4× for coarse jumps. Evaluates the current expression first so users
+  // can do "1024+8" then ArrowUp without losing the math.
+  function stepInput(input, dir, multiplier) {
+    const cur = readState(node);
+    const step = (cur.snap || 16) * multiplier;
+    const v = safeMathEval(input.value);
+    const base = Number.isFinite(v) && v > 0 ? v : (input === wInput ? cur.w : cur.h);
+    const next = clampDim(snapTo(base + dir * step, cur.snap || 16));
+    input.value = String(next);
+    liveUpdate();
+  }
 
   for (const inp of [wInput, hInput]) {
-    inp.addEventListener("keydown", (e) => e.stopPropagation());
+    inp.addEventListener("keydown", (e) => {
+      // Always block ComfyUI canvas shortcuts from firing while typing.
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        inp.blur();
+        return;
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const dir = e.key === "ArrowUp" ? 1 : -1;
+        const mult = e.shiftKey ? 4 : 1;
+        stepInput(inp, dir, mult);
+      }
+    });
   }
 
   swap.addEventListener("click", () => {
-    const w = parseInt(wInput.value, 10) || state.w;
-    const h = parseInt(hInput.value, 10) || state.h;
-    wInput.value = String(h);
-    hInput.value = String(w);
+    // Use safeMathEval too — the user may have typed math in either field.
+    const w = safeMathEval(wInput.value);
+    const h = safeMathEval(hInput.value);
+    const wOk = Number.isFinite(w) && w > 0 ? w : state.w;
+    const hOk = Number.isFinite(h) && h > 0 ? h : state.h;
+    wInput.value = String(hOk);
+    hInput.value = String(wOk);
     commit();
   });
 
