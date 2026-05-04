@@ -707,11 +707,11 @@ async def api_preview_save(request):
     workflow = data.get("workflow")
     prompt = data.get("prompt")
 
-    if not isinstance(prefix_raw, str) or not prefix_raw:
-        return web.json_response({"error": "filename_prefix required"}, status=400)
-    if len(prefix_raw) > _MAX_ID_LEN or not _SAFE_ID_RE.match(prefix_raw):
+    prefix = _safe_prefix(prefix_raw)
+    if not prefix:
         return web.json_response(
-            {"error": "filename_prefix must match [A-Za-z0-9_-]{1,64}"}, status=400
+            {"error": "invalid filename_prefix: use [A-Za-z0-9_-] segments separated by '/', no '..'"},
+            status=400,
         )
 
     pil = _decode_image(image_b64)
@@ -721,7 +721,7 @@ async def api_preview_save(request):
     try:
         output_dir = folder_paths.get_output_directory()
         full_folder, name, counter, subfolder, _ = folder_paths.get_save_image_path(
-            prefix_raw, output_dir, pil.width, pil.height
+            prefix, output_dir, pil.width, pil.height
         )
         os.makedirs(full_folder, exist_ok=True)
         fname = f"{name}_{counter:05}_.png"
