@@ -93,7 +93,7 @@ Easily see what text or data is flowing through your nodes.
 A handy way to preview your image right on the node, but better! It gives you two simple buttons: **Save to Disk** (choose any folder on your computer) and **Save to Output** (saves to your ComfyUI output folder). Both options safely embed your workflow into the image, so you can drag the image back in later to restore everything.
 
 ### 📐 Resolution Pixaroma
-A simple, one-click resolution picker. Choose from standard aspect ratios (like 1:1, 16:9, or 9:16) and instantly get the exact width and height you need, including popular sizes for AI video. Or, use Custom mode to type in your exact dimensions. It perfectly saves all your settings with your workflow!
+A simple, one-click resolution picker. Choose from 9 popular aspect ratios — 1:1, 16:9, 9:16, 2:1, 3:2, 2:3, 4:3, 3:4, and 4:5 (Instagram-portrait friendly) — and instantly get the exact width and height you need, including popular sizes for AI video. Type any Custom Ratio (21:9, 16:10, anything) with auto-computed AI-friendly sizes, or use Custom Resolution to type exact dimensions. Math expressions work in the Width and Height fields too — type `1024+128` or `512*2` and it just works. It perfectly saves all your settings with your workflow!
 
 ---
 
@@ -145,6 +145,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 04, 2026**
+- **Resolution Pixaroma upgrades:** Added 4:3, 3:4, and 4:5 aspect ratios (4:5 with Instagram-portrait-friendly sizes like 1152×1440). New **Custom Ratio** mode lets you type any W:H you want — quick-pick width chips set Width and auto-compute Height from your ratio. Math expressions now work in the Width and Height fields (e.g. `1024+128`, `512*2`, `(1024+128)/2`). Up/Down arrow keys step by snap.
 
 ### **April 27, 2026**
 - **NEW: AudioReact Pixaroma**: turn an image into an audio-reactive video with a fullscreen WebGL editor. 15 motion modes, 8 stackable overlays, real-time scrubbable preview.
