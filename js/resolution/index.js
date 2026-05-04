@@ -236,27 +236,26 @@ function injectCSS() {
       border-color: ${BRAND};
     }
 
-    /* Custom Ratio panel — three vertical sections inside .pix-res-list:
-       (1) ratio inputs row, (2) generated size list (scroll if too tall),
-       (3) footer (snap picker + ratio·MP). Layout uses nested flex so the
-       middle list scrolls independently and the header/footer stay pinned. */
-    .pix-res-list.pix-res-ratio { padding: 0; flex: 1; min-height: 160px; }
-    .pix-res-ratio-row {
+    /* Custom Ratio panel — Photoshop "lock-aspect" pattern. Sections top to
+       bottom: (1) ratio inputs (W:H typed once), (2) quick-pick width chips
+       (S/M/L/XL), (3) W and H math-aware inputs side-by-side (edit either,
+       counterpart auto-computes from ratio), (4) aspect preview, (5) footer
+       (snap picker + ratio·MP). Reuses .pix-res-custom-* layout for fields. */
+    .pix-res-list.pix-res-ratio { /* same shell as .pix-res-custom but no padding override needed */ }
+    .pix-res-ratio-input-row {
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      padding: 8px 8px 6px;
-      border-bottom: 1px solid #2f2f2f;
     }
-    .pix-res-ratio-row .pix-res-ratio-label {
+    .pix-res-ratio-input-row .pix-res-ratio-label {
       font-size: 9px;
       color: #888;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
-    .pix-res-ratio-row input {
-      width: 38px;
+    .pix-res-ratio-input-row input {
+      width: 42px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
@@ -268,7 +267,7 @@ function injectCSS() {
       font-family: ui-monospace, monospace;
       box-sizing: border-box;
     }
-    .pix-res-ratio-row input:focus { outline: none; border-color: ${BRAND}; }
+    .pix-res-ratio-input-row input:focus { outline: none; border-color: ${BRAND}; }
     .pix-res-ratio-swap {
       width: 22px;
       height: 22px;
@@ -291,30 +290,29 @@ function injectCSS() {
       pointer-events: none;
     }
     .pix-res-ratio-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
-    /* The generated-size list inside the ratio panel scrolls independently
-       so ratio inputs (top) and footer (bottom) stay visible. */
-    .pix-res-ratio-sizes {
-      flex: 1;
-      overflow-y: auto;
-      overflow-x: hidden;
-      display: flex;
-      flex-direction: column;
+    /* Quick-pick width chips — 4 evenly-spaced buttons under the ratio row. */
+    .pix-res-quickpicks {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 4px;
     }
-    .pix-res-ratio-sizes::-webkit-scrollbar { width: 6px; }
-    .pix-res-ratio-sizes::-webkit-scrollbar-thumb { background: #555; border-radius: 3px; }
-    .pix-res-ratio-sizes::-webkit-scrollbar-track { background: transparent; }
-    .pix-res-ratio-sizes:focus { outline: none; }
-    .pix-res-ratio-footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 6px;
-      padding: 6px 8px;
-      border-top: 1px solid #2f2f2f;
+    .pix-res-quickpick {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #ccc;
+      padding: 5px 0;
       font-size: 10px;
-      color: #777;
+      font-family: ui-monospace, monospace;
+      cursor: pointer;
+      transition: background 0.08s, border-color 0.08s;
     }
-    .pix-res-ratio-footer .accent { color: ${BRAND}; }
+    .pix-res-quickpick:hover { border-color: #666; color: #fff; }
+    .pix-res-quickpick.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
   `;
   const style = document.createElement("style");
   style.id = "pixaroma-resolution-css";
@@ -481,37 +479,10 @@ function megapixels(w, h) {
 function snapTo(n, step) { return Math.round(n / step) * step; }
 function clampDim(n) { return Math.max(256, Math.min(4096, n)); }
 
-// Width ladder used to generate sizes for custom-ratio mode. These widths are
-// the same ones the AI-friendly preset SIZES use (512, 640, 768, 1024, 1280,
-// 1408, 1600, 1920) so a typed 4:3 produces sizes very close to the chip's
-// 4:3 list. Heights are derived from the typed ratio and snapped.
-const RATIO_LADDER = [512, 640, 768, 1024, 1280, 1408, 1600, 1920];
-
-// Generates up to 8 [w, h] pairs at the given ratio, snapped to `snap` and
-// clamped to [256, 4096]. Drops duplicates that collapse onto the same pair
-// after snapping (extreme ratios can do this). Returns [] for invalid input.
-function generateSizesForRatio(rW, rH, snap) {
-  if (!Number.isFinite(rW) || !Number.isFinite(rH) || rW <= 0 || rH <= 0) return [];
-  const sizes = [];
-  const seen = new Set();
-  for (const x of RATIO_LADDER) {
-    let w, h;
-    if (rW >= rH) { // landscape or square — x is width
-      w = x;
-      h = (x * rH) / rW;
-    } else {        // portrait — x is height
-      h = x;
-      w = (x * rW) / rH;
-    }
-    w = clampDim(snapTo(w, snap));
-    h = clampDim(snapTo(h, snap));
-    const key = `${w}x${h}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    sizes.push([w, h]);
-  }
-  return sizes;
-}
+// Quick-pick width values for Custom Ratio mode — common AI-friendly widths.
+// 512 (low-VRAM/draft), 768 (SD1.5 native), 1024 (SDXL native), 1536 (high-res).
+// Click sets W to this value; H auto-computes from the typed ratio + snap.
+const QUICK_PICK_WIDTHS = [512, 768, 1024, 1536];
 
 // Tiny safe math evaluator for the W/H inputs — supports `+ - * / ( )` and
 // decimals only. Hand-rolled recursive descent. NEVER use eval() / Function()
@@ -831,12 +802,16 @@ function renderCustomPanel(node, state) {
 }
 
 function renderCustomRatioPanel(node, state) {
+  // Photoshop "lock-aspect" pattern: user types W:H ratio once, then either
+  // (a) clicks a quick-pick width chip, or (b) types into the W or H input
+  // (math expressions allowed). The other dimension auto-computes from the
+  // ratio and is snapped to /8/16/32/64 for AI alignment.
   const wrap = document.createElement("div");
-  wrap.className = "pix-res-list pix-res-ratio";
+  wrap.className = "pix-res-list pix-res-custom pix-res-ratio";
 
-  // ── ratio inputs row (W : H) ────────────────────────────────
+  // ── ratio inputs row (W : H, swap between) ──────────────────
   const ratioRow = document.createElement("div");
-  ratioRow.className = "pix-res-ratio-row";
+  ratioRow.className = "pix-res-ratio-input-row";
 
   const lbl = document.createElement("span");
   lbl.className = "pix-res-ratio-label";
@@ -866,14 +841,58 @@ function renderCustomRatioPanel(node, state) {
 
   ratioRow.append(lbl, rwInput, ratioSwap, rhInput);
 
-  // ── generated sizes list (scrolls independently) ─────────────
-  const sizesList = document.createElement("div");
-  sizesList.className = "pix-res-ratio-sizes";
-  sizesList.tabIndex = 0; // focusable for ArrowUp/Down navigation
+  // ── quick-pick width chips ──────────────────────────────────
+  const quickRow = document.createElement("div");
+  quickRow.className = "pix-res-quickpicks";
+  const quickBtnEls = [];
+  for (const w of QUICK_PICK_WIDTHS) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pix-res-quickpick";
+    btn.textContent = String(w);
+    btn.dataset.w = String(w);
+    quickRow.appendChild(btn);
+    quickBtnEls.push(btn);
+  }
 
-  // ── footer (snap picker + ratio·MP readout) ────────────────────
-  const footer = document.createElement("div");
-  footer.className = "pix-res-ratio-footer";
+  // ── W and H math-aware inputs (side-by-side, no swap between — ratio swap
+  //    above already handles orientation flip) ────────────────────────────
+  const fieldsRow = document.createElement("div");
+  fieldsRow.className = "pix-res-custom-row";
+  fieldsRow.style.gridTemplateColumns = "1fr 1fr"; // override 1fr auto 1fr (no swap col)
+
+  const wField = document.createElement("div");
+  wField.className = "pix-res-custom-field";
+  const wLabel = document.createElement("label");
+  wLabel.textContent = "Width";
+  const wInput = document.createElement("input");
+  wInput.type = "text";
+  wInput.inputMode = "decimal";
+  wInput.spellcheck = false;
+  wInput.autocomplete = "off";
+  wInput.title = "Math allowed: 1024+128, 512*2 — height auto-computes from ratio";
+  wInput.value = String(state.w);
+  wField.append(wLabel, wInput);
+
+  const hField = document.createElement("div");
+  hField.className = "pix-res-custom-field";
+  const hLabel = document.createElement("label");
+  hLabel.textContent = "Height";
+  const hInput = document.createElement("input");
+  hInput.type = "text";
+  hInput.inputMode = "decimal";
+  hInput.spellcheck = false;
+  hInput.autocomplete = "off";
+  hInput.title = "Math allowed: 1024+128, 512*2 — width auto-computes from ratio";
+  hInput.value = String(state.h);
+  hField.append(hLabel, hInput);
+
+  fieldsRow.append(wField, hField);
+
+  // ── readout (snap picker + ratio·MP) + aspect preview ─────────
+  const readout = document.createElement("div");
+  readout.className = "pix-res-readout";
+
   const snapGroup = document.createElement("div");
   snapGroup.className = "pix-res-snap-group";
   snapGroup.title = "Snap step (also drives Up/Down arrow nudge)";
@@ -893,7 +912,11 @@ function renderCustomRatioPanel(node, state) {
       const cur = readState(node);
       writeState(node, { ...cur, snap: v });
       for (const b of snapBtnEls) b.classList.toggle("active", parseInt(b.dataset.v, 10) === v);
-      refreshSizes();
+      // Re-snap current W and recompute H so visible values reflect new step.
+      const w = safeMathEval(wInput.value);
+      if (Number.isFinite(w) && w > 0) {
+        commitFromW(w);
+      }
     });
     snapBtns.appendChild(btn);
     snapBtnEls.push(btn);
@@ -901,37 +924,142 @@ function renderCustomRatioPanel(node, state) {
   snapGroup.append(snapIcon, snapBtns);
 
   const ratioMP = document.createElement("span");
-  footer.append(snapGroup, ratioMP);
+  readout.append(snapGroup, ratioMP);
 
-  // Re-renders the size list AND the footer readout from current state.
-  // Called on initial render, ratio-input commit, and snap change.
-  function refreshSizes() {
-    const cur = readState(node);
-    const rW = parseInt(rwInput.value, 10);
-    const rH = parseInt(rhInput.value, 10);
-    const sizes = generateSizesForRatio(rW, rH, cur.snap || 16);
-    sizesList.innerHTML = "";
-    if (sizes.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "pix-res-row empty";
-      empty.textContent = "—";
-      sizesList.appendChild(empty);
+  const preview = document.createElement("div");
+  preview.className = "pix-res-preview";
+  const previewRect = document.createElement("div");
+  previewRect.className = "pix-res-preview-rect";
+  const previewLabel = document.createElement("div");
+  previewLabel.className = "pix-res-preview-label";
+  preview.append(previewRect, previewLabel);
+
+  const PREVIEW_MAX_W = 90;
+  const PREVIEW_MAX_H = 60;
+
+  function refreshPreview(w, h) {
+    const aspect = w / h;
+    let pw, ph;
+    if (aspect >= PREVIEW_MAX_W / PREVIEW_MAX_H) {
+      pw = PREVIEW_MAX_W;
+      ph = PREVIEW_MAX_W / aspect;
     } else {
-      for (const [w, h] of sizes) {
-        const row = document.createElement("div");
-        row.className = "pix-res-row";
-        row.textContent = `${w} × ${h}`;
-        row.dataset.w = String(w);
-        row.dataset.h = String(h);
-        if (w === cur.w && h === cur.h) row.classList.add("active");
-        sizesList.appendChild(row);
-      }
+      ph = PREVIEW_MAX_H;
+      pw = PREVIEW_MAX_H * aspect;
     }
-    // Footer readout reflects the currently SELECTED size, not the typed
-    // ratio numbers — that way ratio·MP matches what the workflow will use.
-    ratioMP.innerHTML = `<span class="accent">${ratioLabel(cur.w, cur.h)}</span> · ${megapixels(cur.w, cur.h)} MP`;
+    previewRect.style.width = `${pw}px`;
+    previewRect.style.height = `${ph}px`;
+    previewLabel.innerHTML = `<span class="accent">${w}</span> × <span class="accent">${h}</span>`;
   }
-  refreshSizes();
+
+  function refreshReadout(w, h) {
+    // In Custom Ratio mode the user's TYPED ratio is the source of truth, so
+    // show that label even when /16 snap drifts the actual W:H slightly.
+    const cur = readState(node);
+    const rW = cur.custom_ratio_w ?? 4;
+    const rH = cur.custom_ratio_h ?? 3;
+    ratioMP.innerHTML =
+      `<span class="accent">${rW}:${rH}</span> · ${megapixels(w, h)} MP`;
+    refreshPreview(w, h);
+    // Reflect quick-pick "active" chip if W matches an exact preset.
+    for (const b of quickBtnEls) {
+      b.classList.toggle("active", parseInt(b.dataset.w, 10) === w);
+    }
+  }
+  refreshReadout(state.w, state.h);
+
+  // ── core commit helpers ──────────────────────────────────────────
+  // Given a Width value, snap it and derive Height from current ratio.
+  // Writes both to state and updates the inputs / readout.
+  function commitFromW(rawW) {
+    const cur = readState(node);
+    const step = cur.snap || 16;
+    const rW = cur.custom_ratio_w ?? 4;
+    const rH = cur.custom_ratio_h ?? 3;
+    const w = clampDim(snapTo(rawW, step));
+    const h = clampDim(snapTo((w * rH) / rW, step));
+    wInput.value = String(w);
+    hInput.value = String(h);
+    refreshReadout(w, h);
+    writeState(node, { ...cur, w, h });
+  }
+
+  // Given a Height value, snap it and derive Width from current ratio.
+  function commitFromH(rawH) {
+    const cur = readState(node);
+    const step = cur.snap || 16;
+    const rW = cur.custom_ratio_w ?? 4;
+    const rH = cur.custom_ratio_h ?? 3;
+    const h = clampDim(snapTo(rawH, step));
+    const w = clampDim(snapTo((h * rW) / rH, step));
+    wInput.value = String(w);
+    hInput.value = String(h);
+    refreshReadout(w, h);
+    writeState(node, { ...cur, w, h });
+  }
+
+  // ── live preview while typing (no commit until blur) ─────────────
+  function liveUpdate(input, isWidth) {
+    const v = safeMathEval(input.value);
+    if (!Number.isFinite(v) || v <= 0) return;
+    const cur = readState(node);
+    const rW = cur.custom_ratio_w ?? 4;
+    const rH = cur.custom_ratio_h ?? 3;
+    if (isWidth) {
+      refreshReadout(Math.round(v), Math.round((v * rH) / rW));
+    } else {
+      refreshReadout(Math.round((v * rW) / rH), Math.round(v));
+    }
+  }
+  wInput.addEventListener("input", () => liveUpdate(wInput, true));
+  hInput.addEventListener("input", () => liveUpdate(hInput, false));
+
+  // ── input commit on blur ─────────────────────────────────────────
+  wInput.addEventListener("blur", () => {
+    const v = safeMathEval(wInput.value);
+    const cur = readState(node);
+    commitFromW(Number.isFinite(v) && v > 0 ? v : cur.w);
+  });
+  hInput.addEventListener("blur", () => {
+    const v = safeMathEval(hInput.value);
+    const cur = readState(node);
+    commitFromH(Number.isFinite(v) && v > 0 ? v : cur.h);
+  });
+
+  // ── arrow-key stepping (same pattern as Custom Resolution) ─────
+  function stepInput(input, dir, multiplier, isWidth) {
+    const cur = readState(node);
+    const step = (cur.snap || 16) * multiplier;
+    const v = safeMathEval(input.value);
+    const base = Number.isFinite(v) && v > 0 ? v : (isWidth ? cur.w : cur.h);
+    const next = base + dir * step;
+    if (isWidth) commitFromW(next); else commitFromH(next);
+  }
+
+  for (const [inp, isW] of [[wInput, true], [hInput, false]]) {
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        inp.blur();
+        return;
+      }
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        e.preventDefault();
+        const dir = e.key === "ArrowUp" ? 1 : -1;
+        const mult = e.shiftKey ? 4 : 1;
+        stepInput(inp, dir, mult, isW);
+      }
+    });
+  }
+
+  // ── quick-pick chip clicks set W and recompute H ─────────────────
+  quickRow.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pix-res-quickpick");
+    if (!btn) return;
+    e.stopPropagation();
+    commitFromW(parseInt(btn.dataset.w, 10));
+  });
 
   // ── ratio input commit + validation ──────────────────────────────
   function commitRatio() {
@@ -942,16 +1070,24 @@ function renderCustomRatioPanel(node, state) {
     const rH = Number.isFinite(rHraw) && rHraw > 0 ? rHraw : cur.custom_ratio_h ?? 3;
     rwInput.value = String(rW);
     rhInput.value = String(rH);
-    if (rW !== cur.custom_ratio_w || rH !== cur.custom_ratio_h) {
+    const ratioChanged = rW !== cur.custom_ratio_w || rH !== cur.custom_ratio_h;
+    if (ratioChanged) {
       writeState(node, { ...cur, custom_ratio_w: rW, custom_ratio_h: rH });
+      // Recompute H from current W at the new ratio so the visible image
+      // matches what the workflow will receive.
+      const w = clampDim(snapTo(cur.w, cur.snap || 16));
+      const h = clampDim(snapTo((w * rH) / rW, cur.snap || 16));
+      wInput.value = String(w);
+      hInput.value = String(h);
+      writeState(node, { ...readState(node), w, h });
+      refreshReadout(w, h);
     }
-    refreshSizes();
   }
 
   for (const inp of [rwInput, rhInput]) {
     inp.addEventListener("blur", commitRatio);
     inp.addEventListener("keydown", (e) => {
-      e.stopPropagation(); // prevent ComfyUI canvas from grabbing keys
+      e.stopPropagation();
       if (e.key === "Enter") {
         e.preventDefault();
         inp.blur();
@@ -966,7 +1102,7 @@ function renderCustomRatioPanel(node, state) {
     commitRatio();
   });
 
-  wrap.append(ratioRow, sizesList, footer);
+  wrap.append(ratioRow, quickRow, fieldsRow, readout, preview);
   return wrap;
 }
 
@@ -1061,16 +1197,15 @@ function setupResolutionNode(node) {
           h: cur.custom_h ?? 1024,
         });
       } else if (id === "custom_ratio") {
-        // Land on the first generated size at the saved ratio so the panel
-        // shows an active row immediately. Falls back to 1024×768 (4:3) if
-        // the saved ratio yields no valid sizes (shouldn't normally happen).
+        // Preserve current W if it's reasonable (>= 256); otherwise default
+        // to 1024 (SDXL native). Height auto-computes from the saved ratio
+        // and snaps to the current step so the panel opens with valid dims.
         const rW = cur.custom_ratio_w ?? 4;
         const rH = cur.custom_ratio_h ?? 3;
-        const sizes = generateSizesForRatio(rW, rH, cur.snap || 16);
-        const pick = sizes.find(([w, h]) => w === cur.w && h === cur.h)
-                  || sizes[Math.min(3, sizes.length - 1)] // ~mid-range default
-                  || [1024, 768];
-        writeState(node, { ...cur, mode: "custom_ratio", w: pick[0], h: pick[1] });
+        const step = cur.snap || 16;
+        const w = clampDim(snapTo(cur.w >= 256 ? cur.w : 1024, step));
+        const h = clampDim(snapTo((w * rH) / rW, step));
+        writeState(node, { ...cur, mode: "custom_ratio", w, h });
       } else {
         const sizes = SIZES[id];
         if (!sizes) return;
@@ -1089,37 +1224,26 @@ function setupResolutionNode(node) {
       renderUI(node);
       // Focus the freshly-rendered list so the next ArrowUp/Down keystroke is
       // captured by the list — without this, the click moves focus to the
-      // overlay/canvas and arrows don't reach us. Custom Ratio mode focuses
-      // .pix-res-ratio-sizes (the inner scroll area), preset mode focuses
-      // the list itself.
-      const list =
-        root.querySelector(".pix-res-ratio-sizes") ||
-        root.querySelector(".pix-res-list:not(.pix-res-custom)");
+      // overlay/canvas and arrows don't reach us.
+      const list = root.querySelector(".pix-res-list:not(.pix-res-custom)");
       list?.focus();
       list?.querySelector(".pix-res-row.active")?.scrollIntoView({ block: "nearest" });
     }
   };
 
-  // Arrow-key navigation works in preset AND custom_ratio modes (both render
-  // a `.pix-res-row` list). The list is `tabindex=0` so it can receive focus;
-  // we delegate at root level so the listener survives every re-render.
-  // `stopPropagation` prevents ComfyUI's canvas from interpreting the arrow
-  // keys as graph pan.
+  // Arrow-key navigation in preset mode (size list). The list is `tabindex=0`
+  // so it can receive focus; we delegate at root level so the listener
+  // survives every re-render. `stopPropagation` prevents ComfyUI's canvas
+  // from interpreting the arrow keys as graph pan. Custom modes have their
+  // own per-input arrow handlers (snap-step), not list-row navigation.
   const _onKeydown = (e) => {
-    // Don't hijack arrows when the user is typing in a ratio input.
     if (e.target instanceof HTMLInputElement) return;
-    const list = e.target.closest(".pix-res-list, .pix-res-ratio-sizes");
+    const list = e.target.closest(".pix-res-list");
     if (!list || list.classList.contains("pix-res-custom")) return;
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
     const cur = readState(node);
-    let sizes;
-    if (cur.mode === "preset") {
-      sizes = SIZES[cur.ratio] || [];
-    } else if (cur.mode === "custom_ratio") {
-      sizes = generateSizesForRatio(cur.custom_ratio_w ?? 4, cur.custom_ratio_h ?? 3, cur.snap || 16);
-    } else {
-      return;
-    }
+    if (cur.mode !== "preset") return;
+    const sizes = SIZES[cur.ratio] || [];
     if (sizes.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1130,11 +1254,10 @@ function setupResolutionNode(node) {
     else if (e.key === "Home")      idx = 0;
     else if (e.key === "End")       idx = sizes.length - 1;
     const [w, h] = sizes[idx];
-    if (w === cur.w && h === cur.h) return; // no-op (already at boundary)
+    if (w === cur.w && h === cur.h) return;
     writeState(node, { ...cur, w, h });
     renderUI(node);
-    // Refocus whichever list is now visible after the re-render.
-    const newList = root.querySelector(".pix-res-ratio-sizes, .pix-res-list:not(.pix-res-custom):not(.pix-res-ratio)");
+    const newList = root.querySelector(".pix-res-list:not(.pix-res-custom)");
     newList?.focus();
     newList?.querySelector(".pix-res-row.active")?.scrollIntoView({ block: "nearest" });
   };
