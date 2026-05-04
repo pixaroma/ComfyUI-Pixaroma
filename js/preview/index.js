@@ -322,11 +322,13 @@ function createButtonsWidget() {
 // custom UI key (`pixaroma_preview_frames`) instead of `ui.images` from
 // the Python node prevents LiteGraph from drawing its native strip
 // underneath this one (Save Mp4 pattern).
-const IMG_STRIP_MIN_H = 180;
+// Native PreviewImage pattern: minHeight constant, image is fitted inside
+// whatever rect the user-resized node gives the widget. No node.setSize
+// calls — that's what caused resize flicker.
+const IMG_STRIP_MIN_H = 220;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
-const IMG_CELL_MAX_H = 360;          // cap cell height so strip doesn't blow up on wide resizes
 const BADGE_PAD = 4;                 // px inside the counter badge
 const BADGE_H = 16;                  // px tall badge
 const BADGE_FONT = "11px sans-serif";
@@ -336,43 +338,42 @@ const BADGE_FONT = "11px sans-serif";
 // hit-tested directly against the node-local `pos` LiteGraph passes to
 // the widget's `mouse(event, pos, node)` callback. This mirrors the
 // buttons widget's `computeButtonRects(width, y)` convention in this file.
-function layoutImgStrip(widgetWidth, widgetY, frames) {
+// Layout frames into evenly-divided "slots" across the widget rect, and
+// for each slot compute the FITTED image rect (centered, aspect-preserved,
+// never upscaled). Click hit-rects are the slot bounds (so users can click
+// anywhere in a slot, including letterbox area, to select). The image is
+// drawn at the inner fitted rect.
+function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
   const n = frames.length;
-  if (!n) return { rects: [], totalH: IMG_STRIP_MIN_H };
+  if (!n) return { slots: [], imgs: [] };
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
+  const innerH = Math.max(40, widgetHeight - 2 * IMG_STRIP_V_PAD);
   const cellGap = IMG_STRIP_GAP;
-  const fitW = Math.max(40, Math.floor((innerW - cellGap * (n - 1)) / n));
-  // Cell aspect: use first loaded frame's natural aspect if available
-  const first = frames[0]?.img;
-  let aspect = 1;
-  if (first?.complete && first.naturalWidth > 0) {
-    aspect = first.naturalWidth / first.naturalHeight;
-  }
-  // Cap cellH at IMG_CELL_MAX_H. If aspect-driven height would exceed it,
-  // scale cellW DOWN to preserve aspect ratio (so the image isn't distorted
-  // and the strip doesn't grow taller than the cap on wide resizes).
-  let cellW = fitW;
-  let cellH = Math.max(40, Math.round(cellW / aspect));
-  if (cellH > IMG_CELL_MAX_H) {
-    cellH = IMG_CELL_MAX_H;
-    cellW = Math.max(40, Math.round(cellH * aspect));
-  }
-  const totalH = cellH + 2 * IMG_STRIP_V_PAD;
-  // Centre the row of cells within innerW (left padding may exceed SIDE_PAD
-  // when cells were scaled down to fit IMG_CELL_MAX_H).
-  const totalCellsW = cellW * n + cellGap * (n - 1);
-  const xStart = SIDE_PAD + Math.max(0, Math.floor((innerW - totalCellsW) / 2));
-  const rects = [];
+  const slotW = Math.max(40, Math.floor((innerW - cellGap * (n - 1)) / n));
+  const slots = [];
+  const imgs = [];
   for (let i = 0; i < n; i++) {
-    rects.push({
-      x: xStart + i * (cellW + cellGap),
-      y: widgetY + IMG_STRIP_V_PAD,
-      w: cellW,
-      h: cellH,
-      idx: i,
-    });
+    const slotX = SIDE_PAD + i * (slotW + cellGap);
+    const slotY = widgetY + IMG_STRIP_V_PAD;
+    slots.push({ x: slotX, y: slotY, w: slotW, h: innerH, idx: i });
+
+    // Fit image inside slot, preserving aspect, never upscale (native pattern)
+    const im = frames[i]?.img;
+    let imgRect = { x: slotX, y: slotY, w: slotW, h: innerH };
+    if (im?.complete && im.naturalWidth > 0 && im.naturalHeight > 0) {
+      const scale = Math.min(slotW / im.naturalWidth, innerH / im.naturalHeight, 1);
+      const w = Math.round(im.naturalWidth * scale);
+      const h = Math.round(im.naturalHeight * scale);
+      imgRect = {
+        x: slotX + Math.floor((slotW - w) / 2),
+        y: slotY + Math.floor((innerH - h) / 2),
+        w,
+        h,
+      };
+    }
+    imgs.push(imgRect);
   }
-  return { rects, totalH };
+  return { slots, imgs };
 }
 
 function createStripWidget() {
@@ -382,40 +383,45 @@ function createStripWidget() {
     value: null,
     serialize: false,
     computeSize(width) {
-      const node = this._node;
-      const frames = node?._pixaromaFrames || [];
-      // totalH doesn't depend on the widget's y-position, pass 0
-      const layout = layoutImgStrip(width, 0, frames);
-      return [width, layout.totalH];
+      // Constant minimum height (native PreviewImage pattern). The actual
+      // rendered height is whatever the user-resized node grants — see draw().
+      return [width, IMG_STRIP_MIN_H];
     },
     draw(ctx, node, widget_width, y) {
       this._node = node;
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
-      const layout = layoutImgStrip(widget_width, y, frames);
+      // Strip is the LAST widget, so it owns whatever vertical space remains
+      // between its y and the node's bottom. This is what lets the user
+      // freely resize the node taller/shorter without flicker.
+      const widgetH = Math.max(IMG_STRIP_MIN_H, node.size[1] - y);
+      const layout = layoutImgStrip(widget_width, y, widgetH, frames);
       node._pixaromaCells = layout;
       const sel = node._pixaromaSelectedFrame ?? 0;
       const total = frames.length;
-      for (const r of layout.rects) {
-        const f = frames[r.idx];
+      for (let i = 0; i < layout.slots.length; i++) {
+        const slot = layout.slots[i];
+        const imgRect = layout.imgs[i];
+        const f = frames[i];
         if (f?.img?.complete && f.img.naturalWidth > 0) {
-          ctx.drawImage(f.img, r.x, r.y, r.w, r.h);
+          ctx.drawImage(f.img, imgRect.x, imgRect.y, imgRect.w, imgRect.h);
         } else {
           ctx.save();
           ctx.fillStyle = "#222";
-          ctx.fillRect(r.x, r.y, r.w, r.h);
+          ctx.fillRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
           ctx.restore();
         }
         if (total > 1) {
-          // Counter badge in bottom-right; BRAND fill if selected, dark otherwise
-          const isSel = r.idx === sel;
-          const badgeText = `${r.idx + 1} / ${total}`;
+          const isSel = i === sel;
+          const badgeText = `${i + 1} / ${total}`;
+          // Badge in slot's bottom-right (always at slot edge, regardless
+          // of where the letterboxed image lands)
           ctx.save();
           ctx.font = BADGE_FONT;
           const textW = ctx.measureText(badgeText).width;
           const badgeW = textW + BADGE_PAD * 2;
-          const bx = r.x + r.w - badgeW - 4;
-          const by = r.y + r.h - BADGE_H - 4;
+          const bx = slot.x + slot.w - badgeW - 4;
+          const by = slot.y + slot.h - BADGE_H - 4;
           ctx.fillStyle = isSel ? BRAND : "rgba(0,0,0,0.72)";
           ctx.beginPath();
           ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
@@ -426,15 +432,16 @@ function createStripWidget() {
           ctx.fillText(badgeText, bx + BADGE_PAD, by + BADGE_H / 2 + 1);
           ctx.restore();
           if (isSel) {
-            // Orange selection border drawn inside the cell (avoids clipping)
+            // Orange selection border around the FITTED image (not the slot),
+            // so the highlight wraps the visible content
             ctx.save();
             ctx.strokeStyle = BRAND;
             ctx.lineWidth = IMG_STRIP_BORDER_W;
             ctx.strokeRect(
-              r.x + IMG_STRIP_BORDER_W / 2,
-              r.y + IMG_STRIP_BORDER_W / 2,
-              r.w - IMG_STRIP_BORDER_W,
-              r.h - IMG_STRIP_BORDER_W,
+              imgRect.x + IMG_STRIP_BORDER_W / 2,
+              imgRect.y + IMG_STRIP_BORDER_W / 2,
+              imgRect.w - IMG_STRIP_BORDER_W,
+              imgRect.h - IMG_STRIP_BORDER_W,
             );
             ctx.restore();
           }
@@ -467,23 +474,15 @@ app.registerExtension({
       this.setDirtyCanvas(true, true);
     };
 
-    // Clamp minimum size on manual resize (Compare pattern).
-    // Re-fit height on WIDTH changes only — when the user makes the node
-    // wider, the strip's cell width grows (and its aspect-driven cell
-    // height grows with it), so the strip needs more vertical room.
-    // Don't refit on height-only drags so the user can manually adjust
-    // height (e.g. to leave more room) without it snapping back.
+    // Clamp minimum size on manual resize (Compare pattern). The strip
+    // widget owns whatever vertical space remains and fits its image
+    // inside, so we don't need to mutate the node size on resize —
+    // the user is in full control of the node dimensions.
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
-      const prevW = this._pixaromaPrevWidth ?? this.size[0];
-      this._pixaromaPrevWidth = this.size[0];
-      if (this._pixaromaFrames?.length && prevW !== this.size[0]) {
-        // Defer to next frame so the drag commits first.
-        requestAnimationFrame(() => fitNodeToWidgets(this));
-      }
     };
 
     // Node-level click handler for the image strip. The widget's own
@@ -494,13 +493,13 @@ app.registerExtension({
     const origMouseDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, localPos, graphCanvas) {
       const cells = this._pixaromaCells;
-      if (cells?.rects?.length) {
+      if (cells?.slots?.length) {
         const lx = localPos[0];
         const ly = localPos[1];
-        for (const r of cells.rects) {
-          if (lx >= r.x && lx <= r.x + r.w && ly >= r.y && ly <= r.y + r.h) {
-            if ((this._pixaromaSelectedFrame ?? 0) !== r.idx) {
-              this._pixaromaSelectedFrame = r.idx;
+        for (const s of cells.slots) {
+          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
+            if ((this._pixaromaSelectedFrame ?? 0) !== s.idx) {
+              this._pixaromaSelectedFrame = s.idx;
               this.setDirtyCanvas(true, true);
             }
             return true; // consume the click so it doesn't bubble
@@ -559,36 +558,15 @@ api.addEventListener("executed", ({ detail }) => {
     return {
       ...f,
       url,
-      img: loadFrameImage(url, () => {
-        // After image loads, the strip widget's computeSize result changes
-        // (height now depends on actual aspect ratio). Force a layout
-        // refresh — Vue caches widget bounds from computeSize and won't
-        // re-call it on its own, which means clicks below the cached
-        // bound never route to the widget. Save Mp4 pattern.
-        fitNodeToWidgets(node);
-      }),
+      // Just trigger a redraw on image load. No node.setSize — that's what
+      // caused resize flicker. The strip widget fits the image inside
+      // whatever rect the user-controlled node grants it.
+      img: loadFrameImage(url, () => node.setDirtyCanvas(true, true)),
     };
   });
   // Reset selection if the new batch is smaller than the old one
   if ((node._pixaromaSelectedFrame ?? 0) >= frames.length) {
     node._pixaromaSelectedFrame = 0;
   }
-  fitNodeToWidgets(node);
+  node.setDirtyCanvas(true, true);
 });
-
-// Force LiteGraph + Vue to recompute widget bounds from computeSize, and
-// snap the node height to exactly fit the current strip layout.
-// Without this, the strip widget's clickable area stays at its initial
-// 180px even after frames load — and Vue routes clicks below that to
-// nothing. We snap (not just grow) so the node also SHRINKS when the
-// user runs a landscape batch after a portrait batch — otherwise the
-// node would keep the tall portrait height with empty grey below the
-// new shorter image.
-function fitNodeToWidgets(node) {
-  if (!node || typeof node.computeSize !== "function") return;
-  const desired = node.computeSize([node.size[0], node.size[1]]);
-  if (node.size[1] !== desired[1]) {
-    node.setSize([node.size[0], desired[1]]);
-  }
-  node.graph?.setDirtyCanvas(true, true);
-}
