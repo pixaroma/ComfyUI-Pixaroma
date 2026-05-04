@@ -173,6 +173,19 @@ export function injectCSS() {
 .pix-lbl-range-wrap .pix-lbl-val {
     color: #666; font-size: 11px; min-width: 28px; text-align: right; font-variant-numeric: tabular-nums;
 }
+.pix-lbl-range-wrap input.pix-lbl-num {
+    width: 44px; box-sizing: border-box;
+    background: #1e1e1f; border: 1px solid #2e2e2e; border-radius: 3px;
+    color: #bbb; padding: 3px 5px; font-size: 11px; font-family: monospace;
+    text-align: center; outline: none; font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    -moz-appearance: textfield;
+}
+.pix-lbl-range-wrap input.pix-lbl-num::-webkit-outer-spin-button,
+.pix-lbl-range-wrap input.pix-lbl-num::-webkit-inner-spin-button {
+    -webkit-appearance: none; margin: 0;
+}
+.pix-lbl-range-wrap input.pix-lbl-num:focus { border-color: ${BRAND}; }
 /* Divider inside button row */
 .pix-lbl-vsep { width: 1px; height: 16px; background: #333; margin: 0 3px; flex-shrink: 0; }
 /* 2-col color grid */

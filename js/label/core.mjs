@@ -208,19 +208,29 @@ export class LabelEditor {
     const sizeRange = document.createElement("input");
     sizeRange.type = "range";
     sizeRange.min = 8;
-    sizeRange.max = 64;
+    sizeRange.max = 256;
     sizeRange.value = c.fontSize;
     sizeRange.style.cssText = "flex:1;accent-color:" + BRAND + ";";
-    const sizeVal = el("span", "pix-lbl-val");
-    sizeVal.textContent = c.fontSize;
+    const sizeInput = document.createElement("input");
+    sizeInput.type = "number";
+    sizeInput.min = 8;
+    sizeInput.max = 256;
+    sizeInput.value = c.fontSize;
+    sizeInput.className = "pix-lbl-num";
     sizeRange.addEventListener("input", () => {
       c.fontSize = Number(sizeRange.value);
-      sizeVal.textContent = c.fontSize;
+      sizeInput.value = c.fontSize;
+      this._updatePreview();
+    });
+    sizeInput.addEventListener("input", () => {
+      const v = Math.max(8, Math.min(256, Number(sizeInput.value) || 8));
+      c.fontSize = v;
+      sizeRange.value = v;
       this._updatePreview();
     });
     sizeRow.appendChild(sizeLbl);
     sizeRow.appendChild(sizeRange);
-    sizeRow.appendChild(sizeVal);
+    sizeRow.appendChild(sizeInput);
     typoSection.appendChild(sizeRow);
     body.appendChild(typoSection);
 
@@ -437,7 +447,7 @@ export class LabelEditor {
             <h3>Label Pixaroma</h3>
             <p><b>Double-click</b> a label on the canvas to open this editor.</p>
             <p><b>Text</b> — supports multiline text and emoji.</p>
-            <p><b>Font Size</b> — drag the slider to adjust (8–64px).</p>
+            <p><b>Font Size</b> — drag the slider to adjust (8–256px).</p>
             <p><b>Font buttons</b> — click to switch between Arial, Times, Courier, Impact.</p>
             <p><b>B</b> — toggle bold on/off.</p>
             <p><b>Align</b> — left, center, or right text alignment.</p>
