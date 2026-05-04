@@ -330,7 +330,12 @@ const BADGE_PAD = 4;                 // px inside the counter badge
 const BADGE_H = 16;                  // px tall badge
 const BADGE_FONT = "11px sans-serif";
 
-function layoutImgStrip(widgetWidth, frames) {
+// `widgetY` is the widget's y-position within the node (passed into draw).
+// Returned rects use NODE-local coordinates (absolute), so they can be
+// hit-tested directly against the node-local `pos` LiteGraph passes to
+// the widget's `mouse(event, pos, node)` callback. This mirrors the
+// buttons widget's `computeButtonRects(width, y)` convention in this file.
+function layoutImgStrip(widgetWidth, widgetY, frames) {
   const n = frames.length;
   if (!n) return { rects: [], totalH: IMG_STRIP_MIN_H };
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
@@ -348,7 +353,7 @@ function layoutImgStrip(widgetWidth, frames) {
   for (let i = 0; i < n; i++) {
     rects.push({
       x: SIDE_PAD + i * (cellW + cellGap),
-      y: IMG_STRIP_V_PAD,
+      y: widgetY + IMG_STRIP_V_PAD,
       w: cellW,
       h: cellH,
       idx: i,
@@ -366,25 +371,26 @@ function createStripWidget() {
     computeSize(width) {
       const node = this._node;
       const frames = node?._pixaromaFrames || [];
-      const layout = layoutImgStrip(width, frames);
+      // totalH doesn't depend on the widget's y-position, pass 0
+      const layout = layoutImgStrip(width, 0, frames);
       return [width, layout.totalH];
     },
     draw(ctx, node, widget_width, y) {
       this._node = node;
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
-      const layout = layoutImgStrip(widget_width, frames);
+      const layout = layoutImgStrip(widget_width, y, frames);
       node._pixaromaCells = layout;
       const sel = node._pixaromaSelectedFrame ?? 0;
       const total = frames.length;
       for (const r of layout.rects) {
         const f = frames[r.idx];
         if (f?.img?.complete && f.img.naturalWidth > 0) {
-          ctx.drawImage(f.img, r.x, y + r.y, r.w, r.h);
+          ctx.drawImage(f.img, r.x, r.y, r.w, r.h);
         } else {
           ctx.save();
           ctx.fillStyle = "#222";
-          ctx.fillRect(r.x, y + r.y, r.w, r.h);
+          ctx.fillRect(r.x, r.y, r.w, r.h);
           ctx.restore();
         }
         if (total > 1) {
@@ -396,7 +402,7 @@ function createStripWidget() {
           const textW = ctx.measureText(badgeText).width;
           const badgeW = textW + BADGE_PAD * 2;
           const bx = r.x + r.w - badgeW - 4;
-          const by = y + r.y + r.h - BADGE_H - 4;
+          const by = r.y + r.h - BADGE_H - 4;
           ctx.fillStyle = isSel ? BRAND : "rgba(0,0,0,0.72)";
           ctx.beginPath();
           ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
@@ -413,7 +419,7 @@ function createStripWidget() {
             ctx.lineWidth = IMG_STRIP_BORDER_W;
             ctx.strokeRect(
               r.x + IMG_STRIP_BORDER_W / 2,
-              y + r.y + IMG_STRIP_BORDER_W / 2,
+              r.y + IMG_STRIP_BORDER_W / 2,
               r.w - IMG_STRIP_BORDER_W,
               r.h - IMG_STRIP_BORDER_W,
             );
@@ -426,7 +432,9 @@ function createStripWidget() {
       if (event.type !== "pointerdown" && event.type !== "mousedown") return false;
       const layout = node._pixaromaCells;
       if (!layout?.rects?.length) return false;
-      // pos is widget-local; rects are also widget-local — direct hit-test.
+      // pos is node-local (same convention as the buttons widget); rects
+      // are now also node-local (absolute y from layoutImgStrip) — direct
+      // hit-test works in both Vue and legacy frontends.
       const lx = pos[0];
       const ly = pos[1];
       for (const r of layout.rects) {
