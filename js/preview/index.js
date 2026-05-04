@@ -44,135 +44,12 @@ function loadFrameImage(url, onLoad) {
   return img;
 }
 
-// ---- lightbox (full-size viewer, double-click to open) ----
-
-let _lightboxStyleInjected = false;
-function ensureLightboxStyle() {
-  if (_lightboxStyleInjected) return;
-  _lightboxStyleInjected = true;
-  const style = document.createElement("style");
-  style.id = "pixaroma-preview-lightbox-style";
-  style.textContent = `
-    /* Click-catcher fills the viewport but is transparent — clicking
-       outside the image-card closes the popup. */
-    .pixaroma-preview-lightbox {
-      position: fixed; inset: 0; z-index: 99999;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      animation: pixaromaLightboxIn 0.12s ease-out;
-    }
-    @keyframes pixaromaLightboxIn { from { opacity: 0; } to { opacity: 1; } }
-    /* The "card" is just the image plus its controls; no background
-       blackout. Image renders at natural size up to viewport bounds. */
-    .pixaroma-preview-lightbox .pixaroma-lb-card {
-      position: relative;
-      cursor: default;
-      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
-      border-radius: 4px;
-      overflow: hidden;
-      max-width: 92vw; max-height: 92vh;
-      display: flex;
-    }
-    .pixaroma-preview-lightbox img {
-      display: block;
-      max-width: 92vw; max-height: 92vh;
-      object-fit: contain;
-    }
-    .pixaroma-preview-lightbox .pixaroma-lb-close {
-      position: absolute; top: 8px; right: 8px;
-      color: #fff;
-      font: 500 18px/1 sans-serif;
-      background: rgba(0,0,0,0.55);
-      width: 28px; height: 28px;
-      display: flex; align-items: center; justify-content: center;
-      border-radius: 4px;
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.1s;
-    }
-    .pixaroma-preview-lightbox .pixaroma-lb-close:hover {
-      background: rgba(255,103,68,0.9);
-    }
-    .pixaroma-preview-lightbox .pixaroma-lb-info {
-      position: absolute; bottom: 8px; left: 50%;
-      transform: translateX(-50%);
-      color: #fff;
-      font: 12px/1.4 sans-serif;
-      background: rgba(0,0,0,0.55);
-      padding: 4px 10px;
-      border-radius: 4px;
-    }
-    .pixaroma-preview-lightbox .pixaroma-lb-counter {
-      position: absolute; bottom: 8px; right: 8px;
-      color: #fff;
-      font: 12px/1.4 sans-serif;
-      background: rgba(0,0,0,0.55);
-      padding: 4px 10px;
-      border-radius: 4px;
-    }
-  `;
-  document.head.appendChild(style);
-}
-
-function openLightbox(node, idx) {
-  const frame = node._pixaromaFrames?.[idx];
-  if (!frame?.url) return;
-  ensureLightboxStyle();
-
-  const overlay = document.createElement("div");
-  overlay.className = "pixaroma-preview-lightbox";
-
-  const card = document.createElement("div");
-  card.className = "pixaroma-lb-card";
-
-  const img = document.createElement("img");
-  img.src = frame.url;
-
-  const close = document.createElement("div");
-  close.className = "pixaroma-lb-close";
-  close.textContent = "×";
-
-  const info = document.createElement("div");
-  info.className = "pixaroma-lb-info";
-  info.textContent = "loading…";
-  img.addEventListener("load", () => {
-    info.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
-  });
-
-  const total = node._pixaromaFrames.length;
-  let counter = null;
-  if (total > 1) {
-    counter = document.createElement("div");
-    counter.className = "pixaroma-lb-counter";
-    counter.textContent = `${idx + 1} / ${total}`;
-  }
-
-  card.appendChild(img);
-  card.appendChild(close);
-  card.appendChild(info);
-  if (counter) card.appendChild(counter);
-  overlay.appendChild(card);
-
-  function destroy() {
-    overlay.remove();
-    document.removeEventListener("keydown", onKey, true);
-  }
-  function onKey(e) {
-    if (e.key === "Escape") {
-      e.stopPropagation();
-      destroy();
-    }
-  }
-  // Click outside the card (anywhere on viewport overlay) = close.
-  // Click inside the card = stay open, EXCEPT on the close button.
-  overlay.addEventListener("click", (e) => {
-    if (e.target === close) { destroy(); return; }
-    if (card.contains(e.target)) return;
-    destroy();
-  });
-  document.addEventListener("keydown", onKey, true);
-  document.body.appendChild(overlay);
-}
+// ---- expanded-mode constants (single-frame view INSIDE the node) ----
+const EXPAND_CLOSE_SIZE = 22;     // x button square size
+const EXPAND_CLOSE_PAD = 6;        // padding from image corner
+const EXPAND_FOOTER_H = 18;        // strip bottom area reserved for "WxH" text
+const EXPAND_DIM_FONT = "11px sans-serif";
+const EXPAND_DIM_COLOR = "#888";
 
 // ---- geometry (widget-local coords) ----
 function computeButtonRects(widgetWidth, stripY) {
@@ -529,10 +406,93 @@ function createStripWidget() {
       // between its y and the node's bottom. This is what lets the user
       // freely resize the node taller/shorter without flicker.
       const widgetH = Math.max(IMG_STRIP_MIN_H, node.size[1] - y);
-      const layout = layoutImgStrip(widget_width, y, widgetH, frames);
-      node._pixaromaCells = layout;
       const sel = node._pixaromaSelectedFrame ?? 0;
       const total = frames.length;
+
+      // ---- Expanded mode: single-frame view inside the node ----
+      if (node._pixaromaExpanded) {
+        const f = frames[sel];
+        const innerW = Math.max(40, widget_width - 2 * SIDE_PAD);
+        const innerH = Math.max(40, widgetH - 2 * IMG_STRIP_V_PAD - EXPAND_FOOTER_H);
+        // Fit image inside the available rect, centered, never upscale
+        let imgRect = { x: SIDE_PAD, y: y + IMG_STRIP_V_PAD, w: innerW, h: innerH };
+        if (f?.img?.complete && f.img.naturalWidth > 0) {
+          const scale = Math.min(innerW / f.img.naturalWidth, innerH / f.img.naturalHeight, 1);
+          const w = Math.round(f.img.naturalWidth * scale);
+          const h = Math.round(f.img.naturalHeight * scale);
+          imgRect = {
+            x: SIDE_PAD + Math.floor((innerW - w) / 2),
+            y: y + IMG_STRIP_V_PAD + Math.floor((innerH - h) / 2),
+            w, h,
+          };
+          ctx.drawImage(f.img, imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+        } else {
+          ctx.save();
+          ctx.fillStyle = "#222";
+          ctx.fillRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+          ctx.restore();
+        }
+
+        // Close X button — top-right of the image
+        const closeRect = {
+          x: imgRect.x + imgRect.w - EXPAND_CLOSE_SIZE - EXPAND_CLOSE_PAD,
+          y: imgRect.y + EXPAND_CLOSE_PAD,
+          w: EXPAND_CLOSE_SIZE,
+          h: EXPAND_CLOSE_SIZE,
+        };
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.beginPath();
+        ctx.roundRect(closeRect.x, closeRect.y, closeRect.w, closeRect.h, 3);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = "16px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("×", closeRect.x + closeRect.w / 2, closeRect.y + closeRect.h / 2 + 1);
+        ctx.restore();
+
+        // Counter badge — bottom-right of the image (only when batch > 1)
+        if (total > 1) {
+          const badgeText = `${sel + 1} / ${total}`;
+          ctx.save();
+          ctx.font = BADGE_FONT;
+          const textW = ctx.measureText(badgeText).width;
+          const badgeW = textW + BADGE_PAD * 2;
+          const bx = imgRect.x + imgRect.w - badgeW - 4;
+          const by = imgRect.y + imgRect.h - BADGE_H - 4;
+          ctx.fillStyle = "rgba(0,0,0,0.72)";
+          ctx.beginPath();
+          ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.textBaseline = "middle";
+          ctx.textAlign = "left";
+          ctx.fillText(badgeText, bx + BADGE_PAD, by + BADGE_H / 2 + 1);
+          ctx.restore();
+        }
+
+        // Dimensions text in the footer below the image
+        if (f?.img?.complete && f.img.naturalWidth > 0) {
+          const dimText = `${f.img.naturalWidth} × ${f.img.naturalHeight}`;
+          ctx.save();
+          ctx.fillStyle = EXPAND_DIM_COLOR;
+          ctx.font = EXPAND_DIM_FONT;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(dimText, widget_width / 2, y + widgetH - EXPAND_FOOTER_H / 2);
+          ctx.restore();
+        }
+
+        // Stash hit-test rects: only the close button is interactive.
+        // No `slots` so click handler knows we're in expanded mode.
+        node._pixaromaCells = { expanded: true, closeRect };
+        return;
+      }
+
+      // ---- Strip mode (default): row of thumbnails with click-to-expand ----
+      const layout = layoutImgStrip(widget_width, y, widgetH, frames);
+      node._pixaromaCells = layout;
       for (let i = 0; i < layout.slots.length; i++) {
         const slot = layout.slots[i];
         const imgRect = layout.imgs[i];
@@ -640,40 +600,40 @@ app.registerExtension({
     const origMouseDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, localPos, graphCanvas) {
       const cells = this._pixaromaCells;
-      if (cells?.slots?.length) {
-        const lx = localPos[0];
-        const ly = localPos[1];
-        for (const s of cells.slots) {
-          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
-            if ((this._pixaromaSelectedFrame ?? 0) !== s.idx) {
-              this._pixaromaSelectedFrame = s.idx;
-              // Persist selection so it survives workflow switch / reload
-              this.properties = this.properties || {};
-              this.properties.pixaromaSelected = s.idx;
-              this.setDirtyCanvas(true, true);
-            }
-            return true; // consume the click so it doesn't bubble
-          }
-        }
-      }
-      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
-    };
+      if (!cells) return origMouseDown ? origMouseDown.apply(this, arguments) : false;
+      const lx = localPos[0];
+      const ly = localPos[1];
 
-    // Double-click on a frame opens the full-size lightbox viewer.
-    const origDblClick = nodeType.prototype.onDblClick;
-    nodeType.prototype.onDblClick = function (e, localPos, graphCanvas) {
-      const cells = this._pixaromaCells;
-      if (cells?.slots?.length) {
-        const lx = localPos[0];
-        const ly = localPos[1];
+      // Expanded mode: only the close X is interactive. Click x to collapse.
+      if (cells.expanded) {
+        const cr = cells.closeRect;
+        if (cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h) {
+          this._pixaromaExpanded = false;
+          this.properties = this.properties || {};
+          this.properties.pixaromaExpanded = false;
+          this.setDirtyCanvas(true, true);
+          return true;
+        }
+        // Click anywhere else inside the node passes through (header,
+        // widgets above the strip still work normally).
+        return origMouseDown ? origMouseDown.apply(this, arguments) : false;
+      }
+
+      // Strip mode: click a thumbnail → select it AND expand it inline.
+      if (cells.slots?.length) {
         for (const s of cells.slots) {
           if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
-            openLightbox(this, s.idx);
+            this._pixaromaSelectedFrame = s.idx;
+            this._pixaromaExpanded = true;
+            this.properties = this.properties || {};
+            this.properties.pixaromaSelected = s.idx;
+            this.properties.pixaromaExpanded = true;
+            this.setDirtyCanvas(true, true);
             return true;
           }
         }
       }
-      return origDblClick ? origDblClick.apply(this, arguments) : false;
+      return origMouseDown ? origMouseDown.apply(this, arguments) : false;
     };
 
     // Node-level hover tracking. The widget's own `mouse` callback does not
@@ -738,6 +698,7 @@ function restoreFromProperties(node) {
   const saved = node.properties?.pixaromaFrames;
   if (!Array.isArray(saved) || !saved.length) return;
   node._pixaromaSelectedFrame = node.properties?.pixaromaSelected ?? 0;
+  node._pixaromaExpanded = !!node.properties?.pixaromaExpanded;
   hydrateFrames(node, saved);
 }
 
