@@ -10,6 +10,8 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
+from .nodes._save_helpers import _build_pnginfo, _safe_prefix
+
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
 # instead of the hidden C:\Users\name\.u2net folder.
@@ -215,13 +217,9 @@ def _decode_image(b64_data: str) -> Image.Image | None:
 def _embed_workflow_metadata(workflow, prompt) -> PngInfo:
     """Return a PngInfo with `prompt` and `workflow` tEXt chunks,
     matching the byte format ComfyUI's built-in SaveImage writes.
-    Either argument may be None (chunk is then skipped)."""
-    pnginfo = PngInfo()
-    if prompt is not None:
-        pnginfo.add_text("prompt", json.dumps(prompt))
-    if workflow is not None:
-        pnginfo.add_text("workflow", json.dumps(workflow))
-    return pnginfo
+    Either argument may be None (chunk is then skipped).
+    Thin compatibility wrapper around nodes._save_helpers._build_pnginfo."""
+    return _build_pnginfo(prompt=prompt, workflow=workflow)
 
 
 @PromptServer.instance.routes.post("/pixaroma/api/layer/upload")
