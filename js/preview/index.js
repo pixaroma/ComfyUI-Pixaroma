@@ -472,6 +472,19 @@ app.registerExtension({
       if (!this.size || this.size[0] < DEFAULT_W) this.size[0] = DEFAULT_W;
       if (!this.size[1] || this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
       this.setDirtyCanvas(true, true);
+      // Restore preview from properties AFTER configure() runs (Vue Compat
+      // #8 — nodeCreated fires before configure, so defer via microtask).
+      queueMicrotask(() => restoreFromProperties(this));
+    };
+
+    // Also restore on explicit configure (workflow JSON load). Belt-and-
+    // braces with the queueMicrotask above — covers both fresh-load and
+    // any other path that calls configure after node creation.
+    const origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+      const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
+      restoreFromProperties(this);
+      return r;
     };
 
     // Clamp minimum size on manual resize (Compare pattern). The strip
@@ -500,6 +513,9 @@ app.registerExtension({
           if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
             if ((this._pixaromaSelectedFrame ?? 0) !== s.idx) {
               this._pixaromaSelectedFrame = s.idx;
+              // Persist selection so it survives workflow switch / reload
+              this.properties = this.properties || {};
+              this.properties.pixaromaSelected = s.idx;
               this.setDirtyCanvas(true, true);
             }
             return true; // consume the click so it doesn't bubble
@@ -542,6 +558,38 @@ app.registerExtension({
 // (pixaroma_preview_frames) onto the node. We use a custom key (not
 // `images`) so LiteGraph doesn't auto-render its native image strip
 // underneath our custom widget (Save Mp4 pattern, CLAUDE.md).
+// Hydrate node._pixaromaFrames (HTMLImageElements + URLs) from saved metadata
+// stored on node.properties. Called after a fresh executed event AND on
+// node restore (workflow load / Vue tab switch) so previews survive across
+// sessions, mirroring native PreviewImage behavior.
+function hydrateFrames(node, framesMeta) {
+  node._pixaromaFrames = framesMeta.map((f) => {
+    const url = buildViewUrl(f);
+    return {
+      filename: f.filename,
+      subfolder: f.subfolder || "",
+      type: f.type || "temp",
+      url,
+      img: loadFrameImage(url, () => node.setDirtyCanvas(true, true)),
+    };
+  });
+  if ((node._pixaromaSelectedFrame ?? 0) >= framesMeta.length) {
+    node._pixaromaSelectedFrame = 0;
+  }
+  node.setDirtyCanvas(true, true);
+}
+
+// Restore preview from node.properties (called on workflow load / Vue tab
+// re-mount). Properties survive serialization, so as long as the temp PNG
+// files still exist on disk the preview renders just like native.
+function restoreFromProperties(node) {
+  if (node._pixaromaFrames?.length) return; // already populated
+  const saved = node.properties?.pixaromaFrames;
+  if (!Array.isArray(saved) || !saved.length) return;
+  node._pixaromaSelectedFrame = node.properties?.pixaromaSelected ?? 0;
+  hydrateFrames(node, saved);
+}
+
 api.addEventListener("executed", ({ detail }) => {
   const frames = detail?.output?.pixaroma_preview_frames;
   if (!frames || !frames.length) return;
@@ -553,20 +601,17 @@ api.addEventListener("executed", ({ detail }) => {
   }
   if (!node || node.type !== "PixaromaPreview") return;
 
-  node._pixaromaFrames = frames.map((f) => {
-    const url = buildViewUrl(f);
-    return {
-      ...f,
-      url,
-      // Just trigger a redraw on image load. No node.setSize — that's what
-      // caused resize flicker. The strip widget fits the image inside
-      // whatever rect the user-controlled node grants it.
-      img: loadFrameImage(url, () => node.setDirtyCanvas(true, true)),
-    };
-  });
-  // Reset selection if the new batch is smaller than the old one
+  // Persist meta on node.properties so the preview survives workflow
+  // switching / reload — LiteGraph serializes `properties` to JSON.
+  node.properties = node.properties || {};
+  node.properties.pixaromaFrames = frames.map((f) => ({
+    filename: f.filename,
+    subfolder: f.subfolder || "",
+    type: f.type || "temp",
+  }));
   if ((node._pixaromaSelectedFrame ?? 0) >= frames.length) {
     node._pixaromaSelectedFrame = 0;
   }
-  node.setDirtyCanvas(true, true);
+  node.properties.pixaromaSelected = node._pixaromaSelectedFrame ?? 0;
+  hydrateFrames(node, node.properties.pixaromaFrames);
 });
