@@ -240,8 +240,9 @@ function injectCSS() {
        bottom: (1) ratio inputs (W:H typed once), (2) quick-pick width chips
        (S/M/L/XL), (3) W and H math-aware inputs side-by-side (edit either,
        counterpart auto-computes from ratio), (4) aspect preview, (5) footer
-       (snap picker + ratio·MP). Reuses .pix-res-custom-* layout for fields. */
-    .pix-res-list.pix-res-ratio { /* same shell as .pix-res-custom but no padding override needed */ }
+       (snap picker + ratio·MP). Reuses .pix-res-custom-* layout for fields —
+       the wrap element gets both classes so it inherits the custom-mode shell
+       (padding, gap, flex column) without needing a duplicate rule here. */
     .pix-res-ratio-input-row {
       display: flex;
       align-items: center;
@@ -479,6 +480,16 @@ function megapixels(w, h) {
 function snapTo(n, step) { return Math.round(n / step) * step; }
 function clampDim(n) { return Math.max(256, Math.min(4096, n)); }
 
+// Return v if it's a finite positive integer, otherwise fallback. Used for
+// `custom_ratio_w` / `custom_ratio_h` reads — a corrupted/malicious workflow
+// JSON could supply a string ("0", "<img...>"), 0, or a negative number, all
+// of which slip past `?? 4` (nullish only). Coercing here closes both the
+// XSS vector (string into innerHTML) and the divide-by-zero / negative path.
+function safePositiveInt(v, fallback) {
+  const n = +v;
+  return Number.isInteger(n) && n > 0 ? n : fallback;
+}
+
 // Quick-pick width values for Custom Ratio mode — common AI-friendly widths.
 // 512 (low-VRAM/draft), 768 (SD1.5 native), 1024 (SDXL native), 1536 (high-res).
 // Click sets W to this value; H auto-computes from the typed ratio + snap.
@@ -495,8 +506,15 @@ function safeMathEval(str) {
   if (!s) return NaN;
   // Whitelist all chars up front so the parser never sees a stray identifier.
   if (!/^[0-9+\-*/().\s]+$/.test(s)) return NaN;
+  // Hard length cap — defends against pathological inputs reaching the parser.
+  if (s.length > 256) return NaN;
 
   let pos = 0;
+  // Recursion depth cap — prevents stack overflow from deeply-nested parens
+  // like "((((...1...))))". Threshold 64 is well above any realistic
+  // expression and safely below browser stack limits.
+  const MAX_DEPTH = 64;
+  let depth = 0;
   const skipWs = () => { while (pos < s.length && s[pos] === " ") pos++; };
   const eat = (ch) => { skipWs(); if (s[pos] === ch) { pos++; return true; } return false; };
 
@@ -524,17 +542,23 @@ function safeMathEval(str) {
     return v;
   }
   function parseFactor() {
+    if (++depth > MAX_DEPTH) return NaN;
     skipWs();
-    if (eat("+")) return parseFactor();
-    if (eat("-")) return -parseFactor();
+    if (eat("+"))  { const r = parseFactor(); depth--; return r; }
+    if (eat("-"))  { const r = -parseFactor(); depth--; return r; }
     if (eat("(")) {
       const v = parseExpr();
-      if (!eat(")")) return NaN;
+      if (!eat(")")) { depth--; return NaN; }
+      depth--;
       return v;
     }
     let num = "";
     while (pos < s.length && /[0-9.]/.test(s[pos])) num += s[pos++];
+    depth--;
     if (!num) return NaN;
+    // Reject malformed numbers like "1.2.3" — parseFloat would silently
+    // truncate to 1.2 and the trailing-garbage check below wouldn't catch it.
+    if ((num.match(/\./g) || []).length > 1) return NaN;
     return parseFloat(num);
   }
 
@@ -822,7 +846,7 @@ function renderCustomRatioPanel(node, state) {
   rwInput.inputMode = "numeric";
   rwInput.spellcheck = false;
   rwInput.autocomplete = "off";
-  rwInput.value = String(state.custom_ratio_w ?? 4);
+  rwInput.value = String(safePositiveInt(state.custom_ratio_w, 4));
   rwInput.title = "Ratio width (positive integer)";
 
   const rhInput = document.createElement("input");
@@ -830,7 +854,7 @@ function renderCustomRatioPanel(node, state) {
   rhInput.inputMode = "numeric";
   rhInput.spellcheck = false;
   rhInput.autocomplete = "off";
-  rhInput.value = String(state.custom_ratio_h ?? 3);
+  rhInput.value = String(safePositiveInt(state.custom_ratio_h, 3));
   rhInput.title = "Ratio height (positive integer)";
 
   const ratioSwap = document.createElement("button");
@@ -956,8 +980,8 @@ function renderCustomRatioPanel(node, state) {
     // In Custom Ratio mode the user's TYPED ratio is the source of truth, so
     // show that label even when /16 snap drifts the actual W:H slightly.
     const cur = readState(node);
-    const rW = cur.custom_ratio_w ?? 4;
-    const rH = cur.custom_ratio_h ?? 3;
+    const rW = safePositiveInt(cur.custom_ratio_w, 4);
+    const rH = safePositiveInt(cur.custom_ratio_h, 3);
     ratioMP.innerHTML =
       `<span class="accent">${rW}:${rH}</span> · ${megapixels(w, h)} MP`;
     refreshPreview(w, h);
@@ -974,8 +998,8 @@ function renderCustomRatioPanel(node, state) {
   function commitFromW(rawW) {
     const cur = readState(node);
     const step = cur.snap || 16;
-    const rW = cur.custom_ratio_w ?? 4;
-    const rH = cur.custom_ratio_h ?? 3;
+    const rW = safePositiveInt(cur.custom_ratio_w, 4);
+    const rH = safePositiveInt(cur.custom_ratio_h, 3);
     const w = clampDim(snapTo(rawW, step));
     const h = clampDim(snapTo((w * rH) / rW, step));
     wInput.value = String(w);
@@ -988,8 +1012,8 @@ function renderCustomRatioPanel(node, state) {
   function commitFromH(rawH) {
     const cur = readState(node);
     const step = cur.snap || 16;
-    const rW = cur.custom_ratio_w ?? 4;
-    const rH = cur.custom_ratio_h ?? 3;
+    const rW = safePositiveInt(cur.custom_ratio_w, 4);
+    const rH = safePositiveInt(cur.custom_ratio_h, 3);
     const h = clampDim(snapTo(rawH, step));
     const w = clampDim(snapTo((h * rW) / rH, step));
     wInput.value = String(w);
@@ -1003,8 +1027,8 @@ function renderCustomRatioPanel(node, state) {
     const v = safeMathEval(input.value);
     if (!Number.isFinite(v) || v <= 0) return;
     const cur = readState(node);
-    const rW = cur.custom_ratio_w ?? 4;
-    const rH = cur.custom_ratio_h ?? 3;
+    const rW = safePositiveInt(cur.custom_ratio_w, 4);
+    const rH = safePositiveInt(cur.custom_ratio_h, 3);
     if (isWidth) {
       refreshReadout(Math.round(v), Math.round((v * rH) / rW));
     } else {
@@ -1066,20 +1090,21 @@ function renderCustomRatioPanel(node, state) {
     const rWraw = parseInt(rwInput.value, 10);
     const rHraw = parseInt(rhInput.value, 10);
     const cur = readState(node);
-    const rW = Number.isFinite(rWraw) && rWraw > 0 ? rWraw : cur.custom_ratio_w ?? 4;
-    const rH = Number.isFinite(rHraw) && rHraw > 0 ? rHraw : cur.custom_ratio_h ?? 3;
+    const rW = Number.isFinite(rWraw) && rWraw > 0 ? rWraw : safePositiveInt(cur.custom_ratio_w, 4);
+    const rH = Number.isFinite(rHraw) && rHraw > 0 ? rHraw : safePositiveInt(cur.custom_ratio_h, 3);
     rwInput.value = String(rW);
     rhInput.value = String(rH);
     const ratioChanged = rW !== cur.custom_ratio_w || rH !== cur.custom_ratio_h;
     if (ratioChanged) {
-      writeState(node, { ...cur, custom_ratio_w: rW, custom_ratio_h: rH });
       // Recompute H from current W at the new ratio so the visible image
-      // matches what the workflow will receive.
-      const w = clampDim(snapTo(cur.w, cur.snap || 16));
-      const h = clampDim(snapTo((w * rH) / rW, cur.snap || 16));
+      // matches what the workflow will receive. Single combined write so
+      // the workflow can never observe a half-updated state mid-blur.
+      const step = cur.snap || 16;
+      const w = clampDim(snapTo(cur.w, step));
+      const h = clampDim(snapTo((w * rH) / rW, step));
       wInput.value = String(w);
       hInput.value = String(h);
-      writeState(node, { ...readState(node), w, h });
+      writeState(node, { ...cur, custom_ratio_w: rW, custom_ratio_h: rH, w, h });
       refreshReadout(w, h);
     }
   }
@@ -1200,8 +1225,8 @@ function setupResolutionNode(node) {
         // Preserve current W if it's reasonable (>= 256); otherwise default
         // to 1024 (SDXL native). Height auto-computes from the saved ratio
         // and snaps to the current step so the panel opens with valid dims.
-        const rW = cur.custom_ratio_w ?? 4;
-        const rH = cur.custom_ratio_h ?? 3;
+        const rW = safePositiveInt(cur.custom_ratio_w, 4);
+        const rH = safePositiveInt(cur.custom_ratio_h, 3);
         const step = cur.snap || 16;
         const w = clampDim(snapTo(cur.w >= 256 ? cur.w : 1024, step));
         const h = clampDim(snapTo((w * rH) / rW, step));
@@ -1319,10 +1344,12 @@ app.registerExtension({
     };
   },
 
-  // nodeCreated fires AFTER node construction including configure, so widget
-  // values restored from a saved workflow are already in place. This is the
-  // proven Pixaroma pattern (see js/note/index.js) for hidden-JSON-widget
-  // state restoration.
+  // nodeCreated fires DURING node construction, BEFORE configure() is called
+  // to restore saved widget values (CLAUDE.md Pattern #8). The initial
+  // populate of the DOM widget is therefore deferred to queueMicrotask
+  // inside setupResolutionNode so configure has a chance to land the saved
+  // value first — without that defer, the panel renders defaults and flashes
+  // to the saved state milliseconds later.
   nodeCreated(node) {
     if (node.comfyClass !== "PixaromaResolution") return;
     setupResolutionNode(node);

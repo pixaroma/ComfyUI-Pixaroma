@@ -9,6 +9,10 @@ DEFAULT_STATE = {
     "h": 1024,
     "custom_w": 1024,
     "custom_h": 1024,
+    # Custom Ratio mode — kept in sync with DEFAULT_STATE in
+    # js/resolution/index.js (CLAUDE.md Pattern #3).
+    "custom_ratio_w": 4,
+    "custom_ratio_h": 3,
     "snap": 16,
 }
 
