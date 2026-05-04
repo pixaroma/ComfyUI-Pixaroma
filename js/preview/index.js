@@ -44,6 +44,119 @@ function loadFrameImage(url, onLoad) {
   return img;
 }
 
+// ---- lightbox (full-size viewer, double-click to open) ----
+
+let _lightboxStyleInjected = false;
+function ensureLightboxStyle() {
+  if (_lightboxStyleInjected) return;
+  _lightboxStyleInjected = true;
+  const style = document.createElement("style");
+  style.id = "pixaroma-preview-lightbox-style";
+  style.textContent = `
+    .pixaroma-preview-lightbox {
+      position: fixed; inset: 0; z-index: 99999;
+      background: rgba(0,0,0,0.92);
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      animation: pixaromaLightboxIn 0.12s ease-out;
+    }
+    @keyframes pixaromaLightboxIn { from { opacity: 0; } to { opacity: 1; } }
+    .pixaroma-preview-lightbox img {
+      max-width: 92vw; max-height: 92vh;
+      object-fit: contain;
+      cursor: default;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    }
+    .pixaroma-preview-lightbox .pixaroma-lb-close {
+      position: absolute; top: 16px; right: 20px;
+      color: #fff;
+      font: 500 22px/1 sans-serif;
+      background: rgba(0,0,0,0.55);
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s;
+    }
+    .pixaroma-preview-lightbox .pixaroma-lb-close:hover {
+      background: rgba(255,103,68,0.9);
+    }
+    .pixaroma-preview-lightbox .pixaroma-lb-info {
+      position: absolute; bottom: 16px; left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font: 13px/1.4 sans-serif;
+      background: rgba(0,0,0,0.55);
+      padding: 6px 12px;
+      border-radius: 4px;
+    }
+    .pixaroma-preview-lightbox .pixaroma-lb-counter {
+      position: absolute; bottom: 16px; right: 20px;
+      color: #fff;
+      font: 13px/1.4 sans-serif;
+      background: rgba(0,0,0,0.55);
+      padding: 6px 12px;
+      border-radius: 4px;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function openLightbox(node, idx) {
+  const frame = node._pixaromaFrames?.[idx];
+  if (!frame?.url) return;
+  ensureLightboxStyle();
+
+  const overlay = document.createElement("div");
+  overlay.className = "pixaroma-preview-lightbox";
+
+  const img = document.createElement("img");
+  img.src = frame.url;
+
+  const close = document.createElement("div");
+  close.className = "pixaroma-lb-close";
+  close.textContent = "×"; // ×
+
+  const info = document.createElement("div");
+  info.className = "pixaroma-lb-info";
+  info.textContent = "loading…";
+  img.addEventListener("load", () => {
+    info.textContent = `${img.naturalWidth} × ${img.naturalHeight}`;
+  });
+
+  const total = node._pixaromaFrames.length;
+  let counter = null;
+  if (total > 1) {
+    counter = document.createElement("div");
+    counter.className = "pixaroma-lb-counter";
+    counter.textContent = `${idx + 1} / ${total}`;
+  }
+
+  overlay.appendChild(img);
+  overlay.appendChild(close);
+  overlay.appendChild(info);
+  if (counter) overlay.appendChild(counter);
+
+  function destroy() {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey, true);
+  }
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      destroy();
+    }
+  }
+  // Click on backdrop or close button = close. Click on image = stay open.
+  overlay.addEventListener("click", (e) => {
+    if (e.target === img) return;
+    destroy();
+  });
+  document.addEventListener("keydown", onKey, true);
+  document.body.appendChild(overlay);
+}
+
 // ---- geometry (widget-local coords) ----
 function computeButtonRects(widgetWidth, stripY) {
   const gap = BTN_GAP;
@@ -349,7 +462,11 @@ function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
   const innerH = Math.max(40, widgetHeight - 2 * IMG_STRIP_V_PAD);
   const cellGap = IMG_STRIP_GAP;
-  const slotW = Math.max(40, Math.floor((innerW - cellGap * (n - 1)) / n));
+  // Minimum 16 instead of 40 — at min slots become tiny but still hittable.
+  // Forcing 40 used to push the rightmost slots past the node's visible
+  // width when the user shrank the node + had many frames, so clicks on
+  // those slots fell outside the node's hit area.
+  const slotW = Math.max(16, Math.floor((innerW - cellGap * (n - 1)) / n));
   const slots = [];
   const imgs = [];
   for (let i = 0; i < n; i++) {
@@ -523,6 +640,23 @@ app.registerExtension({
         }
       }
       return origMouseDown ? origMouseDown.apply(this, arguments) : false;
+    };
+
+    // Double-click on a frame opens the full-size lightbox viewer.
+    const origDblClick = nodeType.prototype.onDblClick;
+    nodeType.prototype.onDblClick = function (e, localPos, graphCanvas) {
+      const cells = this._pixaromaCells;
+      if (cells?.slots?.length) {
+        const lx = localPos[0];
+        const ly = localPos[1];
+        for (const s of cells.slots) {
+          if (lx >= s.x && lx <= s.x + s.w && ly >= s.y && ly <= s.y + s.h) {
+            openLightbox(this, s.idx);
+            return true;
+          }
+        }
+      }
+      return origDblClick ? origDblClick.apply(this, arguments) : false;
     };
 
     // Node-level hover tracking. The widget's own `mouse` callback does not
