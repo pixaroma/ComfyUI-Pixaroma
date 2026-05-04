@@ -45,11 +45,16 @@ function loadFrameImage(url, onLoad) {
 }
 
 // ---- expanded-mode constants (single-frame view INSIDE the node) ----
-const EXPAND_CLOSE_SIZE = 22;     // x button square size
+const EXPAND_CLOSE_SIZE = 26;      // x button square size (clickable area)
+const EXPAND_CLOSE_VISUAL = 22;    // visible x button size (drawn smaller for cleaner look)
 const EXPAND_CLOSE_PAD = 6;        // padding from image corner
 const EXPAND_FOOTER_H = 18;        // strip bottom area reserved for "WxH" text
 const EXPAND_DIM_FONT = "11px sans-serif";
 const EXPAND_DIM_COLOR = "#888";
+
+// Tracks which preview node is currently in expanded mode, so the global
+// keydown listener can route arrow-key navigation to the right node.
+let _activePreviewNode = null;
 
 // ---- geometry (widget-local coords) ----
 function computeButtonRects(widgetWidth, stripY) {
@@ -433,23 +438,27 @@ function createStripWidget() {
           ctx.restore();
         }
 
-        // Close X button — top-right of the image
+        // Close X button — top-right of the image. Clickable area is
+        // larger (EXPAND_CLOSE_SIZE) than visible button (EXPAND_CLOSE_VISUAL)
+        // for easier targeting, especially on small node sizes.
+        const visualX = imgRect.x + imgRect.w - EXPAND_CLOSE_VISUAL - EXPAND_CLOSE_PAD;
+        const visualY = imgRect.y + EXPAND_CLOSE_PAD;
         const closeRect = {
-          x: imgRect.x + imgRect.w - EXPAND_CLOSE_SIZE - EXPAND_CLOSE_PAD,
-          y: imgRect.y + EXPAND_CLOSE_PAD,
+          x: visualX - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
+          y: visualY - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
           w: EXPAND_CLOSE_SIZE,
           h: EXPAND_CLOSE_SIZE,
         };
         ctx.save();
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
         ctx.beginPath();
-        ctx.roundRect(closeRect.x, closeRect.y, closeRect.w, closeRect.h, 3);
+        ctx.roundRect(visualX, visualY, EXPAND_CLOSE_VISUAL, EXPAND_CLOSE_VISUAL, 3);
         ctx.fill();
         ctx.fillStyle = "#fff";
-        ctx.font = "16px sans-serif";
+        ctx.font = "bold 16px sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText("×", closeRect.x + closeRect.w / 2, closeRect.y + closeRect.h / 2 + 1);
+        ctx.fillText("×", visualX + EXPAND_CLOSE_VISUAL / 2, visualY + EXPAND_CLOSE_VISUAL / 2 + 1);
         ctx.restore();
 
         // Counter badge — bottom-right of the image (only when batch > 1)
@@ -484,9 +493,10 @@ function createStripWidget() {
           ctx.restore();
         }
 
-        // Stash hit-test rects: only the close button is interactive.
-        // No `slots` so click handler knows we're in expanded mode.
-        node._pixaromaCells = { expanded: true, closeRect };
+        // Stash hit-test rects: close button + image area (click image
+        // to advance to next frame). No `slots` so click handler knows
+        // we're in expanded mode.
+        node._pixaromaCells = { expanded: true, closeRect, imgRect };
         return;
       }
 
@@ -604,18 +614,35 @@ app.registerExtension({
       const lx = localPos[0];
       const ly = localPos[1];
 
-      // Expanded mode: only the close X is interactive. Click x to collapse.
+      // Expanded mode: X closes; clicking the image advances to next frame.
       if (cells.expanded) {
         const cr = cells.closeRect;
-        if (cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h) {
+        const ir = cells.imgRect;
+        const inClose = cr && lx >= cr.x && lx <= cr.x + cr.w && ly >= cr.y && ly <= cr.y + cr.h;
+        const inImage = ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h;
+        if (inClose) {
           this._pixaromaExpanded = false;
           this.properties = this.properties || {};
           this.properties.pixaromaExpanded = false;
+          if (_activePreviewNode === this) _activePreviewNode = null;
           this.setDirtyCanvas(true, true);
           return true;
         }
-        // Click anywhere else inside the node passes through (header,
-        // widgets above the strip still work normally).
+        if (inImage) {
+          // Click on image (anywhere except the X) → next frame in batch
+          const frames = this._pixaromaFrames || [];
+          if (frames.length > 1) {
+            const cur = this._pixaromaSelectedFrame ?? 0;
+            const next = (cur + 1) % frames.length;
+            this._pixaromaSelectedFrame = next;
+            this.properties = this.properties || {};
+            this.properties.pixaromaSelected = next;
+            _activePreviewNode = this;
+            this.setDirtyCanvas(true, true);
+          }
+          return true;
+        }
+        // Click on header / widgets above passes through normally
         return origMouseDown ? origMouseDown.apply(this, arguments) : false;
       }
 
@@ -628,6 +655,7 @@ app.registerExtension({
             this.properties = this.properties || {};
             this.properties.pixaromaSelected = s.idx;
             this.properties.pixaromaExpanded = true;
+            _activePreviewNode = this;
             this.setDirtyCanvas(true, true);
             return true;
           }
@@ -701,6 +729,46 @@ function restoreFromProperties(node) {
   node._pixaromaExpanded = !!node.properties?.pixaromaExpanded;
   hydrateFrames(node, saved);
 }
+
+// ---- arrow-key navigation in expanded mode ----
+// Capture left/right arrows when a preview is expanded, so they navigate
+// frames instead of panning the ComfyUI canvas. Only fires when not
+// typing in an input field and the active preview is in expanded mode.
+window.addEventListener("keydown", (e) => {
+  if (!_activePreviewNode) return;
+  if (!_activePreviewNode._pixaromaExpanded) {
+    _activePreviewNode = null;
+    return;
+  }
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Escape") return;
+  // Don't hijack typing
+  const tag = e.target?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable) return;
+
+  const node = _activePreviewNode;
+  const frames = node._pixaromaFrames || [];
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    node._pixaromaExpanded = false;
+    node.properties = node.properties || {};
+    node.properties.pixaromaExpanded = false;
+    _activePreviewNode = null;
+    node.setDirtyCanvas(true, true);
+    return;
+  }
+  if (frames.length < 2) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const cur = node._pixaromaSelectedFrame ?? 0;
+  const next = e.key === "ArrowLeft"
+    ? (cur - 1 + frames.length) % frames.length
+    : (cur + 1) % frames.length;
+  node._pixaromaSelectedFrame = next;
+  node.properties = node.properties || {};
+  node.properties.pixaromaSelected = next;
+  node.setDirtyCanvas(true, true);
+}, true);
 
 api.addEventListener("executed", ({ detail }) => {
   const frames = detail?.output?.pixaroma_preview_frames;
