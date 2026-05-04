@@ -116,6 +116,11 @@ function blobToDataURL(blob) {
   });
 }
 
+async function dataURLToBlob(dataURL) {
+  const resp = await fetch(dataURL);
+  return await resp.blob();
+}
+
 async function getWorkflowAndPrompt() {
   // app.graphToPrompt() returns { workflow, output }; "output" is the prompt.
   const { workflow, output } = await app.graphToPrompt();
@@ -166,6 +171,7 @@ async function saveToDisk(node) {
     return;
   }
   let preparedBlob;
+  let suggestedName = `${readFilenamePrefix(node)}.png`;
   try {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
@@ -174,20 +180,25 @@ async function saveToDisk(node) {
     const resp = await fetch("/pixaroma/api/preview/prepare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image_b64: dataURL, workflow, prompt }),
+      body: JSON.stringify({
+        image_b64: dataURL,
+        filename_prefix: readFilenamePrefix(node),
+        workflow,
+        prompt,
+      }),
     });
     if (!resp.ok) {
       const errJson = await resp.json().catch(() => ({}));
       showToast(node, `Prepare failed: ${errJson.error || resp.status}`);
       return;
     }
-    preparedBlob = await resp.blob();
+    const { image_b64, suggested_filename } = await resp.json();
+    if (suggested_filename) suggestedName = suggested_filename;
+    preparedBlob = await dataURLToBlob(image_b64);
   } catch (err) {
     showToast(node, `Prepare failed: ${err.message || err}`);
     return;
   }
-
-  const suggestedName = `${readFilenamePrefix(node)}.png`;
 
   if (typeof window.showSaveFilePicker === "function") {
     try {
