@@ -326,7 +326,7 @@ const IMG_STRIP_MIN_H = 180;
 const IMG_STRIP_GAP = 4;
 const IMG_STRIP_V_PAD = 4;
 const IMG_STRIP_BORDER_W = 2;       // selection border thickness
-const IMG_CELL_MAX_H = 480;          // cap cell height so strip doesn't blow up on wide resizes
+const IMG_CELL_MAX_H = 360;          // cap cell height so strip doesn't blow up on wide resizes
 const BADGE_PAD = 4;                 // px inside the counter badge
 const BADGE_H = 16;                  // px tall badge
 const BADGE_FONT = "11px sans-serif";
@@ -468,19 +468,20 @@ app.registerExtension({
     };
 
     // Clamp minimum size on manual resize (Compare pattern).
-    // Also re-fit node height after a width drag — when the user makes the
-    // node wider, the strip's cell width grows (and its aspect-driven cell
-    // height grows with it). Without re-fit, the strip overflows the node
-    // body. fitNodeToWidgets only GROWS height, never shrinks, so the user
-    // can still manually shrink the node below the auto-fit size.
+    // Re-fit height on WIDTH changes only — when the user makes the node
+    // wider, the strip's cell width grows (and its aspect-driven cell
+    // height grows with it), so the strip needs more vertical room.
+    // Don't refit on height-only drags so the user can manually adjust
+    // height (e.g. to leave more room) without it snapping back.
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (origResize) origResize.apply(this, arguments);
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
-      if (this._pixaromaFrames?.length) {
-        // Defer to next frame — calling setSize from inside onResize can
-        // fight the user's drag. RAF lets the drag commit first.
+      const prevW = this._pixaromaPrevWidth ?? this.size[0];
+      this._pixaromaPrevWidth = this.size[0];
+      if (this._pixaromaFrames?.length && prevW !== this.size[0]) {
+        // Defer to next frame so the drag commits first.
         requestAnimationFrame(() => fitNodeToWidgets(this));
       }
     };
@@ -575,14 +576,18 @@ api.addEventListener("executed", ({ detail }) => {
   fitNodeToWidgets(node);
 });
 
-// Force LiteGraph + Vue to recompute widget bounds from computeSize.
+// Force LiteGraph + Vue to recompute widget bounds from computeSize, and
+// snap the node height to exactly fit the current strip layout.
 // Without this, the strip widget's clickable area stays at its initial
 // 180px even after frames load — and Vue routes clicks below that to
-// nothing instead of to the widget. Only grow the node, never shrink.
+// nothing. We snap (not just grow) so the node also SHRINKS when the
+// user runs a landscape batch after a portrait batch — otherwise the
+// node would keep the tall portrait height with empty grey below the
+// new shorter image.
 function fitNodeToWidgets(node) {
   if (!node || typeof node.computeSize !== "function") return;
   const desired = node.computeSize([node.size[0], node.size[1]]);
-  if (node.size[1] < desired[1]) {
+  if (node.size[1] !== desired[1]) {
     node.setSize([node.size[0], desired[1]]);
   }
   node.graph?.setDirtyCanvas(true, true);
