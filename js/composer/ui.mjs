@@ -376,6 +376,7 @@ export class PixaromaUI {
     <b>Space+drag</b><span>Pan the canvas</span>
     <b>Middle-click</b><span>Pan the canvas</span>
     <b>Scroll wheel</b><span>Zoom in / out at cursor</span>
+    <b>Shift+Scroll wheel</b><span>Scale selected layer</span>
   </div>
 </div>
 <div class="pxf-help-section">

@@ -107,6 +107,47 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.workspace.addEventListener("wheel", (e) => {
     e.preventDefault();
+
+    // Shift+Wheel: uniformly scale the selected (unlocked) layers, mirroring
+    // the Scale slider's behaviour. ±5% per tick. Slider range is 5..300% so
+    // clamp the result to that.
+    if (e.shiftKey && this.selectedLayerIds.size > 0) {
+      const factor = e.deltaY > 0 ? 0.95 : 1.05;
+      let touched = false;
+      this.layers.forEach((layer) => {
+        if (this.selectedLayerIds.has(layer.id) && !layer.locked) {
+          layer.scaleX = Math.max(0.05, Math.min(3.0, layer.scaleX * factor));
+          layer.scaleY = Math.max(0.05, Math.min(3.0, layer.scaleY * factor));
+          touched = true;
+        }
+      });
+      if (touched) {
+        // Sync the Transform Properties sliders to the first selected layer
+        const firstId = Array.from(this.selectedLayerIds)[0];
+        const layer = this.layers.find((l) => l.id === firstId);
+        if (layer) {
+          const sx = Math.round(layer.scaleX * 100);
+          const sy = Math.round(layer.scaleY * 100);
+          this.scaleSlider.value = sx;
+          this.scaleNum.value = sx;
+          this.stretchHSlider.value = sx;
+          this.stretchHNum.value = sx;
+          this.stretchVSlider.value = sy;
+          this.stretchVNum.value = sy;
+        }
+        if (!this._wheelRAF) {
+          this._wheelRAF = requestAnimationFrame(() => {
+            this._wheelRAF = null;
+            this.draw();
+          });
+        }
+        // Debounce history push so a wheel-burst is one undo step
+        clearTimeout(this._scaleWheelTimer);
+        this._scaleWheelTimer = setTimeout(() => this.pushHistory(), 300);
+      }
+      return;
+    }
+
     this.viewZoom *= e.deltaY > 0 ? 0.9 : 1.1;
     // Throttle transform updates to once per frame
     if (!this._wheelRAF) {
