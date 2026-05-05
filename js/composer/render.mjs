@@ -82,6 +82,50 @@ PixaromaEditor.prototype.draw = function (cleanRender = false) {
   });
 };
 
+// Lazily grow the selection overlay canvas so heavily-scaled or off-canvas
+// layers don't have their bounding boxes clipped. Grow only — never shrink —
+// to avoid resize churn during slider drag. Capped to keep peak memory sane.
+PixaromaEditor.prototype._ensureSelPad = function () {
+  const MIN_PAD = 500;
+  const MAX_PAD = 4000; // ~ (4K + 8K)² × 4B ≈ 600 MB worst case; layer clips beyond this
+  const HANDLE_BUFFER = 50; // room for corner handles + 30 px rotation handle stem
+  let needed = MIN_PAD;
+  for (const layer of this.layers) {
+    if (!layer.visible || !this.selectedLayerIds.has(layer.id)) continue;
+    if (!layer.img) continue;
+    const w = layer.img.width * Math.abs(layer.scaleX || 1);
+    const h = layer.img.height * Math.abs(layer.scaleY || 1);
+    const r = ((layer.rotation || 0) * Math.PI) / 180;
+    const cos = Math.abs(Math.cos(r));
+    const sin = Math.abs(Math.sin(r));
+    const aabbW = w * cos + h * sin;
+    const aabbH = w * sin + h * cos;
+    const cx = layer.cx ?? this.docWidth / 2;
+    const cy = layer.cy ?? this.docHeight / 2;
+    needed = Math.max(
+      needed,
+      -(cx - aabbW / 2) + HANDLE_BUFFER,
+      cx + aabbW / 2 - this.docWidth + HANDLE_BUFFER,
+      -(cy - aabbH / 2) + HANDLE_BUFFER,
+      cy + aabbH / 2 - this.docHeight + HANDLE_BUFFER,
+    );
+  }
+  needed = Math.min(MAX_PAD, Math.ceil(needed));
+  if (needed > this.selPad) {
+    this.selPad = needed;
+    this.selCanvas.width = this.docWidth + 2 * needed;
+    this.selCanvas.height = this.docHeight + 2 * needed;
+    this.selCanvas.style.left = -needed + "px";
+    this.selCanvas.style.top = -needed + "px";
+    if (this.selHitArea) {
+      this.selHitArea.style.width = this.docWidth + 2 * needed + "px";
+      this.selHitArea.style.height = this.docHeight + 2 * needed + "px";
+      this.selHitArea.style.left = -needed + "px";
+      this.selHitArea.style.top = -needed + "px";
+    }
+  }
+};
+
 PixaromaEditor.prototype._drawImpl = function (cleanRender) {
   if (this._transparentExport) {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -93,6 +137,10 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
 
   this.ctx.imageSmoothingEnabled = true;
   this.ctx.imageSmoothingQuality = "high";
+
+  // Grow the selection overlay if needed BEFORE we clear it (resize wipes it
+  // anyway, but doing it first keeps render order obvious).
+  if (!cleanRender && this.selCanvas) this._ensureSelPad();
 
   // Clear selection overlay
   const oc = this.selCtx;
