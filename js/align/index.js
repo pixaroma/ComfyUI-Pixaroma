@@ -35,6 +35,12 @@ const state = {
   snapDistPx: 8,
   activeGuides: [],
   toolbarBtn: null,
+  // Stickiness state. When snap engages, we lock the moving rect to the target
+  // line and accumulate the ignored mouse delta. Once the cumulative drift
+  // exceeds the snap distance, we release. This prevents snap-back-jitter on
+  // every tick while still letting the user escape with a normal drag motion.
+  snappedX: null,       // graph-space X value we are stuck to, or null
+  escapeAccumX: 0,      // cumulative graph-space delta since engagement
 };
 
 const ICON_URL = "/pixaroma/assets/icons/ui/align-center-v.svg";
@@ -117,7 +123,7 @@ function mountToolbarButton() {
 
   const btn = document.createElement("button");
   btn.className = "comfyui-button pixaroma-align-btn";
-  btn.title = "Toggle Align Pixaroma snap & alignment guides (hold Alt to bypass during drag)";
+  btn.title = "Toggle Align Pixaroma snap & alignment guides (hold Shift to bypass during drag)";
   // Keep `.comfyui-button` defaults for OFF state (matches other unfilled
   // buttons like the bookmark icon). The `.pixaroma-align-on` class swaps in
   // BRAND background + white icon when active, mirroring the Manager button.
@@ -196,13 +202,105 @@ function installPointerHook() {
   console.log("[Pixaroma.Align] pointer hook installed");
 }
 
+// Build the 6 reference lines for a graph-space rect.
+function rectEdges(rect) {
+  return {
+    left:    rect.x,
+    right:   rect.x + rect.w,
+    centerX: rect.x + rect.w / 2,
+    top:     rect.y,
+    bottom:  rect.y + rect.h,
+    centerY: rect.y + rect.h / 2,
+  };
+}
+
+function nodeRect(n) {
+  return { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] };
+}
+
+// Find the closest snap delta along one axis. Returns { delta, target, movingValue } or null.
+// movingValues / targetValues are arrays of edge values along ONE axis.
+function findClosestSnap(movingValues, targetValues, threshold) {
+  let best = null;
+  for (const m of movingValues) {
+    for (const t of targetValues) {
+      const d = t - m;
+      if (Math.abs(d) <= threshold && (!best || Math.abs(d) < Math.abs(best.delta))) {
+        best = { delta: d, target: t, movingValue: m };
+      }
+    }
+  }
+  return best;
+}
+
+function clearSticky() {
+  state.snappedX = null;
+  state.escapeAccumX = 0;
+}
+
 function onWindowPointerMove(e) {
-  if (!state.enabled) return;
-  if (e.altKey) return;
-  // Drag detection: LiteGraph sets last_mouse_dragging when a drag is active,
-  // and the left mouse button must still be held.
+  if (!state.enabled) { clearSticky(); return; }
+  // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
+  if (e.shiftKey) { clearSticky(); return; }
   const c = app.canvas;
-  if (!c?.last_mouse_dragging) return;
-  if (!(e.buttons & 1)) return;
-  // Snap math comes in Task 7+. Pass-through for now.
+  if (!c?.last_mouse_dragging) { clearSticky(); return; }
+  if (!(e.buttons & 1)) { clearSticky(); return; }
+
+  const sel = c.selected_nodes;
+  if (!sel) { clearSticky(); return; }
+  const selKeys = Object.keys(sel);
+  if (selKeys.length !== 1) { clearSticky(); return; }  // multi-select handled in Task 9
+  const draggedNode = sel[selKeys[0]];
+  if (!draggedNode || draggedNode.flags?.collapsed) { clearSticky(); return; }
+
+  const scale = c.ds?.scale || 1;
+  const snapGraph = state.snapDistPx / scale;
+  const releaseGraph = snapGraph * 1.5;  // a little extra travel before we let go
+
+  // Bubble-phase: LiteGraph already applied its mouse delta to draggedNode.pos
+  // this tick. Read the post-move rect to look for snap candidates.
+  const movingRect = nodeRect(draggedNode);
+  const movingE = rectEdges(movingRect);
+  const movingX = [movingE.left, movingE.right, movingE.centerX];
+
+  const nodes = c.graph?._nodes || [];
+  let bestX = null;
+  for (const other of nodes) {
+    if (other === draggedNode) continue;
+    if (other.flags?.collapsed) continue;
+    const oRect = nodeRect(other);
+    const dx = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+    const dy = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+    if (dx > 2 * snapGraph && dy > 2 * snapGraph) continue;
+    const oE = rectEdges(oRect);
+    const m = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph);
+    if (m && (!bestX || Math.abs(m.delta) < Math.abs(bestX.delta))) bestX = m;
+  }
+
+  // Stickiness model:
+  //   - Currently snapped: accumulate raw mouse delta. If accumulated drift
+  //     exceeds releaseGraph, release. Otherwise stay locked to the target.
+  //   - Not snapped + bestX found: engage, apply delta, reset accumulator.
+  //   - No bestX: clear sticky state so a fresh engage can happen later.
+  const moveX = (e.movementX || 0) / scale;
+
+  if (state.snappedX !== null) {
+    state.escapeAccumX += moveX;
+    if (Math.abs(state.escapeAccumX) > releaseGraph) {
+      clearSticky();
+      // Mouse has clearly broken away; let LiteGraph's mouse-driven position stand.
+    } else if (bestX && Math.abs(bestX.target - state.snappedX) < 0.5) {
+      // Still snappable to the same target line; pull node back to it.
+      draggedNode.pos[0] += bestX.delta;
+      c.setDirty?.(true, true);
+    } else {
+      // Drifted too far in a single tick to find the same target; release.
+      clearSticky();
+    }
+  } else if (bestX) {
+    state.snappedX = bestX.target;
+    state.escapeAccumX = 0;
+    draggedNode.pos[0] += bestX.delta;
+    c.setDirty?.(true, true);
+  }
 }
