@@ -220,7 +220,17 @@ function rectEdges(rect) {
 }
 
 function nodeRect(n) {
-  return { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] };
+  // In LiteGraph, node.pos[1] is the top of the BODY (below the title bar),
+  // and node.size[1] is the body height. The title sits at pos[1] - titleH.
+  // For snap to align with the visual top edge of the node, include the
+  // title bar in the rect. Collapsed nodes have no body, just title.
+  const titleH = (n.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+  return {
+    x: n.pos[0],
+    y: n.pos[1] - titleH,
+    w: n.size[0],
+    h: n.size[1] + titleH,
+  };
 }
 
 // Find the closest snap delta along one axis. Returns { delta, target, movingValue } or null.
@@ -250,35 +260,37 @@ function onWindowPointerMove(e) {
   if (!c?.last_mouse_dragging) { state.dragInfo = null; state._prevNodeStates = null; return; }
   if (!(e.buttons & 1)) { state.dragInfo = null; state._prevNodeStates = null; return; }
 
-  // Find the dragged/resized node. Clicking a resize handle of an UNSELECTED
-  // node doesn't add it to selected_nodes in this LiteGraph version, AND
-  // node_over clears on mousedown, AND getNodeOnPos returns null because the
-  // cursor sits at the edge of the node (just outside its hit rect). The
-  // ultimate fallback is to compare each node's pos/size to the previous tick
-  // and pick the one that LiteGraph just modified.
+  // Find the dragged/resized node. The MOST reliable signal is "which node
+  // did LiteGraph just modify this tick?" - found by comparing pos/size to
+  // the previous-tick cache. We try that first because selected_nodes can
+  // point to the wrong node (e.g. user has node B selected but is resizing
+  // an unselected node A; the resize handle click doesn't update selection).
   let draggedNode = null;
-  const sel = c.selected_nodes;
-  const selKeys = sel ? Object.keys(sel) : [];
-  if (selKeys.length === 1) {
-    draggedNode = sel[selKeys[0]];
-  } else if (selKeys.length > 1) {
-    // multi-select handled in Task 9
-    state.dragInfo = null;
-    state._prevNodeStates = null;
-    return;
-  } else if (c.node_over) {
-    draggedNode = c.node_over;
-  } else if (c.graph?.getNodeOnPos && c.graph_mouse) {
-    draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
-  }
-  // Final fallback: find a node whose pos or size changed since last tick.
-  if (!draggedNode && state._prevNodeStates && c.graph?._nodes) {
+  if (state._prevNodeStates && c.graph?._nodes) {
     for (const n of c.graph._nodes) {
       const p = state._prevNodeStates.get(n.id);
       if (p && (p.x !== n.pos[0] || p.y !== n.pos[1] || p.w !== n.size[0] || p.h !== n.size[1])) {
         draggedNode = n;
         break;
       }
+    }
+  }
+  // Fallbacks for the first tick (no cache yet) or for very-slow drags
+  // where no measurable change happened this tick.
+  if (!draggedNode) {
+    const sel = c.selected_nodes;
+    const selKeys = sel ? Object.keys(sel) : [];
+    if (selKeys.length === 1) {
+      draggedNode = sel[selKeys[0]];
+    } else if (selKeys.length > 1) {
+      // multi-select handled in Task 9
+      state.dragInfo = null;
+      state._prevNodeStates = null;
+      return;
+    } else if (c.node_over) {
+      draggedNode = c.node_over;
+    } else if (c.graph?.getNodeOnPos && c.graph_mouse) {
+      draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
     }
   }
   // Refresh the per-node cache for next tick BEFORE we possibly bail.
@@ -336,16 +348,19 @@ function onWindowPointerMove(e) {
   if (state.dragInfo.lockType === null) return;
 
   if (state.dragInfo.lockType === "resize") {
+    // All edges below are in VISUAL coords (top includes the title bar) so
+    // they line up with other nodes' visual edges from nodeRect().
+    const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
     // Detect which edges are moving by comparing current vs initial edge
     // positions. Once an edge moves, mark it sticky so we keep snapping it
     // even when LiteGraph clamps it at min size.
     const initLeft = state.dragInfo.posX;
     const initRight = state.dragInfo.posX + state.dragInfo.sizeW;
-    const initTop = state.dragInfo.posY;
+    const initTop = state.dragInfo.posY - titleH;          // visual top
     const initBot = state.dragInfo.posY + state.dragInfo.sizeH;
     const curLeft = draggedNode.pos[0];
     const curRight = draggedNode.pos[0] + draggedNode.size[0];
-    const curTop = draggedNode.pos[1];
+    const curTop = draggedNode.pos[1] - titleH;            // visual top
     const curBot = draggedNode.pos[1] + draggedNode.size[1];
     const EPS = 0.01;
     if (Math.abs(curLeft - initLeft) > EPS) state.dragInfo.leftMoves = true;
@@ -367,14 +382,16 @@ function onWindowPointerMove(e) {
     let dTop = topMoves   ? initTop   + totalDy : initTop;
     let dBot = botMoves   ? initBot   + totalDy : initBot;
 
-    // Enforce min sizes; the moving edge gives way to the anchor.
+    // Enforce min sizes; the moving edge gives way to the anchor. Visual
+    // height = body height + titleH, so visualMinH includes titleH.
+    const visualMinH = minH + titleH;
     if (dRight - dLeft < minW) {
       if (leftMoves)  dLeft = dRight - minW;
       else            dRight = dLeft + minW;
     }
-    if (dBot - dTop < minH) {
-      if (topMoves)   dTop = dBot - minH;
-      else            dBot = dTop + minH;
+    if (dBot - dTop < visualMinH) {
+      if (topMoves)   dTop = dBot - visualMinH;
+      else            dBot = dTop + visualMinH;
     }
 
     const stickyG = snapGraph * 1.5;
@@ -421,21 +438,22 @@ function onWindowPointerMove(e) {
 
     let fLeft = snapLeft  ? snapLeft.target  : dLeft;
     let fRight = snapRight ? snapRight.target : dRight;
-    let fTop = snapTop   ? snapTop.target   : dTop;
-    let fBot = snapBot   ? snapBot.target   : dBot;
+    let fTop = snapTop   ? snapTop.target   : dTop;       // visual top
+    let fBot = snapBot   ? snapBot.target   : dBot;       // body bottom
     if (fRight - fLeft < minW) {
       if (leftMoves)  fLeft = fRight - minW;
       else            fRight = fLeft + minW;
     }
-    if (fBot - fTop < minH) {
-      if (topMoves)   fTop = fBot - minH;
-      else            fBot = fTop + minH;
+    if (fBot - fTop < visualMinH) {
+      if (topMoves)   fTop = fBot - visualMinH;
+      else            fBot = fTop + visualMinH;
     }
 
+    // Convert visual top back to body top by adding titleH.
     draggedNode.pos[0] = fLeft;
-    draggedNode.pos[1] = fTop;
+    draggedNode.pos[1] = fTop + titleH;
     draggedNode.size[0] = fRight - fLeft;
-    draggedNode.size[1] = fBot - fTop;
+    draggedNode.size[1] = fBot - (fTop + titleH);
     c.setDirty?.(true, true);
     return;
   }
@@ -448,11 +466,12 @@ function onWindowPointerMove(e) {
   const desiredX = state.dragInfo.posX + totalDxScreen / scale;
   const desiredY = state.dragInfo.posY + totalDyScreen / scale;
 
-  // Build moving rect at desired position (ignore LiteGraph's tick-by-tick
-  // mutations; we own the final node.pos this frame).
+  // Build moving rect at desired position. Use the VISUAL rect (including
+  // the title bar above pos[1]) so snap aligns with what the user sees.
+  const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
   const w = draggedNode.size[0];
   const h = draggedNode.size[1];
-  const movingRect = { x: desiredX, y: desiredY, w, h };
+  const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
   const movingE = rectEdges(movingRect);
   const movingX = [movingE.left, movingE.right, movingE.centerX];
   const movingY = [movingE.top, movingE.bottom, movingE.centerY];
