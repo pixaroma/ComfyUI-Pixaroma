@@ -484,6 +484,15 @@ export function createTransformPanel(config) {
     sliders.opacityNum = s.numInput;
     sliders.setOpacity = (v) => s.setValue(v);
   }
+  if (config.showBlurSlider === true) {
+    const s = createSliderRow("Blur", 0, 100, 0, config.onBlurChange, {
+      step: 1,
+    });
+    sliderWrap.appendChild(s.el);
+    sliders.blurSlider = s.slider;
+    sliders.blurNum = s.numInput;
+    sliders.setBlur = (v) => s.setValue(v);
+  }
   if (sliderWrap.children.length > 0) panel.content.appendChild(sliderWrap);
 
   return {
