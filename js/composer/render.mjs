@@ -122,6 +122,13 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
     const w = Math.round(layer.img.width * layer.scaleX);
     const h = Math.round(layer.img.height * layer.scaleY);
 
+    // Per-layer Gaussian blur — non-destructive, applied to the final composited
+    // (post-mask) result. Selection box stroke is on the overlay canvas (oc),
+    // so it stays sharp regardless of this filter.
+    if (layer.blur && layer.blur > 0) {
+      this.ctx.filter = "blur(" + layer.blur + "px)";
+    }
+
     // NON-DESTRUCTIVE MASK RENDER
     if (layer.hasMask_internal && layer.eraserMaskCanvas_internal) {
       this.renderCanvas.width = layer.img.width;
@@ -143,6 +150,7 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
       this.ctx.drawImage(layer.img, -w / 2, -h / 2, w, h);
     }
 
+    this.ctx.filter = "none";
     this.ctx.restore();
     this.ctx.restore();
 
