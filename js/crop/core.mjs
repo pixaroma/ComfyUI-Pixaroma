@@ -10,7 +10,6 @@ import {
   createSliderRow,
   createInfo,
   createCanvasSettings,
-  createCanvasFrame,
   createCanvasToolbar,
 } from "../framework/index.mjs";
 
@@ -73,10 +72,10 @@ export class CropEditor {
   }
 
   // --- Open / Close ---
-  open(jsonStr) {
-    this._buildUI();
-    this.layout.mount();
-
+  // upstreamUrl: optional URL of the upstream IMAGE input. When provided it
+  // takes precedence over the editor-saved src_path so the user crops the
+  // *live* source image flowing through the workflow.
+  open(jsonStr, upstreamUrl) {
     let data = {};
     try {
       data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {};
@@ -84,11 +83,24 @@ export class CropEditor {
 
     this.projectId = data.project_id || "crop_" + Date.now();
     this._srcPath = data.src_path || "";
+    // Set _fromUpstream BEFORE _buildUI so the sidebar/help text/canvas-frame
+    // can branch on it during construction.
+    this._fromUpstream = !!upstreamUrl;
 
-    if (this._srcPath) {
+    this._buildUI();
+    this.layout.mount();
+
+    // Pick the source URL: live upstream wins; else fall back to saved disk path.
+    let sourceURL = null;
+    if (upstreamUrl) {
+      sourceURL = upstreamUrl;
+    } else if (this._srcPath) {
       const fn = this._srcPath.split(/[\\/]/).pop();
-      const url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
-      this._loadImageFromURL(url, () => {
+      sourceURL = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
+    }
+
+    if (sourceURL) {
+      this._loadImageFromURL(sourceURL, () => {
         // Restore ratio & snap FIRST (silently, without triggering onChange)
         if (data.ratio_idx != null) {
           this.ratioIdx = data.ratio_idx;
@@ -97,17 +109,44 @@ export class CropEditor {
           this.snapIdx = data.snap_idx;
           this._snapGrid.setActive(data.snap_idx);
         }
-        // Restore crop coordinates AFTER ratio is set so onChange won't overwrite them
+        // Restore crop coordinates, scaling proportionally if the loaded
+        // image's dims differ from the original-saved dims. If the aspect
+        // ratio changed significantly (>10%), reset to full-image crop --
+        // the inherited rect would otherwise look weird on the new source.
         if (data.crop_x != null) {
-          this.cropX = data.crop_x;
-          this.cropY = data.crop_y;
-          this.cropW = data.crop_w;
-          this.cropH = data.crop_h;
+          const ow = data.original_w || this.imgW;
+          const oh = data.original_h || this.imgH;
+          const oldAspect = ow > 0 && oh > 0 ? ow / oh : 0;
+          const newAspect = this.imgW > 0 && this.imgH > 0 ? this.imgW / this.imgH : 0;
+          const aspectDelta = oldAspect && newAspect
+            ? Math.abs(newAspect - oldAspect) / oldAspect
+            : 0;
+
+          if (aspectDelta > 0.1) {
+            this.cropX = 0;
+            this.cropY = 0;
+            this.cropW = this.imgW;
+            this.cropH = this.imgH;
+          } else {
+            let cx = data.crop_x, cy = data.crop_y;
+            let cw = data.crop_w, ch = data.crop_h;
+            if (ow !== this.imgW || oh !== this.imgH) {
+              const sx = this.imgW / ow, sy = this.imgH / oh;
+              cx *= sx; cy *= sy; cw *= sx; ch *= sy;
+            }
+            this.cropX = cx; this.cropY = cy;
+            this.cropW = cw; this.cropH = ch;
+          }
+        } else {
+          // First open with this source -- default to full-image crop
+          this.cropX = 0;
+          this.cropY = 0;
+          this.cropW = this.imgW;
+          this.cropH = this.imgH;
+          this._canvasSettings?.setSize?.(this.imgW, this.imgH);
         }
-        // Now update UI to reflect restored state (setRatio triggers onChange,
-        // but we re-apply crop values after it)
         const savedCrop = data.crop_x != null
-          ? { x: data.crop_x, y: data.crop_y, w: data.crop_w, h: data.crop_h }
+          ? { x: this.cropX, y: this.cropY, w: this.cropW, h: this.cropH }
           : null;
         if (data.ratio_idx != null) {
           this._canvasSettings.setRatio(data.ratio_idx);
@@ -119,6 +158,7 @@ export class CropEditor {
           this.cropW = savedCrop.w;
           this.cropH = savedCrop.h;
         }
+        this._applyConstraints?.();
         this._draw();
         this._updateInfo();
       });
@@ -143,7 +183,7 @@ export class CropEditor {
       onSave: () => this._save(),
       onClose: () => this._close(),
       helpContent: `
-                <b>Load image:</b> Click <kbd>Load Image</kbd> in sidebar<br>
+                <b>Load image:</b> Wire an <i>IMAGE</i> input, or click <kbd>Load Image</kbd> in the sidebar<br>
                 <b>Drag crop region:</b> Click & drag inside the crop area<br>
                 <b>Resize crop:</b> Drag orange corner/edge handles<br>
                 <b>Reset crop:</b> Press <kbd>R</kbd> or click Reset<br>
@@ -181,8 +221,11 @@ export class CropEditor {
     wrap.appendChild(cvs);
     layout.workspace.appendChild(wrap);
 
-    // Canvas frame overlay (orange border + gray masks + dimension label)
-    this._canvasFrame = createCanvasFrame(layout.workspace);
+    // No createCanvasFrame here -- in crop, the image canvas IS the visual
+    // frame, and the crop rect is drawn on top. Adding the framework's frame
+    // creates a visual mismatch: its scale caps at 1x while _fitCanvas
+    // upscales the canvas to fill the workspace, so the frame's gray masks
+    // would clip parts of the displayed image.
 
     this._bindMouse(cvs);
 
@@ -202,10 +245,23 @@ export class CropEditor {
         this.ratioIdx = ratioIndex;
         this.ratioSwapped = false;
         if (!this.img) return;
-        // Clamp to image bounds
-        const nw = Math.min(width, this.imgW);
-        const nh = Math.min(height, this.imgH);
-        this._setCropCentered(nw, nh);
+        // Scale PROPORTIONALLY to fit image bounds. Clamping W and H
+        // independently would destroy the aspect ratio for portrait
+        // ratios on landscape/square sources (and vice versa) -- e.g.
+        // 3:4 on a 1024² image asks for 1024×1365; an independent clamp
+        // would give 1024×1024 (square), not 768×1024 (3:4 portrait).
+        let nw = width, nh = height;
+        if (nw > this.imgW) {
+          const s = this.imgW / nw;
+          nw = this.imgW;
+          nh = nh * s;
+        }
+        if (nh > this.imgH) {
+          const s = this.imgH / nh;
+          nh = this.imgH;
+          nw = nw * s;
+        }
+        this._setCropCentered(Math.round(nw), Math.round(nh));
         this._applyConstraints();
         this._draw();
         this._updateInfo();
@@ -255,6 +311,20 @@ export class CropEditor {
       },
     });
     sidebar.appendChild(this._canvasToolbar.el);
+
+    // When upstream is wired, the Load Image button overrides the upstream
+    // for one session only, then upstream wins on reopen -- confusing UX.
+    // Hide it; user can disconnect the wire to use a manual image.
+    if (this._fromUpstream) {
+      const tb = this._canvasToolbar.el;
+      const btns = tb.querySelectorAll("button");
+      for (const b of btns) {
+        if ((b.textContent || "").trim().toLowerCase().includes("load image")) {
+          b.style.display = "none";
+          break;
+        }
+      }
+    }
   }
 
   _buildRightSidebar(sidebar, footer) {

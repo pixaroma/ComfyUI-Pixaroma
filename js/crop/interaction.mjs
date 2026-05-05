@@ -7,12 +7,47 @@ const proto = CropEditor.prototype;
 
 // --- Mouse ---
 proto._bindMouse = function (cvs) {
-  cvs.addEventListener("mousedown", (e) => this._onMouseDown(e));
-  cvs.addEventListener("mousemove", (e) => this._onMouseMove(e));
-  cvs.addEventListener("mouseup", () => this._onMouseUp());
+  // Window-level listeners attach on mousedown and detach on mouseup so a
+  // drag continues even when the mouse leaves the canvas (e.g. resizing
+  // a crop handle past the image edge). Without this, mouseleave on the
+  // canvas killed the drag and forced the user to click the handle again.
+  let winMoveHandler = null;
+  let winUpHandler = null;
+
+  const detachWin = () => {
+    if (winMoveHandler) {
+      window.removeEventListener("mousemove", winMoveHandler);
+      winMoveHandler = null;
+    }
+    if (winUpHandler) {
+      window.removeEventListener("mouseup", winUpHandler);
+      winUpHandler = null;
+    }
+  };
+
+  cvs.addEventListener("mousedown", (e) => {
+    this._onMouseDown(e);
+    if (this._drag) {
+      detachWin();
+      winMoveHandler = (ev) => this._onMouseMove(ev);
+      winUpHandler = () => {
+        this._onMouseUp();
+        detachWin();
+      };
+      window.addEventListener("mousemove", winMoveHandler);
+      window.addEventListener("mouseup", winUpHandler);
+    }
+  });
+
+  // Canvas-only mousemove handles hover state (cursor changes); the
+  // window listener takes over the drag while a drag is active so we
+  // don't double-process moves.
+  cvs.addEventListener("mousemove", (e) => {
+    if (!this._drag) this._onMouseMove(e);
+  });
+
   cvs.addEventListener("mouseleave", () => {
-    this._drag = null;
-    cvs.style.cursor = "crosshair";
+    if (!this._drag) cvs.style.cursor = "crosshair";
   });
 };
 
@@ -237,6 +272,25 @@ proto._resizeByHandle = function (handle, dx, dy, sc) {
   }
   if (nx + nw > this.imgW) nw = this.imgW - nx;
   if (ny + nh > this.imgH) nh = this.imgH - ny;
+
+  // After boundary clamps, re-enforce the locked ratio if we have one --
+  // independent W/H clamping above can otherwise produce 1024×1024 from a
+  // 4:5/9:16 crop when the handle drags past the image edge. Shrink the
+  // larger dimension to fit the ratio, and keep the dragged edge anchored.
+  if (ratio > 0) {
+    const absW = Math.abs(nw);
+    const absH = Math.abs(nh);
+    if (absW > absH * ratio) {
+      const newAbsW = absH * ratio;
+      if (moveL) nx = nx + (absW - newAbsW);
+      nw = newAbsW * (nw >= 0 ? 1 : -1);
+    } else if (absH > absW / ratio) {
+      const newAbsH = absW / ratio;
+      if (moveT) ny = ny + (absH - newAbsH);
+      nh = newAbsH * (nh >= 0 ? 1 : -1);
+    }
+  }
+
   this.cropX = nx;
   this.cropY = ny;
   this.cropW = nw;

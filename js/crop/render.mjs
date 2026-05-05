@@ -6,21 +6,6 @@ import { CropEditor, BRAND, RATIOS, SNAPS, CropAPI } from "./core.mjs";
 const proto = CropEditor.prototype;
 
 // --- Load Image ---
-proto._promptLoadImage = function () {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = "image/*";
-  input.onchange = () => {
-    const file = input.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) =>
-      this._loadImageFromDataURL(ev.target.result, file.name);
-    reader.readAsDataURL(file);
-  };
-  input.click();
-};
-
 proto._loadImageFromDataURL = function (dataURL, filename) {
   const img = new Image();
   img.onload = () => {
@@ -89,7 +74,6 @@ proto._fitCanvas = function () {
   cvs.width = Math.round(dispW);
   cvs.height = Math.round(dispH);
   cvs.style.cursor = "crosshair";
-  if (this._canvasFrame) this._canvasFrame.update(this.imgW, this.imgH);
 };
 
 proto._draw = function () {
