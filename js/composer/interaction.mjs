@@ -163,8 +163,15 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (
       (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") &&
       !e.target?.dataset?.pixaromaTrap
-    )
-      return;
+    ) {
+      // After dragging a range slider it keeps focus, which would swallow
+      // Ctrl+Z/Y. Range sliders have no native undo, so let those specific
+      // shortcuts fall through to the editor handler.
+      const isRangeSlider = tag === "INPUT" && e.target.type === "range";
+      const k = e.key?.toLowerCase();
+      const isUndoRedo = e.ctrlKey && (k === "z" || k === "y");
+      if (!(isRangeSlider && isUndoRedo)) return;
+    }
     if (e.code === "Space") {
       e.preventDefault();
       this.spacePressed = true;
