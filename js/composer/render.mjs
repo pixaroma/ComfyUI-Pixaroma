@@ -151,6 +151,9 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
 
   this.layers.forEach((layer) => {
     if (!layer.visible) return;
+    // Defensive: layer.img can briefly be null during async upload / restore.
+    // _ensureSelPad already skips this case; mirror that here.
+    if (!layer.img) return;
 
     const isSelected = this.selectedLayerIds.has(layer.id);
     this.ctx.save();

@@ -12,7 +12,7 @@ Let the user select a layer in Image Composer and apply a Gaussian blur via a sl
 - No box blur, motion blur, radial blur, or other blur types — Gaussian only.
 - No "Filters" panel framework. This is a single property, not a generalised filter system. (B/C from brainstorm rejected.)
 - No blur caching to offscreen canvas. CSS filter is GPU-accelerated and fast enough for live slider drag at typical canvas sizes.
-- No "Reset Transform" hook. Blur is a layer property (like opacity), not a transform.
+- ~~No "Reset Transform" hook.~~ **Updated during implementation:** Reset Transform clears blur because it already clears opacity; consistency wins.
 
 ## State
 
@@ -25,11 +25,23 @@ layer.blur: number   // 0..100, default 0, integer step
 
 ## Slider range and step
 
-- **Range:** `0` to `100` (pixel radius)
+- **Slider range:** `0` to `100` (display value — "% of max blur")
+- **Actual blur radius:** `(slider/100)² × 50` px — quadratic curve, max 50 px
 - **Step:** `1` (integer)
 - **Numeric input** beside the slider, same row layout as Opacity
 
-50 is already a heavy blur on a 1024² layer. 100 is "shape barely recognisable." Range can be widened later if a use case appears; widening is non-breaking.
+The quadratic curve gives much finer control at the low end where small blur values matter most. Examples:
+
+| Slider | Blur (px) |
+|--------|-----------|
+| 10 | 0.5 |
+| 20 | 2 |
+| 30 | 4.5 |
+| 50 | 12.5 |
+| 70 | 24.5 |
+| 100 | 50 |
+
+The same formula must be mirrored in all three render paths (in-editor canvas, mini-preview recomposite, Python compositor) — the quadratic mapping is part of the 4-sync-point invariant.
 
 ## UI placement
 
@@ -121,7 +133,7 @@ Without this, the slider's UI value goes stale across layer selection (matches t
 - **Placeholder layer** — blur is stored on the placeholder. The browser preview blurs the placeholder visualisation. Python applies blur to whatever upstream image lands at execution time.
 - **Save to Disk** — `canvas.toDataURL()` captures filter effects automatically. No code change.
 - **Selection box** — drawn on the separate overlay canvas, never blurred. Always sharp regardless of layer blur. (Verified by reading [render.mjs:147–219](js/composer/render.mjs:147) — the overlay block uses `oc.*`, not `this.ctx.*`.)
-- **Reset Transform button** — leaves blur untouched (blur is not a transform). Matches Opacity's existing behaviour. To clear blur, drag the slider to 0.
+- **Reset Transform button** — clears blur to 0 along with rotation, flips, opacity, and the fit-to-canvas scale. (The button already resets opacity, so blur joins the same set for consistency. The reset handler must call `updateActiveLayerUI()` to sync the slider display.)
 - **Multi-select** — out of scope for v1. The blur slider only edits the *currently active* layer (matches how the Opacity slider behaves today). Future work could extend this.
 - **Layer thumbnail in the Layers panel** — out of scope for v1. Thumbnails will continue to show the unblurred image. Adding blur to thumbs would be cosmetic-only and is not requested.
 

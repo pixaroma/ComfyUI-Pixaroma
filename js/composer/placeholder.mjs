@@ -136,7 +136,9 @@ PixaromaEditor.prototype._getUpstreamImageUrl = function (layer) {
 
   const graph = this.node.graph;
   if (!graph) return null;
-  const link = graph.links[input.link];
+  // Vue Compat #3: graph.links can be a Map in newer ComfyUI versions
+  let link = graph.links?.[input.link];
+  if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
   if (!link) return null;
   const srcNode = graph.getNodeById(link.origin_id);
   if (!srcNode) return null;

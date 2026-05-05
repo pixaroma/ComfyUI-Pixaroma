@@ -403,6 +403,7 @@ PixaromaEditor.prototype.attachEvents = function () {
           scaleY: 1,
           rotation: 0,
           opacity: 1,
+          blur: 0,
           visible: true,
           locked: false,
           flippedX: false,
@@ -516,7 +517,7 @@ PixaromaEditor.prototype.attachEvents = function () {
     this.applyToSelection((l) => (l.rotation = (l.rotation - 90 + 360) % 360));
   this.btnRotRight.onclick = () =>
     this.applyToSelection((l) => (l.rotation = (l.rotation + 90) % 360));
-  this.btnReset.onclick = () =>
+  this.btnReset.onclick = () => {
     this.applyToSelection((l) => {
       l.rotation = 0;
       l.flippedX = false;
@@ -530,6 +531,10 @@ PixaromaEditor.prototype.attachEvents = function () {
         "width",
       );
     });
+    // Sync the Transform Properties sliders (rotate/scale/opacity/blur)
+    // to the reset values. applyToSelection only redraws + pushes history.
+    this.ui.updateActiveLayerUI();
+  };
 
   this.btnDupLayer.onclick = () => {
     if (this.selectedLayerIds.size === 0) return;
