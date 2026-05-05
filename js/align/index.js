@@ -35,12 +35,11 @@ const state = {
   snapDistPx: 8,
   activeGuides: [],
   toolbarBtn: null,
-  // Stickiness state. When snap engages, we lock the moving rect to the target
-  // line and accumulate the ignored mouse delta. Once the cumulative drift
-  // exceeds the snap distance, we release. This prevents snap-back-jitter on
-  // every tick while still letting the user escape with a normal drag motion.
-  snappedX: null,       // graph-space X value we are stuck to, or null
-  escapeAccumX: 0,      // cumulative graph-space delta since engagement
+  // Drag tracking. Captured on the first pointermove tick of a drag. We use
+  // cumulative cursor delta from drag start to compute the "desired" node
+  // position, independent of LiteGraph's tick-by-tick deltas. Snap engages
+  // when desired puts an edge within snapDist of a target line.
+  dragInfo: null,       // { posX, posY, cursorX, cursorY, nodeId } or null
 };
 
 const ICON_URL = "/pixaroma/assets/icons/ui/align-center-v.svg";
@@ -233,74 +232,100 @@ function findClosestSnap(movingValues, targetValues, threshold) {
   return best;
 }
 
-function clearSticky() {
-  state.snappedX = null;
-  state.escapeAccumX = 0;
-}
-
 function onWindowPointerMove(e) {
-  if (!state.enabled) { clearSticky(); return; }
+  if (!state.enabled) { state.dragInfo = null; return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
-  if (e.shiftKey) { clearSticky(); return; }
+  if (e.shiftKey) { state.dragInfo = null; return; }
   const c = app.canvas;
-  if (!c?.last_mouse_dragging) { clearSticky(); return; }
-  if (!(e.buttons & 1)) { clearSticky(); return; }
+  if (!c?.last_mouse_dragging) { state.dragInfo = null; return; }
+  if (!(e.buttons & 1)) { state.dragInfo = null; return; }
 
   const sel = c.selected_nodes;
-  if (!sel) { clearSticky(); return; }
+  if (!sel) { state.dragInfo = null; return; }
   const selKeys = Object.keys(sel);
-  if (selKeys.length !== 1) { clearSticky(); return; }  // multi-select handled in Task 9
+  if (selKeys.length !== 1) { state.dragInfo = null; return; }  // multi-select in Task 9
   const draggedNode = sel[selKeys[0]];
-  if (!draggedNode || draggedNode.flags?.collapsed) { clearSticky(); return; }
+  if (!draggedNode || draggedNode.flags?.collapsed) { state.dragInfo = null; return; }
 
   const scale = c.ds?.scale || 1;
   const snapGraph = state.snapDistPx / scale;
-  const releaseGraph = snapGraph * 1.5;  // a little extra travel before we let go
 
-  // Bubble-phase: LiteGraph already applied its mouse delta to draggedNode.pos
-  // this tick. Read the post-move rect to look for snap candidates.
-  const movingRect = nodeRect(draggedNode);
+  // Capture drag origin on first tick (or whenever the dragged node changes).
+  // last_mouse_dragging is set for ANY drag (node move, resize, canvas pan,
+  // resize of an unrelated node, etc.), so we have to confirm this is a real
+  // node-move drag before applying pos correction. We do that by waiting until
+  // we observe the dragged node's pos changing (LiteGraph moved it).
+  if (!state.dragInfo || state.dragInfo.nodeId !== draggedNode.id) {
+    state.dragInfo = {
+      nodeId: draggedNode.id,
+      posX: draggedNode.pos[0],
+      posY: draggedNode.pos[1],
+      cursorX: e.clientX,
+      cursorY: e.clientY,
+      sizeW: draggedNode.size[0],
+      sizeH: draggedNode.size[1],
+      isResize: false,
+      isMove: false,
+    };
+    return;
+  }
+
+  // Lock to resize mode the moment we see a size change. Even if LiteGraph
+  // later clamps size at minimum (so the next tick looks "size unchanged"),
+  // we stay locked for the rest of this drag.
+  if (!state.dragInfo.isResize) {
+    if (draggedNode.size[0] !== state.dragInfo.sizeW || draggedNode.size[1] !== state.dragInfo.sizeH) {
+      state.dragInfo.isResize = true;
+    }
+  }
+  if (state.dragInfo.isResize) return;  // resize snap arrives in Task 10
+
+  // Lock to move mode the moment we see THIS node's pos change. Without this
+  // confirmation, canvas-pan drags and resizes of OTHER nodes would cause us
+  // to drag the previously-selected node based on cursor delta.
+  if (!state.dragInfo.isMove) {
+    if (draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY) {
+      state.dragInfo.isMove = true;
+    }
+  }
+  if (!state.dragInfo.isMove) return;  // not a node-move drag
+
+  // "Desired" position = where the cursor wants the node to be, with no snap.
+  const totalDxScreen = e.clientX - state.dragInfo.cursorX;
+  const totalDyScreen = e.clientY - state.dragInfo.cursorY;
+  const desiredX = state.dragInfo.posX + totalDxScreen / scale;
+  const desiredY = state.dragInfo.posY + totalDyScreen / scale;
+
+  // Build moving rect at desired position (ignore LiteGraph's tick-by-tick
+  // mutations; we own the final node.pos this frame).
+  const w = draggedNode.size[0];
+  const h = draggedNode.size[1];
+  const movingRect = { x: desiredX, y: desiredY, w, h };
   const movingE = rectEdges(movingRect);
   const movingX = [movingE.left, movingE.right, movingE.centerX];
+  const movingY = [movingE.top, movingE.bottom, movingE.centerY];
 
   const nodes = c.graph?._nodes || [];
   let bestX = null;
+  let bestY = null;
   for (const other of nodes) {
     if (other === draggedNode) continue;
     if (other.flags?.collapsed) continue;
     const oRect = nodeRect(other);
-    const dx = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
-    const dy = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
-    if (dx > 2 * snapGraph && dy > 2 * snapGraph) continue;
+    const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+    const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+    if (dxc > 2 * snapGraph && dyc > 2 * snapGraph) continue;
     const oE = rectEdges(oRect);
-    const m = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph);
-    if (m && (!bestX || Math.abs(m.delta) < Math.abs(bestX.delta))) bestX = m;
+    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph);
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
+    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph);
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
   }
 
-  // Stickiness model:
-  //   - Currently snapped: accumulate raw mouse delta. If accumulated drift
-  //     exceeds releaseGraph, release. Otherwise stay locked to the target.
-  //   - Not snapped + bestX found: engage, apply delta, reset accumulator.
-  //   - No bestX: clear sticky state so a fresh engage can happen later.
-  const moveX = (e.movementX || 0) / scale;
-
-  if (state.snappedX !== null) {
-    state.escapeAccumX += moveX;
-    if (Math.abs(state.escapeAccumX) > releaseGraph) {
-      clearSticky();
-      // Mouse has clearly broken away; let LiteGraph's mouse-driven position stand.
-    } else if (bestX && Math.abs(bestX.target - state.snappedX) < 0.5) {
-      // Still snappable to the same target line; pull node back to it.
-      draggedNode.pos[0] += bestX.delta;
-      c.setDirty?.(true, true);
-    } else {
-      // Drifted too far in a single tick to find the same target; release.
-      clearSticky();
-    }
-  } else if (bestX) {
-    state.snappedX = bestX.target;
-    state.escapeAccumX = 0;
-    draggedNode.pos[0] += bestX.delta;
-    c.setDirty?.(true, true);
-  }
+  // Set node.pos directly: snap target if found, else desired position.
+  // This OVERWRITES whatever LiteGraph set this tick, so the cursor and node
+  // never drift apart by more than snapGraph.
+  draggedNode.pos[0] = bestX ? desiredX + bestX.delta : desiredX;
+  draggedNode.pos[1] = bestY ? desiredY + bestY.delta : desiredY;
+  c.setDirty?.(true, true);
 }
