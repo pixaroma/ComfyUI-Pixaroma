@@ -196,8 +196,24 @@ PixaromaEditor.prototype.previewPlaceholderInput = function (layerId) {
   const img = new Image();
   img.crossOrigin = "Anonymous";
   img.onload = () => {
-    const phW = layer.img.width;
-    const phH = layer.img.height;
+    const origPhW = layer.img.width;
+    const origPhH = layer.img.height;
+    const sw = img.naturalWidth || img.width;
+    const sh = img.naturalHeight || img.height;
+    // Quality fix: if the upstream source is larger than the placeholder slot
+    // in either dimension, scale the OUTPUT canvas up to match — preserves
+    // source resolution instead of permanently downsampling to slot size.
+    // Adjust scaleX/scaleY proportionally so the layer's visual size on the
+    // canvas stays exactly the same as before. Idempotent: re-running with
+    // the same source image is a no-op (upscale = 1).
+    const upscale = Math.max(1, sw / origPhW, sh / origPhH);
+    const phW = Math.round(origPhW * upscale);
+    const phH = Math.round(origPhH * upscale);
+    if (upscale > 1) {
+      const compensation = origPhW / phW; // == 1 / upscale
+      layer.scaleX = (layer.scaleX || 1) * compensation;
+      layer.scaleY = (layer.scaleY || 1) * compensation;
+    }
     layer._previewImg = img;
     layer.img = this._applyFillMode(img, phW, phH, layer.fillMode || "cover", (bitmapImg) => {
       layer.img = bitmapImg;

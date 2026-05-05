@@ -370,6 +370,22 @@ class PixaromaImageComposition:
                             layer_img = _tensor_to_pil(img_input)
                             if layer.get("removeBgOnExec"):
                                 layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                            # Quality fix: scale the slot up to source resolution
+                            # if the upstream image is larger. Adjust scaleX/Y in
+                            # a layer copy so the visual size matches the editor.
+                            # Mirrors js/composer/placeholder.mjs previewPlaceholderInput.
+                            sw, sh = layer_img.size
+                            upscale = max(1.0, sw / ph_w, sh / ph_h)
+                            if upscale > 1.0:
+                                new_ph_w = int(round(ph_w * upscale))
+                                new_ph_h = int(round(ph_h * upscale))
+                                compensation = ph_w / new_ph_w
+                                ph_w, ph_h = new_ph_w, new_ph_h
+                                layer = {
+                                    **layer,
+                                    "scaleX": layer.get("scaleX", 1.0) * compensation,
+                                    "scaleY": layer.get("scaleY", 1.0) * compensation,
+                                }
                             layer_img = _fit_to_placeholder(layer_img, ph_w, ph_h, layer.get("fillMode", "cover"))
                         else:
                             color = _hex_to_rgba(layer.get("placeholderColor", "#808080"))
