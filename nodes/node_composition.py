@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageFilter
 import os
 import json
 import time
@@ -388,6 +388,9 @@ class PixaromaImageComposition:
                     if mask_src:
                         layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
+                    blur_radius = layer.get("blur", 0)
+                    if blur_radius and blur_radius > 0:
+                        composed = composed.filter(ImageFilter.GaussianBlur(radius=blur_radius))
                     canvas = _blend_over(canvas, composed, layer.get("blendMode", "Normal"))
                 # Save the final composed image to temp so the node's
                 # mini preview gets the exact executed result (including
