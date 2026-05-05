@@ -761,14 +761,10 @@ export class PixaromaUI {
       showStretchSliders: true,
       showOpacitySlider: true,
       showBlurSlider: true,
-      onBlurChange: (val) => {
-        for (const id of core.selectedLayerIds) {
-          const layer = core.layers.find((l) => l.id === id);
-          if (layer) layer.blur = val;
-        }
-        core.draw();
-        core.pushHistory();
-      },
+      // No onBlurChange here — wired via syncSliderTrans below so pushHistory
+      // only fires on slider release (matching Opacity, Scale, Rotate, etc.).
+      // If we pushed on every input event a single drag would create dozens of
+      // history entries and Ctrl+Z would only step back 1 pixel of blur at a time.
       startCollapsed: false,
     });
 

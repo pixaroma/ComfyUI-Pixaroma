@@ -454,6 +454,7 @@ PixaromaEditor.prototype.attachEvents = function () {
   syncSliderTrans(this.opacitySlider, this.opacityNum, "opacity", 100);
   syncSliderTrans(this.rotateSlider, this.rotateNum, "rotation", 1);
   syncSliderTrans(this.scaleSlider, this.scaleNum, "scale", 100);
+  syncSliderTrans(this.blurSlider, this.blurNum, "blur", 1);
 
   const syncSliderStretch = (slider, num, prop, multiplier = 100) => {
     const updateCanvas = (val) => {
@@ -514,6 +515,7 @@ PixaromaEditor.prototype.attachEvents = function () {
       l.flippedX = false;
       l.flippedY = false;
       l.opacity = 1;
+      l.blur = 0;
       PixaromaLayers.fitLayerToCanvas(
         l,
         this.docWidth,
