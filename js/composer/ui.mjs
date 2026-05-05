@@ -823,7 +823,8 @@ export class PixaromaUI {
     core.canvasContainer.appendChild(core.selCanvas);
 
     // Orange frame border + dimension label on the canvas container
-    core.canvasContainer.style.border = "2px solid rgba(249,115,22,0.45)";
+    // Use box-shadow (not border) so the frame doesn't push the selection overlay off by 2px
+    core.canvasContainer.style.boxShadow = "0 0 0 2px rgba(249,115,22,0.45)";
     const dimLabel = document.createElement("div");
     dimLabel.className = "pxf-canvas-frame-label";
     dimLabel.textContent = `${core.docWidth}\u00d7${core.docHeight}`;
