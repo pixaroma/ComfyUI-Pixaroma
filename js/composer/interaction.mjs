@@ -684,6 +684,7 @@ PixaromaEditor.prototype.attachEvents = function () {
         if (layer.removeBgOnExec) layerEntry.removeBgOnExec = true;
         if (layer.bgRemovalQuality && layer.bgRemovalQuality !== "normal") layerEntry.bgRemovalQuality = layer.bgRemovalQuality;
         if (layer.blendMode && layer.blendMode !== "Normal") layerEntry.blendMode = layer.blendMode;
+        if (layer.blur && layer.blur > 0) layerEntry.blur = layer.blur;
         if (layer.isPlaceholder) {
           layerEntry.isPlaceholder = true;
           layerEntry.placeholderColor = layer.placeholderColor;
