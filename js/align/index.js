@@ -4,18 +4,27 @@ import { BRAND } from "../shared/index.mjs";
 // =============================================================================
 // Align Pixaroma - toggleable snap & alignment guides for the node canvas.
 //
-// Architecture: monkey-patches LGraphCanvas.prototype.processMouseMove (snap)
-// and onDrawForeground (guide rendering). Both early-return when disabled, so
-// the cost when OFF is one boolean read per mousemove.
+// Architecture: window-level pointermove listener does the snap math + node
+// position mutation. LGraphCanvas.prototype.onDrawForeground is monkey-patched
+// for guide rendering. Both early-return when disabled, so the cost when OFF
+// is one boolean read per pointermove.
 //
-// Patches WRAP, never REPLACE. We save the original at install time and call
-// through. This lets us coexist with rgthree-comfy and similar extensions.
+// Hook discovery (May 2026): in this ComfyUI version's Vue frontend, the
+// drag handler is bound directly to a captured pointer (likely via
+// _mousemove_callback bound to window during drag). Patching
+// LGraphCanvas.prototype.processMouseMove had ZERO effect because that method
+// is never invoked. Even the canvas DOM element doesn't see pointermove
+// during drag (events are routed via setPointerCapture). The reliable hook
+// is window.addEventListener("pointermove", ...) in the BUBBLE phase, so we
+// run AFTER LiteGraph has applied its mouse delta to the node position.
+//
+// Drag detection signals (NOT node_dragged, that property is unset here):
+//   - app.canvas.last_mouse_dragging === true   (LiteGraph drag flag)
+//   - e.buttons & 1                              (left button held)
+//   - app.canvas.selected_nodes                  (the dragged set)
 //
 // Toolbar button: DOM-mounted via `app.menu.settingsGroup.element.before(btn)`,
-// the same pattern rgthree-comfy uses (web/comfyui/comfy_ui_bar.js). The
-// `commands` + `menuCommands` API in this ComfyUI version surfaces items in
-// the menubar dropdowns, NOT the floating top action bar, so DOM mount is
-// the right path for getting a button next to rgthree's logo.
+// the same pattern rgthree-comfy uses (web/comfyui/comfy_ui_bar.js).
 // =============================================================================
 
 const SETTING_ENABLED = "Pixaroma.Align.Enabled";
@@ -167,5 +176,33 @@ app.registerExtension({
     }
     console.log("[Pixaroma.Align] setup: enabled=", state.enabled, "snapDist=", state.snapDistPx);
     mountToolbarButton();
+    installPointerHook();
   },
 });
+
+// =============================================================================
+// Drag hook - bubble-phase pointermove on window. Runs AFTER LiteGraph has
+// applied the mouse delta to node.pos (so we can read the post-move position
+// and apply a snap correction on top). When state.enabled is false, the
+// handler does nothing on the very first line.
+// =============================================================================
+
+let _hookInstalled = false;
+
+function installPointerHook() {
+  if (_hookInstalled) return;
+  window.addEventListener("pointermove", onWindowPointerMove, false);
+  _hookInstalled = true;
+  console.log("[Pixaroma.Align] pointer hook installed");
+}
+
+function onWindowPointerMove(e) {
+  if (!state.enabled) return;
+  if (e.altKey) return;
+  // Drag detection: LiteGraph sets last_mouse_dragging when a drag is active,
+  // and the left mouse button must still be held.
+  const c = app.canvas;
+  if (!c?.last_mouse_dragging) return;
+  if (!(e.buttons & 1)) return;
+  // Snap math comes in Task 7+. Pass-through for now.
+}
