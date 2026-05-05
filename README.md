@@ -36,7 +36,7 @@ Audio-reactive image-to-video. **No extra models needed**, just an image and an 
 ![AudioReact Editor](workflows/AudioReact%20Workflow%20v2.jpg?v=2)
 
 ### ✨ Image Composer
-Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
+Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. **Per-layer blur** lets you focus or defocus any layer non-destructively with a simple slider. **Shift+Scroll wheel** scales the selected layer in place for quick adjustments. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
 
 📥 [Download example workflow](workflows/Image%20Composer%20Pixaroma%20Workflow.json)
 
@@ -145,6 +145,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 05, 2026**
+- **Image Composer — per-layer blur:** Non-destructive Gaussian blur slider in the Transform Properties panel. Drag to focus or defocus any layer; the slider uses a quadratic curve so the lower half gives fine control over subtle blur amounts. Saves with the workflow, restores cleanly, and bakes into both the editor preview AND the final Python output. Each layer keeps its own blur — switch layers and the slider snaps to that layer's value.
+- **Image Composer — Shift+Scroll wheel scales the selected layer:** ±5% per tick. Wheel without Shift still zooms the canvas as before.
+- **Image Composer — placeholder quality fix:** High-resolution upstream images (2K+) used to be permanently downsampled to the placeholder's slot size (~512×512) — now preserved at their full source resolution, with the visual layout unchanged. Old workflows benefit on next reload.
+- **Image Composer — placeholder ratio change preserves preview:** Switching a placeholder's ratio dropdown no longer drops back to the blank slot; the upstream image preview re-renders into the new ratio automatically.
+- **Image Composer — selection-box fixes:** Bounding box no longer drifts a couple of pixels off the image at the edges, no longer disappears off-screen when you drag a heavily-scaled layer past the canvas, and undo (Ctrl+Z) now works while a slider has focus.
 
 ### **May 04, 2026**
 - **Preview Image Pixaroma — major upgrade:** Batches now render as a **horizontal thumbnail strip** with `i / N` counters; click any thumbnail to open that frame inline at full size. **Arrow keys** ← → navigate, click the image to advance, `Esc` or the orange-on-hover **×** collapses back. Save buttons act on the **selected frame**. New **save_mode** widget (preview / save) — flip to `save` and the node auto-saves every batch frame to `output/` with workflow metadata embedded, becoming a drop-in for SaveImage. `filename_prefix` now supports subfolder syntax (`SDXL/portrait` → `output/SDXL/portrait_00001_.png`). Save-to-Disk auto-increments suggested filename per click. Previews **survive workflow tab switching** — pick a frame, jump to another tab, come back, your selection is still there.
