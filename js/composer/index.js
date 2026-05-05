@@ -303,6 +303,8 @@ app.registerExtension({
         ctx.globalAlpha = layer.opacity ?? 1;
         if (layer.blendMode && BLEND_MAP[layer.blendMode])
           ctx.globalCompositeOperation = BLEND_MAP[layer.blendMode];
+        if (layer.blur && layer.blur > 0)
+          ctx.filter = "blur(" + layer.blur + "px)";
         ctx.translate(cx, cy);
         ctx.rotate(rot);
         ctx.scale(layer.flippedX ? -1 : 1, layer.flippedY ? -1 : 1);
