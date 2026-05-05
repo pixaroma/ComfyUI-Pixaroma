@@ -172,6 +172,8 @@ export class PixaromaUI {
           core._layerPanel.setBlend(layer.blendMode || "Normal");
         core.opacitySlider.value = Math.round(layer.opacity * 100);
         core.opacityNum.value = Math.round(layer.opacity * 100);
+        core.blurSlider.value = layer.blur || 0;
+        core.blurNum.value = layer.blur || 0;
         core.rotateSlider.value = layer.rotation;
         core.rotateNum.value = layer.rotation;
         core.scaleSlider.value = Math.round(layer.scaleX * 100);
@@ -757,6 +759,15 @@ export class PixaromaUI {
       showScaleSlider: true,
       showStretchSliders: true,
       showOpacitySlider: true,
+      showBlurSlider: true,
+      onBlurChange: (val) => {
+        for (const id of core.selectedLayerIds) {
+          const layer = core.layers.find((l) => l.id === id);
+          if (layer) layer.blur = val;
+        }
+        core.draw();
+        core.pushHistory();
+      },
       startCollapsed: false,
     });
 
@@ -782,6 +793,8 @@ export class PixaromaUI {
     core.stretchVNum = tp.stretchVNum;
     core.opacitySlider = tp.opacitySlider;
     core.opacityNum = tp.opacityNum;
+    core.blurSlider = tp.blurSlider;
+    core.blurNum = tp.blurNum;
 
     layout.leftSidebar.appendChild(core.toolsPanel);
 
