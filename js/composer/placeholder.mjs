@@ -298,6 +298,13 @@ PixaromaEditor.prototype.changePlaceholderRatio = function (layer, ratioKey) {
   this.ui.updateActiveLayerUI();
   this.draw();
   this.pushHistory();
+
+  // If the placeholder is wired to an upstream image, re-fetch the preview so
+  // it doesn't visually revert to the blank slot until the next workflow run.
+  // previewPlaceholderInput is a no-op when no upstream is connected.
+  if (this.isPlaceholderConnected && this.isPlaceholderConnected(layer)) {
+    this.previewPlaceholderInput(layer.id);
+  }
 };
 
 PixaromaEditor.prototype.syncNodeInputs = function () {
