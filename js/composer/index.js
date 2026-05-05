@@ -303,8 +303,10 @@ app.registerExtension({
         ctx.globalAlpha = layer.opacity ?? 1;
         if (layer.blendMode && BLEND_MAP[layer.blendMode])
           ctx.globalCompositeOperation = BLEND_MAP[layer.blendMode];
+        // Quadratic curve: slider 0-100 maps to actual blur 0-50px (finer control
+        // at low end). Must match render.mjs + node_composition.py.
         if (layer.blur && layer.blur > 0)
-          ctx.filter = "blur(" + layer.blur + "px)";
+          ctx.filter = "blur(" + (Math.pow(layer.blur / 100, 2) * 50) + "px)";
         ctx.translate(cx, cy);
         ctx.rotate(rot);
         ctx.scale(layer.flippedX ? -1 : 1, layer.flippedY ? -1 : 1);

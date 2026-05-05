@@ -388,8 +388,12 @@ class PixaromaImageComposition:
                     if mask_src:
                         layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
                     composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
-                    blur_radius = layer.get("blur", 0)
-                    if blur_radius and blur_radius > 0:
+                    # Quadratic curve: slider 0-100 maps to actual blur 0-50px
+                    # (finer control at low end). Mirrored in
+                    # js/composer/render.mjs + js/composer/index.js.
+                    blur_slider = layer.get("blur", 0)
+                    if blur_slider and blur_slider > 0:
+                        blur_radius = (blur_slider / 100.0) ** 2 * 50.0
                         composed = composed.filter(ImageFilter.GaussianBlur(radius=blur_radius))
                     canvas = _blend_over(canvas, composed, layer.get("blendMode", "Normal"))
                 # Save the final composed image to temp so the node's

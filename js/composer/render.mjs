@@ -125,8 +125,12 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
     // Per-layer Gaussian blur — non-destructive, applied to the final composited
     // (post-mask) result. Selection box stroke is on the overlay canvas (oc),
     // so it stays sharp regardless of this filter.
+    // Slider value (0-100) is mapped via a quadratic curve to actual blur radius
+    // (0-50 px) so the lower half of the slider gives finer control at small
+    // blur amounts. Mirror in js/composer/index.js + nodes/node_composition.py.
     if (layer.blur && layer.blur > 0) {
-      this.ctx.filter = "blur(" + layer.blur + "px)";
+      const r = Math.pow(layer.blur / 100, 2) * 50;
+      this.ctx.filter = "blur(" + r + "px)";
     }
 
     // NON-DESTRUCTIVE MASK RENDER
