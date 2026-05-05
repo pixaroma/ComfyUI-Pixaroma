@@ -25,11 +25,12 @@ import {
   createRow,
 } from "../framework/index.mjs";
 
-const PAINT_STYLE_ID = "pixaroma-paint-extra-styles-v4";
+const PAINT_STYLE_ID = "pixaroma-paint-extra-styles-v5";
 
 function injectPaintExtraStyles() {
   if (document.getElementById(PAINT_STYLE_ID)) return;
   // remove old versions
+  document.getElementById("pixaroma-paint-extra-styles-v4")?.remove();
   document.getElementById("pixaroma-paint-styles-v3")?.remove();
   document.getElementById("pixaroma-paint-styles-v2")?.remove();
   const s = document.createElement("style");

@@ -116,8 +116,11 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
 
     this.ctx.save();
     this.ctx.scale(layer.flippedX ? -1 : 1, layer.flippedY ? -1 : 1);
-    const w = layer.img.width * layer.scaleX;
-    const h = layer.img.height * layer.scaleY;
+    // Snap to integer pixels so strokeRect (selection box) and drawImage land on
+    // the same pixel grid — otherwise sub-pixel anti-aliasing makes the box look
+    // 1-2px larger than the image on bottom/right edges
+    const w = Math.round(layer.img.width * layer.scaleX);
+    const h = Math.round(layer.img.height * layer.scaleY);
 
     // NON-DESTRUCTIVE MASK RENDER
     if (layer.hasMask_internal && layer.eraserMaskCanvas_internal) {
@@ -154,9 +157,11 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
         : this.selectedLayerIds.size > 1
           ? "#0ea5e9"
           : "#f66744";
-      oc.lineWidth = 1.5;
+      oc.lineWidth = 1;
       if (layer.isPlaceholder) oc.setLineDash([6, 4]);
-      oc.strokeRect(-w / 2, -h / 2, w, h);
+      // Offset by 0.5 so a 1px stroke lands on the integer pixel grid (crisp,
+      // no anti-alias bleed). w/h are already integer-rounded above.
+      oc.strokeRect(-w / 2 + 0.5, -h / 2 + 0.5, w - 1, h - 1);
       oc.setLineDash([]);
 
       if (
