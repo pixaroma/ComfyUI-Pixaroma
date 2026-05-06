@@ -284,6 +284,15 @@ export function injectCSS() {
           mask-position: center;
 }
 
+/* Inline-icon size attribute - drives the same 1.2em default block above
+   when absent (= M). Vertical-align tuned per size so the icon sits on
+   the text baseline without lifting the line-height. data-size="m"
+   intentionally has NO rule so the default doesn't need to be emitted
+   in saved markup. */
+.pix-note-ic[data-size="s"]  { width: 1em;   height: 1em;   vertical-align: -0.1em; }
+.pix-note-ic[data-size="l"]  { width: 1.6em; height: 1.6em; vertical-align: -0.25em; }
+.pix-note-ic[data-size="xl"] { width: 2em;   height: 2em;   vertical-align: -0.35em; }
+
 /* Hover-reveal Edit button */
 .pix-note-editbtn {
   position: absolute;
