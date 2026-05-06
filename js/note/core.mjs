@@ -103,22 +103,28 @@ export class NoteEditor {
       // decides which side gets the caret.
       this._iconClickHandler = (e) => {
         if (e.button !== 0) return; // left button only
-        // Iterate visible icons to find one whose bbox contains the
-        // click. Direct bbox check is more predictable than
-        // elementsFromPoint (which can include the icon for clicks in
-        // the surrounding gap that visually feel "between" the icon
-        // and the next character).
+        // Iterate visible icons to find one whose hit-zone contains
+        // the click. The hit-zone is the icon's bbox EXPANDED by a
+        // few px horizontally - this lets clicks in the small gap
+        // beside an icon snap to the icon's nearest edge, which
+        // makes forward-Delete on icons reliable (caret has to land
+        // BEFORE the icon for Delete to remove it; without the
+        // expanded zone, browser default could put the caret on the
+        // wrong side and Delete operates on the trailing nbsp).
+        const HIT_PAD_X = 4;
         const icons = editArea.querySelectorAll(".pix-note-ic");
         let hit = null;
         for (const ic of icons) {
           const r = ic.getBoundingClientRect();
-          if (e.clientX >= r.left && e.clientX <= r.right &&
-              e.clientY >= r.top  && e.clientY <= r.bottom) {
+          if (e.clientX >= r.left - HIT_PAD_X
+              && e.clientX <= r.right + HIT_PAD_X
+              && e.clientY >= r.top
+              && e.clientY <= r.bottom) {
             hit = { ic, rect: r };
             break;
           }
         }
-        if (!hit) return; // click is in the gap or on text - browser handles
+        if (!hit) return; // click outside any icon's hit-zone - browser handles
         e.preventDefault();
         const mid = hit.rect.left + hit.rect.width / 2;
         const range = document.createRange();
