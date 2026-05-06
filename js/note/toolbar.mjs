@@ -544,18 +544,20 @@ NoteEditor.prototype._buildToolbar = function () {
           this._stagedHi = null;
           hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
         } else {
-          // Apply highlight.
-          //  - Range: execCommand handles multi-element selections
-          //    correctly. Apply immediately to the selected text.
-          //  - Collapsed: stage in JS only (this._stagedHi). The
-          //    beforeinput handler in core.mjs inserts an empty bg
-          //    span at the cursor right before the next typed
-          //    character, so typing produces highlighted text whether
-          //    the user types immediately or clicks elsewhere first.
-          //    Mirror of how Chrome's foreColor stage works for text.
-          //    Avoids both Chrome quirks (caret jump, prior-region
-          //    selection) and the orphan-empty-span bloat that direct
-          //    DOM insertion at pick time leaves behind.
+          // Apply highlight. ALWAYS arm the JS stage (`this._stagedHi`)
+          // so the next typed character lands inside a bg span,
+          // regardless of what the selection looked like at pick time.
+          // Earlier, only the collapsed branch armed the stage and the
+          // range branch cleared it — meaning if the user accidentally
+          // had a selection (drag-select, double-click word), the
+          // pick was applied to the selection but subsequent typing
+          // outside that selection got the prior colour.
+          //
+          // Range case ALSO calls execCommand for immediate visual
+          // feedback on the selected text. The beforeinput handler
+          // (see _applyStagedHilite + core.mjs wiring) consumes the
+          // stage one-shot on the next text input.
+          this._stagedHi = c;
           if (range && !range.collapsed && this._editArea.contains(range.startContainer)) {
             document.execCommand("hiliteColor", false, c);
             // Pattern #21: hiliteColor on a non-collapsed range clears
@@ -565,9 +567,6 @@ NoteEditor.prototype._buildToolbar = function () {
             if (stagedFg) {
               try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
             }
-            this._stagedHi = null;
-          } else {
-            this._stagedHi = c;
           }
           hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
         }
