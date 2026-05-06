@@ -1121,9 +1121,14 @@ NoteEditor.prototype._refreshActiveStates = function () {
 // so if both colors are set we apply highlight FIRST and foreground
 // SECOND, leaving foreColor as the last-staged command.
 NoteEditor.prototype._restageColors = function () {
+  // Suppress for the same window the cursor-mirror uses. During the
+  // ~1s after a pick, the picker's onPick has already direct-inserted
+  // the bg span and replayed foreColor; restaging on top of that
+  // re-triggers Chrome's hiliteColor-on-collapsed quirk and ends up
+  // selecting the previously-highlighted region.
+  if (this._suppressMirrorUntil && Date.now() < this._suppressMirrorUntil) return;
   const fg = this._textColorBtn?.style.getPropertyValue("--pix-note-tbtn-tint").trim();
-  const bg = this._hiColorBtn?.style.getPropertyValue("--pix-note-tbtn-tint").trim();
-  if (!fg && !bg) return;
+  if (!fg) return;
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
   if (!this._editArea?.contains(sel.anchorNode)) return;
@@ -1135,9 +1140,15 @@ NoteEditor.prototype._restageColors = function () {
   if (!r.collapsed) return;
   try {
     document.execCommand("styleWithCSS", false, true);
-    if (bg) document.execCommand("hiliteColor", false, bg);
-    if (fg) document.execCommand("foreColor", false, fg);
+    document.execCommand("foreColor", false, fg);
   } catch (e) {}
+  // NOTE: hiliteColor restaging removed deliberately. With the mirror +
+  // direct-DOM model, typed text inherits bg from the cursor's
+  // containing span, so explicit hiliteColor staging is redundant. It
+  // was actively harmful — execCommand("hiliteColor", c) on a collapsed
+  // cursor inside an existing bg span expands the selection to wrap
+  // the prior highlighted region, which the user then accidentally
+  // overwrites by typing.
 };
 
 // Themed URL prompt that matches the editor's dark modal style (same look as
