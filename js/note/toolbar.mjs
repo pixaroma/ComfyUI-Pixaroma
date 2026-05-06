@@ -1,5 +1,9 @@
 import { NoteEditor } from "./core.mjs";
-import { openPixaromaColorPickerPopup, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
+import {
+  openPixaromaColorPickerPopup,
+  openPixaromaCompactColorPickerPopup,
+  PIXAROMA_PALETTE,
+} from "../shared/color_picker.mjs";
 
 // Range helpers are kept for future modal-backed buttons (e.g. link dialog)
 // where focus genuinely leaves the edit area. For the current buttons,
@@ -407,7 +411,7 @@ NoteEditor.prototype._buildToolbar = function () {
   textColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
     const r = saveRange(this._editArea);
-    openPixaromaColorPickerPopup(textColorBtn, {
+    openPixaromaCompactColorPickerPopup(textColorBtn, {
       initialColor: textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
       // No transparent tile for text — 36 palette colors fill 3 rows of
       // 12 cleanly. Users can still revert text to default via the Tx
@@ -493,7 +497,7 @@ NoteEditor.prototype._buildToolbar = function () {
   hiColorBtn.addEventListener("click", (e) => {
     e.preventDefault();
     const r = saveRange(this._editArea);
-    openPixaromaColorPickerPopup(hiColorBtn, {
+    openPixaromaCompactColorPickerPopup(hiColorBtn, {
       initialColor: hiColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
       // Transparent tile + 35 colors = 36 = 3 clean rows of 12 (drop the
       // last palette swatch so we don't spill onto a 4th row).

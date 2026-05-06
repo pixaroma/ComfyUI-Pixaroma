@@ -182,6 +182,93 @@ function ensureCSS() {
   width: 248px;
   box-sizing: border-box;
 }
+
+/* Compact popup — swatches + Reset / More-colors row only. Used by the
+   text and highlight pickers in the Note editor. Excel-style apply-on-
+   click avoids the multi-fire onPick storms that SV-drag triggers. */
+.pix-cp-compact-footer {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pix-cp-compact-footer .pix-cp-reset {
+  flex: 0 0 auto;
+}
+.pix-cp-more-btn {
+  flex: 1 1 auto;
+  height: 22px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid #444;
+  color: #999;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-cp-more-btn:hover {
+  color: ${BRAND};
+  border-color: ${BRAND};
+}
+
+/* "More colors" modal — full SV / hue / hex picker with OK / Cancel.
+   Higher z-index than the picker popup so it stacks above. */
+.pix-cp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 100001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pix-cp-modal-box {
+  background: #1a1a1a;
+  border: 1px solid #444;
+  border-radius: 6px;
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.6);
+  width: 280px;
+  box-sizing: border-box;
+}
+.pix-cp-modal-title {
+  color: #ddd;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 10px;
+}
+.pix-cp-modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.pix-cp-modal-btn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid #444;
+  color: #ddd;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-cp-modal-btn:hover {
+  color: ${BRAND};
+  border-color: ${BRAND};
+}
+.pix-cp-modal-btn.primary {
+  background: ${BRAND};
+  border-color: ${BRAND};
+  color: #fff;
+}
+.pix-cp-modal-btn.primary:hover {
+  background: #d54f2c;
+  border-color: #d54f2c;
+  color: #fff;
+}
 `;
   document.head.appendChild(s);
 }
@@ -208,6 +295,7 @@ export function createPixaromaColorPicker(opts = {}) {
     showClear    = false,
     resetColor   = "#f66744",
     onChange     = () => {},
+    hideReset    = false,
   } = opts;
 
   // ── State ────────────────────────────────────────────────────────
@@ -258,7 +346,12 @@ export function createPixaromaColorPicker(opts = {}) {
     swatchGrid.appendChild(tile);
     swatchTiles.push({ tile, hex });
   }
-  root.appendChild(swatchGrid);
+  // Skip the swatch row entirely when nothing would render — used by the
+  // "More colors" modal which passes `swatches: []` + `showClear: false`
+  // to show only the SV / hue / hex picker.
+  if (showClear || swatches.length > 0) {
+    root.appendChild(swatchGrid);
+  }
 
   // ── SV plane + Hue strip ────────────────────────────────────────
   const svRow = document.createElement("div");
@@ -388,23 +481,28 @@ export function createPixaromaColorPicker(opts = {}) {
   };
   hexRow.appendChild(hexInput);
 
-  const resetBtn = document.createElement("button");
-  resetBtn.type = "button";
-  resetBtn.className = "pix-cp-reset";
-  resetBtn.title = resetColor === null ? "Clear color" : `Reset to ${resetColor}`;
-  resetBtn.textContent = "Reset";
-  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  resetBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    curColor = resetColor;
-    // hexToHsv tolerates null but returns {h:0,s:0,v:1}; only update
-    // HSV when we actually have a hex so the SV/hue tracker doesn't
-    // jump to a meaningless red-corner position on null reset.
-    if (resetColor !== null) curHsv = hexToHsv(resetColor);
-    refresh();
-    onChange(resetColor);
-  });
-  hexRow.appendChild(resetBtn);
+  // Reset button — opt-out via `hideReset` for callers that supply
+  // their own action row (e.g. the "More colors..." modal which uses
+  // OK / Cancel buttons instead).
+  if (!hideReset) {
+    const resetBtn = document.createElement("button");
+    resetBtn.type = "button";
+    resetBtn.className = "pix-cp-reset";
+    resetBtn.title = resetColor === null ? "Clear color" : `Reset to ${resetColor}`;
+    resetBtn.textContent = "Reset";
+    resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    resetBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      curColor = resetColor;
+      // hexToHsv tolerates null but returns {h:0,s:0,v:1}; only update
+      // HSV when we actually have a hex so the SV/hue tracker doesn't
+      // jump to a meaningless red-corner position on null reset.
+      if (resetColor !== null) curHsv = hexToHsv(resetColor);
+      refresh();
+      onChange(resetColor);
+    });
+    hexRow.appendChild(resetBtn);
+  }
 
   root.appendChild(hexRow);
 
@@ -507,4 +605,218 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
   setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
 
   return { close, getColor: picker.getColor, setColor: picker.setColor };
+}
+
+// ── Compact popup ────────────────────────────────────────────────
+//
+// Excel-style: swatches grid + Reset + "More colors..." footer. Each
+// swatch / Reset click fires `onPick(c)` ONCE and closes the popup
+// immediately — no SV-drag, no live preview, no multi-fire onPick
+// storms. Used by the Note editor's text and highlight pickers, where
+// the apply-once-and-done flow plays nicely with sticky stage state.
+//
+// "More colors..." closes the popup and opens openMoreColorsModal —
+// a centered modal with a full SV / hue / hex picker plus OK / Cancel
+// buttons. OK fires `onPick` with the current color; Cancel does
+// nothing.
+//
+// opts:
+//   initialColor: hex | null  — used to ring the matching swatch
+//   swatches:     array (default PIXAROMA_PALETTE)
+//   showClear:    bool — first tile becomes a transparent / clear tile
+//   resetColor:   hex | null  — what Reset fires on click
+//   onPick:       (color | null) => void
+export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
+  ensureCSS();
+
+  const swatches    = opts.swatches    ?? PIXAROMA_PALETTE;
+  const showClear   = !!opts.showClear;
+  const resetColor  = "resetColor"  in opts ? opts.resetColor  : "#f66744";
+  const initialColor = "initialColor" in opts ? opts.initialColor : null;
+  const onPick      = opts.onPick || (() => {});
+
+  const popup = document.createElement("div");
+  popup.className = "pix-cp-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top  = `${rect.bottom + 4}px`;
+
+  // Track open state so the "More colors..." path can close synchronously
+  // without racing with the document mousedown listener.
+  let isOpen = true;
+  function close() {
+    if (!isOpen) return;
+    isOpen = false;
+    document.removeEventListener("mousedown", onDocDown, true);
+    if (popup.parentNode) popup.remove();
+  }
+
+  const swatchGrid = document.createElement("div");
+  swatchGrid.className = "pix-cp-swatches";
+
+  const isCurMatch = (hex) =>
+    (initialColor === null && hex === null) ||
+    (initialColor !== null && hex !== null &&
+      hex.toLowerCase() === initialColor.toLowerCase());
+
+  if (showClear) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "pix-cp-tile pix-cp-tile-clear";
+    tile.title = "Transparent / clear color";
+    if (isCurMatch(null)) tile.classList.add("selected");
+    tile.addEventListener("mousedown", (e) => e.preventDefault());
+    tile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(null);
+      close();
+    });
+    swatchGrid.appendChild(tile);
+  }
+
+  for (const hex of swatches) {
+    const tile = document.createElement("button");
+    tile.type = "button";
+    tile.className = "pix-cp-tile";
+    tile.style.background = hex;
+    tile.title = hex;
+    if (isCurMatch(hex)) tile.classList.add("selected");
+    tile.addEventListener("mousedown", (e) => e.preventDefault());
+    tile.addEventListener("click", (e) => {
+      e.stopPropagation();
+      onPick(hex);
+      close();
+    });
+    swatchGrid.appendChild(tile);
+  }
+  popup.appendChild(swatchGrid);
+
+  // Footer: Reset + More colors... (Reset gets resetColor — which can
+  // be null so the highlight picker's Reset routes through the same
+  // null branch as the transparent tile).
+  const footer = document.createElement("div");
+  footer.className = "pix-cp-compact-footer";
+
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-cp-reset";
+  resetBtn.title = resetColor === null ? "Clear color" : `Reset to ${resetColor}`;
+  resetBtn.textContent = "Reset";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onPick(resetColor);
+    close();
+  });
+  footer.appendChild(resetBtn);
+
+  const moreBtn = document.createElement("button");
+  moreBtn.type = "button";
+  moreBtn.className = "pix-cp-more-btn";
+  moreBtn.textContent = "More colors...";
+  moreBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  moreBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    close();
+    openMoreColorsModal({
+      // Seed the modal with whatever's already picked (so the user's
+      // fine-tuning starts from their current colour, not BRAND).
+      initialColor: initialColor ?? (resetColor !== null ? resetColor : "#f66744"),
+      onPick,
+    });
+  });
+  footer.appendChild(moreBtn);
+  popup.appendChild(footer);
+
+  document.body.appendChild(popup);
+
+  const onDocDown = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchorEl) close();
+  };
+  setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+
+  return { close };
+}
+
+// ── "More colors..." modal ───────────────────────────────────────
+//
+// Centered modal with full SV / hue / hex picker + OK / Cancel.
+// OK fires `opts.onPick(currentHex)` and closes; Cancel just closes.
+// Esc cancels (window-capture so it preempts the editor's overlay
+// keydown handler — Note editor's `_keyBlock` already returns early
+// when `.pix-cp-modal-backdrop` is in the DOM, see Pattern #27).
+function openMoreColorsModal(opts) {
+  ensureCSS();
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-cp-modal-backdrop";
+
+  const box = document.createElement("div");
+  box.className = "pix-cp-modal-box";
+
+  const title = document.createElement("div");
+  title.className = "pix-cp-modal-title";
+  title.textContent = "Pick a color";
+  box.appendChild(title);
+
+  let pickedColor = opts.initialColor ?? "#f66744";
+  const picker = createPixaromaColorPicker({
+    initialColor: pickedColor,
+    swatches: [],
+    showClear: false,
+    hideReset: true,
+    onChange: (c) => { if (c !== null) pickedColor = c; },
+  });
+  box.appendChild(picker.element);
+
+  const actions = document.createElement("div");
+  actions.className = "pix-cp-modal-actions";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-cp-modal-btn";
+  cancelBtn.textContent = "Cancel";
+
+  const okBtn = document.createElement("button");
+  okBtn.type = "button";
+  okBtn.className = "pix-cp-modal-btn primary";
+  okBtn.textContent = "OK";
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(okBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+
+  function close() {
+    window.removeEventListener("keydown", onKey, true);
+    picker.destroy();
+    if (backdrop.parentNode) backdrop.remove();
+  }
+
+  okBtn.addEventListener("click", () => {
+    if (pickedColor != null) opts.onPick(pickedColor);
+    close();
+  });
+  cancelBtn.addEventListener("click", close);
+
+  // Click outside the box (on the backdrop itself) cancels.
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop) close();
+  });
+
+  // Esc cancels. Use window-capture + stopImmediatePropagation so any
+  // editor-level Esc handler attached after this listener is preempted
+  // (Vue-compat #6 territory). The Note editor's `_keyBlock` checks
+  // for an open `.pix-cp-modal-backdrop` and returns early, so this
+  // also works without the stop.
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      close();
+    }
+  }
+  window.addEventListener("keydown", onKey, true);
 }
