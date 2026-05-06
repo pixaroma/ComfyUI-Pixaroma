@@ -121,18 +121,28 @@ export class NoteEditor {
           let probe;
           if (node.nodeType === 3) {
             // Text node - caret must be at the very edge to be "adjacent".
-            if (forward && off !== node.nodeValue.length) return null;
-            if (!forward && off !== 0) return null;
+            // For Backspace (forward=false) we accept caret at offset 0
+            // OR at a position where everything before the caret is
+            // whitespace (nbsp + typed-then-deleted leftovers).
+            if (forward) {
+              if (off !== node.nodeValue.length) return null;
+            } else {
+              const before = node.nodeValue.slice(0, off);
+              if (!/^[\s ]*$/.test(before)) return null;
+            }
             probe = forward ? node.nextSibling : node.previousSibling;
           } else {
             // Element node - caret is between children.
             probe = forward ? node.childNodes[off] : node.childNodes[off - 1];
           }
-          // Step past one trailing/leading nbsp text node. renderIconHTML
-          // emits exactly one "&nbsp;" (U+00A0) AFTER each icon. Match the
-          // EXACT nbsp char so a regular space (legitimate user content)
-          // is not consumed.
-          if (probe && probe.nodeType === 3 && probe.nodeValue === " ") {
+          // Walk past harmless filler nodes between caret and a hopeful
+          // icon: whitespace-only text (incl. nbsp) and stray <br>s.
+          // Capped to keep this O(1) and avoid eating real user content.
+          let _walkSafety = 4;
+          while (probe && _walkSafety-- > 0 && (
+            (probe.nodeType === 3 && /^[\s ]*$/.test(probe.nodeValue || "")) ||
+            (probe.nodeType === 1 && probe.tagName === "BR")
+          )) {
             probe = forward ? probe.nextSibling : probe.previousSibling;
           }
           // Direct icon hit
