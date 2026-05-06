@@ -361,9 +361,13 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
 
     // Direct DOM insertion (bypasses execCommand("insertHTML")) so
     // Chrome can't wrap our inline content in a new block. Mirrors
-    // the Grid insert pattern (CLAUDE.md Note Pattern #26).
+    // the Grid insert pattern (CLAUDE.md Note Pattern #26). Brackets
+    // with _snapBefore / _snapAfter so the manual undo stack records
+    // this mutation - browser-native undo doesn't track direct DOM
+    // changes (Pattern #11).
     const color = this._iconPickerColor || "";
     const size  = this._iconPickerSize  || "m";
+    this._snapBefore?.();
     const tmpl = document.createElement("template");
     tmpl.innerHTML = renderIconHTML(id, color, size);
     const frag = tmpl.content;
@@ -382,6 +386,7 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
       sel.addRange(after);
     }
 
+    this._snapAfter?.();
     this._restageColors?.();
     this._dirty = true;
     this._refreshActiveStates?.();
