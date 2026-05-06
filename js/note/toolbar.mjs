@@ -32,7 +32,7 @@ function restoreRange(range) {
 //           colour-coordinate with the built-in node palette.
 //   Row 4 — Modern soft / deep: pastels for calm light notes and deep
 //           tones for rich dark notes.
-const SWATCHES = [
+export const SWATCHES = [
   // Row 1 — Neutrals
   "#ffffff","#d4d4d4","#888888","#555555","#2a2a2a","#111111","#000000",
   // Row 2 — Bright accents (Pixaroma brand first)
