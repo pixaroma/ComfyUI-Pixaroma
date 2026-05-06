@@ -186,24 +186,34 @@ function ensureCSS() {
 /* Compact popup — swatches + Reset / More-colors row only. Used by the
    text and highlight pickers in the Note editor. Excel-style apply-on-
    click avoids the multi-fire onPick storms that SV-drag triggers. */
+.pix-cp-popup.pix-cp-popup-compact {
+  width: 320px;
+  padding: 12px;
+}
+.pix-cp-popup.pix-cp-popup-compact .pix-cp-swatches {
+  gap: 4px;
+}
 .pix-cp-compact-footer {
   display: flex;
-  gap: 6px;
-  margin-top: 6px;
+  gap: 8px;
+  margin-top: 10px;
 }
 .pix-cp-compact-footer .pix-cp-reset {
   flex: 0 0 auto;
+  height: 28px;
+  padding: 0 14px;
+  font-size: 12px;
 }
 .pix-cp-more-btn {
   flex: 1 1 auto;
-  height: 22px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 14px;
   background: transparent;
   border: 1px solid #444;
-  color: #999;
+  color: #ccc;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
   font-family: "Segoe UI", system-ui, sans-serif;
 }
 .pix-cp-more-btn:hover {
@@ -636,7 +646,7 @@ export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
   const onPick      = opts.onPick || (() => {});
 
   const popup = document.createElement("div");
-  popup.className = "pix-cp-popup";
+  popup.className = "pix-cp-popup pix-cp-popup-compact";
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
   popup.style.top  = `${rect.bottom + 4}px`;
