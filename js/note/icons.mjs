@@ -172,13 +172,15 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     return;
   }
 
-  // Top row: color grid + Clear tile
-  const topRow = document.createElement("div");
-  topRow.className = "pix-note-iconpop-toprow";
+  // Color section: swatch grid (left) + vertical control column (right).
+  // The right column packs Clear / native picker / hex input alongside
+  // the 4-row swatch grid so the right edge isn't wasted vertical space.
+  const colorSection = document.createElement("div");
+  colorSection.className = "pix-note-iconpop-colorsection";
 
   const colorGrid = document.createElement("div");
   colorGrid.className = "pix-note-iconpop-color-grid";
-  const colorTiles = []; // for selection-ring updates
+  const colorTiles = [];
   for (const hex of SWATCHES) {
     const tile = document.createElement("button");
     tile.type = "button";
@@ -195,7 +197,10 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     colorGrid.appendChild(tile);
     colorTiles.push({ tile, hex });
   }
-  topRow.appendChild(colorGrid);
+  colorSection.appendChild(colorGrid);
+
+  const colorRight = document.createElement("div");
+  colorRight.className = "pix-note-iconpop-colorright";
 
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
@@ -209,16 +214,11 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     refreshColorSelection();
     repaintGrid();
   });
-  topRow.appendChild(clearBtn);
+  colorRight.appendChild(clearBtn);
 
-  pop.appendChild(topRow);
-
-  // Custom-color row: native color picker + hex input (mirrors the
-  // standard openColorPop layout in toolbar.mjs).
-  const customRow = document.createElement("div");
-  customRow.className = "pix-note-iconpop-customrow";
   const nativePicker = document.createElement("input");
   nativePicker.type = "color";
+  nativePicker.title = "Custom color";
   const initialHex =
     /^#[0-9a-f]{6}$/i.test(editor._iconPickerColor || "")
       ? editor._iconPickerColor
@@ -231,6 +231,8 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     refreshColorSelection();
     repaintGrid();
   });
+  colorRight.appendChild(nativePicker);
+
   const hexInput = document.createElement("input");
   hexInput.type = "text";
   hexInput.value = editor._iconPickerColor || "";
@@ -245,9 +247,10 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
       repaintGrid();
     }
   };
-  customRow.appendChild(nativePicker);
-  customRow.appendChild(hexInput);
-  pop.appendChild(customRow);
+  colorRight.appendChild(hexInput);
+
+  colorSection.appendChild(colorRight);
+  pop.appendChild(colorSection);
 
   // Size pills row
   const sizeRow = document.createElement("div");

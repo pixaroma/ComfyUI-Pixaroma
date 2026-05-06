@@ -846,17 +846,20 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
-/* Icon-popup color row - reuses the standard 28-color SWATCHES grid.
-   Clear tile sits in the same flex row to the right of the grid. */
-.pix-note-iconpop-toprow {
+/* Icon-popup color section: 4-row swatch grid on the left, vertical
+   control column (Clear / native picker / hex input) on the right.
+   Compact - reuses the wasted right edge of the swatch area instead
+   of stacking those controls below. */
+.pix-note-iconpop-colorsection {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: stretch;
+  gap: 6px;
   margin-bottom: 8px;
 }
 .pix-note-iconpop-color-grid {
   display: grid;
   grid-template-columns: repeat(7, 18px);
+  grid-auto-rows: 18px;
   gap: 4px;
 }
 .pix-note-iconpop-color-tile {
@@ -871,9 +874,16 @@ export function injectCSS() {
   outline: 2px solid ${BRAND};
   outline-offset: 1px;
 }
+.pix-note-iconpop-colorright {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .pix-note-iconpop-color-clear {
-  flex: 0 0 auto;
-  width: 22px; height: 22px;
+  width: 100%;
+  height: 22px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -884,26 +894,20 @@ export function injectCSS() {
   cursor: pointer;
   font-size: 12px;
   line-height: 1;
-  align-self: center;
 }
 .pix-note-iconpop-color-clear:hover { color: ${BRAND}; border-color: ${BRAND}; }
 .pix-note-iconpop-color-clear.selected {
   border-color: ${BRAND};
   color: ${BRAND};
 }
-
-/* Custom-color row inside the icon popup: native picker + hex input.
-   Mirrors .pix-note-colorrow used by the standard openColorPop. */
-.pix-note-iconpop-customrow {
-  display: flex; gap: 4px; align-items: center; margin-bottom: 8px;
-}
-.pix-note-iconpop-customrow input[type="color"] {
-  width: 26px; height: 22px; padding: 0;
+.pix-note-iconpop-colorright input[type="color"] {
+  width: 100%; height: 22px; padding: 0;
   border: 1px solid #444; border-radius: 3px;
   background: #1a1a1a; cursor: pointer;
 }
-.pix-note-iconpop-customrow input[type="text"] {
-  flex: 1; width: 80px; background: #1a1a1a; border: 1px solid #444;
+.pix-note-iconpop-colorright input[type="text"] {
+  width: 100%; box-sizing: border-box;
+  background: #1a1a1a; border: 1px solid #444;
   color: #ddd; padding: 3px 6px; font-size: 11px;
   font-family: "Consolas", monospace; border-radius: 3px;
 }
