@@ -1,6 +1,6 @@
 [project]
 name = "ComfyUI-Pixaroma"
-description = "Creative suite for ComfyUI: 3D Builder, AudioReact, Image Composer, Paint Studio, Save Mp4, Image Crop, Image Compare, Note, Label, Resolution, Preview Image, with layers, transforms, AI background removal, audio-reactive video, and more."
+description = "Creative suite for ComfyUI: 3D Builder, AudioReact, Image Composer, Paint Studio, Save Mp4, Image Crop, Image Compare, Note, Label, Resolution, Preview Image, Show Text, and Align (canvas snap & alignment guides), with layers, transforms, AI background removal, audio-reactive video, and more."
 version = "1.3.10"
 license = { file = "LICENSE.txt" }
 
