@@ -162,6 +162,13 @@ export class CropEditor {
         this._draw();
         this._updateInfo();
       });
+    } else {
+      // No source available — guide the user to either wire+run an upstream
+      // or use Load Image. Visible at the bottom of the editor immediately.
+      this._setStatus(
+        "No source loaded. Wire an IMAGE input and run the workflow once, " +
+        "or click Load Image in the left sidebar."
+      );
     }
     this._bindKeys();
   }
@@ -183,7 +190,7 @@ export class CropEditor {
       onSave: () => this._save(),
       onClose: () => this._close(),
       helpContent: `
-                <b>Load image:</b> Wire an <i>IMAGE</i> input, or click <kbd>Load Image</kbd> in the sidebar<br>
+                ${this._fromUpstream ? "" : "<b>Tip:</b> If you wired an upstream node (e.g. VAE Decode), run the workflow once to capture the source image.<br>"}<b>Load image:</b> Wire an <i>IMAGE</i> input, or click <kbd>Load Image</kbd> in the sidebar<br>
                 <b>Drag crop region:</b> Click & drag inside the crop area<br>
                 <b>Resize crop:</b> Drag orange corner/edge handles<br>
                 <b>Reset crop:</b> Press <kbd>R</kbd> or click Reset<br>
