@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node, Preview Image Pixaroma — an in-node image previewer with save-to-disk / save-to-output buttons) directly inside ComfyUI workflows. It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma — a rich-text annotation node, Preview Image Pixaroma — an in-node image previewer with save-to-disk / save-to-output buttons) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -129,6 +129,33 @@ js/
 │   └── index.js        # 3x3 ratio chip grid + 8-row size list + Custom mode
 │                       #  (W/H inputs, swap, snap chips, aspect preview).
 │                       #  State on node.properties + graphToPrompt hook.
+│
+├── align/              # Align Pixaroma: toggleable smart-snap + alignment
+│   └── index.js        #  guides for the node canvas (~640 lines, single
+│                       #  file). Frontend-only patch, no Python node.
+│                       #  Hooks: window-level pointermove for snap math
+│                       #  (NOT LGraphCanvas.processMouseMove, which Vue
+│                       #  does not invoke), drawFrontCanvas wrap for guide
+│                       #  rendering (NOT onDrawForeground, unreliable in
+│                       #  Vue per Compat #1). Drag-origin + cursor-delta
+│                       #  model: state.dragInfo captures cursorX/Y + each
+│                       #  selected node's pos at drag start; per-tick
+│                       #  desired = orig + cursorDelta; snap is a lateral
+│                       #  correction. Visual node bounds include the title
+│                       #  bar (LiteGraph.NODE_TITLE_HEIGHT) so snap edges
+│                       #  match what the user sees. Change-detection cache
+│                       #  identifies the dragged node (more reliable than
+│                       #  selected_nodes, which a resize-handle click does
+│                       #  not update). Hysteresis stickyG = snapGraph * 1.5
+│                       #  to prevent wiggle. Multi-select is a rigid bbox
+│                       #  move; resize uses per-edge tracking with sticky
+│                       #  "moving" flags. Settings: Pixaroma.Align.Enabled
+│                       #  + .SnapDistance under DISTINCT leaf categories
+│                       #  (Vue UI dedupes by leaf name). Toolbar button
+│                       #  mounted via app.menu.settingsGroup.element.before
+│                       #  (rgthree pattern). Default OFF, zero cost when
+│                       #  disabled. Shift bypasses snap (Alt is taken by
+│                       #  ComfyUI for "duplicate during drag").
 │
 ├── compare/            # Compare Viewer (single file, 413 lines)
 │   └── index.js        # Full compare widget (LiteGraph node drawing)
@@ -375,6 +402,36 @@ These patterns were hard-won during AudioReact v1 development. Regressing any of
 
 15. **Inline-upload wire disconnects are queued, not immediate — committed on Save, discarded on Cancel.** When the user uploads an image / audio inside the editor, the upstream wire is NOT torn down at upload time. Instead `_queueWireDisconnect(name)` records the input on `editor._pendingDisconnects`, and `cfg.<src>_force_inline = true` keeps the inline preview winning over the still-attached upstream during the session. `_save()` calls `_disconnectUpstreamInput(name)` for each queued entry before serializing. If the user picks Discard from the close prompt, `forceClose()` runs without `_save()` and the queued set is garbage-collected with the editor — the graph wire stays intact. The previous "disconnect immediately on upload" design left the user with a permanently disconnected wire whenever they uploaded by accident and discarded; that's the bug this pattern fixes. If you add a new inline-upload path, route through `_queueWireDisconnect` (not `_disconnectUpstreamInput`) and set `force_inline = true` so the in-session preview is correct.
 
+### Align Pixaroma Patterns (do not regress)
+
+These patterns were hard-won during the May-2026 implementation. The original spec / plan assumed `LGraphCanvas.prototype.processMouseMove` and `onDrawForeground` would be the hook points; on-the-spot probing showed neither fires in this ComfyUI Vue frontend, so the implementation diverged. Re-read this section before touching the Align module.
+
+1. **Vue frontend hook discovery: window pointermove + drawFrontCanvas, NOT processMouseMove + onDrawForeground.** ComfyUI's Vue frontend does not invoke `LGraphCanvas.prototype.processMouseMove` during drags (verified by patching it to no effect). Drag input is captured via `setPointerCapture` so even the canvas DOM element does not see pointermove during drag. The reliable input hook is a **window-level** `pointermove` listener (bubble phase) gated on `app.canvas.last_mouse_dragging` AND `e.buttons & 1`. For RENDER, the canvas-level `onDrawForeground` is documented as unreliable in Vue (CLAUDE.md Vue Frontend Compatibility #1) so we wrap `LGraphCanvas.prototype.drawFrontCanvas` instead, which is provably called (Compare and Preview Image Pixaroma both render via the same draw pipeline). If a future ComfyUI version changes either, re-probe both hooks before patching.
+
+2. **Drag-origin + cursor-delta model.** `state.dragInfo` captures `cursorX/Y` and per-node `pos[0/1]` at drag start. Each tick computes `desired = orig + (e.clientX/Y - cursorX/Y) / scale` and OVERWRITES `node.pos`, replacing whatever LiteGraph already set this tick. This decouples our snap from LiteGraph's tick-by-tick increments and prevents the "snap fights the cursor" jitter the original plan tried to solve via `last_mouse_position` patching. Multi-select uses the same model with a captured map of every selected node's original position; one cursor delta moves the whole selection rigidly.
+
+3. **Visual node rect includes title bar height.** `LiteGraph.NODE_TITLE_HEIGHT` (default 30) sits ABOVE `node.pos[1]`, which is the body top, not the visual top. Snap math must use the visual rect (`y = pos[1] - titleH`, `h = size[1] + titleH`) for top-edge alignments to match what the user sees. Collapsed nodes have no body, so `nodeRect()` zeroes titleH. Forgetting this makes the top edge snap 30 px off.
+
+4. **Change-detection beats `selected_nodes` for dragged-node identification.** `state._prevNodeStates` caches every node's pos/size each tick; the next tick's diff identifies the node LiteGraph just modified. `selected_nodes` alone is wrong because resize-handle clicks on an UNSELECTED node do not update the selection, so snap math would target the wrong rect. Fallbacks (in priority order: `selected_nodes` length 1, `node_over`, `getNodeOnPos(graph_mouse)`) cover the very first tick when the cache is empty. For multi-select, fallback picks the first selected node as the anchor; multi mode is detected separately via `Object.values(selected_nodes).includes(draggedNode)`.
+
+5. **Hysteresis with `stickyG = 1.5 * snapGraph` prevents wiggle.** `findClosestSnap` and the resize `tryTarget` both accept a sticky-target argument; a target equal to last tick's snapped value gets the wider `stickyG` allowance, others get the narrower `snapGraph`. Without this, a cursor exactly at the snap-zone boundary makes the node oscillate between snapped and free positions.
+
+6. **Resize "moving edge" flags persist for the rest of the drag.** `dragInfo.leftMoves / rightMoves / topMoves / botMoves` flip true the first tick an edge measurably differs from its drag-start value, then stay true even if LiteGraph clamps the size at min-bounds. Without persistence, snap drops the moving edge whenever min-size kicks in and the user has to wiggle to re-engage.
+
+7. **Drag is classified once (move vs resize) and the lock holds.** After the first detected change, `dragInfo.lockType` becomes `"move"` (pos changed) or `"resize"` (size changed), and stays. Multi-select is locked to `"move"` at init since LiteGraph has no multi-resize handle. Re-classifying mid-drag would let a single jitter route the rest of the drag through the wrong branch.
+
+8. **Hooks WRAP, never REPLACE.** `installDrawHook()` saves the original `drawFrontCanvas` at install time and calls through; the toolbar button is mounted with `settingsGroupEl.before(group)` next to existing buttons. Replacing breaks every other extension that patches the same surface. Verified coexistence with rgthree-comfy and an unrelated "NodeAlign" extension that adds its own align toolbar.
+
+9. **`state.enabled` early-return is the perf contract.** First line of `onWindowPointerMove`: bail when disabled. First line of the `drawFrontCanvas` wrap after calling original: bail when `state.activeGuides.length === 0`. No node iteration, no allocation, no math. The "default OFF, zero cost" promise depends on this. Do not add work above either guard.
+
+10. **Settings leaf categories must be DISTINCT (Vue UI dedupes by deepest leaf).** Two Pixaroma.Align settings collapse into one row in Settings if they share the same leaf. Current schema: `["👑 Pixaroma", "Align"]` for Enabled and `["👑 Pixaroma", "Align (advanced)"]` for SnapDistance. Same trap applies to any future Pixaroma feature with multiple settings; sharing a leaf silently drops one row.
+
+11. **Shift bypasses snap, NOT Alt.** Alt is taken by ComfyUI for "duplicate during drag", so the bypass key is `e.shiftKey`. The toolbar button title and the settings tooltip BOTH must say Shift. The settings tooltip drifted to "Hold Alt" once during development and was caught only by reviewing the code; if you change the modifier, update both strings.
+
+12. **Multi-select is a rigid bbox move with selected nodes excluded from snap targets.** When `selected_nodes` has 2+ live members AND the dragged node is one of them, init captures every selected node's `pos` into `dragInfo.origPositions` plus the visual bbox (`origBBox`). Each tick: cursor delta drives the bbox; snap is computed only on the bbox edges/centers against non-selected nodes (skipped via `dragInfo.origIds.has(other.id)`); the resulting (cursor + snap) delta is applied uniformly to every selected node from its captured original. Selected nodes never become snap targets to each other. Membership is checked by object identity (`Object.values(sel).includes(draggedNode)`) rather than stringified id since LiteGraph keys can be number or string depending on the build.
+
+13. **Extended guides scan all candidates for shared edges.** After picking the best X (or Y) snap, `extendGuideRange()` walks every non-skipped rect and unions the perp range with any whose left/right/centerX (top/bottom/centerY) equals the snap value within EPS = 0.5 graph units. Result: a column of 3+ co-aligned nodes shows ONE continuous guide across the full column, not a short segment between only the moving and matched rects. Move-only for v1; resize keeps the simpler 2-rect range since extended guides matter most for arranging columns/rows.
+
 ### Note Pixaroma Patterns (do not regress)
 
 These patterns were hard-won during Note Pixaroma development. Regressing any of them reintroduces specific bugs, some silent.
@@ -540,6 +597,7 @@ Files are named by concern. Match the task to the file:
 | Change Note default colour / size / placeholder | `js/note/index.js` DEFAULT_CFG + `nodes/node_note.py` widget default (keep in sync) |
 | Add / manage inline note icons (SVG library) | Drop SVGs into `assets/icons/note/`. Label derivation + list endpoint live in `server_routes.py`'s `/pixaroma/api/note/icons/list` route, mirrored in `js/note/icons.mjs::deriveLabel`. Both must stay in sync if you change the rules. |
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
+| Toggle / change Align Pixaroma snap behavior | `js/align/index.js` (single file). Settings: `Pixaroma.Align.Enabled` (boolean, mirrors the toolbar button) + `Pixaroma.Align.SnapDistance` (slider 4-16). Hooks: window pointermove for snap (NOT `LGraphCanvas.processMouseMove`, which Vue does not invoke); `LGraphCanvas.drawFrontCanvas` wrap for guide rendering (NOT `onDrawForeground`, unreliable in Vue per Compat #1). WRAP-don't-replace pattern coexists with rgthree-comfy and the "NodeAlign" extension. Shift bypasses snap (Alt is taken by ComfyUI for duplicate-during-drag). Active guides drawn in BRAND #f66744 with `lineWidth = 1` in screen space (manual graph -> screen transform) so the stroke is exactly 1 screen pixel at any zoom. Snap distance is `state.snapDistPx / canvas.ds.scale` graph units, computed every tick (so zoom changes mid-drag are honored). |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
 | AudioReact Pixaroma — change motion mode or overlay effect | `nodes/_audio_react_engine.py` (engine — all motion functions, overlays, audio helpers `bandpass_fft` / `audio_envelope` / `onset_track`, `process_aspect`, `Params` dataclass, `MOTION_MODES` / `OVERLAYS` registries, `generate_video()`). NEVER inline math into `node_audio_studio.py`; divergence breaks parity. Update `docs/audio-react-math.md` first, then engine, then `js/audio_studio/shaders.mjs` (GLSL mirror), then re-run `scripts/audio_parity_check.py --regenerate` and the browser parity harness. |

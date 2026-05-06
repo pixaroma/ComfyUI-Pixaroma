@@ -95,6 +95,9 @@ A handy way to preview your images right on the node, but better! Works with **s
 ### 📐 Resolution Pixaroma
 A simple, one-click resolution picker. Choose from 9 popular aspect ratios — 1:1, 16:9, 9:16, 2:1, 3:2, 2:3, 4:3, 3:4, and 4:5 (Instagram-portrait friendly) — and instantly get the exact width and height you need, including popular sizes for AI video. Type any Custom Ratio (21:9, 16:10, anything) with auto-computed AI-friendly sizes, or use Custom Resolution to type exact dimensions. Math expressions work in the Width and Height fields too — type `1024+128` or `512*2` and it just works. It perfectly saves all your settings with your workflow!
 
+### 🧲 Align Pixaroma
+A canvas-wide smart-snap and alignment-guide system. Toggle it on with the mountain icon in the top toolbar (next to the Manager). Once enabled, dragging or resizing any node makes its edges and centers snap to nearby nodes, with thin orange guide lines showing exactly what aligned with what (Photoshop / Figma style). Multi-selection drags as a rigid bounding box. A column of 3+ nodes sharing an edge gets a single guide spanning the whole column. Hold **Shift** to bypass snap for a single drag (Alt is reserved by ComfyUI for duplicate-during-drag). Snap distance is adjustable (4 to 16 screen pixels) under **Settings → 👑 Pixaroma → Align (advanced)**. Default OFF, zero overhead until you toggle it on.
+
 ---
 
 ## 🚀 Getting Started
@@ -145,6 +148,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 06, 2026**
+- **NEW: Align Pixaroma:** Toggleable smart-snap and alignment-guide system for the node canvas. Click the mountain icon in the top toolbar to enable; dragging or resizing nodes then snaps to nearby edges and centers with thin orange guide lines showing exactly what aligned with what. Works with single-node drag, multi-select drag (rigid bounding box), and resize on every corner and edge. A column of 3+ co-aligned nodes gets a single guide spanning the whole column. Hold Shift to bypass snap for one drag. Default OFF (zero cost when disabled). Snap distance adjustable 4 to 16 screen pixels under Settings → 👑 Pixaroma → Align (advanced).
 
 ### **May 05, 2026**
 - **Image Composer — per-layer blur:** Non-destructive Gaussian blur slider in the Transform Properties panel. Drag to focus or defocus any layer; the slider uses a quadratic curve so the lower half gives fine control over subtle blur amounts. Saves with the workflow, restores cleanly, and bakes into both the editor preview AND the final Python output. Each layer keeps its own blur — switch layers and the slider snaps to that layer's value.

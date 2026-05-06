@@ -1,0 +1,807 @@
+import { app } from "/scripts/app.js";
+import { BRAND } from "../shared/index.mjs";
+
+// =============================================================================
+// Align Pixaroma - toggleable snap & alignment guides for the node canvas.
+//
+// Architecture: window-level pointermove listener does the snap math + node
+// position mutation. LGraphCanvas.prototype.onDrawForeground is monkey-patched
+// for guide rendering. Both early-return when disabled, so the cost when OFF
+// is one boolean read per pointermove.
+//
+// Hook discovery (May 2026): in this ComfyUI version's Vue frontend, the
+// drag handler is bound directly to a captured pointer (likely via
+// _mousemove_callback bound to window during drag). Patching
+// LGraphCanvas.prototype.processMouseMove had ZERO effect because that method
+// is never invoked. Even the canvas DOM element doesn't see pointermove
+// during drag (events are routed via setPointerCapture). The reliable hook
+// is window.addEventListener("pointermove", ...) in the BUBBLE phase, so we
+// run AFTER LiteGraph has applied its mouse delta to the node position.
+//
+// Drag detection signals (NOT node_dragged, that property is unset here):
+//   - app.canvas.last_mouse_dragging === true   (LiteGraph drag flag)
+//   - e.buttons & 1                              (left button held)
+//   - app.canvas.selected_nodes                  (the dragged set)
+//
+// Toolbar button: DOM-mounted via `app.menu.settingsGroup.element.before(btn)`,
+// the same pattern rgthree-comfy uses (web/comfyui/comfy_ui_bar.js).
+// =============================================================================
+
+const SETTING_ENABLED = "Pixaroma.Align.Enabled";
+const SETTING_SNAP_DIST = "Pixaroma.Align.SnapDistance";
+
+const state = {
+  enabled: false,
+  snapDistPx: 8,
+  activeGuides: [],
+  toolbarBtn: null,
+  // Drag tracking. Captured on the first pointermove tick of a drag. We use
+  // cumulative cursor delta from drag start to compute the "desired" node
+  // position, independent of LiteGraph's tick-by-tick deltas. Snap engages
+  // when desired puts an edge within snapDist of a target line.
+  dragInfo: null,       // { posX, posY, cursorX, cursorY, nodeId } or null
+};
+
+const ICON_URL = "/pixaroma/assets/icons/ui/align-center-v.svg";
+
+function toggleEnabled() {
+  const s = app.ui?.settings;
+  if (!s) return;
+  const next = !s.getSettingValue(SETTING_ENABLED);
+  s.setSettingValue(SETTING_ENABLED, next);
+  // onChange handler updates state.enabled. Force toolbar tint refresh in case
+  // onChange runs after this returns:
+  state.enabled = next;
+  updateToolbarTint();
+}
+
+function injectToolbarCSS() {
+  if (document.getElementById("pixaroma-align-css")) return;
+  const style = document.createElement("style");
+  style.id = "pixaroma-align-css";
+  style.textContent = `
+    .pixaroma-align-btn .pixaroma-align-icon {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      background-color: currentColor;
+      mask-image: url(${ICON_URL});
+      -webkit-mask-image: url(${ICON_URL});
+      mask-size: contain;
+      -webkit-mask-size: contain;
+      mask-repeat: no-repeat;
+      -webkit-mask-repeat: no-repeat;
+      mask-position: center;
+      -webkit-mask-position: center;
+      pointer-events: none;
+    }
+    .pixaroma-align-btn:not(.pixaroma-align-on) {
+      background-color: #2a2c2e !important;
+      color: #ddd !important;
+      border-color: #444 !important;
+    }
+    .pixaroma-align-btn:not(.pixaroma-align-on):hover {
+      background-color: #3a3d40 !important;
+    }
+    .pixaroma-align-btn.pixaroma-align-on {
+      background-color: ${BRAND} !important;
+      color: #fff !important;
+      border-color: ${BRAND} !important;
+    }
+    .pixaroma-align-btn.pixaroma-align-on:hover {
+      background-color: ${BRAND} !important;
+      filter: brightness(1.08);
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function updateToolbarTint() {
+  const btn = state.toolbarBtn;
+  if (!btn) return;
+  btn.classList.toggle("pixaroma-align-on", state.enabled);
+}
+
+function mountToolbarButton() {
+  if (state.toolbarBtn?.isConnected) return;
+  // app.menu.settingsGroup is the gear-icon group on the right side of the
+  // floating top action bar. Inserting before it places our button next to
+  // rgthree's logo. If app.menu isn't ready yet, retry a few times.
+  const settingsGroupEl = app.menu?.settingsGroup?.element;
+  if (!settingsGroupEl) {
+    if (mountToolbarButton._tries == null) mountToolbarButton._tries = 0;
+    if (++mountToolbarButton._tries > 20) {
+      console.warn("[Pixaroma.Align] toolbar mount: app.menu.settingsGroup never appeared");
+      return;
+    }
+    setTimeout(mountToolbarButton, 250);
+    return;
+  }
+
+  injectToolbarCSS();
+
+  const btn = document.createElement("button");
+  btn.className = "comfyui-button pixaroma-align-btn";
+  btn.title = "Toggle Align Pixaroma snap & alignment guides (hold Shift to bypass during drag)";
+  // Keep `.comfyui-button` defaults for OFF state (matches other unfilled
+  // buttons like the bookmark icon). The `.pixaroma-align-on` class swaps in
+  // BRAND background + white icon when active, mirroring the Manager button.
+  btn.innerHTML = `<span class="pixaroma-align-icon"></span>`;
+  btn.addEventListener("click", toggleEnabled);
+
+  // Wrap in a group element so it visually matches rgthree / native ComfyUI
+  // button groups in the toolbar.
+  const group = document.createElement("div");
+  group.className = "comfyui-button-group pixaroma-align-group";
+  group.appendChild(btn);
+
+  settingsGroupEl.before(group);
+  state.toolbarBtn = btn;
+  updateToolbarTint();
+}
+
+app.registerExtension({
+  name: "Pixaroma.Align",
+  settings: [
+    {
+      id: SETTING_ENABLED,
+      name: "Align Pixaroma snap & guides",
+      type: "boolean",
+      defaultValue: false,
+      category: ["👑 Pixaroma", "Align"],
+      tooltip: "Snap nodes to others' edges and centers while dragging or resizing. Hold Shift to bypass (Alt is taken by ComfyUI for duplicate-during-drag).",
+      onChange: (v) => {
+        state.enabled = !!v;
+        updateToolbarTint();
+        console.log("[Pixaroma.Align] enabled =", state.enabled);
+      },
+    },
+    {
+      id: SETTING_SNAP_DIST,
+      name: "Align snap distance (screen pixels)",
+      type: "slider",
+      defaultValue: 8,
+      attrs: { min: 4, max: 16, step: 1 },
+      category: ["👑 Pixaroma", "Align (advanced)"],
+      tooltip: "How close (in screen pixels) an edge must be before snap engages.",
+      onChange: (v) => {
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 4 && n <= 16) state.snapDistPx = n;
+      },
+    },
+  ],
+  setup() {
+    // onChange fires only on subsequent changes, so read current values now so
+    // a user who had Enabled=ON across a restart gets the snap immediately.
+    const s = app.ui?.settings;
+    if (s) {
+      state.enabled = !!s.getSettingValue(SETTING_ENABLED);
+      const d = Number(s.getSettingValue(SETTING_SNAP_DIST));
+      if (Number.isFinite(d) && d >= 4 && d <= 16) state.snapDistPx = d;
+    }
+    console.log("[Pixaroma.Align] setup: enabled=", state.enabled, "snapDist=", state.snapDistPx);
+    mountToolbarButton();
+    installPointerHook();
+    installDrawHook();
+  },
+});
+
+// =============================================================================
+// Drag hook - bubble-phase pointermove on window. Runs AFTER LiteGraph has
+// applied the mouse delta to node.pos (so we can read the post-move position
+// and apply a snap correction on top). When state.enabled is false, the
+// handler does nothing on the very first line.
+// =============================================================================
+
+let _hookInstalled = false;
+
+function installPointerHook() {
+  if (_hookInstalled) return;
+  window.addEventListener("pointermove", onWindowPointerMove, false);
+  // Reset drag state on every release. Without this, a release-then-click
+  // sequence with no intervening pointermove leaves stale dragInfo (with
+  // its old lockType) attached to the next drag, breaking classification.
+  // resetDrag also clears active guides so they vanish on release.
+  window.addEventListener("pointerup", resetDrag, false);
+  window.addEventListener("pointercancel", resetDrag, false);
+  _hookInstalled = true;
+  console.log("[Pixaroma.Align] pointer hook installed");
+}
+
+// =============================================================================
+// Render hook - wrap LGraphCanvas.prototype.drawFrontCanvas (the canvas-level
+// render bottleneck) so we draw guides AFTER LiteGraph finishes drawing nodes
+// and connections. The canvas-level onDrawForeground hook is documented as
+// unreliable in the Vue frontend (CLAUDE.md Vue Frontend Compatibility #1) so
+// we wrap drawFrontCanvas instead, which is provably called (Compare /
+// Preview Image Pixaroma nodes render correctly via LiteGraph's draw pipe).
+//
+// We draw in SCREEN space using a manual graph -> screen transform so the
+// stroke is exactly 1 screen pixel at any zoom (lineWidth = 1) and we don't
+// depend on the canvas's world transform being applied at the time we run
+// (it is restored before drawFrontCanvas returns).
+// =============================================================================
+
+let _drawHookInstalled = false;
+
+function installDrawHook() {
+  if (_drawHookInstalled) return;
+  const proto = window.LGraphCanvas?.prototype;
+  if (typeof proto?.drawFrontCanvas !== "function") {
+    console.warn("[Pixaroma.Align] LGraphCanvas.drawFrontCanvas not found - guides will not render");
+    return;
+  }
+  const orig = proto.drawFrontCanvas;
+  proto.drawFrontCanvas = function () {
+    const ret = orig.apply(this, arguments);
+    if (state.activeGuides.length === 0) return ret;
+    const ctx = this.ctx;
+    if (!ctx) return ret;
+    const scale = this.ds?.scale || 1;
+    const offset = this.ds?.offset || [0, 0];
+    const overhang = 16;
+    const toScreenX = (gx) => (gx + offset[0]) * scale;
+    const toScreenY = (gy) => (gy + offset[1]) * scale;
+    ctx.save();
+    ctx.strokeStyle = BRAND;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (const g of state.activeGuides.slice(0, 6)) {
+      if (g.axis === "X") {
+        const x = toScreenX(g.value);
+        ctx.moveTo(x, toScreenY(g.minPerp - overhang));
+        ctx.lineTo(x, toScreenY(g.maxPerp + overhang));
+      } else {
+        const y = toScreenY(g.value);
+        ctx.moveTo(toScreenX(g.minPerp - overhang), y);
+        ctx.lineTo(toScreenX(g.maxPerp + overhang), y);
+      }
+    }
+    ctx.stroke();
+    ctx.restore();
+    return ret;
+  };
+  _drawHookInstalled = true;
+  console.log("[Pixaroma.Align] drawFrontCanvas hooked for guide rendering");
+}
+
+// Build the 6 reference lines for a graph-space rect.
+function rectEdges(rect) {
+  return {
+    left:    rect.x,
+    right:   rect.x + rect.w,
+    centerX: rect.x + rect.w / 2,
+    top:     rect.y,
+    bottom:  rect.y + rect.h,
+    centerY: rect.y + rect.h / 2,
+  };
+}
+
+function nodeRect(n) {
+  // In LiteGraph, node.pos[1] is the top of the BODY (below the title bar),
+  // and node.size[1] is the body height. The title sits at pos[1] - titleH.
+  // For snap to align with the visual top edge of the node, include the
+  // title bar in the rect. Collapsed nodes have no body, just title.
+  const titleH = (n.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+  return {
+    x: n.pos[0],
+    y: n.pos[1] - titleH,
+    w: n.size[0],
+    h: n.size[1] + titleH,
+  };
+}
+
+// Find the closest snap delta along one axis. Returns { delta, target, movingValue } or null.
+// movingValues / targetValues are arrays of edge values along ONE axis.
+// Hysteresis: a target equal to `stickyTarget` (the one we were snapped to last
+// tick) gets a wider `stickyThreshold` so small cursor jitter doesn't disengage.
+function findClosestSnap(movingValues, targetValues, threshold, stickyTarget, stickyThreshold) {
+  let best = null;
+  const sT = stickyThreshold == null ? threshold : stickyThreshold;
+  for (const m of movingValues) {
+    for (const t of targetValues) {
+      const d = t - m;
+      const allowed = (stickyTarget != null && Math.abs(t - stickyTarget) < 0.01) ? sT : threshold;
+      if (Math.abs(d) <= allowed && (!best || Math.abs(d) < Math.abs(best.delta))) {
+        best = { delta: d, target: t, movingValue: m };
+      }
+    }
+  }
+  return best;
+}
+
+// Record a guide for later rendering. axis = "X" or "Y". value is the snap
+// line position in graph space. perpRange is [minPerp, maxPerp] of the rects
+// being aligned (perp = the OTHER axis).
+function pushGuide(axis, value, perpRange) {
+  if (state.activeGuides.length >= 6) return;
+  state.activeGuides.push({ axis, value, minPerp: perpRange[0], maxPerp: perpRange[1] });
+}
+
+// Extend a guide's perp range to include every non-skipped rect whose
+// matching edge (left/right/centerX for X axis, top/bottom/centerY for Y)
+// equals the guide value within EPS. This makes a column of 3+ nodes show
+// one continuous guide that spans the whole column instead of a short
+// segment between only the moving and matched rects.
+function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
+  const EPS = 0.5;
+  let lo = baseLo, hi = baseHi;
+  for (const other of candidates) {
+    if (skipFn(other)) continue;
+    if (other.flags?.collapsed) continue;
+    const oR = nodeRect(other);
+    const oE = rectEdges(oR);
+    let match = false;
+    if (axis === "X") {
+      match = Math.abs(oE.left - value) < EPS
+           || Math.abs(oE.right - value) < EPS
+           || Math.abs(oE.centerX - value) < EPS;
+    } else {
+      match = Math.abs(oE.top - value) < EPS
+           || Math.abs(oE.bottom - value) < EPS
+           || Math.abs(oE.centerY - value) < EPS;
+    }
+    if (!match) continue;
+    if (axis === "X") {
+      lo = Math.min(lo, oR.y);
+      hi = Math.max(hi, oR.y + oR.h);
+    } else {
+      lo = Math.min(lo, oR.x);
+      hi = Math.max(hi, oR.x + oR.w);
+    }
+  }
+  return [lo, hi];
+}
+
+// Drop drag bookkeeping AND clear active guides. Use this for both
+// pointerup/cancel and any mid-tick bail (disabled, Shift, no buttons).
+// Setting setDirty triggers a redraw so any visible guides disappear
+// promptly; redraw is cheap when there's nothing to draw.
+function resetDrag() {
+  state.dragInfo = null;
+  state._prevNodeStates = null;
+  if (state.activeGuides.length) {
+    state.activeGuides = [];
+    app.canvas?.setDirty?.(true, true);
+  }
+}
+
+function onWindowPointerMove(e) {
+  if (!state.enabled) { resetDrag(); return; }
+  // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
+  if (e.shiftKey) { resetDrag(); return; }
+  const c = app.canvas;
+  if (!c?.last_mouse_dragging) { resetDrag(); return; }
+  if (!(e.buttons & 1)) { resetDrag(); return; }
+
+  // Find the dragged/resized node. The MOST reliable signal is "which node
+  // did LiteGraph just modify this tick?" - found by comparing pos/size to
+  // the previous-tick cache. We try that first because selected_nodes can
+  // point to the wrong node (e.g. user has node B selected but is resizing
+  // an unselected node A; the resize handle click doesn't update selection).
+  let draggedNode = null;
+  if (state._prevNodeStates && c.graph?._nodes) {
+    for (const n of c.graph._nodes) {
+      const p = state._prevNodeStates.get(n.id);
+      if (p && (p.x !== n.pos[0] || p.y !== n.pos[1] || p.w !== n.size[0] || p.h !== n.size[1])) {
+        draggedNode = n;
+        break;
+      }
+    }
+  }
+  // Fallbacks for the first tick (no cache yet) or for very-slow drags
+  // where no measurable change happened this tick.
+  if (!draggedNode) {
+    const sel = c.selected_nodes;
+    const selKeys = sel ? Object.keys(sel) : [];
+    if (selKeys.length === 1) {
+      draggedNode = sel[selKeys[0]];
+    } else if (selKeys.length > 1) {
+      // Multi-select drag - pick first selected as anchor so dragInfo can
+      // initialise on tick 0 (cache empty here). Multi mode is detected
+      // below via the selected_nodes membership check, regardless of which
+      // selected node ends up as the anchor each tick.
+      draggedNode = sel[selKeys[0]];
+    } else if (c.node_over) {
+      draggedNode = c.node_over;
+    } else if (c.graph?.getNodeOnPos && c.graph_mouse) {
+      draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
+    }
+  }
+  // Refresh the per-node cache for next tick BEFORE we possibly bail.
+  if (c.graph?._nodes) {
+    if (!state._prevNodeStates) state._prevNodeStates = new Map();
+    state._prevNodeStates.clear();
+    for (const n of c.graph._nodes) {
+      state._prevNodeStates.set(n.id, { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] });
+    }
+  }
+  if (!draggedNode || draggedNode.flags?.collapsed) { resetDrag(); return; }
+
+  // Multi-select detection. If 2+ uncollapsed nodes are selected AND the
+  // identified draggedNode is in that selection, the drag is treated as a
+  // rigid bbox move where the cursor delta moves every selected node by the
+  // same amount and snap is computed on the bbox edges/centers.
+  // Resize cannot be multi (LiteGraph has no multi-resize), so multi-select
+  // implies move-only.
+  let multiNodes = null;
+  {
+    const sel = c.selected_nodes;
+    if (sel) {
+      const selVals = Object.values(sel);
+      if (selVals.length > 1 && selVals.includes(draggedNode)) {
+        const live = selVals.filter((n) => n && !n.flags?.collapsed);
+        if (live.length > 1) multiNodes = live;
+      }
+    }
+  }
+
+  const scale = c.ds?.scale || 1;
+  const snapGraph = state.snapDistPx / scale;
+
+  // Capture drag origin on first tick (or whenever the drag session changes).
+  // last_mouse_dragging is set for ANY drag (node move, resize, canvas pan,
+  // resize of an unrelated node, etc.). We have to classify the drag before
+  // applying any correction. Classification:
+  //   - "move":   pos changed, size unchanged    -> move snap
+  //   - "resize": size changed (any corner/edge) -> resize snap on the
+  //               specific edges that are moving (detected per tick)
+  // Multi-select is locked to "move" at init since LiteGraph has no
+  // multi-resize handle.
+  //
+  // Identity check: in multi mode the change-detect anchor can shift
+  // tick-to-tick if iteration order of _nodes shifts, so we accept any
+  // member of the captured origIds as the same session. Re-init only if
+  // single<->multi flips or if a non-member node is dragged.
+  const sessionMatches = state.dragInfo && (
+    (multiNodes && state.dragInfo.multiSelect && state.dragInfo.origIds?.has(draggedNode.id)) ||
+    (!multiNodes && !state.dragInfo.multiSelect && state.dragInfo.nodeId === draggedNode.id)
+  );
+  if (!sessionMatches) {
+    if (multiNodes) {
+      const titleH = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+      const origPositions = new Map();
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const n of multiNodes) {
+        origPositions.set(n.id, { x: n.pos[0], y: n.pos[1] });
+        const visTop = n.pos[1] - (n.flags?.collapsed ? 0 : titleH);
+        minX = Math.min(minX, n.pos[0]);
+        minY = Math.min(minY, visTop);
+        maxX = Math.max(maxX, n.pos[0] + n.size[0]);
+        maxY = Math.max(maxY, n.pos[1] + n.size[1]);
+      }
+      state.dragInfo = {
+        nodeId: draggedNode.id,
+        cursorX: e.clientX,
+        cursorY: e.clientY,
+        lockType: "move",
+        multiSelect: true,
+        origPositions,
+        origBBox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+        origIds: new Set(multiNodes.map((n) => n.id)),
+        stickyMoveX: null, stickyMoveY: null,
+      };
+    } else {
+      state.dragInfo = {
+        nodeId: draggedNode.id,
+        posX: draggedNode.pos[0],
+        posY: draggedNode.pos[1],
+        cursorX: e.clientX,
+        cursorY: e.clientY,
+        sizeW: draggedNode.size[0],
+        sizeH: draggedNode.size[1],
+        lockType: null,
+        multiSelect: false,
+        // Cache of which edges have moved at least once in this resize. Once an
+        // edge "moves" we treat it as moving for the rest of the drag, even if
+        // a later tick clamps it (so snap doesn't reset).
+        leftMoves: false, rightMoves: false, topMoves: false, botMoves: false,
+        // Hysteresis: remember which target line each axis/edge snapped to last
+        // tick so we can use a wider threshold to STAY snapped, narrower to
+        // ENGAGE. Prevents wiggle at the snap-zone boundary.
+        stickyMoveX: null, stickyMoveY: null,
+        stickyResizeL: null, stickyResizeR: null, stickyResizeT: null, stickyResizeB: null,
+      };
+    }
+    return;
+  }
+
+  // Classify the drag once, lock that classification for the rest of the drag.
+  if (!state.dragInfo.lockType) {
+    const sizeChanged = draggedNode.size[0] !== state.dragInfo.sizeW || draggedNode.size[1] !== state.dragInfo.sizeH;
+    const posChanged = draggedNode.pos[0] !== state.dragInfo.posX || draggedNode.pos[1] !== state.dragInfo.posY;
+    if (sizeChanged)         state.dragInfo.lockType = "resize";
+    else if (posChanged)     state.dragInfo.lockType = "move";
+    // else: neither has changed yet; wait
+  }
+
+  if (state.dragInfo.lockType === null) return;
+
+  if (state.dragInfo.lockType === "resize") {
+    // All edges below are in VISUAL coords (top includes the title bar) so
+    // they line up with other nodes' visual edges from nodeRect().
+    const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+    // Detect which edges are moving by comparing current vs initial edge
+    // positions. Once an edge moves, mark it sticky so we keep snapping it
+    // even when LiteGraph clamps it at min size.
+    const initLeft = state.dragInfo.posX;
+    const initRight = state.dragInfo.posX + state.dragInfo.sizeW;
+    const initTop = state.dragInfo.posY - titleH;          // visual top
+    const initBot = state.dragInfo.posY + state.dragInfo.sizeH;
+    const curLeft = draggedNode.pos[0];
+    const curRight = draggedNode.pos[0] + draggedNode.size[0];
+    const curTop = draggedNode.pos[1] - titleH;            // visual top
+    const curBot = draggedNode.pos[1] + draggedNode.size[1];
+    const EPS = 0.01;
+    if (Math.abs(curLeft - initLeft) > EPS) state.dragInfo.leftMoves = true;
+    if (Math.abs(curRight - initRight) > EPS) state.dragInfo.rightMoves = true;
+    if (Math.abs(curTop - initTop) > EPS) state.dragInfo.topMoves = true;
+    if (Math.abs(curBot - initBot) > EPS) state.dragInfo.botMoves = true;
+    const { leftMoves, rightMoves, topMoves, botMoves } = state.dragInfo;
+
+    let minW = 50, minH = 20;
+    if (typeof draggedNode.computeSize === "function") {
+      const cs = draggedNode.computeSize();
+      if (cs && cs.length >= 2) { minW = cs[0]; minH = cs[1]; }
+    }
+
+    const totalDx = (e.clientX - state.dragInfo.cursorX) / scale;
+    const totalDy = (e.clientY - state.dragInfo.cursorY) / scale;
+    let dLeft = leftMoves  ? initLeft  + totalDx : initLeft;
+    let dRight = rightMoves ? initRight + totalDx : initRight;
+    let dTop = topMoves   ? initTop   + totalDy : initTop;
+    let dBot = botMoves   ? initBot   + totalDy : initBot;
+
+    // Enforce min sizes; the moving edge gives way to the anchor. Visual
+    // height = body height + titleH, so visualMinH includes titleH.
+    const visualMinH = minH + titleH;
+    if (dRight - dLeft < minW) {
+      if (leftMoves)  dLeft = dRight - minW;
+      else            dRight = dLeft + minW;
+    }
+    if (dBot - dTop < visualMinH) {
+      if (topMoves)   dTop = dBot - visualMinH;
+      else            dBot = dTop + visualMinH;
+    }
+
+    const stickyG = snapGraph * 1.5;
+    const nodes = c.graph?._nodes || [];
+    let snapLeft = null, snapRight = null, snapTop = null, snapBot = null;
+    const tryTarget = (curBest, t, value, sticky, rect) => {
+      const d = t - value;
+      const allowed = (sticky != null && Math.abs(t - sticky) < 0.01) ? stickyG : snapGraph;
+      if (Math.abs(d) <= allowed && (!curBest || Math.abs(d) < Math.abs(curBest.delta))) {
+        return { delta: d, target: t, rect };
+      }
+      return curBest;
+    };
+    for (const other of nodes) {
+      if (other === draggedNode) continue;
+      if (other.flags?.collapsed) continue;
+      const oRect = nodeRect(other);
+      const oE = rectEdges(oRect);
+      if (leftMoves) {
+        for (const t of [oE.left, oE.right, oE.centerX]) {
+          snapLeft = tryTarget(snapLeft, t, dLeft, state.dragInfo.stickyResizeL, oRect);
+        }
+      }
+      if (rightMoves) {
+        for (const t of [oE.left, oE.right, oE.centerX]) {
+          snapRight = tryTarget(snapRight, t, dRight, state.dragInfo.stickyResizeR, oRect);
+        }
+      }
+      if (topMoves) {
+        for (const t of [oE.top, oE.bottom, oE.centerY]) {
+          snapTop = tryTarget(snapTop, t, dTop, state.dragInfo.stickyResizeT, oRect);
+        }
+      }
+      if (botMoves) {
+        for (const t of [oE.top, oE.bottom, oE.centerY]) {
+          snapBot = tryTarget(snapBot, t, dBot, state.dragInfo.stickyResizeB, oRect);
+        }
+      }
+    }
+    state.dragInfo.stickyResizeL = snapLeft  ? snapLeft.target  : null;
+    state.dragInfo.stickyResizeR = snapRight ? snapRight.target : null;
+    state.dragInfo.stickyResizeT = snapTop   ? snapTop.target   : null;
+    state.dragInfo.stickyResizeB = snapBot   ? snapBot.target   : null;
+
+    let fLeft = snapLeft  ? snapLeft.target  : dLeft;
+    let fRight = snapRight ? snapRight.target : dRight;
+    let fTop = snapTop   ? snapTop.target   : dTop;       // visual top
+    let fBot = snapBot   ? snapBot.target   : dBot;       // body bottom
+    if (fRight - fLeft < minW) {
+      if (leftMoves)  fLeft = fRight - minW;
+      else            fRight = fLeft + minW;
+    }
+    if (fBot - fTop < visualMinH) {
+      if (topMoves)   fTop = fBot - visualMinH;
+      else            fBot = fTop + visualMinH;
+    }
+
+    // Convert visual top back to body top by adding titleH.
+    draggedNode.pos[0] = fLeft;
+    draggedNode.pos[1] = fTop + titleH;
+    draggedNode.size[0] = fRight - fLeft;
+    draggedNode.size[1] = fBot - (fTop + titleH);
+
+    // Push one guide per engaged edge. fLeft/fRight/fTop/fBot are visual
+    // coords; matched rects (snapXxx.rect) are also visual via nodeRect().
+    state.activeGuides = [];
+    if (snapLeft && snapLeft.rect) {
+      pushGuide("X", snapLeft.target, [
+        Math.min(fTop, snapLeft.rect.y),
+        Math.max(fBot, snapLeft.rect.y + snapLeft.rect.h),
+      ]);
+    }
+    if (snapRight && snapRight.rect) {
+      pushGuide("X", snapRight.target, [
+        Math.min(fTop, snapRight.rect.y),
+        Math.max(fBot, snapRight.rect.y + snapRight.rect.h),
+      ]);
+    }
+    if (snapTop && snapTop.rect) {
+      pushGuide("Y", snapTop.target, [
+        Math.min(fLeft, snapTop.rect.x),
+        Math.max(fRight, snapTop.rect.x + snapTop.rect.w),
+      ]);
+    }
+    if (snapBot && snapBot.rect) {
+      pushGuide("Y", snapBot.target, [
+        Math.min(fLeft, snapBot.rect.x),
+        Math.max(fRight, snapBot.rect.x + snapBot.rect.w),
+      ]);
+    }
+    c.setDirty?.(true, true);
+    return;
+  }
+
+  // From here, lockType === "move".
+
+  if (state.dragInfo.multiSelect) {
+    // Rigid bbox move: cursor delta drives the captured bounding box, snap is
+    // computed on the bbox's six reference lines against every non-selected
+    // node, and the resulting (cursor + snap) delta is applied uniformly to
+    // each selected node from its original drag-start position. Selected
+    // nodes never become snap targets (skipped via origIds).
+    const di = state.dragInfo;
+    const dxGraph = (e.clientX - di.cursorX) / scale;
+    const dyGraph = (e.clientY - di.cursorY) / scale;
+    const movingRect = {
+      x: di.origBBox.x + dxGraph,
+      y: di.origBBox.y + dyGraph,
+      w: di.origBBox.w,
+      h: di.origBBox.h,
+    };
+    const movingE = rectEdges(movingRect);
+    const movingX = [movingE.left, movingE.right, movingE.centerX];
+    const movingY = [movingE.top, movingE.bottom, movingE.centerY];
+    const stickyG = snapGraph * 1.5;
+    const allNodes = c.graph?._nodes || [];
+    let bestX = null, bestXRect = null;
+    let bestY = null, bestYRect = null;
+    for (const other of allNodes) {
+      if (di.origIds.has(other.id)) continue;
+      if (other.flags?.collapsed) continue;
+      const oRect = nodeRect(other);
+      const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+      const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+      if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
+      const oE = rectEdges(oRect);
+      const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, di.stickyMoveX, stickyG);
+      if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
+      const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, di.stickyMoveY, stickyG);
+      if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
+    }
+    di.stickyMoveX = bestX ? bestX.target : null;
+    di.stickyMoveY = bestY ? bestY.target : null;
+    const finalDx = dxGraph + (bestX ? bestX.delta : 0);
+    const finalDy = dyGraph + (bestY ? bestY.delta : 0);
+    for (const n of allNodes) {
+      if (!di.origIds.has(n.id)) continue;
+      const orig = di.origPositions.get(n.id);
+      if (!orig) continue;
+      n.pos[0] = orig.x + finalDx;
+      n.pos[1] = orig.y + finalDy;
+    }
+
+    // Guides span the moved bbox plus the rect that produced the matching
+    // edge, then extend over every other rect that shares the matched edge.
+    // skipFn excludes selected nodes (the bbox already covers them) and the
+    // rect that already established the guide's base range.
+    const finalBBox = { x: di.origBBox.x + finalDx, y: di.origBBox.y + finalDy, w: di.origBBox.w, h: di.origBBox.h };
+    state.activeGuides = [];
+    if (bestX && bestXRect) {
+      const range = extendGuideRange(
+        "X", bestX.target,
+        Math.min(finalBBox.y, bestXRect.y),
+        Math.max(finalBBox.y + finalBBox.h, bestXRect.y + bestXRect.h),
+        allNodes,
+        (n) => di.origIds.has(n.id) || n === bestXRect,
+      );
+      pushGuide("X", bestX.target, range);
+    }
+    if (bestY && bestYRect) {
+      const range = extendGuideRange(
+        "Y", bestY.target,
+        Math.min(finalBBox.x, bestYRect.x),
+        Math.max(finalBBox.x + finalBBox.w, bestYRect.x + bestYRect.w),
+        allNodes,
+        (n) => di.origIds.has(n.id) || n === bestYRect,
+      );
+      pushGuide("Y", bestY.target, range);
+    }
+    c.setDirty?.(true, true);
+    return;
+  }
+
+  // "Desired" position = where the cursor wants the node to be, with no snap.
+  const totalDxScreen = e.clientX - state.dragInfo.cursorX;
+  const totalDyScreen = e.clientY - state.dragInfo.cursorY;
+  const desiredX = state.dragInfo.posX + totalDxScreen / scale;
+  const desiredY = state.dragInfo.posY + totalDyScreen / scale;
+
+  // Build moving rect at desired position. Use the VISUAL rect (including
+  // the title bar above pos[1]) so snap aligns with what the user sees.
+  const titleH = (draggedNode.flags?.collapsed) ? 0 : (window.LiteGraph?.NODE_TITLE_HEIGHT || 30);
+  const w = draggedNode.size[0];
+  const h = draggedNode.size[1];
+  const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
+  const movingE = rectEdges(movingRect);
+  const movingX = [movingE.left, movingE.right, movingE.centerX];
+  const movingY = [movingE.top, movingE.bottom, movingE.centerY];
+
+  const stickyG = snapGraph * 1.5;
+  const nodes = c.graph?._nodes || [];
+  let bestX = null, bestXRect = null;
+  let bestY = null, bestYRect = null;
+  for (const other of nodes) {
+    if (other === draggedNode) continue;
+    if (other.flags?.collapsed) continue;
+    const oRect = nodeRect(other);
+    const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+    const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+    if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
+    const oE = rectEdges(oRect);
+    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, state.dragInfo.stickyMoveX, stickyG);
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
+    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, state.dragInfo.stickyMoveY, stickyG);
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
+  }
+  state.dragInfo.stickyMoveX = bestX ? bestX.target : null;
+  state.dragInfo.stickyMoveY = bestY ? bestY.target : null;
+
+  // Set node.pos directly: snap target if found, else desired position.
+  // This OVERWRITES whatever LiteGraph set this tick, so the cursor and node
+  // never drift apart by more than snapGraph.
+  draggedNode.pos[0] = bestX ? desiredX + bestX.delta : desiredX;
+  draggedNode.pos[1] = bestY ? desiredY + bestY.delta : desiredY;
+
+  // Build the visual rect at the FINAL (post-snap) position so the guide
+  // line spans accurately along the perp axis. Then extend over every other
+  // rect that shares the matched edge so a column/row of 3+ shows one full
+  // guide instead of a short segment.
+  const finalRect = { x: draggedNode.pos[0], y: draggedNode.pos[1] - titleH, w, h: h + titleH };
+  state.activeGuides = [];
+  if (bestX && bestXRect) {
+    const range = extendGuideRange(
+      "X", bestX.target,
+      Math.min(finalRect.y, bestXRect.y),
+      Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
+      nodes,
+      (n) => n === draggedNode || n === bestXRect,
+    );
+    pushGuide("X", bestX.target, range);
+  }
+  if (bestY && bestYRect) {
+    const range = extendGuideRange(
+      "Y", bestY.target,
+      Math.min(finalRect.x, bestYRect.x),
+      Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
+      nodes,
+      (n) => n === draggedNode || n === bestYRect,
+    );
+    pushGuide("Y", bestY.target, range);
+  }
+  c.setDirty?.(true, true);
+}
