@@ -307,6 +307,26 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
       const sel = window.getSelection();
       sel.removeAllRanges();
       sel.addRange(savedRange);
+    } else {
+      // No prior caret in the editArea (user opened the picker without
+      // first clicking into the note body, or focus was elsewhere).
+      // Normalize so every root child is a block, then drop the caret
+      // at the end of the last block - the icon lands inside a real
+      // block instead of wherever execCommand decides to put it.
+      this._normalizeEditArea?.(this._editArea);
+      this._editArea.focus();
+      const last = this._editArea.lastElementChild;
+      const sel = window.getSelection();
+      const r = document.createRange();
+      if (last) {
+        r.selectNodeContents(last);
+        r.collapse(false);
+      } else {
+        r.selectNodeContents(this._editArea);
+        r.collapse(false);
+      }
+      sel.removeAllRanges();
+      sel.addRange(r);
     }
     // Read color + size from the editor's session-sticky picker state
     // (set inside openIconPop on swatch / pill clicks, defaults from
