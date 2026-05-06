@@ -203,6 +203,7 @@ app.registerExtension({
 
     // Suppress default background image rendering
     nodeType.prototype.onDrawBackground = function () {
+      if (this.flags?.collapsed) return;
       if (this.imgs) this.imgs = null;
     };
 
@@ -210,6 +211,9 @@ app.registerExtension({
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (_origDraw) _origDraw.call(this, ctx);
+      // Skip our custom buttons + image painting while the node is collapsed,
+      // otherwise they render on top of / next to the collapsed title pill.
+      if (this.flags?.collapsed) return;
 
       // Enforce min size
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
