@@ -320,15 +320,27 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
       let r = savedRange;
       if (r.startContainer === this._editArea) {
         const childCount = this._editArea.childNodes.length;
-        const idx = Math.min(r.startOffset, Math.max(0, childCount - 1));
-        const target = this._editArea.childNodes[idx];
-        if (target && target.nodeType === 1) {
-          const r2 = document.createRange();
-          r2.selectNodeContents(target);
-          // Past-end original offset -> collapse to end of target;
-          // otherwise to start.
-          r2.collapse(r.startOffset > idx);
-          r = r2;
+        if (r.startOffset >= childCount) {
+          // Caret was at or past the END of editArea's children -
+          // collapse to the END of the last block (where the cursor
+          // visibly was). Range.collapse(false) = collapse to end.
+          const target = this._editArea.lastElementChild;
+          if (target) {
+            const r2 = document.createRange();
+            r2.selectNodeContents(target);
+            r2.collapse(false);
+            r = r2;
+          }
+        } else {
+          // Caret was BEFORE childNodes[startOffset]. Place at the
+          // START of that child block. Range.collapse(true) = start.
+          const target = this._editArea.childNodes[r.startOffset];
+          if (target && target.nodeType === 1) {
+            const r2 = document.createRange();
+            r2.selectNodeContents(target);
+            r2.collapse(true);
+            r = r2;
+          }
         }
       }
       insertRange = r;
