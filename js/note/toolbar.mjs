@@ -541,37 +541,33 @@ NoteEditor.prototype._buildToolbar = function () {
               }
             }
           }
+          this._stagedHi = null;
           hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
         } else {
           // Apply highlight.
-          //  - Collapsed cursor: direct DOM insert of an empty bg span,
-          //    caret placed inside. Bypasses Chrome's
-          //    execCommand("hiliteColor") + collapsed-cursor quirk
-          //    where the new span occasionally lands at the start of
-          //    editArea instead of at the cursor (visible as the
-          //    caret jumping to the beginning of the note).
-          //  - Range: keep execCommand, which already handles
-          //    selections that span multiple inline elements correctly.
-          if (range && this._editArea.contains(range.startContainer)) {
-            if (range.collapsed) {
-              const span = document.createElement("span");
-              span.style.backgroundColor = c;
-              range.insertNode(span);
-              const newR = document.createRange();
-              newR.selectNodeContents(span);
-              newR.collapse(true);
-              sel.removeAllRanges();
-              sel.addRange(newR);
-            } else {
-              document.execCommand("hiliteColor", false, c);
+          //  - Range: execCommand handles multi-element selections
+          //    correctly. Apply immediately to the selected text.
+          //  - Collapsed: stage in JS only (this._stagedHi). The
+          //    beforeinput handler in core.mjs inserts an empty bg
+          //    span at the cursor right before the next typed
+          //    character, so typing produces highlighted text whether
+          //    the user types immediately or clicks elsewhere first.
+          //    Mirror of how Chrome's foreColor stage works for text.
+          //    Avoids both Chrome quirks (caret jump, prior-region
+          //    selection) and the orphan-empty-span bloat that direct
+          //    DOM insertion at pick time leaves behind.
+          if (range && !range.collapsed && this._editArea.contains(range.startContainer)) {
+            document.execCommand("hiliteColor", false, c);
+            // Pattern #21: hiliteColor on a non-collapsed range clears
+            // any staged foreColor. Replay so they combine on subsequent
+            // typing inside the just-highlighted region.
+            const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
+            if (stagedFg) {
+              try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
             }
-          }
-          // Replay foreColor (Pattern #21): hiliteColor / DOM mutation
-          // can clear the staged foreColor. Re-stage so highlight + text
-          // colour combine on the next typed character.
-          const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
-          if (stagedFg) {
-            try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
+            this._stagedHi = null;
+          } else {
+            this._stagedHi = c;
           }
           hiColorBtn.style.setProperty("--pix-note-tbtn-tint", c);
         }
@@ -1095,9 +1091,66 @@ NoteEditor.prototype._mirrorPickerColors = function () {
 
   const bgHex = colorToHex(bg);
   if (this._hiColorBtn) {
-    if (bgHex) this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bgHex);
-    else this._hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    // Pending pick (user picked a colour but hasn't typed yet) wins
+    // over the cursor's effective bg. Otherwise the icon would flip
+    // to whatever colour the user clicks into between pick and type
+    // and the toolbar would lie about what the next character will
+    // get.
+    if (this._stagedHi) {
+      this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", this._stagedHi);
+    } else if (bgHex) {
+      this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bgHex);
+    } else {
+      this._hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+    }
   }
+};
+
+// Apply a JS-staged highlight colour at the cursor before the next
+// typed character lands. Wired up as a `beforeinput` listener on
+// editArea (see core.mjs). Mirror of how Chrome handles foreColor
+// staging natively for text-color: one-shot, consumed on first text
+// input. If the cursor is already inside a span with the same bg
+// (e.g. user picked, typed, kept typing in the same span), we skip
+// the insertion to avoid pointless nesting.
+NoteEditor.prototype._applyStagedHilite = function (e) {
+  if (!this._stagedHi) return;
+  if (e.inputType !== "insertText" && e.inputType !== "insertCompositionText") return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  const r = sel.getRangeAt(0);
+  if (!r.collapsed) return;
+  if (!this._editArea?.contains(r.startContainer)) return;
+
+  // Skip insertion if the cursor's nearest inline-bg ancestor already
+  // matches the staged colour — typing extends that span naturally.
+  let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
+  let inMatchingBg = false;
+  while (n && n !== this._editArea && n !== document.body) {
+    if (n.style && n.style.backgroundColor) {
+      const existing = colorToHex(n.style.backgroundColor);
+      if (existing && existing.toLowerCase() === this._stagedHi.toLowerCase()) {
+        inMatchingBg = true;
+      }
+      break;
+    }
+    n = n.parentElement;
+  }
+
+  if (!inMatchingBg) {
+    const span = document.createElement("span");
+    span.style.backgroundColor = this._stagedHi;
+    r.insertNode(span);
+    const newR = document.createRange();
+    newR.selectNodeContents(span);
+    newR.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newR);
+  }
+  // One-shot: clear after consumption regardless of whether we
+  // inserted, so the staged pick doesn't keep applying to subsequent
+  // typing sessions in unrelated areas.
+  this._stagedHi = null;
 };
 
 NoteEditor.prototype._refreshActiveStates = function () {

@@ -544,6 +544,11 @@ export class NoteEditor {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
     }
+    if (this._beforeInputHandler && this._editArea) {
+      this._editArea.removeEventListener("beforeinput", this._beforeInputHandler);
+      this._beforeInputHandler = null;
+    }
+    this._stagedHi = null;
     if (this._onWindowResize) {
       window.removeEventListener("resize", this._onWindowResize);
       this._onWindowResize = null;
@@ -775,6 +780,20 @@ export class NoteEditor {
     }, true);
     main.appendChild(editArea);
     this._editArea = editArea;
+    // beforeinput-driven highlight stage: mirror of how foreColor
+    // staging works for text-color (Chrome handles foreColor natively;
+    // we have to do this manually for highlight since execCommand
+    // hiliteColor on collapsed cursor is unreliable). When the user
+    // picks a highlight colour, the picker stores it on
+    // `this._stagedHi` and DOES NOT mutate the DOM. Right before the
+    // user types a character we insert an empty bg span at the cursor
+    // and place the caret inside; the typed character lands in that
+    // span. _stagedHi is consumed (cleared) on first text input, same
+    // one-shot semantics as Chrome's foreColor stage.
+    this._beforeInputHandler = (e) => {
+      if (this._applyStagedHilite) this._applyStagedHilite(e);
+    };
+    editArea.addEventListener("beforeinput", this._beforeInputHandler);
     // Write the Btn/Ln CSS vars on editArea NOW that it exists. The
     // makeColorPicker factory inside _buildToolbar() ran before this
     // assignment, so its apply() no-oped on `this._editArea?.`—
