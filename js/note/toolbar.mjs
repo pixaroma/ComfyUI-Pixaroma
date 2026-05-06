@@ -19,6 +19,45 @@ function restoreRange(range) {
   sel.addRange(range);
 }
 
+// Normalise any CSS color string ("#abc", "#aabbcc", "rgb(…)", "rgba(…)",
+// "blue", "transparent") to lowercase #rrggbb, or null when the colour is
+// missing / fully transparent. Used by the cursor-mirror to turn an
+// element's inline colour into a hex value the picker can display.
+const _colorToHexTmp = (() => {
+  const d = document.createElement("div");
+  d.style.position = "absolute";
+  d.style.visibility = "hidden";
+  d.style.pointerEvents = "none";
+  return d;
+})();
+function colorToHex(s) {
+  if (!s) return null;
+  const t = String(s).trim().toLowerCase();
+  if (!t || t === "transparent" || t === "rgba(0, 0, 0, 0)") return null;
+  // Fast path: already #rgb / #rrggbb
+  if (/^#[0-9a-f]{6}$/.test(t)) return t;
+  if (/^#[0-9a-f]{3}$/.test(t)) {
+    return "#" + t[1] + t[1] + t[2] + t[2] + t[3] + t[3];
+  }
+  // Fast path: rgb()/rgba()
+  let m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d*\.?\d+))?\)$/.exec(t);
+  if (m) {
+    if (m[4] !== undefined && parseFloat(m[4]) === 0) return null;
+    const h = (n) => parseInt(n, 10).toString(16).padStart(2, "0");
+    return "#" + h(m[1]) + h(m[2]) + h(m[3]);
+  }
+  // Slow path: named colours, rgb%, etc — let the browser resolve.
+  if (!_colorToHexTmp.isConnected) document.body.appendChild(_colorToHexTmp);
+  _colorToHexTmp.style.color = "";
+  _colorToHexTmp.style.color = s;
+  const cs = window.getComputedStyle(_colorToHexTmp).color;
+  m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*(\d*\.?\d+))?\)$/.exec(cs || "");
+  if (!m) return null;
+  if (m[4] !== undefined && parseFloat(m[4]) === 0) return null;
+  const h = (n) => parseInt(n, 10).toString(16).padStart(2, "0");
+  return "#" + h(m[1]) + h(m[2]) + h(m[3]);
+}
+
 // 4 rows × 7 = 28 swatches, grouped by purpose so the rows read as a
 // proper palette rather than a random grid. The CSS grid below lays them
 // out in 7 columns so the row structure stays intact visually.
@@ -372,9 +411,17 @@ NoteEditor.prototype._buildToolbar = function () {
       initialColor: textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim() || null,
       // No transparent tile for text — 36 palette colors fill 3 rows of
       // 12 cleanly. Users can still revert text to default via the Tx
-      // clear-format button (Group 1) or by picking the white swatch.
+      // clear-format button (Group 1) or via Reset (white).
       showClear: false,
+      // Reset returns to the editor's default text colour (white) so
+      // the user can quickly back out of a coloured pick without
+      // re-picking the white swatch.
+      resetColor: "#ffffff",
       onPick: (c) => {
+        // Suppress the cursor-mirror briefly so a freshly-staged colour
+        // doesn't get overwritten by the cursor's pre-pick context
+        // colour on the next selectionchange.
+        this._suppressMirrorUntil = Date.now() + 1000;
         this._editArea.focus();
         restoreRange(r);
         document.execCommand("styleWithCSS", false, true);
@@ -419,16 +466,14 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(textColorBtn);
 
-  // Intentionally NO selectionchange-driven mirror for the text-color
-  // icon. Earlier attempts (getComputedStyle-based, queryCommandValue-
-  // based, then ancestor-walk "sticky") all hit variants of the same
-  // problem: execCommand("foreColor") on a collapsed selection STAGES
-  // the color without mutating the DOM, so any mirror that reads the
-  // cursor's current context sees the OLD color (the parent's or a
-  // previously-colored ancestor) and clobbers the user's just-picked
-  // value. The icon now simply shows the user's last explicit pick
-  // (same pattern as Notion / Google Docs). Clear via the popup's
-  // Clear button resets the tint to currentColor (toolbar default).
+  // Cursor-mirror is implemented in _mirrorPickerColors and driven by
+  // the selectionchange handler at the bottom of _buildToolbar. Tint
+  // follows the cursor's effective inline colour. The historical
+  // pick-clobber bug is mitigated by _suppressMirrorUntil (1s window
+  // after every pick), so a freshly-staged colour stays visible long
+  // enough for the user to start typing — at which point the typed
+  // text is wrapped in a span with the picked colour and subsequent
+  // mirror runs read the picked colour from the new span.
 
   const hiColorBtn = el("button", "pix-note-tbtn");
   hiColorBtn.type = "button";
@@ -446,7 +491,13 @@ NoteEditor.prototype._buildToolbar = function () {
       // last palette swatch so we don't spill onto a 4th row).
       swatches: PIXAROMA_PALETTE.slice(0, 35),
       showClear: true,
+      // Reset returns to "no highlight" (transparent), matching the
+      // default state of the picker. Routes through the same null
+      // branch as clicking the transparent tile.
+      resetColor: null,
       onPick: (c) => {
+        // Suppress mirror for 1s — same rationale as the text picker.
+        this._suppressMirrorUntil = Date.now() + 1000;
         this._editArea.focus();
         restoreRange(r);
         document.execCommand("styleWithCSS", false, true);
@@ -496,9 +547,9 @@ NoteEditor.prototype._buildToolbar = function () {
   });
   g3.appendChild(hiColorBtn);
 
-  // Intentionally NO selectionchange-driven mirror for highlight —
-  // same reasoning as text-color (see comment above). Icon shows the
-  // user's last explicit pick. Clear resets to currentColor.
+  // Cursor-mirror is shared with the text-color picker — see the
+  // comment above textColorBtn. Walks up looking for an inline
+  // background-color and mirrors it onto this button's tint.
 
   // Page background colour — affects the whole editor interior AND the
   // on-canvas node body after save (WYSIWYG). Default is the editor's
@@ -960,9 +1011,57 @@ NoteEditor.prototype._buildToolbar = function () {
       if (!sel || sel.rangeCount === 0) return;
       if (!this._editArea?.contains(sel.anchorNode)) return;
       this._refreshActiveStates();
+      // Mirror first (updates tints to match the cursor's effective
+      // colour), then re-stage so the just-mirrored tint is what
+      // subsequent typing produces.
+      this._mirrorPickerColors?.();
       this._restageColors?.();
     };
     document.addEventListener("selectionchange", this._selectionChangeHandler);
+  }
+};
+
+// Cursor-mirror: walk up from the caret to the nearest inline
+// `style.color` (text picker tint) and `style.backgroundColor`
+// (highlight picker tint). Found → set --pix-note-tbtn-tint to the
+// matching hex on the button. Not found → remove the property so the
+// icon falls back to currentColor (toolbar default). Skipped during
+// the post-pick suppress window to avoid clobbering a fresh stage
+// before the user types.
+NoteEditor.prototype._mirrorPickerColors = function () {
+  if (this._suppressMirrorUntil && Date.now() < this._suppressMirrorUntil) return;
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0) return;
+  if (!this._editArea?.contains(sel.anchorNode)) return;
+  // Range selections may span mixed colours — no single right answer
+  // for the icon to display, so leave the tints alone.
+  if (!sel.getRangeAt(0).collapsed) return;
+
+  let el = sel.anchorNode;
+  if (el && el.nodeType !== 1) el = el.parentElement;
+  if (!el || !this._editArea.contains(el)) return;
+
+  let fg = null, bg = null;
+  let n = el;
+  while (n && n !== this._editArea && n !== document.body) {
+    if (n.style) {
+      if (!fg && n.style.color) fg = n.style.color;
+      if (!bg && n.style.backgroundColor) bg = n.style.backgroundColor;
+    }
+    if (fg && bg) break;
+    n = n.parentElement;
+  }
+
+  const fgHex = colorToHex(fg);
+  if (this._textColorBtn) {
+    if (fgHex) this._textColorBtn.style.setProperty("--pix-note-tbtn-tint", fgHex);
+    else this._textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
+  }
+
+  const bgHex = colorToHex(bg);
+  if (this._hiColorBtn) {
+    if (bgHex) this._hiColorBtn.style.setProperty("--pix-note-tbtn-tint", bgHex);
+    else this._hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
   }
 };
 

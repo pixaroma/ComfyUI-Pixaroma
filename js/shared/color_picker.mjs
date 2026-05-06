@@ -391,13 +391,16 @@ export function createPixaromaColorPicker(opts = {}) {
   const resetBtn = document.createElement("button");
   resetBtn.type = "button";
   resetBtn.className = "pix-cp-reset";
-  resetBtn.title = `Reset to ${resetColor}`;
+  resetBtn.title = resetColor === null ? "Clear color" : `Reset to ${resetColor}`;
   resetBtn.textContent = "Reset";
   resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
   resetBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     curColor = resetColor;
-    curHsv = hexToHsv(resetColor);
+    // hexToHsv tolerates null but returns {h:0,s:0,v:1}; only update
+    // HSV when we actually have a hex so the SV/hue tracker doesn't
+    // jump to a meaningless red-corner position on null reset.
+    if (resetColor !== null) curHsv = hexToHsv(resetColor);
     refresh();
     onChange(resetColor);
   });
@@ -482,7 +485,10 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
     initialColor: "initialColor" in opts ? opts.initialColor : "#f66744",
     swatches:     opts.swatches,
     showClear:    !!opts.showClear,
-    resetColor:   opts.resetColor ?? "#f66744",
+    // Same `in opts` check as initialColor — preserve explicit null so
+    // the Reset button can mean "clear back to no-color" for callers
+    // that opt in (e.g. highlight picker → transparent on Reset).
+    resetColor:   "resetColor" in opts ? opts.resetColor : "#f66744",
     onChange:     opts.onPick || (() => {}),
   });
   popup.appendChild(picker.element);
