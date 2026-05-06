@@ -376,7 +376,34 @@ NoteEditor.prototype._buildToolbar = function () {
         restoreRange(r);
         document.execCommand("styleWithCSS", false, true);
         if (c == null) {
-          document.execCommand("foreColor", false, "#e4e4e4");
+          // Manual strip - directly remove inline `color` styles from
+          // any element intersecting the current selection. We avoid
+          // execCommand("foreColor", default) because Chrome's
+          // styleWithCSS implementation can collapse / merge adjacent
+          // same-color spans and accidentally clear color on content
+          // OUTSIDE the selection. For a collapsed cursor we simply
+          // unset the staged tint - typing afterwards picks up the
+          // editor's default color via CSS inheritance.
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            if (!range.collapsed) {
+              const ca = range.commonAncestorContainer;
+              const scope = ca.nodeType === 1 ? ca : ca.parentNode;
+              const targets = new Set([scope, ...(scope.querySelectorAll?.("*") || [])]);
+              let p = scope.parentNode;
+              while (p && p !== this._editArea && p !== document.body) {
+                targets.add(p); p = p.parentNode;
+              }
+              for (const el of targets) {
+                if (!range.intersectsNode(el)) continue;
+                if (el.style && el.style.color) {
+                  el.style.removeProperty("color");
+                  if (!el.getAttribute("style")) el.removeAttribute("style");
+                }
+              }
+            }
+          }
           textColorBtn.style.removeProperty("--pix-note-tbtn-tint");
         } else {
           document.execCommand("foreColor", false, c);
@@ -488,11 +515,21 @@ NoteEditor.prototype._buildToolbar = function () {
       showClear: true,
       resetColor: "#111111",
       onPick: (c) => {
-        // Clear (c == null) -> set cfg.backgroundColor to NULL, not a
-        // hex default. null signals renderContent() that the user
-        // explicitly cleared; it reverts node.color/bgcolor to LiteGraph
-        // defaults so ComfyUI's right-click Colors menu takes over.
-        this.cfg.backgroundColor = (c == null) ? null : c;
+        // Clear (c == null) -> cfg.backgroundColor = null AND null
+        // out node.color/bgcolor so the editor instantly reflects the
+        // reset (dark default) instead of falling back to a stale
+        // node.bgcolor in _applyEditAreaBg. Save will mirror this to
+        // the workflow JSON; renderContent's null branch handles the
+        // canvas-side revert (Pattern #4).
+        if (c == null) {
+          this.cfg.backgroundColor = null;
+          if (this.node) {
+            this.node.color = null;
+            this.node.bgcolor = null;
+          }
+        } else {
+          this.cfg.backgroundColor = c;
+        }
         this._applyEditAreaBg?.();
         refreshBgSwatch();
         this._dirty = true;
