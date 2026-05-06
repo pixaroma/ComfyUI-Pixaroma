@@ -1141,10 +1141,14 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
   const sel = window.getSelection();
   if (!sel || sel.rangeCount === 0) return;
   const r = sel.getRangeAt(0);
-  if (!r.collapsed) return;
   if (!this._editArea?.contains(r.startContainer)) return;
 
-  // Skip insertion if the cursor's nearest inline-bg ancestor already
+  // Range case: delete the selected content first so the insertion
+  // happens at a collapsed point. The walk-up below then runs against
+  // the post-deletion cursor location.
+  if (!r.collapsed) r.deleteContents();
+
+  // Skip the wrap if the cursor's nearest inline-bg ancestor already
   // matches the staged colour — typing extends that span naturally.
   let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
   let inMatchingBg = false;
@@ -1159,9 +1163,36 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     n = n.parentElement;
   }
 
-  if (!inMatchingBg) {
-    const span = document.createElement("span");
-    span.style.backgroundColor = this._stagedHi;
+  if (inMatchingBg) {
+    // Cursor is already inside a span with the staged colour. Let the
+    // browser do its native insertion at the current selection — the
+    // typed character will land inside the matching span.
+    return;
+  }
+
+  // Build a new bg span around the typed character and short-circuit
+  // the browser's default insertion. Chrome's beforeinput resolves
+  // the insertion target as a STATIC range captured before our
+  // handler fires (see InputEvent.getTargetRanges()), so modifying
+  // the selection alone does NOT redirect the typed character — it
+  // would land in the original (un-bg) text node and leave the
+  // empty span we inserted as invisible litter. Manual insert +
+  // preventDefault is the only reliable path.
+  const span = document.createElement("span");
+  span.style.backgroundColor = this._stagedHi;
+  if (typeof e.data === "string" && e.data.length > 0) {
+    span.textContent = e.data;
+    r.insertNode(span);
+    const newR = document.createRange();
+    newR.setStart(span.firstChild, e.data.length);
+    newR.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(newR);
+    e.preventDefault();
+  } else {
+    // Composition start (no data yet) — insert an empty span and
+    // place the caret inside. The browser owns the eventual text
+    // insertion via its composition lifecycle.
     r.insertNode(span);
     const newR = document.createRange();
     newR.selectNodeContents(span);
@@ -1169,12 +1200,9 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     sel.removeAllRanges();
     sel.addRange(newR);
   }
-  // Sticky pick: do NOT clear _stagedHi after consume. The user's
-  // explicit highlight pick stays armed across cursor moves and
-  // typing sessions until they pick a different colour or hit
+  // Sticky pick: _stagedHi stays set across cursor moves and typing
+  // sessions until the user picks a different colour or hits
   // Reset / transparent. Symmetrical with text-color's _pickedFg.
-  // The inMatchingBg check above prevents nested-span bloat when the
-  // cursor is already inside a span that matches the staged colour.
 };
 
 NoteEditor.prototype._refreshActiveStates = function () {
