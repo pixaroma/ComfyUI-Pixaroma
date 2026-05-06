@@ -846,13 +846,13 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
-/* Icon-popup color section: 4-row swatch grid on the left, vertical
-   control column (Clear / native picker / hex input) on the right.
-   Compact - reuses the wasted right edge of the swatch area instead
-   of stacking those controls below. */
+/* Icon-popup color section: 4 x 7 swatch grid, then a row underneath
+   with hex input on the left and Reset button on the right. No native
+   color picker (it opened a popup-over-popup that covered the icon
+   grid). Reset returns the staged color to the default Pixaroma orange. */
 .pix-note-iconpop-colorsection {
   display: flex;
-  align-items: stretch;
+  flex-direction: column;
   gap: 6px;
   margin-bottom: 8px;
 }
@@ -874,42 +874,43 @@ export function injectCSS() {
   outline: 2px solid ${BRAND};
   outline-offset: 1px;
 }
-.pix-note-iconpop-colorright {
+.pix-note-iconpop-hexrow {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  align-items: center;
+}
+.pix-note-iconpop-hexrow input[type="text"] {
   flex: 1 1 auto;
   min-width: 0;
-}
-.pix-note-iconpop-color-clear {
-  width: 100%;
   height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  box-sizing: border-box;
+  background: #1a1a1a;
+  border: 1px solid #444;
+  color: #ddd;
+  padding: 0 6px;
+  font-size: 11px;
+  font-family: "Consolas", monospace;
+  border-radius: 3px;
+}
+.pix-note-iconpop-hexrow input[type="text"]:focus {
+  outline: none;
+  border-color: ${BRAND};
+}
+.pix-note-iconpop-resetbtn {
+  flex: 0 0 auto;
+  height: 22px;
+  padding: 0 10px;
   background: transparent;
   border: 1px solid #444;
   color: #999;
   border-radius: 3px;
   cursor: pointer;
-  font-size: 12px;
-  line-height: 1;
+  font-size: 11px;
+  font-family: "Segoe UI", system-ui, sans-serif;
 }
-.pix-note-iconpop-color-clear:hover { color: ${BRAND}; border-color: ${BRAND}; }
-.pix-note-iconpop-color-clear.selected {
-  border-color: ${BRAND};
+.pix-note-iconpop-resetbtn:hover {
   color: ${BRAND};
-}
-.pix-note-iconpop-colorright input[type="color"] {
-  width: 100%; height: 22px; padding: 0;
-  border: 1px solid #444; border-radius: 3px;
-  background: #1a1a1a; cursor: pointer;
-}
-.pix-note-iconpop-colorright input[type="text"] {
-  width: 100%; box-sizing: border-box;
-  background: #1a1a1a; border: 1px solid #444;
-  color: #ddd; padding: 3px 6px; font-size: 11px;
-  font-family: "Consolas", monospace; border-radius: 3px;
+  border-color: ${BRAND};
 }
 
 /* Icon-popup size pills - 4 small buttons in a row, the active one

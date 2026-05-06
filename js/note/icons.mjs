@@ -172,9 +172,11 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     return;
   }
 
-  // Color section: swatch grid (left) + vertical control column (right).
-  // The right column packs Clear / native picker / hex input alongside
-  // the 4-row swatch grid so the right edge isn't wasted vertical space.
+  // Color section: 4x7 swatch grid + a single row underneath with the
+  // hex input on the left and Reset on the right. No native color
+  // picker (it covered the icon grid with a popup-over-popup), no
+  // confusing X tile - Reset clears the staged color so icons render
+  // with the editor's currentColor.
   const colorSection = document.createElement("div");
   colorSection.className = "pix-note-iconpop-colorsection";
 
@@ -191,6 +193,7 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     tile.addEventListener("click", (e) => {
       e.stopPropagation();
       editor._iconPickerColor = hex;
+      hexInput.value = hex;
       refreshColorSelection();
       repaintGrid();
     });
@@ -199,57 +202,41 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   }
   colorSection.appendChild(colorGrid);
 
-  const colorRight = document.createElement("div");
-  colorRight.className = "pix-note-iconpop-colorright";
-
-  const clearBtn = document.createElement("button");
-  clearBtn.type = "button";
-  clearBtn.className = "pix-note-iconpop-color-clear";
-  clearBtn.title = "Clear color (inherit)";
-  clearBtn.textContent = "✕";
-  clearBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  clearBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    editor._iconPickerColor = null;
-    refreshColorSelection();
-    repaintGrid();
-  });
-  colorRight.appendChild(clearBtn);
-
-  const nativePicker = document.createElement("input");
-  nativePicker.type = "color";
-  nativePicker.title = "Custom color";
-  const initialHex =
-    /^#[0-9a-f]{6}$/i.test(editor._iconPickerColor || "")
-      ? editor._iconPickerColor
-      : "#f66744";
-  nativePicker.value = initialHex;
-  nativePicker.addEventListener("mousedown", (e) => e.stopPropagation());
-  nativePicker.addEventListener("change", () => {
-    editor._iconPickerColor = nativePicker.value;
-    hexInput.value = nativePicker.value;
-    refreshColorSelection();
-    repaintGrid();
-  });
-  colorRight.appendChild(nativePicker);
+  const hexRow = document.createElement("div");
+  hexRow.className = "pix-note-iconpop-hexrow";
 
   const hexInput = document.createElement("input");
   hexInput.type = "text";
   hexInput.value = editor._iconPickerColor || "";
   hexInput.placeholder = "#rrggbb";
+  hexInput.spellcheck = false;
   hexInput.addEventListener("mousedown", (e) => e.stopPropagation());
   hexInput.oninput = () => {
     const v = hexInput.value.startsWith("#") ? hexInput.value : `#${hexInput.value}`;
     if (/^#[0-9a-f]{6}$/i.test(v)) {
       editor._iconPickerColor = v;
-      nativePicker.value = v;
       refreshColorSelection();
       repaintGrid();
     }
   };
-  colorRight.appendChild(hexInput);
+  hexRow.appendChild(hexInput);
 
-  colorSection.appendChild(colorRight);
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-note-iconpop-resetbtn";
+  resetBtn.title = "Reset to default color";
+  resetBtn.textContent = "Reset";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    editor._iconPickerColor = "#f66744";
+    hexInput.value = "#f66744";
+    refreshColorSelection();
+    repaintGrid();
+  });
+  hexRow.appendChild(resetBtn);
+
+  colorSection.appendChild(hexRow);
   pop.appendChild(colorSection);
 
   // Size pills row
