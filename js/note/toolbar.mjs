@@ -501,17 +501,18 @@ NoteEditor.prototype._buildToolbar = function () {
         this._editArea.focus();
         restoreRange(r);
         document.execCommand("styleWithCSS", false, true);
+        const sel = window.getSelection();
+        const range = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+
         if (c == null) {
-          // Manual strip - mirror of the text-color Clear path. Only
-          // touch elements that intersect the current selection, and
-          // only when the selection is a real range (not a collapsed
-          // caret) — otherwise clicking Clear with the cursor inside a
-          // highlighted span would wipe the bg from neighbours too.
-          // For a collapsed cursor we just unset the staged tint;
-          // typing afterwards has no highlight via CSS inheritance.
-          const sel = window.getSelection();
-          if (sel && sel.rangeCount > 0) {
-            const range = sel.getRangeAt(0);
+          // Reset / transparent. Two cases:
+          //  - Range: strip bg from every element that intersects the
+          //    selection (mirror of the text-color Clear path).
+          //  - Collapsed: walk up from the caret and strip the bg on
+          //    the nearest containing inline-styled element. Without
+          //    this, Reset/transparent feel broken when the cursor is
+          //    sitting inside a single highlighted span.
+          if (range) {
             if (!range.collapsed) {
               const ca = range.commonAncestorContainer;
               const scope = ca.nodeType === 1 ? ca : ca.parentNode;
@@ -527,13 +528,47 @@ NoteEditor.prototype._buildToolbar = function () {
                   if (!el.getAttribute("style")) el.removeAttribute("style");
                 }
               }
+            } else {
+              let n = range.startContainer;
+              if (n && n.nodeType !== 1) n = n.parentElement;
+              while (n && n !== this._editArea && n !== document.body) {
+                if (n.style && n.style.backgroundColor) {
+                  n.style.backgroundColor = "";
+                  if (!n.getAttribute("style")) n.removeAttribute("style");
+                  break;
+                }
+                n = n.parentElement;
+              }
             }
           }
           hiColorBtn.style.removeProperty("--pix-note-tbtn-tint");
         } else {
-          document.execCommand("hiliteColor", false, c);
-          // Chrome quirk (Pattern #21): hiliteColor on collapsed clears
-          // staged foreColor. Replay so they combine.
+          // Apply highlight.
+          //  - Collapsed cursor: direct DOM insert of an empty bg span,
+          //    caret placed inside. Bypasses Chrome's
+          //    execCommand("hiliteColor") + collapsed-cursor quirk
+          //    where the new span occasionally lands at the start of
+          //    editArea instead of at the cursor (visible as the
+          //    caret jumping to the beginning of the note).
+          //  - Range: keep execCommand, which already handles
+          //    selections that span multiple inline elements correctly.
+          if (range && this._editArea.contains(range.startContainer)) {
+            if (range.collapsed) {
+              const span = document.createElement("span");
+              span.style.backgroundColor = c;
+              range.insertNode(span);
+              const newR = document.createRange();
+              newR.selectNodeContents(span);
+              newR.collapse(true);
+              sel.removeAllRanges();
+              sel.addRange(newR);
+            } else {
+              document.execCommand("hiliteColor", false, c);
+            }
+          }
+          // Replay foreColor (Pattern #21): hiliteColor / DOM mutation
+          // can clear the staged foreColor. Re-stage so highlight + text
+          // colour combine on the next typed character.
           const stagedFg = textColorBtn.style.getPropertyValue("--pix-note-tbtn-tint").trim();
           if (stagedFg) {
             try { document.execCommand("foreColor", false, stagedFg); } catch (e) {}
