@@ -846,94 +846,11 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
-/* Icon-popup color section: 4 x 7 swatch grid, then a row underneath
-   with hex input on the left and Reset button on the right. No native
-   color picker (it opened a popup-over-popup that covered the icon
-   grid). Reset returns the staged color to the default Pixaroma orange. */
-.pix-note-iconpop-colorsection {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-.pix-note-iconpop-color-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 3px;
-  width: 100%;
-}
-.pix-note-iconpop-color-tile {
-  width: 100%;
-  aspect-ratio: 1;
-  border-radius: 3px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  cursor: pointer;
-  padding: 0;
-  box-sizing: border-box;
-}
-.pix-note-iconpop-color-tile.selected {
-  outline: 2px solid ${BRAND};
-  outline-offset: 1px;
-}
-.pix-note-iconpop-svrow {
-  display: flex;
-  gap: 6px;
-  align-items: stretch;
-}
-.pix-note-iconpop-sv {
-  border: 1px solid #444;
-  border-radius: 3px;
-  cursor: crosshair;
-  display: block;
-  flex: 1 1 auto;
-  width: 100%;
-  height: 80px;
-}
-.pix-note-iconpop-hue {
-  border: 1px solid #444;
-  border-radius: 3px;
-  cursor: ns-resize;
-  display: block;
-  flex: 0 0 auto;
-}
-.pix-note-iconpop-hexrow {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-.pix-note-iconpop-hexrow input[type="text"] {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 22px;
-  box-sizing: border-box;
-  background: #1a1a1a;
-  border: 1px solid #444;
-  color: #ddd;
-  padding: 0 6px;
-  font-size: 11px;
-  font-family: "Consolas", monospace;
-  border-radius: 3px;
-}
-.pix-note-iconpop-hexrow input[type="text"]:focus {
-  outline: none;
-  border-color: ${BRAND};
-}
-.pix-note-iconpop-resetbtn {
-  flex: 0 0 auto;
-  height: 22px;
-  padding: 0 10px;
-  background: transparent;
-  border: 1px solid #444;
-  color: #999;
-  border-radius: 3px;
-  cursor: pointer;
-  font-size: 11px;
-  font-family: "Segoe UI", system-ui, sans-serif;
-}
-.pix-note-iconpop-resetbtn:hover {
-  color: ${BRAND};
-  border-color: ${BRAND};
-}
+/* Icon-popup color section. Picker UI is rendered by the shared
+   Pixaroma Color Picker module (.pix-cp-* classes in
+   js/shared/color_picker.mjs). The wrapper just adds bottom margin
+   so the picker doesn't crowd the size pills below it. */
+.pix-cp + .pix-note-iconpop-size-row { margin-top: 8px; }
 
 /* Icon-popup size pills - 4 small buttons in a row, the active one
    filled with BRAND orange. Mirrors the segmented control pattern

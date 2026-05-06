@@ -10,22 +10,7 @@
 // file. Removing the import now only to re-add it would churn the
 // circular-dep analysis documented in core.mjs::open().
 import { NoteEditor } from "./core.mjs";
-
-// 36-color palette for the icon picker. 3 rows x 12 cols, fills the
-// popup width edge-to-edge. Independent from the text/highlight/Btn/Ln
-// pickers' SWATCHES (in toolbar.mjs) so we can tune this set without
-// disturbing the rest of the editor.
-const ICON_SWATCHES = [
-  // Row 1: neutrals (white -> black ramp)
-  "#ffffff","#e6e6e6","#cccccc","#b3b3b3","#999999","#808080",
-  "#666666","#4d4d4d","#333333","#1a1a1a","#0a0a0a","#000000",
-  // Row 2: vibrants across the hue spectrum
-  "#ff5555","#ff8c42","#ffd166","#a3e635","#4ade80","#22d3ee",
-  "#5a8cff","#818cf8","#c075f6","#f472b6","#ec4899","#f66744",
-  // Row 3: muted / earth tones for accent variety
-  "#7c2d12","#a16207","#65a30d","#0e7490","#1e40af","#581c87",
-  "#a16d3a","#b08968","#ddb892","#a07e6a","#5a4634","#2c2620",
-];
+import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // Module-level cache. `null` = not yet fetched; `[]` = fetched empty;
 // `[icons...]` = fetched with content. Survives across editor opens
@@ -155,41 +140,6 @@ export function renderIconHTML(id, color, size) {
   return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic"${style}></span>&nbsp;`;
 }
 
-// HSV <-> hex helpers used by the inline color picker. h: 0-360,
-// s/v: 0-1. Returned hex strings always lowercase, 6-digit.
-function hexToHsv(hex) {
-  const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(hex || "");
-  if (!m) return { h: 0, s: 0, v: 1 };
-  const r = parseInt(m[1], 16) / 255;
-  const g = parseInt(m[2], 16) / 255;
-  const b = parseInt(m[3], 16) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b);
-  const d = max - min;
-  let h = 0;
-  if (d > 0) {
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    h *= 60;
-    if (h < 0) h += 360;
-  }
-  return { h, s: max === 0 ? 0 : d / max, v: max };
-}
-function hsvToHex(h, s, v) {
-  const c = v * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = v - c;
-  let r = 0, g = 0, b = 0;
-  if      (h < 60)  { r = c; g = x; }
-  else if (h < 120) { r = x; g = c; }
-  else if (h < 180) { g = c; b = x; }
-  else if (h < 240) { g = x; b = c; }
-  else if (h < 300) { r = x; b = c; }
-  else              { r = c; b = x; }
-  const to8 = (n) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
-  return "#" + to8(r) + to8(g) + to8(b);
-}
-
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
 // outside-click dismiss, mousedown-preventDefault to keep the
 // editor's selection alive). Hosts the color swatches + size pills +
@@ -222,201 +172,21 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     return;
   }
 
-  // Color section: 4x7 swatch grid + a single row underneath with the
-  // hex input on the left and Reset on the right. No native color
-  // picker (it covered the icon grid with a popup-over-popup), no
-  // confusing X tile - Reset clears the staged color so icons render
-  // with the editor's currentColor.
-  const colorSection = document.createElement("div");
-  colorSection.className = "pix-note-iconpop-colorsection";
-
-  const colorGrid = document.createElement("div");
-  colorGrid.className = "pix-note-iconpop-color-grid";
-  const colorTiles = [];
-  for (const hex of ICON_SWATCHES) {
-    const tile = document.createElement("button");
-    tile.type = "button";
-    tile.className = "pix-note-iconpop-color-tile";
-    tile.style.background = hex;
-    tile.title = hex;
-    tile.addEventListener("mousedown", (e) => e.preventDefault());
-    tile.addEventListener("click", (e) => {
-      e.stopPropagation();
-      editor._iconPickerColor = hex;
-      hexInput.value = hex;
-      curHsv = hexToHsv(hex);
-      renderSV();
-      renderHue();
-      refreshColorSelection();
+  // Pixaroma Color Picker (shared module). Live preview: each change
+  // writes editor._iconPickerColor and re-tints the icon-grid glyphs
+  // so the user sees what will land before clicking an icon. Click an
+  // icon to commit (the apply step). showClear is intentionally OFF
+  // here - icons need a concrete color to render via background-color.
+  const cp = createPixaromaColorPicker({
+    initialColor: editor._iconPickerColor || "#f66744",
+    showClear: false,
+    resetColor: "#f66744",
+    onChange: (c) => {
+      editor._iconPickerColor = c;
       repaintGrid();
-    });
-    colorGrid.appendChild(tile);
-    colorTiles.push({ tile, hex });
-  }
-  colorSection.appendChild(colorGrid);
-
-  // Inline HSV picker - SV plane + hue strip, custom canvas, no native
-  // dialog (which was opening a popup-over-popup that covered the icon
-  // grid). Drag inside the SV plane to pick saturation x value; drag
-  // along the hue strip to pick hue. Live-syncs the staged color, the
-  // hex input, the swatch-selection ring, and the icon-grid preview.
-  const svRow = document.createElement("div");
-  svRow.className = "pix-note-iconpop-svrow";
-
-  const svCanvas = document.createElement("canvas");
-  svCanvas.width  = 168;
-  svCanvas.height = 80;
-  svCanvas.className = "pix-note-iconpop-sv";
-
-  const hueCanvas = document.createElement("canvas");
-  hueCanvas.width  = 14;
-  hueCanvas.height = 80;
-  hueCanvas.className = "pix-note-iconpop-hue";
-
-  svRow.appendChild(svCanvas);
-  svRow.appendChild(hueCanvas);
-  colorSection.appendChild(svRow);
-
-  // Picker state initialised from current staged color (or default
-  // orange if none). Kept local to the popup; on each drag we write
-  // back to editor._iconPickerColor as a hex string.
-  const initSeed = /^#[0-9a-f]{6}$/i.test(editor._iconPickerColor || "")
-    ? editor._iconPickerColor
-    : "#f66744";
-  let curHsv = hexToHsv(initSeed);
-
-  function renderSV() {
-    // Match the canvas's pixel buffer to its rendered CSS width so the
-    // picker dot stays a circle (otherwise the bitmap is stretched
-    // horizontally and the marker becomes oval).
-    const cssW = svCanvas.clientWidth || svCanvas.width;
-    if (cssW > 0 && svCanvas.width !== cssW) svCanvas.width = cssW;
-    const ctx = svCanvas.getContext("2d");
-    const w = svCanvas.width, h = svCanvas.height;
-    const hueHex = hsvToHex(curHsv.h, 1, 1);
-    const g1 = ctx.createLinearGradient(0, 0, w, 0);
-    g1.addColorStop(0, "#ffffff");
-    g1.addColorStop(1, hueHex);
-    ctx.fillStyle = g1;
-    ctx.fillRect(0, 0, w, h);
-    const g2 = ctx.createLinearGradient(0, 0, 0, h);
-    g2.addColorStop(0, "rgba(0,0,0,0)");
-    g2.addColorStop(1, "rgba(0,0,0,1)");
-    ctx.fillStyle = g2;
-    ctx.fillRect(0, 0, w, h);
-    const mx = curHsv.s * w;
-    const my = (1 - curHsv.v) * h;
-    ctx.beginPath();
-    ctx.arc(mx, my, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = "#fff";
-    ctx.lineWidth = 2;
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(mx, my, 5, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(0,0,0,0.55)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-  function renderHue() {
-    const ctx = hueCanvas.getContext("2d");
-    const w = hueCanvas.width, h = hueCanvas.height;
-    const grad = ctx.createLinearGradient(0, 0, 0, h);
-    for (let i = 0; i <= 6; i++) {
-      grad.addColorStop(i / 6, hsvToHex((i / 6) * 360, 1, 1));
-    }
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, w, h);
-    const my = (curHsv.h / 360) * h;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, my - 1.5, w, 3);
-    ctx.fillStyle = "rgba(0,0,0,0.55)";
-    ctx.fillRect(0, my - 0.5, w, 1);
-  }
-  function applyPicker() {
-    const hex = hsvToHex(curHsv.h, curHsv.s, curHsv.v);
-    editor._iconPickerColor = hex;
-    if (hexInput) hexInput.value = hex;
-    renderSV();
-    renderHue();
-    refreshColorSelection();
-    repaintGrid();
-  }
-
-  let dragging = null;
-  const onSV = (e) => {
-    const r = svCanvas.getBoundingClientRect();
-    const x = Math.max(0, Math.min(svCanvas.width,  e.clientX - r.left));
-    const y = Math.max(0, Math.min(svCanvas.height, e.clientY - r.top));
-    curHsv.s = x / svCanvas.width;
-    curHsv.v = 1 - y / svCanvas.height;
-    applyPicker();
-  };
-  const onHue = (e) => {
-    const r = hueCanvas.getBoundingClientRect();
-    const y = Math.max(0, Math.min(hueCanvas.height, e.clientY - r.top));
-    curHsv.h = (y / hueCanvas.height) * 360;
-    applyPicker();
-  };
-  svCanvas.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    dragging = "sv";
-    onSV(e);
+    },
   });
-  hueCanvas.addEventListener("mousedown", (e) => {
-    e.preventDefault();
-    dragging = "hue";
-    onHue(e);
-  });
-  const onWinMove = (e) => {
-    if (dragging === "sv") onSV(e);
-    else if (dragging === "hue") onHue(e);
-  };
-  const onWinUp = () => { dragging = null; };
-  window.addEventListener("mousemove", onWinMove);
-  window.addEventListener("mouseup", onWinUp);
-
-  const hexRow = document.createElement("div");
-  hexRow.className = "pix-note-iconpop-hexrow";
-
-  const hexInput = document.createElement("input");
-  hexInput.type = "text";
-  hexInput.value = editor._iconPickerColor || "";
-  hexInput.placeholder = "#rrggbb";
-  hexInput.spellcheck = false;
-  hexInput.addEventListener("mousedown", (e) => e.stopPropagation());
-  hexInput.oninput = () => {
-    const v = hexInput.value.startsWith("#") ? hexInput.value : `#${hexInput.value}`;
-    if (/^#[0-9a-f]{6}$/i.test(v)) {
-      editor._iconPickerColor = v;
-      curHsv = hexToHsv(v);
-      renderSV();
-      renderHue();
-      refreshColorSelection();
-      repaintGrid();
-    }
-  };
-  hexRow.appendChild(hexInput);
-
-  const resetBtn = document.createElement("button");
-  resetBtn.type = "button";
-  resetBtn.className = "pix-note-iconpop-resetbtn";
-  resetBtn.title = "Reset to default color";
-  resetBtn.textContent = "Reset";
-  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
-  resetBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    editor._iconPickerColor = "#f66744";
-    hexInput.value = "#f66744";
-    curHsv = hexToHsv("#f66744");
-    renderSV();
-    renderHue();
-    refreshColorSelection();
-    repaintGrid();
-  });
-  hexRow.appendChild(resetBtn);
-
-  colorSection.appendChild(hexRow);
-  pop.appendChild(colorSection);
+  pop.appendChild(cp.element);
 
   // Size pills row
   const sizeRow = document.createElement("div");
@@ -450,16 +220,6 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     const cur = editor._iconPickerSize || "m";
     for (const p of sizePills) {
       p.classList.toggle("selected", p.getAttribute("data-size-id") === cur);
-    }
-  }
-
-  function refreshColorSelection() {
-    const cur = editor._iconPickerColor;
-    for (const { tile, hex } of colorTiles) {
-      tile.classList.toggle(
-        "selected",
-        !!cur && hex.toLowerCase() === cur.toLowerCase(),
-      );
     }
   }
 
@@ -501,24 +261,17 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     }
   }
 
-  refreshColorSelection();
   refreshSizeSelection();
   repaintGrid();
 
   document.body.appendChild(pop);
-  // Now that the popup is in the DOM, the SV canvas has a meaningful
-  // clientWidth - render after append so the pixel buffer matches the
-  // rendered size and the marker dot stays circular.
-  renderSV();
-  renderHue();
 
   const onDocDown = (e) => {
     if (!pop.contains(e.target) && e.target !== anchorBtn) close();
   };
   function close() {
     document.removeEventListener("mousedown", onDocDown, true);
-    window.removeEventListener("mousemove", onWinMove);
-    window.removeEventListener("mouseup", onWinUp);
+    cp.destroy();
     pop.remove();
   }
   setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
