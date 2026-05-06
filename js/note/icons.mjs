@@ -282,7 +282,6 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
         !!cur && hex.toLowerCase() === cur.toLowerCase(),
       );
     }
-    clearBtn.classList.toggle("selected", !cur);
   }
 
   // Icon grid
