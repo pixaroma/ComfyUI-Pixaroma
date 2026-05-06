@@ -180,30 +180,6 @@ export class NoteEditor {
         this._refreshActiveStates?.();
       };
       editArea.addEventListener("keydown", this._iconKeyHandler);
-
-      // Click on an icon: explicitly place the caret on whichever side
-      // of the icon was clicked. Without this, the browser's default
-      // handling of clicks-on-inline-block-with-no-text-content was
-      // flaky - sometimes treating it as "select the element" and
-      // requiring 2-3 clicks to land a caret. Using mousedown +
-      // preventDefault preempts the browser's selection handling, so
-      // the caret lands first try every time.
-      this._iconClickHandler = (e) => {
-        const ic = e.target?.closest?.(".pix-note-ic");
-        if (!ic || !editArea.contains(ic)) return;
-        e.preventDefault();
-        const rect = ic.getBoundingClientRect();
-        const mid  = rect.left + rect.width / 2;
-        const range = document.createRange();
-        if (e.clientX < mid) range.setStartBefore(ic);
-        else                 range.setStartAfter(ic);
-        range.collapse(true);
-        const sel = window.getSelection();
-        sel.removeAllRanges();
-        sel.addRange(range);
-        editArea.focus();
-      };
-      editArea.addEventListener("mousedown", this._iconClickHandler);
     }
     // Don't use installFocusTrap here — its mouseup refocus pulls focus
     // away from the contenteditable on any button click (breaking typing)
@@ -719,7 +695,6 @@ export class NoteEditor {
     // to (the contenteditable inside _el) was already removed above, so
     // the listener is gone with it; this just clears the closure ref.
     this._iconKeyHandler = null;
-    this._iconClickHandler = null;
   }
 
   save() {

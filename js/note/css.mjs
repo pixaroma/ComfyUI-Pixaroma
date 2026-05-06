@@ -276,13 +276,13 @@ export function injectCSS() {
   height: 18px;
   vertical-align: -4px;
   margin: 0 2px;
-  /* user-select: none stops browsers treating clicks on the icon as a
-     "begin text-selection drag" gesture, which made caret placement
-     flaky. The mousedown handler in core.mjs (`onIconClickPlace`)
-     positions the caret on whichever side of the icon was clicked. */
-  user-select: none;
-  -webkit-user-select: none;
-  cursor: text;
+  /* pointer-events: none lets clicks pass through to the surrounding
+     text so the caret lands based on horizontal position rather than
+     getting absorbed by the icon's inline-block "select element"
+     behaviour. Solves the "click between icon and text takes 3 tries"
+     UX problem. The picker popup tiles still work because their click
+     handler is on the parent <button>, which propagates up. */
+  pointer-events: none;
   background-color: currentColor;
   -webkit-mask-size: contain;
           mask-size: contain;
