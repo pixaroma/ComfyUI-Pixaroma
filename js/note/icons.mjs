@@ -117,26 +117,26 @@ export function deriveLabel(stem) {
 // `id` must match the sanitizer slug regex. If it doesn't, we emit a
 // span with the bad id stripped — sanitizer would do the same at save
 // time, so pre-strip keeps the DOM consistent.
-export function renderIconHTML(id, color) {
+export function renderIconHTML(id, color, size) {
   const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : "";
-  // Optional `color` arg: if a hex is given, the icon carries an
-  // inline style="color:..." — rendered via background-color:
-  // currentColor in the .pix-note-ic CSS rule. The caller passes
-  // whatever color the A text-color picker currently has staged,
-  // so "pick green → insert icon" yields a green icon (matches
-  // Notion-like "picked color wins for new content" UX).
+  // Optional `color` arg: hex string. If valid, emits inline
+  // style="color:..." rendered via background-color: currentColor in
+  // the .pix-note-ic CSS rule. If missing/invalid, no inline style is
+  // emitted and the icon inherits currentColor.
   //
-  // If `color` is missing or invalid, no inline style is emitted —
-  // the icon then inherits currentColor from its surroundings
-  // (default editor text color = white-ish, or an ancestor span's
-  // color if the caret was inside one).
+  // Optional `size` arg: one of "s" | "m" | "l" | "xl" (lowercase).
+  // "m" or missing/invalid emits NO data-size attribute (default
+  // 1.2em from the base .pix-note-ic rule). Keeps saved markup
+  // minimal for the most common case.
   //
-  // Trailing &nbsp; is the caret's landing character — without it,
+  // Trailing &nbsp; is the caret's landing character - without it,
   // Chrome sometimes fails to place the caret after an empty
   // inline-block span. Same trick the Button Design pills use.
   const hasColor = /^#[0-9a-f]{3,8}$/i.test(color || "");
   const style = hasColor ? ` style="color:${color}"` : "";
-  return `<span data-ic="${safeId}" class="pix-note-ic"${style}></span>&nbsp;`;
+  const sizeAttr = (size === "s" || size === "l" || size === "xl")
+    ? ` data-size="${size}"` : "";
+  return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic"${style}></span>&nbsp;`;
 }
 
 // Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
