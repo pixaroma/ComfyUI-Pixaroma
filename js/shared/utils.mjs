@@ -71,6 +71,8 @@ export function createDummyWidget(titleText, subtitleText, instructionText) {
       font-size: 10px;
       color: #555555;
       margin-top: 12px;
+      white-space: pre-line;
+      line-height: 1.4;
     `;
   container.appendChild(instruction);
 

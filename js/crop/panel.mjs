@@ -2,47 +2,82 @@
 // Pixaroma Image Crop — On-Node Panel
 // ============================================================
 // Compact custom DOM widget for the node body. Exposes W, H, X, Y,
-// Ratio combo, and a one-shot Center button. Always-visible layout
-// (no collapse). Source of truth = cropJson (read in refresh(),
-// written on every commit).
+// Ratio combo, and an Alignment combo (replaces the one-shot Center
+// button — when ≠ Free, X/Y are auto-computed and locked).
+// Source of truth = cropJson (read in refresh(), written on every commit).
+// Inputs are <input type=text> so the user can type math expressions
+// like "1024+256" or "1024*2" — evaluated safely on commit.
 // ============================================================
 
 import { BRAND } from "../shared/index.mjs";
 import { RATIOS } from "./core.mjs";
+import { ALIGNMENTS, computeAlignedXY, defaultAlignForMeta } from "./alignments.mjs";
+
+// Build the ratio combo label. The "Free" entry becomes "Free Ratio" so it's
+// distinguishable from the alignment dropdown's Free; other entries get a
+// " Square" / " Landscape" / " Portrait" suffix so users can scan by orientation.
+function ratioLabel(r) {
+  if (r.label === "Free") return "Free Ratio";
+  if (r.w === 0 || r.h === 0) return r.label;
+  if (r.w === r.h) return r.label + " Square";
+  return r.label + (r.w > r.h ? " Landscape" : " Portrait");
+}
+
+// Safe arithmetic-only expression evaluator. Allows digits, whitespace,
+// + - * / ( ) and . / , (decimals). Anything else → NaN. No identifiers,
+// no property access, no function calls — `Function()` body is just
+// "return (sanitised_expr)".
+function evalExpr(s) {
+  s = String(s).trim();
+  if (!s) return NaN;
+  if (!/^[\d\s+\-*/().,]+$/.test(s)) return NaN;
+  // Allow comma as decimal separator (EU locales).
+  s = s.replace(/,/g, ".");
+  try {
+    const r = Function(`"use strict"; return (${s})`)();
+    return typeof r === "number" && isFinite(r) ? r : NaN;
+  } catch {
+    return NaN;
+  }
+}
 
 const PANEL_CSS = `
 .pix-cropp {
-  background: #2a2a2a;
-  border-radius: 4px;
-  margin: 4px 8px;
-  padding: 5px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 5px 8px;
   font-family: 'Segoe UI', sans-serif;
   font-size: 11px;
-  color: #ddd;
+  color: #ccc;
   user-select: none;
   box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
-.pix-cropp-row { display: flex; gap: 4px; align-items: center; margin-bottom: 4px; }
-.pix-cropp-row:last-child { margin-bottom: 0; }
+.pix-cropp-row { display: flex; gap: 5px; align-items: stretch; }
 .pix-cropp-cell {
   flex: 1;
-  background: #1f1f1f;
-  border-radius: 3px;
-  padding: 2px 6px;
+  background: #1d1d1d;
+  border: 1px solid #666;
+  border-radius: 4px;
+  padding: 4px 8px;
   display: flex;
   align-items: center;
-  gap: 4px;
-  min-height: 22px;
+  gap: 6px;
+  min-height: 24px;
   box-sizing: border-box;
+  transition: border-color 0.08s;
 }
+.pix-cropp-cell:hover { border-color: #888; }
 .pix-cropp-cell label {
-  font-size: 9px;
+  font-size: 10px;
   color: #777;
-  text-transform: uppercase;
   letter-spacing: 0.4px;
   flex: 0 0 auto;
 }
-.pix-cropp-cell input[type=number] {
+.pix-cropp-cell input[type=text] {
   flex: 1;
   background: transparent;
   color: #fff;
@@ -53,47 +88,29 @@ const PANEL_CSS = `
   font-variant-numeric: tabular-nums;
   padding: 0;
   font-family: inherit;
-  text-align: right;
-  -moz-appearance: textfield;
-}
-.pix-cropp-cell input[type=number]::-webkit-outer-spin-button,
-.pix-cropp-cell input[type=number]::-webkit-inner-spin-button {
-  -webkit-appearance: none; margin: 0;
-}
-.pix-cropp-times {
-  flex: 0 0 auto;
-  color: #777;
-  padding: 0 2px;
-  font-size: 12px;
+  text-align: center;
 }
 .pix-cropp-combo {
-  background: #1f1f1f;
-  color: #ddd;
-  border: 0;
+  flex: 1;
+  min-width: 0;
+  background: #1d1d1d;
+  color: #ccc;
+  border: 1px solid #666;
+  border-radius: 4px;
   outline: 0;
-  padding: 3px 4px;
-  border-radius: 3px;
+  padding: 4px 4px;
   font-size: 11px;
   font-family: inherit;
-  flex: 1;
   cursor: pointer;
-  min-height: 22px;
-}
-.pix-cropp-btn {
-  flex: 1;
-  background: #3a2218;
-  color: ${BRAND};
-  border: 0;
-  border-radius: 3px;
-  padding: 4px 6px;
-  font-size: 11px;
-  font-family: inherit;
-  font-weight: 500;
-  cursor: pointer;
+  min-height: 24px;
+  transition: border-color 0.08s;
   text-align: center;
-  min-height: 22px;
+  text-align-last: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
-.pix-cropp-btn:hover { background: #4a2a1c; }
+.pix-cropp-combo:hover { border-color: #888; }
 `;
 
 let _cssInjected = false;
@@ -121,27 +138,21 @@ export function createCropPanel(callbacks) {
   const root = document.createElement("div");
   root.className = "pix-cropp";
 
-  // ── Row 1: W × H ──
+  // ── Row 1: W / H ──
   const row1 = document.createElement("div");
   row1.className = "pix-cropp-row";
-
-  const wInput = makeNumberInput("W");
-  const times1 = document.createElement("div");
-  times1.className = "pix-cropp-times";
-  times1.textContent = "×";
-  const hInput = makeNumberInput("H");
-
-  row1.append(wInput.cell, times1, hInput.cell);
+  const wInput = makeTextInput("W");
+  const hInput = makeTextInput("H");
+  row1.append(wInput.cell, hInput.cell);
 
   // ── Row 2: X / Y ──
   const row2 = document.createElement("div");
   row2.className = "pix-cropp-row";
-
-  const xInput = makeNumberInput("X", 0);
-  const yInput = makeNumberInput("Y", 0);
+  const xInput = makeTextInput("X", 0);
+  const yInput = makeTextInput("Y", 0);
   row2.append(xInput.cell, yInput.cell);
 
-  // ── Row 3: Ratio + Center ──
+  // ── Row 3: Ratio + Alignment ──
   const row3 = document.createElement("div");
   row3.className = "pix-cropp-row";
 
@@ -150,16 +161,20 @@ export function createCropPanel(callbacks) {
   for (let i = 0; i < RATIOS.length; i++) {
     const opt = document.createElement("option");
     opt.value = String(i);
-    opt.textContent = RATIOS[i].label;
+    opt.textContent = ratioLabel(RATIOS[i]);
     ratioSelect.appendChild(opt);
   }
 
-  const centerBtn = document.createElement("button");
-  centerBtn.className = "pix-cropp-btn";
-  centerBtn.type = "button";
-  centerBtn.textContent = "⊕ Center";
+  const alignSelect = document.createElement("select");
+  alignSelect.className = "pix-cropp-combo";
+  for (const a of ALIGNMENTS) {
+    const opt = document.createElement("option");
+    opt.value = a.id;
+    opt.textContent = a.label;
+    alignSelect.appendChild(opt);
+  }
 
-  row3.append(ratioSelect, centerBtn);
+  row3.append(ratioSelect, alignSelect);
 
   root.append(row1, row2, row3);
 
@@ -211,66 +226,98 @@ export function createCropPanel(callbacks) {
   }
 
   // Apply ratio lock to (w, h) given ratioIdx; returns adjusted {w, h}.
-  function applyRatio(w, h, ratioIdx, driven) {
+  // Mirrors the editor's _computeWH: when the OTHER dimension would overflow
+  // the image bounds (e.g. typing W=1024 with 9:16 on a 1024×1024 image), the
+  // DRIVEN dimension is shrunk so the cropped rect fits — otherwise picking a
+  // portrait ratio on a square source silently collapsed to a square crop.
+  function applyRatio(targetW, targetH, ratioIdx, driven) {
     const r = RATIOS[ratioIdx];
-    if (!r || r.w === 0) return { w, h };
+    if (!r || r.w === 0) return { w: targetW, h: targetH };
     const ratio = r.w / r.h;
+    const dims = getImageDims?.() || null;
+    const maxW = dims ? dims.w : Infinity;
+    const maxH = dims ? dims.h : Infinity;
+
     if (driven === "w") {
-      return { w, h: Math.round(w / ratio) };
+      let w = Math.max(1, Math.round(targetW));
+      w = Math.min(w, maxW, Math.floor(maxH * ratio));
+      const h = Math.round(w / ratio);
+      return { w, h };
     } else {
-      return { w: Math.round(h * ratio), h };
+      let h = Math.max(1, Math.round(targetH));
+      h = Math.min(h, maxH, Math.floor(maxW / ratio));
+      const w = Math.round(h * ratio);
+      return { w, h };
     }
+  }
+
+  // Compute final X/Y honoring the active alignment. Falls back to existing
+  // values from cropJson when alignment is "free" or dims are missing.
+  function resolveXY(alignId, w, h, fallbackMeta) {
+    const aligned = computeAlignedXY(alignId, w, h, getImageDims?.() || null);
+    if (aligned) return aligned;
+    return {
+      x: clampX(fallbackMeta.crop_x ?? 0, w),
+      y: clampY(fallbackMeta.crop_y ?? 0, h),
+    };
+  }
+
+  // Read a numeric value from a text input, supporting math expressions.
+  // Falls back to the supplied default when expression evaluation fails.
+  function readNum(inputEl, dflt) {
+    const v = evalExpr(inputEl.value);
+    return Number.isFinite(v) ? v : dflt;
   }
 
   // ── Event handlers ──
 
   function onWHCommit(driven) {
     const meta = readMeta();
-    let w = parseFloat(wInput.input.value);
-    let h = parseFloat(hInput.input.value);
     const ratioIdx = parseInt(ratioSelect.value, 10) || 0;
-    const adjusted = applyRatio(w, h, ratioIdx, driven);
-    w = clampW(adjusted.w);
-    h = clampH(adjusted.h);
-    const x = clampX(meta.crop_x ?? 0, w);
-    const y = clampY(meta.crop_y ?? 0, h);
-    commit({ crop_w: w, crop_h: h, crop_x: x, crop_y: y, ratio_idx: ratioIdx });
+    const alignId = meta.crop_align || defaultAlignForMeta(meta);
+    const wRaw = readNum(wInput.input, meta.crop_w ?? 1);
+    const hRaw = readNum(hInput.input, meta.crop_h ?? 1);
+    const adjusted = applyRatio(wRaw, hRaw, ratioIdx, driven);
+    const w = clampW(adjusted.w);
+    const h = clampH(adjusted.h);
+    const xy = resolveXY(alignId, w, h, meta);
+    commit({ crop_w: w, crop_h: h, crop_x: xy.x, crop_y: xy.y, ratio_idx: ratioIdx, crop_align: alignId });
     refresh();
   }
 
   function onXYCommit() {
+    // Editing X or Y is treated as overriding the lock — alignment
+    // automatically switches to Free so the user's typed coords stick.
     const meta = readMeta();
-    const w = clampW(meta.crop_w ?? wInput.input.value);
-    const h = clampH(meta.crop_h ?? hInput.input.value);
-    const x = clampX(parseFloat(xInput.input.value), w);
-    const y = clampY(parseFloat(yInput.input.value), h);
-    commit({ crop_x: x, crop_y: y });
+    const w = clampW(meta.crop_w ?? readNum(wInput.input, 1));
+    const h = clampH(meta.crop_h ?? readNum(hInput.input, 1));
+    const x = clampX(readNum(xInput.input, 0), w);
+    const y = clampY(readNum(yInput.input, 0), h);
+    commit({ crop_x: x, crop_y: y, crop_align: "free" });
     refresh();
   }
 
   function onRatioCommit() {
-    const ratioIdx = parseInt(ratioSelect.value, 10) || 0;
     const meta = readMeta();
-    let w = clampW(meta.crop_w ?? parseFloat(wInput.input.value));
-    let h = clampH(meta.crop_h ?? parseFloat(hInput.input.value));
-    const adjusted = applyRatio(w, h, ratioIdx, "w");
-    w = clampW(adjusted.w);
-    h = clampH(adjusted.h);
-    const x = clampX(meta.crop_x ?? 0, w);
-    const y = clampY(meta.crop_y ?? 0, h);
-    commit({ ratio_idx: ratioIdx, crop_w: w, crop_h: h, crop_x: x, crop_y: y });
+    const ratioIdx = parseInt(ratioSelect.value, 10) || 0;
+    const alignId = meta.crop_align || defaultAlignForMeta(meta);
+    const wRaw = clampW(meta.crop_w ?? readNum(wInput.input, 1));
+    const hRaw = clampH(meta.crop_h ?? readNum(hInput.input, 1));
+    const adjusted = applyRatio(wRaw, hRaw, ratioIdx, "w");
+    const w = clampW(adjusted.w);
+    const h = clampH(adjusted.h);
+    const xy = resolveXY(alignId, w, h, meta);
+    commit({ ratio_idx: ratioIdx, crop_w: w, crop_h: h, crop_x: xy.x, crop_y: xy.y, crop_align: alignId });
     refresh();
   }
 
-  function onCenterClick() {
-    const dims = getImageDims?.() || null;
-    if (!dims) return;
+  function onAlignmentCommit() {
     const meta = readMeta();
-    const w = clampW(meta.crop_w ?? wInput.input.value);
-    const h = clampH(meta.crop_h ?? hInput.input.value);
-    const x = Math.max(0, Math.round((dims.w - w) / 2));
-    const y = Math.max(0, Math.round((dims.h - h) / 2));
-    commit({ crop_w: w, crop_h: h, crop_x: x, crop_y: y });
+    const alignId = alignSelect.value;
+    const w = clampW(meta.crop_w ?? readNum(wInput.input, 1));
+    const h = clampH(meta.crop_h ?? readNum(hInput.input, 1));
+    const xy = resolveXY(alignId, w, h, meta);
+    commit({ crop_align: alignId, crop_w: w, crop_h: h, crop_x: xy.x, crop_y: xy.y });
     refresh();
   }
 
@@ -279,17 +326,39 @@ export function createCropPanel(callbacks) {
   xInput.input.addEventListener("change", onXYCommit);
   yInput.input.addEventListener("change", onXYCommit);
   ratioSelect.addEventListener("change", onRatioCommit);
-  centerBtn.addEventListener("click", onCenterClick);
+  alignSelect.addEventListener("change", onAlignmentCommit);
+
+  // Up/Down arrows act as numeric spinners on the text inputs (since
+  // type=text doesn't get them natively). Shift = ×8 step for fast nudges.
+  function attachArrowSpinner(inputEl) {
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const cur = evalExpr(inputEl.value);
+      if (!Number.isFinite(cur)) return;
+      const step = e.shiftKey ? 8 : 1;
+      const delta = e.key === "ArrowUp" ? step : -step;
+      inputEl.value = String(Math.max(0, Math.round(cur + delta)));
+      inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+  }
+  for (const el of [wInput.input, hInput.input, xInput.input, yInput.input]) {
+    attachArrowSpinner(el);
+  }
 
   // Block keyboard from bubbling to ComfyUI canvas (would otherwise pan/zoom).
-  for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ratioSelect]) {
+  for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ratioSelect, alignSelect]) {
     el.addEventListener("keydown", (e) => e.stopPropagation());
   }
 
   // ── Refresh: read cropJson + image dims, populate inputs ──
+  // Always force-updates input values (no activeElement guard) so a typed
+  // expression like "1024+512" gets replaced with its evaluated result on
+  // commit, even if the input is still focused after pressing Enter.
   function refresh() {
     const meta = readMeta();
     const dims = getImageDims?.() || null;
+    const alignId = meta.crop_align || defaultAlignForMeta(meta);
 
     let w, h, x, y;
     if (meta.crop_w) {
@@ -298,37 +367,34 @@ export function createCropPanel(callbacks) {
       x = Math.round(meta.crop_x ?? 0);
       y = Math.round(meta.crop_y ?? 0);
     } else if (dims) {
-      w = dims.w;
-      h = dims.h;
-      x = 0;
-      y = 0;
+      w = dims.w; h = dims.h; x = 0; y = 0;
     } else {
-      w = 1024;
-      h = 1024;
-      x = 0;
-      y = 0;
+      w = 1024; h = 1024; x = 0; y = 0;
     }
 
-    if (document.activeElement !== wInput.input) wInput.input.value = w;
-    if (document.activeElement !== hInput.input) hInput.input.value = h;
-    if (document.activeElement !== xInput.input) xInput.input.value = x;
-    if (document.activeElement !== yInput.input) yInput.input.value = y;
+    wInput.input.value = w;
+    hInput.input.value = h;
+    xInput.input.value = x;
+    yInput.input.value = y;
     ratioSelect.value = String(meta.ratio_idx ?? 0);
+    alignSelect.value = alignId;
   }
 
   return { el: root, refresh };
 }
 
-// Internal helper — builds a labelled cell with a number input.
-function makeNumberInput(label, defaultVal) {
+// Internal helper — builds a labelled cell with a text input.
+// type=text (not number) so the user can type math expressions like
+// "1024+512" — evalExpr is called on commit.
+function makeTextInput(label, defaultVal) {
   const cell = document.createElement("div");
   cell.className = "pix-cropp-cell";
   const lbl = document.createElement("label");
   lbl.textContent = label;
   const input = document.createElement("input");
-  input.type = "number";
-  input.min = "0";
-  input.step = "1";
+  input.type = "text";
+  input.inputMode = "numeric";
+  input.spellcheck = false;
   if (defaultVal != null) input.value = String(defaultVal);
   cell.append(lbl, input);
   return { cell, input };

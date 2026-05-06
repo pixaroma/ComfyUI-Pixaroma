@@ -124,9 +124,13 @@ class PixaromaCrop:
     def _crop_tensor(self, tensor, meta):
         """Crop an upstream IMAGE tensor [B,H,W,C] using the saved rect.
 
-        Rect coords are scaled proportionally if upstream dims differ from the
-        original_w/original_h captured at editor save time. If meta is empty
-        (user wired upstream but never opened the editor), pass through unmodified.
+        Coordinates are treated as ABSOLUTE pixels (no proportional rescale
+        from original_w/original_h). The numeric panel + editor both write
+        literal pixel values; rescaling on dim mismatch was confusing — typing
+        W=430 on a 1920-wide source should crop 430 px, not "the same fraction"
+        of the new image. Out-of-bounds coords are clamped to the image rect.
+        If meta is empty (user wired upstream but never opened the editor or
+        edited the panel), pass through unmodified.
         """
         if tensor.dim() != 4 or tensor.shape[0] == 0:
             # Unexpected shape -- pass through unmodified
@@ -145,17 +149,6 @@ class PixaromaCrop:
         crop_y = float(meta.get("crop_y", 0))
         crop_w = float(meta.get("crop_w", w))
         crop_h = float(meta.get("crop_h", h))
-        orig_w = float(meta.get("original_w", w))
-        orig_h = float(meta.get("original_h", h))
-
-        # Scale rect proportionally if upstream dims changed since save
-        if orig_w > 0 and orig_h > 0 and (orig_w != w or orig_h != h):
-            sx = w / orig_w
-            sy = h / orig_h
-            crop_x *= sx
-            crop_y *= sy
-            crop_w *= sx
-            crop_h *= sy
 
         x0 = max(0, int(round(crop_x)))
         y0 = max(0, int(round(crop_y)))

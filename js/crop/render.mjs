@@ -389,11 +389,18 @@ proto._onSliderChange = function (key) {
       nh = result.h;
     }
     this._setCropCentered(nw, nh);
+    // Sticky alignment: re-anchor X/Y after a size change.
+    this._applyAlignment?.();
   } else {
     const nx = parseFloat(this.el.sliderX.numInput.value) || 0;
     const ny = parseFloat(this.el.sliderY.numInput.value) || 0;
     this.cropX = Math.max(0, Math.min(nx, this.imgW - this.cropW));
     this.cropY = Math.max(0, Math.min(ny, this.imgH - this.cropH));
+    // User overrode position → switch alignment to Free so it sticks.
+    if (this.cropAlign && this.cropAlign !== "free") {
+      this.cropAlign = "free";
+      if (this._alignSelect) this._alignSelect.value = "free";
+    }
   }
   this._applyConstraints();
   this._draw();
@@ -446,6 +453,7 @@ proto._save = async function () {
       crop_h: ch,
       ratio_idx: this.ratioIdx,
       snap_idx: this.snapIdx,
+      crop_align: this.cropAlign || "free",
       project_id: this.projectId,
       composite_path: compositePath,
       src_path: this._srcPath,

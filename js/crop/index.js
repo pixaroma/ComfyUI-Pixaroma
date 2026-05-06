@@ -142,6 +142,13 @@ app.registerExtension({
     node.size = [300, 380];  // taller default to fit the new panel
     node.imgs = null; // suppress native ComfyUI preview
 
+    // Branded default colors (match Resolution Pixaroma — title bar #1d1d1d
+    // matches the panel cell surface, body #2a2a2a is the panel surface, so
+    // the whole node reads as one cohesive dark panel). Only applied when
+    // the user hasn't picked an override via right-click → Color.
+    if (!node.color)   node.color   = "#1d1d1d";
+    if (!node.bgcolor) node.bgcolor = "#2a2a2a";
+
     // ── IMAGE input socket ──────────────────────────────────────────────
     // Only add if not already present (workflow restore re-creates inputs first).
     if (!(node.inputs || []).some((inp) => inp.name === "image")) {
@@ -152,7 +159,7 @@ app.registerExtension({
     const parts = createNodePreview(
       "Image Crop",
       "Pixaroma",
-      "Click 'Open Crop' to start",
+      "Wire an IMAGE input and Run the workflow,\nor click 'Open Crop' to load an image",
     );
 
     // ── State -- mirrors the hidden crop_json widget ──
@@ -180,17 +187,13 @@ app.registerExtension({
           showNodePreview(parts, url, `${w}×${h}`, node);
           return;
         }
-        // Mirror nodes/node_crop.py::_crop_tensor exactly: scale, then round
-        // ENDPOINTS (not width). Subtracting rounded endpoints guarantees the
-        // mini-preview dims match what Python returns -- otherwise rounding
-        // the width separately can drift by 1px under scaling.
-        const ow = meta.original_w || w;
-        const oh = meta.original_h || h;
-        const sx = w / ow, sy = h / oh;
-        const x0 = Math.max(0, Math.round(meta.crop_x * sx));
-        const y0 = Math.max(0, Math.round(meta.crop_y * sy));
-        const x1 = Math.min(w, Math.round((meta.crop_x + meta.crop_w) * sx));
-        const y1 = Math.min(h, Math.round((meta.crop_y + meta.crop_h) * sy));
+        // Mirror nodes/node_crop.py::_crop_tensor: absolute pixel coords,
+        // clamped to image bounds. No proportional rescale — typing W=430
+        // means crop 430 px, regardless of source dims.
+        const x0 = Math.max(0, Math.round(meta.crop_x));
+        const y0 = Math.max(0, Math.round(meta.crop_y));
+        const x1 = Math.min(w, Math.round(meta.crop_x + meta.crop_w));
+        const y1 = Math.min(h, Math.round(meta.crop_y + meta.crop_h));
         const cw = x1 - x0;
         const ch = y1 - y0;
         if (cw <= 0 || ch <= 0) {
@@ -247,7 +250,7 @@ app.registerExtension({
     // ── On-node panel (W, H, X, Y, Ratio, Center — all always visible) ──
     // Mounted BEFORE the CropWidget DOM widget so it renders ABOVE the
     // mini-preview in the node body.
-    const PANEL_H = 100; // 3 rows + padding + margin (Resolution Pixaroma fixed-size pattern)
+    const PANEL_H = 100; // 3 rows × 26 (cell + 1px border + padding) + 2 gaps × 5 + container padding 10
 
     const panel = createCropPanel({
       getCropJson: () => cropJson,
@@ -267,7 +270,7 @@ app.registerExtension({
       serialize: false,
       getMinHeight: () => PANEL_H,
       getMaxHeight: () => PANEL_H,
-      margin: 0,
+      margin: 5, // match the CropWidget mini-preview's gutter
     });
 
     // ── DOM widget (mini-preview) ──

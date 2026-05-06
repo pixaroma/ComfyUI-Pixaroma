@@ -12,6 +12,7 @@ import {
   createCanvasSettings,
   createCanvasToolbar,
 } from "../framework/index.mjs";
+import { ALIGNMENTS, computeAlignedXY } from "./alignments.mjs";
 
 export const RATIOS = [
   { label: "Free", w: 0, h: 0 },
@@ -66,6 +67,7 @@ export class CropEditor {
     this.cropH = 0;
     this.ratioIdx = 0;
     this.snapIdx = 0;
+    this.cropAlign = "free"; // "free" | "tl"/"tc"/"tr"/"ml"/"mc"/"mr"/"bl"/"bc"/"br"
     this._drag = null;
     this._scale = 1;
     this._srcPath = "";
@@ -109,6 +111,10 @@ export class CropEditor {
           this.snapIdx = data.snap_idx;
           this._snapGrid.setActive(data.snap_idx);
         }
+        if (typeof data.crop_align === "string") {
+          this.cropAlign = data.crop_align;
+        }
+        this._alignSelect && (this._alignSelect.value = this.cropAlign);
         // Restore crop coordinates, scaling proportionally if the loaded
         // image's dims differ from the original-saved dims. If the aspect
         // ratio changed significantly (>10%), reset to full-image crop --
@@ -269,6 +275,7 @@ export class CropEditor {
           nw = nw * s;
         }
         this._setCropCentered(Math.round(nw), Math.round(nh));
+        this._applyAlignment(); // sticky alignment overrides preserve-center
         this._applyConstraints();
         this._draw();
         this._updateInfo();
@@ -280,6 +287,34 @@ export class CropEditor {
       },
     });
     sidebar.appendChild(this._canvasSettings.el);
+
+    // -- Alignment (sticky anchor for X/Y when not Free) --
+    // Mirrors the on-node panel's alignment dropdown so the inside/outside
+    // controls stay consistent. Pick anything other than Free → X/Y are
+    // recomputed from the alignment whenever W/H changes (via slider or
+    // Canvas Settings); free-dragging the crop in the canvas overrides
+    // back to Free so the user's manual position sticks.
+    const secAlign = createPanel("Alignment");
+    this._alignSelect = document.createElement("select");
+    this._alignSelect.style.cssText =
+      "width:100%;background:#1d1d1d;color:#ccc;border:1px solid #666;" +
+      "border-radius:4px;outline:0;padding:6px 6px;font-size:12px;" +
+      "font-family:inherit;cursor:pointer;text-align:center;text-align-last:center;";
+    for (const a of ALIGNMENTS) {
+      const opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = a.label;
+      this._alignSelect.appendChild(opt);
+    }
+    this._alignSelect.value = this.cropAlign;
+    this._alignSelect.addEventListener("change", () => {
+      this.cropAlign = this._alignSelect.value;
+      this._applyAlignment();
+      this._draw();
+      this._updateInfo();
+    });
+    secAlign.content.appendChild(this._alignSelect);
+    sidebar.appendChild(secAlign.el);
 
     // -- Canvas Toolbar (Load Image) --
     this._canvasToolbar = createCanvasToolbar({
@@ -387,5 +422,23 @@ export class CropEditor {
       }),
     );
     sidebar.insertBefore(secAct.el, footer);
+  }
+
+  // Recompute X/Y to match the active alignment. Called after any size
+  // change while alignment is sticky. No-op when alignment is "free" or
+  // when the image hasn't loaded yet.
+  _applyAlignment() {
+    if (!this.img || !this.cropAlign || this.cropAlign === "free") return;
+    const dims = { w: this.imgW, h: this.imgH };
+    const xy = computeAlignedXY(
+      this.cropAlign,
+      Math.round(this.cropW),
+      Math.round(this.cropH),
+      dims,
+    );
+    if (xy) {
+      this.cropX = xy.x;
+      this.cropY = xy.y;
+    }
   }
 }
