@@ -213,6 +213,42 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
 
   pop.appendChild(topRow);
 
+  // Custom-color row: native color picker + hex input (mirrors the
+  // standard openColorPop layout in toolbar.mjs).
+  const customRow = document.createElement("div");
+  customRow.className = "pix-note-iconpop-customrow";
+  const nativePicker = document.createElement("input");
+  nativePicker.type = "color";
+  const initialHex =
+    /^#[0-9a-f]{6}$/i.test(editor._iconPickerColor || "")
+      ? editor._iconPickerColor
+      : "#f66744";
+  nativePicker.value = initialHex;
+  nativePicker.addEventListener("mousedown", (e) => e.stopPropagation());
+  nativePicker.addEventListener("change", () => {
+    editor._iconPickerColor = nativePicker.value;
+    hexInput.value = nativePicker.value;
+    refreshColorSelection();
+    repaintGrid();
+  });
+  const hexInput = document.createElement("input");
+  hexInput.type = "text";
+  hexInput.value = editor._iconPickerColor || "";
+  hexInput.placeholder = "#rrggbb";
+  hexInput.addEventListener("mousedown", (e) => e.stopPropagation());
+  hexInput.oninput = () => {
+    const v = hexInput.value.startsWith("#") ? hexInput.value : `#${hexInput.value}`;
+    if (/^#[0-9a-f]{6}$/i.test(v)) {
+      editor._iconPickerColor = v;
+      nativePicker.value = v;
+      refreshColorSelection();
+      repaintGrid();
+    }
+  };
+  customRow.appendChild(nativePicker);
+  customRow.appendChild(hexInput);
+  pop.appendChild(customRow);
+
   // Size pills row
   const sizeRow = document.createElement("div");
   sizeRow.className = "pix-note-iconpop-size-row";

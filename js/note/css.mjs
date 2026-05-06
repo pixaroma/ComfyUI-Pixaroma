@@ -892,6 +892,22 @@ export function injectCSS() {
   color: ${BRAND};
 }
 
+/* Custom-color row inside the icon popup: native picker + hex input.
+   Mirrors .pix-note-colorrow used by the standard openColorPop. */
+.pix-note-iconpop-customrow {
+  display: flex; gap: 4px; align-items: center; margin-bottom: 8px;
+}
+.pix-note-iconpop-customrow input[type="color"] {
+  width: 26px; height: 22px; padding: 0;
+  border: 1px solid #444; border-radius: 3px;
+  background: #1a1a1a; cursor: pointer;
+}
+.pix-note-iconpop-customrow input[type="text"] {
+  flex: 1; width: 80px; background: #1a1a1a; border: 1px solid #444;
+  color: #ddd; padding: 3px 6px; font-size: 11px;
+  font-family: "Consolas", monospace; border-radius: 3px;
+}
+
 /* Icon-popup size pills - 4 small buttons in a row, the active one
    filled with BRAND orange. Mirrors the segmented control pattern
    used elsewhere in the editor. */
