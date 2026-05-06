@@ -290,13 +290,12 @@ NoteEditor.prototype._insertInlineIcon = async function (anchorBtn) {
   if (!this._editArea) return;
   // Capture the caret position synchronously so the async fetch
   // below doesn't lose it (focus moves to the body while loading).
-  // Only honor a captured range if the user has actually clicked or
-  // typed inside the editArea this session (`_editAreaTouched`). On
-  // a freshly opened note, the browser places a default selection at
-  // offset 0 of the editArea - using that would silently insert
-  // every icon at the very top of the note.
+  // Honor any selection that lands inside editArea, including the
+  // browser's default offset-0 selection on a freshly-opened note -
+  // the cursor is visibly blinking there, so users expect the icon
+  // to land at the cursor. Only fall back to "end of note" when the
+  // selection is genuinely outside the editArea (focus elsewhere).
   const savedRange = (() => {
-    if (!this._editAreaTouched) return null;
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
     const r = sel.getRangeAt(0);

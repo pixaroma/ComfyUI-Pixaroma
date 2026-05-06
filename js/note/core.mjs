@@ -19,13 +19,6 @@ export class NoteEditor {
     // within the same editor session; reset to defaults on _cleanup.
     this._iconPickerColor = "#f66744"; // Pixaroma orange default
     this._iconPickerSize  = "m";       // 1.2em, matches existing default
-    // True once the user has actually clicked or typed inside the
-    // editArea this session. Distinguishes a real caret position from
-    // the browser's default offset-0 selection on a fresh contenteditable.
-    // Used by _insertInlineIcon to decide whether to honor savedRange or
-    // fall back to "append at end of note".
-    this._editAreaTouched = false;
-
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -98,12 +91,6 @@ export class NoteEditor {
 
     if (this._editArea) {
       const editArea = this._editArea;
-      // Track first user interaction so _insertInlineIcon can tell a
-      // real caret position from the browser's default offset-0
-      // selection on a freshly-opened contenteditable.
-      this._touchHandler = () => { this._editAreaTouched = true; };
-      editArea.addEventListener("mousedown", this._touchHandler);
-      editArea.addEventListener("keydown",   this._touchHandler);
 
       // Click on or near an icon: explicitly place the caret on the
       // side of the icon nearest to the click point. Without this,
@@ -577,8 +564,6 @@ export class NoteEditor {
     // already removed above, so the listeners are gone with it; this
     // just clears the closure refs.
     this._iconClickHandler = null;
-    this._touchHandler = null;
-    this._editAreaTouched = false;
   }
 
   save() {
@@ -1189,12 +1174,6 @@ NoteEditor.prototype._enterPreviewView = function () {
   }
   this._editArea.style.display = "";
   this._mode = "preview";
-  // The user clearly worked on the note (typed in Code view). Treat
-  // that as a "touch" so a subsequent icon insert lands at the caret
-  // position (or end-of-note fallback) rather than silently going to
-  // offset 0 - which is the browser's default selection on a fresh
-  // contenteditable that has no other interaction recorded.
-  this._editAreaTouched = true;
   this._editArea.focus();
 };
 
