@@ -1314,19 +1314,25 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     return;
   }
 
-  // Skip the wrap if the cursor's nearest inline-bg ancestor already
-  // matches the staged colour — typing extends that span naturally.
-  // Only safe for collapsed-range entry points: after a deleteContents
-  // (Ctrl+A + type), the matching-bg ancestor may be an empty residue
-  // that Chrome strips during default insertion, producing a first-
-  // char-plain regression even though the empty-span cleanup above
-  // tries to mop most cases up. Force the explicit insert path in
-  // that case so the typed char gets a guaranteed bg span.
+  // Walk up to find the immediate bg-styled ancestor and check if its
+  // colour matches the staged colour. Three outcomes:
+  //  - Match + collapsed entry → short-circuit (Chrome extends span).
+  //  - Match + just deleted → fall through to explicit insert; the
+  //    matching residue may be empty and Chrome would strip it.
+  //  - No match → escape the bg span before insert so the new staged
+  //    span ends up as a SIBLING, not nested. Without escape, the new
+  //    span lands inside the existing non-matching span and Chrome's
+  //    rendering of nested same-area inline bg spans is unreliable
+  //    (the user's bug: pick blue inside an orange span, type space,
+  //    space stays orange-rendered even though structurally it's
+  //    inside a blue inner span).
   let inMatchingBg = false;
-  if (!wasNonCollapsed) {
+  let bgAncestor = null;
+  {
     let n = r.startContainer.nodeType === 1 ? r.startContainer : r.startContainer.parentElement;
     while (n && n !== this._editArea && n !== document.body) {
       if (n.style && n.style.backgroundColor) {
+        bgAncestor = n;
         const existing = colorToHex(n.style.backgroundColor);
         if (existing && existing.toLowerCase() === this._stagedHi.toLowerCase()) {
           inMatchingBg = true;
@@ -1337,16 +1343,101 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     }
   }
 
-  if (inMatchingBg) {
-    // Cursor is already inside a span with the staged colour. Let the
-    // browser do its native insertion at the current selection — the
-    // typed character will land inside the matching span.
+  // Check if the matching bg span also matches the staged fg colour.
+  // If user picked a new text colour while the cursor is inside an
+  // existing highlight, the inner text node inherits the OLD fg from
+  // the span - so MANUAL-EXTEND would silently keep typing in the
+  // wrong colour. When fg differs, fall through to SPAN-INSERT below
+  // so a fresh inner span gets the new colour applied.
+  let fgMatches = true;
+  if (inMatchingBg && this._pickedFg && bgAncestor) {
+    const ancRaw = bgAncestor.style.color;
+    const ancHex = ancRaw ? colorToHex(ancRaw) : null;
+    if (!ancHex || ancHex.toLowerCase() !== this._pickedFg.toLowerCase()) {
+      fgMatches = false;
+    }
+  }
+  if (inMatchingBg && fgMatches && !wasNonCollapsed && r.startContainer.nodeType === 3) {
+    // Cursor is inside a text node inside a matching bg span.
+    // Chrome's native extension MISBEHAVES here for trailing
+    // whitespace at inline boundaries: it empties the matching span
+    // and merges the typed char (as &nbsp;) into the PREVIOUS
+    // adjacent span. Confirmed via console logging.
+    // Manually extend the text node and stop Chrome's default.
+    //
+    // Whitespace fix: if typing a regular space and the immediately-
+    // preceding char is already space / nbsp, insert nbsp instead
+    // so consecutive spaces stay visible. CSS `white-space: normal`
+    // (default) collapses runs of regular spaces to one visible
+    // space. Chrome's native handling injects nbsp via an
+    // alternating pattern; we mimic the simpler "first regular,
+    // rest nbsp" approach — line-wrap still works on the first
+    // space of each run.
+    let data = typeof e.data === "string" ? e.data : "";
+    // Always convert typed space to nbsp inside a highlight span.
+    // CSS white-space:normal collapses regular ASCII spaces at the
+    // trailing edge of inline content, so the FIRST space typed in
+    // a fresh bg span would visually disappear. nbsp does not
+    // collapse and renders reliably. Trade-off: line-wrap cannot
+    // break at these spaces - fine for short highlighted phrases.
+    if (data === " ") data = " ";
+    if (data) {
+      r.startContainer.insertData(r.startOffset, data);
+      const newR = document.createRange();
+      newR.setStart(r.startContainer, r.startOffset + data.length);
+      newR.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newR);
+      e.preventDefault();
+    }
     return;
   }
 
+  // Escape a non-matching bg ancestor: position cursor outside it
+  // (split if cursor is in the middle) so the upcoming insert places
+  // the new staged span as a sibling. Same shape as the clear-stage
+  // branch's escape logic.
+  if (bgAncestor && !inMatchingBg && bgAncestor.parentNode) {
+    const escParent = bgAncestor.parentNode;
+    const escMeasure = document.createRange();
+    escMeasure.selectNodeContents(bgAncestor);
+    let escMeasureOk = true;
+    try { escMeasure.setEnd(r.startContainer, r.startOffset); }
+    catch (err) { escMeasureOk = false; }
+    const escCharsBefore = escMeasureOk ? escMeasure.toString().length : 0;
+    const escTotalChars = bgAncestor.textContent.length;
+    const escParentIdx = Array.from(escParent.childNodes).indexOf(bgAncestor);
+    const escNewR = document.createRange();
+    if (escCharsBefore <= 0) {
+      escNewR.setStart(escParent, escParentIdx);
+    } else if (escCharsBefore >= escTotalChars) {
+      escNewR.setStart(escParent, escParentIdx + 1);
+    } else {
+      const splitRange = document.createRange();
+      splitRange.setStart(r.startContainer, r.startOffset);
+      splitRange.setEnd(bgAncestor, bgAncestor.childNodes.length);
+      const tailFrag = splitRange.extractContents();
+      if (tailFrag.firstChild || tailFrag.textContent) {
+        const tailSpan = document.createElement("span");
+        tailSpan.style.backgroundColor = bgAncestor.style.backgroundColor;
+        tailSpan.appendChild(tailFrag);
+        escParent.insertBefore(tailSpan, bgAncestor.nextSibling);
+      }
+      escNewR.setStart(escParent, escParentIdx + 1);
+    }
+    escNewR.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(escNewR);
+    // Refresh the working range — `r` is const, so re-fetch from sel
+    // for the insert below. The block / <br>-cleanup also re-resolves
+    // r.startContainer via sel.
+  }
+  // Re-fetch range in case escape moved it.
+  const insertR = sel.getRangeAt(0);
+
   // Empty-block <br> filler cleanup. When the cursor sits inside an
   // empty <p><br></p> (Chrome's placeholder for an empty editable
-  // block), our manual `r.insertNode(span)` would slot the span next
+  // block), our manual `insertNode(span)` would slot the span next
   // to the <br>, producing a stray newline ("test" on line 2 instead
   // of line 1 for a brand-new note). Same scenario right after a
   // Ctrl+A + delete: deleteContents can leave the block empty with a
@@ -1354,9 +1445,9 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
   // up as the only child of the block. Chrome does this same cleanup
   // natively when typing into an empty contenteditable; we mirror it.
   {
-    const block = r.startContainer.nodeType === 1
-      ? r.startContainer
-      : r.startContainer.parentElement;
+    const block = insertR.startContainer.nodeType === 1
+      ? insertR.startContainer
+      : insertR.startContainer.parentElement;
     if (
       block &&
       block !== this._editArea &&
@@ -1364,8 +1455,8 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
       block.firstChild.nodeName === "BR"
     ) {
       block.removeChild(block.firstChild);
-      r.setStart(block, 0);
-      r.collapse(true);
+      insertR.setStart(block, 0);
+      insertR.collapse(true);
     }
   }
 
@@ -1390,8 +1481,11 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
   span.style.backgroundColor = this._stagedHi;
   if (this._pickedFg) span.style.color = this._pickedFg;
   if (typeof e.data === "string" && e.data.length > 0) {
-    span.textContent = e.data;
-    r.insertNode(span);
+    // First-char-into-fresh-span: convert space to nbsp so it
+    // doesnt visually collapse at the trailing edge of inline
+    // content (same rationale as the manual-extend branch).
+    span.textContent = e.data === " " ? " " : e.data;
+    insertR.insertNode(span);
     const newR = document.createRange();
     newR.setStart(span.firstChild, e.data.length);
     newR.collapse(true);
@@ -1402,7 +1496,7 @@ NoteEditor.prototype._applyStagedHilite = function (e) {
     // Composition start (no data yet) — insert an empty span and
     // place the caret inside. The browser owns the eventual text
     // insertion via its composition lifecycle.
-    r.insertNode(span);
+    insertR.insertNode(span);
     const newR = document.createRange();
     newR.selectNodeContents(span);
     newR.collapse(true);

@@ -882,9 +882,9 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Colors</h4>
           <div class="pix-note-help-grid">
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color (also used for inline icons)</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Colored background behind the selected text</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color. Sticky pick — typing keeps the picked colour until you pick again. Picker has 36 swatches, Reset (white), and "More colors…" for HSV/hex.</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Coloured background behind text. Pick a colour then type — each char extends the highlight run. Switch colours to start a new run. Pick the same picker's transparent tile or Reset to stop highlighting subsequent typing (existing highlights stay). Typed spaces in a highlight become nbsp so consecutive spaces stay visible.</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Reset returns to the dark default (#111111). Transparent tile is dimmed — to revert to ComfyUI's native right-click → Colors menu, leave Bg untouched on a fresh note.</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-button-color"></span>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
             <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
           </div>
@@ -919,7 +919,7 @@ export class NoteEditor {
           <h4>Editing Blocks In Place</h4>
           <div class="pix-note-help-grid">
             <b>Pencil</b><span>Hover a link, pill, code block, or grid-free block — pencil appears, reopens its dialog pre-filled</span>
-            <b>Recolor Icon</b><span>Drag-select over the icon, pick a new color in A</span>
+            <b>Recolor Icon</b><span>Inline icons have their own colour + size pickers in the Insert-icon popup. To change an existing icon, delete it and re-insert with the new colour.</span>
             <b>Delete Icon</b><span>Backspace once from right of icon (removes icon + trailing space in one step)</span>
           </div>
         </div>
