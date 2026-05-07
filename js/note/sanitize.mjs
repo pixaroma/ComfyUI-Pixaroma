@@ -24,17 +24,34 @@ const DANGEROUS_TAGS = new Set([
 const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-dl","pix-note-yt","pix-note-discord",
   "pix-note-vp","pix-note-rm",
+  // Plain button pill (no icon) — added with the per-instance colour
+  // overhaul; renders the same pill shell as dl/vp/rm minus the
+  // ::before icon. CSS rules grouped with the others below.
+  "pix-note-btn-plain",
   // Wrapper + decoration pieces for the Button Design output
   "pix-note-btnblock","pix-note-folderhint","pix-note-btnsize",
   // Grid (table) marker class
   "pix-note-grid",
   // Inline-icon span marker (data-ic slug on <span>)
   "pix-note-ic",
+  // Separator (<hr>) variant classes — each instance carries inline
+  // color so they're independent of the toolbar Ln colour picker.
+  "pix-note-hr-solid",
+  "pix-note-hr-dashed",
+  "pix-note-hr-dotted",
+  "pix-note-hr-double",
+  "pix-note-hr-thick",
 ]);
 
 // Inline-style properties we allow. Values are validated separately.
+// CSS custom properties prefixed with --pix-note-grid- carry per-instance
+// grid colours (border + header bg) so each table is self-contained
+// instead of tracking the toolbar Ln picker. Sanitiser validates them
+// as colours via COLOR_RE the same way as `color` / `background-color`.
 const ALLOWED_STYLE_PROPS = new Set([
   "color", "background-color", "text-align",
+  "--pix-note-grid-border",
+  "--pix-note-grid-header-bg",
 ]);
 
 // Color pattern: #abc, #aabbcc, rgb(), rgba(), or a narrow set of named colors.
@@ -50,12 +67,16 @@ const ALLOWED_HREF_PROTOCOLS = ["http:", "https:", "mailto:"];
 // have; sanitizer has no view into the filesystem.
 const IC_SLUG_RE = /^[A-Za-z0-9_-]{1,64}$/;
 
+// Inline-icon size attribute: must be one of the 4 presets. Anything else
+// strips the attribute (icon falls back to M default).
+const IC_SIZE_RE = /^(s|m|l|xl)$/;
+
 // Per-tag attribute allowlist. "*" means "any tag".
 const ALLOWED_ATTRS = {
   "*": new Set(["class", "style"]),
   a: new Set(["class","style","href","target","rel","data-folder","data-size","data-label"]),
   label: new Set(["class","style"]),
-  span: new Set(["class","style","data-ic"]),
+  span: new Set(["class","style","data-ic","data-size","contenteditable"]),
 };
 
 function filterClass(value) {
@@ -75,7 +96,15 @@ function filterStyle(value) {
     const prop = chunk.slice(0, ix).trim().toLowerCase();
     const val = chunk.slice(ix + 1).trim();
     if (!ALLOWED_STYLE_PROPS.has(prop)) continue;
-    if ((prop === "color" || prop === "background-color") && !COLOR_RE.test(val)) continue;
+    // Validate every colour-bearing property the same way — extending
+    // the allowlist with new colour custom-properties adds an entry
+    // here, not a new branch.
+    const isColorProp =
+      prop === "color" ||
+      prop === "background-color" ||
+      prop === "--pix-note-grid-border" ||
+      prop === "--pix-note-grid-header-bg";
+    if (isColorProp && !COLOR_RE.test(val)) continue;
     if (prop === "text-align" && !ALIGN_RE.test(val)) continue;
     out.push(`${prop}: ${val}`);
   }
@@ -156,6 +185,17 @@ function filterElement(el) {
       // (unwrap-not-remove policy, Pattern #1). Cross-file contract with
       // js/note/icons.mjs (cache + inject) and server_routes.py (list).
       if (!IC_SLUG_RE.test(a.value)) el.removeAttribute(a.name);
+    } else if (name === "data-size" && tag === "span") {
+      // Inline-icon size: only validate on <span>. The <a> tag uses
+      // data-size for Button Design pill sizing with its own values, so
+      // we must NOT apply this regex there.
+      if (!IC_SIZE_RE.test(a.value)) el.removeAttribute(a.name);
+    } else if (name === "contenteditable" && tag === "span") {
+      // Inline-icon atomic flag: only "false" is allowed (the spans we
+      // emit). Any other value or non-icon span gets stripped.
+      const v = (a.value || "").toLowerCase();
+      const isIconSpan = el.classList?.contains("pix-note-ic");
+      if (!isIconSpan || v !== "false") el.removeAttribute(a.name);
     }
   }
 

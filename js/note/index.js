@@ -4,7 +4,16 @@ import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.m
 import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
 import "./blocks.mjs";
-import "./icons.mjs";
+import { ensureIcons, injectIconCSS } from "./icons.mjs";
+
+// Preload the inline-icon CSS at extension setup so on-canvas note
+// rendering after a fresh page load (Ctrl+F5) shows icons correctly,
+// not as solid colored rectangles. Without this, the per-icon mask-
+// image rules only get injected when the editor is OPENED for the
+// first time - notes rendered on the canvas before that show the
+// fallback "missing rule" rectangle. Fire-and-forget; both calls are
+// idempotent.
+ensureIcons().then(() => injectIconCSS()).catch(() => {});
 
 
 const DEFAULT_CFG = {

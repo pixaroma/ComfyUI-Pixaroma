@@ -19,6 +19,22 @@
 
 Pixaroma turns ComfyUI into a powerful, easy-to-use design space. It brings professional editing right into your workflow!
 
+### ✨ Image Composer
+Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. **Per-layer blur** lets you focus or defocus any layer non-destructively with a simple slider. **Shift+Scroll wheel** scales the selected layer in place for quick adjustments. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
+
+📥 [Download example workflow](workflows/Image%20Composer%20Pixaroma%20Workflow.json)
+
+![Image Composer Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg?v=2)
+![Image Composer Editor](workflows/Image%20Composer%20Pixaroma%20Workflow%20v2.jpg?v=2)
+
+### 🖌️ Paint Pixaroma
+A fast, easy-to-use painting tool. It features layers, custom brushes, and a smudge tool for smooth blending. Perfect for fixing details, drawing custom masks, or painting from scratch.
+
+📥 [Download example workflow](workflows/Paint%20Pixaroma%20Workflow.json)
+
+![Paint Node](workflows/Paint%20Pixaroma%20Workflow.jpg?v=2)
+![Paint Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg?v=2)
+
 ### 🧊 3D Builder
 A full 3D scene editor right inside ComfyUI. Drop in shapes, trees, houses, furniture, or import your own 3D models. You get easy camera controls, realistic lighting, undo/redo, and live previews. Perfect for making reference scenes for ControlNet or depth maps!
 
@@ -35,23 +51,7 @@ Audio-reactive image-to-video. **No extra models needed**, just an image and an 
 ![AudioReact Node](workflows/AudioReact%20Workflow.jpg?v=2)
 ![AudioReact Editor](workflows/AudioReact%20Workflow%20v2.jpg?v=2)
 
-### ✨ Image Composer
-Easily combine and arrange multiple images. Move, scale, and rotate layers using a simple visual editor. **Per-layer blur** lets you focus or defocus any layer non-destructively with a simple slider. **Shift+Scroll wheel** scales the selected layer in place for quick adjustments. Use the eraser to tweak things by hand, or let our AI background removal tool isolate objects for you instantly.
-
-📥 [Download example workflow](workflows/Image%20Composer%20Pixaroma%20Workflow.json)
-
-![Image Composer Node](workflows/Image%20Composer%20Pixaroma%20Workflow.jpg?v=2)
-![Image Composer Editor](workflows/Image%20Composer%20Pixaroma%20Workflow%20v2.jpg?v=2)
-
-### 🖌️ Paint Studio
-A fast, easy-to-use painting tool. It features layers, custom brushes, and a smudge tool for smooth blending. Perfect for fixing details, drawing custom masks, or painting from scratch.
-
-📥 [Download example workflow](workflows/Paint%20Pixaroma%20Workflow.json)
-
-![Paint Node](workflows/Paint%20Pixaroma%20Workflow.jpg?v=2)
-![Paint Editor](workflows/Paint%20Pixaroma%20Workflow%20v2.jpg?v=2)
-
-### ✂️ Precision Crop
+### ✂️ Image Crop
 No more guessing crop sizes with numbers! Visually draw your crop box, or set width, height, position and a center/edge alignment right on the node - math expressions like `1024+512` work too. Standard presets (1:1, 16:9, 9:16…) keep social and video aspects locked. Wire **any IMAGE** output into the node (Load Image, VAE Decode, anything) and run the workflow once - the editor and mini-preview will show the live source. Or paste an image straight from the clipboard with **Ctrl+V**.
 
 📥 [Download example workflow](workflows/Crop%20Pixaroma%20Workflow.json)
@@ -59,7 +59,7 @@ No more guessing crop sizes with numbers! Visually draw your crop box, or set wi
 ![Image Crop Node](workflows/Crop%20Pixaroma%20Workflow.jpg?v=3)
 ![Image Crop Editor](workflows/Crop%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
-### 🌓 Interactive Compare
+### 🌓 Image Compare
 The best way to see the difference between two images. Easily compare them side-by-side with a slider, overlap them, or highlight exactly what changed between the two versions.
 
 📥 [Download example workflow](workflows/Image%20Compare%20Pixaroma%20Workflow.json)
@@ -68,7 +68,7 @@ The best way to see the difference between two images. Easily compare them side-
 ![Image Compare Editor](workflows/Image%20Compare%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
 ### 📝 Note Pixaroma
-A beautiful, simple text editor to document your workflows right on the canvas. Write normally using bold, italics, lists, and headings. Add custom colored buttons, icons, or links to YouTube and Discord. You can even color-code your notes to match your style. It perfectly saves and restores exactly how you styled it.
+A beautiful, simple text editor to document your workflows right on the canvas. Write normally with bold, italics, lists, headings, code blocks (with copy button), and inline icons (CLIP, LORA, GGUF, model versions, and 30+ more). Drop in custom-colored **buttons** (Download / View Page / Read More / plain), **separators** (5 line styles: solid, dashed, dotted, double, thick), **tables**, and **folder hints** for download paths. Each block carries its OWN colour, picked from a clean modal that opens centered on the screen, so two separators (or two grids, or two folder hints) in the same note can have totally different looks. YouTube and Discord pills come pre-colored. There is also a Code view for hand-editing the underlying HTML, plus a drop-in LLM prompt at `assets/note-pixaroma-llm-prompt.txt` if you want ChatGPT, Gemini, or a custom GPT to generate notes for you. It perfectly saves and restores exactly how you styled it.
 
 📥 [Download example workflow](workflows/Note%20Pixaroma%20Workflow.json)
 
@@ -149,20 +149,25 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 07, 2026**
+- **Note Pixaroma - centered-modal overhaul:** Every insert button (Icon, Separator, Grid, Button, Folder hint, YouTube, Discord) now opens a clean centered modal with its own colour picker. Each inserted block carries its **own** colour, so two separators (or two grids, or two folder hints) in the same note can look completely different.
+- **5 separator styles + grid colour pickers + plain button option:** Separators come in solid, dashed, dotted, double, or thick. Grids have per-instance border AND header background colours. Buttons can be Download, View Page, Read More, or a plain pill with no icon.
+- **New Folder hint toolbar button:** Folder bundling moved out of the button modal into its own entry. Use it to add a "Place in: ComfyUI/..." line under any button.
+- **LLM prompt file:** `assets/note-pixaroma-llm-prompt.txt` is a drop-in system prompt for ChatGPT or Gemini so they can generate Code-view-ready HTML for your notes.
+
 ### **May 06, 2026**
-- **NEW: Align Pixaroma:** Toggleable smart-snap and alignment-guide system for the node canvas. Click the mountain icon in the top toolbar to enable; dragging or resizing nodes then snaps to nearby edges and centers with thin orange guide lines showing exactly what aligned with what. Works with single-node drag, multi-select drag (rigid bounding box), and resize on every corner and edge. A column of 3+ co-aligned nodes gets a single guide spanning the whole column. Hold Shift to bypass snap for one drag. Default OFF (zero cost when disabled). Snap distance adjustable 4 to 16 screen pixels under Settings → 👑 Pixaroma → Align (advanced).
-- **Image Crop Pixaroma upgrade:** Now works with **any IMAGE source**, not just Load Image. Wire a VAE Decode (or anything producing IMAGE) and run the workflow once: the editor and mini-preview show the live source image. The node body got a compact panel with **W, H, X, Y, Ratio, and Alignment (Center, Top, Left, etc.)** so you can adjust the crop without opening the editor. Number fields accept **math expressions** (e.g. `1024+512` or `768*2`) and the **arrow keys** nudge values (Shift = ×8). Press **Ctrl+V** with an image in your clipboard while the node is selected to drop it straight in.
+- **NEW: Align Pixaroma:** Toggleable smart-snap and alignment-guide system for the node canvas. Click the mountain icon in the top toolbar to enable; dragging or resizing nodes then snaps to nearby edges and centers with thin orange guide lines. Hold **Shift** to bypass snap for one drag. Default OFF (zero overhead when disabled).
+- **Note Pixaroma colour pickers:** Text and highlight pickers got an Excel-style swatches popup (3 rows of 12 = 36 colours, Reset, "More colours..." for HSV/hex). Picks are now sticky across cursor moves and typing sessions.
+- **Image Crop upgrade:** Now works with **any IMAGE source**, not just Load Image (wire a VAE Decode or anything producing an IMAGE). Compact W / H / X / Y / Ratio / Alignment panel right on the node body. Math expressions in the number fields. Press **Ctrl+V** to paste an image straight from your clipboard.
 
 ### **May 05, 2026**
-- **Image Composer - per-layer blur:** Non-destructive Gaussian blur slider in the Transform Properties panel. Drag to focus or defocus any layer; the slider uses a quadratic curve so the lower half gives fine control over subtle blur amounts. Saves with the workflow, restores cleanly, and bakes into both the editor preview AND the final Python output. Each layer keeps its own blur - switch layers and the slider snaps to that layer's value.
-- **Image Composer - Shift+Scroll wheel scales the selected layer:** ±5% per tick. Wheel without Shift still zooms the canvas as before.
-- **Image Composer - placeholder quality fix:** High-resolution upstream images (2K+) used to be permanently downsampled to the placeholder's slot size (~512×512) - now preserved at their full source resolution, with the visual layout unchanged. Old workflows benefit on next reload.
-- **Image Composer - placeholder ratio change preserves preview:** Switching a placeholder's ratio dropdown no longer drops back to the blank slot; the upstream image preview re-renders into the new ratio automatically.
-- **Image Composer - selection-box fixes:** Bounding box no longer drifts a couple of pixels off the image at the edges, no longer disappears off-screen when you drag a heavily-scaled layer past the canvas, and undo (Ctrl+Z) now works while a slider has focus.
+- **Image Composer - per-layer blur:** Non-destructive Gaussian blur slider in the Transform Properties panel. Each layer keeps its own blur value.
+- **Image Composer - Shift+Scroll** scales the selected layer (±5% per tick).
+- **Image Composer fixes:** High-res upstream images no longer get downsampled to the placeholder slot size; placeholder ratio changes preserve the image preview; selection box no longer drifts at canvas edges.
 
 ### **May 04, 2026**
-- **Preview Image Pixaroma - major upgrade:** Batches now render as a **horizontal thumbnail strip** with `i / N` counters; click any thumbnail to open that frame inline at full size. **Arrow keys** ← → navigate, click the image to advance, `Esc` or the orange-on-hover **×** collapses back. Save buttons act on the **selected frame**. New **save_mode** widget (preview / save) - flip to `save` and the node auto-saves every batch frame to `output/` with workflow metadata embedded, becoming a drop-in for SaveImage. `filename_prefix` now supports subfolder syntax (`SDXL/portrait` → `output/SDXL/portrait_00001_.png`). Save-to-Disk auto-increments suggested filename per click. Previews **survive workflow tab switching** - pick a frame, jump to another tab, come back, your selection is still there.
-- **Resolution Pixaroma upgrades:** Added 4:3, 3:4, and 4:5 aspect ratios (4:5 with Instagram-portrait-friendly sizes like 1152×1440). New **Custom Ratio** mode lets you type any W:H you want - quick-pick width chips set Width and auto-compute Height from your ratio. Math expressions now work in the Width and Height fields (e.g. `1024+128`, `512*2`, `(1024+128)/2`). Up/Down arrow keys step by snap.
+- **Preview Image Pixaroma upgrade:** Batches render as a horizontal thumbnail strip with `i / N` counters - click any thumbnail to open it inline at full size; arrow keys navigate; Esc collapses. New **save_mode** widget: flip to `save` and the node becomes a drop-in for SaveImage with workflow metadata embedded. Previews survive workflow tab switching.
+- **Resolution Pixaroma:** Added 4:3, 3:4, and 4:5 aspect ratios. New **Custom Ratio** mode for any W:H. Math expressions now work in the Width and Height fields.
 
 ### **April 27, 2026**
 - **NEW: AudioReact Pixaroma**: turn an image into an audio-reactive video with a fullscreen WebGL editor. 15 motion modes, 8 stackable overlays, real-time scrubbable preview.

@@ -1,0 +1,292 @@
+# Note Pixaroma: HTML Format Reference for LLMs
+
+You generate HTML to paste into the ComfyUI-Pixaroma "Note Pixaroma" node
+(Code view). Output ONLY the HTML, nothing else. The HTML is sanitised on
+save and on view-switch: anything outside the allowlist below is silently
+stripped, so stick to what is documented here.
+
+The user opens a Note Pixaroma node, clicks Edit, switches to Code view,
+pastes your output, switches back to Preview to render. Your HTML is the
+body of the note: no <html>, <head>, <body> wrappers needed, no markdown
+code fences, no commentary before or after.
+
+
+## Allowed tags
+
+Block: <p>, <h1>, <h2>, <h3>, <blockquote>, <pre>, <hr>, <div>, <ul>,
+<ol>, <li>
+Inline: <b>, <strong>, <i>, <em>, <u>, <s>, <strike>, <br>, <code>,
+<span>, <a>, <label>
+Tables: <table>, <thead>, <tbody>, <tr>, <th>, <td>
+
+Anything else (<script>, <iframe>, <img>, <svg>, <button>, <form>, ...)
+is REMOVED on sanitise. All event handlers (onclick=, onerror=, ...)
+and javascript: URLs are stripped from any tag.
+
+
+## Allowed attributes
+
+Any tag: class, style
+<a>: also href, target, rel, data-folder, data-size, data-label
+<span>: also data-ic, data-size, contenteditable (icon spans only)
+
+Other data-* attributes are stripped.
+
+
+## Allowed inline styles
+
+These CSS properties pass; everything else (font-size, margin, padding,
+width, display, ...) is stripped:
+
+  color: <colour>              text foreground; also the per-instance
+                               colour vehicle for separators and folder
+                               hints (currentColor flows into the
+                               border/icon)
+  background-color: <colour>   text highlight; also the per-instance
+                               colour for button pills
+  text-align: left | right | center | justify
+  --pix-note-grid-border: <colour>     per-instance grid cell border
+                                       (set on <table>)
+  --pix-note-grid-header-bg: <colour>  per-instance grid header bg
+                                       (set on <table>)
+
+<colour> accepts:
+- #rgb or #rrggbb hex
+- rgb(...) / rgba(...)
+- Named: transparent, inherit, currentColor, black, white, red, green,
+  blue, yellow, orange, purple, gray, grey
+
+
+## Allowed link URLs
+
+<a href> only accepts http://, https://, mailto:. All other schemes
+(javascript:, data:, ftp:, relative paths) are stripped, leaving the
+inner text behind.
+
+Any <a href> you emit must include target="_blank" and
+rel="noopener noreferrer".
+
+
+## Allowed classes
+
+Anything else is silently stripped from class attributes.
+
+  pix-note-dl                 Download button pill
+  pix-note-vp                 View Page button pill
+  pix-note-rm                 Read More button pill
+  pix-note-btn-plain          Button pill, no leading icon
+  pix-note-btnblock           Wrapper span around a button pill
+  pix-note-btnsize            Size tag inside a button pill
+  pix-note-folderhint         "Place in: ..." folder line
+  pix-note-yt                 YouTube link pill (brand red, hardcoded)
+  pix-note-discord            Discord link pill (blurple, hardcoded)
+  pix-note-grid               REQUIRED on <table>
+  pix-note-hr-solid           Separator: solid line
+  pix-note-hr-dashed          Separator: dashed line
+  pix-note-hr-dotted          Separator: dotted line
+  pix-note-hr-double          Separator: double line
+  pix-note-hr-thick           Separator: thick solid line
+  pix-note-ic                 Inline icon span (REQUIRED with data-ic)
+
+
+## Special blocks
+
+### Button pill (Download / View Page / Read More / plain)
+
+  <span class="pix-note-btnblock">
+    <a class="pix-note-dl" style="background-color: #f66744"
+       href="https://example.com/model.safetensors"
+       target="_blank" rel="noopener noreferrer">Model<span class="pix-note-btnsize">2 GB</span></a>
+  </span>&nbsp;
+
+- Class: pix-note-dl, pix-note-vp, pix-note-rm, or pix-note-btn-plain.
+- style="background-color: #..." sets the per-instance pill colour.
+- <span class="pix-note-btnsize">...</span> is OPTIONAL; renders as a
+  "middle-dot 2 GB" tail inside the pill.
+- ALWAYS wrap in <span class="pix-note-btnblock">...</span> followed by
+  &nbsp;.
+- ALWAYS include target="_blank" rel="noopener noreferrer".
+
+
+### Folder hint (standalone, sits under a button)
+
+  <div class="pix-note-folderhint" style="color: #f66744">Place in: ComfyUI/models/loras</div>
+
+- The "Place in: ComfyUI/" prefix is REQUIRED for the folder icon to
+  render. The path part follows.
+- style="color: #..." sets line + folder-icon colour.
+- New shape is <div>. Old notes may use <span> inside a btnblock; both
+  render fine, but emit <div> for new content.
+
+
+### YouTube / Discord pills
+
+  <a class="pix-note-yt" href="https://www.youtube.com/@pixaroma"
+     target="_blank" rel="noopener noreferrer">Pixaroma on YouTube</a>&nbsp;
+
+  <a class="pix-note-discord" href="https://discord.com/invite/gggpkVgBf3"
+     target="_blank" rel="noopener noreferrer">Join Discord</a>&nbsp;
+
+- Brand colours hardcoded. Do NOT add a style="background-color:..." on
+  these.
+
+
+### Separator (horizontal rule)
+
+  <hr class="pix-note-hr-solid" style="color: #f66744">
+
+- Pick a variant class: solid, dashed, dotted, double, thick.
+- The inline color drives the line colour via currentColor on the
+  border.
+
+
+### Grid (table)
+
+  <table class="pix-note-grid"
+         style="--pix-note-grid-border: #f66744; --pix-note-grid-header-bg: #1a1a1a">
+    <thead><tr><th>Name</th><th>Size</th></tr></thead>
+    <tbody>
+      <tr><td>Flux 2</td><td>9 GB</td></tr>
+      <tr><td>Lora X</td><td>200 MB</td></tr>
+    </tbody>
+  </table>
+
+- pix-note-grid class is REQUIRED.
+- <thead> is optional. Without it the first row is not styled as a
+  header.
+- Range: 2 to 4 columns, 1 to 10 rows.
+- colspan / rowspan are NOT allowed.
+- The two CSS custom properties drive border + header background.
+  --pix-note-grid-header-bg has no effect without a <thead>.
+
+
+### Inline icon
+
+  <span data-ic="model-v1" class="pix-note-ic" contenteditable="false" style="color: #f66744"></span>&nbsp;
+
+- data-ic="<slug>" selects the icon. The slug is the SVG filename
+  without .svg. Mind the case (acronyms ship uppercase).
+- ALWAYS pair the icon span with a trailing &nbsp; so the caret has
+  somewhere to land.
+- contenteditable="false" is REQUIRED for atomic caret + delete.
+- style="color: #..." sets the icon colour.
+- Optional data-size="s" or "l" or "xl" for non-default sizes
+  (omitting = default M).
+
+Available icon slugs:
+
+  Models:    model-v1, model-v2, model-v3, model-v4, model-v5,
+             model-v6, model-v7, checkpoint-v1, checkpoint-v2
+  Files:     file, folder-v1, folder-v2, data
+  Formats:   GGUF, CLIP, LORA, VAE
+  Nodes:     node-v1, node-v2, node-v3, node-v4, nodes-installed
+  Workflows: workflow-v1, workflow-v2, workflow-v3
+  Arrows:    arrow-up, arrow-down, arrow-left, arrow-right
+  Misc:      ai-brain, box, chip, checkmark, gear, github,
+             huggingface, pixaroma, plus, puzzle, question,
+             warning-v1, warning-v2
+
+Unknown slugs render as a coloured rectangle (deliberate "missing icon"
+indicator).
+
+
+## Inline formatting
+
+  <b>bold</b> or <strong>bold</strong>
+  <i>italic</i> or <em>italic</em>
+  <u>underline</u>
+  <s>strikethrough</s> or <strike>strikethrough</strike>
+  <code>inline code</code>
+
+Per-character colour and highlight:
+  <span style="color: #f66744">orange text</span>
+  <span style="background-color: #ffe066">highlighted text</span>
+
+
+## Code blocks
+
+  <pre><code>def hello():
+      print("hi")
+  </code></pre>
+
+Multi-line text is preserved. Always pair <pre><code> together; the
+renderer adds a copy button when displayed.
+
+
+## Lists
+
+  <ul>
+    <li>Bullet one</li>
+    <li>Bullet two</li>
+  </ul>
+
+  <ol>
+    <li>Step 1</li>
+    <li>Step 2</li>
+  </ol>
+
+
+## Block alignment
+
+Any block can carry style="text-align: ...":
+
+  <p style="text-align: center">Centred paragraph.</p>
+  <h2 style="text-align: right">Right-aligned heading.</h2>
+
+
+## Common pitfalls (DO NOT do these)
+
+- Do NOT use <img>. Embedded images are stripped.
+- Do NOT use <svg> inline. Stripped.
+- Do NOT use any inline style outside the allowed properties (no
+  font-size, no margin, no padding, no width, no float).
+- Do NOT use class names outside the allowlist; they are silently
+  stripped.
+- Do NOT wrap your output in ```html ``` markdown fences.
+- Do NOT include explanatory prose before or after the HTML.
+- Do NOT omit target="_blank" rel="noopener noreferrer" on links.
+- Do NOT omit the trailing &nbsp; after a button pill or inline icon.
+- Do NOT use colspan or rowspan on table cells.
+- Do NOT add background-color to YouTube or Discord pills.
+
+
+## Worked example
+
+If asked: "Workflow note for installing Flux 2 with a base model and a
+custom LoRA, plus a YouTube tutorial link", output:
+
+  <h2>Flux 2 Setup</h2>
+  <p>This workflow uses <span data-ic="model-v1" class="pix-note-ic" contenteditable="false" style="color: #f66744"></span>&nbsp;Flux 2 plus a custom LoRA.</p>
+
+  <h3>Models</h3>
+  <span class="pix-note-btnblock">
+    <a class="pix-note-dl" style="background-color: #f66744"
+       href="https://huggingface.co/example/flux2/resolve/main/flux2.safetensors"
+       target="_blank" rel="noopener noreferrer">Flux 2 base<span class="pix-note-btnsize">12 GB</span></a>
+  </span>&nbsp;
+  <div class="pix-note-folderhint" style="color: #f66744">Place in: ComfyUI/models/diffusion_models</div>
+
+  <span class="pix-note-btnblock">
+    <a class="pix-note-dl" style="background-color: #818cf8"
+       href="https://huggingface.co/example/style-lora/resolve/main/style.safetensors"
+       target="_blank" rel="noopener noreferrer">Style LoRA<span class="pix-note-btnsize">200 MB</span></a>
+  </span>&nbsp;
+  <div class="pix-note-folderhint" style="color: #818cf8">Place in: ComfyUI/models/loras</div>
+
+  <hr class="pix-note-hr-dashed" style="color: #f66744">
+
+  <h3>References</h3>
+  <p><a class="pix-note-yt" href="https://www.youtube.com/@pixaroma"
+        target="_blank" rel="noopener noreferrer">Tutorial on YouTube</a>&nbsp;</p>
+
+
+## Final rules
+
+1. Output ONLY the body HTML.
+2. No markdown fences, no commentary, no apologies.
+3. When the user request is missing data (URL, file size, folder path,
+   icon slug), pick a reasonable placeholder OR ask one short
+   clarifying question. Do not invent broken URLs.
+4. When in doubt about a tag, attribute, class, or style, leave it out.
+   The sanitiser is unforgiving; a clean minimal output beats a rich
+   one that gets half-stripped.

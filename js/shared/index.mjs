@@ -24,3 +24,9 @@ export {
 } from "./preview.mjs";
 
 export { injectLabelCSS } from "./label_css.mjs";
+
+export {
+  createPixaromaColorPicker,
+  openPixaromaColorPickerPopup,
+  PIXAROMA_PALETTE,
+} from "./color_picker.mjs";

@@ -86,11 +86,14 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-discord,
 .pix-note-editarea a.pix-note-vp,
 .pix-note-editarea a.pix-note-rm,
+.pix-note-editarea a.pix-note-btn-plain,
+.pix-note-body a.pix-note-btn-plain,
 .pix-note-prevwrap a.pix-note-dl,
 .pix-note-prevwrap a.pix-note-yt,
 .pix-note-prevwrap a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-btn-plain {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -121,7 +124,14 @@ export function injectCSS() {
 .pix-note-prevwrap a.pix-note-vp,
 .pix-note-body a.pix-note-rm,
 .pix-note-editarea a.pix-note-rm,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-body a.pix-note-btn-plain,
+.pix-note-editarea a.pix-note-btn-plain,
+.pix-note-prevwrap a.pix-note-btn-plain {
+  /* Per-instance colour stamped inline by the JS overrides this default
+     (inline always wins). The default is here for backwards compat so
+     old buttons authored before per-instance colour still pick up the
+     toolbar Btn picker via --pix-note-btn (when present). */
   background: var(--pix-note-btn, ${BRAND});
 }
 .pix-note-body a.pix-note-yt,
@@ -135,11 +145,13 @@ export function injectCSS() {
 .pix-note-body a.pix-note-discord:hover,
 .pix-note-body a.pix-note-vp:hover,
 .pix-note-body a.pix-note-rm:hover,
+.pix-note-body a.pix-note-btn-plain:hover,
 .pix-note-editarea a.pix-note-dl:hover,
 .pix-note-editarea a.pix-note-yt:hover,
 .pix-note-editarea a.pix-note-discord:hover,
 .pix-note-editarea a.pix-note-vp:hover,
-.pix-note-editarea a.pix-note-rm:hover { filter: brightness(1.1); }
+.pix-note-editarea a.pix-note-rm:hover,
+.pix-note-editarea a.pix-note-btn-plain:hover { filter: brightness(1.1); }
 
 /* Block icons via SVG mask so they follow text colour (white on a
    coloured pill). One base rule for size + currentColor, then per-class
@@ -234,6 +246,13 @@ export function injectCSS() {
 .pix-note-editarea .pix-note-folderhint,
 .pix-note-prevwrap .pix-note-folderhint {
   display: block;
+  /* Shrink the box to its content so the pencil-edit button (which
+     positions itself at the element's right edge) lands right after
+     the text instead of at the far right of the editor. fit-content
+     keeps the block on its own line; max-width prevents very long
+     folder paths from blowing past the editor. */
+  width: fit-content;
+  max-width: 100%;
   margin: 4px 2px 2px 2px;
   padding: 2px 0;
   color: var(--pix-note-line, #9a9a9a);
@@ -272,9 +291,17 @@ export function injectCSS() {
    side of the icon. */
 .pix-note-ic {
   display: inline-block;
-  width: 1.2em;
-  height: 1.2em;
-  vertical-align: -0.15em;
+  width: 18px;
+  height: 18px;
+  vertical-align: -4px;
+  margin: 0 4px;
+  /* No user-select / pointer-events overrides. user-select:none
+     made Ctrl+A skip icons in the selection (so Delete left them
+     behind). pointer-events:none broke arrow-key caret traversal
+     (browser would skip the icon entirely instead of pausing at
+     its edges). The _iconClickHandler in core.mjs explicitly places
+     the caret based on click X relative to the icon's bbox, so we
+     don't need either CSS guard for click placement. */
   background-color: currentColor;
   -webkit-mask-size: contain;
           mask-size: contain;
@@ -283,6 +310,16 @@ export function injectCSS() {
   -webkit-mask-position: center;
           mask-position: center;
 }
+
+/* Inline-icon size attribute - fixed pixel dimensions so icons render
+   the same regardless of heading level (em-scaling caused inconsistent
+   sizes across H1/H2/H3 vs body text). data-size="m" intentionally has
+   NO rule so the default 18px stays implicit and saved markup is
+   minimal. The horizontal margin: 0 1px on the base rule gives a
+   clickable gap between adjacent icons (caret can land between them). */
+.pix-note-ic[data-size="s"]  { width: 14px; height: 14px; vertical-align: -3px; }
+.pix-note-ic[data-size="l"]  { width: 28px; height: 28px; vertical-align: -7px; }
+.pix-note-ic[data-size="xl"] { width: 40px; height: 40px; vertical-align: -10px; }
 
 /* Hover-reveal Edit button */
 .pix-note-editbtn {
@@ -616,8 +653,18 @@ export function injectCSS() {
   color: #ddd; font-size: 12px; font-weight: 600; cursor: pointer;
   user-select: none;
 }
-.pix-note-tbtn:hover { background: #333; border-color: #444; }
+.pix-note-tbtn:hover:not(:disabled) { background: #333; border-color: #444; }
 .pix-note-tbtn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+/* Disabled toolbar button — grey it out and block clicks. Currently
+   driven by the heading active-state hook when the cursor is inside
+   a table cell (heading replace would clobber the whole table). */
+.pix-note-tbtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: #2a2a2a;
+  border-color: transparent;
+  color: #777;
+}
 .pix-note-tbtn.pix-note-tbtn-accent {
   background: ${BRAND}; color: #fff; border-color: ${BRAND};
 }
@@ -744,65 +791,72 @@ export function injectCSS() {
 .pix-note-tgroup { display: inline-flex; gap: 3px; }
 .pix-note-tspacer { flex: 1 1 auto; min-width: 8px; }
 
-/* ── Color popover ───────────────────────────────────────── */
-.pix-note-colorpop {
-  position: absolute; background: #222; border: 1px solid #444; border-radius: 5px;
-  padding: 8px; z-index: 100000; display: flex; flex-direction: column; gap: 6px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.5);
-}
-.pix-note-swatches { display: grid; grid-template-columns: repeat(7, 18px); gap: 4px; }
-.pix-note-swatch {
-  width: 18px; height: 18px; border-radius: 3px; cursor: pointer;
-  border: 1px solid rgba(255,255,255,.1);
-}
-.pix-note-swatch.active { outline: 2px solid ${BRAND}; outline-offset: 1px; }
-.pix-note-colorrow { display: flex; gap: 4px; align-items: center; }
-.pix-note-colorrow input[type="color"] { width: 26px; height: 22px; padding: 0; border: 1px solid #444; border-radius: 3px; background: #1a1a1a; cursor: pointer; }
-.pix-note-colorrow input[type="text"] {
-  flex: 1; width: 80px; background: #1a1a1a; border: 1px solid #444;
-  color: #ddd; padding: 3px 6px; font-size: 11px; font-family: "Consolas", monospace;
-  border-radius: 3px;
-}
-.pix-note-colorrow .clearbtn {
-  background: repeating-conic-gradient(#888 0 25%, #444 0 50%) 50%/8px 8px;
-  width: 22px; height: 22px; border: 1px solid #444; border-radius: 3px; cursor: pointer;
-}
+/* Color popover styles previously lived here; the 5 toolbar pickers
+   (text / highlight / Bg / Btn / Ln) now use the shared Pixaroma Color
+   Picker module (js/shared/color_picker.mjs) which injects its own
+   .pix-cp-* styles on first use. */
 
-/* Inline-icons picker popup — mirrors .pix-note-colorpop in
-   positioning + dismiss behaviour, but shows a scrollable icon grid
-   instead of color swatches. */
-.pix-note-iconpop {
-  position: absolute;
-  /* Must sit above .pix-note-overlay (z-index 99990) — otherwise the
-     popup renders UNDERNEATH the editor backdrop and is invisible.
-     Matches .pix-note-colorpop (100000) so all picker popups stack
-     the same way. */
+/* Generic picker-modal shell — used by the icon picker and the
+   separator picker (and intended for future picker buttons that need
+   a centred modal). Two parallel class names (.pix-note-iconpop-* and
+   .pix-note-modal-*) resolve to the same styles via grouped selectors.
+   The icon picker uses the legacy iconpop-* names; new pickers use the
+   generic modal-* names. The editor's hasModal selectors include both
+   .pix-note-iconpop AND .pix-note-modal-backdrop so Esc / overlay-
+   mousedown don't tear the editor down while either is open
+   (Pattern #27). */
+.pix-note-iconpop-backdrop,
+.pix-note-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
   z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pix-note-iconpop,
+.pix-note-modal {
   background: #1a1a1a;
   /* Popup inherits this color down to .pix-note-iconswatch .pix-note-ic
      — tile previews show what the icon will look like when inserted
      (which is currentColor = surrounding text color ≈ editor default).
      Matches the editor's default text color on .pix-note-editarea. */
   color: #e4e4e4;
-  border: 1px solid #333;
+  border: 1px solid #444;
   border-radius: 6px;
-  padding: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  /* Fixed inner width so the colour picker, size pills, icon grid and
+     footer all align edge-to-edge — no awkward gap on the right of
+     the icon grid. 348px gives 7 ~42px tiles with 6px gaps. */
+  width: 348px;
+  max-width: 90vw;
+  /* Modal-level scroll: if content exceeds viewport (e.g. tons of
+     icons on a small screen) the whole modal scrolls, not the icon
+     grid alone. Keeps the grid free of an inner scrollbar at typical
+     viewport sizes. */
+  max-height: 90vh;
+  overflow-y: auto;
+  box-sizing: content-box;
+  display: flex;
+  flex-direction: column;
 }
 .pix-note-iconswatches {
   display: grid;
-  grid-template-columns: repeat(7, 32px);
+  /* Stretch tiles edge-to-edge with the colour picker / size pills /
+     footer above and below. Aspect-ratio on the tile keeps them
+     square at whatever column width the grid resolves to. */
+  grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  max-height: 240px;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 .pix-note-iconswatch {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 100%;
+  aspect-ratio: 1;
+  min-width: 32px;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid transparent;
   border-radius: 4px;
@@ -812,6 +866,17 @@ export function injectCSS() {
 .pix-note-iconswatch:hover {
   border-color: #f66744;
   background: rgba(246, 103, 68, 0.15);
+}
+/* Selected tile — outline-only so the icon's actual colour stays
+   readable underneath. Strong orange border + inset ring for double-
+   stroke contrast against the dark base. Override hover-on-selected
+   so an orange tint doesn't paint over the icon while the cursor is
+   on the selected tile. */
+.pix-note-iconswatch.selected,
+.pix-note-iconswatch.selected:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: ${BRAND};
+  box-shadow: 0 0 0 1px ${BRAND} inset;
 }
 .pix-note-iconswatch .pix-note-ic {
   /* Inside the picker, render at a fixed 18px regardless of the
@@ -828,12 +893,319 @@ export function injectCSS() {
   text-align: center;
   line-height: 1.4;
 }
+/* One-line helper at the top of the picker — walks the user through
+   the workflow order. Sits above the colour picker. */
+.pix-note-iconpop-hint,
+.pix-note-modal-hint {
+  color: #aaa;
+  font-size: 11.5px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  line-height: 1.4;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+/* Icon-popup color section. Picker UI is rendered by the shared
+   Pixaroma Color Picker module (.pix-cp-* classes in
+   js/shared/color_picker.mjs). The wrapper just adds bottom margin
+   so the picker doesn't crowd the size pills below it. */
+.pix-cp + .pix-note-iconpop-size-row { margin-top: 8px; }
+
+/* Icon-popup size pills - 4 small buttons in a row, the active one
+   filled with BRAND orange. Mirrors the segmented control pattern
+   used elsewhere in the editor. */
+.pix-note-iconpop-size-row {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.pix-note-iconpop-size-pill {
+  flex: 1;
+  padding: 4px 0;
+  background: transparent;
+  border: 1px solid #444;
+  color: #999;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  text-align: center;
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.pix-note-iconpop-size-pill:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #ccc;
+}
+.pix-note-iconpop-size-pill.selected {
+  background: rgba(246, 103, 68, 0.18);
+  border-color: ${BRAND};
+  color: ${BRAND};
+}
+
 .pix-note-iconpop-empty code {
   background: rgba(255, 255, 255, 0.08);
   padding: 1px 4px;
   border-radius: 3px;
   font-family: monospace;
   color: #ddd;
+}
+
+/* Footer for picker modals — Insert (primary) + Cancel. Mirrors
+   .pix-cp-modal-actions but kept local to avoid coupling to the
+   shared color picker module. Insert is disabled until the user
+   makes a selection. Two parallel class names so legacy iconpop
+   markup and generic modal markup share the same look. */
+.pix-note-iconpop-footer,
+.pix-note-modal-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.pix-note-iconpop-btn,
+.pix-note-modal-btn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid #444;
+  color: #ddd;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-iconpop-btn:hover:not(:disabled),
+.pix-note-modal-btn:hover:not(:disabled) {
+  color: ${BRAND};
+  border-color: ${BRAND};
+}
+.pix-note-iconpop-btn.primary,
+.pix-note-modal-btn.primary {
+  background: ${BRAND};
+  border-color: ${BRAND};
+  color: #fff;
+}
+.pix-note-iconpop-btn.primary:hover:not(:disabled),
+.pix-note-modal-btn.primary:hover:not(:disabled) {
+  background: #d54f2c;
+  border-color: #d54f2c;
+  color: #fff;
+}
+.pix-note-iconpop-btn:disabled,
+.pix-note-modal-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* "Reset to defaults" footer button — sits on the LEFT of the footer
+   (Cancel + Insert stay clustered on the right). margin-right: auto
+   pushes it across the flex line into its own column. */
+.pix-note-modal-btn-reset {
+  margin-right: auto;
+}
+
+/* ── Generic modal text inputs ────────────────────────────────────
+   Reusable single-line text input row (label above, input below).
+   Used by the button picker for Label / URL / Size, and the folder
+   hint picker for the folder path. */
+.pix-note-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+.pix-note-modal-field .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.pix-note-modal-field input {
+  background: #0f0f0f;
+  border: 1px solid #333;
+  border-radius: 3px;
+  color: #ddd;
+  font-size: 12px;
+  padding: 5px 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-modal-field input:focus {
+  outline: 1px solid ${BRAND};
+  outline-offset: -1px;
+  border-color: ${BRAND};
+}
+.pix-note-modal-field.disabled input {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── Button-type chooser (segmented control) ──────────────────────
+   Four tiles in a row: Download / View Page / Read More / No icon.
+   Mirrors .pix-note-iconpick visually but uses a smaller layout
+   suited to the modal. */
+.pix-note-modal-btnpick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 4px;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.pix-note-modal-btnpick button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #bbb;
+  cursor: pointer;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 10.5px;
+}
+.pix-note-modal-btnpick button:hover {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.10);
+}
+.pix-note-modal-btnpick button.active {
+  border-color: ${BRAND};
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 1px ${BRAND} inset;
+  color: ${BRAND};
+}
+.pix-note-modal-btnpick button .ico {
+  display: inline-block;
+  width: 16px; height: 16px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+  -webkit-mask-size: contain;     mask-size: contain;
+}
+.pix-note-modal-btnpick button .ico-none {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 1px dashed currentColor;
+  border-radius: 2px;
+}
+
+/* ── Separator picker modal ─────────────────────────────────────
+   Variant chooser: 5 vertical tiles, each rendering an actual <hr>
+   sample with the picked colour. Click selects, double-click commits
+   (matches icon-picker UX). Default selection = solid (current
+   visual). Each instance carries its own inline color so they don't
+   share state with the toolbar's Ln colour picker. */
+.pix-note-sep-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* Breathing room after the colour picker / hex row above. */
+  margin-top: 12px;
+}
+.pix-note-sep-variant {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+}
+.pix-note-sep-variant:hover {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.15);
+}
+/* Outline-only selected state — see the matching .pix-note-iconswatch
+   rule for why we drop the orange tint and override hover. */
+.pix-note-sep-variant.selected,
+.pix-note-sep-variant.selected:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: ${BRAND};
+  box-shadow: 0 0 0 1px ${BRAND} inset;
+}
+.pix-note-sep-variant hr {
+  width: 100%;
+  margin: 0;
+}
+/* Variant rules — these render BOTH inside the variant chooser tiles
+   (where the tile sets its color via inline style) AND inside the
+   editor body / on-canvas note (where the inserted <hr> carries
+   inline color). currentColor wires the picked colour into border-top
+   so each separator instance is independent of the toolbar Ln picker. */
+hr.pix-note-hr-solid {
+  border: none;
+  border-top: 1px solid currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-dashed {
+  border: none;
+  border-top: 1px dashed currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-dotted {
+  border: none;
+  border-top: 2px dotted currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-double {
+  border: none;
+  border-top: 3px double currentColor;
+  margin: 12px 0;
+}
+hr.pix-note-hr-thick {
+  border: none;
+  border-top: 3px solid currentColor;
+  margin: 12px 0;
+}
+
+/* ── Generic modal form rows ──────────────────────────────────────
+   Reusable label + control rows for the new picker modals
+   (separator chooser doesn't use them; grid picker does). Each row
+   is a flex line: left label, right control. */
+.pix-note-modal-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-modal-row .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.pix-note-modal-row.disabled .lbl {
+  color: #555;
+}
+
+/* Colour swatch button — opens the compact Pixaroma colour picker on
+   click. Sized to read as a touchable target without dominating the
+   row. The current colour is applied inline by the JS that owns it. */
+.pix-note-modal-swatch {
+  width: 36px;
+  height: 22px;
+  background: #f66744;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+}
+.pix-note-modal-swatch:hover:not(:disabled) {
+  border-color: ${BRAND};
+}
+.pix-note-modal-swatch:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* Toolbar button mask-icon for the "Insert icon" entry.
@@ -914,7 +1286,8 @@ export function injectCSS() {
 .pix-note-prevwrap a.pix-note-yt,
 .pix-note-prevwrap a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-btn-plain {
   cursor: default;
   pointer-events: none;
   font-size: 12px;
@@ -1076,7 +1449,10 @@ export function injectCSS() {
 .pix-note-body table.pix-note-grid td,
 .pix-note-editarea table.pix-note-grid th,
 .pix-note-editarea table.pix-note-grid td {
-  border: 1px solid var(--pix-note-line, ${BRAND});
+  /* Per-instance border colour comes from --pix-note-grid-border on
+     the <table> (set by the grid picker). Falls back to the toolbar
+     Ln picker for grids authored before per-instance colours. */
+  border: 1px solid var(--pix-note-grid-border, var(--pix-note-line, ${BRAND}));
   padding: 6px 8px;
   vertical-align: middle;
   word-wrap: break-word;
@@ -1085,14 +1461,19 @@ export function injectCSS() {
 }
 .pix-note-body table.pix-note-grid thead th,
 .pix-note-editarea table.pix-note-grid thead th {
-  background: #1a1a1a;
+  /* Per-instance header background — falls back to the previous
+     hardcoded dark grey for older grids without the custom prop. */
+  background: var(--pix-note-grid-header-bg, #1a1a1a);
   color: #fff;
   font-weight: 700;
-  border-bottom: 2px solid var(--pix-note-line, ${BRAND});
+  border-bottom: 2px solid var(--pix-note-grid-border, var(--pix-note-line, ${BRAND}));
 }
 
 /* ── Grid insert dialog (preview + steppers) ──────────────────────── */
-.pix-note-griddlg .pix-note-prevwrap {
+/* Preview wrap: legacy anchored dialog (.pix-note-griddlg) AND new
+   centred modal (.pix-note-gridmodal). Same look, two host classes. */
+.pix-note-griddlg .pix-note-prevwrap,
+.pix-note-gridmodal .pix-note-prevwrap {
   display: block;
   text-align: left;
   padding: 8px 0;

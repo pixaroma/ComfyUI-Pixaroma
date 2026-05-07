@@ -14,6 +14,33 @@ export class NoteEditor {
   }
 
   open() {
+    // Icon picker session state (Pattern #29, design 2026-05-06).
+    // Decoupled from the A text-color picker. Sticky across popup opens
+    // within the same editor session; reset to defaults on _cleanup.
+    this._iconPickerColor = "#f66744"; // Pixaroma orange default
+    this._iconPickerSize  = "m";       // 1.2em, matches existing default
+    // Separator picker session state — independent of the toolbar Ln
+    // colour picker so each <hr> carries its own inline colour and
+    // doesn't track other tools. Sticky within an editor session.
+    this._sepPickerColor = "#f66744";
+    this._sepPickerVariant = "solid";
+    // Grid picker session state — same decoupling principle. Two
+    // colours, plus sticky cols/rows/header so re-opening the dialog
+    // remembers what the user last picked.
+    this._gridPickerBorderColor = "#f66744";
+    this._gridPickerHeaderBg = "#1a1a1a";
+    this._gridPickerCols = 3;
+    this._gridPickerRows = 3;
+    this._gridPickerHeader = false;
+    // Button picker session state — per-instance colour, sticky icon
+    // and "show size hint" toggle. Folder hint moved out of this
+    // modal into its own toolbar entry / picker.
+    this._btnPickerColor = "#f66744";
+    this._btnPickerIcon = "dl";
+    this._btnPickerSizeOn = false;
+    // Folder hint picker session state — separate toolbar button.
+    this._folderHintPickerColor = "#f66744";
+    this._folderHintPickerFolder = "models/diffusion_models";
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -83,6 +110,56 @@ export class NoteEditor {
     injectCSS();
     this._build();
     document.body.appendChild(this._el);
+
+    if (this._editArea) {
+      const editArea = this._editArea;
+
+      // Click on or near an icon: explicitly place the caret on the
+      // side of the icon nearest to the click point. Without this,
+      // contenteditable's default caret placement around inline-block
+      // elements with pointer-events:none (which we use so icons don't
+      // grab text-selection drags) was unreliable - the caret often
+      // failed to appear at all, or landed in an unrelated block.
+      // elementsFromPoint sees through pointer-events:none and gives
+      // us the icon under the click; click X relative to its midpoint
+      // decides which side gets the caret.
+      this._iconClickHandler = (e) => {
+        if (e.button !== 0) return; // left button only
+        // Iterate visible icons to find one whose hit-zone contains
+        // the click. The hit-zone is the icon's bbox EXPANDED by a
+        // few px horizontally - this lets clicks in the small gap
+        // beside an icon snap to the icon's nearest edge, which
+        // makes forward-Delete on icons reliable (caret has to land
+        // BEFORE the icon for Delete to remove it; without the
+        // expanded zone, browser default could put the caret on the
+        // wrong side and Delete operates on the trailing nbsp).
+        const HIT_PAD_X = 4;
+        const icons = editArea.querySelectorAll(".pix-note-ic");
+        let hit = null;
+        for (const ic of icons) {
+          const r = ic.getBoundingClientRect();
+          if (e.clientX >= r.left - HIT_PAD_X
+              && e.clientX <= r.right + HIT_PAD_X
+              && e.clientY >= r.top
+              && e.clientY <= r.bottom) {
+            hit = { ic, rect: r };
+            break;
+          }
+        }
+        if (!hit) return; // click outside any icon's hit-zone - browser handles
+        e.preventDefault();
+        const mid = hit.rect.left + hit.rect.width / 2;
+        const range = document.createRange();
+        if (e.clientX < mid) range.setStartBefore(hit.ic);
+        else                 range.setStartAfter(hit.ic);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        editArea.focus();
+      };
+      editArea.addEventListener("mousedown", this._iconClickHandler);
+    }
     // Don't use installFocusTrap here — its mouseup refocus pulls focus
     // away from the contenteditable on any button click (breaking typing)
     // and wipes the text selection on drag-select that ends outside the
@@ -168,164 +245,128 @@ export class NoteEditor {
             return;
           }
         }
-        // Backspace right after an icon+nbsp pair → delete both in
-        // one keystroke. The trailing &nbsp; emitted by
-        // renderIconHTML (js/note/icons.mjs) exists to give the
-        // caret a reliable landing character after the empty
-        // inline-block icon span, but it counts as a character for
-        // Backspace — without this handler, users have to press
-        // Backspace twice (first removes the nbsp, second removes
-        // the icon span) which feels wrong. Guard is tight: only
-        // fires when the selection is collapsed AND the caret sits
-        // immediately after "<icon-span>\u00A0|" so we don't steal
-        // normal Backspace behaviour anywhere else.
-        if (key === "backspace" && !mod) {
+        // Atomic Backspace / Delete around inline-icon spans (Pattern
+        // #29). Has to live here, NOT on editArea bubble - this
+        // _keyBlock fires in window CAPTURE phase and ends with an
+        // unconditional stopImmediatePropagation, so editArea-bubble
+        // handlers would never see the event.
+        if ((key === "backspace" || key === "delete") && !mod) {
           const sel = window.getSelection();
           if (sel && sel.rangeCount > 0) {
             const r = sel.getRangeAt(0);
             if (r.collapsed && this._editArea?.contains(r.startContainer)) {
-              const node = r.startContainer;
-              const off = r.startOffset;
-              if (
-                node.nodeType === 3 &&
-                off === 1 &&
-                node.nodeValue &&
-                node.nodeValue[0] === "\u00A0"
-              ) {
-                const prev = node.previousSibling;
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  prev.remove();
-                  node.nodeValue = node.nodeValue.slice(1);
-                  // Reposition caret to where the icon used to be.
-                  // If the text node still has content, caret goes
-                  // to its start; otherwise remove the now-empty
-                  // text node and collapse to the parent block end.
-                  const parent = node.parentNode;
-                  const r2 = document.createRange();
-                  if (node.nodeValue.length > 0) {
-                    r2.setStart(node, 0);
+              const findIconAdjacent = (forward) => {
+                const node = r.startContainer;
+                const off  = r.startOffset;
+                let probe;
+                if (node.nodeType === 3) {
+                  if (forward) {
+                    if (off !== node.nodeValue.length) return null;
                   } else {
-                    const idx = Array.prototype.indexOf.call(
-                      parent.childNodes, node
-                    );
-                    parent.removeChild(node);
-                    r2.setStart(parent, Math.max(0, idx));
+                    const before = node.nodeValue.slice(0, off);
+                    if (!/^[\s ]*$/.test(before)) return null;
                   }
-                  r2.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
+                  probe = forward ? node.nextSibling : node.previousSibling;
+                } else {
+                  probe = forward ? node.childNodes[off] : node.childNodes[off - 1];
                 }
+                let safety = 4;
+                while (probe && safety-- > 0 && (
+                  (probe.nodeType === 3 && /^[\s ]*$/.test(probe.nodeValue || "")) ||
+                  (probe.nodeType === 1 && probe.tagName === "BR")
+                )) {
+                  probe = forward ? probe.nextSibling : probe.previousSibling;
+                }
+                if (probe && probe.nodeType === 1 && probe.classList?.contains("pix-note-ic")) {
+                  return probe;
+                }
+                if (probe && probe.nodeType === 1) {
+                  const ics = probe.querySelectorAll?.(".pix-note-ic");
+                  if (ics && ics.length === 1) {
+                    const txt = (probe.textContent || "").replace(/[\s ]/g, "");
+                    if (txt.length === 0) return ics[0];
+                  }
+                }
+                return null;
+              };
+              const forward = (key === "delete");
+              const icon = findIconAdjacent(forward);
+              if (icon) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                this._snapBefore?.();
+                const wrapper = icon.parentElement;
+                // renderIconHTML always appends a trailing nbsp AFTER
+                // the icon. Two shapes:
+                //   (a) separate text node containing exactly U+00A0
+                //   (b) text node starting with U+00A0 followed by
+                //       user-typed text (Chrome merged them)
+                const followerNbsp = icon.nextSibling;
+                if (followerNbsp && followerNbsp.nodeType === 3
+                    && followerNbsp.nodeValue) {
+                  if (followerNbsp.nodeValue === " ") {
+                    followerNbsp.remove();
+                  } else if (followerNbsp.nodeValue.charCodeAt(0) === 0x00A0) {
+                    followerNbsp.nodeValue = followerNbsp.nodeValue.slice(1);
+                  }
+                }
+                icon.remove();
+                if (wrapper && wrapper !== this._editArea
+                    && wrapper.children.length === 0
+                    && (wrapper.textContent || "").trim().length === 0) {
+                  wrapper.remove();
+                }
+                this._snapAfter?.();
+                this._dirty = true;
+                this._refreshActiveStates?.();
+                return;
               }
-              // Text-node-offset-0 fallback. The user clicked
-              // BETWEEN the icon and the nbsp (visually: right
-              // after the icon glyph, before any space), so Chrome
-              // placed the caret at offset 0 of the text node that
-              // starts with nbsp — e.g. `(textNode "\u00A0Settings", 0)`.
-              // The strict text-node-offset-1 branch above requires
-              // off === 1 and bails; native Backspace then runs and
-              // refuses to delete an empty inline-block span. Match
-              // this caret shape and delete the icon + strip the
-              // leading nbsp.
-              if (
-                node.nodeType === 3 &&
-                off === 0 &&
-                node.nodeValue?.[0] === "\u00A0"
-              ) {
-                const prev = node.previousSibling;
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  prev.remove();
-                  node.nodeValue = node.nodeValue.slice(1);
-                  const parent = node.parentNode;
-                  const r2 = document.createRange();
-                  if (node.nodeValue.length > 0) {
-                    r2.setStart(node, 0);
-                  } else {
-                    const idx = Array.prototype.indexOf.call(
-                      parent.childNodes, node
-                    );
-                    parent.removeChild(node);
-                    r2.setStart(parent, Math.max(0, idx));
-                  }
-                  r2.collapse(true);
-                  sel.removeAllRanges();
-                  sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
+            }
+          }
+        }
+        // Empty folder-hint Backspace / Delete: remove the whole div in
+        // one keystroke. Without this, Chrome treats the empty <div>
+        // (just a ::before icon, no text) as block-level whitespace —
+        // Backspace merges it with the previous block instead of
+        // removing the icon-bearing block, so the user has to press
+        // the key twice to actually delete the icon. Same key trap
+        // shape as the icon handler above.
+        if ((key === "backspace" || key === "delete") && !mod) {
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount > 0) {
+            const r = sel.getRangeAt(0);
+            if (r.collapsed && this._editArea?.contains(r.startContainer)) {
+              let n = r.startContainer;
+              let folderhint = null;
+              while (n && n !== this._editArea) {
+                if (n.nodeType === 1 && n.classList?.contains("pix-note-folderhint")) {
+                  folderhint = n; break;
                 }
+                n = n.parentNode;
               }
-              // Element-container fallback. On fresh inserts Chrome
-              // programmatically parks the caret INSIDE the nbsp
-              // text node at offset 1 (branch above). On restored
-              // content (workflow reload), the user CLICKS near the
-              // icon to delete it and Chrome resolves the caret to
-              // the parent element at the boundary between the
-              // empty inline-block span and the following text node
-              // — e.g. `{container: <h1>, offset: 1}`. The strict
-              // text-node check above fails and native Backspace
-              // refuses to delete an empty inline-block span, so
-              // the icon appears un-deletable. Here we match the
-              // element-container shape: caret at (elem, N) where
-              // childNodes[N-1] is a .pix-note-ic span. Same
-              // delete-both semantics.
-              if (node.nodeType === 1 && off >= 1) {
-                const prev = node.childNodes[off - 1];
-                if (
-                  prev &&
-                  prev.nodeType === 1 &&
-                  prev.classList?.contains("pix-note-ic")
-                ) {
-                  e.preventDefault();
-                  e.stopImmediatePropagation();
-                  this._snapBefore?.();
-                  const next = node.childNodes[off];
-                  prev.remove();
-                  // Strip leading nbsp from the following text node
-                  // if present, matching the text-node branch above.
-                  if (
-                    next &&
-                    next.nodeType === 3 &&
-                    next.nodeValue?.[0] === "\u00A0"
-                  ) {
-                    next.nodeValue = next.nodeValue.slice(1);
-                    if (next.nodeValue.length === 0) {
-                      next.parentNode?.removeChild(next);
-                    }
-                  }
+              if (folderhint && (folderhint.textContent || "").trim() === "") {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                this._snapBefore?.();
+                const fwd = (key === "delete");
+                const adjacent = fwd
+                  ? folderhint.nextElementSibling
+                  : folderhint.previousElementSibling;
+                folderhint.remove();
+                // Land caret at end of previous block (Backspace) or
+                // start of next block (Delete) so the typing flow
+                // continues naturally.
+                if (adjacent) {
                   const r2 = document.createRange();
-                  // After prev.remove(), childNodes shifted down by
-                  // 1, so the slot where the icon used to be is now
-                  // off-1. Clamp to childNodes.length for safety
-                  // (valid Range offset: 0..childNodes.length).
-                  const clamped = Math.min(
-                    Math.max(0, off - 1),
-                    node.childNodes.length
-                  );
-                  r2.setStart(node, clamped);
-                  r2.collapse(true);
+                  r2.selectNodeContents(adjacent);
+                  r2.collapse(fwd); // fwd: collapse to start; !fwd: end
                   sel.removeAllRanges();
                   sel.addRange(r2);
-                  this._snapAfter?.();
-                  this._dirty = true;
-                  return;
                 }
+                this._snapAfter?.();
+                this._dirty = true;
+                this._refreshActiveStates?.();
+                return;
               }
             }
           }
@@ -338,7 +379,7 @@ export class NoteEditor {
         // Cancel/outside to dismiss.
         if (key === "escape") {
           const hasModal = !!document.querySelector(
-            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop, .pix-note-iconpop, .pix-note-help-overlay"
+            ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-modal-backdrop, .pix-note-help-overlay"
           );
           e.preventDefault();
           e.stopImmediatePropagation();
@@ -472,7 +513,14 @@ export class NoteEditor {
       if (this._el && !this._el.isConnected) this._cleanup();
     });
     this._removalObserver.observe(document.body, { childList: true, subtree: false });
-    requestAnimationFrame(() => this._editArea?.focus());
+    // Focus the contenteditable AND place the caret at the end of
+    // the last block so the user sees a visibly blinking cursor at a
+    // natural typing position. Without explicit placement the caret
+    // lands at offset 0 (often invisible against icons or block start)
+    // and savedRange capture later picks up that hidden default,
+    // surprising the user when icon insert lands at the start of the
+    // note instead of where they expect.
+    requestAnimationFrame(() => this._placeCursorAtEnd?.());
   }
 
   async close(force = false) {
@@ -524,6 +572,14 @@ export class NoteEditor {
   }
 
   _cleanup() {
+    // Centred modal still open? Close it first so its window-capture
+    // keydown listener gets removed — otherwise it leaks past the
+    // editor lifetime. Single-active-modal invariant means this is
+    // at most one call.
+    if (this._activeCentredModalClose) {
+      try { this._activeCentredModalClose(); } catch (_) { /* swallow */ }
+      this._activeCentredModalClose = null;
+    }
     if (this._removalObserver) {
       this._removalObserver.disconnect();
       this._removalObserver = null;
@@ -565,6 +621,13 @@ export class NoteEditor {
       document.removeEventListener("selectionchange", this._selectionChangeHandler);
       this._selectionChangeHandler = null;
     }
+    if (this._beforeInputHandler && this._editArea) {
+      this._editArea.removeEventListener("beforeinput", this._beforeInputHandler);
+      this._beforeInputHandler = null;
+    }
+    this._stagedHi = null;
+    this._stagedHiClear = false;
+    this._pickedFg = null;
     if (this._onWindowResize) {
       window.removeEventListener("resize", this._onWindowResize);
       this._onWindowResize = null;
@@ -590,6 +653,29 @@ export class NoteEditor {
     if (this.node && this.node._noteEditor === this) {
       this.node._noteEditor = null;
     }
+    // Reset icon-picker session state so the next open starts fresh.
+    this._iconPickerColor = null;
+    this._iconPickerSize = null;
+    // Reset separator-picker session state.
+    this._sepPickerColor = null;
+    this._sepPickerVariant = null;
+    // Reset grid-picker session state.
+    this._gridPickerBorderColor = null;
+    this._gridPickerHeaderBg = null;
+    this._gridPickerCols = null;
+    this._gridPickerRows = null;
+    this._gridPickerHeader = null;
+    // Reset button-picker + folder-hint session state.
+    this._btnPickerColor = null;
+    this._btnPickerIcon = null;
+    this._btnPickerSizeOn = null;
+    this._folderHintPickerColor = null;
+    this._folderHintPickerFolder = null;
+    // Drop the icon-deletion + click-placement handler refs. The DOM
+    // node they were attached to (the contenteditable inside _el) was
+    // already removed above, so the listeners are gone with it; this
+    // just clears the closure refs.
+    this._iconClickHandler = null;
   }
 
   save() {
@@ -676,7 +762,7 @@ export class NoteEditor {
       // unsaved-changes prompt ON TOP of the still-open modal. Mirrors
       // the same hasModal check the Escape-key handler already uses above.
       const hasModal = !!document.querySelector(
-        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-note-colorpop, .pix-note-iconpop, .pix-note-help-overlay"
+        ".pix-note-blockdlg, .pix-note-confirm-backdrop, .pix-cp-popup, .pix-cp-modal-backdrop, .pix-note-iconpop, .pix-note-modal-backdrop, .pix-note-help-overlay"
       );
       if (hasModal) return;
       this.close();
@@ -788,6 +874,20 @@ export class NoteEditor {
     }, true);
     main.appendChild(editArea);
     this._editArea = editArea;
+    // beforeinput-driven highlight stage: mirror of how foreColor
+    // staging works for text-color (Chrome handles foreColor natively;
+    // we have to do this manually for highlight since execCommand
+    // hiliteColor on collapsed cursor is unreliable). When the user
+    // picks a highlight colour, the picker stores it on
+    // `this._stagedHi` and DOES NOT mutate the DOM. Right before the
+    // user types a character we insert an empty bg span at the cursor
+    // and place the caret inside; the typed character lands in that
+    // span. _stagedHi is consumed (cleared) on first text input, same
+    // one-shot semantics as Chrome's foreColor stage.
+    this._beforeInputHandler = (e) => {
+      if (this._applyStagedHilite) this._applyStagedHilite(e);
+    };
+    editArea.addEventListener("beforeinput", this._beforeInputHandler);
     // Write the Btn/Ln CSS vars on editArea NOW that it exists. The
     // makeColorPicker factory inside _buildToolbar() ran before this
     // assignment, so its apply() no-oped on `this._editArea?.`—
@@ -844,14 +944,14 @@ export class NoteEditor {
     h.className = "pix-note-help-overlay";
     h.innerHTML = `
       <div class="pix-note-help-header">
-        <h3>Note Pixaroma — Shortcuts &amp; Features</h3>
+        <h3>Note Pixaroma: Shortcuts &amp; Features</h3>
         <button type="button" class="pix-note-help-close" title="Close">\u2715</button>
       </div>
       <div class="pix-note-help-content">
         <div class="pix-note-help-section">
           <h4>Overview</h4>
           <div class="pix-note-help-grid">
-            <b>Purpose</b><span>Rich-text annotation node — models to download, nodes used, tutorials. Purely visual; not wired into processing.</span>
+            <b>Purpose</b><span>Rich-text annotation node for models to download, nodes used, tutorials. Purely visual; not wired into processing.</span>
             <b>Save</b><span>Ctrl+S or the Save button. Esc prompts if unsaved.</span>
           </div>
         </div>
@@ -874,11 +974,9 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Colors</h4>
           <div class="pix-note-help-grid">
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color (also used for inline icons)</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Colored background behind the selected text</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Clear reverts to the dark default</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-button-color"></span>Btn</b><span>Button-pill color (Download / View Page / Read More)</span>
-            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-line-color"></span>Ln</b><span>Line color (grid borders, HR, grid header underline, folder hint)</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-text-color"></span>A</b><span>Text color. Sticky pick: typing keeps the picked colour until you pick again. Picker has 36 swatches, Reset (white), and "More colors…" for HSV/hex.</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-highlight-color"></span>Highlight</b><span>Coloured background behind text. Pick a colour then type, and each char extends the highlight run. Switch colours to start a new run. Pick the same picker's transparent tile or Reset to stop highlighting subsequent typing (existing highlights stay). Typed spaces in a highlight become nbsp so consecutive spaces stay visible.</span>
+            <b><span class="pix-note-tbtn-maskicon-multi pix-note-icon-bg-color"></span>Bg</b><span>Per-note background; drives both editor AND the canvas node. Reset returns to the dark default (#111111). Transparent tile is dimmed (to revert to ComfyUI's native right-click Colors menu, leave Bg untouched on a fresh note).</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -893,26 +991,27 @@ export class NoteEditor {
           <div class="pix-note-help-grid">
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-link"></span>Link</b><span>http, https, or mailto URLs only. Opens in new tab.</span>
             <b><span class="pix-note-tbtn-maskicon pix-note-icon-code"></span>Code</b><span>Code block (&lt;pre&gt;&lt;code&gt;). Multi-line via the themed dialog</span>
-            <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>&lt;hr&gt; horizontal rule</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Table: 2–4 columns × 1–10 rows. Tab navigates cells</span>
-            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>SVG from assets/icons/note/. Takes current A color on insert</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-separator"></span>Separator</b><span>Centred modal: pick colour and variant (solid / dashed / dotted / double / thick), click Insert. Each separator carries its own colour.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/grid.svg">Grid</b><span>Centred modal: pick border and header colours, columns (2 to 4), rows (1 to 10), header on/off, click Insert. Each grid carries its own border and header colours. Tab navigates cells.</span>
+            <b><span class="pix-note-tbtn-maskicon pix-note-icon-icon-insert"></span>Icon</b><span>Centred modal: SVG from assets/icons/note/, with its own colour and size pills (S / M / L / XL). Single-click selects, double-click inserts. Sticky pick within the editor session. Default: model-v1, orange, M.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Pixaroma Blocks</h4>
           <div class="pix-note-help-grid">
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button Design</b><span>Rich dialog — Download / View Page / Read More pill with icon + optional folder hint + size tag</span>
-            <b>Download pill</b><span>On canvas: click opens the URL in a new tab. The folder hint below is informational — save the file manually into that path.</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Preset Pixaroma YouTube link (override freely)</span>
-            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Preset Pixaroma Discord link (override freely)</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg">Button</b><span>Centred modal: pick colour, button type (Download / View Page / Read More / No icon), label, URL, optional size hint. Each button carries its own colour. On the canvas, clicking the button opens its URL in a new tab.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/folder.svg">Folder hint</b><span>Standalone "Place in: ComfyUI/&lt;path&gt;" line. Centred modal: pick colour and folder path. Use it under a Button to tell the reader where to save the downloaded file. Purely informational; nothing happens on click.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg">YouTube</b><span>Centred modal with preset Pixaroma YouTube link (override freely). Brand red colour locked.</span>
+            <b><img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/discord.svg">Discord</b><span>Centred modal with preset Pixaroma Discord link (override freely). Brand blurple locked.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
           <h4>Editing Blocks In Place</h4>
           <div class="pix-note-help-grid">
-            <b>Pencil</b><span>Hover a link, pill, code block, or grid-free block — pencil appears, reopens its dialog pre-filled</span>
-            <b>Recolor Icon</b><span>Drag-select over the icon, pick a new color in A</span>
-            <b>Delete Icon</b><span>Backspace once from right of icon (removes icon + trailing space in one step)</span>
+            <b>Pencil</b><span>Hover a button, folder hint, link, or code block: a pencil appears, reopens its modal pre-filled (incl. the per-instance colour). Heading buttons are disabled while the caret is inside a table cell, since heading replace would clobber the whole table.</span>
+            <b>Tables / separators</b><span>No pencil for these in v1. Edit text by typing into cells; for separator colour or variant, delete and re-insert.</span>
+            <b>Recolor Icon</b><span>Inline icons have their own colour and size pickers in the Icon modal. To change an existing icon, delete it and re-insert with the new colour.</span>
+            <b>Delete Icon</b><span>Backspace once from right of icon (removes icon and trailing space in one step). Same atomic-delete works for an empty folder hint.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -936,7 +1035,7 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Paste &amp; Links</h4>
           <div class="pix-note-help-grid">
-            <b>Paste</b><span>Clipboard content comes in as plain text — images and rich formatting are dropped to keep notes clean</span>
+            <b>Paste</b><span>Clipboard content comes in as plain text; images and rich formatting are dropped to keep notes clean</span>
             <b>Link URLs</b><span>Only http, https, and mailto links are accepted</span>
           </div>
         </div>
@@ -961,7 +1060,7 @@ export class NoteEditor {
     h.className = "pix-note-help-overlay";
     h.innerHTML = `
       <div class="pix-note-help-header">
-        <h3>Note Pixaroma — Code View Reference</h3>
+        <h3>Note Pixaroma: Code View Reference</h3>
         <button type="button" class="pix-note-help-close" title="Close">\u2715</button>
       </div>
       <div class="pix-note-help-content">
@@ -981,7 +1080,7 @@ export class NoteEditor {
             <b>&lt;blockquote&gt;</b><span>Quoted paragraph (no dedicated toolbar button; hand-write it)</span>
             <b>&lt;pre&gt;</b><span>Code block wrapper</span>
             <b>&lt;hr&gt;</b><span>Horizontal separator</span>
-            <b>&lt;div&gt;</b><span>Generic block (allowed but discouraged — prefer &lt;p&gt;)</span>
+            <b>&lt;div&gt;</b><span>Generic block (allowed but discouraged; prefer &lt;p&gt;)</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -992,7 +1091,7 @@ export class NoteEditor {
             <b>&lt;u&gt;</b><span>Underline</span>
             <b>&lt;s&gt; / &lt;strike&gt;</b><span>Strikethrough</span>
             <b>&lt;br&gt;</b><span>Line break</span>
-            <b>&lt;a href&gt;</b><span>Link (http, https, mailto only — others stripped; auto-target _blank + rel noopener noreferrer)</span>
+            <b>&lt;a href&gt;</b><span>Link (http, https, mailto only; others stripped). Auto-target _blank with rel noopener noreferrer</span>
             <b>&lt;code&gt;</b><span>Inline code (inside &lt;pre&gt; for blocks)</span>
             <b>&lt;span&gt;</b><span>Generic inline; carries color / highlight / alignment styles AND data-ic for inline icons</span>
           </div>
@@ -1017,22 +1116,26 @@ export class NoteEditor {
         <div class="pix-note-help-section">
           <h4>Allowed Inline Styles</h4>
           <div class="pix-note-help-grid">
-            <b><code>color</code></b><span>Text foreground. Hex only (#rgb or #rrggbb). Other formats stripped.</span>
-            <b><code>background-color</code></b><span>Text highlight. Hex only.</span>
+            <b><code>color</code></b><span>Text foreground. Also used as the per-instance colour vehicle for separators and folder hints (currentColor flows into the border/icon). Accepts <code>#rgb</code> / <code>#rrggbb</code>, <code>rgb(...)</code> / <code>rgba(...)</code>, <code>transparent</code> / <code>inherit</code> / <code>currentColor</code>, and a small set of named colours (black / white / red / green / blue / yellow / orange / purple / gray / grey).</span>
+            <b><code>background-color</code></b><span>Text highlight, AND the per-instance colour for &lt;a class="pix-note-dl/vp/rm/btn-plain"&gt; pills. Same value forms as <code>color</code>.</span>
             <b><code>text-align</code></b><span>left / right / center / justify</span>
+            <b><code>--pix-note-grid-border</code></b><span>Per-instance grid cell border colour. Stamped on the &lt;table&gt;. Same value forms as <code>color</code>.</span>
+            <b><code>--pix-note-grid-header-bg</code></b><span>Per-instance grid header row background. Stamped on the &lt;table&gt;. Same value forms as <code>color</code>.</span>
           </div>
           <p style="margin:6px 0 0 0;color:#888;">Any other style (font-size, margin, display, …) is removed on save / paste / view-switch.</p>
         </div>
         <div class="pix-note-help-section">
           <h4>Allowed Classes</h4>
           <div class="pix-note-help-grid">
-            <b>pix-note-dl / vp / rm</b><span>Button Design pills (Download / View Page / Read More)</span>
-            <b>pix-note-btnblock</b><span>Button pill wrapper with folder hint</span>
+            <b>pix-note-dl / vp / rm</b><span>Button pills (Download / View Page / Read More)</span>
+            <b>pix-note-btn-plain</b><span>Button pill, no leading icon</span>
+            <b>pix-note-btnblock</b><span>Button pill wrapper (also wraps legacy bundled folder hints)</span>
             <b>pix-note-btnsize</b><span>Size tag inside a pill</span>
-            <b>pix-note-folderhint</b><span>"Place in: …" line under a Download pill</span>
-            <b>pix-note-yt / discord</b><span>YouTube / Discord pills</span>
-            <b>pix-note-grid</b><span>Tables — required on &lt;table&gt;</span>
-            <b>pix-note-ic</b><span>Inline icon span — with data-ic="&lt;slug&gt;" (slug = filename in assets/icons/note/, no .svg)</span>
+            <b>pix-note-folderhint</b><span>Standalone "Place in: …" line. New shape is &lt;div&gt;; legacy bundled hints still use &lt;span&gt; inside btnblock.</span>
+            <b>pix-note-yt / discord</b><span>YouTube / Discord pills (brand colours locked)</span>
+            <b>pix-note-grid</b><span>Tables (required on &lt;table&gt;). Pair with --pix-note-grid-border / --pix-note-grid-header-bg for per-instance colours.</span>
+            <b>pix-note-hr-solid / dashed / dotted / double / thick</b><span>Separator variants on &lt;hr&gt;. Pair with inline <code>style="color: ..."</code> for the per-instance colour.</span>
+            <b>pix-note-ic</b><span>Inline icon span. Pair with data-ic="&lt;slug&gt;" (slug = filename in assets/icons/note/, no .svg)</span>
           </div>
           <p style="margin:6px 0 0 0;color:#888;">Any other class is stripped silently.</p>
         </div>
@@ -1043,7 +1146,7 @@ export class NoteEditor {
             <b>&lt;iframe&gt; / &lt;img&gt;</b><span>Always removed</span>
             <b>on*=</b><span>All event handlers (onclick, onerror, onmouseover, …) stripped from every tag</span>
             <b>javascript:</b><span>URL scheme blocked on &lt;a&gt;</span>
-            <b>data-*</b><span>Only data-ic is kept (on span). Other data-attrs removed.</span>
+            <b>data-*</b><span>Allowlist: <code>data-ic</code> + <code>data-size</code> + <code>contenteditable</code> on <code>&lt;span&gt;</code> (inline icons); <code>data-folder</code> + <code>data-size</code> + <code>data-label</code> on <code>&lt;a&gt;</code> (Button Design pills). Everything else stripped.</span>
           </div>
         </div>
         <div class="pix-note-help-section">
@@ -1051,10 +1154,17 @@ export class NoteEditor {
           <pre style="background:#0e0e0e;border:1px solid #2a2a2a;border-radius:4px;padding:8px;color:#ddd;font-size:10px;line-height:1.5;overflow-x:auto;margin:0;">&lt;h2&gt;Workflow overview&lt;/h2&gt;
 &lt;p&gt;Install &lt;span data-ic="CLIP" class="pix-note-ic"&gt;&lt;/span&gt;&amp;nbsp;then&lt;/p&gt;
 &lt;span class="pix-note-btnblock"&gt;
-  &lt;a class="pix-note-dl" href="https://example.com/model.safetensors"
-     target="_blank" rel="noopener noreferrer"&gt;Model 2 GB&lt;/a&gt;
-  &lt;span class="pix-note-folderhint"&gt;Place in: ComfyUI/models/loras&lt;/span&gt;
-&lt;/span&gt;</pre>
+  &lt;a class="pix-note-dl" style="background-color: #f66744"
+     href="https://example.com/model.safetensors"
+     target="_blank" rel="noopener noreferrer"&gt;Model&lt;span class="pix-note-btnsize"&gt;2 GB&lt;/span&gt;&lt;/a&gt;
+&lt;/span&gt;&amp;nbsp;
+&lt;div class="pix-note-folderhint" style="color: #f66744"&gt;Place in: ComfyUI/models/loras&lt;/div&gt;
+&lt;hr class="pix-note-hr-dashed" style="color: #818cf8"&gt;
+&lt;table class="pix-note-grid"
+       style="--pix-note-grid-border: #f66744; --pix-note-grid-header-bg: #1a1a1a"&gt;
+  &lt;thead&gt;&lt;tr&gt;&lt;th&gt;Name&lt;/th&gt;&lt;th&gt;Size&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;
+  &lt;tbody&gt;&lt;tr&gt;&lt;td&gt;Flux 2&lt;/td&gt;&lt;td&gt;9 GB&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;
+&lt;/table&gt;</pre>
         </div>
       </div>
       <div class="pix-note-help-footer">
@@ -1270,6 +1380,11 @@ NoteEditor.prototype._placeCursorAtEnd = function () {
 // in both places.
 const PENCIL_BLOCK_SELECTORS = [
   "span.pix-note-btnblock",
+  // Folder hint: new design uses <div>, legacy bundled hints inside
+  // btnblocks use <span>. Tag-agnostic class match covers both. The
+  // pencil mouseover handler escalates the in-btnblock case to the
+  // parent btnblock so the click edits the whole bundle.
+  ".pix-note-folderhint",
   "a.pix-note-yt",
   "a.pix-note-discord",
   "pre",
@@ -1308,8 +1423,17 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
   };
 
   editArea.addEventListener("mouseover", (e) => {
-    const t = e.target.closest?.(PENCIL_BLOCK_SELECTORS);
+    let t = e.target.closest?.(PENCIL_BLOCK_SELECTORS);
     if (!t || !editArea.contains(t)) return;
+    // A folder hint that lives INSIDE a Button Design block edits the
+    // whole button block (the bundled folder line is part of the
+    // button). Standalone folder hints (the new design — <div>) edit
+    // themselves. closest() returns the folderhint first because
+    // it's the user's actual target, so we escalate manually.
+    if (t.classList?.contains("pix-note-folderhint")) {
+      const bb = t.closest("span.pix-note-btnblock");
+      if (bb) t = bb;
+    }
     show(t);
   });
   editArea.addEventListener("mouseout", (e) => {
