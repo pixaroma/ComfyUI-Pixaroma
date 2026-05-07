@@ -1001,10 +1001,10 @@ export function injectCSS() {
   margin: 0;
 }
 /* Variant rules — these render BOTH inside the variant chooser tiles
-   (where the tile sets `color: ...`) AND inside the editor body /
-   on-canvas note (where the inserted <hr> carries inline `color: ...`).
-   currentColor wires the picked colour into border-top so each
-   separator instance is independent of the toolbar Ln picker. */
+   (where the tile sets its color via inline style) AND inside the
+   editor body / on-canvas note (where the inserted <hr> carries
+   inline color). currentColor wires the picked colour into border-top
+   so each separator instance is independent of the toolbar Ln picker. */
 hr.pix-note-hr-solid {
   border: none;
   border-top: 1px solid currentColor;
