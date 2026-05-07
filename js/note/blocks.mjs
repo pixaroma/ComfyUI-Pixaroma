@@ -1093,10 +1093,16 @@ NoteEditor.prototype._insertSeparatorBlock = function (anchorBtn) {
   pop.appendChild(variantWrap);
 
   function repaintVariants() {
-    // Each tile's color drives the inner <hr>'s currentColor.
+    // Set the color directly on the inner <hr> element. Setting it on
+    // the wrapping <button> looked like it should work via currentColor
+    // inheritance, but Chrome's user-agent stylesheet on <hr> wins on
+    // border-color (the inherited color isn't picked up by border via
+    // currentColor in this configuration). Stamping the color on the
+    // hr itself sidesteps the inheritance question entirely.
     const c = editor._sepPickerColor || "#f66744";
     for (const tile of variantTiles.values()) {
-      tile.style.color = c;
+      const hr = tile.querySelector("hr");
+      if (hr) hr.style.color = c;
     }
   }
   repaintVariants();
