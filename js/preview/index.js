@@ -490,8 +490,12 @@ function createStripWidget() {
       const sel = node._pixaromaSelectedFrame ?? 0;
       const total = frames.length;
 
-      // ---- Expanded mode: single-frame view inside the node ----
-      if (node._pixaromaExpanded) {
+      // ---- Expanded view: single-frame display inside the node ----
+      // Triggered manually for batches (click thumbnail) OR automatically
+      // for single-frame batches (no need for a strip when there's only
+      // one). Single-frame mode skips the close X (nothing to go back to).
+      const isSingle = total === 1;
+      if (node._pixaromaExpanded || isSingle) {
         const f = frames[sel];
         const innerW = Math.max(40, widget_width - 2 * SIDE_PAD);
         const innerH = Math.max(40, widgetH - 2 * IMG_STRIP_V_PAD - EXPAND_FOOTER_H);
@@ -514,35 +518,37 @@ function createStripWidget() {
           ctx.restore();
         }
 
-        // Close X button — top-right of the image. Clickable area is
-        // larger (EXPAND_CLOSE_SIZE) than visible button (EXPAND_CLOSE_VISUAL)
-        // for easier targeting, especially on small node sizes.
-        const visualX = imgRect.x + imgRect.w - EXPAND_CLOSE_VISUAL - EXPAND_CLOSE_PAD;
-        const visualY = imgRect.y + EXPAND_CLOSE_PAD;
-        const closeRect = {
-          x: visualX - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
-          y: visualY - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
-          w: EXPAND_CLOSE_SIZE,
-          h: EXPAND_CLOSE_SIZE,
-        };
-        // Hover detection — read canvas-global mouse, convert to node-local.
-        // LiteGraph redraws on pointermove so this re-evaluates on every move.
-        const cm = app.canvas?.graph_mouse;
-        const mx = cm ? cm[0] - node.pos[0] : -1;
-        const my = cm ? cm[1] - node.pos[1] : -1;
-        const hoverClose = mx >= closeRect.x && mx <= closeRect.x + closeRect.w
-                        && my >= closeRect.y && my <= closeRect.y + closeRect.h;
-        ctx.save();
-        ctx.fillStyle = hoverClose ? "rgba(255,103,68,0.95)" : "rgba(0,0,0,0.7)";
-        ctx.beginPath();
-        ctx.roundRect(visualX, visualY, EXPAND_CLOSE_VISUAL, EXPAND_CLOSE_VISUAL, 3);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 16px sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("×", visualX + EXPAND_CLOSE_VISUAL / 2, visualY + EXPAND_CLOSE_VISUAL / 2 + 1);
-        ctx.restore();
+        // Close X button — only when a batch was expanded by clicking a
+        // thumbnail. Single-frame views have nothing to collapse back to.
+        let closeRect = null;
+        if (!isSingle) {
+          const visualX = imgRect.x + imgRect.w - EXPAND_CLOSE_VISUAL - EXPAND_CLOSE_PAD;
+          const visualY = imgRect.y + EXPAND_CLOSE_PAD;
+          closeRect = {
+            x: visualX - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
+            y: visualY - (EXPAND_CLOSE_SIZE - EXPAND_CLOSE_VISUAL) / 2,
+            w: EXPAND_CLOSE_SIZE,
+            h: EXPAND_CLOSE_SIZE,
+          };
+          // Hover detection — read canvas-global mouse, convert to node-local.
+          // LiteGraph redraws on pointermove so this re-evaluates on every move.
+          const cm = app.canvas?.graph_mouse;
+          const mx = cm ? cm[0] - node.pos[0] : -1;
+          const my = cm ? cm[1] - node.pos[1] : -1;
+          const hoverClose = mx >= closeRect.x && mx <= closeRect.x + closeRect.w
+                          && my >= closeRect.y && my <= closeRect.y + closeRect.h;
+          ctx.save();
+          ctx.fillStyle = hoverClose ? "rgba(255,103,68,0.95)" : "rgba(0,0,0,0.7)";
+          ctx.beginPath();
+          ctx.roundRect(visualX, visualY, EXPAND_CLOSE_VISUAL, EXPAND_CLOSE_VISUAL, 3);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.font = "bold 16px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("×", visualX + EXPAND_CLOSE_VISUAL / 2, visualY + EXPAND_CLOSE_VISUAL / 2 + 1);
+          ctx.restore();
+        }
 
         // Counter badge — bottom-right of the image (only when batch > 1)
         if (total > 1) {
@@ -839,6 +845,14 @@ api.addEventListener("executed", ({ detail }) => {
     node._pixaromaSelectedFrame = 0;
   }
   node.properties.pixaromaSelected = node._pixaromaSelectedFrame ?? 0;
+  // Fresh run = reset expanded view state. Without this, going from a
+  // batch (in expanded mode) to a single-image run leaves a leftover
+  // close X visible until the user clicks it. Single-image renders
+  // auto-expanded with no X anyway (see strip widget draw()), so the
+  // explicit flag should be off after every run.
+  node._pixaromaExpanded = false;
+  node.properties.pixaromaExpanded = false;
+  if (_activePreviewNode === node) _activePreviewNode = null;
   // New run = fresh counter base. Output/ counter has advanced (if save_mode
   // was on) so suggested filename will be naturally newer; reset the local
   // offset so we don't double-jump.
