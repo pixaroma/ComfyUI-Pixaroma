@@ -946,16 +946,45 @@ function makeGridModal(editor, onSubmit) {
     minus.addEventListener("click", () => set(state[key] - 1));
     plus.addEventListener("click", () => set(state[key] + 1));
     set(state[key]);
-    return row;
+    // Expose `set` so Reset can drive the stepper from outside
+    // without re-implementing the clamp + button-disabled logic.
+    return { row, setValue: set };
   }
-  pop.appendChild(makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX));
-  pop.appendChild(makeStepper("Rows",    "rows", GRID_ROW_MIN, GRID_ROW_MAX));
+  const colsStep = makeStepper("Columns", "cols", GRID_COL_MIN, GRID_COL_MAX);
+  const rowsStep = makeStepper("Rows",    "rows", GRID_ROW_MIN, GRID_ROW_MAX);
+  pop.appendChild(colsStep.row);
+  pop.appendChild(rowsStep.row);
   pop.appendChild(headRow);
   pop.appendChild(previewWrap);
 
   // ── Footer ─────────────────────────────────────────────────────
   const footer = document.createElement("div");
   footer.className = "pix-note-modal-footer";
+
+  // Reset to defaults — sits on the left (margin-right: auto in CSS).
+  // Restores both colours, cols/rows, and the header toggle to their
+  // factory defaults. Useful when the sticky session state has drifted.
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-note-modal-btn pix-note-modal-btn-reset";
+  resetBtn.textContent = "Reset";
+  resetBtn.title = "Reset all options to defaults";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", () => {
+    state.borderColor = "#f66744";
+    state.headerBg    = "#1a1a1a";
+    state.header      = false;
+    editor._gridPickerBorderColor = state.borderColor;
+    editor._gridPickerHeaderBg    = state.headerBg;
+    editor._gridPickerHeader      = state.header;
+    borderSwatch.style.background      = state.borderColor;
+    headerColorSwatch.style.background = state.headerBg;
+    colsStep.setValue(3);
+    rowsStep.setValue(3);
+    refresh();
+  });
+  footer.appendChild(resetBtn);
+
   const cancelBtn = document.createElement("button");
   cancelBtn.type = "button";
   cancelBtn.className = "pix-note-modal-btn";

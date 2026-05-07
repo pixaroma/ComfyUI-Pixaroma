@@ -968,6 +968,13 @@ export function injectCSS() {
   cursor: not-allowed;
 }
 
+/* "Reset to defaults" footer button — sits on the LEFT of the footer
+   (Cancel + Insert stay clustered on the right). margin-right: auto
+   pushes it across the flex line into its own column. */
+.pix-note-modal-btn-reset {
+  margin-right: auto;
+}
+
 /* ── Separator picker modal ─────────────────────────────────────
    Variant chooser: 5 vertical tiles, each rendering an actual <hr>
    sample with the picked colour. Click selects, double-click commits
