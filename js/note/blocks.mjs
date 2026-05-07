@@ -18,15 +18,6 @@ const ICON_TO_FALLBACK_LABEL = {
   rm: "Read More",
 };
 
-// Smart defaults applied whenever the user picks an icon. These are only
-// applied to toggles the user hasn't manually flipped yet — so switching
-// the icon mid-edit won't clobber an intentional override.
-const ICON_DEFAULTS = {
-  dl: { folderOn: true,  sizeOn: true,  label: "", labelPh: "e.g. Flux 2 Model",    folder: "models/diffusion_models" },
-  vp: { folderOn: false, sizeOn: false, label: "", labelPh: "e.g. Flux 2 on HuggingFace", folder: "models/diffusion_models" },
-  rm: { folderOn: false, sizeOn: false, label: "", labelPh: "e.g. Release notes",   folder: "models/diffusion_models" },
-};
-
 // Capture / restore helpers. When the block dialog opens, focus moves to
 // the dialog's first input — the contenteditable loses its selection, so
 // a naive execCommand("insertHTML") on submit has no target range and
@@ -182,14 +173,21 @@ function insertAtSavedRange(editor, savedRange, html) {
 
 NoteEditor.prototype._insertButtonBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeButtonDesignDialog(anchorBtn, (v, ctx) => {
+  makeButtonModal(this, (v, ctx) => {
     const check = validateUrl(v.url);
     if (!check.ok) {
       ctx.showError(check.message);
-      return false; // keep dialog open, user can fix the URL
+      return false; // keep modal open, user can fix the URL
     }
     insertAtSavedRange(this, savedRange, renderButtonHTML(v));
-    return true; // close dialog
+    return true; // close modal
+  });
+};
+
+NoteEditor.prototype._insertFolderHintBlock = function (anchorBtn) {
+  const savedRange = saveRange(this._editArea);
+  makeFolderHintModal(this, (v) => {
+    insertAtSavedRange(this, savedRange, renderFolderHintHTML(v));
   });
 };
 
@@ -199,19 +197,35 @@ NoteEditor.prototype._insertButtonBlock = function (anchorBtn) {
 // line underneath reads "Place in: ComfyUI/<folder>" with a folder icon.
 // The whole thing is wrapped in a <span class="pix-note-btnblock"> so the
 // pair can be deleted in a single backspace and laid out as one unit.
+// `v.icon` accepts "dl" / "vp" / "rm" / "none". `none` renders a plain
+// pill without the leading icon. `v.color` is a hex string stamped as
+// inline `style="background-color:..."` so the pill is independent of
+// the toolbar Btn picker. Folder bundling has been retired — use the
+// dedicated folder-hint toolbar button to add a "Place in: ..." line.
 function renderButtonHTML(v) {
-  const cls = ICON_TO_CLASS[v.icon] || "pix-note-dl";
-  const labelFallback = ICON_TO_FALLBACK_LABEL[v.icon] || "Download";
+  const cls = v.icon === "none"
+    ? "pix-note-btn-plain"
+    : (ICON_TO_CLASS[v.icon] || "pix-note-dl");
+  // Fallback label only applies to icon variants — "none" with no
+  // label gets a generic "Click here" so the pill is at least
+  // pressable.
+  const labelFallback = v.icon === "none"
+    ? "Click here"
+    : (ICON_TO_FALLBACK_LABEL[v.icon] || "Download");
   const labelText = escapeHtml(v.label || labelFallback);
   const sizeInner = (v.sizeOn && v.size)
     ? `<span class="pix-note-btnsize">${escapeHtml(v.size)}</span>`
     : "";
-  const pill = `<a class="${cls}" href="${escapeHtml(v.url)}"` +
-    ` target="_blank" rel="noopener noreferrer">${labelText}${sizeInner}</a>`;
-  const hint = (v.folderOn && v.folder)
-    ? `<span class="pix-note-folderhint">Place in: ComfyUI/${escapeHtml(v.folder)}</span>`
+  const colorAttr = /^#[0-9a-f]{3,8}$/i.test(v.color || "")
+    ? ` style="background-color: ${v.color}"`
     : "";
-  return `<span class="pix-note-btnblock">${pill}${hint}</span>&nbsp;`;
+  const pill = `<a class="${cls}"${colorAttr} href="${escapeHtml(v.url)}"` +
+    ` target="_blank" rel="noopener noreferrer">${labelText}${sizeInner}</a>`;
+  // Wrapper kept for backwards compat (existing notes still have it
+  // around bundled pill+folder pairs); for new buttons it's just the
+  // pill, but the wrapper keeps the inserted unit selectable as one
+  // chunk for backspace + makes the pencil dispatcher consistent.
+  return `<span class="pix-note-btnblock">${pill}</span>&nbsp;`;
 }
 
 // Kept as backwards-compatible alias so nothing that still calls the
@@ -256,200 +270,248 @@ NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
   );
 };
 
-// Rich "Button Design" dialog with a live preview pill, icon segmented
-// control, and on/off toggles for the folder suggestion + size hint. The
-// pill class (download / view page / read more) is chosen by the icon
-// picker, and the submit callback receives all fields as one object.
-//
-// onSubmit: ({icon, url, label, folderOn, folder, sizeOn, size}) → boolean
-//   Return true to close the dialog, false to keep it open (e.g. to show
-//   a validation error without losing the user's typing).
-function makeButtonDesignDialog(anchorBtn, onSubmit, initialValues) {
+// Centred modal for the Button Design block. Picks per-instance colour,
+// icon variant (Download / View Page / Read More / no icon), label,
+// URL, and an optional size hint. Folder bundling moved out into its
+// own dedicated toolbar entry / picker. Session-sticky on the editor
+// (_btnPickerColor / _btnPickerIcon / _btnPickerSizeOn).
+const _BTN_ICON_OPTS = [
+  { id: "dl",   label: "Download",  svg: "download-model.svg"  },
+  { id: "vp",   label: "View Page", svg: "view-model-page.svg" },
+  { id: "rm",   label: "Read More", svg: "read-more.svg"       },
+  { id: "none", label: "No icon",   svg: null                  },
+];
+
+function makeButtonModal(editor, onSubmit, initialValues) {
   const state = {
-    icon: "dl",
-    url: "",
-    label: "",
-    folderOn: true,
-    folder: "models/diffusion_models",
-    sizeOn: true,
-    size: "",
+    icon:   editor._btnPickerIcon   || "dl",
+    color:  editor._btnPickerColor  || "#f66744",
+    label:  "",
+    url:    "",
+    sizeOn: editor._btnPickerSizeOn || false,
+    size:   "",
   };
-  // Tracks toggles the user explicitly flipped. Flipped toggles are never
-  // overwritten by ICON_DEFAULTS when the icon changes.
-  const touched = { folderOn: false, sizeOn: false };
+  if (initialValues) Object.assign(state, initialValues);
 
-  // Editing an existing block: overlay initial values onto state and
-  // mark both toggles as "touched" so a subsequent icon change doesn't
-  // clobber the user's original choices.
-  if (initialValues) {
-    Object.assign(state, initialValues);
-    touched.folderOn = true;
-    touched.sizeOn = true;
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-modal-backdrop";
+  const pop = document.createElement("div");
+  pop.className = "pix-note-modal";
+  backdrop.appendChild(pop);
+
+  const hint = document.createElement("div");
+  hint.className = "pix-note-modal-hint";
+  hint.textContent =
+    "Pick a colour and a button style, fill in the label and URL, then click Insert.";
+  pop.appendChild(hint);
+
+  // Colour swatch row
+  const colorRow = document.createElement("div");
+  colorRow.className = "pix-note-modal-row";
+  const colorLbl = document.createElement("span");
+  colorLbl.className = "lbl";
+  colorLbl.textContent = "Button colour";
+  colorRow.appendChild(colorLbl);
+  const colorSwatch = document.createElement("button");
+  colorSwatch.type = "button";
+  colorSwatch.className = "pix-note-modal-swatch";
+  colorSwatch.title = "Click to pick the button colour";
+  colorSwatch.style.background = state.color;
+  colorSwatch.addEventListener("mousedown", (e) => e.preventDefault());
+  colorSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPixaromaCompactColorPickerPopup(colorSwatch, {
+      initialColor: state.color,
+      showClear: false,
+      resetColor: "#f66744",
+      onPick: (c) => {
+        const next = c || "#f66744";
+        state.color = next;
+        editor._btnPickerColor = next;
+        colorSwatch.style.background = next;
+        refresh();
+      },
+    });
+  });
+  colorRow.appendChild(colorSwatch);
+  pop.appendChild(colorRow);
+
+  // Button-type segmented control (Download / View Page / Read More / No icon)
+  const typeLbl = document.createElement("div");
+  typeLbl.className = "lbl";
+  typeLbl.style.marginTop = "10px";
+  typeLbl.style.fontSize = "11px";
+  typeLbl.style.color = "#bbb";
+  typeLbl.style.textTransform = "uppercase";
+  typeLbl.style.letterSpacing = "0.5px";
+  typeLbl.style.fontWeight = "600";
+  typeLbl.textContent = "Button type";
+  pop.appendChild(typeLbl);
+  const iconRow = document.createElement("div");
+  iconRow.className = "pix-note-modal-btnpick";
+  const iconBtns = {};
+  for (const opt of _BTN_ICON_OPTS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.icon = opt.id;
+    if (opt.svg) {
+      const ico = document.createElement("span");
+      ico.className = "ico";
+      const url = `url(/pixaroma/assets/icons/ui/${opt.svg})`;
+      ico.style.webkitMaskImage = url;
+      ico.style.maskImage = url;
+      b.appendChild(ico);
+    } else {
+      const ico = document.createElement("span");
+      ico.className = "ico-none";
+      b.appendChild(ico);
+    }
+    const txt = document.createElement("span");
+    txt.textContent = opt.label;
+    b.appendChild(txt);
+    b.addEventListener("mousedown", (e) => e.preventDefault());
+    b.addEventListener("click", () => {
+      state.icon = opt.id;
+      editor._btnPickerIcon = opt.id;
+      refresh();
+    });
+    iconBtns[opt.id] = b;
+    iconRow.appendChild(b);
   }
+  pop.appendChild(iconRow);
 
-  const dlg = document.createElement("div");
-  dlg.className = "pix-note-blockdlg pix-note-btndesign";
-  const rect = anchorBtn.getBoundingClientRect();
-  dlg.style.left = `${Math.max(8, rect.left)}px`;
-  dlg.style.top = `${rect.bottom + 6}px`;
+  // Label input
+  const labelField = makeModalField("Label");
+  const labelInput = labelField.querySelector("input");
+  labelInput.placeholder = "e.g. Flux 2 Model";
+  labelInput.addEventListener("input", () => {
+    state.label = labelInput.value;
+    refresh();
+  });
+  pop.appendChild(labelField);
 
-  // Header
-  const h = document.createElement("h4");
-  h.textContent = initialValues ? "Edit button" : "Insert button";
-  dlg.appendChild(h);
+  // URL input
+  const urlField = makeModalField("URL");
+  const urlInput = urlField.querySelector("input");
+  urlInput.placeholder = "https://...";
+  urlInput.addEventListener("input", () => { state.url = urlInput.value; });
+  pop.appendChild(urlField);
 
-  // --- Live preview pill --------------------------------------------------
-  // Mirrors the HTML shape produced by renderButtonHTML() — same
-  // .pix-note-btnblock wrapper, .pix-note-{dl,vp,rm} pill, optional
-  // .pix-note-btnsize inside the pill, and optional .pix-note-folderhint
-  // line below. The preview container (.pix-note-prevwrap) is included as
-  // an ancestor in the pill CSS selectors so the styling matches on-canvas.
+  // Size hint toggle + input
+  const sizeHead = document.createElement("div");
+  sizeHead.className = "pix-note-optrow";
+  const sizeHeadLbl = document.createElement("div");
+  sizeHeadLbl.className = "lbl";
+  sizeHeadLbl.textContent = "Show size hint";
+  const sizeToggle = document.createElement("div");
+  sizeToggle.className = "pix-note-toggle";
+  sizeHead.appendChild(sizeHeadLbl);
+  sizeHead.appendChild(sizeToggle);
+  sizeHead.addEventListener("click", (e) => {
+    if (e.target.closest("input")) return;
+    state.sizeOn = !state.sizeOn;
+    editor._btnPickerSizeOn = state.sizeOn;
+    refresh();
+  });
+  pop.appendChild(sizeHead);
+
+  const sizeField = makeModalField("");
+  sizeField.classList.remove("pix-note-modal-field");
+  sizeField.className = "pix-note-modal-field";
+  const sizeInput = sizeField.querySelector("input");
+  sizeInput.placeholder = "e.g. 9.4 GB";
+  sizeInput.addEventListener("input", () => {
+    state.size = sizeInput.value;
+    refresh();
+  });
+  // Drop the empty label so the size input doesn't have a hanging
+  // header — the toggle row above already names it.
+  const sizeFieldLbl = sizeField.querySelector(".lbl");
+  if (sizeFieldLbl) sizeFieldLbl.remove();
+  pop.appendChild(sizeField);
+
+  // Live preview pill
   const previewWrap = document.createElement("div");
   previewWrap.className = "pix-note-prevwrap";
+  previewWrap.style.marginTop = "10px";
   const previewBlock = document.createElement("span");
   previewBlock.className = "pix-note-btnblock";
   const preview = document.createElement("a");
-  preview.className = "pix-note-dl";
   preview.href = "#";
-  const previewLabel = document.createTextNode("Model Name");
+  preview.addEventListener("click", (e) => e.preventDefault());
+  const previewLabel = document.createTextNode("");
   const previewSize = document.createElement("span");
   previewSize.className = "pix-note-btnsize";
   preview.appendChild(previewLabel);
   preview.appendChild(previewSize);
-  preview.addEventListener("click", (e) => e.preventDefault());
-  const previewHint = document.createElement("span");
-  previewHint.className = "pix-note-folderhint";
   previewBlock.appendChild(preview);
-  previewBlock.appendChild(previewHint);
   previewWrap.appendChild(previewBlock);
-  dlg.appendChild(previewWrap);
+  pop.appendChild(previewWrap);
 
-  // --- Icon segmented control ---------------------------------------------
-  const iconRow = document.createElement("div");
-  iconRow.className = "pix-note-iconpick";
-  const ICON_OPTS = [
-    { id: "dl", label: "Download",  svg: "download-model.svg" },
-    { id: "vp", label: "View Page", svg: "view-model-page.svg" },
-    { id: "rm", label: "Read More", svg: "read-more.svg" },
-  ];
-  const iconBtns = {};
-  for (const opt of ICON_OPTS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.dataset.icon = opt.id;
-    const ico = document.createElement("span");
-    ico.className = "ico";
-    const url = `url(/pixaroma/assets/icons/ui/${opt.svg})`;
-    ico.style.webkitMaskImage = url;
-    ico.style.maskImage = url;
-    const txt = document.createElement("span");
-    txt.className = "ico-lbl";
-    txt.textContent = opt.label;
-    b.appendChild(ico);
-    b.appendChild(txt);
-    b.addEventListener("mousedown", (e) => e.preventDefault());
-    b.addEventListener("click", () => { setIcon(opt.id); });
-    iconBtns[opt.id] = b;
-    iconRow.appendChild(b);
-  }
-  dlg.appendChild(iconRow);
-
-  // --- Label + URL --------------------------------------------------------
-  const labelRow = makeField("Label");
-  const labelInput = labelRow.querySelector("input");
-  labelInput.placeholder = ICON_DEFAULTS.dl.labelPh;
-  labelInput.addEventListener("input", () => { state.label = labelInput.value; refresh(); });
-  dlg.appendChild(labelRow);
-
-  const urlRow = makeField("URL");
-  const urlInput = urlRow.querySelector("input");
-  urlInput.placeholder = "https://...";
-  urlInput.addEventListener("input", () => { state.url = urlInput.value; });
-  dlg.appendChild(urlRow);
-
-  // --- Folder suggestion: header row (label + toggle) + input row ---------
-  const folderHead = makeToggleHead("Suggest folder");
-  const folderToggle = folderHead.toggle;
-  folderHead.row.addEventListener("click", (e) => {
-    if (e.target.closest("input")) return;
-    state.folderOn = !state.folderOn; touched.folderOn = true; refresh();
-  });
-  dlg.appendChild(folderHead.row);
-
-  const folderInputRow = document.createElement("div");
-  folderInputRow.className = "pix-note-optinput";
-  const folderIco = document.createElement("span");
-  folderIco.className = "folderico";
-  folderInputRow.appendChild(folderIco);
-  const folderInput = document.createElement("input");
-  folderInput.type = "text";
-  folderInput.placeholder = "e.g. models/loras";
-  folderInput.value = state.folder;
-  folderInput.addEventListener("input", () => { state.folder = folderInput.value; refresh(); });
-  folderInputRow.appendChild(folderInput);
-  dlg.appendChild(folderInputRow);
-
-  // --- Size hint: header row + input row ----------------------------------
-  const sizeHead = makeToggleHead("Show size hint");
-  const sizeToggle = sizeHead.toggle;
-  sizeHead.row.addEventListener("click", (e) => {
-    if (e.target.closest("input")) return;
-    state.sizeOn = !state.sizeOn; touched.sizeOn = true; refresh();
-  });
-  dlg.appendChild(sizeHead.row);
-
-  const sizeInputRow = document.createElement("div");
-  sizeInputRow.className = "pix-note-optinput";
-  const sizeInput = document.createElement("input");
-  sizeInput.type = "text";
-  sizeInput.placeholder = "e.g. 9.4 GB";
-  sizeInput.addEventListener("input", () => { state.size = sizeInput.value; refresh(); });
-  sizeInputRow.appendChild(sizeInput);
-  dlg.appendChild(sizeInputRow);
-
-  // --- Inline error row (themed, lives above the footer) -----------------
-  // Populated when the user clicks Insert with an invalid URL. Keeps the
-  // dialog open so typing isn't lost — unlike the old alert() which was
-  // also blocked by some browsers when fired from inside an overlay.
+  // Inline error row
   const errEl = document.createElement("div");
   errEl.className = "pix-note-linkerr";
-  dlg.appendChild(errEl);
+  pop.appendChild(errEl);
 
-  // --- Footer -------------------------------------------------------------
+  // Footer: Reset | Cancel | Insert
   const footer = document.createElement("div");
-  footer.className = "dlgfooter";
-  const cancel = document.createElement("button");
-  cancel.className = "pix-note-btn";
-  cancel.textContent = "Cancel";
-  const ok = document.createElement("button");
-  ok.className = "pix-note-btn primary";
-  ok.textContent = initialValues ? "Update" : "Insert";
-  footer.appendChild(cancel);
-  footer.appendChild(ok);
-  dlg.appendChild(footer);
-
-  document.body.appendChild(dlg);
-
-  // --- Wiring / helpers ---------------------------------------------------
-  function setIcon(id) {
-    state.icon = id;
-    const d = ICON_DEFAULTS[id];
-    if (!touched.folderOn) state.folderOn = d.folderOn;
-    if (!touched.sizeOn) state.sizeOn = d.sizeOn;
-    labelInput.placeholder = d.labelPh;
+  footer.className = "pix-note-modal-footer";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-note-modal-btn pix-note-modal-btn-reset";
+  resetBtn.textContent = "Reset";
+  resetBtn.title = "Reset all options to defaults";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", () => {
+    state.icon = "dl";
+    state.color = "#f66744";
+    state.sizeOn = false;
+    state.size = "";
+    sizeInput.value = "";
+    editor._btnPickerIcon = state.icon;
+    editor._btnPickerColor = state.color;
+    editor._btnPickerSizeOn = state.sizeOn;
+    colorSwatch.style.background = state.color;
     refresh();
-  }
+  });
+  footer.appendChild(resetBtn);
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-modal-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+  const insertBtn = document.createElement("button");
+  insertBtn.type = "button";
+  insertBtn.className = "pix-note-modal-btn primary";
+  insertBtn.textContent = initialValues ? "Update" : "Insert";
+  insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  insertBtn.addEventListener("click", () => submit());
+  footer.appendChild(insertBtn);
+  pop.appendChild(footer);
+
+  document.body.appendChild(backdrop);
+
+  // Pre-populate inputs from state — they only sync to state via
+  // `input` events, so the initial values need an explicit DOM write.
+  urlInput.value   = state.url   || "";
+  labelInput.value = state.label || "";
+  sizeInput.value  = state.size  || "";
 
   function refresh() {
-    // Icon picker active state
+    // Icon segmented-control active state
     for (const [id, btn] of Object.entries(iconBtns)) {
       btn.classList.toggle("active", id === state.icon);
     }
-    // Preview pill class + text. Use textContent on the label node (not
-    // innerHTML) so any angle brackets the user typed stay as literal
-    // characters rather than becoming live HTML in the preview.
-    preview.className = ICON_TO_CLASS[state.icon];
-    previewLabel.nodeValue = state.label || ICON_TO_FALLBACK_LABEL[state.icon];
+    // Preview pill class + colour + label + size
+    const cls = state.icon === "none"
+      ? "pix-note-btn-plain"
+      : (ICON_TO_CLASS[state.icon] || "pix-note-dl");
+    preview.className = cls;
+    preview.style.backgroundColor = state.color;
+    const fb = state.icon === "none" ? "Click here" : (ICON_TO_FALLBACK_LABEL[state.icon] || "Download");
+    previewLabel.nodeValue = state.label || fb;
     if (state.sizeOn && state.size) {
       previewSize.textContent = state.size;
       previewSize.style.display = "";
@@ -457,50 +519,20 @@ function makeButtonDesignDialog(anchorBtn, onSubmit, initialValues) {
       previewSize.textContent = "";
       previewSize.style.display = "none";
     }
-    if (state.folderOn && folderInput.value.trim()) {
-      previewHint.textContent = `Place in: ComfyUI/${folderInput.value.trim()}`;
-      previewHint.style.display = "";
-    } else {
-      previewHint.textContent = "";
-      previewHint.style.display = "none";
-    }
-    // Toggles
-    folderToggle.classList.toggle("on", state.folderOn);
     sizeToggle.classList.toggle("on", state.sizeOn);
-    // Disable optional inputs visually when off
-    folderInputRow.classList.toggle("disabled", !state.folderOn);
-    sizeInputRow.classList.toggle("disabled", !state.sizeOn);
+    sizeField.classList.toggle("disabled", !state.sizeOn);
   }
-
-  function close() {
-    dlg.remove();
-    document.removeEventListener("mousedown", onOutside, true);
-    document.removeEventListener("keydown", onKey, true);
-  }
-  const onOutside = (e) => { if (!dlg.contains(e.target)) close(); };
-  const onKey = (e) => {
-    if (e.key === "Escape") { e.preventDefault(); close(); }
-    else if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); }
-  };
-  setTimeout(() => {
-    document.addEventListener("mousedown", onOutside, true);
-    document.addEventListener("keydown", onKey, true);
-    urlInput.focus();
-  }, 0);
+  refresh();
 
   function submit() {
     const values = {
-      icon: state.icon,
-      url: urlInput.value.trim(),
-      label: labelInput.value.trim(),
-      folderOn: state.folderOn,
-      folder: folderInput.value.trim(),
+      icon:   state.icon,
+      url:    urlInput.value.trim(),
+      label:  labelInput.value.trim(),
+      color:  state.color,
       sizeOn: state.sizeOn,
-      size: sizeInput.value.trim(),
+      size:   sizeInput.value.trim(),
     };
-    // Clear any prior error so the user sees a fresh state each submit.
-    // onSubmit can call ctx.showError(msg) + return false to keep the
-    // dialog open with the message visible.
     errEl.textContent = "";
     const showError = (msg) => {
       errEl.textContent = msg || "";
@@ -509,28 +541,32 @@ function makeButtonDesignDialog(anchorBtn, onSubmit, initialValues) {
     const r = onSubmit(values, { showError });
     if (r !== false) close();
   }
-  cancel.addEventListener("click", close);
-  ok.addEventListener("click", submit);
 
-  // Pre-populate the four visible text inputs from state — these are
-  // wired only to `state` on input, so the initial state values need
-  // an explicit DOM write or the fields render empty even though the
-  // preview reads state correctly.
-  urlInput.value = state.url || "";
-  labelInput.value = state.label || "";
-  folderInput.value = state.folder || "";
-  sizeInput.value = state.size || "";
-  if (state.icon && state.icon !== "dl") setIcon(state.icon);
+  const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+    else if (e.key === "Enter" && !e.shiftKey) {
+      e.stopPropagation(); e.preventDefault(); submit();
+    }
+  };
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
 
-  // Initial render
-  refresh();
+  function close() {
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    backdrop.remove();
+  }
+
+  // Focus URL on open — the most-likely-empty field for fresh inserts.
+  setTimeout(() => urlInput.focus(), 0);
 }
 
-// Simple labelled text-input row, reused for Label + URL inside the
-// Button Design dialog.
-function makeField(labelText) {
+// Modal-style labelled text input — used by makeButtonModal for the
+// Label / URL / Size fields and by makeFolderHintModal for Folder.
+function makeModalField(labelText) {
   const row = document.createElement("div");
-  row.className = "field";
+  row.className = "pix-note-modal-field";
   const lbl = document.createElement("label");
   lbl.className = "lbl";
   lbl.textContent = labelText;
@@ -541,21 +577,156 @@ function makeField(labelText) {
   return row;
 }
 
-// Labelled row with a pill-style on/off toggle on the right. Clicking the
-// label area flips the toggle (handled by the dialog's own listener); we
-// just return the switch element so `.on` can be toggled.
-function makeToggleHead(labelText) {
-  const row = document.createElement("div");
-  row.className = "pix-note-optrow";
-  const lbl = document.createElement("div");
-  lbl.className = "lbl";
-  lbl.textContent = labelText;
-  const toggle = document.createElement("div");
-  toggle.className = "pix-note-toggle";
-  row.appendChild(lbl);
-  row.appendChild(toggle);
-  return { row, toggle };
+// Centred modal for the standalone folder hint block. Picks the line
+// colour and the folder path. Output:
+//   <span class="pix-note-folderhint" style="color: COLOR">
+//     Place in: ComfyUI/{folder}
+//   </span>&nbsp;
+function makeFolderHintModal(editor, onSubmit, initialValues) {
+  const state = {
+    color:  editor._folderHintPickerColor  || "#f66744",
+    folder: editor._folderHintPickerFolder || "models/diffusion_models",
+  };
+  if (initialValues) Object.assign(state, initialValues);
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-modal-backdrop";
+  const pop = document.createElement("div");
+  pop.className = "pix-note-modal";
+  backdrop.appendChild(pop);
+
+  const hint = document.createElement("div");
+  hint.className = "pix-note-modal-hint";
+  hint.textContent = "Pick a colour and a folder path, then click Insert.";
+  pop.appendChild(hint);
+
+  // Colour swatch row
+  const colorRow = document.createElement("div");
+  colorRow.className = "pix-note-modal-row";
+  const colorLbl = document.createElement("span");
+  colorLbl.className = "lbl";
+  colorLbl.textContent = "Hint colour";
+  colorRow.appendChild(colorLbl);
+  const colorSwatch = document.createElement("button");
+  colorSwatch.type = "button";
+  colorSwatch.className = "pix-note-modal-swatch";
+  colorSwatch.title = "Click to pick the hint colour";
+  colorSwatch.style.background = state.color;
+  colorSwatch.addEventListener("mousedown", (e) => e.preventDefault());
+  colorSwatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openPixaromaCompactColorPickerPopup(colorSwatch, {
+      initialColor: state.color,
+      showClear: false,
+      resetColor: "#f66744",
+      onPick: (c) => {
+        const next = c || "#f66744";
+        state.color = next;
+        editor._folderHintPickerColor = next;
+        colorSwatch.style.background = next;
+        refresh();
+      },
+    });
+  });
+  colorRow.appendChild(colorSwatch);
+  pop.appendChild(colorRow);
+
+  // Folder path input
+  const folderField = makeModalField("Folder path");
+  const folderInput = folderField.querySelector("input");
+  folderInput.placeholder = "e.g. models/loras";
+  folderInput.value = state.folder;
+  folderInput.addEventListener("input", () => {
+    state.folder = folderInput.value;
+    editor._folderHintPickerFolder = folderInput.value;
+    refresh();
+  });
+  pop.appendChild(folderField);
+
+  // Live preview line
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-note-prevwrap";
+  previewWrap.style.marginTop = "10px";
+  const preview = document.createElement("span");
+  preview.className = "pix-note-folderhint";
+  previewWrap.appendChild(preview);
+  pop.appendChild(previewWrap);
+
+  // Footer: Reset | Cancel | Insert
+  const footer = document.createElement("div");
+  footer.className = "pix-note-modal-footer";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-note-modal-btn pix-note-modal-btn-reset";
+  resetBtn.textContent = "Reset";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", () => {
+    state.color  = "#f66744";
+    state.folder = "models/diffusion_models";
+    editor._folderHintPickerColor  = state.color;
+    editor._folderHintPickerFolder = state.folder;
+    colorSwatch.style.background = state.color;
+    folderInput.value = state.folder;
+    refresh();
+  });
+  footer.appendChild(resetBtn);
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-modal-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+  const insertBtn = document.createElement("button");
+  insertBtn.type = "button";
+  insertBtn.className = "pix-note-modal-btn primary";
+  insertBtn.textContent = initialValues ? "Update" : "Insert";
+  insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  insertBtn.addEventListener("click", () => commit());
+  footer.appendChild(insertBtn);
+  pop.appendChild(footer);
+
+  document.body.appendChild(backdrop);
+
+  function refresh() {
+    preview.style.color = state.color;
+    preview.textContent = state.folder
+      ? `Place in: ComfyUI/${state.folder}`
+      : "Place in: ComfyUI/...";
+  }
+  refresh();
+
+  function commit() {
+    if (!state.folder.trim()) return;
+    onSubmit({ color: state.color, folder: state.folder.trim() });
+    close();
+  }
+
+  const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+    else if (e.key === "Enter") { e.stopPropagation(); e.preventDefault(); commit(); }
+  };
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
+
+  function close() {
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    backdrop.remove();
+  }
+
+  setTimeout(() => folderInput.focus(), 0);
 }
+
+function renderFolderHintHTML(v) {
+  const colorAttr = /^#[0-9a-f]{3,8}$/i.test(v.color || "")
+    ? ` style="color: ${v.color}"`
+    : "";
+  return `<span class="pix-note-folderhint"${colorAttr}>` +
+    `Place in: ComfyUI/${escapeHtml(v.folder)}</span>&nbsp;`;
+}
+
 
 function escapeHtml(s) {
   return String(s || "")
@@ -581,15 +752,48 @@ const CLASS_TO_ICON = Object.fromEntries(
   Object.entries(ICON_TO_CLASS).map(([icon, cls]) => [cls, icon])
 );
 
+// Convert "rgb(r, g, b)" / "rgba(...)" / "#hex" to "#rrggbb". Returns
+// null when the input doesn't parse as either form. Used by the
+// extract-* helpers below to read inline `style="background-color:..."`
+// /  "color:..." back into the hex format the modals expect.
+function styleColorToHex(rgbStr) {
+  if (!rgbStr) return null;
+  const trimmed = rgbStr.trim();
+  if (/^#[0-9a-f]{3,8}$/i.test(trimmed)) {
+    if (trimmed.length === 4) {
+      // #rgb → #rrggbb
+      return "#" + trimmed.slice(1).split("").map((c) => c + c).join("");
+    }
+    return trimmed.toLowerCase();
+  }
+  const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(trimmed);
+  if (!m) return null;
+  return "#" + [m[1], m[2], m[3]]
+    .map((n) => parseInt(n, 10).toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function extractButtonValues(el) {
   if (!el || el.nodeType !== 1) return null;
   if (!el.classList || !el.classList.contains("pix-note-btnblock")) return null;
   const a = el.querySelector(":scope > a");
   if (!a) return null;
   let icon = "dl";
-  for (const c of a.classList) {
-    if (CLASS_TO_ICON[c]) { icon = CLASS_TO_ICON[c]; break; }
+  if (a.classList.contains("pix-note-btn-plain")) {
+    icon = "none";
+  } else {
+    for (const c of a.classList) {
+      if (CLASS_TO_ICON[c]) { icon = CLASS_TO_ICON[c]; break; }
+    }
   }
+  // Per-instance colour (added in the per-instance overhaul). May be
+  // missing on legacy buttons authored before the change — those
+  // round-trip with the editor's session-default colour applied on
+  // save (the modal preselects editor._btnPickerColor when color is
+  // null, which is fine: the rendered pill stays unchanged on cancel).
+  const styleAttr = a.getAttribute("style") || "";
+  const bgMatch = /background-color\s*:\s*([^;]+)/i.exec(styleAttr);
+  const color = bgMatch ? (styleColorToHex(bgMatch[1]) || null) : null;
   // Size lives in a nested <span class="pix-note-btnsize">. Pull it
   // out (text only) before reading the pill label, then remove the
   // span from a temporary clone so label extraction sees only the
@@ -611,31 +815,33 @@ export function extractButtonValues(el) {
   if (ICON_TO_FALLBACK_LABEL[icon] && label === ICON_TO_FALLBACK_LABEL[icon]) {
     label = "";
   }
-  // Folder hint is a sibling of the <a> inside the block wrapper. The
-  // rendered text always has the "Place in: ComfyUI/" prefix; strip it
-  // so we return the raw folder the user typed.
-  const hint = el.querySelector(":scope > .pix-note-folderhint");
-  const hintText = hint ? (hint.textContent || "").trim() : "";
-  const prefix = "Place in: ComfyUI/";
-  let folder = "";
-  let folderOn = false;
-  if (hintText.startsWith(prefix)) {
-    folder = hintText.slice(prefix.length);
-    folderOn = true;
-  } else if (hintText) {
-    // Legacy or manually-edited blocks — keep whatever's there.
-    folder = hintText;
-    folderOn = true;
-  }
+  // Same fallback collapse for "Click here" on the no-icon variant.
+  if (icon === "none" && label === "Click here") label = "";
   return {
     icon,
+    color: color || undefined,
     url: a.getAttribute("href") || "",
     label,
-    folderOn,
-    folder,
     sizeOn,
     size,
   };
+}
+
+// Standalone folder hint: <span class="pix-note-folderhint">Place in: …</span>.
+// Returns null when the element is inside a Button Design block (which
+// owns the folder line). Pencil dispatch (in core.mjs) escalates such
+// targets to the parent btnblock, so this null is a safety net.
+export function extractFolderHintValues(el) {
+  if (!el || el.nodeType !== 1) return null;
+  if (!el.classList || !el.classList.contains("pix-note-folderhint")) return null;
+  if (el.parentElement?.classList?.contains("pix-note-btnblock")) return null;
+  const text = (el.textContent || "").trim();
+  const prefix = "Place in: ComfyUI/";
+  const folder = text.startsWith(prefix) ? text.slice(prefix.length) : text;
+  const styleAttr = el.getAttribute("style") || "";
+  const colorMatch = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(styleAttr);
+  const color = colorMatch ? (styleColorToHex(colorMatch[1]) || null) : null;
+  return { folder, color: color || undefined };
 }
 
 // Dialog-shape for the generic makeDialog link fields. Also used for
@@ -675,7 +881,7 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
   if (target.tagName === "SPAN" && target.classList.contains("pix-note-btnblock")) {
     const values = extractButtonValues(target);
     if (!values) return;
-    makeButtonDesignDialog(anchorBtn, (v, ctx) => {
+    makeButtonModal(this, (v, ctx) => {
       const check = validateUrl(v.url);
       if (!check.ok) { ctx.showError(check.message); return false; }
       this._snapBefore?.();
@@ -689,6 +895,24 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
       this._snapAfter?.();
       this._dirty = true;
       return true;
+    }, values);
+    return;
+  }
+
+  // Standalone folder hint: span.pix-note-folderhint NOT inside a
+  // btnblock (the in-btnblock case is escalated to the btnblock by
+  // the pencil mouseover handler in core.mjs).
+  if (target.tagName === "SPAN" && target.classList.contains("pix-note-folderhint")) {
+    const values = extractFolderHintValues(target);
+    if (!values) return;
+    makeFolderHintModal(this, (v) => {
+      this._snapBefore?.();
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderFolderHintHTML(v);
+      const newBlock = wrapper.querySelector(".pix-note-folderhint");
+      if (newBlock) target.replaceWith(newBlock);
+      this._snapAfter?.();
+      this._dirty = true;
     }, values);
     return;
   }

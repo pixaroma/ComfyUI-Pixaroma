@@ -86,11 +86,14 @@ export function injectCSS() {
 .pix-note-editarea a.pix-note-discord,
 .pix-note-editarea a.pix-note-vp,
 .pix-note-editarea a.pix-note-rm,
+.pix-note-editarea a.pix-note-btn-plain,
+.pix-note-body a.pix-note-btn-plain,
 .pix-note-prevwrap a.pix-note-dl,
 .pix-note-prevwrap a.pix-note-yt,
 .pix-note-prevwrap a.pix-note-discord,
 .pix-note-prevwrap a.pix-note-vp,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-prevwrap a.pix-note-btn-plain {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -121,7 +124,14 @@ export function injectCSS() {
 .pix-note-prevwrap a.pix-note-vp,
 .pix-note-body a.pix-note-rm,
 .pix-note-editarea a.pix-note-rm,
-.pix-note-prevwrap a.pix-note-rm {
+.pix-note-prevwrap a.pix-note-rm,
+.pix-note-body a.pix-note-btn-plain,
+.pix-note-editarea a.pix-note-btn-plain,
+.pix-note-prevwrap a.pix-note-btn-plain {
+  /* Per-instance colour stamped inline by the JS overrides this default
+     (inline always wins). The default is here for backwards compat so
+     old buttons authored before per-instance colour still pick up the
+     toolbar Btn picker via --pix-note-btn (when present). */
   background: var(--pix-note-btn, ${BRAND});
 }
 .pix-note-body a.pix-note-yt,
@@ -135,11 +145,13 @@ export function injectCSS() {
 .pix-note-body a.pix-note-discord:hover,
 .pix-note-body a.pix-note-vp:hover,
 .pix-note-body a.pix-note-rm:hover,
+.pix-note-body a.pix-note-btn-plain:hover,
 .pix-note-editarea a.pix-note-dl:hover,
 .pix-note-editarea a.pix-note-yt:hover,
 .pix-note-editarea a.pix-note-discord:hover,
 .pix-note-editarea a.pix-note-vp:hover,
-.pix-note-editarea a.pix-note-rm:hover { filter: brightness(1.1); }
+.pix-note-editarea a.pix-note-rm:hover,
+.pix-note-editarea a.pix-note-btn-plain:hover { filter: brightness(1.1); }
 
 /* Block icons via SVG mask so they follow text colour (white on a
    coloured pill). One base rule for size + currentColor, then per-class
@@ -983,6 +995,96 @@ export function injectCSS() {
    pushes it across the flex line into its own column. */
 .pix-note-modal-btn-reset {
   margin-right: auto;
+}
+
+/* ── Generic modal text inputs ────────────────────────────────────
+   Reusable single-line text input row (label above, input below).
+   Used by the button picker for Label / URL / Size, and the folder
+   hint picker for the folder path. */
+.pix-note-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 8px;
+}
+.pix-note-modal-field .lbl {
+  font-size: 11px;
+  font-weight: 600;
+  color: #bbb;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.pix-note-modal-field input {
+  background: #0f0f0f;
+  border: 1px solid #333;
+  border-radius: 3px;
+  color: #ddd;
+  font-size: 12px;
+  padding: 5px 8px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-modal-field input:focus {
+  outline: 1px solid ${BRAND};
+  outline-offset: -1px;
+  border-color: ${BRAND};
+}
+.pix-note-modal-field.disabled input {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── Button-type chooser (segmented control) ──────────────────────
+   Four tiles in a row: Download / View Page / Read More / No icon.
+   Mirrors .pix-note-iconpick visually but uses a smaller layout
+   suited to the modal. */
+.pix-note-modal-btnpick {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 4px;
+  background: #0f0f0f;
+  border: 1px solid #2a2a2a;
+  border-radius: 4px;
+  margin-top: 4px;
+}
+.pix-note-modal-btnpick button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #bbb;
+  cursor: pointer;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 10.5px;
+}
+.pix-note-modal-btnpick button:hover {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.10);
+}
+.pix-note-modal-btnpick button.active {
+  border-color: ${BRAND};
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: 0 0 0 1px ${BRAND} inset;
+  color: ${BRAND};
+}
+.pix-note-modal-btnpick button .ico {
+  display: inline-block;
+  width: 16px; height: 16px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+  -webkit-mask-position: center;  mask-position: center;
+  -webkit-mask-size: contain;     mask-size: contain;
+}
+.pix-note-modal-btnpick button .ico-none {
+  display: inline-block;
+  width: 16px; height: 16px;
+  border: 1px dashed currentColor;
+  border-radius: 2px;
 }
 
 /* ── Separator picker modal ─────────────────────────────────────

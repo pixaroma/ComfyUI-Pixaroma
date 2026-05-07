@@ -32,6 +32,15 @@ export class NoteEditor {
     this._gridPickerCols = 3;
     this._gridPickerRows = 3;
     this._gridPickerHeader = false;
+    // Button picker session state — per-instance colour, sticky icon
+    // and "show size hint" toggle. Folder hint moved out of this
+    // modal into its own toolbar entry / picker.
+    this._btnPickerColor = "#f66744";
+    this._btnPickerIcon = "dl";
+    this._btnPickerSizeOn = false;
+    // Folder hint picker session state — separate toolbar button.
+    this._folderHintPickerColor = "#f66744";
+    this._folderHintPickerFolder = "models/diffusion_models";
     // Sync cfg.backgroundColor to node.bgcolor on open when they
     // disagree. Happens when the user picks a color via ComfyUI's
     // native right-click Colors menu between saves: node.bgcolor is
@@ -601,6 +610,12 @@ export class NoteEditor {
     this._gridPickerCols = null;
     this._gridPickerRows = null;
     this._gridPickerHeader = null;
+    // Reset button-picker + folder-hint session state.
+    this._btnPickerColor = null;
+    this._btnPickerIcon = null;
+    this._btnPickerSizeOn = null;
+    this._folderHintPickerColor = null;
+    this._folderHintPickerFolder = null;
     // Drop the icon-deletion + click-placement handler refs. The DOM
     // node they were attached to (the contenteditable inside _el) was
     // already removed above, so the listeners are gone with it; this
@@ -1300,6 +1315,7 @@ NoteEditor.prototype._placeCursorAtEnd = function () {
 // in both places.
 const PENCIL_BLOCK_SELECTORS = [
   "span.pix-note-btnblock",
+  "span.pix-note-folderhint",
   "a.pix-note-yt",
   "a.pix-note-discord",
   "pre",
@@ -1338,8 +1354,17 @@ NoteEditor.prototype._installPencil = function (main, editArea) {
   };
 
   editArea.addEventListener("mouseover", (e) => {
-    const t = e.target.closest?.(PENCIL_BLOCK_SELECTORS);
+    let t = e.target.closest?.(PENCIL_BLOCK_SELECTORS);
     if (!t || !editArea.contains(t)) return;
+    // A folder hint that lives INSIDE a Button Design block edits the
+    // whole button block (the bundled folder line is part of the
+    // button). Standalone folder hints (the new design) edit
+    // themselves. closest() returns the folderhint first because
+    // it's the user's actual target, so we escalate manually.
+    if (t.tagName === "SPAN" && t.classList.contains("pix-note-folderhint")) {
+      const bb = t.closest("span.pix-note-btnblock");
+      if (bb) t = bb;
+    }
     show(t);
   });
   editArea.addEventListener("mouseout", (e) => {

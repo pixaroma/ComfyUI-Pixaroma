@@ -24,6 +24,10 @@ const DANGEROUS_TAGS = new Set([
 const ALLOWED_CLASS_VALUES = new Set([
   "pix-note-dl","pix-note-yt","pix-note-discord",
   "pix-note-vp","pix-note-rm",
+  // Plain button pill (no icon) — added with the per-instance colour
+  // overhaul; renders the same pill shell as dl/vp/rm minus the
+  // ::before icon. CSS rules grouped with the others below.
+  "pix-note-btn-plain",
   // Wrapper + decoration pieces for the Button Design output
   "pix-note-btnblock","pix-note-folderhint","pix-note-btnsize",
   // Grid (table) marker class

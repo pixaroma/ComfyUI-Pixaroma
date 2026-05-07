@@ -1011,26 +1011,28 @@ NoteEditor.prototype._buildToolbar = function () {
   // Group 6 — Pixaroma blocks
   const g6 = el("div", "pix-note-tgroup");
 
-  // Unified "Button Design" entry — opens a rich dialog where the user
-  // picks an icon (Download / View Page / Read More) and toggles whether
-  // to attach a folder suggestion and a size hint. The 3 pill types still
-  // exist as CSS classes so old notes keep rendering.
+  // Unified "Button Design" entry — opens the new centred modal where
+  // the user picks per-instance colour, button type (Download / View
+  // Page / Read More / no icon), label, URL, and an optional size
+  // hint. Folder bundling is GONE — there's a dedicated "Insert
+  // folder hint" entry next to this one for that.
   const bdIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/button-design.svg" draggable="false">`;
-  const bdBtn = makeBtn(bdIcon, "Insert button (Download / View Page / Read More)", "", () => {});
+  const bdBtn = makeBtn(bdIcon, "Insert button (Download / View Page / Read More / plain)", "", () => {});
   bdBtn.onclick = (e) => {
     e.preventDefault();
     this._insertButtonBlock(bdBtn);
   };
   g6.appendChild(bdBtn);
 
-  const btnColorBtn = makeColorPicker(
-    "button-color",
-    "Button color (Download / View Page / Read More pills)",
-    "buttonColor",
-    "--pix-note-btn",
-    "#f66744"
-  );
-  g6.appendChild(btnColorBtn);
+  // Standalone folder-hint inserter. Each instance carries its own
+  // colour so it doesn't track the toolbar Ln picker.
+  const fhIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/folder.svg" draggable="false">`;
+  const fhBtn = makeBtn(fhIcon, 'Insert folder hint ("Place in: ComfyUI/...")', "", () => {});
+  fhBtn.onclick = (e) => {
+    e.preventDefault();
+    this._insertFolderHintBlock(fhBtn);
+  };
+  g6.appendChild(fhBtn);
 
   const ytIcon = `<img class="pix-note-tbtn-icon" src="/pixaroma/assets/icons/ui/youtube.svg" draggable="false">`;
   const ytBtn = makeBtn(ytIcon, "Insert YouTube link", "", () => {});
