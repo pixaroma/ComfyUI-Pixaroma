@@ -976,14 +976,12 @@ NoteEditor.prototype._buildToolbar = function () {
   };
   g5.appendChild(iconInsertBtn);
 
-  const lnColorBtn = makeColorPicker(
-    "line-color",
-    "Line color (grid borders, grid header underline, HR separator)",
-    "lineColor",
-    "--pix-note-line",
-    "#f66744"
-  );
-  g5.appendChild(lnColorBtn);
+  // Toolbar Ln colour picker removed in the per-instance overhaul.
+  // Each separator / grid / folder hint now carries its own inline
+  // colour set inside its modal. cfg.lineColor + --pix-note-line are
+  // still wired (render.mjs sets the var on the body) so any LEGACY
+  // content authored before per-instance colours keeps rendering with
+  // whatever lineColor was saved at the time.
 
   // Active-state for link / code block: walk up from selection anchor and
   // toggle .active when the matching ancestor exists.
