@@ -12,6 +12,48 @@
 import { NoteEditor } from "./core.mjs";
 import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
+// Picker display order — categorised by purpose, since alphabetical
+// label order leaves related icons scattered across the grid. Entries
+// not listed here fall through to the alphabetical "rest" bucket at
+// the end. Adding a new category? Insert a new array in the right
+// position; new icon ids should be added to the matching array.
+//
+// model-v1 is intentionally first — it's the default selection when
+// the picker opens (most-used icon for AI/model annotation notes).
+const CATEGORY_ORDER = [
+  // Models (most common — model nodes / checkpoints in workflows)
+  ["model-v1", "model-v2", "model-v3", "model-v4",
+   "model-v5", "model-v6", "model-v7",
+   "checkpoint-v1", "checkpoint-v2"],
+  // Files / folders / data
+  ["file", "folder-v1", "folder-v2", "data"],
+  // Model file formats
+  ["GGUF", "CLIP", "LORA", "VAE"],
+  // Nodes
+  ["node-v1", "node-v2", "node-v3", "node-v4", "nodes-installed"],
+  // Arrows
+  ["arrow-up", "arrow-down", "arrow-left", "arrow-right"],
+];
+const _CAT_INDEX = new Map();
+CATEGORY_ORDER.forEach((group, gi) => {
+  group.forEach((id, ii) => {
+    // gi*1000+ii gives each id a unique sort key while keeping
+    // category groups well-separated (no group has >1000 icons).
+    _CAT_INDEX.set(id, gi * 1000 + ii);
+  });
+});
+
+function sortByCategory(icons) {
+  return [...icons].sort((a, b) => {
+    const ia = _CAT_INDEX.has(a.id) ? _CAT_INDEX.get(a.id) : 999999;
+    const ib = _CAT_INDEX.has(b.id) ? _CAT_INDEX.get(b.id) : 999999;
+    if (ia !== ib) return ia - ib;
+    // Tie-break: alphabetical (case-insensitive) — applies to the
+    // "rest" bucket where multiple ids share the 999999 sort key.
+    return a.id.toLowerCase().localeCompare(b.id.toLowerCase());
+  });
+}
+
 // Module-level cache. `null` = not yet fetched; `[]` = fetched empty;
 // `[icons...]` = fetched with content. Survives across editor opens
 // within the same browser session — reload to re-pick-up new SVGs
@@ -256,15 +298,22 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   }
 
   // Icon grid — single-click selects, double-click commits. We track
-  // selection in this closure (not on editor state) so it's per-open;
-  // the picker always opens with no preselection.
+  // selection in this closure (not on editor state) so it's per-open.
+  // Default selection is "model-v1" (most common note icon) when the
+  // backend serves it; otherwise the first icon in the grid.
   let selectedId = null;
   let selectedTile = null;
+  const DEFAULT_ID = "model-v1";
+
+  // Apply category-based sort so models / files / formats / nodes /
+  // arrows land in predictable positions instead of scattered by
+  // alphabetical label order.
+  const sortedIcons = sortByCategory(icons);
 
   const grid = document.createElement("div");
   grid.className = "pix-note-iconswatches";
   const gridTiles = [];
-  for (const ic of icons) {
+  for (const ic of sortedIcons) {
     const tile = document.createElement("button");
     tile.type = "button";
     tile.className = "pix-note-iconswatch";
@@ -289,6 +338,13 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     tile.appendChild(glyph);
     grid.appendChild(tile);
     gridTiles.push(glyph);
+
+    // Auto-select the default icon as we build the grid.
+    if (selectedId == null && ic.id === DEFAULT_ID) {
+      selectedId = ic.id;
+      selectedTile = tile;
+      tile.classList.add("selected");
+    }
   }
   pop.appendChild(grid);
 
@@ -308,7 +364,9 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   insertBtn.type = "button";
   insertBtn.className = "pix-note-iconpop-btn primary";
   insertBtn.textContent = "Insert";
-  insertBtn.disabled = true;
+  // Enabled iff something is preselected (default model-v1 case).
+  // Falls back to disabled when the default isn't in the icon list.
+  insertBtn.disabled = selectedId == null;
   insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
   insertBtn.addEventListener("click", () => {
     if (selectedId) commit(selectedId);

@@ -798,7 +798,12 @@ export function injectCSS() {
      the icon grid. 348px gives 7 ~42px tiles with 6px gaps. */
   width: 348px;
   max-width: 90vw;
+  /* Modal-level scroll: if content exceeds viewport (e.g. tons of
+     icons on a small screen) the whole modal scrolls, not the icon
+     grid alone. Keeps the grid free of an inner scrollbar at typical
+     viewport sizes. */
   max-height: 90vh;
+  overflow-y: auto;
   box-sizing: content-box;
   display: flex;
   flex-direction: column;
@@ -810,9 +815,6 @@ export function injectCSS() {
      square at whatever column width the grid resolves to. */
   grid-template-columns: repeat(7, 1fr);
   gap: 6px;
-  max-height: 280px;
-  overflow-y: auto;
-  padding-right: 4px;
 }
 .pix-note-iconswatch {
   display: flex;
