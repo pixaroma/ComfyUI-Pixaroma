@@ -148,19 +148,23 @@ export function renderIconHTML(id, color, size) {
   return `<span data-ic="${safeId}"${sizeAttr} class="pix-note-ic" contenteditable="false"${style}></span>&nbsp;`;
 }
 
-// Popup picker. Mirrors openColorPop in toolbar.mjs (positioning,
-// outside-click dismiss, mousedown-preventDefault to keep the
-// editor's selection alive). Hosts the color swatches + size pills +
-// icon grid; passes the picked id to onPick when a glyph is clicked.
+// Centred modal picker with backdrop + Insert / Cancel buttons.
+// Hosts the color picker + size pills + icon grid. Single-click on a
+// tile selects it (orange ring); double-click commits immediately.
+// Insert is disabled until something is selected; Enter commits the
+// selection, Esc / Cancel / backdrop-mousedown closes without insert.
 // Reads/writes editor._iconPickerColor and editor._iconPickerSize for
 // session-sticky picker state (Pattern #29, design 2026-05-06).
 function openIconPop(anchorBtn, icons, editor, onPick) {
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-iconpop-backdrop";
+
   const pop = document.createElement("div");
   pop.className = "pix-note-iconpop";
-  const rect = anchorBtn.getBoundingClientRect();
-  pop.style.left = `${rect.left}px`;
-  pop.style.top = `${rect.bottom + 4}px`;
+  backdrop.appendChild(pop);
 
+  // Empty-folder fast path — show the message inside the same modal
+  // shell so the close behaviour (Esc / backdrop / Cancel) is uniform.
   if (!icons || icons.length === 0) {
     const msg = document.createElement("div");
     msg.className = "pix-note-iconpop-empty";
@@ -168,23 +172,36 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
       'No icons found. Drop SVG files into ' +
       '<code>assets/icons/note/</code> and reload the browser.';
     pop.appendChild(msg);
-    document.body.appendChild(pop);
-    const onDocDown = (e) => {
-      if (!pop.contains(e.target) && e.target !== anchorBtn) close();
-    };
+
+    const footer = document.createElement("div");
+    footer.className = "pix-note-iconpop-footer";
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "pix-note-iconpop-btn";
+    closeBtn.textContent = "Close";
+    closeBtn.addEventListener("mousedown", (e) => e.preventDefault());
+    closeBtn.addEventListener("click", () => close());
+    footer.appendChild(closeBtn);
+    pop.appendChild(footer);
+
+    document.body.appendChild(backdrop);
+    const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
     function close() {
-      document.removeEventListener("mousedown", onDocDown, true);
-      pop.remove();
+      backdrop.removeEventListener("mousedown", onBackdropDown);
+      window.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
     }
-    setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+    backdrop.addEventListener("mousedown", onBackdropDown);
+    window.addEventListener("keydown", onKey, true);
     return;
   }
 
   // Pixaroma Color Picker (shared module). Live preview: each change
   // writes editor._iconPickerColor and re-tints the icon-grid glyphs
-  // so the user sees what will land before clicking an icon. Click an
-  // icon to commit (the apply step). showClear is intentionally OFF
-  // here - icons need a concrete color to render via background-color.
+  // so the user sees what will land before clicking Insert. showClear
+  // is intentionally OFF — icons need a concrete color to render via
+  // background-color.
   const cp = createPixaromaColorPicker({
     initialColor: editor._iconPickerColor || "#f66744",
     showClear: false,
@@ -231,7 +248,12 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     }
   }
 
-  // Icon grid
+  // Icon grid — single-click selects, double-click commits. We track
+  // selection in this closure (not on editor state) so it's per-open;
+  // the picker always opens with no preselection.
+  let selectedId = null;
+  let selectedTile = null;
+
   const grid = document.createElement("div");
   grid.className = "pix-note-iconswatches";
   const gridTiles = [];
@@ -244,8 +266,15 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     tile.addEventListener("mousedown", (e) => e.preventDefault());
     tile.addEventListener("click", (e) => {
       e.stopPropagation();
-      onPick(ic.id);
-      close();
+      if (selectedTile) selectedTile.classList.remove("selected");
+      selectedTile = tile;
+      selectedId = ic.id;
+      tile.classList.add("selected");
+      insertBtn.disabled = false;
+    });
+    tile.addEventListener("dblclick", (e) => {
+      e.stopPropagation();
+      commit(ic.id);
     });
     const glyph = document.createElement("span");
     glyph.className = "pix-note-ic";
@@ -255,6 +284,31 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
     gridTiles.push(glyph);
   }
   pop.appendChild(grid);
+
+  // Footer — Cancel + Insert. Insert disabled until the user selects.
+  const footer = document.createElement("div");
+  footer.className = "pix-note-iconpop-footer";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-iconpop-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+
+  const insertBtn = document.createElement("button");
+  insertBtn.type = "button";
+  insertBtn.className = "pix-note-iconpop-btn primary";
+  insertBtn.textContent = "Insert";
+  insertBtn.disabled = true;
+  insertBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  insertBtn.addEventListener("click", () => {
+    if (selectedId) commit(selectedId);
+  });
+  footer.appendChild(insertBtn);
+
+  pop.appendChild(footer);
 
   function repaintGrid() {
     const c = editor._iconPickerColor;
@@ -272,17 +326,33 @@ function openIconPop(anchorBtn, icons, editor, onPick) {
   refreshSizeSelection();
   repaintGrid();
 
-  document.body.appendChild(pop);
+  document.body.appendChild(backdrop);
 
-  const onDocDown = (e) => {
-    if (!pop.contains(e.target) && e.target !== anchorBtn) close();
+  const onBackdropDown = (e) => {
+    if (e.target === backdrop) close();
   };
-  function close() {
-    document.removeEventListener("mousedown", onDocDown, true);
-    cp.destroy();
-    pop.remove();
+  const onKey = (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      close();
+    } else if (e.key === "Enter" && selectedId) {
+      e.stopPropagation();
+      e.preventDefault();
+      commit(selectedId);
+    }
+  };
+  function commit(id) {
+    onPick(id);
+    close();
   }
-  setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+  function close() {
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    cp.destroy();
+    backdrop.remove();
+  }
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
 }
 
 // Toolbar handler — opens the picker anchored to the button.

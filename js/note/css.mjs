@@ -767,26 +767,36 @@ export function injectCSS() {
    Picker module (js/shared/color_picker.mjs) which injects its own
    .pix-cp-* styles on first use. */
 
-/* Inline-icons picker popup — mirrors .pix-note-colorpop in
-   positioning + dismiss behaviour, but shows a scrollable icon grid
-   instead of color swatches. */
-.pix-note-iconpop {
-  position: absolute;
-  /* Must sit above .pix-note-overlay (z-index 99990) — otherwise the
-     popup renders UNDERNEATH the editor backdrop and is invisible.
-     Matches .pix-note-colorpop (100000) so all picker popups stack
-     the same way. */
+/* Inline-icons picker — centred modal with backdrop. The backdrop sits
+   above the editor overlay (.pix-note-overlay z-index 99990) and dims
+   the editor while the picker is open. The box is laid out by flex
+   alignment on the backdrop. Pattern #27: .pix-note-iconpop is in the
+   editor's hasModal selectors so Esc / overlay-mousedown don't tear
+   the editor down while this picker is open. */
+.pix-note-iconpop-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
   z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pix-note-iconpop {
   background: #1a1a1a;
   /* Popup inherits this color down to .pix-note-iconswatch .pix-note-ic
      — tile previews show what the icon will look like when inserted
      (which is currentColor = surrounding text color ≈ editor default).
      Matches the editor's default text color on .pix-note-editarea. */
   color: #e4e4e4;
-  border: 1px solid #333;
+  border: 1px solid #444;
   border-radius: 6px;
-  padding: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  padding: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
 }
 .pix-note-iconswatches {
   display: grid;
@@ -811,6 +821,14 @@ export function injectCSS() {
 .pix-note-iconswatch:hover {
   border-color: #f66744;
   background: rgba(246, 103, 68, 0.15);
+}
+/* Selected tile — single-selection visual that survives the next
+   hover (so the user can confirm what's about to be inserted before
+   clicking Insert). Slightly stronger orange than hover. */
+.pix-note-iconswatch.selected {
+  border-color: ${BRAND};
+  background: rgba(246, 103, 68, 0.25);
+  box-shadow: 0 0 0 1px ${BRAND} inset;
 }
 .pix-note-iconswatch .pix-note-ic {
   /* Inside the picker, render at a fixed 18px regardless of the
@@ -870,6 +888,46 @@ export function injectCSS() {
   border-radius: 3px;
   font-family: monospace;
   color: #ddd;
+}
+
+/* Footer for the icon picker modal — Insert (primary) + Cancel.
+   Mirrors .pix-cp-modal-actions but kept local to avoid coupling to
+   the shared color picker module. Insert is disabled until the user
+   selects a tile. */
+.pix-note-iconpop-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.pix-note-iconpop-btn {
+  height: 28px;
+  padding: 0 14px;
+  background: transparent;
+  border: 1px solid #444;
+  color: #ddd;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.pix-note-iconpop-btn:hover:not(:disabled) {
+  color: ${BRAND};
+  border-color: ${BRAND};
+}
+.pix-note-iconpop-btn.primary {
+  background: ${BRAND};
+  border-color: ${BRAND};
+  color: #fff;
+}
+.pix-note-iconpop-btn.primary:hover:not(:disabled) {
+  background: #d54f2c;
+  border-color: #d54f2c;
+  color: #fff;
+}
+.pix-note-iconpop-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Toolbar button mask-icon for the "Insert icon" entry.
