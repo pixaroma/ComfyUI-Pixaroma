@@ -246,6 +246,13 @@ export function injectCSS() {
 .pix-note-editarea .pix-note-folderhint,
 .pix-note-prevwrap .pix-note-folderhint {
   display: block;
+  /* Shrink the box to its content so the pencil-edit button (which
+     positions itself at the element's right edge) lands right after
+     the text instead of at the far right of the editor. fit-content
+     keeps the block on its own line; max-width prevents very long
+     folder paths from blowing past the editor. */
+  width: fit-content;
+  max-width: 100%;
   margin: 4px 2px 2px 2px;
   padding: 2px 0;
   color: var(--pix-note-line, #9a9a9a);
