@@ -302,40 +302,24 @@ NoteEditor.prototype._insertDownloadBlock = NoteEditor.prototype._insertButtonBl
 
 NoteEditor.prototype._insertYouTubeBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeDialog(
-    anchorBtn,
-    "Insert YouTube link",
-    [
-      ["label", "Label", "Pixaroma YouTube Channel", ""],
-      ["url", "URL", "https://www.youtube.com/@pixaroma", ""],
-    ],
-    (v, ctx) => {
-      const check = validateUrl(v.url);
-      if (!check.ok) { ctx.showError(check.message); return false; }
-      const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
-        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
-      insertAtSavedRange(this, savedRange, html);
-    }
-  );
+  makeBrandedLinkModal("yt", (v, ctx) => {
+    const check = validateUrl(v.url);
+    if (!check.ok) { ctx.showError(check.message); return false; }
+    const html = `<a class="pix-note-yt" href="${escapeHtml(v.url)}"` +
+      ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "YouTube")}</a>&nbsp;`;
+    insertAtSavedRange(this, savedRange, html);
+  });
 };
 
 NoteEditor.prototype._insertDiscordBlock = function (anchorBtn) {
   const savedRange = saveRange(this._editArea);
-  makeDialog(
-    anchorBtn,
-    "Insert Discord link",
-    [
-      ["label", "Label", "Join Discord", ""],
-      ["url", "URL", "https://discord.com/invite/gggpkVgBf3", ""],
-    ],
-    (v, ctx) => {
-      const check = validateUrl(v.url);
-      if (!check.ok) { ctx.showError(check.message); return false; }
-      const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
-        ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Join Discord")}</a>&nbsp;`;
-      insertAtSavedRange(this, savedRange, html);
-    }
-  );
+  makeBrandedLinkModal("discord", (v, ctx) => {
+    const check = validateUrl(v.url);
+    if (!check.ok) { ctx.showError(check.message); return false; }
+    const html = `<a class="pix-note-discord" href="${escapeHtml(v.url)}"` +
+      ` target="_blank" rel="noopener noreferrer">${escapeHtml(v.label || "Join Discord")}</a>&nbsp;`;
+    insertAtSavedRange(this, savedRange, html);
+  });
 };
 
 // Centred modal for the Button Design block. Picks per-instance colour,
@@ -802,6 +786,160 @@ function renderFolderHintHTML(v) {
     `Place in: ComfyUI/${escapeHtml(v.folder)}</div>`;
 }
 
+// ── Branded link modal (YouTube / Discord) ───────────────────────────
+// Shared shell — same label+URL fields, same shape, only the brand
+// preset (title, defaults, pill class) differs. Brand colours are
+// intentionally hardcoded (red for YT, blurple for Discord) per
+// CLAUDE.md — recognition is the whole point — so there's no colour
+// picker here.
+const _LINK_PRESETS = {
+  yt: {
+    title:        "Insert YouTube link",
+    editTitle:    "Edit YouTube link",
+    hint:         "Set the label and URL, then click Insert.",
+    defaultLabel: "Pixaroma YouTube Channel",
+    defaultUrl:   "https://www.youtube.com/@pixaroma",
+    pillClass:    "pix-note-yt",
+    fallbackLabel:"YouTube",
+  },
+  discord: {
+    title:        "Insert Discord link",
+    editTitle:    "Edit Discord link",
+    hint:         "Set the label and URL, then click Insert.",
+    defaultLabel: "Join Discord",
+    defaultUrl:   "https://discord.com/invite/gggpkVgBf3",
+    pillClass:    "pix-note-discord",
+    fallbackLabel:"Join Discord",
+  },
+};
+
+function makeBrandedLinkModal(kind, onSubmit, initialValues) {
+  const p = _LINK_PRESETS[kind];
+  const state = {
+    label: initialValues?.label ?? "",
+    url:   initialValues?.url   ?? "",
+  };
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-note-modal-backdrop";
+  const pop = document.createElement("div");
+  pop.className = "pix-note-modal";
+  backdrop.appendChild(pop);
+
+  const hint = document.createElement("div");
+  hint.className = "pix-note-modal-hint";
+  hint.textContent = p.hint;
+  pop.appendChild(hint);
+
+  // Label
+  const labelField = makeModalField("Label");
+  const labelInput = labelField.querySelector("input");
+  labelInput.placeholder = p.defaultLabel;
+  labelInput.value = state.label;
+  labelInput.addEventListener("input", () => {
+    state.label = labelInput.value;
+    refresh();
+  });
+  pop.appendChild(labelField);
+
+  // URL
+  const urlField = makeModalField("URL");
+  const urlInput = urlField.querySelector("input");
+  urlInput.placeholder = p.defaultUrl;
+  urlInput.value = state.url;
+  urlInput.addEventListener("input", () => { state.url = urlInput.value; });
+  pop.appendChild(urlField);
+
+  // Live preview pill (brand colour comes from CSS, not inline)
+  const previewWrap = document.createElement("div");
+  previewWrap.className = "pix-note-prevwrap";
+  previewWrap.style.marginTop = "10px";
+  const preview = document.createElement("a");
+  preview.href = "#";
+  preview.className = p.pillClass;
+  preview.addEventListener("click", (e) => e.preventDefault());
+  previewWrap.appendChild(preview);
+  pop.appendChild(previewWrap);
+
+  // Inline error row
+  const errEl = document.createElement("div");
+  errEl.className = "pix-note-linkerr";
+  pop.appendChild(errEl);
+
+  // Footer: Reset | Cancel | Insert / Update
+  const footer = document.createElement("div");
+  footer.className = "pix-note-modal-footer";
+  const resetBtn = document.createElement("button");
+  resetBtn.type = "button";
+  resetBtn.className = "pix-note-modal-btn pix-note-modal-btn-reset";
+  resetBtn.textContent = "Reset";
+  resetBtn.title = "Reset label + URL to defaults";
+  resetBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  resetBtn.addEventListener("click", () => {
+    state.label = p.defaultLabel;
+    state.url   = p.defaultUrl;
+    labelInput.value = state.label;
+    urlInput.value   = state.url;
+    refresh();
+  });
+  footer.appendChild(resetBtn);
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-note-modal-btn";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  cancelBtn.addEventListener("click", () => close());
+  footer.appendChild(cancelBtn);
+  const okBtn = document.createElement("button");
+  okBtn.type = "button";
+  okBtn.className = "pix-note-modal-btn primary";
+  okBtn.textContent = initialValues ? "Update" : "Insert";
+  okBtn.addEventListener("mousedown", (e) => e.preventDefault());
+  okBtn.addEventListener("click", () => submit());
+  footer.appendChild(okBtn);
+  pop.appendChild(footer);
+
+  document.body.appendChild(backdrop);
+
+  function refresh() {
+    preview.textContent = state.label || p.fallbackLabel;
+  }
+  refresh();
+
+  function submit() {
+    const values = {
+      label: labelInput.value.trim(),
+      url:   urlInput.value.trim(),
+    };
+    errEl.textContent = "";
+    const showError = (msg) => {
+      errEl.textContent = msg || "";
+      urlInput.focus();
+    };
+    const r = onSubmit(values, { showError });
+    if (r !== false) close();
+  }
+
+  const onBackdropDown = (e) => { if (e.target === backdrop) close(); };
+  const onKey = (e) => {
+    if (e.key === "Escape") { e.stopPropagation(); close(); }
+    else if (e.key === "Enter" && !e.shiftKey) {
+      e.stopPropagation(); e.preventDefault(); submit();
+    }
+  };
+  backdrop.addEventListener("mousedown", onBackdropDown);
+  window.addEventListener("keydown", onKey, true);
+
+  function close() {
+    backdrop.removeEventListener("mousedown", onBackdropDown);
+    window.removeEventListener("keydown", onKey, true);
+    backdrop.remove();
+  }
+
+  // Focus URL on open — most-likely-empty for fresh inserts.
+  setTimeout(() => urlInput.focus(), 0);
+}
+
 
 function escapeHtml(s) {
   return String(s || "")
@@ -995,10 +1133,10 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
 
   // YouTube / Discord: a.pix-note-yt / a.pix-note-discord
   if (target.tagName === "A" && target.classList.contains("pix-note-yt")) {
-    return openLinkEditor(this, target, "Edit YouTube link", "pix-note-yt", anchorBtn);
+    return openLinkEditor(this, target, "yt", anchorBtn);
   }
   if (target.tagName === "A" && target.classList.contains("pix-note-discord")) {
-    return openLinkEditor(this, target, "Edit Discord link", "pix-note-discord", anchorBtn);
+    return openLinkEditor(this, target, "discord", anchorBtn);
   }
 
   // Plain link: <a> without any pix-note-* class. Reuse _promptLinkUrl
@@ -1037,31 +1175,23 @@ NoteEditor.prototype._dispatchBlockEdit = function (target, anchorBtn) {
   }
 };
 
-// YouTube + Discord pencils share one path: same dialog shape, same
+// YouTube + Discord pencils share one path: same modal shape, same
 // HTML output differing only in the pill class.
-function openLinkEditor(editor, target, title, className, anchorBtn) {
+function openLinkEditor(editor, target, kind, anchorBtn) {
   const values = extractLinkValues(target);
-  makeDialog(
-    anchorBtn,
-    title,
-    [
-      ["label", "Label", "", ""],
-      ["url", "URL", "", ""],
-    ],
-    (v, ctx) => {
-      const check = validateUrl(v.url);
-      if (!check.ok) { ctx.showError(check.message); return false; }
-      editor._snapBefore?.();
-      target.setAttribute("href", v.url);
-      target.textContent = v.label || v.url;
-      target.setAttribute("target", "_blank");
-      target.setAttribute("rel", "noopener noreferrer");
-      target.className = className;
-      editor._snapAfter?.();
-      editor._dirty = true;
-    },
-    values,
-  );
+  const className = _LINK_PRESETS[kind].pillClass;
+  makeBrandedLinkModal(kind, (v, ctx) => {
+    const check = validateUrl(v.url);
+    if (!check.ok) { ctx.showError(check.message); return false; }
+    editor._snapBefore?.();
+    target.setAttribute("href", v.url);
+    target.textContent = v.label || v.url;
+    target.setAttribute("target", "_blank");
+    target.setAttribute("rel", "noopener noreferrer");
+    target.className = className;
+    editor._snapAfter?.();
+    editor._dirty = true;
+  }, values);
 }
 
 // ── Grid (table) block ───────────────────────────────────────────────
