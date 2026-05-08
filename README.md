@@ -149,6 +149,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 08, 2026**
+- **Align Pixaroma fixes:** Ctrl+drag marquee selection no longer slides previously-selected nodes around (regression that surfaced once 2+ nodes were already selected). Random "the selection shifts a tiny bit" when starting a new marquee right after a previous one is also gone — that was a pre-threshold dead-zone leak in the snap math. Canvas pans also no longer trigger snap.
+
 ### **May 07, 2026**
 - **Preview Image Pixaroma fixes:** Single-image previews now always show the `WxH` dimension footer (previously only batches did). Going from a batch (in expanded view) to a single-image run no longer leaves a stuck close X over the new image.
 - **Show Text Pixaroma rewrite:** Real read-only text box you can **select and copy text from** (the old canvas-painted version did not allow selection). **Resize the node freely** in any direction; long text scrolls instead of forcing the node to grow. New **STRING output** named `text` so the node can chain into other nodes - inspect a prompt and still pass it on. Last-shown text saves and restores with the workflow.
