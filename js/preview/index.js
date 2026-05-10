@@ -392,6 +392,11 @@ function createButtonsWidget() {
     type: "custom",
     value: null,
     serialize: false,
+    // canvasOnly = don't render this widget in the right-sidebar Parameters
+    // tab. Without this flag, the Vue frontend draws every widget there too,
+    // and each draw() call corrupts node._pixaromaCells with stale Parameters-
+    // panel coords - causing the node body's layout to break on tab switch.
+    options: { canvasOnly: true },
     computeSize(width) {
       return [width, BTN_H + STRIP_V_PAD * 2];
     },
@@ -625,6 +630,8 @@ function createStripWidget() {
     type: "custom",
     value: null,
     serialize: false,
+    // canvasOnly: skip this widget in the Parameters tab (Vue Compat #15).
+    options: { canvasOnly: true },
     computeSize(width) {
       // Constant minimum height (native PreviewImage pattern). The actual
       // rendered height is whatever the user-resized node grants — see draw().
