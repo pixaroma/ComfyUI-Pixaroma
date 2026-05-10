@@ -737,27 +737,11 @@ function createStripWidget() {
         }
         if (total > 1) {
           const isSel = i === sel;
-          const badgeText = `${i + 1} / ${total}`;
-          // Badge in slot's bottom-right (always at slot edge, regardless
-          // of where the letterboxed image lands)
-          ctx.save();
-          ctx.font = BADGE_FONT;
-          const textW = ctx.measureText(badgeText).width;
-          const badgeW = textW + BADGE_PAD * 2;
-          const bx = slot.x + slot.w - badgeW - 4;
-          const by = slot.y + slot.h - BADGE_H - 4;
-          ctx.fillStyle = isSel ? BRAND : "rgba(0,0,0,0.72)";
-          ctx.beginPath();
-          ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
-          ctx.fill();
-          ctx.fillStyle = "#fff";
-          ctx.textBaseline = "middle";
-          ctx.textAlign = "left";
-          ctx.fillText(badgeText, bx + BADGE_PAD, by + BADGE_H / 2 + 1);
-          ctx.restore();
+          // Selection border first, badge on top — so the dark badge is
+          // never crossed by the orange stroke. Border wraps the fitted
+          // image (not the slot) so the highlight follows the visible
+          // content, even when the image is letterboxed inside the slot.
           if (isSel) {
-            // Orange selection border around the FITTED image (not the slot),
-            // so the highlight wraps the visible content
             ctx.save();
             ctx.strokeStyle = BRAND;
             ctx.lineWidth = IMG_STRIP_BORDER_W;
@@ -769,6 +753,26 @@ function createStripWidget() {
             );
             ctx.restore();
           }
+          // Badge anchored to imgRect bottom-right (always on the actual
+          // image, never floating in letterbox padding). Always dark — the
+          // orange border already communicates selection, so an orange
+          // badge on top of an orange border would merge into one blob.
+          const badgeText = `${i + 1} / ${total}`;
+          ctx.save();
+          ctx.font = BADGE_FONT;
+          const textW = ctx.measureText(badgeText).width;
+          const badgeW = textW + BADGE_PAD * 2;
+          const bx = imgRect.x + imgRect.w - badgeW - 4;
+          const by = imgRect.y + imgRect.h - BADGE_H - 4;
+          ctx.fillStyle = "rgba(0,0,0,0.72)";
+          ctx.beginPath();
+          ctx.roundRect(bx, by, badgeW, BADGE_H, 3);
+          ctx.fill();
+          ctx.fillStyle = "#fff";
+          ctx.textBaseline = "middle";
+          ctx.textAlign = "left";
+          ctx.fillText(badgeText, bx + BADGE_PAD, by + BADGE_H / 2 + 1);
+          ctx.restore();
         }
       }
 
