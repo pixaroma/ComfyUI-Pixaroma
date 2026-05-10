@@ -392,6 +392,7 @@ app.registerExtension({
     // Resolution Pixaroma pattern — set BOTH min and max to the same constant
     // so ComfyUI doesn't stretch the widget to fill leftover node height.
     node.addDOMWidget("CropPanel", "custom", panel.el, {
+      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
       serialize: false,
       getMinHeight: () => PANEL_H,
       getMaxHeight: () => PANEL_H,
@@ -400,6 +401,7 @@ app.registerExtension({
 
     // ── DOM widget (mini-preview) ──
     widget = node.addDOMWidget("CropWidget", "custom", parts.container, {
+      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
       getValue: () => ({ crop_json: cropJson }),
       setValue: (v) => {
         if (!v || typeof v !== "object") return;

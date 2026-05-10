@@ -121,6 +121,9 @@ app.registerExtension({
 
     // ── DOM widget (sent to Python as kwargs["SceneWidget"]) ──
     let widget = node.addDOMWidget("SceneWidget", "custom", parts.container, {
+      // canvasOnly: hide from the right-sidebar Parameters tab (Vue Compat
+      // #15). This widget is the on-canvas preview, not a user-input row.
+      canvasOnly: true,
       getValue: () => ({
         scene_json: sceneJson,
       }),

@@ -20,6 +20,7 @@ app.registerExtension({
         "custom",
         elements.container,
         {
+          canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
           getValue: () => ({
             count: parseInt(elements.counterValue.textContent),
             text: elements.textarea.value,

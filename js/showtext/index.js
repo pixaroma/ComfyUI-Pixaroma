@@ -55,6 +55,7 @@ app.registerExtension({
       this._pixTextEl = ta;
 
       const widget = this.addDOMWidget("text", "customtext", wrap, {
+        canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
         getValue: () => ta.value,
         setValue: (v) => {
           ta.value = v == null ? "" : String(v);

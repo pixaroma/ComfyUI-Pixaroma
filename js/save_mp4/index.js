@@ -150,7 +150,7 @@ app.registerExtension({
         "pixaroma_video_preview",
         "video_preview",
         wrap,
-        { serialize: false, hideOnZoom: false }
+        { canvasOnly: true, serialize: false, hideOnZoom: false }  // canvasOnly: hide from Parameters tab (Vue Compat #15)
       );
 
       // Vue's layout loop reads `widget.computedHeight` directly, NOT the
