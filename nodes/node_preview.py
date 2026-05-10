@@ -52,7 +52,18 @@ class PixaromaPreview:
         return {
             "required": {
                 "image": ("IMAGE", {"tooltip": "Image (or batch) to preview. Each frame appears as a thumbnail in the strip; click one to expand it inline. Wire any IMAGE source here."}),
-                "filename_prefix": ("STRING", {"default": "img", "tooltip": "Filename stem when writing PNGs to output/ (used by both the Save to Output button and save_mode=save). Accepts subfolder syntax: 'SDXL/portrait' writes to output/SDXL/portrait_NNNNN_.png. The node appends a 5-digit auto-incremented counter and .png."}),
+                "filename_prefix": ("STRING", {"default": "img", "tooltip": (
+                    "Filename stem when writing PNGs to output/ (used by both the Save to Output button and save_mode=save). "
+                    "The node appends a 5-digit auto-incremented counter and .png.\n\n"
+                    "Accepts subfolder syntax with '/'. Supports date tokens like other ComfyUI save nodes:\n"
+                    "  img                              -> output/img_00001_.png\n"
+                    "  SDXL/portrait                    -> output/SDXL/portrait_00001_.png\n"
+                    "  %date:yyyy-MM-dd%/img            -> output/2026-05-10/img_00001_.png\n"
+                    "  %date:yyyy-MM%/img_%date:dd-HH%  -> output/2026-05/img_10-14_00001_.png\n"
+                    "  %year%-%month%/img               -> output/2026-05/img_00001_.png  (native tokens also work)\n\n"
+                    "Date format codes (Java-style): yyyy yy MM dd HH mm ss. Native ComfyUI tokens: "
+                    "%year% %month% %day% %hour% %minute% %second% %width% %height%."
+                )}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
             "hidden": {
