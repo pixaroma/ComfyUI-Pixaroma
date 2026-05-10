@@ -392,6 +392,11 @@ function createButtonsWidget() {
     type: "custom",
     value: null,
     serialize: false,
+    // canvasOnly = don't render this widget in the right-sidebar Parameters
+    // tab. Without this flag, the Vue frontend draws every widget there too,
+    // and each draw() call corrupts node._pixaromaCells with stale Parameters-
+    // panel coords - causing the node body's layout to break on tab switch.
+    options: { canvasOnly: true },
     computeSize(width) {
       return [width, BTN_H + STRIP_V_PAD * 2];
     },
@@ -503,41 +508,64 @@ function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
   return { slots, imgs };
 }
 
-// 2D-wrapped grid layout. Native PreviewImage uses this style: 3 imgs -> 2x2,
-// 5 imgs -> 2x3 (rows = ceil(sqrt(N)); cols = ceil(N/rows)). Cells fill the
-// widget body, image fitted inside cell preserving aspect, never upscaled.
+// 2D-wrapped grid layout — native PreviewImage's algorithm exactly.
+// Iterate cols from 1..N, pick the count that maximises total image area
+// inside the available rect. Cell dimensions are SCALED IMAGE dimensions
+// (not innerW/cols x innerH/rows), so cells exactly fit the images with
+// NO per-cell letterbox. The grid is then centered inside the widget.
+// Result: thumbnails always look as big as native's, cells touch directly,
+// any unused space sits at the edges of the grid (not between cells).
 function layoutImgGrid(widgetWidth, widgetY, widgetHeight, frames) {
   const n = frames.length;
   if (!n) return { slots: [], imgs: [] };
   const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
   const innerH = Math.max(40, widgetHeight - 2 * IMG_STRIP_V_PAD);
-  const rows = Math.max(1, Math.ceil(Math.sqrt(n)));
-  const cols = Math.max(1, Math.ceil(n / rows));
-  const cellGap = IMG_STRIP_GAP;
-  const cellW = Math.max(16, Math.floor((innerW - cellGap * (cols - 1)) / cols));
-  const cellH = Math.max(16, Math.floor((innerH - cellGap * (rows - 1)) / rows));
+
+  // Use first frame for the iterate-and-maximise pass (assumes the batch
+  // is uniform, which ComfyUI batches always are). Fall back to a 1xN
+  // strip if the image hasn't loaded yet — gets replaced on next draw
+  // once natural dimensions are known.
+  const firstImg = frames[0]?.img;
+  const imgW = firstImg?.complete && firstImg.naturalWidth > 0 ? firstImg.naturalWidth : 1;
+  const imgH = firstImg?.complete && firstImg.naturalHeight > 0 ? firstImg.naturalHeight : 1;
+
+  let bestCols = 1, bestRows = n, bestCellW = innerW, bestCellH = innerH / n, bestArea = -1;
+  for (let c = 1; c <= n; c++) {
+    const r = Math.ceil(n / c);
+    const slotW = innerW / c;
+    const slotH = innerH / r;
+    // CONTAIN fit, capped at 1 so smaller images never upscale past native.
+    const scale = Math.min(slotW / imgW, slotH / imgH, 1);
+    const cellW = imgW * scale;
+    const cellH = imgH * scale;
+    const area = cellW * cellH * n;
+    if (area > bestArea) {
+      bestArea = area;
+      bestCols = c;
+      bestRows = r;
+      bestCellW = cellW;
+      bestCellH = cellH;
+    }
+  }
+  const cols = bestCols, rows = bestRows;
+  const cellW = Math.max(16, Math.floor(bestCellW));
+  const cellH = Math.max(16, Math.floor(bestCellH));
+  // Center the whole grid in the available rect (matches native's shiftX).
+  const gridW = cellW * cols;
+  const gridH = cellH * rows;
+  const startX = SIDE_PAD + Math.max(0, Math.floor((innerW - gridW) / 2));
+  const startY = widgetY + IMG_STRIP_V_PAD + Math.max(0, Math.floor((innerH - gridH) / 2));
+
   const slots = [];
   const imgs = [];
   for (let i = 0; i < n; i++) {
     const r = Math.floor(i / cols);
     const c = i % cols;
-    const slotX = SIDE_PAD + c * (cellW + cellGap);
-    const slotY = widgetY + IMG_STRIP_V_PAD + r * (cellH + cellGap);
-    slots.push({ x: slotX, y: slotY, w: cellW, h: cellH, idx: i });
-
-    const im = frames[i]?.img;
-    let imgRect = { x: slotX, y: slotY, w: cellW, h: cellH };
-    if (im?.complete && im.naturalWidth > 0 && im.naturalHeight > 0) {
-      const scale = Math.min(cellW / im.naturalWidth, cellH / im.naturalHeight, 1);
-      const w = Math.round(im.naturalWidth * scale);
-      const h = Math.round(im.naturalHeight * scale);
-      imgRect = {
-        x: slotX + Math.floor((cellW - w) / 2),
-        y: slotY + Math.floor((cellH - h) / 2),
-        w, h,
-      };
-    }
-    imgs.push(imgRect);
+    const x = startX + c * cellW;
+    const y = startY + r * cellH;
+    // Cell == fitted image rect: no per-cell letterbox to center within.
+    slots.push({ x, y, w: cellW, h: cellH, idx: i });
+    imgs.push({ x, y, w: cellW, h: cellH });
   }
   return { slots, imgs };
 }
@@ -602,6 +630,8 @@ function createStripWidget() {
     type: "custom",
     value: null,
     serialize: false,
+    // canvasOnly: skip this widget in the Parameters tab (Vue Compat #15).
+    options: { canvasOnly: true },
     computeSize(width) {
       // Constant minimum height (native PreviewImage pattern). The actual
       // rendered height is whatever the user-resized node grants — see draw().

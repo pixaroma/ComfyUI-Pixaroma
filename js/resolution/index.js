@@ -1201,6 +1201,7 @@ function setupResolutionNode(node) {
   // widget exactly fills the area between titlebar and node bottom.
   const WIDGET_H = NODE_H - 46; // 358 — keep in sync with the chrome estimate in NODE_H comment
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
+    canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
     getValue: () => readState(node),
     setValue: (_v) => {},
     getMinHeight: () => WIDGET_H,

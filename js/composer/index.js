@@ -167,6 +167,7 @@ app.registerExtension({
       "custom",
       parts.container,
       {
+        canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
         getValue: () => ({ project_json: projectJson }),
         setValue: (v) => {
           dbg("setValue called", { type: typeof v, hasProjectJson: !!(v && v.project_json), projectJsonLen: v?.project_json?.length });

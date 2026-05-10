@@ -81,6 +81,7 @@ app.registerExtension({
 
     // ── DOM widget ──
     let widget = node.addDOMWidget("PaintWidget", "custom", parts.container, {
+      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
       getValue: () => ({ paint_json: paintJson }),
       setValue: (v) => {
         if (v && typeof v === "object") {

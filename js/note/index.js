@@ -98,6 +98,7 @@ function setupNote(node) {
     node._noteBody = wrap.querySelector(".pix-note-body");
     attachEditButton(wrap, () => openEditor(node));
     node.addDOMWidget("note_dom", "custom", wrap, {
+      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
       serialize: false,
       getMinHeight: () => 80,
     });

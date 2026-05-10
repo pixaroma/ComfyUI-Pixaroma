@@ -28,23 +28,20 @@ class PixaromaPreview:
     """
 
     DESCRIPTION = (
-        "Preview Image Pixaroma - inline image preview with save buttons, "
-        "batch-aware. Wire any IMAGE output into the input. Single images and "
-        "full batches both render as a thumbnail strip with an 'i / N' counter; "
-        "click any thumbnail to expand it inline. Arrow keys (left / right) "
-        "flip through the batch, click anywhere on the open image to advance, "
-        "Esc or X collapses.\n\n"
-        "Two save buttons act on the currently selected frame:\n"
-        "- Save to Disk: pick any folder on your computer; the suggested "
-        "filename auto-increments per click.\n"
-        "- Save to Output: writes to ComfyUI's output/ folder. The "
-        "filename_prefix field accepts subfolder syntax like 'SDXL/portrait'.\n\n"
-        "Flip save_mode to 'save' and the node turns into a drop-in replacement "
-        "for SaveImage - every batch frame is automatically written to output/ "
-        "on each Run with embedded workflow metadata. Both save paths embed "
-        "the workflow into the PNG so you can drag it back into ComfyUI later.\n\n"
-        "The preview also survives workflow tab switching, so you can leave it "
-        "on a specific frame and come back to it."
+        "Preview Image Pixaroma - inline image preview with Save to Disk and Save to Output buttons, batch-aware. "
+        "Wire any IMAGE source into the input. All batch frames render in the node body; click any thumbnail to "
+        "expand it inline. Arrow keys flip through the batch, click anywhere on the open image to advance, Esc "
+        "or X collapses. Toggle Grid / Strip layout via the small icon in the top-right corner of the preview area.\n\n"
+        "Save to Disk picks any folder on your computer; the suggested filename auto-increments per click. "
+        "Save to Output writes to ComfyUI's output/ folder. Both act on the currently selected frame and embed the "
+        "workflow into the PNG so you can drag it back into ComfyUI later.\n\n"
+        "Flip save_mode to 'save' and the node becomes a drop-in replacement for SaveImage: every batch frame is "
+        "automatically written to output/ on each Run with embedded workflow metadata. The preview also survives "
+        "workflow tab switching, so you can leave it on a specific frame and come back to it.\n\n"
+        "The filename_prefix field supports subfolder syntax with '/' (e.g. 'SDXL/portrait'), date tokens like "
+        "VHS / VideoHelperSuite (e.g. '%date:yyyy-MM-dd%/img' -> 'output/2026-05-10/img_00001_.png'), and native "
+        "ComfyUI tokens (%year%, %month%, %day%, %hour%, %minute%, %second%, %width%, %height%). Date format codes "
+        "are yyyy yy MM dd HH mm ss. See the project README for the full token reference."
     )
 
     @classmethod
@@ -53,16 +50,11 @@ class PixaromaPreview:
             "required": {
                 "image": ("IMAGE", {"tooltip": "Image (or batch) to preview. Each frame appears as a thumbnail in the strip; click one to expand it inline. Wire any IMAGE source here."}),
                 "filename_prefix": ("STRING", {"default": "img", "tooltip": (
-                    "Filename stem when writing PNGs to output/ (used by both the Save to Output button and save_mode=save). "
-                    "The node appends a 5-digit auto-incremented counter and .png.\n\n"
-                    "Accepts subfolder syntax with '/'. Supports date tokens like other ComfyUI save nodes:\n"
-                    "  img                              -> output/img_00001_.png\n"
-                    "  SDXL/portrait                    -> output/SDXL/portrait_00001_.png\n"
-                    "  %date:yyyy-MM-dd%/img            -> output/2026-05-10/img_00001_.png\n"
-                    "  %date:yyyy-MM%/img_%date:dd-HH%  -> output/2026-05/img_10-14_00001_.png\n"
-                    "  %year%-%month%/img               -> output/2026-05/img_00001_.png  (native tokens also work)\n\n"
-                    "Date format codes (Java-style): yyyy yy MM dd HH mm ss. Native ComfyUI tokens: "
-                    "%year% %month% %day% %hour% %minute% %second% %width% %height%."
+                    "Filename stem written to output/. The node adds a 5-digit counter and .png. "
+                    "Use '/' for subfolders (e.g. 'SDXL/portrait'). "
+                    "Supports date tokens like %date:yyyy-MM-dd% (same syntax as VHS / VideoHelperSuite) "
+                    "and native ComfyUI tokens like %year%, %month%, %day%. "
+                    "See the node's Info panel (right sidebar) for the full token reference and examples."
                 )}),
                 "save_mode": (["preview", "save"], {"default": "preview", "tooltip": "preview: write each batch frame to ComfyUI's temp/ folder, auto-cleared on restart. Use this while iterating so you don't clutter output/. save: write every batch frame to output/ with embedded workflow metadata, exactly like the native SaveImage node. The on-node preview strip works the same in both modes; the manual Save to Disk / Save to Output buttons are independent of save_mode."}),
             },
