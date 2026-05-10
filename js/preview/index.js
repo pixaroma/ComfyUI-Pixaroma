@@ -52,9 +52,36 @@ const EXPAND_FOOTER_H = 18;        // strip bottom area reserved for "WxH" text
 const EXPAND_DIM_FONT = "11px sans-serif";
 const EXPAND_DIM_COLOR = "#888";
 
+// ---- layout toggle (top-right icon) ----
+const LAYOUT_TOGGLE_SIZE = 22;     // visible square
+const LAYOUT_TOGGLE_HIT = 26;      // larger clickable rect for forgiveness
+const LAYOUT_TOGGLE_PAD = 6;       // padding from widget corner
+
 // Tracks which preview node is currently in expanded mode, so the global
 // keydown listener can route arrow-key navigation to the right node.
 let _activePreviewNode = null;
+
+// Layout mode helpers. The default for new nodes comes from the
+// Pixaroma.Preview.DefaultLayout setting (registered below); per-node
+// overrides live on node.properties.pixaromaLayout so they persist
+// across workflow saves and Vue tab switches.
+function getDefaultLayout() {
+  try {
+    const v = app.ui?.settings?.getSettingValue("Pixaroma.Preview.DefaultLayout");
+    return v === "Strip" ? "strip" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+function getLayoutMode(node) {
+  const m = node.properties?.pixaromaLayout;
+  return (m === "strip" || m === "grid") ? m : getDefaultLayout();
+}
+function setLayoutMode(node, mode) {
+  node.properties = node.properties || {};
+  node.properties.pixaromaLayout = mode;
+  node.setDirtyCanvas(true, true);
+}
 
 // Shared click handler — called from both the strip widget's mouse()
 // callback (for clicks inside computeSize bounds) AND nodeType.onMouseDown
@@ -63,6 +90,14 @@ let _activePreviewNode = null;
 function handleStripClick(node, lx, ly) {
   const cells = node._pixaromaCells;
   if (!cells) return false;
+
+  // Layout toggle (top-right icon) — only present in non-expanded multi-frame
+  // mode. Flips Grid <-> Strip for this node.
+  const tr = cells.toggleRect;
+  if (tr && lx >= tr.x && lx <= tr.x + tr.w && ly >= tr.y && ly <= tr.y + tr.h) {
+    setLayoutMode(node, getLayoutMode(node) === "grid" ? "strip" : "grid");
+    return true;
+  }
 
   // Expanded mode: X closes; click on image advances to next frame.
   if (cells.expanded) {
@@ -468,6 +503,99 @@ function layoutImgStrip(widgetWidth, widgetY, widgetHeight, frames) {
   return { slots, imgs };
 }
 
+// 2D-wrapped grid layout. Native PreviewImage uses this style: 3 imgs -> 2x2,
+// 5 imgs -> 2x3 (rows = ceil(sqrt(N)); cols = ceil(N/rows)). Cells fill the
+// widget body, image fitted inside cell preserving aspect, never upscaled.
+function layoutImgGrid(widgetWidth, widgetY, widgetHeight, frames) {
+  const n = frames.length;
+  if (!n) return { slots: [], imgs: [] };
+  const innerW = Math.max(40, widgetWidth - 2 * SIDE_PAD);
+  const innerH = Math.max(40, widgetHeight - 2 * IMG_STRIP_V_PAD);
+  const rows = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const cols = Math.max(1, Math.ceil(n / rows));
+  const cellGap = IMG_STRIP_GAP;
+  const cellW = Math.max(16, Math.floor((innerW - cellGap * (cols - 1)) / cols));
+  const cellH = Math.max(16, Math.floor((innerH - cellGap * (rows - 1)) / rows));
+  const slots = [];
+  const imgs = [];
+  for (let i = 0; i < n; i++) {
+    const r = Math.floor(i / cols);
+    const c = i % cols;
+    const slotX = SIDE_PAD + c * (cellW + cellGap);
+    const slotY = widgetY + IMG_STRIP_V_PAD + r * (cellH + cellGap);
+    slots.push({ x: slotX, y: slotY, w: cellW, h: cellH, idx: i });
+
+    const im = frames[i]?.img;
+    let imgRect = { x: slotX, y: slotY, w: cellW, h: cellH };
+    if (im?.complete && im.naturalWidth > 0 && im.naturalHeight > 0) {
+      const scale = Math.min(cellW / im.naturalWidth, cellH / im.naturalHeight, 1);
+      const w = Math.round(im.naturalWidth * scale);
+      const h = Math.round(im.naturalHeight * scale);
+      imgRect = {
+        x: slotX + Math.floor((cellW - w) / 2),
+        y: slotY + Math.floor((cellH - h) / 2),
+        w, h,
+      };
+    }
+    imgs.push(imgRect);
+  }
+  return { slots, imgs };
+}
+
+// Paint the layout-toggle icon (top-right of the widget, multi-frame
+// non-expanded only). Icon shows the OPPOSITE of the current mode so the
+// glyph signals "click to switch to this". Hover lights up BRAND.
+// Returns the hit rect (larger than the visible square for click forgiveness).
+function paintLayoutToggle(ctx, node, widget_width, widgetY, currentMode) {
+  const visualX = widget_width - LAYOUT_TOGGLE_SIZE - LAYOUT_TOGGLE_PAD;
+  const visualY = widgetY + LAYOUT_TOGGLE_PAD;
+  const hitRect = {
+    x: visualX - (LAYOUT_TOGGLE_HIT - LAYOUT_TOGGLE_SIZE) / 2,
+    y: visualY - (LAYOUT_TOGGLE_HIT - LAYOUT_TOGGLE_SIZE) / 2,
+    w: LAYOUT_TOGGLE_HIT,
+    h: LAYOUT_TOGGLE_HIT,
+  };
+
+  const cm = app.canvas?.graph_mouse;
+  const mx = cm ? cm[0] - node.pos[0] : -1;
+  const my = cm ? cm[1] - node.pos[1] : -1;
+  const hover = mx >= hitRect.x && mx <= hitRect.x + hitRect.w
+             && my >= hitRect.y && my <= hitRect.y + hitRect.h;
+
+  ctx.save();
+  ctx.fillStyle = hover ? "rgba(255,103,68,0.95)" : "rgba(0,0,0,0.7)";
+  ctx.beginPath();
+  ctx.roundRect(visualX, visualY, LAYOUT_TOGGLE_SIZE, LAYOUT_TOGGLE_SIZE, 3);
+  ctx.fill();
+
+  // Glyph shows the OTHER mode (what you'll switch to on click)
+  ctx.fillStyle = "#fff";
+  const cx = visualX + LAYOUT_TOGGLE_SIZE / 2;
+  const cy = visualY + LAYOUT_TOGGLE_SIZE / 2;
+  if (currentMode === "grid") {
+    // Show "strip" glyph: three short horizontal bars
+    const barW = 12, barH = 1.6, gap = 3;
+    const totalH = barH * 3 + gap * 2;
+    const startY = cy - totalH / 2;
+    for (let i = 0; i < 3; i++) {
+      ctx.fillRect(cx - barW / 2, startY + i * (barH + gap), barW, barH);
+    }
+  } else {
+    // Show "grid" glyph: 2x2 small dots
+    const dotSize = 4, dotGap = 2;
+    const totalSide = dotSize * 2 + dotGap;
+    const sx = cx - totalSide / 2;
+    const sy = cy - totalSide / 2;
+    for (let r = 0; r < 2; r++) {
+      for (let c = 0; c < 2; c++) {
+        ctx.fillRect(sx + c * (dotSize + dotGap), sy + r * (dotSize + dotGap), dotSize, dotSize);
+      }
+    }
+  }
+  ctx.restore();
+  return hitRect;
+}
+
 function createStripWidget() {
   return {
     name: "pixaroma_strip",
@@ -589,8 +717,11 @@ function createStripWidget() {
         return;
       }
 
-      // ---- Strip mode (default): row of thumbnails with click-to-expand ----
-      const layout = layoutImgStrip(widget_width, y, widgetH, frames);
+      // ---- Multi-frame mode: row (Strip) or 2D wrapped (Grid) ----
+      const mode = getLayoutMode(node);
+      const layout = mode === "grid"
+        ? layoutImgGrid(widget_width, y, widgetH, frames)
+        : layoutImgStrip(widget_width, y, widgetH, frames);
       node._pixaromaCells = layout;
       for (let i = 0; i < layout.slots.length; i++) {
         const slot = layout.slots[i];
@@ -640,6 +771,12 @@ function createStripWidget() {
           }
         }
       }
+
+      // Layout toggle in top-right (multi-frame, non-expanded only).
+      // Drawn last so it always sits above the thumbnails.
+      if (total > 1) {
+        node._pixaromaCells.toggleRect = paintLayoutToggle(ctx, node, widget_width, y, mode);
+      }
     },
     // Click handling. LiteGraph routes clicks to widget.mouse() ONLY when
     // the click falls within the widget's computeSize bounds. Our strip
@@ -659,6 +796,18 @@ function createStripWidget() {
 // ---- extension ----
 app.registerExtension({
   name: "Pixaroma.Preview",
+
+  settings: [
+    {
+      id: "Pixaroma.Preview.DefaultLayout",
+      name: "Default batch layout",
+      type: "combo",
+      defaultValue: "Grid",
+      options: ["Grid", "Strip"],
+      tooltip: "How a multi-image batch is laid out in the Preview Image Pixaroma node body. Grid wraps into rows (matches native ComfyUI); Strip is a single horizontal row. Each node also has its own toggle in the top-right of the preview area; this setting only affects the default for newly-created nodes.",
+      category: ["👑 Pixaroma", "Preview"],
+    },
+  ],
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaPreview") return;
