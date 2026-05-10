@@ -152,7 +152,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **May 10, 2026**
+### **May 10, 2026 (1.3.19)**
+- **Preview Image Pixaroma - grid layout for batches:** Multi-image batches now wrap into a 2D grid by default (3 imgs → 2×2, 5 imgs → 2×3, 9 imgs → 3×3...), matching native PreviewImage. Thumbnails stay big regardless of batch size, no more wasted vertical space. A small toggle icon in the top-right of the preview flips between **Grid** and **Strip** (single horizontal row, the previous behavior) per node; the default for new nodes lives under **Settings → 👑 Pixaroma → Preview → Default batch layout**.
+- **Preview Image Pixaroma - date tokens in `filename_prefix`:** The filename field now accepts the same date-folder syntax as VHS / Save Image extras: `%date:yyyy-MM-dd%/img` writes into `output/2026-05-10/img_00001_.png`. Native ComfyUI tokens (`%year%`, `%month%`, `%day%`, `%hour%`, `%minute%`, `%second%`, `%width%`, `%height%`) also work. Hover the field for examples. Applies to both the **Save to Output** button and `save_mode=save`.
+- **Preview Image Pixaroma - badge polish:** The `i / N` counter pill no longer overlaps with the orange selection border at certain image aspect ratios, and stays a consistent dark pill in every state instead of going orange-on-orange when selected.
+
+### **May 10, 2026 (1.3.18)**
 - **Image Composer fix:** the canvas background colour you pick in the editor now survives the workflow run. Previously, if a Composer had placeholder slots (or auto-rembg or eraser masks), running the workflow flipped the background from your chosen colour to black in BOTH the in-node mini preview and the downstream Preview Image. Re-save any existing project to carry the colour forward; older saves without a saved bg colour fall back to the editor's default dark grey.
 - **Editor mini-preview squaring fix:** the small preview thumbnail under Image Composer / Paint / Image Crop / 3D Builder nodes now stays square as you resize the node, instead of locking into a wide letterboxed rectangle that only "snapped right" once you ran the workflow. Caused by ComfyUI's new Vue frontend not reliably firing `node.onResize` for DOM-widget resizes; switched to a `ResizeObserver` so size changes always update.
 - **Help panel polish (every node):** ComfyUI's right-side Info tab now shows real Description text for every Pixaroma node instead of blank rows. Each input also has a hover tooltip explaining what to wire and what it does.
