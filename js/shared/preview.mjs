@@ -58,6 +58,30 @@ export function createNodePreview(titleText, subtitleText, instructionText) {
   infoLabel.textContent = "";
   container.appendChild(infoLabel);
 
+  // Keep the preview box square at all times. The original
+  // `requestAnimationFrame` loop + `node.onResize` override only handled
+  // the initial render and one specific resize hook, but ComfyUI's Vue
+  // frontend doesn't reliably fire `node.onResize` for DOM-widget
+  // resizes (CLAUDE.md Vue Frontend Compatibility #1 / #5 family) - so
+  // the box would lock at its first measured width and stay that
+  // height even after the user dragged the node wider, manifesting as
+  // wide-letterboxed previews. ResizeObserver fires for every actual
+  // size change of the observed element regardless of cause (node
+  // resize, tab switch reflow, parent layout shifts) and works in all
+  // browsers ComfyUI runs in.
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = entry.contentRect.width;
+        if (w > 0 && previewBox.isConnected) {
+          previewBox.style.height = w + "px";
+          previewBox.style.paddingBottom = "0";
+        }
+      }
+    });
+    ro.observe(previewBox);
+  }
+
   return { container, previewBox, preview, dummy, infoLabel };
 }
 
@@ -73,25 +97,12 @@ export function showNodePreview(parts, src, dimText, node) {
     previewBox.style.display = "block";
     infoLabel.textContent =
       dimText || `${img.naturalWidth}\u00d7${img.naturalHeight}`;
-    _enforceSquare(previewBox);
+    // Squaring is handled by the ResizeObserver attached in
+    // createNodePreview - it fires on every size change including the
+    // initial display:none -> display:block transition right here.
     node.setDirtyCanvas(true, true);
   };
   img.src = src;
-}
-
-function _enforceSquare(el) {
-  let tries = 0;
-  const check = () => {
-    if (!el.isConnected || tries > 60) return;
-    tries++;
-    const w = el.offsetWidth;
-    if (w > 0) {
-      el.style.height = w + "px";
-      el.style.paddingBottom = "0";
-    }
-    requestAnimationFrame(check);
-  };
-  requestAnimationFrame(check);
 }
 
 /**
@@ -112,21 +123,13 @@ export function restoreNodePreview(parts, json, node) {
 
 /**
  * Activate the preview container after a short delay.
+ *
+ * Squaring of the preview box is now driven by the ResizeObserver
+ * installed in createNodePreview, so we no longer override
+ * node.onResize here (that hook is unreliable in ComfyUI's Vue
+ * frontend - see CLAUDE.md Vue Frontend Compatibility patterns).
  */
 export function activateNodePreview(parts, node) {
-  const origResize = node.onResize;
-  node.onResize = function (size) {
-    origResize?.call(this, size);
-    const box = parts.previewBox;
-    if (box && box.style.display !== "none") {
-      const w = box.offsetWidth;
-      if (w > 0) {
-        box.style.height = w + "px";
-        box.style.paddingBottom = "0";
-      }
-    }
-  };
-
   setTimeout(() => {
     parts.container.style.display = "flex";
     node.setDirtyCanvas(true, true);
