@@ -766,6 +766,14 @@ PixaromaEditor.prototype.attachEvents = function () {
       const finalMeta = {
         doc_w: this.docWidth,
         doc_h: this.docHeight,
+        // Save the user's chosen canvas BG so the dynamic-compose path
+        // (Python composer when there are placeholders / auto-rembg /
+        // masks) and the JS rebuildPreview can fill the canvas with it
+        // before drawing layers. Without this the BG was only baked
+        // into the saved composite_path PNG, which the dynamic path
+        // doesn't load - so the workflow output and mini preview
+        // would silently flip from your chosen colour to black on Run.
+        bg_color: this._bgColor || "#1e1e1e",
         layers: layerMeta,
         composite_path: null,
         session_ver: 6.0,

@@ -315,6 +315,13 @@ PixaromaEditor.prototype.attemptRestore = async function () {
 
     this.docWidth = meta.doc_w;
     this.docHeight = meta.doc_h;
+    // Restore the user's saved BG colour. Older saves (pre-bg_color
+    // field) get the legacy default so existing projects keep
+    // rendering identically to how they did before.
+    if (typeof meta.bg_color === "string" && meta.bg_color) {
+      this._bgColor = meta.bg_color;
+      if (this._bgColorInput) this._bgColorInput.value = meta.bg_color;
+    }
     if (this._canvasSettings)
       this._canvasSettings.setSize(meta.doc_w, meta.doc_h);
 

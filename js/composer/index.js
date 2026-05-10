@@ -86,10 +86,25 @@ app.registerExtension({
         dbg("onExecuted → WS preview already applied, skipping rebuild");
         return;
       }
-      // Fast-path fallback (no placeholders / auto-rembg / masks):
-      // Python loaded the pre-baked composite PNG and didn't send a
-      // custom event — so rebuild client-side from current inputs.
-      if (this._pixaromaRebuildPreview && !isEditorOpen(this)) {
+      // Fast-path: no placeholders / auto-rembg / masks. Python's
+      // load_composite() loaded the pre-baked composite_path PNG that
+      // the editor saved on close, AND that file is what Preview Image
+      // downstream gets. No re-composite needed - the mini preview
+      // already shows the same image (loaded by restoreNodePreview on
+      // workflow load / setValue). Calling rebuildPreview here would
+      // render the layers client-side WITHOUT the user's bg color
+      // (CLAUDE.md Image Composer Pattern: bg color isn't in
+      // project_json, only in the saved composite PNG) and could
+      // misrender layer transforms, manifesting as "the bg disappears
+      // after I run" + "image rescales after I run" bugs.
+      // ONLY rebuild client-side when there are placeholder slots that
+      // need a fresh upstream render — that's the path that genuinely
+      // benefits from a client rebuild.
+      if (
+        this._pixaromaRebuildPreview &&
+        !isEditorOpen(this) &&
+        this._pixaromaHasPlaceholders?.()
+      ) {
         const rebuild = this._pixaromaRebuildPreview;
         setTimeout(() => { dbg("onExecuted → delayed rebuildPreview"); rebuild(); }, 300);
       }
@@ -319,6 +334,17 @@ app.registerExtension({
         cvs.width = docW; cvs.height = docH;
         const ctx = cvs.getContext("2d");
 
+        // Fill the user's saved BG colour FIRST, then draw layers on top.
+        // Mirrors the editor's _drawImpl + the Python dynamic-compose path
+        // (node_composition.py). Without this the canvas stays transparent
+        // and the resulting PNG flashes black where the bg should be when
+        // the mini preview switches from the saved composite to this
+        // client recomposite (placeholder workflows). Older saves missing
+        // bg_color get the same default the editor's BG picker uses.
+        const bgColor = (typeof meta.bg_color === "string" && meta.bg_color) || "#1e1e1e";
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, docW, docH);
+
         loadList.forEach((item, i) => {
           if (item.layer.visible === false) return;
           const img = images[i];
@@ -361,6 +387,25 @@ app.registerExtension({
 
     // Expose for onExecuted
     node._pixaromaRebuildPreview = rebuildPreview;
+
+    // Helper to check whether the current project has any placeholder
+    // layers - used by post-run rebuild gates to decide if a client-
+    // side re-composite adds value. Without placeholders, the saved
+    // composite_path image (loaded by Python and shown by the existing
+    // mini preview) is already the workflow output, and rebuilding
+    // would only re-render WITHOUT the saved bg color (which lives in
+    // the composite PNG, not project_json). Exposed on the node so the
+    // beforeRegisterNodeDef-installed onExecuted hook can reach it
+    // without a closure reference.
+    const _hasPlaceholderLayers = () => {
+      try {
+        const m = JSON.parse(projectJson);
+        return Array.isArray(m?.layers) && m.layers.some((l) => l.isPlaceholder);
+      } catch {
+        return false;
+      }
+    };
+    node._pixaromaHasPlaceholders = _hasPlaceholderLayers;
 
     // Preferred onExecuted path: Python sends back the exact final
     // composed PNG via the ui.images channel. This helper fetches it
@@ -514,6 +559,15 @@ app.registerExtension({
             // don't clobber it with a client-side recomposite.
             if (node._pixaromaWsPreviewApplied) {
               dbg("executing-null → WS preview already applied, skipping rebuild");
+              return;
+            }
+            // Same fast-path skip as onExecuted - without placeholders,
+            // the saved composite_path PNG (already shown via
+            // restoreNodePreview) is the correct preview. A client
+            // rebuild here would lose the bg color and risk misscaling
+            // the layers (CLAUDE.md Image Composer Patterns).
+            if (!_hasPlaceholderLayers()) {
+              dbg("executing-null → no placeholders, saved composite is correct, skipping rebuild");
               return;
             }
             setTimeout(() => rebuildPreview(), 200);

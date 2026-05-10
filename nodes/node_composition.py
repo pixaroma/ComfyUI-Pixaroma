@@ -376,8 +376,18 @@ class PixaromaImageComposition:
             has_masks = any(l.get("maskSrc") for l in layers)
 
             if has_placeholders or has_auto_rembg or has_masks:
-                # Composite from scratch so placeholder slots are filled, rembg and masks applied
-                canvas = Image.new("RGBA", (doc_w, doc_h), (0, 0, 0, 0))
+                # Composite from scratch so placeholder slots are filled, rembg and masks applied.
+                # Initialize with the user's saved BG color (project_json field
+                # `bg_color`, added in 1.3.18). Without this the canvas was always
+                # transparent here, and the eventual RGBA->RGB conversion in
+                # _save_preview_png + the workflow output silently turned the BG
+                # black even when the user had chosen a colour in the editor.
+                # Older saves (pre-1.3.18) had no bg_color field — fall back to
+                # the same default the editor's BG picker uses (#1e1e1e) so
+                # output matches what users saw inside the editor.
+                bg_hex = meta.get("bg_color") or "#1e1e1e"
+                bg_rgba = _hex_to_rgba(bg_hex)
+                canvas = Image.new("RGBA", (doc_w, doc_h), bg_rgba)
                 for layer in layers:
                     if not layer.get("visible", True):
                         continue
