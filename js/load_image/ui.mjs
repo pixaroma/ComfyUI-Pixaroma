@@ -119,14 +119,35 @@ export function buildRoot() {
   return root;
 }
 
-// Hides the native `image` combo widget from canvas + Parameters tab.
-// Same flag native PreviewImage internal widgets use (CLAUDE.md Vue Compat #15).
+// Hides every auto-created widget so we can render our own UI in the DOM
+// widget. `image_upload: True` creates TWO widgets in INPUT_TYPES on the
+// Vue frontend: the `image` combo + a separate `upload` button widget — both
+// need to be hidden, plus any other auto-created widget that isn't ours.
+//
+// Uses the same multi-technique pattern as shared/utils.mjs `hideJsonWidget`:
+// setting `canvasOnly` alone is not enough for canvas drawing on the current
+// Vue frontend — must also set `hidden=true`, zero `computeSize`, and hide
+// any DOM element. Returns the `image` combo widget so callers can read /
+// write its `.value` (that drives the actual file selection).
 export function hideNativeImageCombo(node) {
-  const w = (node.widgets || []).find((x) => x.name === "image");
-  if (!w) return null;
-  if (!w.options) w.options = {};
-  w.options.canvasOnly = true;
-  // Also hide the type from LiteGraph's renderer
-  w.type = "hidden";
-  return w;
+  let imageWidget = null;
+  for (const w of (node.widgets || [])) {
+    if (!w) continue;
+    if (w.name === "image") imageWidget = w;
+    w.hidden = true;
+    w.computeSize = () => [0, -4];
+    if (!w.options) w.options = {};
+    w.options.canvasOnly = true;
+    if (w.element) w.element.style.display = "none";
+  }
+  // Vue may DOM-render an upload widget AFTER nodeCreated — re-hide on the
+  // next animation frame as a belt-and-braces. Mirrors hideJsonWidget.
+  requestAnimationFrame(() => {
+    for (const w of (node.widgets || [])) {
+      if (!w || w.name === "pixaroma_load_image_ui") continue;
+      if (w.element) w.element.style.display = "none";
+      if (w.inputEl) w.inputEl.style.display = "none";
+    }
+  });
+  return imageWidget;
 }
