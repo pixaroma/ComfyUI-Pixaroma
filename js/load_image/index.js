@@ -14,7 +14,12 @@ function refreshDropdown(node) {
 
 function renderUI(node) {
   const root = node._pixLiRoot;
-  if (!root || !root.isConnected) return;
+  if (!root) return;
+  // No `isConnected` check: queueMicrotask fires BEFORE LiteGraph's first
+  // canvas paint, so the DOM widget root isn't attached to the document yet.
+  // We still want to append chips to root (in memory). When LiteGraph paints
+  // the node, root + chips will be visible. Same pattern as Resolution
+  // Pixaroma's deferred initial render.
   const state = readState(node);
 
   // We keep the upload button + hint + dropdown stable across renders.

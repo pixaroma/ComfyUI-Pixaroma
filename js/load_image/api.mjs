@@ -1,3 +1,23 @@
+// Fetch the image from ComfyUI's /view route and assign it to node.imgs so
+// the native bottom-of-node preview updates. ComfyUI populates node.imgs
+// automatically on workflow load via the image_upload combo's setter, but
+// when we set widget.value programmatically the setter does NOT fire — so
+// without this helper the preview stays stuck on the previously-loaded file.
+export function updateNativePreview(node, filename) {
+  if (!filename) return;
+  const img = new Image();
+  img.onload = () => {
+    node.imgs = [img];
+    node.graph?.setDirtyCanvas?.(true, true);
+  };
+  img.onerror = () => {
+    // Don't crash — the file might be temp or moved. Just log.
+    console.warn("[PixaromaLoadImage] preview fetch failed for", filename);
+  };
+  // `subfolder=` empty + `type=input` matches the upload route's storage.
+  img.src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=&t=${Date.now()}`;
+}
+
 // Upload an image File/Blob to ComfyUI's /upload/image route and update the
 // node's `image` combo widget to select the new file.
 //
@@ -41,6 +61,9 @@ export async function uploadImageToInput(node, file, filenameHint = null) {
       imageWidget.options.values = values;
     }
     imageWidget.value = saved;
+    // Native preview hook — setting widget.value programmatically doesn't
+    // fire ComfyUI's image_upload setter, so fetch + assign node.imgs manually.
+    updateNativePreview(node, saved);
   }
   node.graph?.setDirtyCanvas?.(true, true);
   return saved;

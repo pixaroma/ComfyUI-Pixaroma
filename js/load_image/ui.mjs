@@ -200,6 +200,8 @@ export function hideNativeImageCombo(node) {
   return imageWidget;
 }
 
+import { updateNativePreview } from "./api.mjs";
+
 // Open a popup listing the underlying combo's options. Clicking an item
 // sets the combo value and the dropdown's label.
 export function openImageDropdown(node, anchorEl, onPick) {
@@ -254,8 +256,10 @@ export function openImageDropdown(node, anchorEl, onPick) {
       item.addEventListener("click", (e) => {
         e.stopPropagation();
         imageWidget.value = v;
+        // Refresh the native bottom-of-node preview to match the new file.
+        updateNativePreview(node, v);
         node.graph?.setDirtyCanvas?.(true, true);
-        popup.remove();
+        closePopup();
         if (onPick) onPick(v);
       });
       popup.appendChild(item);
@@ -264,15 +268,34 @@ export function openImageDropdown(node, anchorEl, onPick) {
 
   document.body.appendChild(popup);
 
-  // Click anywhere else to close.
-  const onDocClick = (e) => {
-    if (!popup.contains(e.target)) {
-      popup.remove();
-      document.removeEventListener("mousedown", onDocClick, true);
-    }
+  // Close the popup AND detach every listener. Captured in a single helper
+  // so all close paths (click outside, scroll, Escape, canvas pointerdown,
+  // node move) go through the same cleanup. Without centralised cleanup,
+  // detached listeners would leak and re-close zombie popups on the next open.
+  function closePopup() {
+    popup.remove();
+    document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("pointerdown", onDocDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onDocDown = (e) => {
+    if (!popup.contains(e.target)) closePopup();
   };
-  // Use capture phase + setTimeout so the opening click doesn't immediately close.
-  setTimeout(() => document.addEventListener("mousedown", onDocClick, true), 0);
+  const onWheel = () => closePopup();
+  const onKey = (e) => {
+    if (e.key === "Escape") closePopup();
+  };
+  // Capture phase so we preempt LiteGraph's canvas handlers, with a
+  // setTimeout so the opening click doesn't immediately close. mousedown +
+  // pointerdown both — LiteGraph's drag uses pointer events on the canvas,
+  // and not every browser fires both reliably in capture phase.
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("pointerdown", onDocDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
 }
 
 const MODE_CHIPS = [
