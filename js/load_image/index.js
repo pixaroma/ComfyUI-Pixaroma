@@ -1,6 +1,35 @@
 import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
 import { injectCSS, buildRoot, hideNativeImageCombo } from "./ui.mjs";
+import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
+
+let _activeLoadImageNode = null;
+
+// Stub — implemented in Task 14.
+function refreshDropdown(node) {
+  const dd = node._pixLiRoot?.querySelector('[data-role="dropdown"] .name');
+  if (dd && node._pixLiImageWidget?.value) {
+    dd.textContent = node._pixLiImageWidget.value;
+  }
+}
+
+// Global Ctrl+V handler for the active load-image node.
+window.addEventListener("keydown", async (e) => {
+  if (!_activeLoadImageNode) return;
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "v") return;
+  const tag = (e.target?.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+  if (e.target?.isContentEditable) return;
+  e.preventDefault();
+  e.stopPropagation();
+  try {
+    const saved = await pasteFromClipboard(_activeLoadImageNode);
+    if (saved) refreshDropdown(_activeLoadImageNode);
+  } catch (err) {
+    console.error("[PixaromaLoadImage] paste failed", err);
+    alert("Paste failed: " + err.message);
+  }
+}, true);
 
 // State pattern mirrors Resolution Pixaroma (CLAUDE.md Vue Compat #9):
 // hidden Python input + node.properties + app.graphToPrompt injection.
@@ -63,6 +92,50 @@ function setupLoadImageNode(node) {
   });
   node._pixLiWidget = widget;
 
+  // Track the currently-focused load-image node for Ctrl+V routing.
+  // (One global listener; nodes register/unregister themselves on selection.)
+  node._pixLiOnSelected = () => { _activeLoadImageNode = node; };
+  node._pixLiOnDeselected = () => {
+    if (_activeLoadImageNode === node) _activeLoadImageNode = null;
+  };
+
+  // Wire upload button.
+  const btn = root.querySelector(".pix-li-upload-btn");
+  btn?.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    try {
+      const saved = await pickAndUploadFile(node);
+      if (saved) refreshDropdown(node);
+    } catch (err) {
+      console.error("[PixaromaLoadImage] upload failed", err);
+      alert("Upload failed: " + err.message);
+    }
+  });
+
+  // Drag/drop on the root.
+  root.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    root.classList.add("drag-over");
+  });
+  root.addEventListener("dragleave", (e) => {
+    if (e.target === root) root.classList.remove("drag-over");
+  });
+  root.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    root.classList.remove("drag-over");
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type.startsWith("image/")) return;
+    try {
+      await uploadImageToInput(node, file);
+      refreshDropdown(node);
+    } catch (err) {
+      console.error("[PixaromaLoadImage] drop upload failed", err);
+      alert("Upload failed: " + err.message);
+    }
+  });
+
   // Subsequent tasks render the contents inside `root`.
 }
 
@@ -71,7 +144,16 @@ app.registerExtension({
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLoadImage") return;
-    // onConfigure / onResize patches added in later tasks.
+    const _origSel = nodeType.prototype.onSelected;
+    const _origDes = nodeType.prototype.onDeselected;
+    nodeType.prototype.onSelected = function () {
+      this._pixLiOnSelected?.();
+      return _origSel?.apply(this, arguments);
+    };
+    nodeType.prototype.onDeselected = function () {
+      this._pixLiOnDeselected?.();
+      return _origDes?.apply(this, arguments);
+    };
   },
 
   nodeCreated(node) {

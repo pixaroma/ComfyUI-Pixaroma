@@ -116,6 +116,30 @@ export function buildRoot() {
   drop.append(dropIcon, dropLabel);
   root.appendChild(drop);
 
+  // Upload button (orange, prominent, primary action).
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pix-li-upload-btn";
+  const ico = document.createElement("span");
+  ico.className = "ico";
+  const lbl = document.createElement("span");
+  lbl.textContent = "Upload Image";
+  btn.append(ico, lbl);
+  root.appendChild(btn);
+
+  // Hint line for alternate upload methods.
+  const hint = document.createElement("div");
+  hint.className = "pix-li-hint";
+  hint.innerHTML = `or drag here · paste with <kbd>Ctrl+V</kbd>`;
+  root.appendChild(hint);
+
+  // Placeholder for the dropdown (filled in Task 14).
+  const dd = document.createElement("div");
+  dd.className = "pix-li-dropdown";
+  dd.dataset.role = "dropdown";
+  dd.innerHTML = `<span class="name">— no image —</span><span class="arrow">▾</span>`;
+  root.appendChild(dd);
+
   return root;
 }
 
