@@ -299,8 +299,8 @@ export function injectCSS() {
     .pix-li-custom-ratio-input-wrap { width: 72px; }
     .pix-li-custom-ratio-input-wrap input { font-size: 13px !important; }
     .pix-li-custom-ratio-swap {
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 24px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
@@ -342,7 +342,7 @@ export function injectCSS() {
       background: transparent;
       border: none;
       outline: none;
-      padding: 5px 7px;
+      padding: 3px 6px;
       color: ${BRAND};
       font-size: 12px;
       font-weight: 600;
@@ -413,10 +413,11 @@ export function injectCSS() {
        Only need to upsize the font compared to the default 12px. */
     .pix-li-wh-input-wrap { width: 100%; }
     .pix-li-wh-input { font-size: 13px !important; }
-    /* Generic swap button used between W and H inputs. */
+    /* Generic swap button used between W and H inputs. Height tuned to
+       roughly match the .pix-li-numinput control height (24-26 px). */
     .pix-li-swap {
-      width: 32px;
-      height: 32px;
+      width: 28px;
+      height: 26px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
@@ -431,8 +432,8 @@ export function injectCSS() {
       position: absolute;
       inset: 0;
       background-color: currentColor;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/16px 16px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/16px 16px no-repeat;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center/14px 14px no-repeat;
       pointer-events: none;
     }
     .pix-li-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
