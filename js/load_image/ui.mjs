@@ -117,8 +117,8 @@ export function injectCSS() {
     }
     .pix-li-chip.span-full { grid-column: span 2; }
     .pix-li-panel {
-      background: rgba(246,103,68,0.07);
-      border: 1px solid rgba(246,103,68,0.4);
+      background: #222;
+      border: 1px solid rgba(246,103,68,0.45);
       border-radius: 4px;
       padding: 8px 10px;
     }

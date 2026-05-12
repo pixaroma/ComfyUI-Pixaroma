@@ -562,6 +562,8 @@ const RATIO_PRESETS = [
   { id: "4:3",  w: 4,  h: 3,  label: "4:3" },
   { id: "3:4",  w: 3,  h: 4,  label: "3:4" },
   { id: "4:5",  w: 4,  h: 5,  label: "4:5" },
+  { id: "21:9", w: 21, h: 9,  label: "21:9" },
+  { id: "5:4",  w: 5,  h: 4,  label: "5:4" },
   { id: "custom", w: null, h: null, label: "Custom" },
 ];
 
