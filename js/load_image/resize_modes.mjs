@@ -64,11 +64,30 @@ function safeMathEval(str) {
   return v;
 }
 
-// Shared text-input factory with math eval, arrow stepping, and proper
-// event isolation so ComfyUI's canvas shortcuts don't steal Enter/Tab/Arrow
-// keys while the user is typing.
+// Round `v` to the precision implied by `step`. step=1 → integer, step=0.1
+// → 1 decimal, step=0.05 → 2 decimals. Prevents floating-point drift like
+// 1.0 + 0.1 = 1.0999999999999999 after repeated arrow steps.
+function roundToStep(v, step) {
+  if (!Number.isFinite(v)) return v;
+  if (step >= 1) return Math.round(v);
+  const decimals = Math.max(0, -Math.floor(Math.log10(step)));
+  const m = Math.pow(10, decimals);
+  return Math.round(v * m) / m;
+}
+
+// Shared text-input factory with math eval, arrow stepping, custom +/-
+// spinners, and proper event isolation so ComfyUI's canvas shortcuts don't
+// steal Enter/Tab/Arrow keys while the user is typing.
+//
+// Returns `{ wrap, input }`: `wrap` is the outer flex container (input +
+// stacked +/- buttons), `input` is the <input> itself. Callers can apply
+// utility classes to either.
+//
 //   opts: { value, min, max, step, format(v)->string, parse(s)->number, onCommit(num) }
 function makeNumericInput(opts) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-li-numinput";
+
   const inp = document.createElement("input");
   inp.type = "text";
   inp.inputMode = "decimal";
@@ -82,18 +101,40 @@ function makeNumericInput(opts) {
   });
   inp.value = fmt(opts.value);
 
+  const spin = document.createElement("div");
+  spin.className = "pix-li-spin";
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.className = "pix-li-spin-up";
+  upBtn.tabIndex = -1; // skip in Tab traversal so W → H goes directly
+  upBtn.setAttribute("aria-label", "Increase");
+  const downBtn = document.createElement("button");
+  downBtn.type = "button";
+  downBtn.className = "pix-li-spin-down";
+  downBtn.tabIndex = -1;
+  downBtn.setAttribute("aria-label", "Decrease");
+  spin.append(upBtn, downBtn);
+
+  wrap.append(inp, spin);
+
   function clamp(v) {
     return Math.max(opts.min ?? -Infinity, Math.min(opts.max ?? Infinity, v));
   }
 
+  const step = opts.step ?? 1;
+
+  function step1(dir, mult = 1) {
+    const raw = parse(inp.value);
+    const base = Number.isFinite(raw) ? raw : opts.value;
+    const next = clamp(roundToStep(base + dir * step * mult, step));
+    inp.value = fmt(next);
+    opts.value = next;
+    opts.onCommit?.(next);
+  }
+
   function commit() {
     const raw = parse(inp.value);
-    let v;
-    if (Number.isFinite(raw)) {
-      v = clamp(raw);
-    } else {
-      v = opts.value;
-    }
+    let v = Number.isFinite(raw) ? clamp(roundToStep(raw, step)) : opts.value;
     inp.value = fmt(v);
     opts.value = v;
     opts.onCommit?.(v);
@@ -111,28 +152,29 @@ function makeNumericInput(opts) {
       return;
     }
     if (e.key === "Tab") {
-      // Commit so the value lands before the focus moves to the next field.
-      // Default Tab behavior (browser-native focus traversal) is preserved.
       commit();
       return;
     }
     if (e.key === "ArrowUp" || e.key === "ArrowDown") {
       e.preventDefault();
-      const dir = e.key === "ArrowUp" ? 1 : -1;
-      const mult = e.shiftKey ? 10 : 1;
-      const step = opts.step ?? 1;
-      const raw = parse(inp.value);
-      const base = Number.isFinite(raw) ? raw : opts.value;
-      const next = clamp(base + dir * step * mult);
-      // For integer-stepping inputs (step === 1), avoid float drift.
-      const rounded = step === 1 ? Math.round(next) : next;
-      inp.value = fmt(rounded);
-      opts.value = rounded;
-      opts.onCommit?.(rounded);
+      step1(e.key === "ArrowUp" ? 1 : -1, e.shiftKey ? 10 : 1);
     }
   });
 
-  return inp;
+  // Click handlers for the visible +/- spinner buttons. Same step / shift
+  // behavior as the keyboard arrows so the two stay in sync.
+  upBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault(); // don't steal focus from the input
+    e.stopPropagation();
+    step1(1, e.shiftKey ? 10 : 1);
+  });
+  downBtn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    step1(-1, e.shiftKey ? 10 : 1);
+  });
+
+  return { wrap, input: inp };
 }
 
 // ── Preview math (mirrors Python _resize_frame in node_load_image.py) ───────
@@ -272,7 +314,7 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
 
   const row = document.createElement("div");
   row.className = "pix-li-panel-row pix-li-centered";
-  const inp = makeNumericInput({
+  const { wrap: inpWrap, input: inp } = makeNumericInput({
     value: cur,
     min: 0.1, max: 64, step: 0.1,
     format: (v) => String(v),
@@ -283,13 +325,10 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, max_mp: v });
-      // No onChange — see below. Calling renderUI from a leaf input destroys
-      // the input element while the user is mid-keystroke, breaking Arrow
-      // and Tab. Only structural changes (mode chip clicks) re-render.
     },
   });
-  inp.classList.add("pix-li-input-wide");
-  row.appendChild(inp);
+  inpWrap.classList.add("pix-li-input-wide");
+  row.appendChild(inpWrap);
   panel.appendChild(row);
   panel.appendChild(makeReadout(""));
 
@@ -332,7 +371,7 @@ function buildLongestSidePanel(node, state, writeState, onChange) {
 
   const row = document.createElement("div");
   row.className = "pix-li-panel-row pix-li-centered";
-  const inp = makeNumericInput({
+  const { wrap: inpWrap, input: inp } = makeNumericInput({
     value: cur,
     min: 8, max: 16384, step: 1,
     onCommit: (v) => {
@@ -342,11 +381,10 @@ function buildLongestSidePanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, longest_side: v });
-      onChange?.();
     },
   });
-  inp.classList.add("pix-li-input-wide");
-  row.appendChild(inp);
+  inpWrap.classList.add("pix-li-input-wide");
+  row.appendChild(inpWrap);
   panel.appendChild(row);
   panel.appendChild(makeReadout(""));
 
@@ -389,7 +427,7 @@ function buildScalePanel(node, state, writeState, onChange) {
 
   const row = document.createElement("div");
   row.className = "pix-li-panel-row pix-li-centered";
-  const inp = makeNumericInput({
+  const { wrap: inpWrap, input: inp } = makeNumericInput({
     value: cur,
     min: 0.1, max: 4, step: 0.05,
     format: (v) => String(v),
@@ -400,11 +438,10 @@ function buildScalePanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, scale_factor: v });
-      onChange?.();
     },
   });
-  inp.classList.add("pix-li-input-wide");
-  row.appendChild(inp);
+  inpWrap.classList.add("pix-li-input-wide");
+  row.appendChild(inpWrap);
   panel.appendChild(row);
   panel.appendChild(makeReadout(""));
 
@@ -441,7 +478,7 @@ function buildWHPanel(node, state, writeState, onChange, opts) {
     const lbl = document.createElement("div");
     lbl.className = "pix-li-wh-label";
     lbl.textContent = labelText;
-    const inp = makeNumericInput({
+    const { wrap: inpWrap, input: inp } = makeNumericInput({
       value,
       min: 8, max: 16384, step: 1,
       onCommit: (v) => {
@@ -450,11 +487,11 @@ function buildWHPanel(node, state, writeState, onChange, opts) {
         writeState(node, { ...s, [key]: v });
         wh[key] = v;
         refreshPreview();
-        onChange?.();
       },
     });
+    inpWrap.classList.add("pix-li-wh-input-wrap");
     inp.classList.add("pix-li-wh-input");
-    wrap.append(lbl, inp);
+    wrap.append(lbl, inpWrap);
     return { wrap, inp };
   }
 
@@ -557,21 +594,23 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
   // Custom ratio row — larger inputs + swap button between them.
   const customRow = document.createElement("div");
   customRow.className = "pix-li-custom-ratio-row";
-  const cwIn = makeNumericInput({
+  const cwBuilt = makeNumericInput({
     value: state.ratio_w || 1,
     min: 1, max: 999, step: 1,
-    onCommit: (v) => commitCustomRatio(Math.round(v), parseFloat(chIn.value) || 1),
+    onCommit: (v) => commitCustomRatio(Math.round(v), parseFloat(chBuilt.input.value) || 1),
   });
-  cwIn.classList.add("pix-li-custom-ratio-input");
+  const cwIn = cwBuilt.input;
+  cwBuilt.wrap.classList.add("pix-li-custom-ratio-input-wrap");
   const swapRatio = makeSwapButton("Swap ratio W ↔ H");
   swapRatio.classList.add("pix-li-custom-ratio-swap");
-  const chIn = makeNumericInput({
+  const chBuilt = makeNumericInput({
     value: state.ratio_h || 1,
     min: 1, max: 999, step: 1,
     onCommit: (v) => commitCustomRatio(parseFloat(cwIn.value) || 1, Math.round(v)),
   });
-  chIn.classList.add("pix-li-custom-ratio-input");
-  customRow.append(cwIn, swapRatio, chIn);
+  const chIn = chBuilt.input;
+  chBuilt.wrap.classList.add("pix-li-custom-ratio-input-wrap");
+  customRow.append(cwBuilt.wrap, swapRatio, chBuilt.wrap);
   customRow.style.display = state.ratio_preset === "custom" ? "flex" : "none";
   panel.appendChild(customRow);
 
@@ -582,7 +621,6 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     chIn.value = String(h);
     const s = JSON.parse(node.properties?.loadImagePixState || "{}");
     writeState(node, { ...s, ratio_w: w, ratio_h: h });
-    onChange?.();
   }
 
   swapRatio.addEventListener("click", (e) => {

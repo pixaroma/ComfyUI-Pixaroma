@@ -249,23 +249,11 @@ export function injectCSS() {
       gap: 6px;
       margin-bottom: 6px;
     }
-    .pix-li-custom-ratio-input {
-      width: 64px !important;
-      background: #2a2a2a;
-      border: 1px solid #444;
-      border-radius: 3px;
-      padding: 6px 8px !important;
-      color: ${BRAND};
-      font-size: 14px !important;
-      font-weight: 600;
-      text-align: center;
-      font-family: inherit;
-      box-sizing: border-box;
-    }
-    .pix-li-custom-ratio-input:focus {
-      outline: none;
-      border-color: ${BRAND};
-    }
+    /* Custom ratio inputs sit inside a .pix-li-numinput wrapper — the
+       wrapper supplies border/background; we just give the wrapper a
+       fixed width and the inner input a slightly bigger font. */
+    .pix-li-custom-ratio-input-wrap { width: 72px; }
+    .pix-li-custom-ratio-input-wrap input { font-size: 13px !important; }
     .pix-li-custom-ratio-swap {
       width: 28px;
       height: 28px;
@@ -294,6 +282,69 @@ export function injectCSS() {
       width: 70% !important;
       max-width: 200px;
     }
+    /* makeNumericInput wrapper — flex row with input + stacked +/- spinners. */
+    .pix-li-numinput {
+      display: inline-flex;
+      align-items: stretch;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 4px;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+    .pix-li-numinput:focus-within { border-color: ${BRAND}; }
+    .pix-li-numinput input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      padding: 5px 7px;
+      color: ${BRAND};
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      font-family: inherit;
+      width: 100%;
+      min-width: 0;
+    }
+    .pix-li-spin {
+      display: flex;
+      flex-direction: column;
+      width: 14px;
+      border-left: 1px solid #444;
+    }
+    .pix-li-spin > button {
+      flex: 1;
+      background: #232323;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+      color: #aaa;
+      font-size: 8px;
+      line-height: 1;
+      position: relative;
+    }
+    .pix-li-spin > button:hover { background: #333; color: ${BRAND}; }
+    .pix-li-spin-up { border-bottom: 1px solid #444; }
+    /* CSS chevron arrows (no extra SVG needed). */
+    .pix-li-spin-up::before,
+    .pix-li-spin-down::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 6px;
+      height: 6px;
+      transform: translate(-50%, -50%) rotate(-45deg);
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+    }
+    .pix-li-spin-up::before {
+      transform: translate(-50%, -25%) rotate(-45deg);
+    }
+    .pix-li-spin-down::before {
+      transform: translate(-50%, -75%) rotate(135deg);
+    }
     /* Width × Height panels (Fit inside, Crop to fill) with swap between. */
     .pix-li-wh-row {
       display: grid;
@@ -313,23 +364,11 @@ export function injectCSS() {
       letter-spacing: 0.5px;
       text-align: center;
     }
-    .pix-li-wh-input {
-      background: #2a2a2a !important;
-      border: 1px solid #444 !important;
-      border-radius: 4px !important;
-      padding: 6px 8px !important;
-      color: ${BRAND} !important;
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      text-align: center;
-      font-family: inherit;
-      box-sizing: border-box;
-      width: 100%;
-    }
-    .pix-li-wh-input:focus {
-      outline: none;
-      border-color: ${BRAND} !important;
-    }
+    /* W/H input is inside a .pix-li-numinput wrap — the wrap provides
+       background/border, so the input itself stays transparent.
+       Only need to upsize the font compared to the default 12px. */
+    .pix-li-wh-input-wrap { width: 100%; }
+    .pix-li-wh-input { font-size: 13px !important; }
     /* Generic swap button used between W and H inputs. */
     .pix-li-swap {
       width: 32px;
