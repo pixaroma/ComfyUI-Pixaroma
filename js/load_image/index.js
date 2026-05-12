@@ -74,7 +74,12 @@ function updateInfoBar(node) {
 
   const state = readState(node);
   const { w: outW, h: outH } = previewResize(W, H, state);
-  const resizeActive = state.mode !== "off" && (outW !== W || outH !== H);
+  // Show the Output row whenever a resize mode is active, even if the
+  // computed dims happen to equal the input. Keeps the panel layout
+  // stable while the user is stepping a W/H input by 1 — otherwise
+  // every odd-numbered value would add/remove the Output row and the
+  // +/- spinner arrows would jump under the cursor.
+  const resizeActive = state.mode !== "off";
 
   function makeRow(tag, w, h, isOut) {
     const row = document.createElement("div");
