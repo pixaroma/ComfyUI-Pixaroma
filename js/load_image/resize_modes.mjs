@@ -290,6 +290,153 @@ function buildWHPanel(node, state, writeState, onChange, opts) {
   return panel;
 }
 
+const RATIO_PRESETS = [
+  { id: "1:1",  w: 1, h: 1, label: "1:1" },
+  { id: "16:9", w: 16, h: 9, label: "16:9" },
+  { id: "9:16", w: 9, h: 16, label: "9:16" },
+  { id: "4:3",  w: 4, h: 3, label: "4:3" },
+  { id: "3:4",  w: 3, h: 4, label: "3:4" },
+  { id: "custom", w: null, h: null, label: "Custom" },
+];
+
+function buildMatchRatioPanel(node, state, writeState, onChange) {
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel";
+  panel.appendChild(makePanelHeader("Match Aspect Ratio"));
+
+  // Ratio chips
+  const chipsWrap = document.createElement("div");
+  chipsWrap.className = "pix-li-ratio-chips";
+  const chipEls = [];
+  for (const r of RATIO_PRESETS) {
+    const el = document.createElement("div");
+    el.className = "pix-li-ratio-chip" + (state.ratio_preset === r.id ? " active" : "");
+    el.dataset.rid = r.id;
+    el.textContent = r.label;
+    chipsWrap.appendChild(el);
+    chipEls.push(el);
+  }
+  panel.appendChild(chipsWrap);
+
+  // Custom ratio row (only visible when preset = custom)
+  const customRow = document.createElement("div");
+  customRow.className = "pix-li-custom-ratio-row";
+  const cwIn = document.createElement("input");
+  cwIn.type = "number"; cwIn.min = "1"; cwIn.max = "999"; cwIn.step = "1";
+  cwIn.value = String(state.ratio_w || 1);
+  const colon = document.createElement("span");
+  colon.textContent = ":";
+  const chIn = document.createElement("input");
+  chIn.type = "number"; chIn.min = "1"; chIn.max = "999"; chIn.step = "1";
+  chIn.value = String(state.ratio_h || 1);
+  customRow.append(cwIn, colon, chIn);
+  customRow.style.display = state.ratio_preset === "custom" ? "flex" : "none";
+  panel.appendChild(customRow);
+
+  // Crop / Pad segmented toggle
+  const seg = document.createElement("div");
+  seg.className = "pix-li-cropped";
+  const cropOpt = document.createElement("div");
+  cropOpt.textContent = "Crop";
+  cropOpt.dataset.action = "crop";
+  if (state.ratio_action === "crop") cropOpt.classList.add("active");
+  const padOpt = document.createElement("div");
+  padOpt.textContent = "Pad";
+  padOpt.dataset.action = "pad";
+  if (state.ratio_action === "pad") padOpt.classList.add("active");
+  seg.append(cropOpt, padOpt);
+  panel.appendChild(seg);
+
+  // Pad color row (visible when action = pad)
+  const padRow = document.createElement("div");
+  padRow.className = "pix-li-pad-row";
+  padRow.innerHTML = `<span>Pad color</span>`;
+  const swatch = document.createElement("div");
+  swatch.className = "pix-li-pad-swatch";
+  swatch.style.background = state.pad_color || "#000000";
+  padRow.appendChild(swatch);
+  padRow.style.display = state.ratio_action === "pad" ? "flex" : "none";
+  panel.appendChild(padRow);
+
+  panel.appendChild(makeReadout(""));
+
+  // Wire events
+  chipsWrap.addEventListener("click", (e) => {
+    const el = e.target.closest(".pix-li-ratio-chip");
+    if (!el) return;
+    e.stopPropagation();
+    const rid = el.dataset.rid;
+    const preset = RATIO_PRESETS.find((r) => r.id === rid);
+    if (!preset) return;
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    const updates = { ...s, ratio_preset: rid };
+    if (rid !== "custom") {
+      updates.ratio_w = preset.w;
+      updates.ratio_h = preset.h;
+    }
+    writeState(node, updates);
+    for (const c of chipEls) c.classList.toggle("active", c.dataset.rid === rid);
+    customRow.style.display = rid === "custom" ? "flex" : "none";
+    if (rid !== "custom") {
+      cwIn.value = String(preset.w);
+      chIn.value = String(preset.h);
+    }
+    onChange?.();
+  });
+
+  function commitCustom() {
+    const cw = Math.max(1, Math.min(999, Math.round(parseFloat(cwIn.value) || 1)));
+    const ch = Math.max(1, Math.min(999, Math.round(parseFloat(chIn.value) || 1)));
+    cwIn.value = String(cw);
+    chIn.value = String(ch);
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, ratio_w: cw, ratio_h: ch });
+    onChange?.();
+  }
+  cwIn.addEventListener("change", commitCustom);
+  chIn.addEventListener("change", commitCustom);
+  for (const inp of [cwIn, chIn]) {
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    });
+  }
+
+  seg.addEventListener("click", (e) => {
+    const opt = e.target.closest("[data-action]");
+    if (!opt) return;
+    e.stopPropagation();
+    const action = opt.dataset.action;
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, ratio_action: action });
+    cropOpt.classList.toggle("active", action === "crop");
+    padOpt.classList.toggle("active", action === "pad");
+    padRow.style.display = action === "pad" ? "flex" : "none";
+    onChange?.();
+  });
+
+  // Simple native color picker for v1 (Pixaroma compact picker can be wired
+  // in v2 if needed). Click swatch → spawn hidden <input type="color">.
+  swatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const cp = document.createElement("input");
+    cp.type = "color";
+    cp.value = state.pad_color || "#000000";
+    cp.style.display = "none";
+    document.body.appendChild(cp);
+    cp.addEventListener("input", () => {
+      swatch.style.background = cp.value;
+      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+      writeState(node, { ...s, pad_color: cp.value });
+      onChange?.();
+    });
+    cp.addEventListener("change", () => cp.remove());
+    cp.click();
+  });
+
+  return panel;
+}
+
 function buildFitInsidePanel(node, state, writeState, onChange) {
   return buildWHPanel(node, state, writeState, onChange, {
     headerLabel: "Fit Inside (no crop)",
@@ -311,6 +458,6 @@ export function buildModePanel(mode, node, state, writeState, onChange) {
   if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange);
   if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange);
   if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange);
-  // match_ratio added in Task 18.
+  if (mode === "match_ratio") return buildMatchRatioPanel(node, state, writeState, onChange);
   return null;
 }

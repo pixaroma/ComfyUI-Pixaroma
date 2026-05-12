@@ -187,6 +187,85 @@ export function injectCSS() {
       min-width: 50px;
       text-align: right;
     }
+    .pix-li-ratio-chips {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 3px;
+      margin-bottom: 8px;
+    }
+    .pix-li-ratio-chip {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 4px 0;
+      text-align: center;
+      font-size: 9px;
+      color: #aaa;
+      cursor: pointer;
+      font-family: ui-monospace, monospace;
+    }
+    .pix-li-ratio-chip:hover { border-color: #666; color: #ddd; }
+    .pix-li-ratio-chip.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
+    .pix-li-cropped {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .pix-li-cropped > div {
+      text-align: center;
+      font-size: 10px;
+      padding: 5px 0;
+      color: #aaa;
+      cursor: pointer;
+      user-select: none;
+    }
+    .pix-li-cropped > div.active { background: ${BRAND}; color: #fff; }
+    .pix-li-pad-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10px;
+      color: #888;
+    }
+    .pix-li-pad-swatch {
+      width: 22px; height: 22px;
+      border-radius: 3px;
+      border: 1px solid #444;
+      cursor: pointer;
+    }
+    .pix-li-custom-ratio-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      margin-bottom: 6px;
+    }
+    .pix-li-custom-ratio-row input {
+      width: 38px;
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 3px 5px;
+      color: ${BRAND};
+      font-size: 11px;
+      font-weight: 600;
+      text-align: center;
+      font-family: ui-monospace, monospace;
+      box-sizing: border-box;
+    }
+    .pix-li-custom-ratio-row span {
+      color: #aaa;
+      font-size: 10px;
+    }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";
