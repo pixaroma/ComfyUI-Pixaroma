@@ -1,6 +1,9 @@
 import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
-import { injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown, renderChips } from "./ui.mjs";
+import {
+  injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
+  renderChips, renderGlobalControls,
+} from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
 import { buildModePanel, previewResize, formatMP } from "./resize_modes.mjs";
 
@@ -40,6 +43,12 @@ function renderUI(node) {
     const chips = root.querySelector(".pix-li-chips");
     chips.after(panel);
   }
+
+  // Remove old global controls (if any) and re-render.
+  const oldGlobal = root.querySelector(".pix-li-global");
+  if (oldGlobal) oldGlobal.remove();
+  const globals = renderGlobalControls(node, state, writeState, () => renderUI(node));
+  root.appendChild(globals);
 }
 
 // Global Ctrl+V handler for the active load-image node.

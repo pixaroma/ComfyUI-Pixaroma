@@ -266,6 +266,73 @@ export function injectCSS() {
       color: #aaa;
       font-size: 10px;
     }
+    .pix-li-global {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+    .pix-li-snap-row, .pix-li-rs-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1d1d1d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+    }
+    .pix-li-magnet {
+      display: inline-block;
+      width: 11px; height: 11px;
+      background-color: #888;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
+    }
+    .pix-li-snap-btns {
+      display: inline-flex;
+      gap: 2px;
+      margin-left: auto;
+    }
+    .pix-li-snap-btn {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      font-size: 9px;
+      padding: 2px 5px;
+      min-width: 18px;
+      cursor: pointer;
+      font-family: ui-monospace, monospace;
+      line-height: 1;
+    }
+    .pix-li-snap-btn:hover { color: #ddd; border-color: #666; }
+    .pix-li-snap-btn.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
+    .pix-li-rs-select {
+      background: transparent;
+      border: none;
+      color: #ccc;
+      font-size: 10px;
+      margin-left: auto;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .pix-li-up-row {
+      background: #1d1d1d;
+      border: 1px solid #333;
+      border-radius: 4px;
+      padding: 5px 8px;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 10px;
+      color: #aaa;
+    }
+    .pix-li-up-row input { accent-color: ${BRAND}; cursor: pointer; }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";
@@ -469,5 +536,88 @@ export function renderChips(state) {
     el.textContent = c.label;
     wrap.appendChild(el);
   }
+  return wrap;
+}
+
+const SNAP_OPTIONS = [0, 8, 16, 32, 64];
+const RESAMPLE_OPTIONS = ["auto", "nearest", "bilinear", "bicubic", "lanczos"];
+
+export function renderGlobalControls(node, state, writeState, onChange) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-li-global";
+
+  // Snap row
+  const snapRow = document.createElement("div");
+  snapRow.className = "pix-li-snap-row";
+  const magnet = document.createElement("span");
+  magnet.className = "pix-li-magnet";
+  snapRow.appendChild(magnet);
+  const snapBtns = document.createElement("div");
+  snapBtns.className = "pix-li-snap-btns";
+  for (const v of SNAP_OPTIONS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pix-li-snap-btn" + (v === (state.snap || 0) ? " active" : "");
+    b.textContent = v === 0 ? "Off" : String(v);
+    b.dataset.v = String(v);
+    snapBtns.appendChild(b);
+  }
+  snapRow.appendChild(snapBtns);
+  wrap.appendChild(snapRow);
+
+  // Resample row (with Upscale toggle on its right, on a separate row)
+  const rsRow = document.createElement("div");
+  rsRow.className = "pix-li-rs-row";
+  const rsLabel = document.createElement("span");
+  rsLabel.style.fontSize = "10px";
+  rsLabel.style.color = "#888";
+  rsLabel.textContent = "Resample";
+  const select = document.createElement("select");
+  select.className = "pix-li-rs-select";
+  for (const opt of RESAMPLE_OPTIONS) {
+    const o = document.createElement("option");
+    o.value = opt;
+    o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+    if (state.resample === opt) o.selected = true;
+    select.appendChild(o);
+  }
+  rsRow.append(rsLabel, select);
+  wrap.appendChild(rsRow);
+
+  // Upscale toggle row
+  const upRow = document.createElement("label");
+  upRow.className = "pix-li-up-row";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.checked = !!state.allow_upscale;
+  const upLbl = document.createElement("span");
+  upLbl.textContent = "Allow upscaling";
+  upRow.append(cb, upLbl);
+  wrap.appendChild(upRow);
+
+  // Wire events
+  snapBtns.addEventListener("click", (e) => {
+    const b = e.target.closest(".pix-li-snap-btn");
+    if (!b) return;
+    e.stopPropagation();
+    const v = parseInt(b.dataset.v, 10);
+    for (const x of snapBtns.querySelectorAll(".pix-li-snap-btn")) {
+      x.classList.toggle("active", parseInt(x.dataset.v, 10) === v);
+    }
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, snap: v });
+    onChange?.();
+  });
+  select.addEventListener("change", () => {
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, resample: select.value });
+    onChange?.();
+  });
+  cb.addEventListener("change", () => {
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, allow_upscale: cb.checked });
+    onChange?.();
+  });
+
   return wrap;
 }
