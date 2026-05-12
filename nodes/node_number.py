@@ -24,14 +24,19 @@ class PixaromaNumber:
                 "value": (
                     "FLOAT",
                     {
+                        # Wide enough to accept very large numbers (e.g.
+                        # seeds, IDs, big counts) without triggering
+                        # ComfyUI's out-of-range "Value" popup. 1e15 is
+                        # ~1 quadrillion and stays well inside
+                        # JavaScript's safe integer range.
                         "default": 1.0,
-                        "min": -1.0e9,
-                        "max": 1.0e9,
+                        "min": -1.0e15,
+                        "max": 1.0e15,
                         "step": 0.1,
                         "tooltip": (
                             "The number to output. Accepts whole numbers, "
                             "decimals, and math expressions like 1024+64 "
-                            "or 1024/3."
+                            "or 1024/3. Range is roughly +/- 1 quadrillion."
                         ),
                     },
                 ),
