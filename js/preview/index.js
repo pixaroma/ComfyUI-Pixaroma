@@ -278,7 +278,72 @@ async function getWorkflowAndPrompt() {
   return { workflow, prompt: output };
 }
 
+// Try to resolve the value of a wired STRING input by walking back along
+// the link to the upstream node and reading its widget. Returns null if
+// the input is not wired OR we can't read a clean value (in which case
+// the caller should fall back to the local widget default).
+//
+// Bug class this fixes: when the user wires a cable INTO filename_prefix
+// (e.g. Load Image Pixaroma's FILENAME output), Comfy's Python receives
+// the wired value at run time, but our JS Save buttons were reading the
+// widget's stale "img" default and saving as "img_..." instead. Only the
+// Python execution path (save_mode=save) saw the real wired value.
+function tryResolveWiredString(node, inputName) {
+  const inputIdx = node.inputs?.findIndex((inp) => inp.name === inputName);
+  if (inputIdx == null || inputIdx < 0) return null;
+  const input = node.inputs[inputIdx];
+  if (input?.link == null) return null;
+
+  const graph = node.graph;
+  if (!graph) return null;
+  // graph.links may be a Map in newer ComfyUI (Vue Compat #3) — try both.
+  let link = graph.links?.[input.link];
+  if (!link && typeof graph.links?.get === "function") {
+    link = graph.links.get(input.link);
+  }
+  if (!link) return null;
+
+  const upstream = graph.getNodeById(link.origin_id);
+  if (!upstream) return null;
+  const slot = link.origin_slot;
+  const output = upstream.outputs?.[slot];
+  if (!output) return null;
+
+  // Pixaroma Load Image's FILENAME output: derive from the `image` widget
+  // value (the chosen filename), stripping the extension since
+  // filename_prefix is a stem.
+  if (upstream.comfyClass === "PixaromaLoadImage" && output.name === "FILENAME") {
+    const imgW = upstream.widgets?.find((w) => w.name === "image");
+    const raw = imgW?.value?.toString();
+    if (raw) {
+      const stem = raw.replace(/\.[^.]+$/, "").trim();
+      if (stem) return stem;
+    }
+  }
+
+  // Generic fallback: look for a widget on the upstream node whose name
+  // matches the wired output. Covers Primitive STRING nodes and any other
+  // utility node that mirrors an output to a same-named widget.
+  const matchByName = upstream.widgets?.find((x) =>
+    x.name === output.name || x.name === "value"
+  );
+  if (matchByName?.value != null) {
+    const v = matchByName.value.toString().trim();
+    if (v) return v;
+  }
+
+  // Last resort: if the upstream has exactly one widget, use that.
+  if (upstream.widgets?.length === 1) {
+    const v = upstream.widgets[0]?.value?.toString().trim();
+    if (v) return v;
+  }
+
+  return null;
+}
+
 function readFilenamePrefix(node) {
+  const wired = tryResolveWiredString(node, "filename_prefix");
+  if (wired) return wired;
   const w = node.widgets?.find((x) => x.name === "filename_prefix");
   const v = (w?.value ?? "img").toString().trim();
   return v || "img";

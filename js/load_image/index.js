@@ -273,6 +273,15 @@ function setupLoadImageNode(node) {
     getValue: () => null,
     setValue: () => {},
     getMinHeight: measureContentHeight,
+    // Cap height at content size so extra vertical space (when the user
+    // resizes the node taller) flows to ComfyUI's IMAGE_PREVIEW widget
+    // instead of stretching this controls panel. Without getMaxHeight,
+    // the layout engine treats both widgets as stretchable and gives our
+    // panel the slack, leaving the image preview at its 220px minimum
+    // anchored at the bottom with an awkward gap above. Verified against
+    // the frontend bundle: DOMWidget.computeLayoutSize reads getMaxHeight
+    // and the IMAGE_PREVIEW widget has no maxHeight so it absorbs slack.
+    getMaxHeight: measureContentHeight,
     margin: 4,
     serialize: false,
   });
