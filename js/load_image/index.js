@@ -37,7 +37,12 @@ function renderUI(node) {
   // Remove the previous panel (if any) and append the new one for the current mode.
   const oldPanel = root.querySelector(".pix-li-panel");
   if (oldPanel) oldPanel.remove();
-  const panel = buildModePanel(state.mode, node, state, writeState, () => renderUI(node));
+  const panel = buildModePanel(state.mode, node, state, writeState, () => { /* onChange is intentionally a no-op for leaf events (input
+       commits, quick-pick clicks, color picks). Re-rendering the panel from
+       a leaf event destroyed the focused input and broke Arrow / Tab keys.
+       State is written by the leaf's writeState call; that's all we need.
+       When B4 adds a live preview badge, this becomes a non-destructive
+       "update badge" call. */ });
   if (panel) {
     // Insert AFTER the chip grid.
     const chips = root.querySelector(".pix-li-chips");
@@ -47,7 +52,12 @@ function renderUI(node) {
   // Remove old global controls (if any) and re-render.
   const oldGlobal = root.querySelector(".pix-li-global");
   if (oldGlobal) oldGlobal.remove();
-  const globals = renderGlobalControls(node, state, writeState, () => renderUI(node));
+  const globals = renderGlobalControls(node, state, writeState, () => { /* onChange is intentionally a no-op for leaf events (input
+       commits, quick-pick clicks, color picks). Re-rendering the panel from
+       a leaf event destroyed the focused input and broke Arrow / Tab keys.
+       State is written by the leaf's writeState call; that's all we need.
+       When B4 adds a live preview badge, this becomes a non-destructive
+       "update badge" call. */ });
   root.appendChild(globals);
 
   // Force an immediate resize ONLY when the content height actually
@@ -241,7 +251,12 @@ function setupLoadImageNode(node) {
   });
 
   // Initial render — defer so configure() has time to land state.
-  queueMicrotask(() => renderUI(node));
+  queueMicrotask(() => { /* onChange is intentionally a no-op for leaf events (input
+       commits, quick-pick clicks, color picks). Re-rendering the panel from
+       a leaf event destroyed the focused input and broke Arrow / Tab keys.
+       State is written by the leaf's writeState call; that's all we need.
+       When B4 adds a live preview badge, this becomes a non-destructive
+       "update badge" call. */ });
 }
 
 app.registerExtension({

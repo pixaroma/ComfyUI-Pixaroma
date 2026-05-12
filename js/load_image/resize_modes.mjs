@@ -283,7 +283,9 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
       }
       const s = JSON.parse(node.properties?.loadImagePixState || "{}");
       writeState(node, { ...s, max_mp: v });
-      onChange?.();
+      // No onChange — see below. Calling renderUI from a leaf input destroys
+      // the input element while the user is mid-keystroke, breaking Arrow
+      // and Tab. Only structural changes (mode chip clicks) re-render.
     },
   });
   inp.classList.add("pix-li-input-wide");
