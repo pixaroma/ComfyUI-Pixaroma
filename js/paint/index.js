@@ -54,6 +54,10 @@ app.registerExtension({
     // ── Open button ──
     node.addWidget("button", "Open Paint", null, () => {
       const studio = new PaintStudio();
+      // Stash on the node so the drop-on-closed-node handler (below) can
+      // route the dropped file through studio.addImageAsLayer once
+      // studio.ready resolves. Cleared on close.
+      node._pixaromaPaint = studio;
 
       studio.onSave = (jsonStr, dataURL) => {
         paintJson = jsonStr;
@@ -73,6 +77,7 @@ app.registerExtension({
         downloadDataURL(dataURL, "pixaroma_paint");
 
       studio.onClose = () => {
+        node._pixaromaPaint = null;
         node.setDirtyCanvas(true, true);
       };
 
@@ -91,6 +96,41 @@ app.registerExtension({
       },
       getMinHeight: () => 210,
       margin: 5,
+    });
+
+    // ── Drag-and-drop on the closed node ──
+    // Drops always add as a NEW layer on top — never replace, never delete.
+    // Mirrors the Image Composer pattern: opens the studio if it's closed,
+    // waits for studio.ready (so the new layer stacks predictably above
+    // any restored layers' async image loads), then routes the file
+    // through the same addImageAsLayer flow the in-editor toolbar uses.
+    parts.container.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    parts.container.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const file = e.dataTransfer?.files?.[0];
+      if (!file || !file.type?.startsWith("image/")) return;
+      // Open the studio if it's not already up — reuse the existing
+      // button callback so all the onSave/onSaveToDisk/onClose wiring
+      // runs through one code path.
+      if (!node._pixaromaPaint) {
+        const openBtn = (node.widgets || []).find(
+          (w) => w?.type === "button" && w?.name === "Open Paint",
+        );
+        if (openBtn?.callback) openBtn.callback();
+      }
+      const studio = node._pixaromaPaint;
+      if (!studio) return;
+      try {
+        await studio.ready;
+        studio.addImageAsLayer?.(file);
+      } catch (err) {
+        console.warn("[PixaromaPaint] drop add-layer failed:", err);
+      }
     });
 
     // cleanup when node is removed

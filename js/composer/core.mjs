@@ -47,7 +47,12 @@ export class PixaromaEditor {
 
     this.attachEvents();
     installFocusTrap(this.overlay);
-    this.attemptRestore();
+    // Save the restore promise so external callers can await editor
+    // readiness before mutating layers (e.g. drop-on-closed-node in
+    // index.js needs to add its layer AFTER restore finishes, otherwise
+    // the new layer would race the async image loads in attemptRestore
+    // and the stack order would be unpredictable).
+    this.ready = this.attemptRestore();
   }
 
   setMode(mode) {

@@ -246,7 +246,12 @@ export class PaintStudio {
     this._applyDocSize();
 
     if (data.layers && data.layers.length > 0) {
-      this._loadLayers(data.layers).then(() => {
+      // Stash the restore promise so external callers can await editor
+      // readiness before mutating layers. Drop-on-closed-node opens
+      // Paint and needs to add its layer AFTER restore finishes,
+      // otherwise the new layer races the async image loads in
+      // _loadLayers and the stack order becomes unpredictable.
+      this.ready = this._loadLayers(data.layers).then(() => {
         this.selectedIndices.clear();
         this.selectedIndices.add(this.activeIdx);
         this._renderDisplay();
@@ -261,6 +266,7 @@ export class PaintStudio {
       requestAnimationFrame(() =>
         requestAnimationFrame(() => this._fitToView()),
       );
+      this.ready = Promise.resolve();
     }
 
     this._updateColorUI();
@@ -702,41 +708,48 @@ export class PaintStudio {
     this.el.docH = hInput;
     wrapper.append(wInput, hInput);
 
+    // Public helper so external callers (e.g. drop-on-closed-node in
+    // index.js) can route a file through the same well-tested add-as-
+    // layer flow the in-editor toolbar uses. Always pushes the new
+    // layer to index 0 (top of stack); never replaces \u2014 user can
+    // delete or reorder via the layer panel if they meant otherwise.
+    this.addImageAsLayer = (file) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const ly = this._makeLayer(file.name.replace(/\.[^.]+$/, ""));
+          const scale = Math.min(
+            this.docW / img.width,
+            this.docH / img.height,
+            1,
+          );
+          const dw = img.width * scale,
+            dh = img.height * scale;
+          const dx = (this.docW - dw) / 2,
+            dy = (this.docH - dh) / 2;
+          ly.ctx.drawImage(img, dx, dy, dw, dh);
+          ly.sourceKind = "image";
+          this.layers.unshift(ly);
+          this.activeIdx = 0;
+          this.selectedIndices.clear();
+          this.selectedIndices.add(this.activeIdx);
+          this._pushHistory();
+          this._updateLayersPanel();
+          this._renderDisplay();
+          this._setStatus(
+            `Image "${file.name}" loaded \u2014 Move tool selected`,
+          );
+          this._setTool("transform");
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
     // Canvas Toolbar (BG color + Load Image + Clear All)
     this._canvasToolbar = createCanvasToolbar({
-      onAddImage: (file) => {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const img = new Image();
-          img.onload = () => {
-            const ly = this._makeLayer(file.name.replace(/\.[^.]+$/, ""));
-            const scale = Math.min(
-              this.docW / img.width,
-              this.docH / img.height,
-              1,
-            );
-            const dw = img.width * scale,
-              dh = img.height * scale;
-            const dx = (this.docW - dw) / 2,
-              dy = (this.docH - dh) / 2;
-            ly.ctx.drawImage(img, dx, dy, dw, dh);
-            ly.sourceKind = "image";
-            this.layers.unshift(ly);
-            this.activeIdx = 0;
-            this.selectedIndices.clear();
-            this.selectedIndices.add(this.activeIdx);
-            this._pushHistory();
-            this._updateLayersPanel();
-            this._renderDisplay();
-            this._setStatus(
-              `Image "${file.name}" loaded \u2014 Move tool selected`,
-            );
-            this._setTool("transform");
-          };
-          img.src = ev.target.result;
-        };
-        reader.readAsDataURL(file);
-      },
+      onAddImage: this.addImageAsLayer,
       onBgColorChange: (hex) => {
         this.bgColor = hex;
         if (this.el.bgPreview) this.el.bgPreview.style.background = hex;

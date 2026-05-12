@@ -200,26 +200,46 @@ export function createCropPanel(callbacks) {
     onChange?.();
   }
 
-  function clampW(w) {
+  // Image dims with fallback to cropJson's saved original_w/h. The runtime
+  // field _pixaromaLastImageDims (the source of getImageDims()) is set when
+  // the upstream image actually loads, but that field doesn't survive Vue
+  // workflow tab switches / page reloads (only node.properties survives).
+  // commit() stamps meta.original_w/h on every save though, so cropJson
+  // carries the dims forward. Without this fallback, opening a saved
+  // workflow and immediately editing W/H would compute alignment with
+  // dims=null, fall back to {x:0, y:0}, and silently produce a top-left
+  // crop even with "Center crop" still selected — exactly the bug the
+  // user hit (May 2026).
+  function dimsWithFallback() {
     const dims = getImageDims?.() || null;
+    if (dims) return dims;
+    const meta = readMeta();
+    if (meta.original_w && meta.original_h) {
+      return { w: Math.round(meta.original_w), h: Math.round(meta.original_h) };
+    }
+    return null;
+  }
+
+  function clampW(w) {
+    const dims = dimsWithFallback();
     let v = Math.max(1, Math.round(w || 1));
     if (dims) v = Math.min(v, dims.w);
     return v;
   }
   function clampH(h) {
-    const dims = getImageDims?.() || null;
+    const dims = dimsWithFallback();
     let v = Math.max(1, Math.round(h || 1));
     if (dims) v = Math.min(v, dims.h);
     return v;
   }
   function clampX(x, w) {
-    const dims = getImageDims?.() || null;
+    const dims = dimsWithFallback();
     let v = Math.max(0, Math.round(x || 0));
     if (dims) v = Math.min(v, Math.max(0, dims.w - w));
     return v;
   }
   function clampY(y, h) {
-    const dims = getImageDims?.() || null;
+    const dims = dimsWithFallback();
     let v = Math.max(0, Math.round(y || 0));
     if (dims) v = Math.min(v, Math.max(0, dims.h - h));
     return v;
@@ -234,7 +254,7 @@ export function createCropPanel(callbacks) {
     const r = RATIOS[ratioIdx];
     if (!r || r.w === 0) return { w: targetW, h: targetH };
     const ratio = r.w / r.h;
-    const dims = getImageDims?.() || null;
+    const dims = dimsWithFallback();
     const maxW = dims ? dims.w : Infinity;
     const maxH = dims ? dims.h : Infinity;
 
@@ -254,7 +274,7 @@ export function createCropPanel(callbacks) {
   // Compute final X/Y honoring the active alignment. Falls back to existing
   // values from cropJson when alignment is "free" or dims are missing.
   function resolveXY(alignId, w, h, fallbackMeta) {
-    const aligned = computeAlignedXY(alignId, w, h, getImageDims?.() || null);
+    const aligned = computeAlignedXY(alignId, w, h, dimsWithFallback());
     if (aligned) return aligned;
     return {
       x: clampX(fallbackMeta.crop_x ?? 0, w),
@@ -357,7 +377,7 @@ export function createCropPanel(callbacks) {
   // commit, even if the input is still focused after pressing Enter.
   function refresh() {
     const meta = readMeta();
-    const dims = getImageDims?.() || null;
+    const dims = dimsWithFallback();
     const alignId = meta.crop_align || defaultAlignForMeta(meta);
 
     let w, h, x, y;

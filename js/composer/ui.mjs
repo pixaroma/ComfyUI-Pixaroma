@@ -553,6 +553,13 @@ export class PixaromaUI {
       reader.readAsDataURL(file);
     };
 
+    // Expose the add-as-layer flow on the editor instance so external
+    // callers (e.g. drop-on-closed-node in index.js) can route a file
+    // through the same well-tested path the in-editor UI uses. Always
+    // adds on top of existing layers — never replaces; user can reorder
+    // or delete via the layer panel if they intended otherwise.
+    core.addImageAsLayer = _onAddImage;
+
     // Hidden canvas toolbar for file input + drop zone + paste handling
     this._canvasToolbar = createCanvasToolbar({
       onAddImage: _onAddImage,

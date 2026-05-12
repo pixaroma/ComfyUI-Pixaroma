@@ -301,6 +301,23 @@ app.registerExtension({
       img.onload = () => {
         const w = img.naturalWidth, h = img.naturalHeight;
         node._pixaromaLastImageDims = { w, h };
+        // Also persist dims into cropJson so panel.mjs's dimsWithFallback()
+        // has something to read after a Vue workflow tab switch / page
+        // reload (the runtime field above doesn't survive — only
+        // node.properties / cropJson do). Without this, opening a saved
+        // workflow and immediately editing W/H computed alignment with
+        // dims=null and silently produced top-left crops even with
+        // "Center crop" still selected. Idempotent — only rewrites JSON
+        // when the value actually changed, to avoid spurious change events.
+        try {
+          const metaCur = JSON.parse(cropJson || "{}") || {};
+          if (metaCur.original_w !== w || metaCur.original_h !== h) {
+            metaCur.original_w = w;
+            metaCur.original_h = h;
+            cropJson = JSON.stringify(metaCur);
+            if (widget) widget.value = { crop_json: cropJson };
+          }
+        } catch {}
         panel?.refresh(); // panel reads dims for default-fill
         // No saved rect → show the upstream as-is (matches Python pass-through).
         if (!meta.crop_w) {
@@ -353,6 +370,19 @@ app.registerExtension({
 
       editor.onSaveToDisk = (dataURL) =>
         downloadDataURL(dataURL, "pixaroma_crop");
+
+      // Fired when the user picks a file via the editor's "Load Image"
+      // button. Disconnect any upstream IMAGE wire — same semantics as
+      // the Ctrl+V paste flow (line ~140) and the on-node drag-drop
+      // (line ~520). Without this, the manually-loaded image is saved
+      // as src_path but Python's _crop_tensor still picks upstream and
+      // the load appears to do nothing on workflow run.
+      editor.onLoadImage = () => {
+        const imgInputIdx = (node.inputs || []).findIndex((i) => i.name === "image");
+        if (imgInputIdx >= 0 && node.inputs[imgInputIdx].link != null) {
+          try { node.disconnectInput(imgInputIdx); } catch {}
+        }
+      };
 
       editor.onClose = () => {
         node.setDirtyCanvas(true, true);

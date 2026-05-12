@@ -199,6 +199,41 @@ app.registerExtension({
 
     // cleanup handled in API listener section below
 
+    // ── Drag-and-drop on the closed node ──
+    // Drops always add as a NEW layer on top — never replace, never delete.
+    // If the editor is closed, we open it and wait for restore() to finish
+    // so the new layer stacks predictably above any restored layers.
+    // Behaviour matches Photoshop/Figma/Affinity: drop = add layer.
+    parts.container.addEventListener("dragover", (e) => {
+      if (!e.dataTransfer?.types?.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    parts.container.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const file = e.dataTransfer?.files?.[0];
+      if (!file || !file.type?.startsWith("image/")) return;
+      // If the editor is already open, route directly to its add-as-layer
+      // entry point. Drop on the closed node opens the editor first; the
+      // open-button widget callback wires onSave/onClose for us, so we
+      // reuse it instead of duplicating that setup.
+      if (!isEditorOpen(node)) {
+        const openBtn = (node.widgets || []).find(
+          (w) => w?.type === "button" && w?.name === "Open Image Composer",
+        );
+        if (openBtn?.callback) openBtn.callback();
+      }
+      const editor = node._pixaromaEditor;
+      if (!editor) return;
+      try {
+        await editor.ready;
+        editor.addImageAsLayer?.(file);
+      } catch (err) {
+        console.warn("[PixaromaComposer] drop add-layer failed:", err);
+      }
+    });
+
     // Default auto-preview
     node._pixaromaAutoPreview = true;
 

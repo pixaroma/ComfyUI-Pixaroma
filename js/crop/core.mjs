@@ -312,8 +312,15 @@ export class CropEditor {
     this._canvasToolbar = createCanvasToolbar({
       onAddImage: (file) => {
         const reader = new FileReader();
-        reader.onload = (ev) =>
+        reader.onload = (ev) => {
           this._loadImageFromDataURL(ev.target.result, file.name);
+          // Tell the host (index.js) the user just chose a manual source.
+          // The host disconnects any upstream wire — same "use this image
+          // now" override semantics as the Ctrl+V paste and drag-drop
+          // flows. Without this, upstream would still win on workflow run
+          // and the loaded image would be silently ignored.
+          this.onLoadImage?.();
+        };
         reader.readAsDataURL(file);
       },
       showBgColor: false,
@@ -346,19 +353,12 @@ export class CropEditor {
     });
     sidebar.appendChild(this._canvasToolbar.el);
 
-    // When upstream is wired, the Load Image button overrides the upstream
-    // for one session only, then upstream wins on reopen -- confusing UX.
-    // Hide it; user can disconnect the wire to use a manual image.
-    if (this._fromUpstream) {
-      const tb = this._canvasToolbar.el;
-      const btns = tb.querySelectorAll("button");
-      for (const b of btns) {
-        if ((b.textContent || "").trim().toLowerCase().includes("load image")) {
-          b.style.display = "none";
-          break;
-        }
-      }
-    }
+    // Note: in earlier versions the Load Image button was hidden when
+    // upstream was wired (because the loaded image would be silently
+    // ignored at workflow run — Python preferred upstream tensor over
+    // src_path). Now the button stays visible; clicking it fires
+    // this.onLoadImage which disconnects the upstream wire on the host
+    // side, keeping the same override semantics as paste and drag-drop.
   }
 
   _buildRightSidebar(sidebar, footer) {
