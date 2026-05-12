@@ -29,13 +29,19 @@ function injectCSS() {
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 0;
-      text-align: center;
+      padding: 6px 4px;
       font-size: 10px;
       color: #ccc;
       cursor: pointer;
       user-select: none;
       transition: background 0.08s, border-color 0.08s;
+      /* flex layout so a small visual AR rectangle can sit next to the label
+         on ratio chips. Custom Ratio / Custom Resolution chips skip the shape
+         and just render the label, which centers naturally via justify-content. */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
     }
     .pix-res-chip:hover { border-color: #666; }
     .pix-res-chip.active {
@@ -44,6 +50,23 @@ function injectCSS() {
       border-color: ${BRAND};
     }
     .pix-res-chip.span-half { grid-column: span 3; } /* 1/2 width — used by Custom Ratio + Custom Resolution */
+    /* Tiny ratio-shape preview rendered inside each ratio chip. Width and
+       height are set inline by JS to match the actual W:H, so the user can
+       recognize the shape of every preset at a glance, not just the picked one.
+       Bounding box (14 x 11) is tuned for the ~66 px ratio chip width — leaves
+       enough room next to the label "16:9" without clipping at NODE_W = 240. */
+    .pix-res-chip-shape {
+      display: inline-block;
+      background: rgba(180, 180, 180, 0.25);
+      border: 1px solid #888;
+      border-radius: 1px;
+      box-sizing: border-box;
+      flex-shrink: 0;
+    }
+    .pix-res-chip.active .pix-res-chip-shape {
+      background: rgba(255, 255, 255, 0.4);
+      border-color: rgba(255, 255, 255, 0.85);
+    }
     .pix-res-list {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -86,7 +109,7 @@ function injectCSS() {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       color: #ccc;
     }
     .pix-res-row:last-child { border-bottom: none; }
@@ -123,12 +146,12 @@ function injectCSS() {
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 8px;
+      padding: 2px 6px;
       color: ${BRAND};
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
       width: 100%;
     }
@@ -140,8 +163,8 @@ function injectCSS() {
        Uses CSS mask-image so the SVG inherits color via the button's color property
        — same technique Note Pixaroma uses for toolbar mask-icons. */
     .pix-res-swap {
-      width: 32px;
-      height: 32px;
+      width: 26px;
+      height: 22px;
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 4px;
@@ -156,8 +179,8 @@ function injectCSS() {
       position: absolute;
       inset: 0;
       background-color: currentColor;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 16px 16px no-repeat;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 12px 12px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/swap.svg") center / 12px 12px no-repeat;
       pointer-events: none;
     }
     .pix-res-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
@@ -193,7 +216,7 @@ function injectCSS() {
       transition: width 0.15s ease, height 0.15s ease;
     }
     .pix-res-preview-label {
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       font-size: 10px;
       color: #999;
     }
@@ -226,7 +249,7 @@ function injectCSS() {
       padding: 2px 5px;
       min-width: 18px;
       cursor: pointer;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       line-height: 1;
     }
     .pix-res-snap-btn:hover { color: #ddd; border-color: #666; }
@@ -260,12 +283,12 @@ function injectCSS() {
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
-      padding: 4px 6px;
+      padding: 2px 6px;
       color: ${BRAND};
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
     }
     .pix-res-ratio-input-row input:focus { outline: none; border-color: ${BRAND}; }
@@ -304,7 +327,7 @@ function injectCSS() {
       color: #ccc;
       padding: 5px 0;
       font-size: 10px;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       cursor: pointer;
       transition: background 0.08s, border-color 0.08s;
     }
@@ -568,13 +591,35 @@ function safeMathEval(str) {
   return v;
 }
 
+// Parse a chip id like "16:9" into [16, 9]. Returns null for "custom" /
+// "custom_ratio" so the shape-render path skips them.
+function parseRatioId(id) {
+  const m = /^(\d+):(\d+)$/.exec(id);
+  if (!m) return null;
+  return [parseInt(m[1], 10), parseInt(m[2], 10)];
+}
+
+// Scale a W:H pair to fit inside maxW × maxH, preserving aspect. Returns
+// rounded integer px so the rendered rectangle has crisp 1 px borders.
+function fitRectToBox(rw, rh, maxW, maxH) {
+  const aspect = rw / rh;
+  let w, h;
+  if (aspect >= maxW / maxH) { w = maxW; h = maxW / aspect; }
+  else                       { h = maxH; w = maxH * aspect; }
+  return { w: Math.max(1, Math.round(w)), h: Math.max(1, Math.round(h)) };
+}
+
+// Bounding box for the in-chip ratio rectangle. 14 × 11 fits comfortably next
+// to the longest label ("16:9", ~24 px) inside the ~66 px ratio chip.
+const CHIP_SHAPE_MAX_W = 14;
+const CHIP_SHAPE_MAX_H = 11;
+
 function renderChipGrid(state) {
   const wrap = document.createElement("div");
   wrap.className = "pix-res-chips";
   for (const c of CHIPS) {
     const el = document.createElement("div");
     el.className = "pix-res-chip" + (c.spanHalf ? " span-half" : "");
-    el.textContent = c.label;
     el.dataset.chipId = c.id;
     const isActive =
       (c.id === "custom" && state.mode === "custom") ||
@@ -582,6 +627,24 @@ function renderChipGrid(state) {
       (c.id !== "custom" && c.id !== "custom_ratio" &&
        state.mode === "preset" && state.ratio === c.id);
     if (isActive) el.classList.add("active");
+
+    // Visual AR rectangle for ratio chips only; custom chips stay text-only
+    // because they're half-width (more horizontal space for the longer label)
+    // and don't have a fixed shape to preview here.
+    const ratio = parseRatioId(c.id);
+    if (ratio) {
+      const shape = document.createElement("span");
+      shape.className = "pix-res-chip-shape";
+      const { w, h } = fitRectToBox(ratio[0], ratio[1], CHIP_SHAPE_MAX_W, CHIP_SHAPE_MAX_H);
+      shape.style.width = `${w}px`;
+      shape.style.height = `${h}px`;
+      el.appendChild(shape);
+    }
+
+    const labelEl = document.createElement("span");
+    labelEl.textContent = c.label;
+    el.appendChild(labelEl);
+
     wrap.appendChild(el);
   }
   return wrap;

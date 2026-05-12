@@ -14,6 +14,8 @@ from .nodes.node_crop import NODE_CLASS_MAPPINGS as _MAPS_CROP
 from .nodes.node_crop import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_CROP
 from .nodes.node_label import NODE_CLASS_MAPPINGS as _MAPS_LABEL
 from .nodes.node_label import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LABEL
+from .nodes.node_load_image import NODE_CLASS_MAPPINGS as _MAPS_LOAD_IMAGE
+from .nodes.node_load_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_IMAGE
 from .nodes.node_paint import NODE_CLASS_MAPPINGS as _MAPS_PAINT
 from .nodes.node_paint import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAINT
 from .nodes.node_preview import NODE_CLASS_MAPPINGS as _MAPS_PREVIEW
@@ -47,6 +49,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_COMPARE,
     **_MAPS_CROP,
     **_MAPS_LABEL,
+    **_MAPS_LOAD_IMAGE,
     **_MAPS_NOTE,
     **_MAPS_NOTIFY,
     **_MAPS_SAVE_MP4,
@@ -62,6 +65,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMPARE,
     **_NAMES_CROP,
     **_NAMES_LABEL,
+    **_NAMES_LOAD_IMAGE,
     **_NAMES_NOTE,
     **_NAMES_NOTIFY,
     **_NAMES_SAVE_MP4,

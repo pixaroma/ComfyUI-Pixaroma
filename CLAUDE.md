@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with save-to-disk / save-to-output buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with save-to-disk / save-to-output buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT) directly inside ComfyUI workflows. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -223,7 +223,40 @@ js/
 │                       #  load. No onDrawForeground (Vue Compat #1).
 │
 ├── reference/          # Reference node (single file, 140 lines)
-    └── index.js
+│   └── index.js
+│
+├── load_image/         # Load Image Pixaroma (4 files, ~1500 lines)
+    ├── index.js        # Entry: extension registration, lifecycle,
+    │                   #  app.graphToPrompt hook (subgraph-safe injection of
+    │                   #  loadImagePixState into hidden LoadImagePixState
+    │                   #  Python input). Owns renderUI which rebuilds chips +
+    │                   #  mode panel + global controls. updateInfoBar refreshes
+    │                   #  the input/output dims bar non-destructively (so leaf
+    │                   #  events don't destroy the focused input).
+    ├── ui.mjs          # All CSS via injectCSS(); buildRoot constructs the
+    │                   #  fixed structure (upload btn, hint, dropdown, info
+    │                   #  bar, then chip grid / mode panel / global controls
+    │                   #  appended by renderUI). hideNativeImageCombo hides
+    │                   #  EVERY auto-created widget — image_upload: True
+    │                   #  creates two of them (image combo + upload button),
+    │                   #  see Load Image Pixaroma Pattern #1. renderChips,
+    │                   #  renderGlobalControls, openImageDropdown,
+    │                   #  openResamplePopup.
+    ├── resize_modes.mjs # previewResize (JS mirror of Python _resize_frame),
+    │                   #  formatMP, safeMathEval, makeNumericInput (text-type
+    │                   #  input + custom +/- spinners + Arrow stepping +
+    │                   #  stopImmediatePropagation), per-mode panel builders
+    │                   #  for Max MP / Longest side / Scale by × / Fit inside
+    │                   #  / Crop to fill / Match aspect ratio. RATIO_PRESETS
+    │                   #  matches Resolution Pixaroma's 9 + adds 21:9 and 5:4
+    │                   #  + Custom (12 total).
+    └── api.mjs         # uploadImageToInput (multipart POST to /upload/image),
+                        #  pickAndUploadFile (hidden <input type="file">),
+                        #  pasteFromClipboard (Ctrl+V handler), and
+                        #  updateNativePreview (manual node.imgs = [Image]
+                        #  refresh because setting widget.value programmatically
+                        #  doesn't fire ComfyUI's image_upload setter — see
+                        #  Load Image Pixaroma Pattern #3).
 ```
 
 ### Mixin Pattern (how editor classes are split)
@@ -564,6 +597,40 @@ These patterns were hard-won during the May-2026 batch + save-mode upgrade. Seve
 - IDs validated against `^[a-zA-Z0-9_\-]+$` regex (max 64 chars)
 - Base64 payloads capped at 50 MB
 - Note sanitizer (`js/note/sanitize.mjs`) — allowlist-based. Anything user-reachable (link insert, code-view HTML edit, paste) must round-trip through `sanitize(html)` before being written to the DOM or saved. Class allowlist covers only Pixaroma-specific classes; style allowlist covers only `color`, `background-color`, `text-align`; href allowlist is `http:`, `https:`, `mailto:`.
+
+### Load Image Pixaroma Patterns (do not regress)
+
+These patterns were hard-won during the May-2026 implementation. Re-read before touching `nodes/node_load_image.py` or any file under `js/load_image/`.
+
+1. **`image_upload: True` creates TWO widgets, not one.** When `INPUT_TYPES` declares a STRING combo with `image_upload: True`, the Vue frontend creates BOTH the combo widget (named `image`) AND a separate upload-button widget (named `upload`, type `IMAGEUPLOAD`). Hiding only the combo leaks the "choose file to upload" button into the node body. `hideNativeImageCombo` in `js/load_image/ui.mjs` iterates EVERY auto-created widget and hides each one via the project's standard `hideJsonWidget` recipe (`w.hidden = true; w.computeSize = () => [0, -4]; w.element.style.display = "none"`), plus a `requestAnimationFrame` re-hide pass for Vue widgets that DOM-render after `nodeCreated`. Setting only `canvasOnly` or only `type = "hidden"` is NOT enough on the current Vue frontend.
+
+2. **Hidden-state via `node.properties` + `app.graphToPrompt` hook, same as Resolution Pixaroma.** `INPUT_TYPES` declares `LoadImagePixState` as a `hidden` STRING input (no widget, no slot dot). The full resize-mode JSON lives on `node.properties.loadImagePixState`. A module-scope `app.graphToPrompt` monkey-patch walks every graph + subgraph at submission time, finds each `PixaromaLoadImage` by `class_type`, and injects the property into `entry.inputs.LoadImagePixState`. Subgraph-safe via tail-id matching. Mirror of Resolution Pixaroma's pattern.
+
+3. **Setting `widget.value` programmatically does NOT fire ComfyUI's `image_upload` setter.** Selecting a different file via our custom dropdown (or after upload) leaves `node.imgs[0]` stuck on the previously-loaded file because the native auto-fetch only triggers when the WIDGET surface is interacted with. `api.mjs` `updateNativePreview(node, filename)` manually fetches `/view?filename=...&type=input&subfolder=` and assigns `node.imgs = [img]`. Called from every file-selection path (upload, drag/drop, paste, dropdown pick). Without this, the native bottom preview is wrong on every programmatic file change.
+
+4. **DOM widget height: measure children's `offsetHeight`, NEVER `root.scrollHeight`.** LiteGraph stretches the DOM widget root vertically when the node has slack height. Using `root.scrollHeight` in `getMinHeight` creates a feedback loop where every paint reports the new stretched height as the new minimum — duplicated nodes inherit the inflated size and the user can never shrink the node back. The fix: `measureContentHeight()` sums each non-absolute child's `offsetHeight` plus flex gaps + root padding. Children don't have `flex-grow`, so their `offsetHeight` is intrinsic regardless of root's stretched size.
+
+5. **`onChange` from leaf events must be NON-DESTRUCTIVE.** Earliest implementation passed `() => renderUI(node)` as the onChange callback to every panel builder. When the user pressed ArrowUp inside a numeric input, the input's commit fired onChange → renderUI → full panel rebuild → input element destroyed → focus lost → next arrow press panned the canvas. Tab had the same problem. Fix: `onChange` for leaf events (input commits, quick-pick clicks, color picks) is now `() => updateInfoBar(node)` — refreshes the dims info bar only, never touches the panel structure. The mode-chip click handler is the ONLY path that triggers full `renderUI` because mode change DOES need a structural rebuild.
+
+6. **`stopImmediatePropagation` on input keydown, NOT just stopPropagation.** LiteGraph / ComfyUI Vue listen at the document level in capture phase. `stopPropagation` alone isn't enough — sibling listeners on the same element still fire, and document-capture handlers higher up may grab Arrow / Tab / Enter to pan the canvas or switch workflow tabs. The shared `makeNumericInput` in `js/load_image/resize_modes.mjs` uses `stopImmediatePropagation`.
+
+7. **Math-eval inputs use `type="text"`, custom +/- spinners required.** To accept math expressions like `1024+64` or `512*2`, inputs must be `type="text"` — `type="number"` rejects non-digit characters before our handler sees them. The price: no native browser spinners. Custom 14px-wide `.pix-li-spin` column with stacked chevron buttons (CSS pseudo-elements, no SVGs needed) sits on the right edge of the input wrapper. `tabIndex=-1` so Tab traversal skips the spinners (W → swap → H, not W → up → down → swap → ...). mousedown handlers call `step1(dir, mult)` with Shift = 10x multiplier, same step logic as the keyboard Arrow handlers — keep the two paths in sync.
+
+8. **Float drift after repeated Arrow stepping — round to step precision.** `1.0 + 0.1 = 1.0999999999999999` after a single step in JS. `roundToStep(v, step)` in `resize_modes.mjs` rounds to the decimals implied by step (step=0.1 → 1 decimal, step=0.05 → 2 decimals, step=1 → integer). Applied in BOTH the Arrow handler and the blur/Enter commit path so math-eval results also stay clean.
+
+9. **Mask resize ALWAYS uses NEAREST.** Regardless of the user's Resample picker. Bilinear / bicubic / lanczos on a mask produces a fade gradient at the boundary, which downstream inpainting nodes interpret as partial transparency and produces visible halos. Hard edges are preserved by sticking with NEAREST. Documented in `nodes/node_load_image.py` `_resize_frame` helpers.
+
+10. **Crop-to-fill degrades to Fit-inside when no-upscale and factor > 1.** Cover math requires upscaling when the source is smaller than the target on either axis. If `allow_upscale = False` and the computed factor > 1.0, `_apply_cover` falls back to `_apply_fit_inside` semantics — preserves the whole image without upscaling, with letterbox space on one axis. Without this fallback, Crop-to-fill on a small source either returns a black canvas or crashes. The JS `previewResize` mirrors the same fallback so the dims-info bar shows what the workflow will actually output.
+
+11. **Match-aspect Pad mask = 255 (opaque), original area = original mask.** When the Pad branch of `_apply_match_ratio` paints a new canvas filled with `pad_color`, the corresponding mask is filled with 255 first, then the source mask is `paste()`'d onto it in the same position the source image was. Result: padded regions are FULLY WHITE (1.0) and the original-image regions keep their original mask values. This matches LoadImageMask's convention that 1.0 = "this region should be filled / inpainted". If a downstream node uses `INVERT_MASK` first, swap accordingly — but DON'T change the default direction here, or every inpainting workflow that uses the Pad output breaks.
+
+12. **JS `previewResize` must mirror Python `_resize_frame` formulas exactly.** The on-canvas dims-info bar shows the predicted post-resize WxH using `js/load_image/resize_modes.mjs::previewResize`. The actual workflow output comes from `nodes/node_load_image.py::_resize_frame` + per-mode helpers. Any formula change must update BOTH files in the same commit, or the on-canvas readout will mislead the user about what the workflow will produce. The math is locked behind these two files by design.
+
+13. **Workflow-restore: poll `node.imgs[0]` for ~3 seconds after `nodeCreated`.** ComfyUI's `image_upload` setter fetches the saved file asynchronously — AFTER `nodeCreated` runs, AFTER our initial `renderUI` runs. The dims-info bar reads `node.imgs[0].naturalWidth`, which is 0 at that point. `setupLoadImageNode` runs a 30×100ms poll that clears as soon as `naturalWidth` is truthy, and a redundant `setTimeout(updateInfoBar, 600)` in `onConfigure` covers the workflow-tab-switch case. `onRemoved` clears the poll. Without these, the dims bar stays on "Input: 0 × 0" until the user touches a control.
+
+14. **Custom dropdowns (file picker + resample) close on mousedown / pointerdown / wheel / Escape, ALL with capture phase.** A single `mousedown` capture listener isn't enough — LiteGraph's drag uses pointer events on the canvas, the user might scroll mid-popup (canvas pan), and Escape is a keyboard convenience. The shared close-popup pattern in `js/load_image/ui.mjs` (`openImageDropdown`, `openResamplePopup`) attaches all four listeners via `setTimeout(() => addEventListener(..., true), 0)` (the setTimeout lets the opening click finish before the close-listener registers, otherwise the same click would close the popup immediately).
+
+15. **`allow_upscale = true` by default — match user expectation, not safety.** Initially defaulted to `false` ("don't surprise the user with a quality-loss upscale"). User feedback: when picking "Max megapixels = 2 MP" on a 1 MP source, they expect the output to GROW to 2 MP. With `allow_upscale = false` the math clamped the factor to 1.0 and the output stayed at the original size — looked broken. Flipped the default in both `DEFAULT_STATE` (`index.js`) and `DEFAULT_STATE` (`node_load_image.py`). Keep them in sync per CLAUDE.md Pattern #3 (the canon for "JS + Python defaults must move together").
 
 ### Offline-first: Vendored Three.js
 The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
