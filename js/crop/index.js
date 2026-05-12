@@ -506,6 +506,43 @@ app.registerExtension({
       }
     };
 
+    // ── Drag-and-drop support ──
+    // Mirrors the Ctrl+V paste flow (above): disconnect any upstream wire,
+    // then route the dropped file through _pixaromaCropPaste so the upload +
+    // metadata + preview rebuild path is shared. Attached to BOTH DOM widget
+    // root elements (CropPanel + CropWidget mini-preview) so dropping on any
+    // visible part of the node body just works. No visual overlay — the
+    // recent Load Image lesson was that a "Drop here" overlay implies it's
+    // the only valid target when the whole node should accept drops.
+    const dropTargets = [panel?.el, parts?.container].filter(Boolean);
+    const handleCropDrop = async (file) => {
+      if (!file || !file.type?.startsWith("image/")) return;
+      // Disconnect upstream image wire if connected — same "use this image
+      // now" override semantics as the paste flow.
+      const imgInputIdx = (node.inputs || []).findIndex((i) => i.name === "image");
+      if (imgInputIdx >= 0 && node.inputs[imgInputIdx].link != null) {
+        try { node.disconnectInput(imgInputIdx); } catch {}
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        node._pixaromaCropPaste?.(ev.target.result);
+      };
+      reader.readAsDataURL(file);
+    };
+    for (const target of dropTargets) {
+      target.addEventListener("dragover", (e) => {
+        if (!e.dataTransfer?.types?.includes("Files")) return;
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      target.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const file = e.dataTransfer?.files?.[0];
+        handleCropDrop(file);
+      });
+    }
+
     // ── Auto-refresh preview when upstream changes (Vue Compat #1) ──
     let lastSnap = "";
 

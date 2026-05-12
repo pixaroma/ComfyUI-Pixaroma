@@ -190,12 +190,22 @@ def _safe_path(filename: str) -> str | None:
     """
     Build an absolute path inside PIXAROMA_INPUT_ROOT.
     Returns None if the resolved path would escape the root (path traversal guard).
+    Defensively ensures the root exists — the module-load os.makedirs at the top
+    of this file can no-op silently if folder_paths.get_input_directory() returned
+    a stale path at startup (e.g. an extra_model_paths.yaml override that
+    references a deleted/moved install). Subsequent img.save() would then 500
+    with FileNotFoundError. Re-creating here is a 1-syscall idempotent guard.
     """
     full = os.path.realpath(os.path.join(PIXAROMA_INPUT_ROOT, filename))
     if (
         not full.startswith(PIXAROMA_INPUT_ROOT + os.sep)
         and full != PIXAROMA_INPUT_ROOT
     ):
+        return None
+    try:
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+    except OSError as e:
+        print(f"[PixaromaCrop] could not create {os.path.dirname(full)}: {e}")
         return None
     return full
 
