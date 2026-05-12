@@ -233,11 +233,84 @@ function buildScalePanel(node, state, writeState, onChange) {
   return panel;
 }
 
+function buildWHPanel(node, state, writeState, onChange, opts) {
+  // opts: { headerLabel, wKey, hKey }
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel";
+  panel.appendChild(makePanelHeader(opts.headerLabel));
+
+  const row = document.createElement("div");
+  row.className = "pix-li-panel-row";
+  row.style.gap = "6px";
+
+  function makeField(labelText, value, onCommit) {
+    const wrap = document.createElement("div");
+    wrap.style.flex = "1";
+    wrap.style.display = "flex";
+    wrap.style.flexDirection = "column";
+    wrap.style.gap = "3px";
+    const lbl = document.createElement("div");
+    lbl.style.fontSize = "9px";
+    lbl.style.color = "#888";
+    lbl.style.textTransform = "uppercase";
+    lbl.style.letterSpacing = "0.5px";
+    lbl.style.textAlign = "center";
+    lbl.textContent = labelText;
+    const inp = document.createElement("input");
+    inp.type = "number";
+    inp.min = "8";
+    inp.max = "16384";
+    inp.step = "1";
+    inp.value = String(value);
+    inp.style.width = "100%";
+    inp.addEventListener("change", () => onCommit(Math.max(8, Math.min(16384, Math.round(parseFloat(inp.value) || 1024)))));
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+    });
+    wrap.append(lbl, inp);
+    return { wrap, inp };
+  }
+
+  const wField = makeField("Width", state[opts.wKey] ?? 1024, (v) => {
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, [opts.wKey]: v });
+    wField.inp.value = String(v);
+    onChange?.();
+  });
+  const hField = makeField("Height", state[opts.hKey] ?? 1024, (v) => {
+    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
+    writeState(node, { ...s, [opts.hKey]: v });
+    hField.inp.value = String(v);
+    onChange?.();
+  });
+  row.append(wField.wrap, hField.wrap);
+  panel.appendChild(row);
+  panel.appendChild(makeReadout(""));
+  return panel;
+}
+
+function buildFitInsidePanel(node, state, writeState, onChange) {
+  return buildWHPanel(node, state, writeState, onChange, {
+    headerLabel: "Fit Inside (no crop)",
+    wKey: "fit_w", hKey: "fit_h",
+  });
+}
+
+function buildCoverPanel(node, state, writeState, onChange) {
+  return buildWHPanel(node, state, writeState, onChange, {
+    headerLabel: "Crop to Fill",
+    wKey: "cover_w", hKey: "cover_h",
+  });
+}
+
 export function buildModePanel(mode, node, state, writeState, onChange) {
   if (mode === "off") return null;
   if (mode === "max_mp") return buildMaxMPPanel(node, state, writeState, onChange);
   if (mode === "longest_side") return buildLongestSidePanel(node, state, writeState, onChange);
   if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange);
-  // fit_inside / cover / match_ratio added in Tasks 17 + 18.
+  if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange);
+  if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange);
+  // match_ratio added in Task 18.
   return null;
 }
