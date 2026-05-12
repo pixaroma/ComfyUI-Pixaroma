@@ -52,7 +52,7 @@ export function injectCSS() {
     }
     .pix-li-hint kbd {
       color: #aaa;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       background: transparent;
       padding: 0;
     }
@@ -143,7 +143,7 @@ export function injectCSS() {
       font-size: 12px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
     }
     .pix-li-panel input[type="text"]:focus, .pix-li-panel input[type="number"]:focus {
@@ -153,7 +153,7 @@ export function injectCSS() {
     .pix-li-panel-readout {
       font-size: 9px;
       color: #888;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       text-align: center;
       margin-top: 6px;
     }
@@ -171,7 +171,7 @@ export function injectCSS() {
       text-align: center;
       font-size: 10px;
       cursor: pointer;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
     }
     .pix-li-quickpick:hover { border-color: #666; color: #ddd; }
     .pix-li-quickpick.active {
@@ -180,7 +180,7 @@ export function injectCSS() {
       border-color: ${BRAND};
     }
     .pix-li-value {
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       font-size: 12px;
       color: ${BRAND};
       font-weight: 600;
@@ -202,7 +202,7 @@ export function injectCSS() {
       font-size: 9px;
       color: #aaa;
       cursor: pointer;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
     }
     .pix-li-ratio-chip:hover { border-color: #666; color: #ddd; }
     .pix-li-ratio-chip.active {
@@ -259,7 +259,7 @@ export function injectCSS() {
       font-size: 11px;
       font-weight: 600;
       text-align: center;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       box-sizing: border-box;
     }
     .pix-li-custom-ratio-row span {
@@ -301,7 +301,7 @@ export function injectCSS() {
       padding: 2px 5px;
       min-width: 18px;
       cursor: pointer;
-      font-family: ui-monospace, monospace;
+      font-family: inherit;
       line-height: 1;
     }
     .pix-li-snap-btn:hover { color: #ddd; border-color: #666; }

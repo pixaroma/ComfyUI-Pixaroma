@@ -92,29 +92,58 @@ function buildMaxMPPanel(node, state, writeState, onChange) {
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Max Megapixels"));
 
+  // Quick-pick chips for common MP targets — covers SDXL-friendly 1 MP,
+  // 2 MP for high-res passes, 4 MP and 8 MP for full output sizes.
+  const quickWrap = document.createElement("div");
+  quickWrap.className = "pix-li-quickpicks";
+  quickWrap.style.gridTemplateColumns = "repeat(3, 1fr)";
+  const QUICK = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
+  const cur = +state.max_mp || 1.0;
+  const qpEls = [];
+  for (const v of QUICK) {
+    const q = document.createElement("div");
+    q.className = "pix-li-quickpick" + (Math.abs(v - cur) < 0.001 ? " active" : "");
+    q.textContent = v % 1 === 0 ? `${v.toFixed(0)} MP` : `${v} MP`;
+    q.dataset.v = String(v);
+    quickWrap.appendChild(q);
+    qpEls.push(q);
+  }
+  panel.appendChild(quickWrap);
+
+  // Numeric input for custom MP values (covers everything in between).
   const row = document.createElement("div");
   row.className = "pix-li-panel-row";
-  const slider = document.createElement("input");
-  slider.type = "range";
-  slider.min = "0.1";
-  slider.max = "16";
-  slider.step = "0.1";
-  slider.value = String(state.max_mp || 1.0);
-  const valEl = document.createElement("span");
-  valEl.className = "pix-li-value";
-  valEl.textContent = (state.max_mp || 1.0).toFixed(2);
-  row.append(slider, valEl);
+  const inp = document.createElement("input");
+  inp.type = "number";
+  inp.min = "0.1";
+  inp.max = "64";
+  inp.step = "0.1";
+  inp.value = String(cur);
+  row.appendChild(inp);
   panel.appendChild(row);
 
-  const ro = makeReadout("");
-  panel.appendChild(ro);
+  panel.appendChild(makeReadout(""));
 
-  slider.addEventListener("input", () => {
-    const v = parseFloat(slider.value);
-    valEl.textContent = v.toFixed(2);
+  function commit(v) {
+    v = Math.max(0.1, Math.min(64, parseFloat(v.toFixed(2))));
+    inp.value = String(v);
+    for (const q of qpEls) {
+      q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
+    }
     const s = JSON.parse(node.properties?.loadImagePixState || "{}");
     writeState(node, { ...s, max_mp: v });
     onChange?.();
+  }
+  inp.addEventListener("change", () => commit(parseFloat(inp.value) || 1.0));
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+  });
+  quickWrap.addEventListener("click", (e) => {
+    const q = e.target.closest(".pix-li-quickpick");
+    if (!q) return;
+    e.stopPropagation();
+    commit(parseFloat(q.dataset.v));
   });
   return panel;
 }
@@ -182,11 +211,13 @@ function buildScalePanel(node, state, writeState, onChange) {
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Scale by ×"));
 
+  // Quick-pick chips for common scale factors — covers half/quarter
+  // for thumbnails, 2x/4x for upscale (gated by Allow Upscaling).
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
   quickWrap.style.gridTemplateColumns = "repeat(4, 1fr)";
   const QUICK = [0.25, 0.5, 2, 4];
-  const cur = state.scale_factor || 1.0;
+  const cur = +state.scale_factor || 1.0;
   const qpEls = [];
   for (const v of QUICK) {
     const q = document.createElement("div");
@@ -198,32 +229,35 @@ function buildScalePanel(node, state, writeState, onChange) {
   }
   panel.appendChild(quickWrap);
 
+  // Numeric input for custom multipliers (0.1× to 4×).
   const row = document.createElement("div");
   row.className = "pix-li-panel-row";
-  const slider = document.createElement("input");
-  slider.type = "range";
-  slider.min = "0.1";
-  slider.max = "4";
-  slider.step = "0.05";
-  slider.value = String(cur);
-  const valEl = document.createElement("span");
-  valEl.className = "pix-li-value";
-  valEl.textContent = `${cur.toFixed(2)}×`;
-  row.append(slider, valEl);
+  const inp = document.createElement("input");
+  inp.type = "number";
+  inp.min = "0.1";
+  inp.max = "4";
+  inp.step = "0.05";
+  inp.value = String(cur);
+  row.appendChild(inp);
   panel.appendChild(row);
 
   panel.appendChild(makeReadout(""));
 
   function commit(v) {
-    v = Math.max(0.1, Math.min(4.0, v));
-    slider.value = String(v);
-    valEl.textContent = `${v.toFixed(2)}×`;
-    for (const q of qpEls) q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
+    v = Math.max(0.1, Math.min(4.0, parseFloat(v.toFixed(2))));
+    inp.value = String(v);
+    for (const q of qpEls) {
+      q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
+    }
     const s = JSON.parse(node.properties?.loadImagePixState || "{}");
     writeState(node, { ...s, scale_factor: v });
     onChange?.();
   }
-  slider.addEventListener("input", () => commit(parseFloat(slider.value)));
+  inp.addEventListener("change", () => commit(parseFloat(inp.value) || 1.0));
+  inp.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); inp.blur(); }
+  });
   quickWrap.addEventListener("click", (e) => {
     const q = e.target.closest(".pix-li-quickpick");
     if (!q) return;
