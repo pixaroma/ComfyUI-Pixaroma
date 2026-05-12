@@ -116,6 +116,77 @@ export function injectCSS() {
       border-color: ${BRAND};
     }
     .pix-li-chip.span-full { grid-column: span 2; }
+    .pix-li-panel {
+      background: rgba(246,103,68,0.07);
+      border: 1px solid rgba(246,103,68,0.4);
+      border-radius: 4px;
+      padding: 8px 10px;
+    }
+    .pix-li-panel-row { display: flex; align-items: center; gap: 8px; }
+    .pix-li-panel-label {
+      font-size: 9px;
+      color: ${BRAND};
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+    .pix-li-panel input[type="range"] {
+      flex: 1;
+      accent-color: ${BRAND};
+    }
+    .pix-li-panel input[type="text"], .pix-li-panel input[type="number"] {
+      background: #2a2a2a;
+      border: 1px solid #444;
+      border-radius: 3px;
+      padding: 4px 6px;
+      color: ${BRAND};
+      font-size: 12px;
+      font-weight: 600;
+      text-align: center;
+      font-family: ui-monospace, monospace;
+      box-sizing: border-box;
+    }
+    .pix-li-panel input[type="text"]:focus, .pix-li-panel input[type="number"]:focus {
+      outline: none;
+      border-color: ${BRAND};
+    }
+    .pix-li-panel-readout {
+      font-size: 9px;
+      color: #888;
+      font-family: ui-monospace, monospace;
+      text-align: center;
+      margin-top: 6px;
+    }
+    .pix-li-quickpicks {
+      display: grid;
+      gap: 3px;
+      margin-bottom: 8px;
+    }
+    .pix-li-quickpick {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 3px;
+      color: #aaa;
+      padding: 4px 0;
+      text-align: center;
+      font-size: 10px;
+      cursor: pointer;
+      font-family: ui-monospace, monospace;
+    }
+    .pix-li-quickpick:hover { border-color: #666; color: #ddd; }
+    .pix-li-quickpick.active {
+      background: ${BRAND};
+      color: #fff;
+      border-color: ${BRAND};
+    }
+    .pix-li-value {
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      color: ${BRAND};
+      font-weight: 600;
+      min-width: 50px;
+      text-align: right;
+    }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";

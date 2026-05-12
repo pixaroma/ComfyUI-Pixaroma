@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { BRAND, hideJsonWidget } from "../shared/index.mjs";
 import { injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown, renderChips } from "./ui.mjs";
 import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
+import { buildModePanel, previewResize, formatMP } from "./resize_modes.mjs";
 
 let _activeLoadImageNode = null;
 
@@ -30,7 +31,15 @@ function renderUI(node) {
   if (chipsEl) chipsEl.replaceWith(newChips);
   else root.appendChild(newChips);
 
-  // Mode panel comes in B3 (Task 16).
+  // Remove the previous panel (if any) and append the new one for the current mode.
+  const oldPanel = root.querySelector(".pix-li-panel");
+  if (oldPanel) oldPanel.remove();
+  const panel = buildModePanel(state.mode, node, state, writeState, () => renderUI(node));
+  if (panel) {
+    // Insert AFTER the chip grid.
+    const chips = root.querySelector(".pix-li-chips");
+    chips.after(panel);
+  }
 }
 
 // Global Ctrl+V handler for the active load-image node.
