@@ -453,35 +453,113 @@ function openDropdown(node, anchorEl) {
 }
 
 // ── Output folder picker ───────────────────────────────────────────────────
-//
-// Browser security forbids us from forcing a native file dialog to open at a
-// specific filesystem path. Browse Output therefore triggers the same kind
-// of file picker as Upload Image — the only difference is what the user
-// expects to do with it. After the user navigates to ComfyUI's output
-// folder once, Chrome / Edge / Firefox all remember the last-used location
-// and re-open the dialog there next time. The picked file is uploaded into
-// input/ (so it appears in the file combo) and the prompt extracts as usual.
-function pickFromOutput(node) {
-  return new Promise((resolve, reject) => {
-    const inp = document.createElement("input");
-    inp.type = "file";
-    inp.accept = "image/png,image/jpeg,image/webp";
-    inp.style.display = "none";
-    inp.addEventListener("change", async () => {
-      const file = inp.files?.[0];
-      if (!file) { inp.remove(); resolve(null); return; }
+
+async function fetchOutputList() {
+  try {
+    const resp = await fetch("/pixaroma/api/prompt_reader/list_output");
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    return Array.isArray(json?.files) ? json.files : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+// Fetch a file from ComfyUI's output/ folder and re-upload it into input/.
+// Treats Browse Output picks the same way as Upload Image: the file ends up
+// in the regular input combo, the combo dropdown shows it, and the rest of
+// the extract flow runs unchanged. Uses ComfyUI's standard /view route to
+// read the output bytes and /upload/image to write into input. ComfyUI
+// auto-renames on filename collision (image.png -> image (1).png) so this
+// is safe to call repeatedly.
+async function importOutputFile(node, rel) {
+  const lastSlash = rel.lastIndexOf("/");
+  const subfolder = lastSlash >= 0 ? rel.substring(0, lastSlash) : "";
+  const name = lastSlash >= 0 ? rel.substring(lastSlash + 1) : rel;
+  const viewUrl =
+    `/view?filename=${encodeURIComponent(name)}` +
+    `&type=output&subfolder=${encodeURIComponent(subfolder)}`;
+  const resp = await fetch(viewUrl);
+  if (!resp.ok) throw new Error(`Could not read from output (${resp.status})`);
+  const blob = await resp.blob();
+  const file = new File([blob], name, { type: blob.type || "image/png" });
+  return await uploadImage(node, file);
+}
+
+// Open a popup anchored to the Browse Output button row. Picking an item
+// fetches that file from output/ and re-uploads it into input/, then
+// triggers an extract refresh - same end state as Upload Image.
+async function openOutputPopup(node, anchorEl) {
+  document.querySelector(".pix-pr-popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "pix-pr-popup";
+
+  // Anchor the popup to the full button ROW (both buttons combined),
+  // not just the Browse Output button. Anchoring to the half-width
+  // button left the popup floating offset to the right of the node.
+  const anchor = anchorEl.closest(".pix-pr-btn-row") || anchorEl;
+  const rect = anchor.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+
+  // Loading state
+  const loading = document.createElement("div");
+  loading.className = "pix-pr-popup-empty";
+  loading.textContent = "Loading output folder…";
+  popup.appendChild(loading);
+
+  document.body.appendChild(popup);
+
+  function close() {
+    popup.remove();
+    document.removeEventListener("mousedown", onDown, true);
+    document.removeEventListener("pointerdown", onDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onDown = (e) => { if (!popup.contains(e.target)) close(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
+
+  const files = await fetchOutputList();
+  // Popup might have been closed before the fetch resolved
+  if (!popup.isConnected) return;
+  loading.remove();
+
+  if (files.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pix-pr-popup-empty";
+    empty.textContent = "(no images found in output/)";
+    popup.appendChild(empty);
+    return;
+  }
+
+  for (const rel of files) {
+    const item = document.createElement("div");
+    item.className = "pix-pr-popup-item";
+    item.textContent = rel;
+    item.addEventListener("click", async (e) => {
+      e.stopPropagation();
+      close();
+      const statusLabel = node._pixPrRoot?.querySelector(".pix-pr-status-label");
+      if (statusLabel) statusLabel.textContent = "Importing from output...";
       try {
-        const saved = await uploadImage(node, file);
-        resolve(saved);
-      } catch (e) {
-        reject(e);
-      } finally {
-        inp.remove();
+        await importOutputFile(node, rel);
+        onImageChanged(node);
+      } catch (err) {
+        console.error("[PixaromaPromptReader] output import failed", err);
+        if (statusLabel) statusLabel.textContent = "Import failed: " + err.message;
       }
     });
-    document.body.appendChild(inp);
-    inp.click();
-  });
+    popup.appendChild(item);
+  }
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────
@@ -568,20 +646,13 @@ function setupNode(node) {
     }
   });
 
-  // Browse Output button - triggers a native file picker (same flow as
-  // Upload Image). Browsers don't allow forcing a specific starting folder
-  // for security reasons, so the user navigates to ComfyUI's output/ once
-  // and the browser remembers it for subsequent clicks. Picked file is
-  // uploaded into input/ and appears in the file combo.
-  root.querySelector('[data-role="browse-output"]')?.addEventListener("click", async (e) => {
+  // Browse Output button - opens a popup listing files in ComfyUI's output/.
+  // The browser can't open a native OS folder dialog for security reasons,
+  // but a popup over the recent generations is the same UX and works on
+  // every install / OS.
+  root.querySelector('[data-role="browse-output"]')?.addEventListener("click", (e) => {
     e.stopPropagation();
-    try {
-      const saved = await pickFromOutput(node);
-      if (saved) onImageChanged(node);
-    } catch (err) {
-      console.error("[PixaromaPromptReader] output pick failed", err);
-      alert("Upload failed: " + err.message);
-    }
+    openOutputPopup(node, e.currentTarget);
   });
 
   // Dropdown
