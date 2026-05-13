@@ -160,9 +160,14 @@ def _apply_off(pil_rgb, pil_mask, state, orig_w, orig_h):
 def _apply_max_mp(pil_rgb, pil_mask, state, orig_w, orig_h):
     target = float(state.get("max_mp", 1.0))
     target = max(0.01, min(target, 64.0))  # sanity bounds
-    current_mp = (orig_w * orig_h) / 1_000_000.0
+    # ComfyUI binary-MP convention: 1 MP = 1024*1024 = 1,048,576 pixels,
+    # NOT 1,000,000 (SI MP). Matches native ImageScaleToTotalPixels so a
+    # 1024² source at 1 MP passes through unchanged (factor=1.0), keeping
+    # latent dimensions on 1024-friendly multiples for SDXL/Flux/etc.
+    target_px = target * 1024.0 * 1024.0
+    current_px = float(orig_w * orig_h)
 
-    factor = math.sqrt(target / current_mp) if current_mp > 0 else 1.0
+    factor = math.sqrt(target_px / current_px) if current_px > 0 else 1.0
     if not state.get("allow_upscale", False):
         factor = min(factor, 1.0)
     factor = min(factor, 8.0)  # sanity ceiling

@@ -195,8 +195,11 @@ export function previewResize(W, H, state) {
 
   if (mode === "max_mp") {
     const tgt = +state.max_mp || 1.0;
-    const mp = (W * H) / 1_000_000;
-    const f = mp > 0 ? Math.sqrt(tgt / mp) : 1.0;
+    // ComfyUI binary-MP convention: 1 MP = 1024*1024 = 1,048,576 pixels.
+    // Matches native ImageScaleToTotalPixels so 1024² at 1 MP is unchanged.
+    const targetPx = tgt * 1024 * 1024;
+    const currentPx = W * H;
+    const f = currentPx > 0 ? Math.sqrt(targetPx / currentPx) : 1.0;
     ({ w: nw, h: nh } = applyFactor(f));
   } else if (mode === "longest_side") {
     const tgt = +state.longest_side || 1024;
