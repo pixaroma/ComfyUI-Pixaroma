@@ -24,14 +24,25 @@ except ImportError:
     _folder_paths = None
 
 
-# Frozenset for O(1) `key in _TEXT_KEYS` membership checks - this DFS runs
-# per-node-per-extract and the lists are short enough that the tuple linear
-# scan was fine, but the frozenset version is the obvious clean version.
+# Known text-bearing input names. Frozenset for O(1) lookup; the regex
+# `_TEXT_KEY_RE` below catches the long tail of `text_X` / `string_X`
+# / `prompt_X` patterns used by various concat / format / chain nodes.
 _TEXT_KEYS = frozenset({
-    "text", "text_g", "text_l", "string", "prompt", "value", "wildcard_text",
-    "text_a", "text_b", "str", "format", "template",
-    "prepend", "append", "positive_prompt", "input_string",
+    "text", "text_g", "text_l", "string", "str", "prompt",
+    "value", "wildcard_text", "input_string", "positive_prompt",
+    "format", "template", "prepend", "append", "prefix", "suffix",
 })
+# Fallback pattern: covers rgthree-style Text Concatenate (`string_a`,
+# `string_b`, ...), numbered variants (`text_1`, `text_2`), and the many
+# similar concat / chain nodes in the ecosystem.
+_TEXT_KEY_RE = re.compile(r"^(text|string|str|prompt)[_-][a-zA-Z0-9]+$")
+
+
+def _is_text_key(name: str) -> bool:
+    """Return True iff `name` looks like a text-carrying input."""
+    return name in _TEXT_KEYS or bool(_TEXT_KEY_RE.match(name))
+
+
 _COND_LINK_KEYS = frozenset({
     "conditioning", "conditioning_1", "conditioning_2",
     "cond", "positive", "from", "input",
@@ -137,22 +148,20 @@ def _walk_for_text(
     if not isinstance(inputs, dict):
         return
 
-    for key in _TEXT_KEYS:
-        v = inputs.get(key)
-        if isinstance(v, str):
-            s = v.strip()
-            if s:
-                captured.append(s)
-        elif isinstance(v, list) and len(v) >= 1:
-            _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
-
+    # Single pass over inputs. For each one, classify as text-carrying
+    # (capture string OR recurse into linked node), conditioning-link
+    # (recurse only), or ignore.
     for key, v in inputs.items():
-        if key in _TEXT_KEYS:
-            continue
-        if key not in _COND_LINK_KEYS:
-            continue
-        if isinstance(v, list) and len(v) >= 1:
-            _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
+        if _is_text_key(key):
+            if isinstance(v, str):
+                s = v.strip()
+                if s:
+                    captured.append(s)
+            elif isinstance(v, list) and len(v) >= 1:
+                _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
+        elif key in _COND_LINK_KEYS:
+            if isinstance(v, list) and len(v) >= 1:
+                _walk_for_text(v[0], nodes, captured, visited, depth + 1, chase_depth)
 
 
 def extract_positive_from_comfy_prompt(
