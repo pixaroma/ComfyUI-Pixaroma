@@ -48,12 +48,8 @@ function injectCSS() {
       flex-direction: column;
       gap: 8px;
     }
-    .pix-pr-btn-row {
-      display: flex;
-      gap: 6px;
-    }
     .pix-pr-upload-btn {
-      flex: 1;
+      width: 100%;
       background: ${BRAND};
       border: none;
       border-radius: 4px;
@@ -109,20 +105,22 @@ function injectCSS() {
     .pix-pr-status.empty .pix-pr-status-dot { background: #555; }
     .pix-pr-status-label { flex: 1; }
     .pix-pr-copy {
-      background: transparent;
-      border: 1px solid #444;
-      color: #aaa;
+      background: ${BRAND};
+      border: 1px solid ${BRAND};
+      color: #fff;
+      font-weight: 600;
       border-radius: 3px;
-      padding: 2px 8px;
+      padding: 2px 10px;
       font-size: 10px;
       cursor: pointer;
       font-family: inherit;
+      transition: background 0.08s;
     }
-    .pix-pr-copy:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-pr-copy:hover { background: #ff7e5a; border-color: #ff7e5a; }
     .pix-pr-copy:disabled {
-      opacity: 0.4; cursor: default;
+      opacity: 0.35; cursor: default;
     }
-    .pix-pr-copy:disabled:hover { color: #aaa; border-color: #444; }
+    .pix-pr-copy:disabled:hover { background: ${BRAND}; border-color: ${BRAND}; }
     .pix-pr-readout {
       width: 100%;
       box-sizing: border-box;
@@ -178,24 +176,12 @@ function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-pr-root";
 
-  const btnRow = document.createElement("div");
-  btnRow.className = "pix-pr-btn-row";
-
   const btnUpload = document.createElement("button");
   btnUpload.type = "button";
   btnUpload.className = "pix-pr-upload-btn";
   btnUpload.textContent = "Upload Image";
   btnUpload.dataset.role = "upload";
-  btnRow.appendChild(btnUpload);
-
-  const btnBrowse = document.createElement("button");
-  btnBrowse.type = "button";
-  btnBrowse.className = "pix-pr-upload-btn";
-  btnBrowse.textContent = "Browse Output";
-  btnBrowse.dataset.role = "browse-output";
-  btnRow.appendChild(btnBrowse);
-
-  root.appendChild(btnRow);
+  root.appendChild(btnUpload);
 
   const hint = document.createElement("div");
   hint.className = "pix-pr-hint";
@@ -452,116 +438,6 @@ function openDropdown(node, anchorEl) {
   }, 0);
 }
 
-// ── Output folder picker ───────────────────────────────────────────────────
-
-async function fetchOutputList() {
-  try {
-    const resp = await fetch("/pixaroma/api/prompt_reader/list_output");
-    if (!resp.ok) return [];
-    const json = await resp.json();
-    return Array.isArray(json?.files) ? json.files : [];
-  } catch (_e) {
-    return [];
-  }
-}
-
-// Fetch a file from ComfyUI's output/ folder and re-upload it into input/.
-// Treats Browse Output picks the same way as Upload Image: the file ends up
-// in the regular input combo, the combo dropdown shows it, and the rest of
-// the extract flow runs unchanged. Uses ComfyUI's standard /view route to
-// read the output bytes and /upload/image to write into input. ComfyUI
-// auto-renames on filename collision (image.png -> image (1).png) so this
-// is safe to call repeatedly.
-async function importOutputFile(node, rel) {
-  const lastSlash = rel.lastIndexOf("/");
-  const subfolder = lastSlash >= 0 ? rel.substring(0, lastSlash) : "";
-  const name = lastSlash >= 0 ? rel.substring(lastSlash + 1) : rel;
-  const viewUrl =
-    `/view?filename=${encodeURIComponent(name)}` +
-    `&type=output&subfolder=${encodeURIComponent(subfolder)}`;
-  const resp = await fetch(viewUrl);
-  if (!resp.ok) throw new Error(`Could not read from output (${resp.status})`);
-  const blob = await resp.blob();
-  const file = new File([blob], name, { type: blob.type || "image/png" });
-  return await uploadImage(node, file);
-}
-
-// Open a popup anchored to the Browse Output button row. Picking an item
-// fetches that file from output/ and re-uploads it into input/, then
-// triggers an extract refresh - same end state as Upload Image.
-async function openOutputPopup(node, anchorEl) {
-  document.querySelector(".pix-pr-popup")?.remove();
-  const popup = document.createElement("div");
-  popup.className = "pix-pr-popup";
-
-  // Anchor the popup to the full button ROW (both buttons combined),
-  // not just the Browse Output button. Anchoring to the half-width
-  // button left the popup floating offset to the right of the node.
-  const anchor = anchorEl.closest(".pix-pr-btn-row") || anchorEl;
-  const rect = anchor.getBoundingClientRect();
-  popup.style.left = `${rect.left}px`;
-  popup.style.top = `${rect.bottom + 2}px`;
-  popup.style.width = `${rect.width}px`;
-
-  // Loading state
-  const loading = document.createElement("div");
-  loading.className = "pix-pr-popup-empty";
-  loading.textContent = "Loading output folder…";
-  popup.appendChild(loading);
-
-  document.body.appendChild(popup);
-
-  function close() {
-    popup.remove();
-    document.removeEventListener("mousedown", onDown, true);
-    document.removeEventListener("pointerdown", onDown, true);
-    document.removeEventListener("wheel", onWheel, true);
-    document.removeEventListener("keydown", onKey, true);
-  }
-  const onDown = (e) => { if (!popup.contains(e.target)) close(); };
-  const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
-  const onKey = (e) => { if (e.key === "Escape") close(); };
-  setTimeout(() => {
-    document.addEventListener("mousedown", onDown, true);
-    document.addEventListener("pointerdown", onDown, true);
-    document.addEventListener("wheel", onWheel, true);
-    document.addEventListener("keydown", onKey, true);
-  }, 0);
-
-  const files = await fetchOutputList();
-  // Popup might have been closed before the fetch resolved
-  if (!popup.isConnected) return;
-  loading.remove();
-
-  if (files.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "pix-pr-popup-empty";
-    empty.textContent = "(no images found in output/)";
-    popup.appendChild(empty);
-    return;
-  }
-
-  for (const rel of files) {
-    const item = document.createElement("div");
-    item.className = "pix-pr-popup-item";
-    item.textContent = rel;
-    item.addEventListener("click", async (e) => {
-      e.stopPropagation();
-      close();
-      const statusLabel = node._pixPrRoot?.querySelector(".pix-pr-status-label");
-      if (statusLabel) statusLabel.textContent = "Importing from output...";
-      try {
-        await importOutputFile(node, rel);
-        onImageChanged(node);
-      } catch (err) {
-        console.error("[PixaromaPromptReader] output import failed", err);
-        if (statusLabel) statusLabel.textContent = "Import failed: " + err.message;
-      }
-    });
-    popup.appendChild(item);
-  }
-}
-
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 function setupNode(node) {
@@ -644,15 +520,6 @@ function setupNode(node) {
       console.error("[PixaromaPromptReader] upload failed", err);
       alert("Upload failed: " + err.message);
     }
-  });
-
-  // Browse Output button - opens a popup listing files in ComfyUI's output/.
-  // The browser can't open a native OS folder dialog for security reasons,
-  // but a popup over the recent generations is the same UX and works on
-  // every install / OS.
-  root.querySelector('[data-role="browse-output"]')?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openOutputPopup(node, e.currentTarget);
   });
 
   // Dropdown
