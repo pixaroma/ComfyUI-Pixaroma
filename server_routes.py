@@ -820,40 +820,6 @@ async def api_preview_prepare(request):
     })
 
 
-_OUTPUT_LIST_EXTS = (".png", ".jpg", ".jpeg", ".webp")
-_OUTPUT_LIST_MAX = 2000
-
-
-@PromptServer.instance.routes.get("/pixaroma/api/prompt_reader/list_output")
-async def api_prompt_reader_list_output(request):
-    """List image files inside ComfyUI's `output/` folder for the in-node
-    'Browse Output' picker. Recursive, paths relative to the output root,
-    sorted by mtime descending so the most recent generations bubble to the
-    top. Capped at 2000 entries - users with massive output histories
-    shouldn't pay seconds of scroll-rendering to find a prompt.
-    """
-    try:
-        out_dir = folder_paths.get_output_directory()
-        entries = []
-        for root, _dirs, files in os.walk(out_dir):
-            for name in files:
-                if not name.lower().endswith(_OUTPUT_LIST_EXTS):
-                    continue
-                full = os.path.join(root, name)
-                try:
-                    rel = os.path.relpath(full, out_dir).replace("\\", "/")
-                    mtime = os.path.getmtime(full)
-                except OSError:
-                    continue
-                entries.append((mtime, rel))
-        entries.sort(reverse=True)
-        if len(entries) > _OUTPUT_LIST_MAX:
-            entries = entries[:_OUTPUT_LIST_MAX]
-        return web.json_response({"files": [r for _m, r in entries]})
-    except Exception as e:
-        return web.json_response({"files": [], "error": str(e)})
-
-
 @PromptServer.instance.routes.get("/pixaroma/api/prompt_reader/extract")
 async def api_prompt_reader_extract(request):
     """Live readout endpoint for Prompt Reader Pixaroma.
