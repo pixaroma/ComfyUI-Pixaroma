@@ -219,6 +219,32 @@ export class AudioStudioEditor {
         button to load inline. Uploading queues a wire disconnect that
         commits on Save (Discard keeps the wire intact).<br>
         <b>Drag-drop:</b> drop an image or audio file on the canvas.
+        <hr>
+        <b>System RAM needed</b> (not VRAM, at 24&nbsp;fps):<br>
+        <table style="margin-top:6px;border-collapse:collapse;font-size:11px;">
+          <tr style="color:#999;">
+            <th style="text-align:left;padding:3px 10px 3px 0;">Length</th>
+            <th style="text-align:left;padding:3px 10px;">512×512</th>
+            <th style="text-align:left;padding:3px 10px;">1280×720</th>
+            <th style="text-align:left;padding:3px 10px;">1920×1080</th>
+          </tr>
+          <tr><td style="padding:2px 10px 2px 0;">30&nbsp;sec</td>
+              <td style="padding:2px 10px;">2.1&nbsp;GB</td>
+              <td style="padding:2px 10px;">7.4&nbsp;GB</td>
+              <td style="padding:2px 10px;">16.7&nbsp;GB</td></tr>
+          <tr><td style="padding:2px 10px 2px 0;">1&nbsp;min</td>
+              <td style="padding:2px 10px;">4.2&nbsp;GB</td>
+              <td style="padding:2px 10px;">14.8&nbsp;GB</td>
+              <td style="padding:2px 10px;">33.4&nbsp;GB</td></tr>
+          <tr><td style="padding:2px 10px 2px 0;">3&nbsp;min</td>
+              <td style="padding:2px 10px;">12.7&nbsp;GB</td>
+              <td style="padding:2px 10px;">44.5&nbsp;GB</td>
+              <td style="padding:2px 10px;">100&nbsp;GB</td></tr>
+        </table>
+        <span style="color:#999;font-size:11px;">
+          At 30&nbsp;fps multiply by 1.25, at 60&nbsp;fps by 2.5. The pill at
+          the top right shows the live estimate for your current settings.
+        </span>
       `,
     });
     this._layout = layout;
@@ -501,10 +527,16 @@ export class AudioStudioEditor {
   }
 
   _refreshSaveBtnState() {
+    // Save button always stays clickable - if there are no changes, Save
+    // just closes the editor cleanly (see _save below). A greyed-out Save
+    // that no-ops on click is more confusing than a Save that always does
+    // the obvious thing. The .disabled class is still toggled for a subtle
+    // visual hint that nothing needs persisting, but the button itself is
+    // never functionally disabled.
     const dirty = this.isDirty();
     const btn = this._layout?.saveBtn;
     if (!btn) return;
-    btn.disabled = !dirty;
+    btn.disabled = false;
     btn.classList.toggle("disabled", !dirty);
   }
 
@@ -520,7 +552,13 @@ export class AudioStudioEditor {
   }
 
   _save() {
-    if (!this.isDirty()) return;
+    // No edits to persist? Just close cleanly. Users instinctively reach
+    // for Save as the "I'm done here" button even when they only opened
+    // the editor to look; a no-op click feels like the editor is broken.
+    if (!this.isDirty()) {
+      this.forceClose();
+      return;
+    }
     // Commit any wire disconnects that were queued by inline uploads during
     // the session. Deferring to save time means a Discard close leaves the
     // upstream wire intact — uploads only affect the graph if the user
