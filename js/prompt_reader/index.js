@@ -441,6 +441,14 @@ function setupNode(node) {
   const root = buildRoot();
   node._pixPrRoot = root;
 
+  // Load Image Pixaroma Pattern #4: measure each child's intrinsic
+  // offsetHeight, but EXCLUDE the readout textarea (which has flex: 1 and
+  // absorbs node-resize slack). Counting its grown offsetHeight here would
+  // feed back into getMinHeight and the node would balloon every paint.
+  // Treat the readout as a fixed minimum instead; the user can still drag
+  // the node larger and the textarea fills the extra space, but the
+  // measurement remains stable so the node can also be shrunk back down.
+  const READOUT_MIN_H = 80;
   function measureHeight() {
     let total = 0;
     let visible = 0;
@@ -448,12 +456,16 @@ function setupNode(node) {
       const cs = window.getComputedStyle(child);
       if (cs.position === "absolute" || cs.position === "fixed") continue;
       if (cs.display === "none") continue;
-      total += child.offsetHeight;
+      if (child.classList.contains("pix-pr-readout")) {
+        total += READOUT_MIN_H;
+      } else {
+        total += child.offsetHeight;
+      }
       visible += 1;
     }
     const padding = 16;
     const gaps = Math.max(0, visible - 1) * 8;
-    return Math.max(240, total + padding + gaps);
+    return total + padding + gaps;
   }
 
   node.addDOMWidget("pixaroma_prompt_reader_ui", "custom", root, {
