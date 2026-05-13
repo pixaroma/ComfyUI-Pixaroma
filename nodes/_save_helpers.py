@@ -108,10 +108,12 @@ def _safe_prefix(s):
     char outside [A-Za-z0-9_\\-%] with '_', collapse repeated '_', strip
     leading/trailing '_'. Path segments are separated by '/'.
 
-    Returns None only for: non-string, empty input, length > 256, leading
-    '/', any segment that's literally '..' (path traversal), any segment
-    that sanitizes to empty. Backslashes are normalized to forward slashes
-    (Windows convenience).
+    Empty segments (e.g. trailing slashes, doubled slashes) are silently
+    dropped — so 'teasda......////' becomes 'teasda' rather than failing.
+    Returns None only for truly unrecoverable input: non-string, empty
+    after strip, length > 256, leading '/', any segment that's literally
+    '..' (path traversal), or nothing usable left after sanitization.
+    Backslashes are normalized to forward slashes (Windows convenience).
 
     Caller decides what to do with None:
       - Backend node:  `_safe_prefix(s) or "Preview"` (don't crash workflow)
@@ -128,8 +130,9 @@ def _safe_prefix(s):
     parts = s.split("/")
     if any(p == ".." for p in parts):
         return None
-    cleaned_parts = [_sanitize_segment(p) for p in parts]
-    if any(not p for p in cleaned_parts):
+    cleaned_parts = [_sanitize_segment(p) for p in parts if p]
+    cleaned_parts = [p for p in cleaned_parts if p]
+    if not cleaned_parts:
         return None
     return "/".join(cleaned_parts)
 
