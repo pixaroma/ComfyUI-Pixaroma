@@ -167,6 +167,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 13, 2026 (1.3.24)**
+- **Preview Image Pixaroma - wired filename always works now:** Wiring any text into the filename field (for example a Text Pixaroma, or Load Image's filename output) now always produces a valid name, even when the text has spaces, dots, or unusual characters. Previously the save button failed with an error for anything but plain words.
+- **Preview Image Pixaroma - Run refreshes after deleting saved files:** If you delete the saved image from disk and click Run again, the file is re-saved and the preview refreshes. Previously the preview stayed dark and you had to change the filename to recover.
+- **Load Image Pixaroma - file picker scrolls properly:** Scrolling through the file list with the mouse wheel no longer closes the dropdown.
+
 ### **May 12, 2026 (1.3.23)**
 - **NEW: WH Pixaroma** - tiny utility node with two number fields for width and height, and matching outputs. Type a target resolution manually somewhere in your workflow. Math expressions like `1024+64` work directly in the fields.
 - **NEW: Switch WH Pixaroma** - switch between two width/height sources with a single click. Wire two W+H pairs into the **A** and **B** inputs, then click A or B on the node body to pick which pair flows through. No rewiring. If one side is partially wired (one cable forgotten), the node uses the complete other side; if nothing is wired, you get a clear error message.
