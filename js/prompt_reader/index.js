@@ -465,11 +465,30 @@ async function fetchOutputList() {
   }
 }
 
-// Open a popup anchored to the Browse Output button. Pick a file → set the
-// image widget value to "<relpath> [output]" (the annotation tells the
-// server's get_annotated_filepath to read from output/ instead of input/),
-// then trigger an extract refresh. The annotated value also persists into
-// the workflow JSON via the standard widget-serialization path.
+// Fetch a file from ComfyUI's output/ folder and re-upload it into input/.
+// Treats Browse Output picks the same way as Upload Image: the file ends up
+// in the regular input combo, the combo dropdown shows it, and the rest of
+// the extract flow runs unchanged. Uses ComfyUI's standard /view route to
+// read the output bytes and /upload/image to write into input. ComfyUI
+// auto-renames on filename collision (image.png -> image (1).png) so this
+// is safe to call repeatedly.
+async function importOutputFile(node, rel) {
+  const lastSlash = rel.lastIndexOf("/");
+  const subfolder = lastSlash >= 0 ? rel.substring(0, lastSlash) : "";
+  const name = lastSlash >= 0 ? rel.substring(lastSlash + 1) : rel;
+  const viewUrl =
+    `/view?filename=${encodeURIComponent(name)}` +
+    `&type=output&subfolder=${encodeURIComponent(subfolder)}`;
+  const resp = await fetch(viewUrl);
+  if (!resp.ok) throw new Error(`Could not read from output (${resp.status})`);
+  const blob = await resp.blob();
+  const file = new File([blob], name, { type: blob.type || "image/png" });
+  return await uploadImage(node, file);
+}
+
+// Open a popup anchored to the Browse Output button row. Picking an item
+// fetches that file from output/ and re-uploads it into input/, then
+// triggers an extract refresh - same end state as Upload Image.
 async function openOutputPopup(node, anchorEl) {
   document.querySelector(".pix-pr-popup")?.remove();
   const popup = document.createElement("div");
@@ -522,27 +541,22 @@ async function openOutputPopup(node, anchorEl) {
     return;
   }
 
-  const w = node._pixPrImageWidget;
-  const currentVal = w?.value || "";
-
   for (const rel of files) {
     const item = document.createElement("div");
-    const annotated = `${rel} [output]`;
-    item.className = "pix-pr-popup-item" + (annotated === currentVal ? " active" : "");
+    item.className = "pix-pr-popup-item";
     item.textContent = rel;
-    item.addEventListener("click", (e) => {
+    item.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (w) {
-        if (!w.options) w.options = {};
-        const values = w.options.values || [];
-        if (!values.includes(annotated)) {
-          values.push(annotated);
-          w.options.values = values;
-        }
-        w.value = annotated;
-      }
       close();
-      onImageChanged(node);
+      const statusLabel = node._pixPrRoot?.querySelector(".pix-pr-status-label");
+      if (statusLabel) statusLabel.textContent = "Importing from output...";
+      try {
+        await importOutputFile(node, rel);
+        onImageChanged(node);
+      } catch (err) {
+        console.error("[PixaromaPromptReader] output import failed", err);
+        if (statusLabel) statusLabel.textContent = "Import failed: " + err.message;
+      }
     });
     popup.appendChild(item);
   }
