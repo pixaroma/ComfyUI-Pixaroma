@@ -438,6 +438,20 @@ function setupNode(node) {
   const imageWidget = hideNativeImageCombo(node);
   node._pixPrImageWidget = imageWidget;
 
+  // Suppress ComfyUI's native bottom-of-node image preview. `image_upload:
+  // True` makes the framework fetch the selected file and assign it to
+  // `node.imgs`, which LiteGraph then renders below the widgets. We don't
+  // need that here - the readout is the whole point - so we lock `imgs` to
+  // an empty array. Any framework code that still reads `node.imgs[0]` just
+  // sees undefined and skips the draw.
+  try {
+    Object.defineProperty(node, "imgs", {
+      configurable: true,
+      get() { return []; },
+      set(_v) { /* swallow */ },
+    });
+  } catch (_e) { /* property already non-configurable - ignore */ }
+
   const root = buildRoot();
   node._pixPrRoot = root;
 
