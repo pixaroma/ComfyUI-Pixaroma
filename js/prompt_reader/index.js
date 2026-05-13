@@ -48,8 +48,12 @@ function injectCSS() {
       flex-direction: column;
       gap: 8px;
     }
+    .pix-pr-btn-row {
+      display: flex;
+      gap: 6px;
+    }
     .pix-pr-upload-btn {
-      width: 100%;
+      flex: 1;
       background: ${BRAND};
       border: none;
       border-radius: 4px;
@@ -174,12 +178,24 @@ function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-pr-root";
 
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "pix-pr-upload-btn";
-  btn.textContent = "Upload Image";
-  btn.dataset.role = "upload";
-  root.appendChild(btn);
+  const btnRow = document.createElement("div");
+  btnRow.className = "pix-pr-btn-row";
+
+  const btnUpload = document.createElement("button");
+  btnUpload.type = "button";
+  btnUpload.className = "pix-pr-upload-btn";
+  btnUpload.textContent = "Upload Image";
+  btnUpload.dataset.role = "upload";
+  btnRow.appendChild(btnUpload);
+
+  const btnBrowse = document.createElement("button");
+  btnBrowse.type = "button";
+  btnBrowse.className = "pix-pr-upload-btn";
+  btnBrowse.textContent = "Browse Output";
+  btnBrowse.dataset.role = "browse-output";
+  btnRow.appendChild(btnBrowse);
+
+  root.appendChild(btnRow);
 
   const hint = document.createElement("div");
   hint.className = "pix-pr-hint";
@@ -431,6 +447,100 @@ function openDropdown(node, anchorEl) {
   }, 0);
 }
 
+// ── Output folder picker ───────────────────────────────────────────────────
+
+async function fetchOutputList() {
+  try {
+    const resp = await fetch("/pixaroma/api/prompt_reader/list_output");
+    if (!resp.ok) return [];
+    const json = await resp.json();
+    return Array.isArray(json?.files) ? json.files : [];
+  } catch (_e) {
+    return [];
+  }
+}
+
+// Open a popup anchored to the Browse Output button. Pick a file → set the
+// image widget value to "<relpath> [output]" (the annotation tells the
+// server's get_annotated_filepath to read from output/ instead of input/),
+// then trigger an extract refresh. The annotated value also persists into
+// the workflow JSON via the standard widget-serialization path.
+async function openOutputPopup(node, anchorEl) {
+  document.querySelector(".pix-pr-popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "pix-pr-popup";
+
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top = `${rect.bottom + 2}px`;
+  // The Browse Output button is narrower than the file dropdown anchor,
+  // so widen the popup a bit to fit typical filenames without truncation.
+  popup.style.minWidth = `${Math.max(220, rect.width * 2 + 6)}px`;
+
+  // Loading state
+  const loading = document.createElement("div");
+  loading.className = "pix-pr-popup-empty";
+  loading.textContent = "Loading output folder…";
+  popup.appendChild(loading);
+
+  document.body.appendChild(popup);
+
+  function close() {
+    popup.remove();
+    document.removeEventListener("mousedown", onDown, true);
+    document.removeEventListener("pointerdown", onDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onDown = (e) => { if (!popup.contains(e.target)) close(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
+
+  const files = await fetchOutputList();
+  // Popup might have been closed before the fetch resolved
+  if (!popup.isConnected) return;
+  loading.remove();
+
+  if (files.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "pix-pr-popup-empty";
+    empty.textContent = "(no images found in output/)";
+    popup.appendChild(empty);
+    return;
+  }
+
+  const w = node._pixPrImageWidget;
+  const currentVal = w?.value || "";
+
+  for (const rel of files) {
+    const item = document.createElement("div");
+    const annotated = `${rel} [output]`;
+    item.className = "pix-pr-popup-item" + (annotated === currentVal ? " active" : "");
+    item.textContent = rel;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (w) {
+        if (!w.options) w.options = {};
+        const values = w.options.values || [];
+        if (!values.includes(annotated)) {
+          values.push(annotated);
+          w.options.values = values;
+        }
+        w.value = annotated;
+      }
+      close();
+      onImageChanged(node);
+    });
+    popup.appendChild(item);
+  }
+}
+
 // ── Setup ──────────────────────────────────────────────────────────────────
 
 function setupNode(node) {
@@ -513,6 +623,15 @@ function setupNode(node) {
       console.error("[PixaromaPromptReader] upload failed", err);
       alert("Upload failed: " + err.message);
     }
+  });
+
+  // Browse Output button - opens a popup listing files in ComfyUI's output/.
+  // The browser can't open a native OS folder dialog for security reasons,
+  // but a popup over the recent generations is the same UX and works on
+  // every install / OS.
+  root.querySelector('[data-role="browse-output"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openOutputPopup(node, e.currentTarget);
   });
 
   // Dropdown

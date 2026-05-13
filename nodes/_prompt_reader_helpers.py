@@ -189,12 +189,7 @@ def read_prompt_from_image(file_path: str) -> dict:
     if not chunks:
         return {
             "found": False,
-            "message": (
-                "No metadata found in this image. ComfyUI workflows save the "
-                "prompt inside PNGs; this file either is not a PNG or its "
-                "metadata was stripped (e.g. by re-encoding, screenshot, or "
-                "social-media upload)."
-            ),
+            "message": "No prompt metadata found in this image.",
         }
 
     if "prompt" in chunks:
@@ -209,10 +204,5 @@ def read_prompt_from_image(file_path: str) -> dict:
 
     return {
         "found": False,
-        "message": (
-            "Image has metadata but no positive prompt could be extracted. "
-            "The workflow may use an unusual prompt-chain pattern; try a "
-            "different image, or wire a Show Text Pixaroma node to the "
-            "source for inspection."
-        ),
+        "message": "Image has metadata but no positive prompt was found.",
     }
