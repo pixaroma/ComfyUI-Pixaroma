@@ -1,7 +1,29 @@
 // js/audio_studio/api.mjs
 "use strict";
 
-const UPLOAD_ENDPOINT = "/pixaroma/api/audio_studio/upload";
+const UPLOAD_ENDPOINT  = "/pixaroma/api/audio_studio/upload";
+const SYSINFO_ENDPOINT = "/pixaroma/api/audio_studio/sysinfo";
+
+/**
+ * Fetch the user's system RAM stats for the editor's live "this render
+ * needs ~X GB" estimate. Mirrors the safety check in
+ * nodes/_audio_react_engine.py::generate_video so the UI shows the same
+ * numbers the engine will use.
+ *
+ * Fields may be null if psutil is missing on the server — caller should
+ * still show the estimate, just without the comparison limit.
+ *
+ * @returns {Promise<{total_gb: number|null, available_gb: number|null, cap_gb: number|null}>}
+ */
+export async function getSysInfo() {
+  try {
+    const res = await fetch(SYSINFO_ENDPOINT);
+    if (!res.ok) return { total_gb: null, available_gb: null, cap_gb: null };
+    return res.json();
+  } catch {
+    return { total_gb: null, available_gb: null, cap_gb: null };
+  }
+}
 
 /**
  * Upload an inline image / audio source for a node.

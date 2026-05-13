@@ -448,6 +448,24 @@ _AUDIO_STUDIO_MAX_FILE_BYTES = 50 * 1024 * 1024   # 50 MB per file
 _AUDIO_STUDIO_MAX_DIR_BYTES  = 100 * 1024 * 1024  # 100 MB combined per node
 
 
+@PromptServer.instance.routes.get("/pixaroma/api/audio_studio/sysinfo")
+async def audio_studio_sysinfo(request):
+    """Report total + currently-available system RAM so the editor can show
+    a live "this render needs ~X GB" estimate. Mirrors the safety check in
+    nodes/_audio_react_engine.py::generate_video — UI shows the same numbers
+    the engine will use, no run-time surprises."""
+    info = {"total_gb": None, "available_gb": None, "cap_gb": None}
+    try:
+        import psutil
+        vm = psutil.virtual_memory()
+        info["total_gb"] = vm.total / (1024 ** 3)
+        info["available_gb"] = vm.available / (1024 ** 3)
+        info["cap_gb"] = info["available_gb"] * 0.90
+    except Exception:
+        pass
+    return web.json_response(info)
+
+
 @PromptServer.instance.routes.post("/pixaroma/api/audio_studio/upload")
 async def audio_studio_upload(request):
     reader = await request.multipart()

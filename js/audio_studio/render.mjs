@@ -128,6 +128,7 @@ AudioStudioEditor.prototype._setImage = function (imageEl) {
   this._imageW = imageEl.naturalWidth || imageEl.width;
   this._imageH = imageEl.naturalHeight || imageEl.height;
   this._render();
+  this._refreshMemPill?.();
 };
 
 AudioStudioEditor.prototype._setAudioTextures = function (envRgbaArr, onsetRgbaArr, totalFrames) {

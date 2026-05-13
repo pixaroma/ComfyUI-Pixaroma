@@ -167,6 +167,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 13, 2026 (1.3.26)**
+- **AudioReact - long audio no longer crashes:** Rendering audio longer than ~30 seconds at HD used to slow to a crawl past the 50% mark and crash after eating most of your free disk space. The render now uses much less memory. If the chosen settings would still need more memory than your computer has free, you now see a clear message right away (with what to lower) instead of waiting through a partial render that ends in a crash.
+- **AudioReact - live memory indicator in the editor:** The editor's top bar shows how much memory the current settings will need versus how much your computer has free, color-coded so you can tell at a glance: green means safe, amber means tight, red means the render will refuse. Updates live as you change fps, resolution, or audio.
+- **AudioReact - memory reference table in Help:** A new table in the Help panel lists typical memory needs for common combinations of duration (30 seconds / 1 minute / 3 minutes) at 512×512 / 720p / 1080p, so you can plan ahead.
+- **AudioReact - Save button works even with no changes:** Opening the editor, looking around, and clicking Save without changing anything now closes the editor cleanly. Previously the click did nothing if you hadn't made changes, which felt like the button was broken.
+
 ### **May 13, 2026 (1.3.25)**
 - **Load Image Pixaroma - Max megapixels now keeps 1024 at 1024:** Picking **1 MP** on a 1024×1024 image now leaves it at 1024×1024 (matching how ComfyUI's built-in node works), so the output stays friendly for SD / SDXL / Flux and empty-latent nodes downstream. Previously you got 1000×1000 which doesn't divide cleanly and could cause issues in later steps. The MP presets now map to clean AI sizes: **0.25 MP = 512², 1 MP = 1024², 4 MP = 2048².**
 - **Load Image Pixaroma - resolution rounding is consistent:** The on-canvas Output number now matches exactly what the workflow produces, and the resolution snap chips (8 / 16 / 32 / 64) never push the result above your chosen max megapixels.

@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import gc
 import math
+import os
 from dataclasses import dataclass, fields
 
 import torch
@@ -906,6 +907,38 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
             f"frames at {params.fps} fps (audio_duration={audio_duration:.3f}s)."
         )
 
+    # ComfyUI's IMAGE contract holds the full (N, H, W, 3) float32 batch at
+    # the node boundary in system RAM (not VRAM), so very long audio at HD
+    # blows past consumer memory. Default cap = 90% of currently-AVAILABLE
+    # RAM (matching ComfyUI's own model_management.py pattern of reading
+    # .available for live allocation decisions). Using .available instead
+    # of .total correctly accounts for diffusion models already pinned in
+    # RAM via CPU-offload. Env var override for power users.
+    estimated_output_gb = (total_frames * H * W * 3 * 4) / (1024 ** 3)
+    try:
+        import psutil
+        available_ram_gb = psutil.virtual_memory().available / (1024 ** 3)
+        default_cap_gb = available_ram_gb * 0.90
+    except Exception:
+        default_cap_gb = 12.0
+    try:
+        override = float(os.environ.get(
+            "PIXAROMA_AUDIOREACT_MAX_RAM_GB", str(default_cap_gb),
+        ))
+        max_ram_gb = override if override > 0 else default_cap_gb
+    except (TypeError, ValueError):
+        max_ram_gb = default_cap_gb
+    if estimated_output_gb > max_ram_gb:
+        raise RuntimeError(
+            f"[Pixaroma] Audio engine: this render would need about "
+            f"{estimated_output_gb:.1f} GB of system RAM (not VRAM) just for "
+            f"the output frames ({total_frames} frames at {W}x{H}), above "
+            f"the {max_ram_gb:.1f} GB currently free on this machine. Lower "
+            f"the fps, shorten the audio, or reduce the resolution. To "
+            f"raise the limit, set the environment variable "
+            f"PIXAROMA_AUDIOREACT_MAX_RAM_GB before launching ComfyUI."
+        )
+
     # Caches that depend on total_frames must be cleared per render.
     reset_motion_caches()
 
@@ -980,63 +1013,71 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
         "grain":     params.grain_strength,
     }
 
-    frames = []
-    for i in range(total_frames):
-        env_t = envelope[i].item()
-        onset_t = onset[i].item()
+    # Pre-allocate the output tensor instead of accumulating a Python list and
+    # stacking at the end. The old pattern peaked at 2x the output size (list
+    # of CPU tensors PLUS the new contiguous block from torch.stack). With a
+    # single pre-allocated buffer we hit that peak only once. torch.no_grad
+    # disables autograd retention; the engine is pure forward math.
+    frames_out = torch.empty(
+        (total_frames, H, W, 3), dtype=torch.float32, device="cpu",
+    )
+    with torch.no_grad():
+        for i in range(total_frames):
+            env_t = envelope[i].item()
+            onset_t = onset[i].item()
 
-        ctx = MotionContext(
-            base_grid=base_grid, env_t=env_t, onset_t=onset_t,
-            t=t_vec[i].item(),
-            intensity=params.intensity, motion_speed=params.motion_speed,
-            direction=1.0 if params.motion_direction >= 0 else -1.0,
-            H=H, W=W,
-            total_frames=total_frames, frame_index=i, fps=params.fps,
-            onset_arr=onset,
-            shake_axis=params.shake_axis,
-            ripple_density=params.ripple_density,
-            slit_density=params.slit_density,
-            glitch_bands=params.glitch_bands,
-            wave_density=params.wave_density,
-            pixelate_blocks=params.pixelate_blocks,
-            squeeze_axis=params.squeeze_axis,
-        )
-        grid = motion_fn(ctx)
-
-        if params.motion_mode == "rgb_split":
-            # Multi-pass channel sampling — R offset right, B offset left.
-            # The motion grid above is identity (motion_rgb_split returns
-            # base_grid). The actual chromatic warping happens here.
-            offset = env_t * params.intensity * 0.025
-            grid_r = grid.clone()
-            grid_r[..., 0] += offset
-            grid_b = grid.clone()
-            grid_b[..., 0] -= offset
-            sR = F.grid_sample(img_tensor, grid_r,
-                               mode="bilinear", padding_mode="border", align_corners=False)
-            sG = F.grid_sample(img_tensor, grid,
-                               mode="bilinear", padding_mode="border", align_corners=False)
-            sB = F.grid_sample(img_tensor, grid_b,
-                               mode="bilinear", padding_mode="border", align_corners=False)
-            warped = torch.cat([sR[:, 0:1], sG[:, 1:2], sB[:, 2:3]], dim=1)
-        else:
-            warped = F.grid_sample(
-                img_tensor, grid,
-                mode="bilinear", padding_mode="border", align_corners=False,
+            ctx = MotionContext(
+                base_grid=base_grid, env_t=env_t, onset_t=onset_t,
+                t=t_vec[i].item(),
+                intensity=params.intensity, motion_speed=params.motion_speed,
+                direction=1.0 if params.motion_direction >= 0 else -1.0,
+                H=H, W=W,
+                total_frames=total_frames, frame_index=i, fps=params.fps,
+                onset_arr=onset,
+                shake_axis=params.shake_axis,
+                ripple_density=params.ripple_density,
+                slit_density=params.slit_density,
+                glitch_bands=params.glitch_bands,
+                wave_density=params.wave_density,
+                pixelate_blocks=params.pixelate_blocks,
+                squeeze_axis=params.squeeze_axis,
             )
-        frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
+            grid = motion_fn(ctx)
 
-        for ov_name, ov_fn in OVERLAYS.items():
-            s = overlay_strengths.get(ov_name, 0.0)
-            if s > 0.0:
-                frame = ov_fn(OverlayContext(
-                    frame=frame, env_t=env_t, onset_t=onset_t,
-                    strength=s, H=H, W=W, device=device,
-                    frame_index=i, t=t_vec[i].item(),
-                    loop_factor=loop_factor[i].item(),
-                ))
+            if params.motion_mode == "rgb_split":
+                # Multi-pass channel sampling — R offset right, B offset left.
+                # The motion grid above is identity (motion_rgb_split returns
+                # base_grid). The actual chromatic warping happens here.
+                offset = env_t * params.intensity * 0.025
+                grid_r = grid.clone()
+                grid_r[..., 0] += offset
+                grid_b = grid.clone()
+                grid_b[..., 0] -= offset
+                sR = F.grid_sample(img_tensor, grid_r,
+                                   mode="bilinear", padding_mode="border", align_corners=False)
+                sG = F.grid_sample(img_tensor, grid,
+                                   mode="bilinear", padding_mode="border", align_corners=False)
+                sB = F.grid_sample(img_tensor, grid_b,
+                                   mode="bilinear", padding_mode="border", align_corners=False)
+                warped = torch.cat([sR[:, 0:1], sG[:, 1:2], sB[:, 2:3]], dim=1)
+            else:
+                warped = F.grid_sample(
+                    img_tensor, grid,
+                    mode="bilinear", padding_mode="border", align_corners=False,
+                )
+            frame = warped.squeeze(0).permute(1, 2, 0)  # [H, W, 3]
 
-        frames.append(frame.cpu())
-        pbar.update(1)
+            for ov_name, ov_fn in OVERLAYS.items():
+                s = overlay_strengths.get(ov_name, 0.0)
+                if s > 0.0:
+                    frame = ov_fn(OverlayContext(
+                        frame=frame, env_t=env_t, onset_t=onset_t,
+                        strength=s, H=H, W=W, device=device,
+                        frame_index=i, t=t_vec[i].item(),
+                        loop_factor=loop_factor[i].item(),
+                    ))
 
-    return torch.stack(frames, dim=0)
+            frames_out[i] = frame.cpu()
+            pbar.update(1)
+
+    return frames_out

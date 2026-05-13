@@ -1,7 +1,7 @@
 // js/audio_studio/ui.mjs
 // Mixin: collapsible-section sidebar (3D-Builder style) — Motion / Overlays /
 // Audio / Output. Adds methods to AudioStudioEditor.prototype.
-import { AudioStudioEditor } from "./core.mjs";
+import { AudioStudioEditor, computeEngineWH } from "./core.mjs";
 import { createPanel, UI_ICON } from "../framework/index.mjs";
 
 const ASPECT_OPTIONS = [
@@ -86,40 +86,6 @@ function isCustomWidthAspect(v) {
 // Only this single value also makes Custom Height editable.
 function isCustomHeightAspect(v) {
   return v === "Custom (Use Width & Height below)";
-}
-
-/**
- * Mirror of `process_aspect()` in nodes/_audio_react_engine.py — given the
- * cfg's aspect_ratio + the user's stored custom_width / custom_height,
- * return the {w, h} the engine will actually render at (snapped to mult-of-
- * 8 the same way Python does). Returns null for "Original" because that
- * size depends on the upstream image, which the editor doesn't know with
- * certainty at config-edit time. Used to populate the read-only side of
- * the Output W × H pair so users see the real numbers, not stale stored
- * values.
- */
-function computeEngineWH(ar, customW, customH) {
-  if (ar === "Original") return null;
-  let bw, bh;
-  if (ar === "Custom (Use Width & Height below)") {
-    bw = customW; bh = customH;
-  } else if (ar.startsWith("Custom Ratio")) {
-    bw = customW;
-    if      (ar.includes("16:9")) bh = Math.floor(bw * 9 / 16);
-    else if (ar.includes("9:16")) bh = Math.floor(bw * 16 / 9);
-    else if (ar.includes("4:3"))  bh = Math.floor(bw * 3 / 4);
-    else if (ar.includes("1:1"))  bh = bw;
-    else                          bh = customH;
-  } else {
-    // Fixed preset like "1280x720 (Landscape HD)" — first token is WxH.
-    const [wStr, hStr] = (ar.split(" ")[0] || "").split("x");
-    const w = parseInt(wStr, 10), h = parseInt(hStr, 10);
-    if (Number.isFinite(w) && Number.isFinite(h)) { bw = w; bh = h; }
-    else { bw = customW; bh = customH; }
-  }
-  bw = Math.floor(bw / 8) * 8;
-  bh = Math.floor(bh / 8) * 8;
-  return { w: bw, h: bh };
 }
 
 function injectSidebarCSS() {
