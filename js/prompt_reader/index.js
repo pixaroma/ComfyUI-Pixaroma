@@ -475,12 +475,14 @@ async function openOutputPopup(node, anchorEl) {
   const popup = document.createElement("div");
   popup.className = "pix-pr-popup";
 
-  const rect = anchorEl.getBoundingClientRect();
+  // Anchor the popup to the full button ROW (both buttons combined),
+  // not just the Browse Output button. Anchoring to the half-width
+  // button left the popup floating offset to the right of the node.
+  const anchor = anchorEl.closest(".pix-pr-btn-row") || anchorEl;
+  const rect = anchor.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
   popup.style.top = `${rect.bottom + 2}px`;
-  // The Browse Output button is narrower than the file dropdown anchor,
-  // so widen the popup a bit to fit typical filenames without truncation.
-  popup.style.minWidth = `${Math.max(220, rect.width * 2 + 6)}px`;
+  popup.style.width = `${rect.width}px`;
 
   // Loading state
   const loading = document.createElement("div");
