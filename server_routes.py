@@ -717,12 +717,10 @@ async def api_preview_save(request):
     workflow = data.get("workflow")
     prompt = data.get("prompt")
 
-    prefix = _safe_prefix(prefix_raw)
-    if not prefix:
-        return web.json_response(
-            {"error": "invalid filename_prefix: must not be empty or contain '..'"},
-            status=400,
-        )
+    # Fall back to "Preview" if sanitization can't produce anything usable
+    # (e.g. only special chars, '..' traversal, leading '/'). Matches the
+    # Python node's behavior so the user always gets a successful save.
+    prefix = _safe_prefix(prefix_raw) or "Preview"
 
     pil = _decode_image(image_b64)
     if pil is None:
@@ -772,12 +770,10 @@ async def api_preview_prepare(request):
     workflow = data.get("workflow")
     prompt = data.get("prompt")
 
-    prefix = _safe_prefix(prefix_raw)
-    if not prefix:
-        return web.json_response(
-            {"error": "invalid filename_prefix: must not be empty or contain '..'"},
-            status=400,
-        )
+    # Fall back to "Preview" if sanitization can't produce anything usable
+    # (e.g. only special chars, '..' traversal, leading '/'). Matches the
+    # Python node's behavior so the user always gets a successful save.
+    prefix = _safe_prefix(prefix_raw) or "Preview"
 
     pil = _decode_image(image_b64)
     if pil is None:
