@@ -68,9 +68,14 @@ export function normalizeSlots(node) {
     if (s.link != null) connected++;
   }
 
-  // Target: at least visibleCount, at least connected+1 trailing, min 1.
-  const want = Math.max(connected + (connected < MAX_INPUTS ? 1 : 0), state.visibleCount || 1, 1);
-  const target = Math.min(want, MAX_INPUTS);
+  // Target: connected slot count + 1 empty trailing row, capped at MAX_INPUTS.
+  // state.visibleCount is NOT used here - it can be stale from old snapshots
+  // (e.g. an undo target taken before our cleanup logic existed had 32 slots
+  // saved). The wire-state in node.inputs is the canonical source of truth.
+  const target = Math.min(
+    Math.max(connected + (connected < MAX_INPUTS ? 1 : 0), 1),
+    MAX_INPUTS,
+  );
 
   // Remove unconnected trailing slots until we reach target.
   // Walk from the end; stop if the slot is connected (never remove a live wire).
