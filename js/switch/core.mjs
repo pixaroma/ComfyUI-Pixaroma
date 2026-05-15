@@ -48,6 +48,56 @@ function clearNativeInputs(node) {
   }
 }
 
+// Idempotent slot normaliser - safe to call from BOTH onNodeCreated AND
+// onConfigure (the undo-restore path). Ensures:
+//   - Exactly `target` slots exist (no more, no less).
+//   - All slots named input_1..input_N contiguously.
+//   - All slot.label = zero-width space (suppresses LiteGraph label rendering).
+//   - state.visibleCount === node.inputs.length.
+//   - Node height matches the slot count.
+//
+// target = max(connected_count + 1 trailing, state.visibleCount, 1), capped at MAX_INPUTS.
+// Trailing empty slots beyond target are removed; missing slots are appended.
+export function normalizeSlots(node) {
+  if (!node.inputs) return;
+  const state = readState(node);
+
+  // Count how many slots currently carry a live wire.
+  let connected = 0;
+  for (const s of node.inputs) {
+    if (s.link != null) connected++;
+  }
+
+  // Target: at least visibleCount, at least connected+1 trailing, min 1.
+  const want = Math.max(connected + (connected < MAX_INPUTS ? 1 : 0), state.visibleCount || 1, 1);
+  const target = Math.min(want, MAX_INPUTS);
+
+  // Remove unconnected trailing slots until we reach target.
+  // Walk from the end; stop if the slot is connected (never remove a live wire).
+  while ((node.inputs.length || 0) > target) {
+    const last = node.inputs[node.inputs.length - 1];
+    if (last && last.link != null) break; // last slot is wired - don't remove
+    node.removeInput(node.inputs.length - 1);
+  }
+
+  // Append empty trailing slots until we reach target.
+  while ((node.inputs.length || 0) < target) {
+    addInputSlot(node, node.inputs.length + 1);
+  }
+
+  // Re-apply correct names and zero-width labels to every slot.
+  for (let i = 0; i < node.inputs.length; i++) {
+    node.inputs[i].name = SLOT_NAME(i + 1);
+    node.inputs[i].label = "​"; // zero-width space
+  }
+
+  state.visibleCount = node.inputs.length;
+  node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
+  node.size[1] = computeNodeHeight(state.visibleCount);
+
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
 // Add a single input slot. slot.label = zero-width space so LiteGraph's
 // label rendering chain (label || localized_name || name) shows nothing
 // while the input name (input_N) stays intact for Python kwarg routing.
@@ -63,41 +113,22 @@ function computeNodeHeight(slotCount) {
 }
 
 // Called on fresh node creation (nodeCreated in index.js).
+// Strips the 32 auto-created Python INPUT_TYPES slots, then calls
+// normalizeSlots to bring the node to the correct starting state.
 export function setupNode(node) {
-  const state = readState(node);
   clearNativeInputs(node);
-
-  // Fresh node: 1 empty trailing slot. Restored node: rebuild to match
-  // visibleCount saved in properties (restored slots come back via JSON
-  // but we still need to re-apply the zero-width label).
-  const target = Math.max(1, Math.min(state.visibleCount || 1, MAX_INPUTS));
-  for (let i = 1; i <= target; i++) {
-    addInputSlot(node, i);
-  }
-  state.visibleCount = target;
-
-  // Size: fixed width, height derived from slot count.
-  node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
-  node.size[1] = computeNodeHeight(target);
-
-  app.graph?.setDirtyCanvas?.(true, true);
+  normalizeSlots(node);
 }
 
 // Called from onConfigure (via queueMicrotask) after workflow JSON restores
 // node.inputs and node.properties.
+// Also covers the undo-restore path where onNodeCreated may NOT fire:
+// Ctrl+Z triggers changeTracker.undo -> app.loadGraphData -> graph.clear
+// -> re-creates each node from Python class definition (32 slots back), then
+// calls onConfigure to restore saved state. Without normalizeSlots here the
+// 32 raw slots stay visible.
 export function restoreFromProperties(node) {
-  const state = readState(node);
-  // Re-apply zero-width label (not serialized in workflow JSON).
-  if (node.inputs) {
-    for (const slot of node.inputs) slot.label = "​";
-  }
-  state.visibleCount = node.inputs?.length || 1;
-
-  // Recalculate height in case slotCount changed since last save.
-  node.size[1] = computeNodeHeight(state.visibleCount);
-  node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
-
-  app.graph?.setDirtyCanvas?.(true, true);
+  normalizeSlots(node);
 }
 
 // Called when a wire is connected (slotIdx1 = 1-based slot that just got connected).
