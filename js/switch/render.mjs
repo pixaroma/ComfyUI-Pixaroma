@@ -1,80 +1,82 @@
-// Custom canvas widget that paints one row (label background + label
-// text + toggle pill). One widget per input slot.
+// Pure paint helpers for Switch Pixaroma rows.
+// All coordinates are node-body-local (0,0 = top-left of the body area,
+// same origin that onDrawForeground receives).
 //
-// State is read from node.properties.switchState every paint - the
-// widget itself is stateless beyond the slot index it represents.
-// canvasOnly: true (Pattern #15) keeps it out of the Parameters tab.
+// LiteGraph draws input slot dots at body-local Y:
+//   dotY(i) = TOP_PAD + i * ROW_H + ROW_H/2    (i = 0-based slot index)
+// where TOP_PAD = 4 and ROW_H = 20 match LiteGraph's default
+//   NODE_SLOT_HEIGHT = 20 with the 4px body-top padding.
+// So dotY(0) = 14, dotY(1) = 34, dotY(2) = 54 ...
+// Our row paintings use the same formula so labels/toggles sit on the
+// same horizontal band as the slot dot.
 
-const BRAND = "#f66744";
-const ROW_H = 28;
-const TOGGLE_W = 32;
-const TOGGLE_H = 18;
-const TOGGLE_R = 9;     // pill radius
-const KNOB_R = 6;       // inner knob radius
-const PAD_X = 8;        // body horizontal padding inside the row
-const DOT_GUTTER = 14;  // left-edge space reserved for the input dot
+export const BRAND = "#f66744";
+export const ROW_H = 20;          // matches LiteGraph NODE_SLOT_HEIGHT
+export const TOP_PAD = 4;         // matches LiteGraph body top-padding
 
-export const ROW_HEIGHT = ROW_H;
+const TOGGLE_W = 28;
+const TOGGLE_H = 14;
+const TOGGLE_R = 7;   // pill corner radius
+const KNOB_R = 4;     // inner knob radius
+const PAD_RIGHT = 70; // right-edge margin before toggle — wide enough to clear
+                      // LG's output column on row 1 (output label + dot ~70 px)
+const DOT_GUTTER = 14; // left space reserved for the input dot
 
-function getState(node) {
-  return node.properties?.switchState;
+// Row Y center in node-body-local coordinates (0-based slot index).
+export function rowCenterY(slotIdx0) {
+  return TOP_PAD + slotIdx0 * ROW_H + ROW_H / 2;
 }
 
-function isActive(node, slotIdx) {
-  return getState(node)?.activeIndex === slotIdx;
+// The rect of the toggle pill for a given slot (body-local coords).
+// slotIdx0 = 0-based.
+export function toggleRect(nodeWidth, slotIdx0) {
+  const cy = rowCenterY(slotIdx0);
+  return {
+    x: nodeWidth - PAD_RIGHT - TOGGLE_W,
+    y: cy - TOGGLE_H / 2,
+    w: TOGGLE_W,
+    h: TOGGLE_H,
+  };
 }
 
-function isEmptyTrailing(node, slotIdx) {
-  // Empty trailing row = the slot has no link AND it's the last one.
-  const slot = node.inputs?.[slotIdx - 1];
-  const isLast = slotIdx === (node.inputs?.length || 0);
-  return isLast && (!slot || slot.link == null);
+function inside(pos, r) {
+  return (
+    pos[0] >= r.x && pos[0] <= r.x + r.w &&
+    pos[1] >= r.y && pos[1] <= r.y + r.h
+  );
 }
 
-function labelText(node, slotIdx) {
-  return getState(node)?.labels?.[slotIdx] || "";
+// Exported for hit-testing in index.js.
+export function hitToggle(pos, nodeWidth, slotIdx0) {
+  return inside(pos, toggleRect(nodeWidth, slotIdx0));
 }
 
-// Compute the rect of the toggle for hit-testing. Coordinates are
-// local to the widget (i.e. relative to the row's top-left).
-export function toggleRect(widgetWidth) {
-  const x = widgetWidth - PAD_X - TOGGLE_W;
-  const y = (ROW_H - TOGGLE_H) / 2;
-  return { x, y, w: TOGGLE_W, h: TOGGLE_H };
-}
-
-// Compute the rect of the label area (between the dot gutter on the
-// left and the toggle on the right).
-export function labelRect(widgetWidth) {
-  const x = DOT_GUTTER + 4;
-  const right = widgetWidth - PAD_X - TOGGLE_W - 6;
-  return { x, y: 4, w: Math.max(0, right - x), h: ROW_H - 8 };
-}
-
-function drawToggle(ctx, widgetWidth, on, disabled) {
-  const r = toggleRect(widgetWidth);
+// Draw a single toggle pill at the correct body-local Y for slotIdx0.
+function drawToggle(ctx, nodeWidth, slotIdx0, on, disabled) {
+  const r = toggleRect(nodeWidth, slotIdx0);
   ctx.save();
   if (disabled) ctx.globalAlpha = 0.35;
 
-  // pill background
+  // Pill background
   ctx.beginPath();
   ctx.fillStyle = on ? BRAND : "#3a3a3a";
   ctx.strokeStyle = on ? BRAND : "#555";
   ctx.lineWidth = 1;
   const rad = TOGGLE_R;
-  ctx.moveTo(r.x + rad, r.y);
-  ctx.arcTo(r.x + r.w, r.y, r.x + r.w, r.y + r.h, rad);
-  ctx.arcTo(r.x + r.w, r.y + r.h, r.x, r.y + r.h, rad);
-  ctx.arcTo(r.x, r.y + r.h, r.x, r.y, rad);
-  ctx.arcTo(r.x, r.y, r.x + r.w, r.y, rad);
+  const t = r.y, b = r.y + r.h, l = r.x, ri = r.x + r.w;
+  ctx.moveTo(l + rad, t);
+  ctx.arcTo(ri, t, ri, b, rad);
+  ctx.arcTo(ri, b, l, b, rad);
+  ctx.arcTo(l, b, l, t, rad);
+  ctx.arcTo(l, t, ri, t, rad);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
 
-  // knob
+  // Knob
   ctx.beginPath();
   ctx.fillStyle = on ? "#fff" : "#ccc";
-  const knobX = on ? (r.x + r.w - TOGGLE_R) : (r.x + TOGGLE_R);
+  const knobX = on ? (ri - TOGGLE_R) : (l + TOGGLE_R);
   const knobY = r.y + r.h / 2;
   ctx.arc(knobX, knobY, KNOB_R, 0, Math.PI * 2);
   ctx.fill();
@@ -82,70 +84,52 @@ function drawToggle(ctx, widgetWidth, on, disabled) {
   ctx.restore();
 }
 
-function drawLabel(ctx, widgetWidth, text, dim) {
-  const r = labelRect(widgetWidth);
+// Draw the label text for a row. slotIdx0 = 0-based.
+function drawLabel(ctx, nodeWidth, slotIdx0, text, dim) {
+  const cy = rowCenterY(slotIdx0);
+  const lx = DOT_GUTTER + 4;
+  const maxW = nodeWidth - PAD_RIGHT - TOGGLE_W - 8 - lx;
+
   ctx.save();
-  if (dim) ctx.globalAlpha = 0.5;
+  if (dim) ctx.globalAlpha = 0.45;
   ctx.fillStyle = text ? "#d8d8d8" : "#666";
-  ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  ctx.font = "11px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textBaseline = "middle";
-  // Ellipsis-clip if too long.
+  ctx.textAlign = "left";
+
   const display = text || (dim ? "(empty)" : "");
-  const maxW = r.w;
+  if (!display) { ctx.restore(); return; }
+
   let painted = display;
   if (ctx.measureText(painted).width > maxW) {
     while (painted.length > 1 && ctx.measureText(painted + "...").width > maxW) {
       painted = painted.slice(0, -1);
     }
-    painted = painted + "...";
+    painted += "...";
   }
-  ctx.fillText(painted, r.x, r.y + r.h / 2);
+  ctx.fillText(painted, lx, cy);
   ctx.restore();
 }
 
-function addRowWidget(node, slotIdx) {
-  const name = `pix_switch_row_${slotIdx}`;
-  // Remove any previous widget with the same name (rebuild path).
-  if (node.widgets) {
-    const idx = node.widgets.findIndex((w) => w.name === name);
-    if (idx !== -1) node.widgets.splice(idx, 1);
-  }
-  const widget = {
-    name,
-    type: "switch_row",
-    value: null,
-    serialize: false,
-    options: { canvasOnly: true },
-    _slotIdx: slotIdx,
-    computeSize(width) {
-      return [width, ROW_H];
-    },
-    draw(ctx, owner, widgetWidth, y, h) {
-      const idx = this._slotIdx;
-      const empty = isEmptyTrailing(owner, idx);
-      const on = isActive(owner, idx);
-      drawLabel(ctx, widgetWidth, labelText(owner, idx), empty);
-      drawToggle(ctx, widgetWidth, on, empty);
-    },
-    // mouse() will be wired in Tasks 7 + 10.
-    mouse() { return false; },
-  };
-  node.addCustomWidget(widget);
-  return widget;
-}
+// Paint all rows for the node. Called from onDrawForeground.
+// node.inputs must exist; node.properties.switchState holds activeIndex.
+export function drawSwitchRows(node, ctx) {
+  const inputs = node.inputs;
+  if (!inputs || inputs.length === 0) return;
+  const w = node.size[0];
+  const state = node.properties?.switchState;
+  const activeIndex = state?.activeIndex ?? 0; // 1-based; 0 = none
+  const labels = state?.labels ?? {};
 
-// Rebuild all row widgets so widget count matches input slot count.
-export function attachRowWidgets(node) {
-  const slots = node.inputs?.length || 0;
-  // Remove any stale row widgets first.
-  if (node.widgets) {
-    for (let i = node.widgets.length - 1; i >= 0; i--) {
-      if ((node.widgets[i].name || "").startsWith("pix_switch_row_")) {
-        node.widgets.splice(i, 1);
-      }
-    }
-  }
-  for (let i = 1; i <= slots; i++) {
-    addRowWidget(node, i);
+  for (let i = 0; i < inputs.length; i++) {
+    const slotIdx1 = i + 1; // 1-based
+    const slot = inputs[i];
+    const connected = slot != null && slot.link != null;
+    const isTrailing = !connected && slotIdx1 === inputs.length;
+    const on = connected && activeIndex === slotIdx1;
+
+    const labelTxt = labels[slotIdx1] || "";
+    drawLabel(ctx, w, i, labelTxt, isTrailing);
+    drawToggle(ctx, w, i, on, isTrailing);
   }
 }
