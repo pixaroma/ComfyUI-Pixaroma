@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { attachRowWidgets } from "./render.mjs";
 
 // State lives on node.properties.switchState. LiteGraph serializes
 // node.properties natively into the workflow JSON, so labels and the
@@ -67,6 +68,7 @@ export function setupNode(node) {
     addInputSlot(node, i);
   }
   state.visibleCount = target;
+  attachRowWidgets(node);
   // Recompute node height from the actual slot/widget count now that we
   // have stripped the 32 auto-created inputs down to just `target`.
   // Without this the node body stays at the ~1100 px height LiteGraph
@@ -88,6 +90,7 @@ export function restoreFromProperties(node) {
     for (const slot of node.inputs) slot.label = "";
   }
   state.visibleCount = node.inputs?.length || 1;
+  attachRowWidgets(node);
   node.setSize(node.computeSize());
   node.graph?.setDirtyCanvas?.(true, true);
 }
