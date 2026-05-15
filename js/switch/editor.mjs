@@ -73,7 +73,7 @@ export function openLabelEditor(node, slotIdx /* 1-based */, rect) {
     `border: 2px solid ${BRAND}`,
     "border-radius: 3px",
     "padding: 0 6px",
-    "font: 12px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    "font: 12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
     "outline: none",
     "box-sizing: border-box",
     "line-height: 1",

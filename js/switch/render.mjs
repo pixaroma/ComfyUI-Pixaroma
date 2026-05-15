@@ -147,17 +147,49 @@ function drawToggle(ctx, nodeWidth, slotIdx0, on, disabled) {
 function drawLabel(ctx, nodeWidth, slotIdx0, text, dim) {
   const cy = rowCenterY(slotIdx0);
   const lx = DOT_GUTTER + 4;
+  const r = labelRect(nodeWidth, slotIdx0);
   const maxW = nodeWidth - PAD_RIGHT - TOGGLE_W - 8 - lx;
 
   ctx.save();
+
+  // Connected-row affordance: paint a subtle rounded-rect outline so the
+  // label area looks like a clickable input field. Dimmed (empty trailing)
+  // rows skip this so they don't suggest a typeable affordance where
+  // there's no slot to label yet.
+  if (!dim) {
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    ctx.lineWidth = 1;
+    const radius = 3;
+    const x = r.x;
+    const y = r.y + 2;
+    const w = r.w;
+    const h = r.h - 4;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x, y, w, h, radius);
+    else ctx.rect(x, y, w, h);
+    ctx.stroke();
+  }
+
   if (dim) ctx.globalAlpha = 0.45;
-  ctx.fillStyle = text ? "#d8d8d8" : "#666";
-  ctx.font = "11px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
+  // Empty-but-connected rows show "Label..." in placeholder grey;
+  // user-set text shows in the normal text color.
+  const hasUserText = text && text.length > 0;
+  let display, color;
+  if (hasUserText) {
+    display = text;
+    color = "#d8d8d8";
+  } else if (dim) {
+    display = "(empty)";
+    color = "#666";
+  } else {
+    display = "Label...";
+    color = "#5a5a5a"; // dimmer than canvas grey - "placeholder" feel
+  }
+
+  ctx.fillStyle = color;
+  ctx.font = "12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif";
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
-
-  const display = text || (dim ? "(empty)" : "");
-  if (!display) { ctx.restore(); return; }
 
   let painted = display;
   if (ctx.measureText(painted).width > maxW) {
