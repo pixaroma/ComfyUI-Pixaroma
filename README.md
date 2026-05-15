@@ -173,6 +173,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 15, 2026 (1.3.29)**
+- **Prompt Reader Pixaroma reads through switches:** If your workflow had a Switch Pixaroma (or rgthree's Any Switch) between your text node and the prompt encoder, dropping the generated PNG on Prompt Reader used to say "no positive prompt found" even though the prompt was right there in the image's metadata. The reader now picks the active row of a Switch Pixaroma (and the first connected input of an Any Switch) and traces the text from there.
+
 ### **May 15, 2026 (1.3.28)**
 - **NEW: Switch Pixaroma** - a universal multi-input switch for any data type. Connect models, images, prompts, masks, audio, latents, anything you want, and pick which one flows through with a single click on its toggle. The node starts with one input and grows on its own as you connect more cables (up to 32 rows). Each row gets a label that auto-fills with the type name (MODEL, IMAGE, CLIP...) so you can tell what is wired where at a glance; click the label to type your own name (for example "main checkpoint" or "alt prompt"), clear it and press Enter to revert to the type name. Only one input can be active at a time, lit up in Pixaroma orange. Disconnect the active row and the switch automatically moves to the next available one so your workflow doesn't break. All settings save with your workflow.
 
