@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { readState, restoreFromProperties, addRow, deleteRow, toggleEnabled } from "./core.mjs";
-import { injectCSS, buildRoot, renderRows } from "./render.mjs";
+import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 280;
@@ -15,15 +15,33 @@ function removeAllWireSlots(node) {
   }
 }
 
+// growNodeToContent: after a rerender that added rows, ask ComfyUI to recompute
+// the node's natural size. If the content's required height grew past the
+// current node.size[1], lift the node taller. Never shrinks the node (so a
+// user-resized-bigger node stays the size they chose).
+function growNodeToContent(node) {
+  if (!node || typeof node.computeSize !== "function") return;
+  const computed = node.computeSize();
+  if (Array.isArray(computed) && computed[1] > node.size[1]) {
+    node.size[1] = computed[1];
+  }
+}
+
 function makeHandlers(node, root) {
-  const rerender = () => renderRows(node, root, handlers);
+  const rerender = () => {
+    renderRows(node, root, handlers);
+    requestAnimationFrame(() => {
+      growNodeToContent(node);
+      node.setDirtyCanvas(true, true);
+    });
+  };
   const handlers = {
-    onToggleEnabled: (id) => { toggleEnabled(node, id); rerender(); node.setDirtyCanvas(true, true); },
+    onToggleEnabled: (id) => { toggleEnabled(node, id); rerender(); },
     onToggleWire: (_id) => { /* Task 8 */ },
     onLabelChange: (_id, _v) => { /* Task 5 */ },
     onTextChange: (_id, _v) => { /* Task 5 */ },
-    onDelete: (id) => { deleteRow(node, id); rerender(); node.setDirtyCanvas(true, true); },
-    onAdd: () => { addRow(node); rerender(); node.setDirtyCanvas(true, true); },
+    onDelete: (id) => { deleteRow(node, id); rerender(); },
+    onAdd: () => { addRow(node); rerender(); },
     onDragStart: (_id, _ev) => { /* Task 9 */ },
     onDragOver: (_id, _ev) => { /* Task 9 */ },
     onDrop: (_id, _ev) => { /* Task 9 */ },
@@ -55,7 +73,7 @@ app.registerExtension({
         node.addDOMWidget("promptstack", "div", root, {
           serialize: false,
           canvasOnly: true,
-          getMinHeight: () => 120,
+          getMinHeight: () => measureContentHeight(root),
         });
 
         rerender();

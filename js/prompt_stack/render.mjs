@@ -111,10 +111,8 @@ const CSS = `
   font-size: 14px;
   line-height: 14px;
   flex-shrink: 0;
-  visibility: hidden;
   padding: 0;
 }
-.pix-ps-row:hover .pix-ps-delete { visibility: visible; }
 .pix-ps-delete:hover { color: #f66744; background: rgba(246,103,68,0.12); }
 .pix-ps-delete:disabled { color: #444; cursor: not-allowed; background: transparent; }
 
@@ -176,6 +174,28 @@ export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-ps-root";
   return root;
+}
+
+// measureContentHeight: sum of each child's offsetHeight (not root.scrollHeight,
+// because ComfyUI stretches root.offsetHeight which would create a feedback
+// loop). Adds CSS row-gap between children + root's vertical padding.
+// Used by getMinHeight so the DOM widget can ask ComfyUI for the right amount
+// of vertical space as rows are added or removed.
+export function measureContentHeight(root) {
+  if (!root) return 120;
+  let h = 0;
+  let count = 0;
+  for (const child of root.children) {
+    if (child.offsetParent === null) continue;
+    h += child.offsetHeight;
+    count += 1;
+  }
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+  if (count > 1) h += gap * (count - 1);
+  h += parseFloat(cs.paddingTop) || 0;
+  h += parseFloat(cs.paddingBottom) || 0;
+  return Math.max(120, h);
 }
 
 // renderRows clears root.innerHTML and rebuilds every row.
