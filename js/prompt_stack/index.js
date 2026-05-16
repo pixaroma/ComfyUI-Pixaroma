@@ -83,24 +83,10 @@ app.registerExtension({
     {
       id: "Pixaroma.PromptStack.Separator",
       name: "Separator",
-      type: "combo",
-      defaultValue: "Comma+Space (, )",
-      options: [
-        "Comma+Space (, )",
-        "Newline (\\n)",
-        "Space ( )",
-        "Custom...",
-      ],
-      tooltip: "How enabled rows are joined into the output string. Custom uses the value below.",
-      category: ["👑 Pixaroma", "Prompt Stack"],
-    },
-    {
-      id: "Pixaroma.PromptStack.CustomSeparator",
-      name: "Custom separator",
       type: "text",
       defaultValue: ", ",
-      tooltip: "Used only when Separator is set to 'Custom...'. Empty falls back to ', '.",
-      category: ["👑 Pixaroma", "Prompt Stack (advanced)"],
+      tooltip: "What goes between enabled rows in the joined output. Examples: ', ' (default comma+space), '\\n' for newline (type backslash + n), ' ' for a single space, ' | ' for pipe. Empty falls back to ', '.",
+      category: ["👑 Pixaroma", "Prompt Stack"],
     },
   ],
 
@@ -192,12 +178,9 @@ app.graphToPrompt = async function (...args) {
 };
 
 function resolveSeparator() {
-  const choice = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.Separator") || "Comma+Space (, )";
-  if (choice === "Newline (\\n)") return "\n";
-  if (choice === "Space ( )") return " ";
-  if (choice === "Custom...") {
-    const custom = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.CustomSeparator");
-    return (typeof custom === "string" && custom.length > 0) ? custom : ", ";
-  }
-  return ", ";
+  const raw = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.Separator");
+  if (typeof raw !== "string" || raw.length === 0) return ", ";
+  // Interpret \n (backslash + n) as a newline and \t as a tab so users can
+  // express those in a single-line text input. Anything else stays literal.
+  return raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t");
 }
