@@ -12,6 +12,20 @@ import { pixConfirm } from "./interaction.mjs";
 const DEFAULT_W = 400;
 const DEFAULT_H = 280;
 
+// Defensive cleanup for nodes carried over from the older wire-mode version
+// of this node (or from any future ComfyUI build that decides to auto-create
+// slots from a stale INPUT_TYPES). Walks node.inputs and strips any leftover
+// wire_* entries so the node renders cleanly.
+function stripLegacyWireSlots(node) {
+  if (!node.inputs) return;
+  for (let i = node.inputs.length - 1; i >= 0; i--) {
+    const inp = node.inputs[i];
+    if (inp && typeof inp.name === "string" && inp.name.startsWith("wire_")) {
+      node.removeInput(i);
+    }
+  }
+}
+
 // growNodeToContent: ensure node.size[1] is tall enough for the actual rendered
 // DOM widget content. Uses measureContentHeight (sum of children) rather than
 // node.computeSize (which can over-report). Adds an allowance for title + top
@@ -99,6 +113,7 @@ app.registerExtension({
       const node = this;
       queueMicrotask(() => {
         injectCSS();
+        stripLegacyWireSlots(node);
         restoreFromProperties(node);
 
         const root = buildRoot();
@@ -123,6 +138,7 @@ app.registerExtension({
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
+      stripLegacyWireSlots(this);
       restoreFromProperties(this);
       if (this._pixPsRerender) this._pixPsRerender();
       return r;
