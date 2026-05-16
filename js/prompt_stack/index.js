@@ -10,7 +10,7 @@ import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
-const DEFAULT_H = 280;
+const DEFAULT_H = 180;
 
 // Defensive cleanup for nodes carried over from the older wire-mode version
 // of this node (or from any future ComfyUI build that decides to auto-create
