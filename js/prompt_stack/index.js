@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { readState, restoreFromProperties, addRow, deleteRow, toggleEnabled } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
+import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 280;
@@ -40,13 +41,19 @@ function makeHandlers(node, root) {
     onToggleWire: (_id) => { /* Task 8 */ },
     onLabelChange: (_id, _v) => { /* Task 5 */ },
     onTextChange: (_id, _v) => { /* Task 5 */ },
-    onDelete: (id) => {
+    onDelete: async (id) => {
       const state = readState(node);
       const row = state.rows.find((r) => r.id === id);
       const hasContent = row && ((row.text && row.text.trim()) || (row.label && row.label.trim()));
       if (hasContent) {
         const labelOrIdx = (row.label && row.label.trim()) || `Row ${state.rows.indexOf(row) + 1}`;
-        if (!confirm(`Delete row "${labelOrIdx}"?`)) return;
+        const ok = await pixConfirm({
+          title: "Delete row?",
+          message: `Are you sure you want to delete "${labelOrIdx}"?`,
+          okText: "Delete",
+          cancelText: "Cancel",
+        });
+        if (!ok) return;
       }
       deleteRow(node, id);
       rerender();

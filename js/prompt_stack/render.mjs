@@ -161,6 +161,62 @@ const CSS = `
   margin-top: 4px;
 }
 .pix-ps-add:hover { background: #333; border-color: #f66744; color: #f66744; }
+
+.pix-ps-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+}
+.pix-ps-confirm-box {
+  background: #1d1d1d;
+  border: 1px solid #2e2e2e;
+  border-radius: 6px;
+  min-width: 320px;
+  max-width: 480px;
+  padding: 18px 20px;
+  color: #ddd;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.pix-ps-confirm-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  margin: 0 0 8px 0;
+}
+.pix-ps-confirm-msg {
+  font-size: 13px;
+  color: #bbb;
+  margin: 0 0 16px 0;
+  line-height: 1.4;
+}
+.pix-ps-confirm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.pix-ps-confirm-btn {
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
+  border-radius: 3px;
+  color: #ddd;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 14px;
+  font-family: inherit;
+}
+.pix-ps-confirm-btn:hover { background: #333; border-color: #555; }
+.pix-ps-confirm-btn.primary {
+  background: #f66744;
+  border-color: #f66744;
+  color: #fff;
+}
+.pix-ps-confirm-btn.primary:hover { background: #ff7a58; border-color: #ff7a58; }
 `;
 
 export function injectCSS() {

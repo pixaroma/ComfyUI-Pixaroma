@@ -86,3 +86,72 @@ function autoGrow(ta) {
   const h = Math.min(ta.scrollHeight, 120);
   ta.style.height = h + "px";
 }
+
+// pixConfirm: small Pixaroma-themed confirmation dialog. Replaces native
+// window.confirm() so the user does not get yanked out to the browser chrome.
+// Returns a Promise<boolean>: true = primary action, false = cancel / Esc / backdrop click.
+export function pixConfirm({ title, message, okText = "OK", cancelText = "Cancel" } = {}) {
+  return new Promise((resolve) => {
+    const backdrop = document.createElement("div");
+    backdrop.className = "pix-ps-confirm-backdrop";
+
+    const box = document.createElement("div");
+    box.className = "pix-ps-confirm-box";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "pix-ps-confirm-title";
+    titleEl.textContent = title || "Confirm";
+    box.appendChild(titleEl);
+
+    if (message) {
+      const msgEl = document.createElement("div");
+      msgEl.className = "pix-ps-confirm-msg";
+      msgEl.textContent = message;
+      box.appendChild(msgEl);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "pix-ps-confirm-actions";
+
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.className = "pix-ps-confirm-btn";
+    cancelBtn.textContent = cancelText;
+    actions.appendChild(cancelBtn);
+
+    const okBtn = document.createElement("button");
+    okBtn.type = "button";
+    okBtn.className = "pix-ps-confirm-btn primary";
+    okBtn.textContent = okText;
+    actions.appendChild(okBtn);
+
+    box.appendChild(actions);
+    backdrop.appendChild(box);
+    document.body.appendChild(backdrop);
+
+    let done = false;
+    const finish = (val) => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("keydown", onKey, true);
+      backdrop.remove();
+      resolve(val);
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopImmediatePropagation(); finish(false); }
+      else if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); finish(true); }
+    };
+    window.addEventListener("keydown", onKey, true);
+
+    backdrop.addEventListener("mousedown", (e) => {
+      if (e.target === backdrop) finish(false);
+    });
+    cancelBtn.addEventListener("click", () => finish(false));
+    okBtn.addEventListener("click", () => finish(true));
+
+    // Focus the OK button so Enter works immediately; backspace-safe because
+    // both buttons handle their own keys via the global keydown listener.
+    queueMicrotask(() => okBtn.focus());
+  });
+}
