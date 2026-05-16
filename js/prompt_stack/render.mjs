@@ -56,19 +56,36 @@ const CSS = `
 .pix-ps-handle:hover { color: #ccc; }
 
 .pix-ps-toggle {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: #555;
-  border: 1px solid #777;
+  min-width: 32px;
+  height: 18px;
+  border-radius: 9px;
+  background: #2a2a2a;
+  border: 1px solid #3a3a3a;
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  color: #888;
+  letter-spacing: 0.5px;
+  padding: 0 6px;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  user-select: none;
+}
+.pix-ps-toggle:hover {
+  border-color: #555;
+  color: #ccc;
 }
 .pix-ps-toggle.on {
   background: #f66744;
   border-color: #f66744;
-  box-shadow: 0 0 0 2px rgba(246, 103, 68, 0.18);
+  color: #fff;
+}
+.pix-ps-toggle.on:hover {
+  filter: brightness(1.08);
+  color: #fff;
 }
 
 .pix-ps-label {
@@ -252,6 +269,7 @@ export function renderRows(node, root, rowHandlers) {
 
     const toggle = document.createElement("div");
     toggle.className = "pix-ps-toggle" + (row.enabled ? " on" : "");
+    toggle.textContent = row.enabled ? "ON" : "OFF";
     toggle.title = row.enabled ? "Click to mute this row" : "Click to include this row";
     toggle.addEventListener("click", () => rowHandlers.onToggleEnabled(row.id));
     head.appendChild(toggle);
