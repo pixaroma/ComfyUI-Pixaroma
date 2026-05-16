@@ -70,6 +70,31 @@ function makeHandlers(node, root) {
 app.registerExtension({
   name: "Pixaroma.PromptStack",
 
+  settings: [
+    {
+      id: "Pixaroma.PromptStack.Separator",
+      name: "Separator",
+      type: "combo",
+      defaultValue: "Comma+Space (, )",
+      options: [
+        "Comma+Space (, )",
+        "Newline (\\n)",
+        "Space ( )",
+        "Custom...",
+      ],
+      tooltip: "How enabled rows are joined into the output string. Custom uses the value below.",
+      category: ["👑 Pixaroma", "Prompt Stack"],
+    },
+    {
+      id: "Pixaroma.PromptStack.CustomSeparator",
+      name: "Custom separator",
+      type: "text",
+      defaultValue: ", ",
+      tooltip: "Used only when Separator is set to 'Custom...'. Empty falls back to ', '.",
+      category: ["👑 Pixaroma", "Prompt Stack (advanced)"],
+    },
+  ],
+
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaPromptStack") return;
 
@@ -152,6 +177,12 @@ app.graphToPrompt = async function (...args) {
 };
 
 function resolveSeparator() {
-  // Task 7 replaces this with a real settings lookup. For now: default.
+  const choice = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.Separator") || "Comma+Space (, )";
+  if (choice === "Newline (\\n)") return "\n";
+  if (choice === "Space ( )") return " ";
+  if (choice === "Custom...") {
+    const custom = app.ui?.settings?.getSettingValue?.("Pixaroma.PromptStack.CustomSeparator");
+    return (typeof custom === "string" && custom.length > 0) ? custom : ", ";
+  }
   return ", ";
 }
