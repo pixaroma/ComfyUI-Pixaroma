@@ -119,6 +119,9 @@ A small node with one number field and two outputs: **int** and **float**. Usefu
 ### ✍️ Text Pixaroma
 A multi-line text field with a STRING output. Write your prompt (or any other long text) once and wire the output into multiple downstream nodes - positive prompt, negative prompt, captions, instructions, anywhere a string is needed. The field grows when you drag the node bigger, so you have plenty of room for long prompts. The text saves with your workflow.
 
+### 🧱 Prompt Stack Pixaroma
+A single node that holds an ordered stack of prompt chunks you can mute or include with one click. Add as many rows as you want, type a different piece of your prompt in each (style words, subject, lighting, quality boosters, anything), give each row a short label so you remember what it does, and toggle the orange **ON / OFF** pill to include or skip that row at run time. All the ON rows get joined into one text output with whatever separator you pick in **Settings → 👑 Pixaroma → Prompt Stack** (default comma+space, also works as newline, space, pipe, or anything you type). Drag the handle on the left of any row to reorder them, and the join order updates too. Rows that grow to many lines scroll on their own. The node tidies itself as you add and delete rows so it always fits its content with a bit of breathing room. Everything saves with your workflow. Great for testing prompt variants by clicking toggles instead of editing text.
+
 ### 🔔 Notify Pixaroma
 A small terminal node that plays a sound when reached during workflow execution. Drop one at the end of a workflow to hear "render finished" while you're in another browser tab or app, or branch one off any node mid-graph to be alerted at a checkpoint. Pick from 10 bundled notification sounds (drop more `.mp3`/`.wav`/`.ogg` into `assets/sounds/` to extend), set a per-node volume and an optional label, and tap the **▶ Preview** button to audition a sound without running the workflow. A master toggle in **Settings → 👑 Pixaroma → Notify** silences every Notify node at once for quiet sessions. Each node also has its own enabled toggle. Always re-fires on every Run, even when upstream is fully cached.
 
@@ -175,6 +178,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 17, 2026 (1.3.32)**
+- **NEW: Prompt Stack Pixaroma** - a single node that holds an ordered stack of prompt chunks you can mute or include with one click. Add as many rows as you want, type a different piece of your prompt in each (style words, subject, lighting, quality boosters, negative-free style tags, anything), give each row a short label so you remember what it does, and toggle the orange ON / OFF pill to include or skip that row at run time. All the ON rows get joined into one text output with whatever separator you pick in Settings (default comma+space, also works as newline, space, pipe, or anything you type). Drag the handle on the left of any row to reorder them, and the join order updates too. Rows that grow to many lines scroll on their own. The node tidies itself as you add and delete rows so it always fits its content with a bit of breathing room. Everything saves with your workflow. Great for testing prompt variants by clicking toggles instead of editing text.
+- **Prompt Reader Pixaroma now reads prompts that came from Prompt Stack:** Drop a PNG that was generated using Prompt Stack into Prompt Reader and you get back the exact combined prompt the workflow used, separator and all. Previously you got "no positive prompt found" because the reader didn't know how to look inside Prompt Stack's saved rows.
 
 ### **May 15, 2026 (1.3.31)**
 - **NEW: Remove Background Pixaroma** - a single node that replaces the usual three-node chain for background removal. Wire in your image and a Load Background Removal Model, and the node outputs the cutout image (with transparent background), the foreground mask, and the inverted mask all at once. Same result as the native Remove Background + Invert Mask + Join Image with Alpha chain, but with fewer cables on your canvas.
