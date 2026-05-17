@@ -24,6 +24,7 @@ import {
   createSelectInput,
   createRow,
 } from "../framework/index.mjs";
+import { fetchBgRemovalInfo, buildBgRemovalDropdown } from "../framework/bg_removal_dropdown.mjs";
 
 const PAINT_STYLE_ID = "pixaroma-paint-extra-styles-v5";
 
@@ -1080,66 +1081,50 @@ export class PaintStudio {
       "Enabled on layers added from an image. Draw layers stay disabled.";
     panel.content.appendChild(this._bgRemovalBtn);
 
-    const select = createSelectInput({
-      options: [
-        { value: "auto", label: "Auto (recommended)" },
-        { value: "u2net", label: "Fast" },
-        { value: "isnet-general-use", label: "Balanced" },
-        { value: "birefnet-general", label: "Best" },
-      ],
-      value: "auto",
-      onChange: (val) => { this._bgRemovalQuality = val; },
-    });
-    select.style.width = "100%";
-    this._bgRemovalSelect = select;
-    panel.content.appendChild(createRow("Model", select, { labelWidth: "80px" }));
+    // Shared BiRefNet+rembg dropdown - same UI as Image Composer.
+    const bgRowHost = document.createElement("div");
+    bgRowHost.style.cssText = "width:100%;";
+    panel.content.appendChild(createRow("Model", bgRowHost, { labelWidth: "80px" }));
 
     const statusLine = document.createElement("div");
     statusLine.style.cssText =
       "font-size:10px;color:#888;margin:4px 2px 2px;line-height:1.4;";
-    statusLine.textContent = "Checking rembg installation...";
+    statusLine.textContent = "Checking background-removal status...";
     panel.content.appendChild(statusLine);
     this._bgRemovalStatusLine = statusLine;
 
-    PaintAPI.removeBgInfo().then((info) => {
-      if (!info.rembgInstalled) {
+    fetchBgRemovalInfo().then((info) => {
+      const dd = buildBgRemovalDropdown({
+        container: bgRowHost,
+        info,
+        value: this._bgRemovalQuality,
+        onChange: (val) => { this._bgRemovalQuality = val; },
+      });
+      this._bgRemovalSelect = dd.select;
+      this._bgRemovalQuality = dd.select.value;
+
+      const variants = info?.birefnet?.variants || [];
+      const anyBiRefInstalled = variants.some((v) => v.installed);
+      if (anyBiRefInstalled) {
+        const count = variants.filter((v) => v.installed).length;
         statusLine.innerHTML =
-          '<span style="color:#e57">\u2717 rembg not installed</span> \u2014 ' +
-          'run <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code> ' +
-          "in ComfyUI's python_embeded folder, then restart.";
-        select.disabled = true;
+          `<span style="color:#4a7">\u2713 ${count} BiRefNet variant${count === 1 ? "" : "s"} installed</span>`;
+        this._bgRemovalUnavailable = false;
+      } else if (info.rembgInstalled) {
+        statusLine.innerHTML =
+          `<span style="color:#4a7">\u2713 rembg ${info.rembgVersion || ""}</span> \u00b7 ` +
+          `<span>or install a BiRefNet model for higher quality</span>`;
+        this._bgRemovalUnavailable = false;
+      } else {
+        statusLine.innerHTML =
+          '<span style="color:#e57">No background-removal model available.</span> ' +
+          'Install rembg (<code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code>) ' +
+          'or download a BiRefNet model from the dropdown.';
         this._bgRemovalUnavailable = true;
-        this._syncBgRemovalButton();
-        return;
       }
-      const models = Array.isArray(info.models) ? info.models : [];
-      if (models.length) {
-        select.innerHTML = "";
-        for (const m of models) {
-          const opt = document.createElement("option");
-          opt.value = m.id;
-          let label = m.label;
-          if (m.id !== "auto") {
-            const parts = [];
-            if (m.sizeMB) parts.push(`${m.sizeMB} MB`);
-            if (m.downloaded) parts.push("\u2713 downloaded");
-            else if (m.available) parts.push("will download");
-            if (parts.length) label += ` \u2014 ${parts.join(", ")}`;
-          }
-          opt.textContent = label;
-          opt.disabled = !m.available;
-          select.appendChild(opt);
-        }
-        select.value = "auto";
-      }
-      const firstMissing = models.find((m) => m.available && !m.downloaded && m.id !== "auto");
-      const hint = firstMissing
-        ? `First use of a new model will download to <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>.`
-        : `Models: <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.modelDir || "rembg"}</code>`;
-      statusLine.innerHTML =
-        `<span style="color:#4a7">\u2713 rembg ${info.rembgVersion || ""}</span> \u00b7 ${hint}`;
+      this._syncBgRemovalButton();
     }).catch(() => {
-      statusLine.textContent = "Couldn't query rembg status \u2014 backend unreachable.";
+      statusLine.textContent = "Couldn't query background-removal status \u2014 backend unreachable.";
     });
 
     container.insertBefore(panel.el, sidebarFooter);
