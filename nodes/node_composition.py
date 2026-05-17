@@ -7,6 +7,11 @@ import time
 import folder_paths
 from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
+from ._bg_removal_helpers import (
+    is_birefnet_model_id,
+    run_birefnet_on_pil,
+    get_birefnet_inventory,
+)
 
 
 # Temp subfolder for Image Composer node previews (cleared by ComfyUI
@@ -82,13 +87,41 @@ def _remove_background(img, quality="auto"):
     'auto'). Tries the requested model first, then walks the auto
     fallback chain (best → lightest) if it's not installed.
     """
+    # Legacy tier → modern model. Keeps old saved scenes working.
+    _legacy = {"normal": "isnet-general-use", "high": "birefnet-general"}
+    requested = _legacy.get(quality, quality) or "auto"
+
+    # Pixaroma BiRefNet variants (birefnet / -hr / -matting) live in our
+    # own loader, not rembg. Route explicit picks here so Auto Remove on
+    # Execute uses the same model the manual Remove Background button
+    # uses (which goes through /pixaroma/remove_bg with the same dispatch).
+    if is_birefnet_model_id(requested):
+        try:
+            return run_birefnet_on_pil(img.convert("RGB"), requested).convert("RGBA")
+        except Exception as e:
+            print(f"[Pixaroma] Auto Remove BG: BiRefNet '{requested}' failed: {e}")
+            return img
+
+    # 'auto' picks whatever is best. Mirror the frontend's pickDefaultModel
+    # priority: any installed BiRefNet variant (standard, HR, matting)
+    # beats rembg. Falls through to rembg only when no BiRefNet variant
+    # is installed (or the inventory lookup itself fails).
+    if requested == "auto":
+        try:
+            for variant in get_birefnet_inventory().get("variants", []):
+                if variant.get("installed"):
+                    pick = variant["id"]
+                    try:
+                        return run_birefnet_on_pil(img.convert("RGB"), pick).convert("RGBA")
+                    except Exception as e:
+                        print(f"[Pixaroma] Auto Remove BG: BiRefNet '{pick}' failed: {e}")
+                        return img
+        except Exception as e:
+            print(f"[Pixaroma] Auto Remove BG: BiRefNet inventory lookup failed: {e}")
+
     try:
         from rembg import remove, new_session
         import io
-
-        # Legacy tier → modern model. Keeps old saved scenes working.
-        _legacy = {"normal": "isnet-general-use", "high": "birefnet-general"}
-        requested = _legacy.get(quality, quality) or "auto"
 
         # Try requested first, then fall through the auto chain. This
         # matches the server-side /pixaroma/remove_bg behaviour so the

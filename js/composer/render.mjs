@@ -361,7 +361,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           inputIndex: mLayer.inputIndex || 1,
           fillMode: mLayer.fillMode || "cover",
           removeBgOnExec: !!mLayer.removeBgOnExec,
-          bgRemovalQuality: mLayer.bgRemovalQuality || "auto",
+          bgRemovalQuality: mLayer.bgRemovalQuality,
           img: this._makePlaceholderImage(w, h, color, mLayer.name, (bitmapImg) => {
             this.layers[i].img = bitmapImg;
           }),
@@ -412,7 +412,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           blendMode: mLayer.blendMode || "Normal",
           blur: mLayer.blur || 0,
           removeBgOnExec: !!mLayer.removeBgOnExec,
-          bgRemovalQuality: mLayer.bgRemovalQuality || "auto",
+          bgRemovalQuality: mLayer.bgRemovalQuality,
           rawB64_internal: null,
           rawServerPath: mLayer.src,
           savedOnServer: true,
