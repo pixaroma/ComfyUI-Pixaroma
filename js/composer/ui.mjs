@@ -33,12 +33,17 @@ const _LEGACY_BG_QUALITY_MAP = {
 // select never shows empty.
 function _applyBgQualityToSelect(selectEl, stored) {
   if (!selectEl) return;
-  let v = stored || "auto";
+  // No per-layer override stored - leave the dropdown on whatever the
+  // shared helper picked (BiRefNet Standard if installed, else rembg
+  // auto). Don't blindly reset to "auto" or we override the helper's
+  // smart default every time the user selects a fresh layer.
+  if (!stored) return;
+  let v = stored;
   if (_LEGACY_BG_QUALITY_MAP[v]) v = _LEGACY_BG_QUALITY_MAP[v];
-  const hasOption = Array.from(selectEl.options).some(
-    (o) => o.value === v && !o.disabled,
-  );
-  selectEl.value = hasOption ? v : "auto";
+  const hasOption = Array.from(selectEl.options).some((o) => o.value === v);
+  // If the stored value isn't a valid option (deleted model, etc), keep
+  // the current dropdown value rather than blindly resetting to "auto".
+  if (hasOption) selectEl.value = v;
 }
 
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
