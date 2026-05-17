@@ -385,7 +385,16 @@ def run_birefnet_on_pil(pil_image, model_id):
         try:
             print(f"[Pixaroma] BiRefNet: GPU attempt at {size}x{size}...")
             bg_model = _get_cached_model(ckpt_path, size, force_cpu=False)
-            mask = bg_model.encode_image(tensor)
+            # torch.no_grad is REQUIRED here. When called from a workflow,
+            # ComfyUI's executor wraps everything in no_grad already so it
+            # works either way; when called from the server route (manual
+            # Remove Background button) there's no wrapper, the mask comes
+            # back with requires_grad=True, and the .numpy() conversion
+            # below blows up with "Can't call numpy() on Tensor that requires
+            # grad". Explicit no_grad here makes the helper caller-agnostic
+            # and also saves memory by skipping the autograd graph.
+            with torch.no_grad():
+                mask = bg_model.encode_image(tensor)
             if size != native_size:
                 print(
                     f"[Pixaroma] BiRefNet: GPU at {size}x{size} succeeded "
@@ -421,7 +430,8 @@ def run_birefnet_on_pil(pil_image, model_id):
         )
         try:
             bg_model = _get_cached_model(ckpt_path, native_size, force_cpu=True)
-            mask = bg_model.encode_image(tensor)
+            with torch.no_grad():
+                mask = bg_model.encode_image(tensor)
             print("[Pixaroma] BiRefNet: CPU fallback succeeded")
         except Exception as cpu_err:
             _evict_from_cache(ckpt_path, native_size, force_cpu=True)
