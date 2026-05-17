@@ -7,6 +7,7 @@ import time
 import folder_paths
 from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
+from ._bg_removal_helpers import is_birefnet_model_id, run_birefnet_on_pil
 
 
 # Temp subfolder for Image Composer node previews (cleared by ComfyUI
@@ -82,13 +83,25 @@ def _remove_background(img, quality="auto"):
     'auto'). Tries the requested model first, then walks the auto
     fallback chain (best → lightest) if it's not installed.
     """
+    # Legacy tier → modern model. Keeps old saved scenes working.
+    _legacy = {"normal": "isnet-general-use", "high": "birefnet-general"}
+    requested = _legacy.get(quality, quality) or "auto"
+
+    # Pixaroma BiRefNet variants (birefnet-standard / -hr / -matting) live
+    # in our own loader, not rembg. Route explicit picks here so Auto
+    # Remove on Execute uses the same model the manual Remove Background
+    # button uses (which goes through /pixaroma/remove_bg with the same
+    # dispatch).
+    if is_birefnet_model_id(requested):
+        try:
+            return run_birefnet_on_pil(img.convert("RGB"), requested).convert("RGBA")
+        except Exception as e:
+            print(f"[Pixaroma] Auto Remove BG: BiRefNet '{requested}' failed: {e}")
+            return img
+
     try:
         from rembg import remove, new_session
         import io
-
-        # Legacy tier → modern model. Keeps old saved scenes working.
-        _legacy = {"normal": "isnet-general-use", "high": "birefnet-general"}
-        requested = _legacy.get(quality, quality) or "auto"
 
         # Try requested first, then fall through the auto chain. This
         # matches the server-side /pixaroma/remove_bg behaviour so the
