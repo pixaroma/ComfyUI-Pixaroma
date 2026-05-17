@@ -137,20 +137,25 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
     "font-size:10px;color:#888;line-height:1.4;display:none;";
 
   const rembgById = (id) => rembgModels.find((x) => x.id === id);
-  const REMBG_DOCS_URL = "https://github.com/danielgatis/rembg#installation";
+  // One canonical doc page covering BOTH BiRefNet downloads and rembg
+  // install steps, so the user lands somewhere maintained instead of
+  // bouncing to whichever upstream repo we happened to link.
+  const HELP_DOCS_URL = "https://github.com/pixaroma/ComfyUI-Pixaroma#2-optional-ai-background-removal";
 
   function refreshHelpRow() {
     const id = select.value;
     const v = variants.find((x) => x.id === id);
     const m = rembgById(id);
 
-    // BiRefNet variant, not installed -> show download link.
+    // BiRefNet variant, not installed -> show download link + Read more.
     if (v && !v.installed) {
       helpRow.style.display = "";
       helpRow.innerHTML =
         `<a href="${v.downloadUrl}" target="_blank" rel="noopener" ` +
         `style="color:#f66744;text-decoration:underline;cursor:pointer;">Download ${v.filename}</a>` +
-        ` and place in <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.birefnet?.modelDir || "ComfyUI/models/background_removal"}</code>`;
+        ` and place in <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">${info.birefnet?.modelDir || "ComfyUI/models/background_removal"}</code>. ` +
+        `<a href="${HELP_DOCS_URL}" target="_blank" rel="noopener" ` +
+        `style="color:#f66744;text-decoration:underline;cursor:pointer;">Read more</a>`;
       return;
     }
 
@@ -163,7 +168,7 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
         `type <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">cmd</code> in the address bar, then run ` +
         `<code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install rembg</code>. ` +
         `Restart ComfyUI. ` +
-        `<a href="${REMBG_DOCS_URL}" target="_blank" rel="noopener" ` +
+        `<a href="${HELP_DOCS_URL}" target="_blank" rel="noopener" ` +
         `style="color:#f66744;text-decoration:underline;cursor:pointer;">Read more</a>`;
       return;
     }
@@ -174,7 +179,9 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
       helpRow.innerHTML =
         `<span style="color:#e57">Needs rembg ${m.minRembg}+ (you have ${info.rembgVersion || "unknown"}).</span> ` +
         `Update with <code style="background:#1c1c1c;padding:1px 4px;border-radius:2px;">python.exe -m pip install --upgrade rembg</code> ` +
-        `in ComfyUI/python_embeded, then restart.`;
+        `in ComfyUI/python_embeded, then restart. ` +
+        `<a href="${HELP_DOCS_URL}" target="_blank" rel="noopener" ` +
+        `style="color:#f66744;text-decoration:underline;cursor:pointer;">Read more</a>`;
       return;
     }
 

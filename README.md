@@ -154,24 +154,49 @@ git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
 ```
 
 ### 2. Optional: AI Background Removal
-Want to use the **AI Remove Background** button in the Image Composer? Just install `rembg`:
+AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** button, and the **Paint Pixaroma** button. All three pick from the same model dropdown so a model you install once works everywhere.
+
+There are two ways to get AI background removal working: **Pixaroma BiRefNet** (recommended, no extra Python deps, three model variants) and **rembg** (a separate Python library with four model options). They can be used side-by-side - install whichever you want from the dropdown.
+
+#### Option A: Pixaroma BiRefNet (recommended)
+
+Download one of these three `.safetensors` files and drop it into `ComfyUI/models/background_removal/`. The dropdown shows them grouped under "Pixaroma BiRefNet" at the top. **The filename matters** - it controls which preprocessing resolution is used. Rename the downloaded file to one of the names below so the dropdown picks the right one.
+
+| Variant | Filename | VRAM | Best for |
+|---------|----------|------|----------|
+| **Standard** | `birefnet.safetensors` (424 MB) | 4-6 GB | Clean objects, products, logos. Fast everyday cutouts. Default. [Download](https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal) |
+| **High Resolution** | `birefnet-hr.safetensors` (444 MB) | 8 GB+ | Large images with fine outline detail (jewelry, intricate hardware). [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR) |
+| **Matting (Soft Edges)** | `birefnet-matting.safetensors` (444 MB) | 8 GB+ | Hair, fur, lace, soft fabric. Also worth trying for glass / smoke. [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting) |
+
+**Rename steps on Windows**: download from HuggingFace (you'll get a file called `model.safetensors`), right-click the file, **Rename**, type the recommended name above (keeping `.safetensors`), press Enter. If Windows hides extensions: View tab → check "File name extensions" first, otherwise the rename can accidentally drop the extension.
+
+#### Option B: rembg (alternative)
+
+`rembg` is a separate Python library. Install it once and you get four bundled model options.
 
 ```bash
-# Windows Portable
+# Windows Portable (ComfyUI Easy-Install)
+# Open ComfyUI/python_embeded folder, type cmd in the address bar, run:
 python.exe -m pip install rembg
 
-# Standard Installation
+# Standard installation
 pip install rembg
 ```
 
-Once installed, you can pick from different AI models depending on the quality you need:
+Restart ComfyUI. Once installed, the dropdown shows these under "rembg":
 
 | Option | Size | What it is |
 |--------|------|------------|
-| **Auto (recommended)** | n/a | Automatically picks the best available model for you. |
-| **Fast** | ~176 MB | Works on any setup, great for quick cutouts. |
-| **Balanced** | ~170 MB | Cleaner edges. |
-| **Best** | ~900 MB | Highest quality cutouts. |
+| **rembg Auto** | n/a | Picks the best installed rembg model. |
+| **rembg Fast (u2net)** | ~176 MB | Works on any setup, great for quick cutouts. |
+| **rembg Balanced (isnet)** | ~170 MB | Cleaner edges than u2net. |
+| **rembg Best (BiRefNet via rembg)** | ~900 MB | rembg's own BiRefNet ONNX. Largest, slowest. |
+
+Model files download automatically on first use to `ComfyUI/models/rembg/`. For details and troubleshooting, see [rembg on GitHub](https://github.com/danielgatis/rembg#installation).
+
+#### What gets picked by default?
+
+If you have **at least one BiRefNet variant** installed, the dropdown defaults to BiRefNet Standard (or HR / Matting if Standard isn't installed). Otherwise it falls back to rembg Auto. You can always change the selection manually - the dropdown shows install / download instructions inline for any option that isn't ready to use.
 
 ---
 
