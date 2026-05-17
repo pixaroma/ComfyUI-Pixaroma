@@ -1,63 +1,59 @@
-"""Remove Background Pixaroma - one-node replacement for ComfyUI's
-RemoveBackground + InvertMask + JoinImageWithAlpha chain.
+"""Remove Background Pixaroma - one-node background removal with a built-in
+model dropdown.
 
-Wire a BACKGROUND_REMOVAL model (from native LoadBackgroundRemovalModel) and
-an IMAGE into this node and get three outputs:
-    image          - RGBA (foreground opaque, background transparent)
-    mask           - foreground=1.0, background=0.0  (BiRefNet sigmoid output)
-    inverted_mask  - foreground=0.0, background=1.0  (1.0 - mask)
+Replaces the older wire-based version (1.3.32) that required a separate
+Load Background Removal Model node upstream. Loads BiRefNet weights from
+ComfyUI/models/background_removal/ and picks the right preprocessing
+resolution from the filename:
+    contains "matt" -> 2048 (matting models, soft edges)
+    has "hr" as a word-piece -> 2048 (HR models, hard edges + detail)
+    otherwise -> 1024 (standard)
 
-The model wrapper exposes `encode_image(image)` which does the full
-preprocess -> forward -> resize -> sigmoid pipeline. We just normalize the
-mask shape and build the RGBA tensor.
+ComfyUI's native loader hardcodes 1024 in birefnet.json, so we bypass it
+and build BackgroundRemovalModel ourselves with the right image_size.
 """
 
+import logging
+import os
+import re
+from collections import OrderedDict
+
 import torch
+import folder_paths
+
+import comfy.bg_removal_model
+import comfy.model_management
+import comfy.model_patcher
+import comfy.ops
+import comfy.utils
+
+SENTINEL_NO_MODELS = "(no models - see Info tab)"
+
+# Filename rule: case-insensitive. "matt" catches matte / matting. "hr"
+# uses word-piece matching (no ASCII letter on either side, start/end of
+# string counts) so birefnet-hr.safetensors matches but birefnet-shrunk
+# does not.
+_HR_RE = re.compile(r"(?<![a-z])hr(?![a-z])", re.IGNORECASE)
 
 
+def _resolution_for_filename(name):
+    """Return 2048 for matting / HR filenames, 1024 otherwise.
+
+    Operates on the stem (no extension) so a stray ".pth" or
+    ".safetensors" can't cause weird matches.
+    """
+    stem = os.path.splitext(name)[0]
+    lower = stem.lower()
+    if "matt" in lower:
+        return 2048
+    if _HR_RE.search(stem):
+        return 2048
+    return 1024
+
+
+# Stub class so the file imports; will be filled in Task 2.
 class PixaromaRemoveBackground:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "bg_removal_model": ("BACKGROUND_REMOVAL",),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE", "MASK", "MASK")
-    RETURN_NAMES = ("image", "mask", "inverted_mask")
-    FUNCTION = "execute"
-    CATEGORY = "👑 Pixaroma"
-    DESCRIPTION = (
-        "Remove an image background with a BACKGROUND_REMOVAL model and "
-        "return the cutout (RGBA), the foreground mask, and the inverted "
-        "mask in one node. Replaces the native Remove Background -> Invert "
-        "Mask -> Join Image with Alpha chain."
-    )
-
-    def execute(self, image, bg_removal_model):
-        # encode_image returns (B, 1, H, W) per ComfyUI's wrapper - normalize
-        # to the canonical MASK shape (B, H, W) so downstream consumers don't
-        # have to branch on it. (resize_mask in nodes_compositing handles both
-        # shapes, but plain mask-math nodes don't always.)
-        mask = bg_removal_model.encode_image(image)
-        if mask.ndim == 4 and mask.shape[1] == 1:
-            mask = mask.squeeze(1)
-        elif mask.ndim == 4 and mask.shape[-1] == 1:
-            mask = mask.squeeze(-1)
-
-        # Match image device + dtype before concat so the RGBA tensor stays
-        # on one device and avoids a float64 promotion on CPU.
-        mask = mask.to(device=image.device, dtype=image.dtype)
-
-        # Build RGBA: keep image RGB (drop any pre-existing alpha) and stack
-        # the foreground mask as the alpha channel. fg=1 -> opaque, bg=0 ->
-        # transparent, matching the standard PNG alpha convention.
-        image_rgba = torch.cat([image[..., :3], mask.unsqueeze(-1)], dim=-1)
-
-        inverted = 1.0 - mask
-        return (image_rgba, mask, inverted)
+    pass
 
 
 NODE_CLASS_MAPPINGS = {
