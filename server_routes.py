@@ -12,6 +12,11 @@ import folder_paths
 
 from .nodes._save_helpers import _build_pnginfo, _safe_prefix
 from .nodes._prompt_reader_helpers import read_prompt_from_image
+from .nodes._bg_removal_helpers import (
+    get_birefnet_inventory,
+    is_birefnet_model_id,
+    run_birefnet_on_pil,
+)
 
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
@@ -624,6 +629,7 @@ async def remove_bg_info(request):
         # Still return the model catalog so the UI can show greyed
         # entries with the "install rembg" hint.
         info["models"] = [dict(m, available=False, downloaded=False) for m in REMBG_MODELS]
+        info["birefnet"] = get_birefnet_inventory()
         return web.json_response(info)
 
     # Which model files already exist on disk — saves the download wait
@@ -645,19 +651,12 @@ async def remove_bg_info(request):
         available = installed_ver >= req
         out_models.append(dict(m, available=available, downloaded=m["id"] in downloaded_ids))
     info["models"] = out_models
+    info["birefnet"] = get_birefnet_inventory()
     return web.json_response(info)
 
 
 @PromptServer.instance.routes.post("/pixaroma/remove_bg")
 async def remove_bg(request):
-    try:
-        from rembg import remove, new_session
-    except ImportError:
-        return web.json_response(
-            {"error": "rembg is not installed.", "code": "REMBG_MISSING"},
-            status=500,
-        )
-
     data = await request.json()
     b64_data = data.get("image", "")
     # Accept the new explicit `model` field; fall back to legacy `quality`
@@ -671,6 +670,47 @@ async def remove_bg(request):
 
     if len(b64_data) > _MAX_B64_BYTES:
         return web.json_response({"error": "Image too large"}, status=413)
+
+    # ----------- BiRefNet branch (new in 1.3.34) -----------
+    # If the client picked one of our BiRefNet variants, route through
+    # the Pixaroma loader instead of rembg. No rembg dep required.
+    if is_birefnet_model_id(model):
+        try:
+            input_data = base64.b64decode(b64_data)
+            input_image = Image.open(io.BytesIO(input_data))
+            print(f"[Pixaroma] AI Remove Background: BiRefNet {model!r} on {input_image.size[0]}x{input_image.size[1]}...")
+            output_image = run_birefnet_on_pil(input_image, model)
+            buffered = io.BytesIO()
+            output_image.save(buffered, format="PNG")
+            output_b64 = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            print(f"[Pixaroma] AI Remove Background: done ({model})")
+            return web.json_response({
+                "status": "success",
+                "image": f"data:image/png;base64,{output_b64}",
+                "modelUsed": model,
+            })
+        except ValueError as e:
+            # File-not-found, lite-variant rejection, missing folder, etc.
+            # ValueError carries our user-friendly install message.
+            return web.json_response(
+                {"error": str(e), "code": "BIREFNET_MISSING"},
+                status=400,
+            )
+        except Exception as e:
+            print(f"[Pixaroma] BiRefNet inference failed: {e}")
+            return web.json_response(
+                {"error": f"BiRefNet inference failed: {e}"},
+                status=500,
+            )
+
+    # ----------- rembg branch (existing) -----------
+    try:
+        from rembg import remove, new_session
+    except ImportError:
+        return web.json_response(
+            {"error": "rembg is not installed.", "code": "REMBG_MISSING"},
+            status=500,
+        )
 
     # _open_session tries the requested model, then falls back through
     # the auto chain if it isn't available. Returns (session, model_used)

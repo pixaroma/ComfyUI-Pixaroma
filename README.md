@@ -154,24 +154,58 @@ git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
 ```
 
 ### 2. Optional: AI Background Removal
-Want to use the **AI Remove Background** button in the Image Composer? Just install `rembg`:
+AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** editor's AI Background Removal button, and the **Paint Pixaroma** editor's AI Background Removal button.
+
+- The **node** uses **Pixaroma BiRefNet only** (`ComfyUI/models/background_removal/*.safetensors`).
+- The two **editors** can use **Pixaroma BiRefNet OR rembg** - their dropdown shows BiRefNet variants on top and rembg options below. Any BiRefNet model you install once works in all three places.
+
+There are two ways to get AI background removal working: **Pixaroma BiRefNet** (recommended, no extra Python deps, three model variants, works in the node AND the editors) and **rembg** (a separate Python library with four model options, works in the editors only). They can be used side-by-side - install whichever you want from the dropdown.
+
+#### Option A: Pixaroma BiRefNet (recommended)
+
+Download one of these three `.safetensors` files and drop it into `ComfyUI/models/background_removal/`. The dropdown shows them grouped under "Pixaroma BiRefNet" at the top. **The filename matters** - it controls which preprocessing resolution is used. Rename the downloaded file to one of the names below so the dropdown picks the right one.
+
+| Variant | Filename | VRAM | Best for |
+|---------|----------|------|----------|
+| **Standard** | `birefnet.safetensors` (424 MB) | 4-6 GB | Clean objects, products, logos. Fast everyday cutouts. Default. [Download](https://huggingface.co/Comfy-Org/BiRefNet/tree/main/background_removal) |
+| **High Resolution** | `birefnet-hr.safetensors` (444 MB) | 8 GB+ | Large images with fine outline detail (jewelry, intricate hardware). [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR) |
+| **Matting (Soft Edges)** | `birefnet-matting.safetensors` (444 MB) | 8 GB+ | Hair, fur, lace, soft fabric. Also worth trying for glass / smoke. [Download](https://huggingface.co/ZhengPeng7/BiRefNet_HR-matting) |
+
+**Important: HR and Matting need renaming after download.** The Standard model from Comfy-Org is already named `birefnet.safetensors` and works as-is. But the HR and Matting variants come from ZhengPeng7's HuggingFace repos as `model.safetensors`, and Pixaroma needs them named correctly to know which preprocessing resolution to use.
+
+- Standard (`birefnet.safetensors`) - **no rename needed**, drop the file in as-is
+- HR (downloaded as `model.safetensors`) - **rename to `birefnet-hr.safetensors`**
+- Matting (downloaded as `model.safetensors`) - **rename to `birefnet-matting.safetensors`**
+
+**Rename steps on Windows**: right-click the file, **Rename**, type the new name (keeping `.safetensors` at the end), press Enter. If Windows hides extensions: View tab → check "File name extensions" first, otherwise the rename can accidentally drop the extension. Why the names matter: filenames containing `matt` or `hr` (case-insensitive) tell Pixaroma to preprocess at 2048×2048; anything else preprocesses at 1024×1024. If you name HR as plain `birefnet.safetensors`, it will load but run at 1024 and you'll lose the whole point of HR.
+
+#### Option B: rembg (alternative)
+
+`rembg` is a separate Python library. Install it once and you get four bundled model options.
 
 ```bash
-# Windows Portable
+# Windows Portable (ComfyUI Easy-Install)
+# Open ComfyUI/python_embeded folder, type cmd in the address bar, run:
 python.exe -m pip install rembg
 
-# Standard Installation
+# Standard installation
 pip install rembg
 ```
 
-Once installed, you can pick from different AI models depending on the quality you need:
+Restart ComfyUI. Once installed, the dropdown shows these under "rembg":
 
 | Option | Size | What it is |
 |--------|------|------------|
-| **Auto (recommended)** | n/a | Automatically picks the best available model for you. |
-| **Fast** | ~176 MB | Works on any setup, great for quick cutouts. |
-| **Balanced** | ~170 MB | Cleaner edges. |
-| **Best** | ~900 MB | Highest quality cutouts. |
+| **rembg Auto** | n/a | Picks the best installed rembg model. |
+| **rembg Fast (u2net)** | ~176 MB | Works on any setup, great for quick cutouts. |
+| **rembg Balanced (isnet)** | ~170 MB | Cleaner edges than u2net. |
+| **rembg Best (BiRefNet via rembg)** | ~900 MB | rembg's own BiRefNet ONNX. Largest, slowest. |
+
+Model files download automatically on first use to `ComfyUI/models/rembg/`. For details and troubleshooting, see [rembg on GitHub](https://github.com/danielgatis/rembg#installation).
+
+#### What gets picked by default?
+
+If you have **at least one BiRefNet variant** installed, the dropdown defaults to BiRefNet Standard (or HR / Matting if Standard isn't installed). Otherwise it falls back to rembg Auto. You can always change the selection manually - the dropdown shows install / download instructions inline for any option that isn't ready to use.
 
 ---
 
@@ -184,6 +218,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 17, 2026 (1.3.34)**
+- **Image Composer + Paint Pixaroma: AI Remove Background dropdown now shows the same BiRefNet models as Remove Background Pixaroma.** No more separate downloads or different model files for the in-editor button vs the node. Drop your BiRefNet `.safetensors` once into `ComfyUI/models/background_removal/` and both the editors AND the node pick them up. The dropdown groups BiRefNet variants on top (defaulting to Standard if installed), then the existing rembg options below.
+- For each BiRefNet entry that isn't installed, the dropdown shows an inline orange Download link that opens the HuggingFace page in a new tab and tells you exactly which folder to drop the file in. No guessing.
+- Existing rembg installations keep working unchanged - if you have rembg and like its u2net (small/fast) or isnet (balanced), those options are still there in the same dropdown.
+- The behaviour change: if you have BiRefNet Standard installed, Auto now picks it instead of rembg's auto. That gives you sharper edges consistent with the Remove Background node, at roughly the same speed for the Standard variant.
 
 ### **May 17, 2026 (1.3.33)**
 - **Remove Background Pixaroma: model dropdown built into the node, with HR and matting support.** No more separate Load Background Removal Model node to wire in. Pick your model from a dropdown right on the node. Three variants supported, each tuned for a different use case:
