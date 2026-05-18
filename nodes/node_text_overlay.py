@@ -58,6 +58,14 @@ class PixaromaTextOverlay:
         if text is not None:
             state["text"] = str(text)
 
+        # DEBUG: dump the state Python actually received so we can verify
+        # the editor's x/y/etc. survived the JSON round-trip intact. Remove
+        # once the y-position discrepancy is confirmed fixed.
+        print(f"[Text Overlay Pixaroma] DEBUG state: x={state.get('x')} y={state.get('y')} "
+              f"fontSize={state.get('fontSize')} text={state.get('text')!r} "
+              f"bgColor={state.get('bgColor')!r} rotation={state.get('rotation')} "
+              f"image_shape={tuple(image.shape)}")
+
         # state IS the single text dict (or empty dict = no overlay)
         outputs = []
         for b in range(image.shape[0]):
