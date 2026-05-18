@@ -12,6 +12,15 @@ import { wireEvents, showNoPromptsToast } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 320;
+// Minimum size the user is allowed to shrink the node to via the resize
+// handle. Anything smaller and the textarea + bottom bar overflow past the
+// node frame (the symptom this clamp prevents). Enforced in onResize.
+const MIN_W = 260;
+const MIN_H = 220;
+// Widget min-height seen by LiteGraph's layout. Matches the actual content
+// height: pill bar (~28) + gaps (~12) + textarea min (~80) + bottom bar
+// (~30) + root padding (~12) = ~162. Round up.
+const WIDGET_MIN_H = 170;
 
 app.registerExtension({
   name: "Pixaroma.PromptPack",
@@ -40,7 +49,7 @@ app.registerExtension({
         node.addDOMWidget("promptpack", "div", root, {
           serialize: false,
           canvasOnly: true,
-          getMinHeight: () => 100,
+          getMinHeight: () => WIDGET_MIN_H,
         });
 
         wireEvents(node, root);
@@ -50,9 +59,13 @@ app.registerExtension({
 
         // Default size on fresh-on-canvas. Saved workflows win because
         // LiteGraph's configure() runs after onNodeCreated and overwrites
-        // node.size from the saved JSON.
+        // node.size from the saved JSON. But we still enforce the absolute
+        // minimum (MIN_W / MIN_H) so a saved workflow with a stupidly-small
+        // size self-heals on load.
         if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
         if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
+        if (node.size[0] < MIN_W) node.size[0] = MIN_W;
+        if (node.size[1] < MIN_H) node.size[1] = MIN_H;
         node.setDirtyCanvas(true, true);
       });
     };
@@ -63,6 +76,18 @@ app.registerExtension({
       restoreFromProperties(this);
       if (this._pixPpRoot) applyState(this._pixPpRoot, readState(this));
       return r;
+    };
+
+    // Clamp node size so the user can't drag the resize handle below the
+    // point where the widget content overflows past the node frame. Vue
+    // Compat #13 notes onResize doesn't always fire reliably for DOM
+    // widget resizes, but for the resize handle (the visible drag corner)
+    // it does, which is the path users hit when accidentally over-shrinking.
+    const origOnResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      if (size[0] < MIN_W) size[0] = MIN_W;
+      if (size[1] < MIN_H) size[1] = MIN_H;
+      if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
     const origRemoved = nodeType.prototype.onRemoved;
