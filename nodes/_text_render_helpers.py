@@ -189,15 +189,28 @@ def render_text_layer(base_img, layer):
     rotation = float(layer.get("rotation", 0))
     bg_color = layer.get("bgColor")  # None or hex string
 
-    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, font_size)
+    # Supersample factor for rotation: render the layer at SS x intended
+    # size, rotate at the larger size, then downsample with LANCZOS for
+    # proper anti-aliased diagonal edges. PIL's Image.rotate caps out at
+    # BICUBIC which still leaves stair-step pixels along rotated edges of
+    # the bg pill / text bounding box. Supersampling gives the LANCZOS
+    # downsample enough pixels to average for smooth edges.
+    # Skip supersampling when no rotation — the 1x render is already
+    # crisp and we'd just waste memory + time.
+    ss = 3 if rotation else 1
+
+    font_size_eff = font_size * ss
+    letter_spacing_eff = letter_spacing * ss
+
+    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, font_size_eff)
 
     lines = text.split("\n")
-    line_widths = [_measure_line(pil_font, ln, letter_spacing) for ln in lines]
+    line_widths = [_measure_line(pil_font, ln, letter_spacing_eff) for ln in lines]
     max_line_w = max(line_widths) if line_widths else 0
-    line_height_px = round(font_size * line_height_mult)
+    line_height_px = round(font_size_eff * line_height_mult)
 
-    pad_x = _BG_PAD_X if bg_color else 0
-    pad_y = _BG_PAD_Y if bg_color else 0
+    pad_x = (_BG_PAD_X * ss) if bg_color else 0
+    pad_y = (_BG_PAD_Y * ss) if bg_color else 0
 
     ascender, descender = pil_font.getmetrics()
     glyph_h = ascender + descender
@@ -210,7 +223,7 @@ def render_text_layer(base_img, layer):
     # 1. Background pill (only if bgColor is set)
     if bg_color:
         bg_rgba = _hex_to_rgb(bg_color) + (255,)
-        r = min(_BG_RADIUS, bbox_w // 2, bbox_h // 2)
+        r = min(_BG_RADIUS * ss, bbox_w // 2, bbox_h // 2)
         _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_rgba)
 
     # 2. Fill text
@@ -218,7 +231,7 @@ def render_text_layer(base_img, layer):
     for i, ln in enumerate(lines):
         lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
         ly = pad_y + ascender + i * line_height_px
-        _draw_line(draw, pil_font, ln, lx, ly, letter_spacing, fill_color)
+        _draw_line(draw, pil_font, ln, lx, ly, letter_spacing_eff, fill_color)
 
     # 3. Synthesized italic skew
     if synthesized_italic:
@@ -234,15 +247,23 @@ def render_text_layer(base_img, layer):
         alpha = alpha.point(lambda a: int(a * opacity))
         layer_img.putalpha(alpha)
 
-    # 5. Rotation (around bbox center)
+    # 5. Rotation (around bbox center). When supersampling (rotation
+    # branch), rotate at SS resolution then downsample to 1x with
+    # LANCZOS for anti-aliased edges.
     paste_x = int(round(layer.get("x", 0)))
     paste_y = int(round(layer.get("y", 0)))
     if rotation:
-        before_w, before_h = layer_img.size
         layer_img = layer_img.rotate(-rotation, expand=True, resample=Image.BICUBIC)
-        after_w, after_h = layer_img.size
-        paste_x -= (after_w - before_w) // 2
-        paste_y -= (after_h - before_h) // 2
+        after_w_ss, after_h_ss = layer_img.size
+        # Downsample to 1x
+        target_w = max(1, round(after_w_ss / ss))
+        target_h = max(1, round(after_h_ss / ss))
+        layer_img = layer_img.resize((target_w, target_h), Image.LANCZOS)
+        # paste offset uses the 1x equivalent bbox
+        bbox_w_1x = max(1, round(bbox_w / ss))
+        bbox_h_1x = max(1, round(bbox_h / ss))
+        paste_x -= (target_w - bbox_w_1x) // 2
+        paste_y -= (target_h - bbox_h_1x) // 2
 
     # 6. Composite onto base
     if base_img.mode != "RGBA":
