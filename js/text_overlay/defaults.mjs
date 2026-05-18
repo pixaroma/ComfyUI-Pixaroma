@@ -13,7 +13,7 @@
 export const DEFAULT_STATE = {
   version: 3,
   text: "Your text here",
-  font: "Inter",
+  font: "Roboto",
   weight: 400,
   italic: false,
   align: "center",

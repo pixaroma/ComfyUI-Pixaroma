@@ -91,16 +91,18 @@ function setupTextOverlayNode(node) {
     canvasOnly: true,
     serialize: false,
     getMinHeight: () => {
-      // Sum children offsetHeight + 16 padding so the node hugs its content
-      let h = 16;
+      // Sum children offsetHeight + 4 padding gutter so the node hugs its
+      // content (the compact v2 layout fits in well under 480 px).
+      let h = 4;
       for (const c of root.children) h += c.offsetHeight || 0;
-      return Math.max(380, h);
+      return Math.max(320, h);
     },
   });
 
-  // Default size for new nodes; LiteGraph restores saved sizes via configure
+  // Default size for new nodes; LiteGraph restores saved sizes via configure.
+  // The compact v2 layout fits comfortably in ~430 px.
   if (!node.size || node.size[0] < 320) {
-    node.size = [360, 700];
+    node.size = [340, 430];
   }
 
   // Defer panel population past configure() so saved state is restored first
