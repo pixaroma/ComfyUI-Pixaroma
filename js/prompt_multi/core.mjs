@@ -1,21 +1,29 @@
 // Prompt Multi Pixaroma - state module.
 //
 // State lives on node.properties.promptMultiState.
-// Shape: { version: 1, rows: [ { id, enabled, label, text } ], activeIndex }
+// Shape: {
+//   version: 2,
+//   mode: "queue" | "list",
+//   rows: [ { id, enabled, label, text } ],
+//   activeIndex
+// }
 //
 // LiteGraph serializes node.properties natively into workflow JSON, so save and
-// reload are automatic. The graphToPrompt hook in index.js packs the active
-// row's text into the hidden PromptMultiState input at workflow-submit time.
-// The queuePrompt patch in index.js mutates activeIndex right before each
-// per-row enqueue.
+// reload are automatic. The graphToPrompt hook in index.js packs mode +
+// activePrompt + rowTexts (only enabled rows) into the hidden
+// PromptMultiState input at workflow-submit time. The queuePrompt patch in
+// index.js mutates activeIndex right before each per-row enqueue (queue mode
+// only) and short-circuits to one run in list mode.
 //
 // activeIndex is an absolute index into rows[] (not the enabled-filtered
 // position), because the graphToPrompt hook does state.rows[activeIndex].text.
 // The saved value on disk is whatever the last loop iteration left behind and
-// is not relied on at workflow load — the next Run overwrites it before any
+// is not relied on at workflow load - the next Run overwrites it before any
 // prompt is captured.
 
 export const STATE_PROP = "promptMultiState";
+export const MODE_QUEUE = "queue";
+export const MODE_LIST = "list";
 
 let _idCounter = 0;
 function nextId() {
@@ -37,7 +45,8 @@ export function defaultState() {
   // Two empty rows on a fresh node, both ON, so the "multi" idea is
   // immediately visible (matches the design doc).
   return {
-    version: 1,
+    version: 2,
+    mode: MODE_QUEUE,
     rows: [freshRow(), freshRow()],
     activeIndex: 0,
   };
@@ -57,7 +66,17 @@ export function readState(node) {
   if (typeof s.activeIndex !== "number" || s.activeIndex < 0 || s.activeIndex >= s.rows.length) {
     s.activeIndex = 0;
   }
+  // Migration from v1 (no mode field): default to queue mode.
+  if (s.mode !== MODE_QUEUE && s.mode !== MODE_LIST) s.mode = MODE_QUEUE;
+  s.version = 2;
   return s;
+}
+
+export function setMode(node, mode) {
+  if (mode !== MODE_QUEUE && mode !== MODE_LIST) return;
+  const state = readState(node);
+  state.mode = mode;
+  writeState(node, state);
 }
 
 export function writeState(node, state) {

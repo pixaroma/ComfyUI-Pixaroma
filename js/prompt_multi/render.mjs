@@ -4,7 +4,7 @@
 // an "+ Add row" button. Each row is its own <div> with controls.
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
-import { readState } from "./core.mjs";
+import { readState, MODE_QUEUE, MODE_LIST } from "./core.mjs";
 import { attachLabelEditor, attachTextareaEditor, attachDragHandlers } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-multi-css";
@@ -18,6 +18,42 @@ const CSS = `
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
+}
+
+.pix-pm-modebar {
+  display: flex;
+  gap: 0;
+  background: #1a1a1a;
+  border: 1px solid #2e2e2e;
+  border-radius: 4px;
+  padding: 3px;
+  user-select: none;
+}
+.pix-pm-modepill {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: #888;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.pix-pm-modepill:hover { color: #ddd; background: rgba(255,255,255,0.04); }
+.pix-pm-modepill.is-active {
+  background: #f66744;
+  color: #fff;
+}
+.pix-pm-modepill.is-active:hover { background: #ff7a58; color: #fff; }
+.pix-pm-modehint {
+  font-size: 10px;
+  color: #777;
+  text-align: center;
+  margin: -2px 0 2px 0;
+  font-style: italic;
+  user-select: none;
 }
 
 .pix-pm-row {
@@ -258,6 +294,37 @@ export function measureContentHeight(root) {
 export function renderRows(node, root, rowHandlers) {
   const state = readState(node);
   root.innerHTML = "";
+
+  // Mode bar at the top: Queue / List toggle pills.
+  const modebar = document.createElement("div");
+  modebar.className = "pix-pm-modebar";
+
+  const queuePill = document.createElement("div");
+  queuePill.className = "pix-pm-modepill" + (state.mode === MODE_QUEUE ? " is-active" : "");
+  queuePill.textContent = "Queue";
+  queuePill.title = "Queue mode - click Run, the workflow runs once per enabled prompt (N images)";
+  queuePill.addEventListener("click", () => {
+    if (state.mode !== MODE_QUEUE) rowHandlers.onSetMode(MODE_QUEUE);
+  });
+  modebar.appendChild(queuePill);
+
+  const listPill = document.createElement("div");
+  listPill.className = "pix-pm-modepill" + (state.mode === MODE_LIST ? " is-active" : "");
+  listPill.textContent = "List";
+  listPill.title = "List mode - click Run once, the node sends all enabled prompts as a list to Prompt From List nodes downstream";
+  listPill.addEventListener("click", () => {
+    if (state.mode !== MODE_LIST) rowHandlers.onSetMode(MODE_LIST);
+  });
+  modebar.appendChild(listPill);
+
+  root.appendChild(modebar);
+
+  const hint = document.createElement("div");
+  hint.className = "pix-pm-modehint";
+  hint.textContent = state.mode === MODE_QUEUE
+    ? "One image per enabled prompt"
+    : "All prompts go out as a list - use Prompt From List downstream";
+  root.appendChild(hint);
 
   for (const row of state.rows) {
     const rowEl = document.createElement("div");

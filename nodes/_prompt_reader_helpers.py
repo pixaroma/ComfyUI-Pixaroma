@@ -70,28 +70,22 @@ _RGTHREE_ANY_KEY_RE = re.compile(r"^any_(\d+)$")
 # in pure Python (mirrors nodes/node_prompt_stack.py's build() logic).
 _PROMPT_STACK_CLASS = "PixaromaPromptStack"
 
-# Prompt Multi Pixaroma: each queue item bakes its active prompt into the
-# hidden PromptMultiState STRING input as {"version":1,"activePrompt":"..."}.
-# The saved workflow embedded in the PNG records exactly the prompt that
-# produced THAT image, so recovery is a direct read of activePrompt.
+# Prompt Multi Pixaroma: holds a library of prompts AND can run in either
+# of two modes (Queue or List). The hidden PromptMultiState STRING input is
+# {"version":2, "mode":"queue"|"list", "activePrompt":"...", "rowTexts":[...]}.
+# Two dynamic outputs (only one visible at a time, depending on mode):
+#   - "text"  (queue mode): the active row's prompt this queue iteration
+#                            -> read activePrompt directly
+#   - "list"  (list mode):  the full enabled-rows list -> downstream Prompt
+#                            From List picks one by index
+# When the walker reaches a Multi node directly, the slot it came in from
+# tells us which path to follow. Output slot 0 always exists in the saved
+# workflow (since the JS dynamically reconciles the visible output).
 _PROMPT_MULTI_CLASS = "PixaromaPromptMulti"
 
-# Prompt Picker Pixaroma: holds a library of prompts; the hidden
-# PromptPickerState STRING input is
-# {"version":3, "activeText":"...", "rowTexts":[str,...]}. Two outputs:
-#   - "text" (slot 0): the active row's prompt -> read activeText
-#   - "prompts" (slot 1): the full list -> Prompt From List downstream picks
-#     one by index
-# When the walker comes back via slot 0, recovery is a direct read of
-# activeText. When it comes back via slot 1, the From List node holds the
-# specific index needed and is special-cased separately.
-_PROMPT_PICKER_CLASS = "PixaromaPromptPicker"
-_PROMPT_PICKER_TEXT_SLOT = 0
-_PROMPT_PICKER_LIST_SLOT = 1
-
 # Prompt From List Pixaroma: tiny picker that grabs one row from a Prompt
-# Picker's list output via an "index" widget. The walker chases its
-# `prompts` input back to the upstream Picker and indexes rowTexts.
+# Multi's list output via an "index" widget. The walker chases its
+# `prompts` input back to the upstream Multi and indexes rowTexts.
 _PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
 _MAX_WALK_DEPTH = 24
@@ -220,51 +214,23 @@ def _pix_prompt_stack_extract(inputs: dict) -> Optional[str]:
     return sep.join(parts)
 
 
-def _pix_prompt_picker_parse_state(inputs: dict) -> Optional[dict]:
-    """Parse the hidden PromptPickerState JSON. Returns the dict or None."""
-    raw = inputs.get("PromptPickerState")
+def _pix_prompt_multi_row_at(inputs: dict, index_1based: int) -> Optional[str]:
+    """Return the prompt text at the given 1-based index from a Multi's
+    enabled-rows list, or None.
+
+    Used by the From List walker to resolve which library row a downstream
+    Prompt From List node was pointing at when this image was generated.
+    The rowTexts field already contains ONLY enabled non-empty rows in
+    display order, so a From List index of 1 maps to rowTexts[0].
+    """
+    raw = inputs.get("PromptMultiState")
     if not isinstance(raw, str) or not raw:
         return None
     try:
         state = json.loads(raw)
     except (ValueError, TypeError):
         return None
-    return state if isinstance(state, dict) else None
-
-
-def _pix_prompt_picker_active_text(inputs: dict) -> Optional[str]:
-    """Active row's text from a PixaromaPromptPicker.
-
-    Used when the walker reaches a Picker via its `text` output (slot 0).
-    Returns activeText, or falls back to legacy schemas:
-      v2 picked-array: returns the first non-empty entry from pickTexts
-      v1: returns activeText
-    """
-    state = _pix_prompt_picker_parse_state(inputs)
-    if not state:
-        return None
-
-    txt = state.get("activeText", "")
-    if isinstance(txt, str) and txt.strip():
-        return txt.strip()
-
-    # v2 legacy: pickTexts array (the brief multi-output era).
-    pt = state.get("pickTexts")
-    if isinstance(pt, list):
-        for p in pt:
-            if isinstance(p, str) and p.strip():
-                return p.strip()
-    return None
-
-
-def _pix_prompt_picker_row_at(inputs: dict, index_1based: int) -> Optional[str]:
-    """Return the prompt text at the given 1-based row index, or None.
-
-    Used by the From List walker to resolve which library row a downstream
-    From List node was pointing at when this image was generated.
-    """
-    state = _pix_prompt_picker_parse_state(inputs)
-    if not state:
+    if not isinstance(state, dict):
         return None
     rows = state.get("rowTexts")
     if not isinstance(rows, list):
@@ -283,12 +249,12 @@ def _pix_prompt_from_list_resolve(node: dict, nodes: dict) -> Optional[str]:
     """Resolve a PixaromaPromptFromList node to its picked text.
 
     Reads the node's `index` widget value, follows the `prompts` input back
-    to an upstream PixaromaPromptPicker, and returns rowTexts[index-1].
-    Returns None when the upstream isn't a Picker, the index is missing /
-    out of range, or the resolved row is empty.
+    to an upstream PixaromaPromptMulti (in List mode), and returns
+    rowTexts[index-1]. Returns None when the upstream isn't a Multi, the
+    index is missing / out of range, or the resolved row is empty.
 
-    ComfyUI prompt JSON shape: widget values live in inputs (since they were
-    promoted to the inputs dict at submit time); link values are
+    ComfyUI prompt JSON shape: widget values live in inputs (since they
+    were promoted to the inputs dict at submit time); link values are
     [upstream_node_id, output_slot_idx] tuples.
     """
     inputs = node.get("inputs") or {}
@@ -308,22 +274,27 @@ def _pix_prompt_from_list_resolve(node: dict, nodes: dict) -> Optional[str]:
     upstream = nodes.get(str(upstream_id))
     if not isinstance(upstream, dict):
         return None
-    if upstream.get("class_type") != _PROMPT_PICKER_CLASS:
+    if upstream.get("class_type") != _PROMPT_MULTI_CLASS:
         # Some other node is feeding the list - we can't resolve it here.
         return None
-    return _pix_prompt_picker_row_at(upstream.get("inputs") or {}, idx)
+    return _pix_prompt_multi_row_at(upstream.get("inputs") or {}, idx)
 
 
 def _pix_prompt_multi_extract(inputs: dict) -> Optional[str]:
     """Read the active prompt from a PixaromaPromptMulti's saved state.
 
     The hidden PromptMultiState input is a JSON string of shape:
-        { "version": 1, "activePrompt": str }
+        { "version": 2, "mode": "queue"|"list",
+          "activePrompt": str, "rowTexts": [str, ...] }
+    (v1 schema {version:1, activePrompt} also handled - same field name.)
 
-    Each queue item bakes its active row's text into activePrompt at submit
-    time (via the JS app.graphToPrompt hook). The PNG embedded workflow
-    captures exactly the prompt that produced that image, so recovery is a
-    direct read - no joining, no row iteration.
+    Used when the walker reaches a Multi node via its `text` output (queue
+    mode). Each queue iteration bakes that row's text into activePrompt at
+    submit time, so the PNG embedded workflow captures exactly the prompt
+    that produced that image. Recovery is a direct read.
+
+    For Multi nodes reached via a Prompt From List node (list mode), use
+    _pix_prompt_from_list_resolve instead - it indexes rowTexts properly.
 
     Returns the active prompt, or None when missing / malformed / empty.
     """
@@ -437,17 +408,9 @@ def _walk_for_text(
             captured.append(text)
         return
 
-    # Prompt Picker Pixaroma: hit via its `text` output (the active row).
-    # Direct read of activeText from the hidden state.
-    if cls == _PROMPT_PICKER_CLASS:
-        text = _pix_prompt_picker_active_text(inputs)
-        if text:
-            captured.append(text)
-        return
-
     # Prompt From List Pixaroma: a tiny picker that grabs one row from a
-    # Prompt Picker's `prompts` list output. Read its index widget, walk
-    # back to the upstream Picker, and resolve rowTexts[index-1].
+    # Prompt Multi's `list` output. Read its index widget, walk back to the
+    # upstream Multi, and resolve rowTexts[index-1].
     if cls == _PROMPT_FROM_LIST_CLASS:
         text = _pix_prompt_from_list_resolve(node, nodes)
         if text:

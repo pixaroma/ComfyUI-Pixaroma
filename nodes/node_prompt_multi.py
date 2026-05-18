@@ -1,39 +1,49 @@
-"""Prompt Multi Pixaroma - row-based prompt list, queues one workflow run per enabled row.
+"""Prompt Multi Pixaroma - prompt list with two run modes.
+
+Two modes (toggled by the pill at the top of the node body):
+
+QUEUE mode (default):
+- One click on Run queues one workflow per ON row, in a loop. Each queue
+  item bakes that row's text into the `text` output, so you get N images.
+- The `text` output is visible. The `list` output is hidden.
+
+LIST mode:
+- One click on Run queues exactly one workflow. The `list` output emits
+  the ON rows' prompts as a PIXAROMA_PROMPT_LIST wire. Pair with one or
+  more Prompt From List Pixaroma nodes downstream to send different rows
+  to different parts of the same workflow.
+- The `list` output is visible. The `text` output is hidden.
 
 Backend contract:
-- 1 hidden STRING input (PromptMultiState) carrying the per-queue-item active prompt as JSON.
-- 1 STRING output (text) carrying that active prompt for the current queue item.
-
-All row state, ordering, enabled flags, and the queue-loop logic live in JS
-(js/prompt_multi/index.js). Python sees only the resolved active prompt for
-the current queue item via the hidden PromptMultiState payload, which is
-injected at submission time by app.graphToPrompt (see Vue Compat #9 in CLAUDE.md).
-
-If multiple Prompt Multi nodes exist in one workflow, the JS queue-loop reads
-the count from the first one found (by app.graph._nodes iteration order); other
-Prompt Multi nodes each use their own currently-selected active row. This is a
-v1 decision documented in the design doc.
+- 1 hidden STRING input (PromptMultiState) carrying mode + activePrompt +
+  rowTexts (only enabled rows) as JSON. Injected at submission time by
+  app.graphToPrompt (Vue Compat #9).
 """
 import json
 
 
+# Custom wire type shared with Prompt From List Pixaroma.
+PIXAROMA_PROMPT_LIST = "PIXAROMA_PROMPT_LIST"
+
+
 class PixaromaPromptMulti:
     DESCRIPTION = (
-        "Prompt Multi Pixaroma - hold an ordered list of prompt variants you "
-        "can toggle on or off, label, and reorder. When you click Run, the "
-        "workflow runs once for each enabled prompt that has text in it, and "
-        "you get one image per prompt. Each prompt becomes its own item in "
-        "the queue panel so you can cancel them individually. Empty rows are "
-        "silently skipped even if their toggle is ON.\n\n"
-        "Click + Add prompt to add a row. Click the toggle pill to mute or "
-        "unmute. Drag the handle on the left to reorder. Clear prompts wipes "
-        "all text but keeps rows and toggles. Reset goes back to two empty "
-        "rows. If only one row is enabled and non-empty, the node behaves "
-        "like a normal prompt. If no enabled rows have text, you will see a "
-        "warning and the workflow will not run.\n\n"
-        "If you put more than one Prompt Multi node in a workflow, only the "
-        "first one (by insertion order) drives the run count; the others use "
-        "their currently selected prompt."
+        "Prompt Multi Pixaroma - one node, two run modes you switch with "
+        "the pill at the top.\n\n"
+        "Queue mode: click Run and the workflow runs once per enabled "
+        "prompt, in a loop. Empty rows are silently skipped. Each prompt "
+        "becomes its own item in the queue panel so you can cancel "
+        "individually. Use this when you want to compare prompt variants "
+        "(one image per prompt).\n\n"
+        "List mode: click Run once and the node sends ALL enabled prompts "
+        "as a list (no queue loop). Pair with one or more Prompt From "
+        "List Pixaroma nodes downstream; each grabs a different prompt by "
+        "number. Use this when you want different parts of the same "
+        "workflow (scene 1, scene 2, ...) to each pull a different prompt "
+        "from the same library, without extra nodes everywhere.\n\n"
+        "Click + Add prompt to add a row. Toggle ON/OFF to include/exclude. "
+        "Drag the handle to reorder. Clear prompts wipes text but keeps "
+        "rows. Reset goes back to two empty rows."
     )
 
     @classmethod
@@ -43,8 +53,8 @@ class PixaromaPromptMulti:
             "hidden": {"PromptMultiState": ("STRING", {"default": "{}"})},
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
+    RETURN_TYPES = ("STRING", PIXAROMA_PROMPT_LIST)
+    RETURN_NAMES = ("text", "list")
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 
@@ -60,7 +70,17 @@ class PixaromaPromptMulti:
         except (ValueError, TypeError):
             print("[Pixaroma] Prompt Multi: invalid PromptMultiState JSON, returning empty")
             state = {}
-        return (state.get("activePrompt", ""),)
+
+        active = state.get("activePrompt", "")
+        if not isinstance(active, str):
+            active = ""
+
+        rows = state.get("rowTexts")
+        if not isinstance(rows, list):
+            rows = []
+        rows = [r if isinstance(r, str) else "" for r in rows]
+
+        return (active, rows)
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaPromptMulti": PixaromaPromptMulti}
