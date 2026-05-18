@@ -248,7 +248,7 @@ function findFirstPromptMultiNode() {
 }
 
 function showNoEnabledToast() {
-  const msg = "Enable at least one prompt to run.";
+  const msg = "Enable at least one non-empty prompt to run.";
   const tm = app.extensionManager?.toast;
   if (tm && typeof tm.add === "function") {
     try {

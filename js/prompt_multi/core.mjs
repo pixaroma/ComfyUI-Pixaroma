@@ -120,13 +120,16 @@ export function reorderRows(node, fromIdx, toIdx) {
   writeState(node, state);
 }
 
-// Returns the rows whose enabled flag is true, paired with their absolute
-// index in the rows array. Used by the queuePrompt loop in index.js.
+// Returns the rows whose enabled flag is true AND whose text has at least
+// one non-whitespace character, paired with their absolute index in the rows
+// array. Used by the queuePrompt loop in index.js. Empty/whitespace-only rows
+// are silently skipped at queue time so users can leave placeholder rows in
+// place without queuing meaningless runs.
 export function enabledRowsWithIndex(node) {
   const state = readState(node);
   return state.rows
     .map((r, i) => ({ row: r, index: i }))
-    .filter((x) => x.row.enabled);
+    .filter((x) => x.row.enabled && x.row.text && x.row.text.trim());
 }
 
 // restoreFromProperties: ensures node.properties.promptMultiState exists with

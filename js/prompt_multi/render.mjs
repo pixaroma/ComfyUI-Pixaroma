@@ -304,7 +304,7 @@ export function renderRows(node, root, rowHandlers) {
     ta.className = "pix-pm-textarea";
     ta.value = row.text || "";
     ta.rows = 2;
-    ta.placeholder = "Type a prompt variant. Each enabled row becomes one queue item when you click Run.";
+    ta.placeholder = "Type a prompt variant. Each enabled row with text queues one workflow run. Empty rows are skipped.";
     rowEl.appendChild(ta);
     attachTextareaEditor(node, ta, row.id);
 

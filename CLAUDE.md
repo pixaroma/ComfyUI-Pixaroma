@@ -767,6 +767,8 @@ These patterns were hard-won during initial implementation. Re-read before touch
 
 8. **Toast helper has a fallback for old ComfyUI builds.** `showNoEnabledToast` tries `app.extensionManager?.toast.add()` first (modern API), then falls back to a hand-rolled brand-bordered `<div>` banner with `setTimeout` cleanup. Don't remove the fallback — `extensionManager.toast` is not present on the older Easy Install builds users still run.
 
+9. **Empty enabled rows are silently skipped at queue time — `enabledRowsWithIndex` filters by BOTH `enabled` AND `text.trim()`.** Deliberate UX call (May 2026): an ON row with no text is treated the same as OFF. If you drop the text filter, every empty placeholder row queues a meaningless workflow run with an empty string downstream (CLIP Text Encode etc. happily renders nothing). The textarea placeholder and Python DESCRIPTION both call this out — keep them aligned with the filter's actual behavior. The 0-enabled toast message reads "Enable at least one non-empty prompt to run." which covers both the all-disabled AND the all-empty cases without needing two branches.
+
 ### Load Image Pixaroma Patterns (do not regress)
 
 These patterns were hard-won during the May-2026 implementation. Re-read before touching `nodes/node_load_image.py` or any file under `js/load_image/`.
