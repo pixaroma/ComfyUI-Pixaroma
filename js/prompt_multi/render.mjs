@@ -328,10 +328,22 @@ export function renderRows(node, root, rowHandlers) {
   clear.type = "button";
   clear.textContent = "Clear prompts";
   clear.title = "Empty the text in every row (keeps row count, labels and toggles)";
-  const anyText = state.rows.some((r) => r.text && r.text.trim());
-  clear.disabled = !anyText;
   clear.addEventListener("click", () => rowHandlers.onClearAll());
   actions.appendChild(clear);
+
+  // Reactive enable/disable: walk the live textareas (not state.rows) so the
+  // button updates immediately on every keystroke without waiting for commit
+  // or a re-render. Exposed on the node so attachTextareaEditor can poke it.
+  const refreshClear = () => {
+    const tas = root.querySelectorAll(".pix-pm-textarea");
+    let any = false;
+    for (const ta of tas) {
+      if (ta.value && ta.value.trim()) { any = true; break; }
+    }
+    clear.disabled = !any;
+  };
+  refreshClear();
+  node._pixPmRefreshClear = refreshClear;
 
   root.appendChild(actions);
 }

@@ -149,6 +149,7 @@ app.registerExtension({
       this._pixPmRoot = null;
       this._pixPmRerender = null;
       this._pixPmGrow = null;
+      this._pixPmRefreshClear = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },

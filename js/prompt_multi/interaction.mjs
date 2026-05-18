@@ -63,6 +63,8 @@ export function attachTextareaEditor(node, taEl, rowId) {
     // Ask the host node to grow its own height so the rest of the body
     // (Add row button + other rows below) stays inside the node frame.
     if (typeof node._pixPmGrow === "function") node._pixPmGrow();
+    // Update the Clear prompts button's enabled state on every keystroke.
+    if (typeof node._pixPmRefreshClear === "function") node._pixPmRefreshClear();
     if (!pending) {
       pending = true;
       // Commit on idle (next frame). Cheap and keeps state in sync without
