@@ -50,6 +50,8 @@ from .nodes.node_prompt_pack import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_PACK
 from .nodes.node_prompt_pack import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_PACK
 from .nodes.node_remove_background import NODE_CLASS_MAPPINGS as _MAPS_REMOVE_BG
 from .nodes.node_remove_background import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_REMOVE_BG
+from .nodes.node_text_overlay import NODE_CLASS_MAPPINGS as _MAPS_TEXT_OVERLAY
+from .nodes.node_text_overlay import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_OVERLAY
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -88,6 +90,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_UTILS,
     **_MAPS_SHOW_TEXT,
     **_MAPS_REMOVE_BG,
+    **_MAPS_TEXT_OVERLAY,
 }
 
 # combine all node display name mappings
@@ -118,6 +121,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_RESOLUTION,
     **_NAMES_SHOW_TEXT,
     **_NAMES_REMOVE_BG,
+    **_NAMES_TEXT_OVERLAY,
 }
 
 # web directory for loading js files
