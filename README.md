@@ -222,6 +222,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **May 18, 2026 (1.3.38)**
+- **NEW: Prompt Pack Pixaroma** - paste a block of prompts in one textarea and the node queues one workflow run per prompt. Pick **Paragraph** (prompts separated by blank lines, good for long flowing prompts) or **Line** (one prompt per line, good for short lists) with the pill at the top. While running, a counter in the bottom-right corner counts down "3 left, 2 left, 1 left" so you can see how many images are still to come. A **Clear prompts** button on the bottom-left wipes the textarea with a confirm dialog. Drop a generated PNG back on Prompt Reader Pixaroma to recover the exact prompt that produced that specific image.
+- **Prompt Multi - smaller fixes:** two rows with the exact same text both render properly in Queue Text mode now (previously the second one silently reused the first image). Opening an older workflow no longer marks it as modified just by opening it. Clicking the ON / OFF pill on a row no longer flickers the row or triggers a stray toggle. Plays nicer with other workflow plugins that also customise the Run button.
+
 ### **May 18, 2026 (1.3.37)**
 - **Prompt Multi Pixaroma - new List mode for sending different prompts to different parts of the same workflow.** Two pills at the top of the node toggle between Queue Text (the original behaviour - one image per enabled prompt) and List Prompts (one run, the whole list goes out as a single wire). In List mode, pair with the new Prompt From List Pixaroma to pick which prompt feeds which downstream slot - perfect for multi-scene workflows where scene 1, scene 2, scene 3 each need a different prompt from the same library.
 - **NEW: Prompt From List Pixaroma** - tiny picker node. Wire it to Prompt Multi's `prompts` output, set a number for which row you want, and the picked prompt comes out the other side. Drop several copies in your workflow, each set to a different number, to fan one library out to many destinations without cluttering the library node with multiple output dots.
