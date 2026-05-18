@@ -161,6 +161,42 @@ _BG_PAD_Y = 10
 _BG_RADIUS = 6
 
 
+def compute_text_bbox(layer):
+    """Return (bbox_w, bbox_h) for the rendered layer, in pixels.
+    Used by the graphToPrompt-time auto-center path in node_text_overlay.py
+    so we can pre-position a fresh node based on the upstream image dims
+    without going through the full render_text_layer pipeline.
+    Matches the math in render_text_layer exactly."""
+    text = str(layer.get("text", ""))
+    if not text:
+        return (0, 0)
+    font_id = layer.get("font", "Roboto")
+    weight = int(layer.get("weight", 400))
+    italic = bool(layer.get("italic", False))
+    font_size = float(layer.get("fontSize", 64))
+    line_height_mult = float(layer.get("lineHeight", 1.2))
+    letter_spacing = float(layer.get("letterSpacing", 0))
+    bg_color = layer.get("bgColor")
+
+    pil_font, _ = load_pil_font(font_id, weight, italic, font_size)
+    lines = text.split("\n")
+    line_widths = [_measure_line(pil_font, ln, letter_spacing) for ln in lines]
+    max_line_w = max(line_widths) if line_widths else 0
+    line_height_px = round(font_size * line_height_mult)
+    pad_x = _BG_PAD_X if bg_color else 0
+    pad_y = _BG_PAD_Y if bg_color else 0
+    try:
+        left, top, right, bottom = pil_font.getbbox("Mg", anchor="ls")
+        ascender = max(0, -top)
+        descender = max(0, bottom)
+    except TypeError:
+        ascender, descender = pil_font.getmetrics()
+    glyph_h = ascender + descender
+    bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
+    bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
+    return (bbox_w, bbox_h)
+
+
 def render_text_layer(base_img, layer):
     """Render one text overlay onto base_img (PIL.Image, RGBA, mutated in place).
 

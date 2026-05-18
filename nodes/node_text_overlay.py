@@ -14,7 +14,7 @@ from PIL import Image
 
 import folder_paths
 
-from ._text_render_helpers import render_text_layer
+from ._text_render_helpers import render_text_layer, compute_text_bbox
 
 
 class PixaromaTextOverlay:
@@ -58,6 +58,25 @@ class PixaromaTextOverlay:
         if text is not None:
             state["text"] = str(text)
 
+        # First-run auto-center. The JS graphToPrompt hook can only
+        # center the text when upstream has imgs[0] available (Load
+        # Image case). For generative chains (KSampler -> VAE Decode ->
+        # Text Overlay), the upstream image doesn't exist yet at submit
+        # time, so the JS hook can't center. Do it here in Python where
+        # the image dims are real. Send the centered position back via
+        # the ui payload so the JS state persists the centered x/y
+        # instead of staying at the (20, 20) default forever.
+        autocentered = None
+        if state.get("_autoCenterPending") and state.get("text"):
+            try:
+                H, W = image.shape[1], image.shape[2]
+                bbox_w, bbox_h = compute_text_bbox(state)
+                state["x"] = max(0, (W - bbox_w) // 2)
+                state["y"] = max(0, (H - bbox_h) // 2)
+                state.pop("_autoCenterPending", None)
+                autocentered = {"x": state["x"], "y": state["y"]}
+            except Exception as e:
+                print(f"[Text Overlay Pixaroma] WARN: auto-center failed: {e}")
 
         # state IS the single text dict (or empty dict = no overlay)
         outputs = []
@@ -92,6 +111,12 @@ class PixaromaTextOverlay:
             }
         except Exception as e:
             print(f"[Text Overlay Pixaroma] WARN: failed to stash base image preview: {e}")
+
+        # Tell the JS side about the auto-centered position so it can
+        # persist the new x/y on node.properties and clear the pending
+        # flag (so subsequent runs don't re-center).
+        if autocentered is not None:
+            ui_payload["pixaroma_text_overlay_autocentered"] = [autocentered]
 
         return {"ui": ui_payload, "result": (torch.stack(outputs, dim=0),)}
 

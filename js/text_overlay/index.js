@@ -265,6 +265,23 @@ api.addEventListener("executed", (e) => {
       executedNode._textOverlayBaseImageURL =
         `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
     }
+    // Python auto-centered the text on this run (first-run path for
+    // generative chains where the JS hook couldn't center pre-submit).
+    // Persist the centered x/y on the node and clear the pending flag
+    // so subsequent runs respect the position.
+    const ac = detail.output?.pixaroma_text_overlay_autocentered?.[0];
+    if (ac && Number.isFinite(ac.x) && Number.isFinite(ac.y)) {
+      const state = executedNode.properties?.[STATE_PROP];
+      if (state) {
+        state.x = ac.x;
+        state.y = ac.y;
+        delete state._autoCenterPending;
+        if (executedNode._textOverlayBodyPanel) {
+          executedNode._textOverlayBodyPanel.setLayer(state);
+        }
+        executedNode.setDirtyCanvas?.(true, true);
+      }
+    }
   }
   for (const n of (app.graph?._nodes || app.graph?.nodes || [])) {
     if (isTextOverlayNode(n)) refreshOpenButton(n);
