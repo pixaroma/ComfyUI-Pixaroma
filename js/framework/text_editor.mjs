@@ -537,6 +537,9 @@ function injectCSS() {
 
     /* Custom +/- spinner buttons (mirrors Load Image .pix-li-spin pattern,
        CSS chevrons so no extra SVG needed). */
+    /* +/- spinners. Use unicode triangle chars (▴ ▾) so they always
+       render as proper up/down arrows regardless of CSS border-rotation
+       rendering quirks. */
     .pix-to-spin {
       display: flex;
       flex-direction: column;
@@ -551,23 +554,18 @@ function injectCSS() {
       border: none;
       padding: 0;
       cursor: pointer;
-      color: #777;
-      position: relative;
+      color: #888;
+      font: 10px ui-sans-serif, system-ui, sans-serif;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       outline: none;
     }
     .pix-to-spin > button:hover { background: #2a2a2a; color: ${BRAND}; }
-    .pix-to-spin-up { border-bottom: 1px solid #444; }
-    .pix-to-spin-up::before,
-    .pix-to-spin-down::before {
-      content: "";
-      position: absolute;
-      left: 50%; top: 50%;
-      width: 5px; height: 5px;
-      border-top: 1px solid currentColor;
-      border-right: 1px solid currentColor;
-    }
-    .pix-to-spin-up::before   { transform: translate(-50%, -20%) rotate(-45deg); }
-    .pix-to-spin-down::before { transform: translate(-50%, -80%) rotate(135deg); }
+    .pix-to-spin-up   { border-bottom: 1px solid #444; }
+    .pix-to-spin-up::before   { content: "▴"; }
+    .pix-to-spin-down::before { content: "▾"; }
 
     /* Color cell: [swatch LABEL hex] */
     .pix-to-color-cell {
@@ -600,18 +598,22 @@ function injectCSS() {
       background: repeating-conic-gradient(#333 0% 25%, #444 0% 50%) 0 0 / 8px 8px !important;
     }
 
-    /* Reset button: low-key text link style, full-width, subtle */
+    /* Reset button: small orange chip, right-aligned. Mirrors the
+       Load Image .pix-li-snap-btn 'OFF' chip visual: tiny pill that
+       clearly reads as a button (vs the previous low-key text link). */
     .pix-to-reset-btn {
+      align-self: flex-end;
       margin-top: 4px;
-      background: transparent;
-      border: none;
-      color: #777;
-      padding: 6px 0;
+      background: ${BRAND};
+      border: 1px solid ${BRAND};
+      border-radius: 3px;
+      color: #fff;
+      padding: 4px 10px;
       cursor: pointer;
-      font: 11px ui-sans-serif, system-ui, sans-serif;
-      text-align: center;
+      font: 600 10px ui-sans-serif, system-ui, sans-serif;
+      letter-spacing: 0.3px;
     }
-    .pix-to-reset-btn:hover { color: ${BRAND}; }
+    .pix-to-reset-btn:hover { background: #ff7e5a; border-color: #ff7e5a; }
 
     /* Custom dropdown popup (positioned via body) */
     .pix-to-popup {
