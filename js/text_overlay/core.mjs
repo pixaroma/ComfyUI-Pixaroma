@@ -7,6 +7,7 @@
 
 import { createEditorLayout } from "../framework/layout.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
+import { resetStateInPlace } from "./defaults.mjs";
 import { renderTextLayer } from "../framework/text_render.mjs";
 
 const UI_ICON = "/pixaroma/assets/icons/ui/";
@@ -118,6 +119,14 @@ export class TextOverlayEditor {
           this.node._textOverlayBodyPanel.setLayer(this.state);
         }
         this.requestRender();
+      },
+      onReset: (layer) => {
+        this._snapshotMaybe();
+        resetStateInPlace(layer);
+        // Sync the node-body panel + re-frame the editor to the canvas
+        if (this.node._textOverlayBodyPanel) {
+          this.node._textOverlayBodyPanel.setLayer(this.state);
+        }
       },
     });
     this.editorPanel.setLayer(this.state);

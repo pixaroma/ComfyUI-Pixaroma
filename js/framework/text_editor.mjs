@@ -21,7 +21,7 @@ const BRAND = "#f66744";
  *  @param {Function} opts.onChange  - called with (layer) on any property change
  *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
-export function createTextEditorPanel({ mount, onChange }) {
+export function createTextEditorPanel({ mount, onChange, onReset }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
@@ -65,42 +65,46 @@ export function createTextEditorPanel({ mount, onChange }) {
   });
 
   // ── WEIGHT + ITALIC row ──
-  const weightWrap = el("div", "pix-to-weight-row");
-  root.appendChild(weightWrap);
-  const wCol = el("div", "pix-to-col");
-  wCol.appendChild(sectionLabel("WEIGHT"));
-  ui.weightDropdown = el("div", "pix-to-dropdown");
-  ui.weightDropdown.innerHTML = `<span class="name">Regular</span><span class="arrow">▾</span>`;
-  ui.weightDropdownName = ui.weightDropdown.querySelector(".name");
-  ui.weightDropdown.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openSimplePopup(ui.weightDropdown, [
-      { id: "400", label: "Regular" },
-      { id: "700", label: "Bold" },
-    ], String(layerNow()?.weight || 400), (id) => {
-      const l = layerNow(); if (!l) return;
-      l.weight = parseInt(id, 10);
-      ui.weightDropdownName.textContent = id === "400" ? "Regular" : "Bold";
-      fireChange();
-    });
-  });
-  wCol.appendChild(ui.weightDropdown);
-  weightWrap.appendChild(wCol);
+  // STYLE: Regular / Bold / Italic chips. Reg/Bold are mutex (weight 400 vs 700).
+  // Italic is an independent toggle.
+  section("STYLE");
+  const styleRow = el("div", "pix-to-style-row");
+  root.appendChild(styleRow);
 
-  const iCol = el("div", "pix-to-col");
-  iCol.appendChild(sectionLabel(" ")); // align with WEIGHT label
-  ui.italicBtn = el("button", "pix-to-chip pix-to-italic");
+  ui.regBtn = el("button", "pix-to-chip");
+  ui.regBtn.type = "button";
+  ui.regBtn.textContent = "Regular";
+  ui.regBtn.addEventListener("click", () => {
+    const l = layerNow(); if (!l) return;
+    l.weight = 400;
+    ui.regBtn.classList.add("active");
+    ui.boldBtn.classList.remove("active");
+    fireChange();
+  });
+  styleRow.appendChild(ui.regBtn);
+
+  ui.boldBtn = el("button", "pix-to-chip pix-to-bold");
+  ui.boldBtn.type = "button";
+  ui.boldBtn.textContent = "Bold";
+  ui.boldBtn.addEventListener("click", () => {
+    const l = layerNow(); if (!l) return;
+    l.weight = 700;
+    ui.boldBtn.classList.add("active");
+    ui.regBtn.classList.remove("active");
+    fireChange();
+  });
+  styleRow.appendChild(ui.boldBtn);
+
+  ui.italicBtn = el("button", "pix-to-chip pix-to-italic-chip");
   ui.italicBtn.type = "button";
-  ui.italicBtn.textContent = "I";
-  ui.italicBtn.title = "Italic";
+  ui.italicBtn.textContent = "Italic";
   ui.italicBtn.addEventListener("click", () => {
     const l = layerNow(); if (!l) return;
     l.italic = !l.italic;
     ui.italicBtn.classList.toggle("active", l.italic);
     fireChange();
   });
-  iCol.appendChild(ui.italicBtn);
-  weightWrap.appendChild(iCol);
+  styleRow.appendChild(ui.italicBtn);
 
   // ── ALIGN ──
   sectionLabel("ALIGN", root);
@@ -227,6 +231,23 @@ export function createTextEditorPanel({ mount, onChange }) {
   });
   root.appendChild(ui.posYSlider.el);
 
+  // Reset to defaults (caller supplies the actual reset logic so the
+  // panel stays decoupled from the node's default-state shape).
+  if (onReset) {
+    const resetBtn = el("button", "pix-to-reset-btn");
+    resetBtn.type = "button";
+    resetBtn.textContent = "Reset to defaults";
+    resetBtn.title = "Restore all settings to their defaults";
+    resetBtn.addEventListener("click", () => {
+      const l = layerNow(); if (!l) return;
+      if (!window.confirm("Reset all text overlay settings to defaults? This cannot be undone.")) return;
+      onReset(l);
+      setLayer(l);
+      fireChange();
+    });
+    root.appendChild(resetBtn);
+  }
+
   // Load font catalog. Used by the custom font popup. Also pre-load each
   // font's primary weight so the popup items render in their own typeface
   // (the popup uses style.fontFamily = "Pix-<id>").
@@ -256,7 +277,9 @@ export function createTextEditorPanel({ mount, onChange }) {
       const fontId = layer.font ?? "Inter";
       ui.fontDropdownName.textContent = labelForFont(fontCatalog, fontId);
       ui.fontDropdownName.style.fontFamily = `"Pix-${fontId}", system-ui`;
-      ui.weightDropdownName.textContent = (layer.weight ?? 400) === 400 ? "Regular" : "Bold";
+      const w = layer.weight ?? 400;
+      ui.regBtn.classList.toggle("active", w === 400);
+      ui.boldBtn.classList.toggle("active", w === 700);
       ui.italicBtn.classList.toggle("active", !!layer.italic);
       ui.alignChips.forEach((c) => c.classList.toggle("active", c.dataset.align === (layer.align ?? "center")));
       ui.sizeSlider.setValue(layer.fontSize ?? 96);
@@ -395,30 +418,6 @@ function openFontPopup(anchorEl, catalog, currentId, onPick) {
   function close() { popup.remove(); }
 }
 
-function openSimplePopup(anchorEl, options, currentId, onPick) {
-  document.querySelector(".pix-to-popup")?.remove();
-  const popup = document.createElement("div");
-  popup.className = "pix-to-popup";
-  const rect = anchorEl.getBoundingClientRect();
-  popup.style.left = `${rect.left}px`;
-  popup.style.top  = `${rect.bottom + 2}px`;
-  popup.style.width = `${rect.width}px`;
-  for (const opt of options) {
-    const item = document.createElement("div");
-    item.className = "pix-to-popup-item" + (opt.id === currentId ? " active" : "");
-    item.textContent = opt.label;
-    item.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onPick(opt.id);
-      close();
-    });
-    popup.appendChild(item);
-  }
-  document.body.appendChild(popup);
-  attachPopupCloseListeners(popup, close);
-  function close() { popup.remove(); }
-}
-
 // Shared close-listener wiring for our custom popups. Mirrors Load Image
 // pattern #14: mousedown/pointerdown/wheel/Esc all capture-phase, and the
 // wheel listener MUST gate on !popup.contains so users can scroll the
@@ -509,14 +508,8 @@ function injectCSS() {
     .pix-to-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pix-to-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
 
-    .pix-to-weight-row {
-      display: grid;
-      grid-template-columns: 1fr 36px;
-      gap: 6px;
-      align-items: end;
-    }
-    .pix-to-col { display: flex; flex-direction: column; }
-
+    /* STYLE + ALIGN rows: 3-up chip grids */
+    .pix-to-style-row,
     .pix-to-align-row {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
@@ -538,7 +531,10 @@ function injectCSS() {
     }
     .pix-to-chip:hover { border-color: #666; color: #ddd; }
     .pix-to-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
-    .pix-to-italic { font: italic 600 14px serif; }
+    /* Style chips: render their own label in matching weight/style so the
+       button visually previews what it does (Bold is bold, Italic is italic). */
+    .pix-to-bold { font-weight: 700; }
+    .pix-to-italic-chip { font-style: italic; }
 
     .pix-to-align-chip img {
       width: 14px; height: 14px;
@@ -546,6 +542,20 @@ function injectCSS() {
       filter: brightness(0) saturate(100%) invert(75%);
     }
     .pix-to-align-chip.active img { filter: brightness(0) invert(1); }
+
+    /* Reset button at the bottom of the panel — subtle, not prominent. */
+    .pix-to-reset-btn {
+      margin-top: 8px;
+      background: transparent;
+      border: 1px dashed #444;
+      border-radius: 4px;
+      color: #888;
+      padding: 6px 8px;
+      cursor: pointer;
+      font: 11px ui-sans-serif, system-ui, sans-serif;
+      align-self: stretch;
+    }
+    .pix-to-reset-btn:hover { color: ${BRAND}; border-color: ${BRAND}; }
 
     /* Slider row: label | range | numeric box */
     .pix-to-slider-row {

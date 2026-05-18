@@ -8,36 +8,12 @@ import { app } from "/scripts/app.js";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
+import { DEFAULT_STATE, resetStateInPlace } from "./defaults.mjs";
 import "./interaction.mjs"; // side-effect: registers prototype methods
 
 const NODE_CLASS = "PixaromaTextOverlay";
 const STATE_PROP = "textOverlayState";
 const HIDDEN_INPUT_NAME = "TextOverlayState";
-
-// Default state when adding a fresh node OR migrating from older versions.
-// Position x/y are deliberately small so the text fits in ANY canvas size out
-// of the box. The _autoCenterPending flag tells the editor to center the text
-// on the canvas the first time it opens with an upstream image available; the
-// editor clears the flag after centering so subsequent opens use the saved
-// position. See core.mjs::open.
-const DEFAULT_STATE = {
-  version: 3,
-  text: "Your text here",
-  font: "Inter",
-  weight: 400,
-  italic: false,
-  align: "center",
-  fontSize: 64,
-  lineHeight: 1.2,
-  letterSpacing: 0,
-  x: 20,
-  y: 20,
-  rotation: 0,
-  opacity: 1.0,
-  color: "#FFFFFF",
-  bgColor: null,
-  _autoCenterPending: true,
-};
 
 app.registerExtension({
   name: "Pixaroma.TextOverlay",
@@ -103,6 +79,10 @@ function setupTextOverlayNode(node) {
       }
       node.setDirtyCanvas?.(true, true);
     },
+    // Reset to DEFAULT_STATE in-place so both the body panel + (if open)
+    // editor sidebar point at the same restored object. We mutate keys
+    // rather than replace the object so existing references stay valid.
+    onReset: (layer) => resetStateInPlace(layer),
   });
   node._textOverlayBodyPanel = bodyPanel;
   node._textOverlayBodyRoot = root;
