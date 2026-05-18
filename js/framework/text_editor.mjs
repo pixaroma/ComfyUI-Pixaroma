@@ -120,11 +120,11 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   // and the value larger/orange on the right, inside a bordered cell.
   const typoGrid = el("div", "pix-to-grid2");
   root.appendChild(typoGrid);
-  ui.sizeInput   = inputCell(typoGrid, "Size",    8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
-  ui.lineInput   = inputCell(typoGrid, "Line",  0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
-  ui.letterInput = inputCell(typoGrid, "Letter", -10,  50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
-  ui.opacityInput = inputCell(typoGrid, "Opacity", 0, 100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
-  ui.rotateInput = inputCell(typoGrid, "Rotate", -180, 180,   0, 1,   (v) => { const l = layerNow(); if (l) { l.rotation = v;       fireChange(); }});
+  ui.sizeInput    = inputCell(typoGrid, "Size",      8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
+  ui.lineInput    = inputCell(typoGrid, "Leading", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
+  ui.letterInput  = inputCell(typoGrid, "Tracking", -10, 50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
+  ui.opacityInput = inputCell(typoGrid, "Opacity",   0, 100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
+  ui.rotateInput  = inputCell(typoGrid, "Rotate", -180, 180,   0, 1,   (v) => { const l = layerNow(); if (l) { l.rotation = v;       fireChange(); }});
 
   const posGrid = el("div", "pix-to-grid2");
   root.appendChild(posGrid);
@@ -250,44 +250,116 @@ function labelForFont(catalog, id) {
 }
 
 // One cell in the 2-column number-input grid. Returns { el, input, setValue, setRange }.
-// Layout: [LABEL  value  ▲/▼] inside a single bordered box. The +/- spinner
-// buttons mirror Load Image's pix-li-spin pattern (CSS chevrons, no SVG;
-// Shift held = 10x step).
+// Layout: [LABEL  value  ▲/▼] inside a single bordered box.
+// The input is type=text (not number) so users can type math expressions
+// like "100+12" or "512*2" — evaluated on blur/Enter via safeMathEval.
+// Live onChange still fires while typing plain numbers (so the preview
+// updates as you type), but math expressions wait for commit.
+// +/- spinner buttons mirror Load Image's pix-li-spin pattern (Shift = 10x).
 function inputCell(parent, label, min, max, value, step, onChange) {
+  let curMin = min, curMax = max;
+  let currentValue = value;
+
   const cell = el("div", "pix-to-input-cell");
   const lbl = el("span", "pix-to-input-label"); lbl.textContent = label;
   const input = document.createElement("input");
-  input.type = "number"; input.className = "pix-to-input-val";
-  input.min = min; input.max = max; input.value = value; input.step = step;
+  input.type = "text";
+  input.inputMode = "decimal";
+  input.spellcheck = false;
+  input.autocomplete = "off";
+  input.className = "pix-to-input-val";
+  input.value = fmtStep(value, step);
+  input.title = "Math allowed: 100+12, 512*2, (1024+128)/2";
+
   const spin = el("div", "pix-to-spin");
   const upBtn = el("button", "pix-to-spin-up");   upBtn.type = "button";   upBtn.tabIndex = -1;
   const downBtn = el("button", "pix-to-spin-down"); downBtn.type = "button"; downBtn.tabIndex = -1;
   spin.append(upBtn, downBtn);
   cell.append(lbl, input, spin);
 
-  function step1(dir, mult) {
-    const mn = parseFloat(input.min); const mx = parseFloat(input.max);
-    const cur = parseFloat(input.value) || 0;
-    const stp = parseFloat(input.step) || 1;
-    let next = cur + dir * stp * mult;
-    if (!isNaN(mn)) next = Math.max(mn, next);
-    if (!isNaN(mx)) next = Math.min(mx, next);
-    // Round to step precision so we don't accumulate float drift.
-    const decimals = (String(stp).split(".")[1] || "").length;
-    input.value = decimals ? next.toFixed(decimals) : Math.round(next);
-    onChange(parseFloat(input.value));
+  function clamp(v) { return Math.max(curMin, Math.min(curMax, v)); }
+
+  function commit() {
+    const raw = safeMathEval(input.value);
+    const v = Number.isFinite(raw) ? clamp(roundToStep(raw, step)) : currentValue;
+    input.value = fmtStep(v, step);
+    if (v !== currentValue) {
+      currentValue = v;
+      onChange(v);
+    }
   }
+
+  function step1(dir, mult) {
+    const raw = safeMathEval(input.value);
+    const base = Number.isFinite(raw) ? raw : currentValue;
+    const next = clamp(roundToStep(base + dir * step * mult, step));
+    input.value = fmtStep(next, step);
+    currentValue = next;
+    onChange(next);
+  }
+
   upBtn.addEventListener("mousedown",   (e) => { e.preventDefault(); e.stopPropagation(); step1(+1, e.shiftKey ? 10 : 1); });
   downBtn.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); step1(-1, e.shiftKey ? 10 : 1); });
 
-  input.addEventListener("input", () => onChange(parseFloat(input.value)));
-  input.addEventListener("keydown", (e) => e.stopImmediatePropagation());
+  // Live update while typing a plain number, so the canvas preview tracks
+  // typing. For math expressions (with operators), wait for blur/Enter.
+  input.addEventListener("input", () => {
+    if (/^-?\d+(\.\d+)?$/.test(input.value.trim())) {
+      const v = parseFloat(input.value);
+      if (Number.isFinite(v)) {
+        currentValue = v;
+        onChange(v);
+      }
+    }
+  });
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    e.stopImmediatePropagation();
+    if (e.key === "Enter") { e.preventDefault(); input.blur(); return; }
+    if (e.key === "Tab") { commit(); return; }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      step1(e.key === "ArrowUp" ? 1 : -1, e.shiftKey ? 10 : 1);
+    }
+  });
+
   parent.appendChild(cell);
   return {
     el: cell, input,
-    setValue(v) { input.value = v; },
-    setRange(mn, mx) { input.min = mn; input.max = mx; },
+    setValue(v) { currentValue = v; input.value = fmtStep(v, step); },
+    setRange(mn, mx) { curMin = mn; curMax = mx; },
   };
+}
+
+// Whitelist-only math eval. Accepts only digits, + - * / ( ) . and
+// whitespace; everything else returns NaN. Uses the Function constructor
+// inside strict mode for evaluation.
+function safeMathEval(expr) {
+  if (typeof expr !== "string") return NaN;
+  const s = expr.trim();
+  if (!s) return NaN;
+  if (!/^[\d+\-*/().\s]+$/.test(s)) return NaN;
+  try {
+    const v = Function(`"use strict"; return (${s});`)();
+    return typeof v === "number" && Number.isFinite(v) ? v : NaN;
+  } catch {
+    return NaN;
+  }
+}
+
+// Round v to the precision implied by step (step=0.1 -> 1 decimal, step=1 -> int).
+function roundToStep(v, step) {
+  if (!step) return v;
+  const decimals = (String(step).split(".")[1] || "").length;
+  const m = Math.pow(10, decimals);
+  return Math.round(v * m) / m;
+}
+
+// Format v as a string with the precision implied by step.
+function fmtStep(v, step) {
+  if (!step) return String(v);
+  const decimals = (String(step).split(".")[1] || "").length;
+  return decimals ? Number(v).toFixed(decimals) : String(Math.round(v));
 }
 
 // One cell in the colors grid. Returns { el, setValue }.
