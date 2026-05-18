@@ -161,6 +161,14 @@ export class TextOverlayEditor {
     });
     this.editorPanel.setLayer(this.state);
 
+    // Lock the text textarea (in BOTH the editor sidebar and the node
+    // body panel) when text input is wired. Visual cue that typing in
+    // the textarea is ignored at workflow time.
+    if (this._wiredTextOverride != null) {
+      this.editorPanel.setTextReadOnly?.(true, "Text input is wired - upstream value is used");
+      this.node._textOverlayBodyPanel?.setTextReadOnly?.(true, "Text input is wired - upstream value is used");
+    }
+
     // First-time auto-center: when a fresh node opens for the first time with
     // an upstream image, center the text on the canvas so it fits regardless
     // of aspect ratio. Flag is cleared so subsequent opens respect the saved
@@ -201,6 +209,9 @@ export class TextOverlayEditor {
     if (this._wiredTextOverride != null && this._origTextBeforeWire !== undefined) {
       this.state.text = this._origTextBeforeWire;
     }
+    // Body panel lock stays in place even after the editor closes —
+    // it reflects current wiring state, not editor session. The
+    // index.js onConnectionsChange handler keeps it in sync.
     if (typeof this._uninstallInteractions === "function") this._uninstallInteractions();
     if (this._savedLoadGraphData) window.app.loadGraphData = this._savedLoadGraphData;
     if (this._savedGraphConfigure) window.app.graph.configure = this._savedGraphConfigure;

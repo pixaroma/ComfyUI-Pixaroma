@@ -223,9 +223,26 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
     ui.posYInput.setRange(-canvasHeight, canvasHeight * 2);
   }
 
+  /** Lock or unlock the text textarea. Used by the editor + body panel
+   *  when the Text Overlay node has its `text` input wired - the
+   *  upstream value overrides whatever the user types here, so disable
+   *  the field to avoid silent edits being thrown away. Pass a hint
+   *  string to show under the textarea while locked. */
+  function setTextReadOnly(isReadOnly, hint) {
+    ui.textArea.readOnly = !!isReadOnly;
+    ui.textArea.classList.toggle("pix-to-textarea-locked", !!isReadOnly);
+    ui.textArea.title = isReadOnly && hint ? hint : "";
+    if (!ui.textLockHint) {
+      ui.textLockHint = el("div", "pix-to-text-lockhint");
+      ui.textArea.after(ui.textLockHint);
+    }
+    ui.textLockHint.textContent = isReadOnly && hint ? hint : "";
+    ui.textLockHint.style.display = isReadOnly && hint ? "block" : "none";
+  }
+
   function destroy() { root.remove(); }
 
-  return { setLayer, setCanvasBounds, destroy };
+  return { setLayer, setCanvasBounds, setTextReadOnly, destroy };
 }
 
 // ── stateless helpers ─────────────────────────────────────────────────────────
@@ -500,6 +517,19 @@ function injectCSS() {
       min-height: 44px;
     }
     .pix-to-textarea:focus { outline: none; border-color: ${BRAND}; }
+    .pix-to-textarea-locked {
+      color: #666 !important;
+      background: #1a1a1a !important;
+      cursor: not-allowed;
+      font-style: italic;
+    }
+    .pix-to-text-lockhint {
+      font: 10px ui-sans-serif, system-ui, sans-serif;
+      color: ${BRAND};
+      letter-spacing: 0.3px;
+      margin-top: -2px;
+      margin-bottom: 2px;
+    }
 
     .pix-to-dropdown {
       background: #1d1d1d;

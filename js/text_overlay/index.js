@@ -38,15 +38,18 @@ app.registerExtension({
         this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
       }
       refreshOpenButton(this);
+      refreshTextLock(this);
       return r;
     };
 
-    // Update the Open button when the image wire is connected /
-    // disconnected so the user sees the right hint immediately.
+    // Update the Open button + text-lock indicator when wires change
+    // so the user sees the right state immediately (image wire affects
+    // the Open button; text wire grays out the textarea).
     const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function () {
       const r = origOnConnectionsChange?.apply(this, arguments);
       refreshOpenButton(this);
+      refreshTextLock(this);
       return r;
     };
   },
@@ -166,6 +169,7 @@ function setupTextOverlayNode(node) {
   // Defer panel population past configure() so saved state is restored first
   queueMicrotask(() => {
     bodyPanel.setLayer(node.properties[STATE_PROP]);
+    refreshTextLock(node);
   });
 }
 
@@ -203,6 +207,17 @@ function isUpstreamImageReady(node) {
   if (img && img.complete && img.naturalWidth > 0) return true;
   if (node._textOverlayHasRun) return true;
   return false;
+}
+
+// Gray out the text textarea in the body panel when the `text` input
+// is wired (upstream value overrides whatever the user types). Returns
+// the textarea to editable when the wire is detached.
+function refreshTextLock(node) {
+  const panel = node._textOverlayBodyPanel;
+  if (!panel || typeof panel.setTextReadOnly !== "function") return;
+  const link = node.inputs?.find((i) => i.name === "text")?.link;
+  const wired = link != null;
+  panel.setTextReadOnly(wired, wired ? "Text input is wired - upstream value is used" : "");
 }
 
 function refreshOpenButton(node) {
