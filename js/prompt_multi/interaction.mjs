@@ -183,11 +183,19 @@ const _drag = { id: null };
 
 export function attachDragHandlers(node, rowEl, rowId, onDrop) {
   rowEl.addEventListener("dragstart", (e) => {
-    // Don't initiate drag if the event target is an input/textarea/button.
-    // This protects native text-selection and click behavior in the row's
-    // controls (label input, textarea, ON pill, X delete).
+    // Don't initiate drag if the event target is an input / textarea /
+    // button. This protects native text-selection and click behavior in
+    // the row's controls (label input, textarea, X delete).
     const tag = (e.target.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea" || tag === "button") {
+      e.preventDefault();
+      return;
+    }
+    // Also bail on the ON/OFF toggle pill - it's a <div>, so the tag
+    // check above misses it. Without this guard, clicking the toggle
+    // initiates a row drag, the row flickers opacity, and the click
+    // also flips the toggle - confusing for the user.
+    if (e.target.closest && e.target.closest(".pix-pm-toggle")) {
       e.preventDefault();
       return;
     }

@@ -56,20 +56,26 @@ export function readState(node) {
   const s = node.properties?.[STATE_PROP];
   if (!s || typeof s !== "object") return defaultState();
   if (!Array.isArray(s.rows) || s.rows.length === 0) return defaultState();
-  // Defensive normalisation against hand-edited workflow JSON.
-  for (const row of s.rows) {
-    if (typeof row.id !== "string" || !row.id) row.id = nextId();
-    if (typeof row.enabled !== "boolean") row.enabled = true;
-    if (typeof row.label !== "string") row.label = "";
-    if (typeof row.text !== "string") row.text = "";
-  }
-  if (typeof s.activeIndex !== "number" || s.activeIndex < 0 || s.activeIndex >= s.rows.length) {
-    s.activeIndex = 0;
-  }
-  // Migration from v1 (no mode field): default to queue mode.
-  if (s.mode !== MODE_QUEUE && s.mode !== MODE_LIST) s.mode = MODE_QUEUE;
-  s.version = 2;
-  return s;
+  // Return a normalised CLONE rather than mutating the saved object in
+  // place. Mutating in place was tripping the workflow's change tracker
+  // on plain workflow opens (v1 -> v2 migration silently dirtied the
+  // workflow, prompting the user to save on close even when they hadn't
+  // touched anything). The clone is returned for read; user mutations
+  // route through setText / setMode / etc. which call writeState
+  // explicitly and at that point the v2 schema gets persisted.
+  return {
+    version: 2,
+    mode: (s.mode === MODE_QUEUE || s.mode === MODE_LIST) ? s.mode : MODE_QUEUE,
+    rows: s.rows.map((row) => ({
+      id: (typeof row.id === "string" && row.id) ? row.id : nextId(),
+      enabled: typeof row.enabled === "boolean" ? row.enabled : true,
+      label: typeof row.label === "string" ? row.label : "",
+      text: typeof row.text === "string" ? row.text : "",
+    })),
+    activeIndex: (typeof s.activeIndex === "number" && s.activeIndex >= 0 && s.activeIndex < s.rows.length)
+      ? s.activeIndex
+      : 0,
+  };
 }
 
 export function setMode(node, mode) {
@@ -151,8 +157,13 @@ export function enabledRowsWithIndex(node) {
     .filter((x) => x.row.enabled && x.row.text && x.row.text.trim());
 }
 
-// restoreFromProperties: ensures node.properties.promptMultiState exists with
-// defaults and applies the readState normalization.
+// restoreFromProperties: ensures node.properties.promptMultiState exists.
+// Only writes when state is genuinely missing or invalid - on a normal load
+// of a previously-saved workflow we leave node.properties alone so the
+// workflow doesn't get marked dirty by the act of being opened.
 export function restoreFromProperties(node) {
-  writeState(node, readState(node));
+  const existing = node.properties?.[STATE_PROP];
+  if (!existing || typeof existing !== "object" || !Array.isArray(existing.rows) || existing.rows.length === 0) {
+    writeState(node, defaultState());
+  }
 }

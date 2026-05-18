@@ -245,7 +245,7 @@ app.graphToPrompt = async function (...args) {
 //
 // In LIST mode: skip the loop entirely - the workflow runs once normally,
 // and the From List downstream picker grabs whichever row it wants from the
-// full enabled-rows list shipped via the `list` output.
+// full enabled-rows list shipped via the `prompts` output.
 //
 // Edge cases (queue mode):
 // - 0 enabled non-empty rows -> toast warning, bail (no queue activity).
@@ -294,16 +294,21 @@ function showNoEnabledToast() {
   } catch (_e) {}
 }
 
-const _origQueuePrompt = app.queuePrompt.bind(app);
+// Save the original WITHOUT pre-binding (matches the Switch graphToPrompt
+// hook pattern in this project). Using `.call(app, ...)` per invocation
+// keeps the chain consistent with extensions that monkey-patch
+// app.queuePrompt themselves, instead of locking in a bound reference at
+// extension-load time.
+const _origQueuePrompt = app.queuePrompt;
 app.queuePrompt = async function (num, batchCount) {
   const pmNode = findFirstPromptMultiNode();
-  if (!pmNode) return _origQueuePrompt(num, batchCount);
+  if (!pmNode) return _origQueuePrompt.call(app, num, batchCount);
 
   // List mode: don't loop. The workflow runs once with the full enabled-rows
   // list shipped to downstream From List nodes via the graphToPrompt hook.
   const mode = pmNode.properties?.[STATE_PROP]?.mode;
   if (mode === MODE_LIST) {
-    return _origQueuePrompt(num, batchCount);
+    return _origQueuePrompt.call(app, num, batchCount);
   }
 
   // Queue mode: loop one queue item per enabled row.
@@ -319,7 +324,7 @@ app.queuePrompt = async function (num, batchCount) {
     if (!pmNode.properties[STATE_PROP]) pmNode.properties[STATE_PROP] = { rows: [], activeIndex: 0 };
     pmNode.properties[STATE_PROP].activeIndex = index;
     try {
-      const r = await _origQueuePrompt(num, 1);
+      const r = await _origQueuePrompt.call(app, num, 1);
       results.push(r);
     } catch (err) {
       console.error("Pixaroma.PromptMulti: per-row enqueue failed", err);

@@ -63,7 +63,12 @@ class PixaromaPromptMulti:
 
     @classmethod
     def IS_CHANGED(cls, PromptMultiState="{}", **kwargs):
-        return PromptMultiState
+        # Return NaN so every Run re-executes this node, even when the JSON
+        # payload happens to be identical between iterations (e.g. two rows
+        # with the same text in queue mode would otherwise hit ComfyUI's
+        # cache and return the prior iteration's image instead of rendering
+        # again). Same pattern as Notify Pixaroma.
+        return float("nan")
 
     def build(self, PromptMultiState="{}"):
         try:
