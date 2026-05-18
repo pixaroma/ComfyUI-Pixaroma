@@ -230,7 +230,13 @@ TextOverlayEditor.prototype._drawSelectionOverlay = function (ctx) {
   const layer = this.layers[idx];
   if (!layer || layer.visible === false) return;
   const b = this._layerBbox(layer);
+  // The overlay canvas is larger than the main canvas by SEL_PAD on each side
+  // so handles aren't clipped at canvas edges. Translate the whole drawing
+  // by SEL_PAD so image-coords (b.x, b.y) map to the right place on the
+  // overlay canvas.
+  const pad = TextOverlayEditor.SEL_PAD;
   ctx.save();
+  ctx.translate(pad, pad);
   const cx = b.x + b.w / 2;
   const cy = b.y + b.h / 2;
   ctx.translate(cx, cy);

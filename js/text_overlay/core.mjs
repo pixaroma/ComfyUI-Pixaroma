@@ -91,21 +91,34 @@ export class TextOverlayEditor {
     }
 
     this._buildCanvas();
-    this._buildLayersPanel();
 
-    // Text editor panel above the framework's sidebar footer
+    // Right sidebar layout (matches Image Composer): layers panel on TOP, text
+    // properties panel below, framework footer (Help / Save / Save to Disk) at
+    // the bottom. The right sidebar is column-flex so the text panel grows
+    // and scrolls while the layers panel keeps a constrained height.
+    this.layout.rightSidebar.style.display = "flex";
+    this.layout.rightSidebar.style.flexDirection = "column";
+
+    this._buildLayersPanel(); // inserts before footer → top of stack
+
     this.textEditorMount = document.createElement("div");
-    this.textEditorMount.style.cssText = "padding:12px; overflow-y:auto; flex:1;";
+    this.textEditorMount.style.cssText = "padding:12px; overflow-y:auto; flex:1 1 auto; min-height:0;";
     this.layout.rightSidebar.insertBefore(this.textEditorMount, this.layout.sidebarFooter);
     this.textPanel = createTextEditorPanel({
       mount: this.textEditorMount,
       onChange: () => {
         this._snapshotMaybe();
-        this._rebuildLayersPanel(); // text could change → rename row
+        this._rebuildLayersPanel();
         this.requestRender();
       },
     });
     this._syncLayerSelection();
+
+    // Wire Save to Disk button (framework footer)
+    this.layout.onSaveToDisk = () => this.saveToDisk().catch((e) => {
+      console.warn("[Text Overlay] saveToDisk failed", e);
+      this.layout.setStatus(`Save to disk failed: ${e.message}`, "error");
+    });
 
     // Mix-in installs interaction handlers (mouse + keyboard)
     if (typeof this._installInteractions === "function") this._installInteractions();
@@ -124,6 +137,41 @@ export class TextOverlayEditor {
     this.textPanel?.destroy?.();
     this.layout?.unmount?.();
     this.node._textOverlayEditor = null;
+  }
+
+  async saveToDisk() {
+    // Render full-resolution composition and prompt the user for a save location.
+    // Uses showSaveFilePicker when available (Chrome / Edge), falls back to a
+    // hidden <a download> for other browsers.
+    const canvas = await this._renderFull();
+    const suggestedName = `text_overlay_${Date.now()}.png`;
+    if (window.showSaveFilePicker) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName,
+          types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
+        });
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        this.layout.setStatus("Saved to disk", null);
+        return;
+      } catch (e) {
+        // User cancelled the picker, or showSaveFilePicker is blocked. Fall through to <a> download.
+        if (e.name === "AbortError") return;
+        console.warn("[Text Overlay] showSaveFilePicker failed, falling back to download link", e);
+      }
+    }
+    // Fallback: trigger a download via temporary <a download>
+    const dataURL = canvas.toDataURL("image/png");
+    const a = document.createElement("a");
+    a.href = dataURL;
+    a.download = suggestedName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    this.layout.setStatus("Download started", null);
   }
 
   async save() {
@@ -170,17 +218,40 @@ export class TextOverlayEditor {
     this.redoStack = [];
   }
 
-  // ── Canvas ──
+  // ── Canvas (image + selection overlay) ──
+  // SEL_PAD is extra space around the canvas where the selection-handle overlay
+  // can draw without being clipped (handles for layers near the edge, rotated
+  // layers whose bbox extends outside, etc). Composer pattern.
+  static SEL_PAD = 200;
+
   _buildCanvas() {
     const ws = this.layout.workspace;
     this.canvasHost = document.createElement("div");
     this.canvasHost.style.cssText = "position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:auto;";
     ws.appendChild(this.canvasHost);
+
+    // Wrap canvases in a positioned container so the overlay can extend past
+    // the main canvas via negative offset without affecting layout.
+    this.canvasWrap = document.createElement("div");
+    this.canvasWrap.style.cssText = `position:relative; width:${this.canvasWidth}px; height:${this.canvasHeight}px; transform-origin:center;`;
+    this.canvasHost.appendChild(this.canvasWrap);
+
     this.canvas = document.createElement("canvas");
     this.canvas.width = this.canvasWidth;
     this.canvas.height = this.canvasHeight;
-    this.canvas.style.cssText = "background:#222; box-shadow:0 0 0 1px #444, 0 0 30px rgba(0,0,0,0.5); transform-origin:center;";
-    this.canvasHost.appendChild(this.canvas);
+    this.canvas.style.cssText = "background:#222; box-shadow:0 0 0 1px #444, 0 0 30px rgba(0,0,0,0.5); position:absolute; left:0; top:0;";
+    this.canvasWrap.appendChild(this.canvas);
+
+    // Selection overlay canvas — larger than the main canvas by SEL_PAD on
+    // each side, positioned with negative offset so its (0,0) is at
+    // (-SEL_PAD, -SEL_PAD) relative to the main canvas's (0,0). When
+    // drawing selection handles, callers must offset their coords by +SEL_PAD.
+    const pad = TextOverlayEditor.SEL_PAD;
+    this.selCanvas = document.createElement("canvas");
+    this.selCanvas.width = this.canvasWidth + 2 * pad;
+    this.selCanvas.height = this.canvasHeight + 2 * pad;
+    this.selCanvas.style.cssText = `position:absolute; left:${-pad}px; top:${-pad}px; pointer-events:none;`;
+    this.canvasWrap.appendChild(this.selCanvas);
   }
 
   async _tryLoadUpstreamImage() {
@@ -208,7 +279,13 @@ export class TextOverlayEditor {
       onMoveDown: () => this.moveSelected(-1),
       onReorder: (from, to) => this.reorderLayer(from, to),
     });
-    this.layout.leftSidebar.appendChild(this._layerPanel.el);
+    // Constrain layers panel height so the text properties panel below it
+    // always has room. Composer uses a draggable resize handle but for
+    // simplicity we cap it at a sensible default.
+    this._layerPanel.el.style.flex = "0 0 auto";
+    this._layerPanel.el.style.maxHeight = "40vh";
+    // Insert before sidebar footer → ends up at top of the right sidebar stack
+    this.layout.rightSidebar.insertBefore(this._layerPanel.el, this.layout.sidebarFooter);
     this._rebuildLayersPanel();
   }
 
@@ -417,7 +494,13 @@ export class TextOverlayEditor {
     for (const layer of this.layers) {
       try { await renderTextLayer(ctx, layer); } catch (e) { console.warn("layer render failed", e); }
     }
-    if (typeof this._drawSelectionOverlay === "function") this._drawSelectionOverlay(ctx);
+    // Selection overlay drawn on the SEPARATE selCanvas so handles can extend
+    // outside the main canvas without being clipped.
+    if (this.selCanvas) {
+      const sctx = this.selCanvas.getContext("2d");
+      sctx.clearRect(0, 0, this.selCanvas.width, this.selCanvas.height);
+      if (typeof this._drawSelectionOverlay === "function") this._drawSelectionOverlay(sctx);
+    }
   }
 
   async _renderFull() {
@@ -451,7 +534,7 @@ export class TextOverlayEditor {
     this._applyZoom();
   }
   _applyZoom() {
-    this.canvas.style.transform = `scale(${this._zoom})`;
+    if (this.canvasWrap) this.canvasWrap.style.transform = `scale(${this._zoom})`;
     this.layout.setZoomLabel?.(`${Math.round(this._zoom * 100)}%`);
   }
 
