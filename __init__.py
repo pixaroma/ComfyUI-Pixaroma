@@ -42,6 +42,8 @@ from .nodes.node_text import NODE_CLASS_MAPPINGS as _MAPS_TEXT
 from .nodes.node_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT
 from .nodes.node_prompt_stack import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_STACK
 from .nodes.node_prompt_stack import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_STACK
+from .nodes.node_prompt_multi import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_MULTI
+from .nodes.node_prompt_multi import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_MULTI
 from .nodes.node_remove_background import NODE_CLASS_MAPPINGS as _MAPS_REMOVE_BG
 from .nodes.node_remove_background import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_REMOVE_BG
 
@@ -76,6 +78,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_NUMBER,
     **_MAPS_TEXT,
     **_MAPS_PROMPT_STACK,
+    **_MAPS_PROMPT_MULTI,
     **_MAPS_UTILS,
     **_MAPS_SHOW_TEXT,
     **_MAPS_REMOVE_BG,
@@ -99,6 +102,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_NUMBER,
     **_NAMES_TEXT,
     **_NAMES_PROMPT_STACK,
+    **_NAMES_PROMPT_MULTI,
     **_NAMES_UTILS,
     **_NAMES_PAINT,
     **_NAMES_PREVIEW,
