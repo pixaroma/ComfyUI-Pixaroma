@@ -127,6 +127,22 @@ const _batch = {
   node: null,
   total: 0,
   promptIds: new Set(),
+  activeCapture: false,  // true while our queuePrompt loop is running
+};
+
+// Patch api.queuePrompt (the lower-level API call, NOT app.queuePrompt) so
+// we always get a response object with .prompt_id regardless of how
+// app.queuePrompt's return shape differs across ComfyUI versions. Only
+// captures while our batch loop is actively submitting (activeCapture
+// flag), so unrelated queue submissions don't end up in our Set.
+const _origApiQueuePrompt = api.queuePrompt.bind(api);
+api.queuePrompt = async function (...args) {
+  const res = await _origApiQueuePrompt(...args);
+  if (_batch.activeCapture && res) {
+    const pid = res.prompt_id != null ? String(res.prompt_id) : null;
+    if (pid) _batch.promptIds.add(pid);
+  }
+  return res;
 };
 
 function _refreshBatchCounter() {
@@ -229,27 +245,30 @@ app.queuePrompt = async function (num, batchCount) {
   }
 
   const results = [];
-  for (let i = 0; i < prompts.length; i++) {
-    ppNode.properties = ppNode.properties || {};
-    if (!ppNode.properties[STATE_PROP]) ppNode.properties[STATE_PROP] = state;
-    ppNode.properties[STATE_PROP].activePrompt = prompts[i];
+  _batch.activeCapture = true;
+  try {
+    for (let i = 0; i < prompts.length; i++) {
+      ppNode.properties = ppNode.properties || {};
+      if (!ppNode.properties[STATE_PROP]) ppNode.properties[STATE_PROP] = state;
+      ppNode.properties[STATE_PROP].activePrompt = prompts[i];
 
-    try {
-      const r = await _origQueuePrompt(num, 1);
-      // Capture prompt_id - shape varies across ComfyUI versions, try common ones.
-      const pid =
-        r?.prompt_id != null ? String(r.prompt_id) :
-        r?.[1]?.prompt_id != null ? String(r[1].prompt_id) :
-        null;
-      if (pid) _batch.promptIds.add(pid);
-      results.push(r);
-    } catch (err) {
-      console.error("Pixaroma.PromptPack: per-prompt enqueue failed", err);
+      try {
+        // The api.queuePrompt wrapper above captures the prompt_id from
+        // the API response into _batch.promptIds.
+        const r = await _origQueuePrompt(num, 1);
+        results.push(r);
+      } catch (err) {
+        console.error("Pixaroma.PromptPack: per-prompt enqueue failed", err);
+      }
     }
+  } finally {
+    _batch.activeCapture = false;
   }
 
-  // If we failed to capture any prompt_ids (unsupported ComfyUI version),
-  // the counter would hang at "N left" forever - reset to idle as a fallback.
+  // Safety net: if no prompt_ids ended up captured (unsupported ComfyUI
+  // version with a different api shape), reset the counter to idle so it
+  // doesn't hang at "N left" forever. Healthy path: the executing /
+  // execution_success listeners will count down the captured Set.
   if (_batch.promptIds.size === 0 && root) {
     _batch.node = null;
     _batch.total = 0;
