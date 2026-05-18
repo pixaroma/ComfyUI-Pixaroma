@@ -1,4 +1,4 @@
-# Text Overlay Render Math
+# Text Overlay Render Math (Simplified)
 
 Single source of truth for the rendering algorithm used by:
 - `js/framework/text_render.mjs` (browser canvas)
@@ -6,129 +6,89 @@ Single source of truth for the rendering algorithm used by:
 
 ANY change to these formulas MUST update this doc first, then both implementations, then re-run `scripts/text_overlay_parity_check.py`.
 
+This is the SIMPLIFIED (v2) renderer. The multi-layer / effects version had §11 (transform stack) and §12 (blend modes); both removed.
+
 ## 1. Font Resolution
 
 Given `(font_id, weight, italic)`:
-1. Walk the catalog's `weights` array for the font with matching `id`
-2. If exact match (`weight == w && italic == i`): use it
-3. If italic variant unavailable: try non-italic at same weight (mark `synthesizedItalic = true`)
-4. If weight unavailable: pick closest available weight by absolute distance
-5. If font_id not in catalog: fall back to `Inter` with same weight rules
-6. If even Inter missing: hard error (won't happen with bundled set, but defensive)
+1. Walk catalog's `weights` for the font with matching `id`
+2. Exact match (`weight == w && italic == i`) → use it
+3. Italic variant unavailable → try non-italic at same weight (mark `synthesizedItalic = true`)
+4. Weight unavailable → pick closest weight by absolute distance
+5. font_id not in catalog → fall back to `Inter`
+6. Even Inter missing → hard error
 
-Synthesized italic is rendered by skewing the canvas/PIL transform by ~12° horizontally. Used when an italic variant isn't bundled (e.g. Inter doesn't ship italic in our bundle).
+Synthesized italic skews canvas/PIL transform by 12° horizontally.
 
 ## 1b. Variable Font Handling
 
-Most bundled fonts are variable (one file covers many weights via the `wght` axis). The catalog entry has a `wght` field; the renderer activates this axis at draw time:
-
-- **Browser canvas**: the FontFace is loaded with `weight: "100 900"` (the variable range), then `ctx.font = "<weight> <size>px <family>"` selects the right weight from the variable instance automatically. No extra code needed.
-- **Python PIL**: `font = ImageFont.truetype(file, size); font.set_variation_by_axes([wght])`. PIL 8.0+ supports this. Wrap in try/except since static fonts (Bebas Neue, Anton) don't have variation axes and the call would error.
-
-A static font (no `wght` field in the catalog entry) skips the variation step. Renderers must handle BOTH variable and static files in the same code path.
+Most bundled fonts are variable. Catalog entry has a `wght` field activated at draw time. Browser: FontFace loaded with `weight: "100 900"`, canvas font string picks weight. Python PIL: `font.set_variation_by_axes([wght])` after truetype load. Static fonts (Bebas Neue, Anton) skip the axis step.
 
 ## 2. Text Measurement
 
-For each line `text_i` in `text.split("\n")`:
-- Set font to (resolvedFile, fontSize, wght)
-- Browser: `ctx.measureText(text_i).width`, then add `letterSpacing * (text_i.length - 1)` for the per-glyph gaps
-- Python: sum of `font.getlength(c)` per character, plus `letterSpacing * (len - 1)`
-- `line_width_i = measured + spacing_pad`
+For each line in `text.split("\n")`:
+- Set font to (resolvedFile, fontSize)
+- Browser: `ctx.measureText(line).width`, plus per-glyph letter-spacing if non-zero
+- Python: `font.getlength` per character, plus letter-spacing
+- `line_width_i = measured + max(0, len-1) * letter_spacing`
 
-Native browser canvas does NOT honor CSS `letter-spacing`. We add it manually by drawing each character separately when `letterSpacing != 0`. PIL has no letter-spacing at all, so we always draw per-character when `letterSpacing != 0` on the Python side.
+Native canvas does NOT honor CSS letter-spacing. We add it manually by drawing each character separately when `letterSpacing != 0`. PIL has no letter-spacing; always per-character draw when non-zero.
 
-When `letterSpacing == 0` (the common case), both sides draw the line as a single string for performance.
+`lineHeight_px = round(fontSize * lineHeight)` (multiplier, default 1.2).
 
-`lineHeight_px = round(fontSize * lineHeight)` where `lineHeight` is the multiplier (default 1.2).
+`bbox_width = max(line_width_i) + 2 * padX`  (padX = 16 if bgColor else 0)
+`bbox_height = ascender + descender + (lineCount - 1) * lineHeight_px + 2 * padY`  (padY = 10 if bgColor else 0)
 
-`bbox_width = max(line_width_i for i in lines)`
-`bbox_height = ascender + descender + (lineCount - 1) * lineHeight_px`
+`ascender + descender` is the visible glyph extent (font metrics via `measureText("Mg")` / `font.getmetrics()`). lineHeight multiplier adds spacing BETWEEN lines only.
 
-The `ascender` and `descender` are measured from the font metrics (browser: `ctx.measureText("Mg").actualBoundingBoxAscent/Descent`; PIL: `font.getmetrics()`). This makes the bbox wrap the actual visible glyph extent rather than the full leaded line box, so the selection contour matches what the user sees and the background pill hugs the text. The `lineHeight` multiplier still adds spacing BETWEEN lines.
+## 3. Background Pill
 
-## 3. Background Pill Bbox
+When `layer.bgColor` is a hex string (not null / not empty):
+- Filled rounded rect at `(0, 0)` to `(bbox_width, bbox_height)`
+- Radius: `min(BG_RADIUS, bbox_width/2, bbox_height/2)` where `BG_RADIUS = 6`
+- Color: `bgColor` opaque (no alpha — pill is always full alpha; the layer's `opacity` applies to the whole composition including the pill)
 
-When `layer.background != null`:
-- `bbox_width += 2 * background.paddingX`
-- `bbox_height += 2 * background.paddingY`
-- text origin shifts: text starts at `(paddingX, paddingY)` inside the bbox
+Hardcoded defaults: `BG_PAD_X = 16`, `BG_PAD_Y = 10`, `BG_RADIUS = 6`. No user controls for these in v2.
 
-## 4. Transform (Rotation)
+## 4. Draw Order
 
-Layer position `(x, y)` is the top-left of the UNROTATED bbox in canvas coordinates.
+For the single text:
+1. **Background pill** (if `bgColor` set, see §3)
+2. **Fill text**: for each line at `(lineOriginX, padY + ascender + i * lineHeightPx)` with `layer.color`
 
-Both renderers must apply:
-1. `translate(x + bbox_width / 2, y + bbox_height / 2)` (move to bbox center)
-2. `rotate(rotation_degrees * pi / 180)`
-3. `translate(-bbox_width / 2, -bbox_height / 2)` (back so (0,0) is bbox top-left)
+Then transforms (§5).
 
-After this, all drawing is in local bbox coordinates with (0,0) at bbox top-left.
+`lineOriginX`:
+- align "left" → `padX`
+- align "center" → `padX + (max_line_width - line_width_i) / 2`
+- align "right" → `padX + (max_line_width - line_width_i)`
 
-PIL doesn't have a transform stack like canvas; we render the whole layer to a separate RGBA image at `bbox_width × bbox_height`, then rotate that image around its center with `Image.rotate(-rotation_degrees, expand=True, resample=BICUBIC)`, and paste onto base at `(x - delta_x, y - delta_y)` where `(delta_x, delta_y)` is the expansion offset caused by `expand=True`.
+## 5. Transform (Opacity + Rotation)
 
-## 5. Draw Order (z, bottom to top)
+Layer position `(x, y)` is the top-left of the UNROTATED bbox in canvas coordinates. Rotation pivots around the bbox center.
 
-For each layer (in the order `state.layers` lists them; first = bottom):
-1. **Background pill** if set: rounded rect from `(0, 0)` to `(bbox_width, bbox_height)` with radius clamped to `min(bbox_width, bbox_height) / 2`, filled with `background.color` at `background.opacity`
-2. **Shadow** if set: draw the text strings at their per-line positions BUT offset by `(shadow.offsetX, shadow.offsetY)`, filled with `shadow.color`, then Gaussian-blur with radius = `shadow.blur`, alpha-multiplied by `shadow.opacity`
-3. **Stroke** if set: draw the text strings at their per-line positions with stroke `stroke.color` and width `stroke.width` (canvas: `ctx.strokeText`; PIL: `stroke_width` parameter to `draw.text` with `stroke_fill = stroke.color`)
-4. **Fill**: draw the text strings at their per-line positions with `layer.color`
+Browser:
+1. Render bg pill + text to a scratch canvas at `bboxW × bboxH`
+2. `ctx.save()` → `translate(x + bboxW/2, y + bboxH/2)` → `rotate(rot * π / 180)` → `translate(-bboxW/2, -bboxH/2)`
+3. `ctx.globalAlpha = layer.opacity` → `drawImage(scratch, 0, 0)` → `ctx.restore()`
 
-Each line's draw position (after the bbox-local transform):
-- baseline y: `paddingY + i * lineHeight_px + ascender_offset` where `i` is the 0-based line index
-- x position varies by alignment:
-  - `align == "left"`: `paddingX`
-  - `align == "center"`: `paddingX + (max_line_width - line_width_i) / 2`
-  - `align == "right"`: `paddingX + (max_line_width - line_width_i)`
+Python:
+1. Render bg pill + text to `layer_img = Image.new("RGBA", (bboxW, bboxH))`
+2. Synthesized italic skew (if needed)
+3. Apply opacity: alpha = `alpha.point(lambda a: int(a * opacity))`, `layer_img.putalpha(alpha)` (skip if opacity == 1.0)
+4. Rotate: `layer_img.rotate(-rotation, expand=True, resample=BICUBIC)` (compensate paste origin for `expand=True` growth)
+5. `base_img.alpha_composite(layer_img, dest=(paste_x, paste_y))`
 
-`ascender_offset` is the font's ascender height; both sides query the font metrics for this (canvas: `actualBoundingBoxAscent`, PIL: `font.getmetrics()[0]`).
+## 6. Color Format
 
-## 6. Opacity (Final Pass)
+All `color` and `bgColor` fields are 6-char hex strings (`"#RRGGBB"`). `bgColor` is `null` (or empty string) when no pill.
 
-`layer.opacity` (0..1) is applied to the entire layer composition AFTER drawing background + shadow + stroke + fill. This ensures shadow doesn't double-multiply with fill alpha.
+## 7. Parity Tolerance
 
-Browser canvas: render whole layer to a temporary canvas, then `ctx.globalAlpha = layer.opacity; ctx.drawImage(tempCanvas, x, y)`.
+`scripts/text_overlay_parity_check.py` renders 10 reference configs through the Python renderer and diffs against committed goldens. Tolerance: under 2% of pixels may deviate by ΔE > 10. Goldens lock the Python output; JS side checked visually by the human at editor save time.
 
-PIL: render whole layer to its own RGBA image (already what we do for rotation), then `Image.eval(img, lambda a: int(a * layer.opacity))` on the alpha channel before pasting.
+## 8. Known Approximations
 
-When `layer.opacity == 1.0` (the common case), skip the temp-canvas / alpha-eval step for performance.
-
-## 7. Skipping Invisible Layers
-
-If `layer.visible == false`: skip the whole layer entirely (no draw at all). The editor still shows a placeholder bbox + dimmed name in the layers panel, but the renderer is a no-op.
-
-## 8. Color Format
-
-All `color` fields are 6-char hex strings (`"#RRGGBB"`). Renderers convert to their native format (canvas: pass as-is; PIL: parse to `(R, G, B)` tuple, then combine with the opacity to form RGBA).
-
-## 9. Parity Tolerance
-
-The parity script (`scripts/text_overlay_parity_check.py`) renders ~10 reference configs through the Python implementation and diffs against committed goldens. Tolerance: under 2% of pixels may deviate by ΔE > 10. This accounts for inevitable rasterizer differences (the OS font hinter vs FreeType) while still catching real regressions.
-
-Bit-exact match between the JS canvas and PIL renderers is impossible (different rasterizers). The goldens lock the Python output only; the JS side is checked visually by the human at editor save-time (the in-node thumbnail and the workflow output should match).
-
-## 11. Transform Stack (composite step)
-
-After the per-layer bbox is rendered (background + shadow + stroke + fill + opacity), apply transforms in this order:
-
-1. **Scale** (`scaleX`, `scaleY` — independent floats, default 1.0). Resize the layer image by `(scaleX, scaleY)`. Browser: `ctx.scale(scaleX, scaleY)` before drawImage. PIL: `Image.resize((bbox_w * scaleX, bbox_h * scaleY), BICUBIC)`.
-2. **Flip** (`flippedX`, `flippedY` — booleans). When true, multiply the corresponding scale by -1. Browser: include the sign in `ctx.scale(...)`. PIL: `Image.transpose(FLIP_LEFT_RIGHT)` and/or `FLIP_TOP_BOTTOM`.
-3. **Blur** (`blur` — float, pixels, default 0). Apply Gaussian blur of radius `blur`. Browser: `ctx.filter = "blur(Npx)"` before drawImage. PIL: `Image.filter(ImageFilter.GaussianBlur(N))`.
-4. **Rotation** (`rotation` — degrees, see §4). After scale + flip + blur is baked into the layer image, rotate around the SCALED bbox center.
-5. **Position** (`x`, `y`). Top-left of the FINAL (scaled + rotated) bbox in canvas coordinates.
-
-## 12. Blend Modes (`blendMode`)
-
-Per-layer blend mode applied when compositing onto the base canvas. String values match CSS / canvas spec names: `"Normal"` (default), `"Multiply"`, `"Screen"`, `"Overlay"`, `"Darken"`, `"Lighten"`, `"Color Dodge"`, `"Color Burn"`, `"Hard Light"`, `"Soft Light"`, `"Difference"`, `"Exclusion"`, `"Hue"`, `"Saturation"`, `"Color"`, `"Luminosity"`.
-
-- **Browser**: maps to `ctx.globalCompositeOperation` (lowercase-hyphenated forms like `"source-over"`, `"hard-light"`).
-- **Python (v1)**: PIL has no built-in W3C blend modes. Only `"Normal"` is honored; any other mode falls back to `alpha_composite` (Normal). This is a documented divergence. Future v2 could add manual blend implementations per mode.
-
-The editor preview will show the correct blend mode (browser path), but the workflow output (Python path) uses Normal. Users wanting accurate output blends should keep `blendMode = "Normal"` until v2.
-
-## 10. Known Approximations
-
-- Synthesized italic skew differs slightly between canvas (transform matrix) and PIL (Image transform). Both produce ~12° lean but the kerning between characters can differ by a few pixels. Acceptable.
-- Gaussian blur for shadows uses different kernels (canvas uses GPU blur, PIL uses CPU NumPy convolution). Output is visually equivalent within ΔE tolerance.
-- Sub-pixel positioning (when `x` or `y` is fractional) is rounded to nearest integer pixel in both renderers to avoid hair-line offset drift.
-- Variable font rendering: the browser's variable-font rasterizer and PIL's `set_variation_by_axes` use different interpolation paths between named instances. Differences are typically subtle but real.
+- Synthesized italic skew differs slightly between canvas (matrix transform) and PIL (Image transform). Acceptable.
+- Sub-pixel positioning rounded to nearest integer pixel in both renderers.
+- Variable font interpolation: browser's variable-font rasterizer and PIL's `set_variation_by_axes` use different interpolation paths.
