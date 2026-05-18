@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 import math
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 from functools import lru_cache
 
 # Resolve plugin root (this file is at nodes/_text_render_helpers.py)
@@ -153,154 +153,88 @@ def _round_rect(draw, x, y, w, h, r, fill):
     draw.rounded_rectangle((x, y, x + w, y + h), radius=r, fill=fill)
 
 
+# ────────────────────────────────────────────────────────────────────────────
+# Hardcoded bg-pill defaults (user can't tune; spec §3, §4)
+# ────────────────────────────────────────────────────────────────────────────
+_BG_PAD_X = 16
+_BG_PAD_Y = 10
+_BG_RADIUS = 6
+
+
 def render_text_layer(base_img, layer):
-    """Render one text layer onto base_img (PIL.Image, RGBA, mutated in place).
+    """Render one text overlay onto base_img (PIL.Image, RGBA, mutated in place).
 
     Mirror of js/framework/text_render.mjs::renderTextLayer.
     Algorithm: docs/text-overlay-render.md.
+
+    Single-text-only (no layers param, no effects). Schema fields supported:
+    text, font, weight, italic, align, fontSize, lineHeight, letterSpacing,
+    x, y, rotation, opacity, color, bgColor.
     """
-    if not layer or not layer.get("visible", True):
+    if not layer:
+        return base_img
+    text = str(layer.get("text", ""))
+    if not text:
         return base_img
 
     font_id = layer.get("font", "Inter")
     weight = int(layer.get("weight", 400))
     italic = bool(layer.get("italic", False))
-    font_size = float(layer.get("fontSize", 36))
+    font_size = float(layer.get("fontSize", 96))
     line_height_mult = float(layer.get("lineHeight", 1.2))
     letter_spacing = float(layer.get("letterSpacing", 0))
-    align = layer.get("align", "left")
+    align = layer.get("align", "center")
     color_hex = layer.get("color", "#FFFFFF")
     opacity = float(layer.get("opacity", 1.0))
-    text = str(layer.get("text", ""))
     rotation = float(layer.get("rotation", 0))
-    bg = layer.get("background") or None
-    sh = layer.get("shadow") or None
-    st = layer.get("stroke") or None
+    bg_color = layer.get("bgColor")  # None or hex string
 
-    # Effective scale: render at the LARGER axis's scale so text stays sharp
-    # on at least one axis. Anisotropic stretch is a post-resize on the other
-    # axis. Cap at >= 1 — downscale is sharp via resize.
-    abs_x = abs(float(layer.get("scaleX", 1.0)))
-    abs_y = abs(float(layer.get("scaleY", 1.0)))
-    render_scale = max(1.0, abs_x, abs_y)
-    eff_font_size = font_size * render_scale
-    eff_letter_spacing = letter_spacing * render_scale
-
-    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, eff_font_size)
+    pil_font, synthesized_italic = load_pil_font(font_id, weight, italic, font_size)
 
     lines = text.split("\n")
-    line_widths = [_measure_line(pil_font, ln, eff_letter_spacing) for ln in lines]
+    line_widths = [_measure_line(pil_font, ln, letter_spacing) for ln in lines]
     max_line_w = max(line_widths) if line_widths else 0
-    line_height_px = round(eff_font_size * line_height_mult)
-    # Update letter_spacing variable for the rest of the function (used by _draw_line)
-    letter_spacing = eff_letter_spacing
-    # Background padding scales with renderScale so the pill stays proportional
-    pad_x = (bg.get("paddingX", 12) * render_scale) if bg else 0
-    pad_y = (bg.get("paddingY", 8) * render_scale) if bg else 0
+    line_height_px = round(font_size * line_height_mult)
 
-    # bbox height uses ascender + descender (visible glyph extent) for the
-    # first line, plus line_height_px per additional line. Matches the JS side
-    # so the selection contour wraps the visible text rather than the leaded box.
+    pad_x = _BG_PAD_X if bg_color else 0
+    pad_y = _BG_PAD_Y if bg_color else 0
+
     ascender, descender = pil_font.getmetrics()
-
-    bbox_w = int(round(max_line_w + 2 * pad_x))
     glyph_h = ascender + descender
-    bbox_h = int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y))
-    bbox_w = max(1, bbox_w)
-    bbox_h = max(1, bbox_h)
+    bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
+    bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
 
-    # Render layer to its own RGBA so we can rotate + opacity cleanly
     layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(layer_img)
 
-    # 1. Background pill
-    if bg:
-        bg_color_rgba = _hex_to_rgb(bg.get("color", "#000000")) + (
-            int(round(255 * float(bg.get("opacity", 1)))),
-        )
-        # radius scaled by render_scale (same as pad) so it stays proportional
-        r = min(int(bg.get("radius", 6) * render_scale), bbox_w // 2, bbox_h // 2)
-        _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_color_rgba)
+    # 1. Background pill (only if bgColor is set)
+    if bg_color:
+        bg_rgba = _hex_to_rgb(bg_color) + (255,)
+        r = min(_BG_RADIUS, bbox_w // 2, bbox_h // 2)
+        _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_rgba)
 
-    # 2. Shadow (separate image, blur + composite) — all px-values scaled by
-    # render_scale so the FINAL composited shadow has the user-set pixel sizes
-    # after post-scale ratio reduces back down.
-    if sh:
-        shadow_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
-        sdraw = ImageDraw.Draw(shadow_img)
-        sh_color = _hex_to_rgb(sh.get("color", "#000000")) + (
-            int(round(255 * float(sh.get("opacity", 1)))),
-        )
-        sh_off_x = float(sh.get("offsetX", 0)) * render_scale
-        sh_off_y = float(sh.get("offsetY", 0)) * render_scale
-        for i, ln in enumerate(lines):
-            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i]) + sh_off_x
-            ly = pad_y + ascender + i * line_height_px + sh_off_y
-            _draw_line(sdraw, pil_font, ln, lx, ly, letter_spacing, sh_color)
-        blur_r = float(sh.get("blur", 8)) * render_scale
-        if blur_r > 0:
-            shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(radius=blur_r))
-        layer_img = Image.alpha_composite(layer_img, shadow_img)
-        draw = ImageDraw.Draw(layer_img)
-
-    # 3. Stroke (width scaled by render_scale)
-    if st:
-        st_color = _hex_to_rgb(st.get("color", "#000000")) + (255,)
-        sw = int(round(st.get("width", 2) * render_scale))
-        for i, ln in enumerate(lines):
-            lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
-            ly = pad_y + ascender + i * line_height_px
-            _draw_line(draw, pil_font, ln, lx, ly, letter_spacing, st_color,
-                       stroke_width=sw, stroke_fill=st_color)
-
-    # 4. Fill (over the stroke)
+    # 2. Fill text
     fill_color = _hex_to_rgb(color_hex) + (255,)
     for i, ln in enumerate(lines):
         lx = _line_origin_x(align, pad_x, max_line_w, line_widths[i])
         ly = pad_y + ascender + i * line_height_px
         _draw_line(draw, pil_font, ln, lx, ly, letter_spacing, fill_color)
 
-    # Synthesized italic skew
+    # 3. Synthesized italic skew
     if synthesized_italic:
         m = math.tan(math.radians(12))
         layer_img = layer_img.transform(
-            layer_img.size,
-            Image.AFFINE,
-            (1, m, 0, 0, 1, 0),
+            layer_img.size, Image.AFFINE, (1, m, 0, 0, 1, 0),
             resample=Image.BICUBIC,
         )
 
-    # 5. Layer-level opacity (final pass)
+    # 4. Layer-level opacity (final pass)
     if opacity < 1.0:
         alpha = layer_img.split()[-1]
         alpha = alpha.point(lambda a: int(a * opacity))
         layer_img.putalpha(alpha)
 
-    # Post-scale: the layer was rendered at render_scale (max axis), apply the
-    # leftover ratio so each axis ends at its target absolute scale. For uniform
-    # scale this is (1, 1) → no resize → sharp. For anisotropic stretch only
-    # the smaller axis gets resized.
-    scale_x = float(layer.get("scaleX", 1.0))
-    scale_y = float(layer.get("scaleY", 1.0))
-    post_x = abs(scale_x) / render_scale
-    post_y = abs(scale_y) / render_scale
-    if post_x != 1.0 or post_y != 1.0:
-        new_w = max(1, int(round(layer_img.size[0] * post_x)))
-        new_h = max(1, int(round(layer_img.size[1] * post_y)))
-        layer_img = layer_img.resize((new_w, new_h), resample=Image.BICUBIC)
-
-    # Flip
-    if layer.get("flippedX"):
-        layer_img = layer_img.transpose(Image.FLIP_LEFT_RIGHT)
-    if layer.get("flippedY"):
-        layer_img = layer_img.transpose(Image.FLIP_TOP_BOTTOM)
-
-    # Blur (final pass before rotation so the blur is in layer-local space)
-    blur_amt = float(layer.get("blur", 0))
-    if blur_amt > 0:
-        layer_img = layer_img.filter(ImageFilter.GaussianBlur(radius=blur_amt))
-
-    # Rotation
+    # 5. Rotation (around bbox center)
     paste_x = int(round(layer.get("x", 0)))
     paste_y = int(round(layer.get("y", 0)))
     if rotation:
@@ -310,9 +244,7 @@ def render_text_layer(base_img, layer):
         paste_x -= (after_w - before_w) // 2
         paste_y -= (after_h - before_h) // 2
 
-    # Composite onto base. Python uses Normal blend only for v1 (PIL has no
-    # built-in blend modes; the JS preview supports the full Composer set,
-    # documented as known divergence in docs/text-overlay-render.md).
+    # 6. Composite onto base
     if base_img.mode != "RGBA":
         base_img = base_img.convert("RGBA")
     base_img.alpha_composite(layer_img, dest=(paste_x, paste_y))
