@@ -191,21 +191,13 @@ export class TextOverlayEditor {
 
   save() {
     // State is already on node.properties — nothing to save here. Just
-    // sync the node body panel + dirty canvas, then queue a workflow
-    // run so the user sees the new text rendered without having to
-    // click Run separately. ComfyUI caches everything upstream of
-    // Text Overlay (KSampler etc.) so the re-run only redoes the
-    // text overlay step, which is fast (<100ms).
+    // sync the node body panel + dirty canvas. The user runs the
+    // workflow manually when they want to see the new render.
     if (this.node._textOverlayBodyPanel) {
       this.node._textOverlayBodyPanel.setLayer(this.state);
     }
     this.node.setDirtyCanvas?.(true, true);
     this.layout.setSaved(true);
-    try {
-      window.app?.queuePrompt?.(0);
-    } catch (e) {
-      console.warn("[Text Overlay] auto-queuePrompt on save failed", e);
-    }
   }
 
   // Cancel restore — called from the red X Close button (onClose → close()
