@@ -11,7 +11,7 @@
 // ╚═══════════════════════════════════════════════════════════════╝
 
 import { getFontCatalog, loadFontForLayer } from "./fonts.mjs";
-import { openPixaromaColorPickerPopup } from "../shared/color_picker.mjs";
+import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
 
 const BRAND = "#f66744";
 
@@ -169,11 +169,11 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   root.appendChild(colorRow);
   const textLbl = el("span", "pix-to-color-label"); textLbl.textContent = "Text"; colorRow.appendChild(textLbl);
   ui.colorSwatch = el("div", "pix-to-color-swatch");
-  ui.colorSwatch.addEventListener("click", () => openPicker(ui.colorSwatch, layerNow()?.color || "#FFFFFF", (c) => {
+  ui.colorSwatch.addEventListener("click", () => openTextColorPicker(ui.colorSwatch, layerNow()?.color || "#FFFFFF", (c) => {
     const l = layerNow(); if (!l || !c) return;
     l.color = c;
     ui.colorSwatch.style.background = c;
-    ui.colorHex.value = c;
+    ui.colorHex.input.value = c;
     fireChange();
   }));
   colorRow.appendChild(ui.colorSwatch);
@@ -193,7 +193,7 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   root.appendChild(bgRow);
   const bgLbl = el("span", "pix-to-color-label"); bgLbl.textContent = "Behind"; bgRow.appendChild(bgLbl);
   ui.bgSwatch = el("div", "pix-to-color-swatch pix-to-swatch-checker");
-  ui.bgSwatch.addEventListener("click", () => openPicker(ui.bgSwatch, layerNow()?.bgColor || "#000000", (c) => {
+  ui.bgSwatch.addEventListener("click", () => openBgColorPicker(ui.bgSwatch, layerNow()?.bgColor || "#000000", (c) => {
     const l = layerNow(); if (!l) return;
     l.bgColor = c;
     if (c) { ui.bgSwatch.style.background = c; ui.bgSwatch.classList.remove("pix-to-swatch-checker"); ui.bgHex.input.value = c; }
@@ -240,7 +240,6 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
     resetBtn.title = "Restore all settings to their defaults";
     resetBtn.addEventListener("click", () => {
       const l = layerNow(); if (!l) return;
-      if (!window.confirm("Reset all text overlay settings to defaults? This cannot be undone.")) return;
       onReset(l);
       setLayer(l);
       fireChange();
@@ -338,8 +337,26 @@ function sectionLabel(text, parent) {
   return l;
 }
 
-function openPicker(swatchEl, initialColor, onPick) {
-  openPixaromaColorPickerPopup(swatchEl, { initialColor, onPick });
+// Compact swatch-grid picker (Note Pixaroma pattern): closes immediately
+// on pick, has a "More colors..." footer that opens a full HSV modal,
+// and a Reset button that returns to the supplied default color.
+function openTextColorPicker(swatchEl, initialColor, onPick) {
+  openPixaromaCompactColorPickerPopup(swatchEl, {
+    initialColor,
+    showClear: false,           // text always has a colour
+    resetColor: "#FFFFFF",       // Reset returns to default white
+    onPick,
+  });
+}
+
+function openBgColorPicker(swatchEl, initialColor, onPick) {
+  openPixaromaCompactColorPickerPopup(swatchEl, {
+    initialColor,
+    showClear: true,            // transparent tile = no pill
+    clearPosition: "last",
+    resetColor: null,            // Reset returns to no-pill
+    onPick,
+  });
 }
 
 function labelForFont(catalog, id) {
@@ -362,13 +379,24 @@ function createSlider(label, min, max, value, step, onChange) {
   num.type = "number"; num.className = "pix-to-num";
   num.min = min; num.max = max; num.value = value; num.step = step;
   row.appendChild(num);
-  slider.addEventListener("input", () => { num.value = slider.value; onChange(parseFloat(slider.value)); });
-  num.addEventListener("input", () => { slider.value = num.value; onChange(parseFloat(num.value)); });
+  // Set the --pix-to-fill CSS var so the linear-gradient track shows
+  // orange to the left of the thumb and grey to the right. Re-compute
+  // on every value change so the fill follows the thumb.
+  function syncFill() {
+    const mn = parseFloat(slider.min) || 0;
+    const mx = parseFloat(slider.max) || 100;
+    const v  = parseFloat(slider.value) || 0;
+    const pct = ((v - mn) / (mx - mn || 1)) * 100;
+    slider.style.setProperty("--pix-to-fill", pct + "%");
+  }
+  syncFill();
+  slider.addEventListener("input", () => { num.value = slider.value; syncFill(); onChange(parseFloat(slider.value)); });
+  num.addEventListener("input", () => { slider.value = num.value; syncFill(); onChange(parseFloat(num.value)); });
   num.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   return {
     el: row, slider, num,
-    setValue(v) { slider.value = v; num.value = v; },
-    setRange(mn, mx) { slider.min = mn; slider.max = mx; num.min = mn; num.max = mx; },
+    setValue(v) { slider.value = v; num.value = v; syncFill(); },
+    setRange(mn, mx) { slider.min = mn; slider.max = mx; num.min = mn; num.max = mx; syncFill(); },
   };
 }
 
@@ -568,10 +596,46 @@ function injectCSS() {
       font: 10px ui-sans-serif, system-ui, sans-serif;
       color: #888;
     }
+    /* Explicit cross-browser slider styling so the node body and the
+       editor sidebar look IDENTICAL. accent-color alone made the thumb
+       size depend on parent font-size, causing visible drift. */
     .pix-to-slider {
+      -webkit-appearance: none;
+      appearance: none;
       width: 100%;
-      accent-color: ${BRAND};
       height: 4px;
+      background: linear-gradient(to right,
+        ${BRAND} 0%, ${BRAND} var(--pix-to-fill, 50%),
+        #3a3a3a var(--pix-to-fill, 50%), #3a3a3a 100%);
+      border-radius: 2px;
+      outline: none;
+      margin: 0;
+      padding: 0;
+      cursor: pointer;
+    }
+    .pix-to-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: ${BRAND};
+      cursor: pointer;
+      border: 2px solid #2a2a2a;
+      box-shadow: 0 0 0 1px ${BRAND};
+    }
+    .pix-to-slider::-moz-range-thumb {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: ${BRAND};
+      cursor: pointer;
+      border: 2px solid #2a2a2a;
+      box-shadow: 0 0 0 1px ${BRAND};
+    }
+    .pix-to-slider::-moz-range-track {
+      background: transparent;
+      border: none;
     }
     .pix-to-num {
       background: #1d1d1d;
