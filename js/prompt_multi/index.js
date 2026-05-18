@@ -7,6 +7,7 @@ import {
   toggleEnabled,
   reorderRows,
   enabledRowsWithIndex,
+  clearAllText,
   STATE_PROP,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
@@ -48,7 +49,7 @@ function makeHandlers(node, root) {
       const row = state.rows.find((r) => r.id === id);
       const hasContent = row && ((row.text && row.text.trim()) || (row.label && row.label.trim()));
       if (hasContent) {
-        const labelOrIdx = (row.label && row.label.trim()) || `Row ${state.rows.indexOf(row) + 1}`;
+        const labelOrIdx = (row.label && row.label.trim()) || `Prompt ${state.rows.indexOf(row) + 1}`;
         const ok = await pixConfirm({
           title: "Delete row?",
           message: `Are you sure you want to delete "${labelOrIdx}"?`,
@@ -65,6 +66,20 @@ function makeHandlers(node, root) {
       });
     },
     onAdd: () => { addRow(node); rerender(); },
+    onClearAll: async () => {
+      const state = readState(node);
+      const filled = state.rows.filter((r) => r.text && r.text.trim()).length;
+      if (filled === 0) return;
+      const ok = await pixConfirm({
+        title: "Clear all prompts?",
+        message: `This will empty the text in all ${state.rows.length} row${state.rows.length === 1 ? "" : "s"}. Labels and ON/OFF toggles are kept.`,
+        okText: "Clear",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+      clearAllText(node);
+      rerender();
+    },
     onDragStart: (_id, _ev) => { /* drag state is held inside interaction.mjs */ },
     onDragOver: (_id, _ev) => { /* drag state is held inside interaction.mjs */ },
     onDrop: (fromId, toId, above) => {

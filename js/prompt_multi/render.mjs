@@ -136,8 +136,13 @@ const CSS = `
 }
 .pix-pm-textarea:focus { border-color: #f66744; }
 
-.pix-pm-add {
+.pix-pm-actions {
+  display: flex;
+  gap: 6px;
   align-self: flex-start;
+  margin-top: 4px;
+}
+.pix-pm-add, .pix-pm-clear {
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 3px;
@@ -145,9 +150,11 @@ const CSS = `
   cursor: pointer;
   font-size: 12px;
   padding: 4px 10px;
-  margin-top: 4px;
+  font-family: inherit;
 }
-.pix-pm-add:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-pm-add:hover, .pix-pm-clear:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-pm-clear:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
+.pix-pm-clear:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
 
 .pix-pm-confirm-backdrop {
   position: fixed;
@@ -278,7 +285,7 @@ export function renderRows(node, root, rowHandlers) {
     label.type = "text";
     label.className = "pix-pm-label";
     label.value = row.label || "";
-    label.placeholder = `Row ${state.rows.indexOf(row) + 1}`;
+    label.placeholder = `Prompt ${state.rows.indexOf(row) + 1}`;
     head.appendChild(label);
     attachLabelEditor(node, label, row.id);
 
@@ -306,10 +313,25 @@ export function renderRows(node, root, rowHandlers) {
     root.appendChild(rowEl);
   }
 
+  const actions = document.createElement("div");
+  actions.className = "pix-pm-actions";
+
   const add = document.createElement("button");
   add.className = "pix-pm-add";
   add.type = "button";
-  add.textContent = "+ Add row";
+  add.textContent = "+ Add prompt";
   add.addEventListener("click", () => rowHandlers.onAdd());
-  root.appendChild(add);
+  actions.appendChild(add);
+
+  const clear = document.createElement("button");
+  clear.className = "pix-pm-clear";
+  clear.type = "button";
+  clear.textContent = "Clear prompts";
+  clear.title = "Empty the text in every row (keeps row count, labels and toggles)";
+  const anyText = state.rows.some((r) => r.text && r.text.trim());
+  clear.disabled = !anyText;
+  clear.addEventListener("click", () => rowHandlers.onClearAll());
+  actions.appendChild(clear);
+
+  root.appendChild(actions);
 }
