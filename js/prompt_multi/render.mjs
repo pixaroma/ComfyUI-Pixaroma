@@ -142,7 +142,7 @@ const CSS = `
   align-self: flex-start;
   margin-top: 4px;
 }
-.pix-pm-add, .pix-pm-clear {
+.pix-pm-add, .pix-pm-clear, .pix-pm-reset {
   background: #2a2a2a;
   border: 1px solid #3a3a3a;
   border-radius: 3px;
@@ -152,9 +152,9 @@ const CSS = `
   padding: 4px 10px;
   font-family: inherit;
 }
-.pix-pm-add:hover, .pix-pm-clear:hover { background: #333; border-color: #f66744; color: #f66744; }
-.pix-pm-clear:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
-.pix-pm-clear:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
+.pix-pm-add:hover, .pix-pm-clear:hover, .pix-pm-reset:hover { background: #333; border-color: #f66744; color: #f66744; }
+.pix-pm-clear:disabled, .pix-pm-reset:disabled { color: #555; border-color: #2e2e2e; background: #232323; cursor: not-allowed; }
+.pix-pm-clear:disabled:hover, .pix-pm-reset:disabled:hover { background: #232323; border-color: #2e2e2e; color: #555; }
 
 .pix-pm-confirm-backdrop {
   position: fixed;
@@ -331,19 +331,37 @@ export function renderRows(node, root, rowHandlers) {
   clear.addEventListener("click", () => rowHandlers.onClearAll());
   actions.appendChild(clear);
 
-  // Reactive enable/disable: walk the live textareas (not state.rows) so the
-  // button updates immediately on every keystroke without waiting for commit
-  // or a re-render. Exposed on the node so attachTextareaEditor can poke it.
-  const refreshClear = () => {
+  const reset = document.createElement("button");
+  reset.className = "pix-pm-reset";
+  reset.type = "button";
+  reset.textContent = "Reset";
+  reset.title = "Reset to default (two empty rows, both ON, no labels)";
+  reset.addEventListener("click", () => rowHandlers.onReset());
+  actions.appendChild(reset);
+
+  // Reactive enable/disable: walk live DOM inputs so buttons update on every
+  // keystroke without waiting for state commit or a re-render. Exposed on the
+  // node so attachTextareaEditor and attachLabelEditor can poke it.
+  const refreshActionButtons = () => {
     const tas = root.querySelectorAll(".pix-pm-textarea");
-    let any = false;
+    let anyText = false;
     for (const ta of tas) {
-      if (ta.value && ta.value.trim()) { any = true; break; }
+      if (ta.value && ta.value.trim()) { anyText = true; break; }
     }
-    clear.disabled = !any;
+    clear.disabled = !anyText;
+
+    const labels = root.querySelectorAll(".pix-pm-label");
+    let anyLabel = false;
+    for (const lab of labels) {
+      if (lab.value && lab.value.trim()) { anyLabel = true; break; }
+    }
+    const s = readState(node);
+    const anyDisabled = s.rows.some((r) => !r.enabled);
+    const notTwoRows = s.rows.length !== 2;
+    reset.disabled = !(anyText || anyLabel || anyDisabled || notTwoRows);
   };
-  refreshClear();
-  node._pixPmRefreshClear = refreshClear;
+  refreshActionButtons();
+  node._pixPmRefreshClear = refreshActionButtons;
 
   root.appendChild(actions);
 }

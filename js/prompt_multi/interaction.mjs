@@ -22,6 +22,7 @@ export function attachLabelEditor(node, inputEl, rowId) {
   inputEl.addEventListener("input", (e) => {
     e.stopImmediatePropagation();
     staged = inputEl.value;
+    if (typeof node._pixPmRefreshClear === "function") node._pixPmRefreshClear();
   });
 
   inputEl.addEventListener("keydown", (e) => {

@@ -8,6 +8,7 @@ import {
   reorderRows,
   enabledRowsWithIndex,
   clearAllText,
+  resetToDefault,
   STATE_PROP,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
@@ -79,6 +80,21 @@ function makeHandlers(node, root) {
       if (!ok) return;
       clearAllText(node);
       rerender();
+    },
+    onReset: async () => {
+      const ok = await pixConfirm({
+        title: "Reset to default?",
+        message: "This will replace all rows with two empty prompts, both ON, no labels. Your current rows will be lost.",
+        okText: "Reset",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+      resetToDefault(node);
+      rerender();
+      requestAnimationFrame(() => {
+        fitNodeToContent(node);
+        node.setDirtyCanvas(true, true);
+      });
     },
     onDragStart: (_id, _ev) => { /* drag state is held inside interaction.mjs */ },
     onDragOver: (_id, _ev) => { /* drag state is held inside interaction.mjs */ },
