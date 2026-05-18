@@ -798,6 +798,117 @@ export function openPixaromaCompactColorPickerPopup(anchorEl, opts = {}) {
 
 // ── "More colors..." modal ───────────────────────────────────────
 //
+// PUBLIC: Photoshop-style color picker MODAL. Opens with a backdrop
+// (locks all interaction with the rest of the page) showing swatches +
+// SV plane + hue strip + hex input, plus Apply / Cancel buttons.
+//
+// Use this when you want the user to pick a color with PREVIEW + commit
+// behavior (vs the compact popup that closes immediately on swatch click).
+// Picks fire `opts.onPick(hex_or_null)` on Apply; Cancel / Esc / backdrop
+// click closes without firing.
+//
+// opts:
+//   initialColor: hex string (default "#f66744")
+//   swatches:     array of hex (default PIXAROMA_PALETTE)
+//   showClear:    bool — render a transparent tile that picks null
+//   title:        string (default "Pick a color")
+//   onPick:       (hex|null) => void
+//   onCancel:     () => void (optional)
+export function openPixaromaColorPickerModal(opts = {}) {
+  ensureCSS();
+
+  const {
+    initialColor = "#f66744",
+    swatches     = PIXAROMA_PALETTE,
+    showClear    = false,
+    title        = "Pick a color",
+    onPick       = () => {},
+    onCancel     = () => {},
+  } = opts;
+
+  const backdrop = document.createElement("div");
+  backdrop.className = "pix-cp-modal-backdrop";
+
+  const box = document.createElement("div");
+  box.className = "pix-cp-modal-box";
+
+  const titleEl = document.createElement("div");
+  titleEl.className = "pix-cp-modal-title";
+  titleEl.textContent = title;
+  box.appendChild(titleEl);
+
+  let pickedColor = initialColor;
+  const picker = createPixaromaColorPicker({
+    initialColor,
+    swatches,
+    showClear,
+    hideReset: true,
+    onChange: (c) => { pickedColor = c; },
+  });
+  box.appendChild(picker.element);
+
+  const actions = document.createElement("div");
+  actions.className = "pix-cp-modal-actions";
+
+  const cancelBtn = document.createElement("button");
+  cancelBtn.type = "button";
+  cancelBtn.className = "pix-cp-modal-btn";
+  cancelBtn.textContent = "Cancel";
+
+  const applyBtn = document.createElement("button");
+  applyBtn.type = "button";
+  applyBtn.className = "pix-cp-modal-btn primary";
+  applyBtn.textContent = "Apply";
+
+  actions.appendChild(cancelBtn);
+  actions.appendChild(applyBtn);
+  box.appendChild(actions);
+
+  backdrop.appendChild(box);
+  document.body.appendChild(backdrop);
+
+  function close() {
+    window.removeEventListener("keydown", onKey, true);
+    picker.destroy();
+    if (backdrop.parentNode) backdrop.remove();
+  }
+
+  applyBtn.addEventListener("click", () => {
+    onPick(pickedColor);
+    close();
+  });
+  cancelBtn.addEventListener("click", () => {
+    onCancel();
+    close();
+  });
+  // Click-outside-to-cancel — but ONLY if both mousedown AND mouseup
+  // happened on the backdrop. Otherwise a drag that starts inside the
+  // SV plane and releases outside (off the modal box) would cancel,
+  // throwing away the user's color pick.
+  let mouseDownOnBackdrop = false;
+  backdrop.addEventListener("mousedown", (e) => {
+    mouseDownOnBackdrop = (e.target === backdrop);
+  });
+  backdrop.addEventListener("click", (e) => {
+    if (e.target === backdrop && mouseDownOnBackdrop) { onCancel(); close(); }
+    mouseDownOnBackdrop = false;
+  });
+  function onKey(e) {
+    if (e.key === "Escape") {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      onCancel();
+      close();
+    } else if (e.key === "Enter") {
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      onPick(pickedColor);
+      close();
+    }
+  }
+  window.addEventListener("keydown", onKey, true);
+}
+
 // Centered modal with full SV / hue / hex picker + OK / Cancel.
 // OK fires `opts.onPick(currentHex)` and closes; Cancel just closes.
 // Esc cancels (window-capture so it preempts the editor's overlay

@@ -173,6 +173,59 @@ async def list_note_icons(request):
         return web.json_response({"icons": []})
 
 
+PIXAROMA_FONTS_DIR = os.path.join(PIXAROMA_ASSETS_DIR, "fonts")
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/fonts/list")
+async def pixaroma_fonts_list(request):
+    """Enumerate assets/fonts/ and return the font catalog JSON.
+
+    Catalog format: [ { id, label, category, weights: [{weight, italic, file, wght?}] }, ... ]
+    See docs/text-overlay-render.md for the consumer contract.
+    For variable fonts, multiple weight entries share the same .ttf file and
+    carry a `wght` field (the wght axis value to activate at render time).
+    """
+    fonts_dir = PIXAROMA_FONTS_DIR
+    if not os.path.isdir(fonts_dir):
+        return web.json_response([])
+
+    # (file, font_id, weight, italic, label, category, wght_axis|None)
+    BUNDLE = [
+        ("Inter-Variable.ttf",                  "Inter",            400, False, "Inter",            "sans",        400),
+        ("Inter-Variable.ttf",                  "Inter",            700, False, "Inter",            "sans",        700),
+        ("Roboto-Variable.ttf",                 "Roboto",           400, False, "Roboto",           "sans",        400),
+        ("Roboto-Variable.ttf",                 "Roboto",           700, False, "Roboto",           "sans",        700),
+        ("Montserrat-Variable.ttf",             "Montserrat",       400, False, "Montserrat",       "sans",        400),
+        ("Montserrat-Variable.ttf",             "Montserrat",       800, False, "Montserrat",       "sans",        800),
+        ("Oswald-Variable.ttf",                 "Oswald",           600, False, "Oswald",           "sans",        600),
+        ("PlayfairDisplay-Variable.ttf",        "PlayfairDisplay",  700, False, "Playfair Display", "serif",       700),
+        ("PlayfairDisplay-Italic-Variable.ttf", "PlayfairDisplay",  700, True,  "Playfair Display", "serif",       700),
+        ("Lora-Variable.ttf",                   "Lora",             400, False, "Lora",             "serif",       400),
+        ("Lora-Variable.ttf",                   "Lora",             700, False, "Lora",             "serif",       700),
+        ("BebasNeue-Regular.ttf",               "BebasNeue",        400, False, "Bebas Neue",       "display",     None),
+        ("Anton-Regular.ttf",                   "Anton",            400, False, "Anton",            "display",     None),
+        ("Caveat-Variable.ttf",                 "Caveat",           500, False, "Caveat",           "handwriting", 500),
+        ("JetBrainsMono-Variable.ttf",          "JetBrainsMono",    500, False, "JetBrains Mono",   "mono",        500),
+    ]
+
+    grouped = {}
+    for filename, font_id, weight, italic, label, category, wght_axis in BUNDLE:
+        if not os.path.isfile(os.path.join(fonts_dir, filename)):
+            continue
+        bucket = grouped.setdefault(font_id, {"id": font_id, "label": label, "category": category, "weights": []})
+        entry = {"weight": weight, "italic": italic, "file": filename}
+        if wght_axis is not None:
+            entry["wght"] = wght_axis
+        bucket["weights"].append(entry)
+
+    CAT_ORDER = ["sans", "serif", "display", "handwriting", "mono"]
+    result = sorted(
+        grouped.values(),
+        key=lambda f: (CAT_ORDER.index(f["category"]) if f["category"] in CAT_ORDER else 99, f["label"]),
+    )
+    return web.json_response(result)
+
+
 PIXAROMA_INPUT_ROOT = os.path.realpath(
     os.path.join(folder_paths.get_input_directory(), "pixaroma")
 )

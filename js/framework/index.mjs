@@ -33,3 +33,14 @@ export {
   createCanvasFrame,
   createCanvasToolbar,
 } from "./canvas.mjs";
+
+// Text Overlay infrastructure (used by Text Overlay node + future Composer text layers)
+export {
+  getFontCatalog,
+  resolveFontVariant,
+  ensureFontLoaded,
+  canvasFontString,
+  loadFontForLayer,
+} from "./fonts.mjs";
+export { renderTextLayer } from "./text_render.mjs";
+export { createTextEditorPanel } from "./text_editor.mjs";

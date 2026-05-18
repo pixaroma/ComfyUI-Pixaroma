@@ -1,9 +1,8 @@
 """Load Image Pixaroma — native LoadImage parity + inline resize.
 
-Spec: docs/superpowers/specs/2026-05-11-load-image-pixaroma-design.md
-
 Architecture mirrors Resolution Pixaroma (hidden input + graphToPrompt
-injection of state JSON from node.properties).
+injection of state JSON from node.properties). See CLAUDE.md
+'Load Image Pixaroma Patterns' for the full design.
 """
 
 import hashlib

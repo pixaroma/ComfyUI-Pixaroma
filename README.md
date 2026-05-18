@@ -86,6 +86,9 @@ Keep your workflows tidy with clean, custom labels.
 ![Labels Node](workflows/Labels%20Pixaroma%20Workflow.jpg?v=2)
 ![Labels Editor](workflows/Labels%20Pixaroma%20Workflow%20v2.jpg?v=2)
 
+### ✏️ Text Overlay Pixaroma
+Drop a styled text caption straight onto an image. 10 bundled fonts (Inter, Roboto, Montserrat, Oswald, Playfair Display, Lora, Bebas Neue, Anton, Caveat, JetBrains Mono), bold and italic toggles, three alignment options, size, line height, letter spacing, opacity, rotation, X / Y position, text color and an optional background bar behind the text. Type math like `100+12` in any number field and it evaluates. Click **Open Text Editor** for a fullscreen canvas where you can drag the text to move it, drag the corners to resize, drag the round handle on top to rotate, snap to canvas center / thirds / edges, and use **Fit W** or **Fit H** to fill the image. Save your work straight to disk as a PNG. Wire the optional **text** input to feed the caption from any upstream text source (the textarea on the node grays out so you know not to type there). New nodes auto-center the text on whatever image you wire in, no manual positioning needed for the first render.
+
 ### 🎬 Save Mp4 Pixaroma
 Encode video frames + optional audio straight to MP4. Built-in `<video>` preview right on the node so you can watch the result without leaving ComfyUI. Pairs with AudioReact, but works with any source that produces frames + AUDIO.
 
@@ -221,6 +224,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **May 18, 2026 (1.3.39)**
+- **NEW: Text Overlay Pixaroma** - add a styled text caption to any image. 10 bundled fonts, bold / italic, three alignments, size, line height, letter spacing, opacity, rotation, X / Y, text color and an optional background bar behind the text. Math expressions work in every number field (type `100+12`, hit Enter, you get 112). Click **Open Text Editor** for a fullscreen canvas: drag the text to move it, drag the corners to resize from the center (Alt to resize from the opposite corner instead), drag the round handle to rotate, Shift+wheel to scale in place, snap guides catch on canvas center / thirds / edges. **Fit W** and **Fit H** buttons fill the text to the image width or height. **Save to Disk** exports a PNG straight to your machine. Wire the optional **text** input to override the caption from any upstream text source, and the textarea grays out so you know typing there is ignored. New nodes auto-center the text on whatever image you wire in, so the first render comes out looking right without any positioning fiddle.
 
 ### **May 18, 2026 (1.3.38)**
 - **NEW: Prompt Pack Pixaroma** - paste a block of prompts in one textarea and the node queues one workflow run per prompt. Pick **Paragraph** (prompts separated by blank lines, good for long flowing prompts) or **Line** (one prompt per line, good for short lists) with the pill at the top. While running, a counter in the bottom-right corner counts down "3 left, 2 left, 1 left" so you can see how many images are still to come. A **Clear prompts** button on the bottom-left wipes the textarea with a confirm dialog. Drop a generated PNG back on Prompt Reader Pixaroma to recover the exact prompt that produced that specific image.

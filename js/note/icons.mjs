@@ -1,13 +1,9 @@
 // Inline-icons module — list cache, per-icon CSS injection, label
-// derivation, insert HTML rendering. Toolbar insertion + popup UI
-// land in Phase 4 (blocks.mjs + toolbar.mjs edits).
-//
-// See docs/superpowers/specs/2026-04-21-note-inline-icons-design.md
-// for the design rationale.
+// derivation, insert HTML rendering, toolbar insertion + popup UI.
+// See CLAUDE.md Note Pixaroma Pattern #29 for the full design.
 
-// NoteEditor is unused in Phase 2 but intentionally imported now —
-// Phase 4 will extend NoteEditor.prototype at module-top of this
-// file. Removing the import now only to re-add it would churn the
+// NoteEditor is imported so this module can extend NoteEditor.prototype
+// at module top. Removing the import only to re-add it would churn the
 // circular-dep analysis documented in core.mjs::open().
 import { NoteEditor } from "./core.mjs";
 import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
