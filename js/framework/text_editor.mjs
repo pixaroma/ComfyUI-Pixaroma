@@ -124,12 +124,14 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   ui.lineInput    = inputCell(typoGrid, "Line height", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
   ui.letterInput  = inputCell(typoGrid, "Letter sp",   -10,   50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
   ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
-  ui.rotateInput  = inputCell(typoGrid, "Rotate",     -180,  180,    0, 1,   (v) => { const l = layerNow(); if (l) { l.rotation = v;       fireChange(); }});
 
-  const posGrid = el("div", "pix-to-grid2");
-  root.appendChild(posGrid);
-  ui.posXInput = inputCell(posGrid, "X", 0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v; fireChange(); }});
-  ui.posYInput = inputCell(posGrid, "Y", 0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v; fireChange(); }});
+  // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
+  // balanced (no empty cell next to Rotate) and saves a row of height.
+  const transformGrid = el("div", "pix-to-grid3");
+  root.appendChild(transformGrid);
+  ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+  ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
+  ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
 
   // Colors: two clickable cells in one row. Each shows [swatch  LABEL  hex].
   // Click opens the compact color picker.
@@ -572,6 +574,12 @@ function injectCSS() {
     .pix-to-grid2 {
       display: grid;
       grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+    /* 3-column grid used by the Rotate / X / Y row */
+    .pix-to-grid3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
       gap: 4px;
     }
 
