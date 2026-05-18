@@ -21,20 +21,27 @@ class PixaromaTextOverlay:
     CATEGORY = "👑 Pixaroma"
     DESCRIPTION = (
         "Adds a single styled text overlay on top of an input image. "
-        "Edit quickly via the widgets on the node, or click 'Open Text "
-        "Editor' for a fullscreen visual editor with drag, snap, and align tools."
+        "Tune font, size, weight, italic, alignment, line height, letter "
+        "spacing, opacity, rotation, position, text color and an optional "
+        "background bar directly on the node. Click 'Open Text Editor' for "
+        "a fullscreen canvas with drag-to-move, drag-corner-to-scale, "
+        "drag-handle-to-rotate, snap guides, align-to-canvas buttons, "
+        "Fit W / Fit H, undo/redo and Save-to-Disk. Wire the optional "
+        "'text' input to override the panel text from any upstream STRING "
+        "source. The first run on a fresh node auto-centers the text on "
+        "the actual image dimensions."
     )
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "image": ("IMAGE", {"tooltip": "Required upstream image. Text is overlayed on this."}),
+                "image": ("IMAGE", {"tooltip": "Required upstream image. Text is overlaid on this image at render time."}),
             },
             "optional": {
                 "text": ("STRING", {
                     "forceInput": True,
-                    "tooltip": "Optional. When wired to an upstream STRING source, overrides the panel's text at render time.",
+                    "tooltip": "Optional STRING input. When wired, replaces the panel's text at render time (the textarea on the node is greyed out while the wire is connected to remind you).",
                 }),
             },
             "hidden": {

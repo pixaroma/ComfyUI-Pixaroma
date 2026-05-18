@@ -213,10 +213,12 @@ def render_text_layer(base_img, layer):
     if not text:
         return base_img
 
-    font_id = layer.get("font", "Inter")
+    # Defaults intentionally match js/text_overlay/defaults.mjs DEFAULT_STATE
+    # so a state dict with missing keys renders identically in editor + output.
+    font_id = layer.get("font", "Roboto")
     weight = int(layer.get("weight", 400))
     italic = bool(layer.get("italic", False))
-    font_size = float(layer.get("fontSize", 96))
+    font_size = float(layer.get("fontSize", 64))
     line_height_mult = float(layer.get("lineHeight", 1.2))
     letter_spacing = float(layer.get("letterSpacing", 0))
     align = layer.get("align", "center")

@@ -160,6 +160,12 @@ export class TextOverlayEditor {
       },
     });
     this.editorPanel.setLayer(this.state);
+    // Set X/Y input ranges to the real canvas dimensions so values
+    // typed past 4096 (the default hardcoded max) aren't clipped on
+    // larger images. setCanvasBounds expands the range to
+    // [-canvasWidth, canvasWidth * 2] so text can be positioned with
+    // negative offsets and well past the right edge.
+    this.editorPanel.setCanvasBounds?.(this.canvasWidth, this.canvasHeight);
 
     // Lock the text textarea (in BOTH the editor sidebar and the node
     // body panel) when text input is wired. Visual cue that typing in
@@ -258,7 +264,7 @@ export class TextOverlayEditor {
         const writable = await handle.createWritable();
         await writable.write(blob);
         await writable.close();
-        this.layout.setStatus("Saved to disk", null);
+        if (!this._closed) this.layout.setStatus("Saved to disk", null);
         return;
       } catch (e) {
         if (e.name === "AbortError") return;
@@ -269,7 +275,7 @@ export class TextOverlayEditor {
     const a = document.createElement("a");
     a.href = dataURL; a.download = suggestedName;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    this.layout.setStatus("Download started", null);
+    if (!this._closed) this.layout.setStatus("Download started", null);
   }
 
   // ── Undo / Redo ──
