@@ -40,21 +40,20 @@ TextOverlayEditor.prototype._onCanvasWheel = function (e) {
   e.preventDefault();
   if (e.shiftKey) {
     const s = this.state; if (!s || !s.text) return;
-    // Capture the bbox top-left BEFORE the resize so we can explicitly
-    // re-anchor after. fontSize bumps don't move x/y on their own, but
-    // align=center renders the text centered within the bbox, so the
-    // text visual center shifts as the bbox grows. Re-anchoring x/y
-    // explicitly to the previous top-left keeps the bbox stuck where
-    // it was, which is what users expect for wheel-resize.
+    // Capture the bbox CENTER before the resize so we can re-pin the
+    // center after. fontSize bumps grow/shrink bbox.w and .h; without
+    // explicit re-anchoring the bbox grows down-right from x/y. Pinning
+    // the center makes the text grow/shrink in place around the same
+    // visual point on the canvas.
     const beforeBbox = this._textBbox(s);
-    const anchorX = beforeBbox.x;
-    const anchorY = beforeBbox.y;
+    const centerX = beforeBbox.x + beforeBbox.w / 2;
+    const centerY = beforeBbox.y + beforeBbox.h / 2;
     const step = e.altKey ? 10 : 5;
     const dir = e.deltaY > 0 ? -1 : 1;
     s.fontSize = Math.max(8, Math.min(512, (s.fontSize || 96) + dir * step));
-    // Re-anchor: bbox top-left == anchorX/Y, no matter what bbox.w / .h are now.
-    s.x = anchorX;
-    s.y = anchorY;
+    const afterBbox = this._textBbox(s);
+    s.x = Math.round(centerX - afterBbox.w / 2);
+    s.y = Math.round(centerY - afterBbox.h / 2);
     this._snapshotMaybe();
     this.editorPanel.setLayer(s);
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
