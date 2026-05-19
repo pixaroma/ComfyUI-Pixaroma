@@ -37,7 +37,7 @@ const PRESETS = [
   { id: "mocha",    label: "Mocha",    title: "#1f1814", body: "#2e2218" },
   { id: "amber",    label: "Amber",    title: "#2a1d10", body: "#3d2c1a" },
   { id: "olive",    label: "Olive",    title: "#1f2614", body: "#2d3520" },
-  { id: "forest",   label: "Forest",   title: "#13261c", body: "#1d3a2d" },
+  { id: "forest",   label: "Forest",   title: "#13261c", body: "#004835" },
   { id: "sage",     label: "Sage",     title: "#1a2620", body: "#2a3a30" },
   { id: "teal",     label: "Teal",     title: "#102b2f", body: "#1a3f44" },
   { id: "ocean",    label: "Ocean",    title: "#0a2535", body: "#14384a" },
