@@ -76,6 +76,22 @@ js/
 │                       #  inherits the brand colors via the category prefix —
 │                       #  do NOT re-add per-node color guards.
 │
+├── node_colors/        # Right-click "Apply Pixaroma colors" menu (single
+│   └── index.js        #  global extension, ~60 lines). Wraps
+│                       #  LGraphCanvas.prototype.getNodeMenuOptions to
+│                       #  append two entries to ANY node's right-click
+│                       #  menu: "👑 Apply Pixaroma colors" sets
+│                       #  node.color = #1d1d1d + node.bgcolor = #2a2a2a;
+│                       #  "Reset node colors" deletes both. Multi-select
+│                       #  aware: when 2+ nodes are selected AND the
+│                       #  right-clicked node is one of them, applies to
+│                       #  all, and the label updates to "...to N nodes".
+│                       #  The colors are written onto each node's
+│                       #  properties, so they serialize into the workflow
+│                       #  JSON and travel to recipients without requiring
+│                       #  this plugin installed. Reuses the same hex
+│                       #  values brand/ uses for category-auto-coloring.
+│
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
 │   ├── core.mjs        # Class shell: constructor, open/close, UI building
