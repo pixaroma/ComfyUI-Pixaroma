@@ -98,6 +98,14 @@ export function createLayerItem(config) {
     input.value = currentName;
     nameEl.style.display = "none";
     nameEl.parentNode.insertBefore(input, nameEl);
+    // While the rename input is open, disable HTML5 drag-to-reorder on the
+    // ROW so no mousedown anywhere on the row (thumbnail, padding, the
+    // input edge) accidentally fires a reorder drag. Restored in finish().
+    // Without this, drag-selecting near the input boundary or starting
+    // from the thumbnail while rename is open lets the whole row be
+    // dragged out, confusing the user.
+    const _wasDraggable = el.draggable;
+    el.draggable = false;
     let done = false;
     const finish = () => {
       if (done) return;
@@ -106,6 +114,7 @@ export function createLayerItem(config) {
       nameEl.textContent = newName;
       nameEl.style.display = "";
       input.remove();
+      el.draggable = _wasDraggable;
       if (config.onRename) config.onRename(newName);
     };
     input.addEventListener("keydown", (ke) => {
@@ -119,6 +128,17 @@ export function createLayerItem(config) {
         finish();
       }
     });
+    // Stop the rename input's pointer events from bubbling up to the row's
+    // own click handler (`el.addEventListener("click", ...)` below). Without
+    // this guard, drag-selecting inside the input lands a click on the row
+    // when the user releases - the row's onClick switches the active layer
+    // which blurs the rename input, the blur listener (line below) fires
+    // finish() after 50ms, and the rename closes. The user's symptom was
+    // "I select a few letters and when I release it doesn't let me type" -
+    // exactly this path.
+    input.addEventListener("click",    (e) => e.stopPropagation());
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    input.addEventListener("dblclick",  (e) => e.stopPropagation());
     setTimeout(() => {
       input.focus();
       input.select();
@@ -205,6 +225,23 @@ export function createLayersList(config) {
   list.addEventListener("dragstart", (e) => {
     const item = e.target.closest(".pxf-layer-item");
     if (!item) return;
+    // Bail when the drag started from a control inside the row - inline
+    // rename <input>, the visibility / edit icon <div>s, or any future
+    // <button>. Without this guard, drag-selecting text inside the rename
+    // input hijacks the row reorder, and clicking the visibility / edit
+    // icon and dragging causes a ghost row to follow the cursor. The
+    // user reported this exact symptom on prompt-row textareas and the
+    // same pattern applies to the layer panel's rename input.
+    const t = e.target;
+    const tag = (t.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "button") {
+      e.preventDefault();
+      return;
+    }
+    if (t.closest && t.closest(".pxf-layer-icon")) {
+      e.preventDefault();
+      return;
+    }
     dragIdx = [...list.children].indexOf(item);
     item.classList.add("dragging");
     e.dataTransfer.effectAllowed = "move";
