@@ -32,9 +32,12 @@ function injectCSS() {
       flex: 1;
       height: ${BTN_H}px;
       border-radius: 6px;
-      border: 1px solid #444;
-      background: #2a2a2a;
-      color: #cfcfcf;
+      /* Semi-transparent white overlay instead of fixed dark grey so the
+         non-active button adapts when the user changes the node colour
+         via right-click -> Colors. Matches Text Pixaroma's button style. */
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.05);
+      color: rgba(255, 255, 255, 0.85);
       font-weight: 600;
       font-size: 13px;
       letter-spacing: 0.5px;
@@ -43,7 +46,11 @@ function injectCSS() {
       font-family: inherit;
       padding: 0;
     }
-    .pix-swh-btn:hover { border-color: #888; color: #fff; }
+    .pix-swh-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.35);
+      color: #fff;
+    }
     .pix-swh-btn.active {
       background: ${BRAND};
       color: #fff;
@@ -116,6 +123,17 @@ function setupNode(node) {
     margin: 4,
     serialize: false,
   });
+
+  // Default size for fresh-on-canvas placements. Without this, LiteGraph's
+  // auto-size left the node too short on first drop and the user had to
+  // resize once to snap it to a comfortable size. configure() runs AFTER
+  // nodeCreated (Vue Compat #8) and overwrites with the saved size on
+  // workflow restore + duplicate, so existing workflows keep their size.
+  // Mutate the array instead of replacing it - plays nicer with any
+  // reactive proxy Vue may have on node.size.
+  node.size[0] = 210;
+  node.size[1] = 140;
+  node.setDirtyCanvas(true, true);
 }
 
 app.registerExtension({
