@@ -198,7 +198,7 @@ function injectCSS() {
 /* Force the embedded color pickers to a proper roomy size with a
    Photoshop-style square SV plane (the picker module only sets this
    when the picker sits inside .pix-cp-modal-box, which is a sibling
-   modal — we replicate the override for our own modal class). */
+   modal, so we replicate the override for our own modal class). */
 .pix-nc-modal .pix-cp {
   width: 280px;
 }
