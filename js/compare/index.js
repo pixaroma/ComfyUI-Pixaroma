@@ -28,6 +28,11 @@ const INIT_W = 440;
 const INIT_H = INIT_W + IMG_Y; // square preview area
 const MIN_W = BTN_X + BTN_W * 6 + BTN_GAP * 5 + 6;
 const MIN_H = IMG_Y + 100;
+// Copy button (Show 1/2 only) - same height as row 1 buttons so no
+// row-height change; right-aligned on row 2 so it does not push the
+// hint text or the opacity slider around.
+const COPY_W = 56;
+const COPY_RIGHT_PAD = 6;
 
 // Button rect helpers — Show toggle is first, then 4 mode buttons
 function showRect() {
@@ -38,6 +43,9 @@ function modeRect(i) {
 }
 function hintRect() {
   return { x: BTN_X, y: ROW2_Y, w: BTN_W * 6 + BTN_GAP * 5, h: BTN_H };
+}
+function copyRect(nodeW) {
+  return { x: nodeW - COPY_RIGHT_PAD - COPY_W, y: ROW2_Y, w: COPY_W, h: BTN_H };
 }
 function inside(pos, r) {
   return (
@@ -88,6 +96,45 @@ function loadCmpImage(node, meta, idx) {
     app.graph.setDirtyCanvas(true, true);
   };
   img.src = buildCmpUrl(meta);
+}
+
+// Copy the currently-shown image (Show 1 / Show 2) to the OS clipboard
+// as PNG. Mirrors Preview Image Pixaroma Pattern #12: force MIME to
+// "image/png" (some servers return image/x-png and ClipboardItem is
+// strict), fall back to a toast if the Clipboard API is unavailable.
+// The 700ms green-flash feedback runs entirely off node._cmpCopyFlash —
+// the next two redraws (set + clear) trigger via setDirtyCanvas.
+async function copyShownImage(node) {
+  const which = node._cmpShowWhich;
+  if (which !== 1 && which !== 2) return;
+  const img = which === 1 ? node._cmpImg1 : node._cmpImg2;
+  if (!img || !img.src) return;
+  const toast = (msg) => {
+    const t = app.extensionManager?.toast;
+    if (t?.add) t.add({ severity: "warn", summary: "Compare", detail: msg, life: 2500 });
+    else console.warn("[Pixaroma] Compare:", msg);
+  };
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      toast("Clipboard not available in this browser");
+      return;
+    }
+    const resp = await fetch(img.src);
+    const raw = await resp.blob();
+    const blob = raw.type === "image/png"
+      ? raw
+      : new Blob([await raw.arrayBuffer()], { type: "image/png" });
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    node._cmpCopyFlash = true;
+    app.graph.setDirtyCanvas(true, true);
+    setTimeout(() => {
+      node._cmpCopyFlash = false;
+      app.graph.setDirtyCanvas(true, true);
+    }, 700);
+  } catch (err) {
+    console.warn("[Pixaroma] Compare copy failed:", err);
+    toast("Could not copy to clipboard");
+  }
 }
 
 function saveCompareState(node) {
@@ -303,6 +350,45 @@ app.registerExtension({
       }
       ctx.restore();
 
+      // ── Copy button (Show 1 / Show 2 only) ──
+      // Sits on row 2 right-aligned. Same height as the row 1 buttons so
+      // the node never changes height when the user toggles Show 1/2. In
+      // comparison modes it stays hidden so the hint text or the opacity
+      // slider keep full width. Mutually exclusive with the slider since
+      // the slider only renders when _cmpShowWhich === 0.
+      if (this._cmpShowWhich !== 0) {
+        const cr = copyRect(w);
+        // Hover via app.canvas.graph_mouse - free per-frame, LiteGraph
+        // redraws on every pointermove (Preview Image Pattern #5).
+        let hover = false;
+        const gm = app.canvas?.graph_mouse;
+        if (gm) {
+          const mx = gm[0] - this.pos[0];
+          const my = gm[1] - this.pos[1];
+          hover = mx >= cr.x && mx <= cr.x + cr.w && my >= cr.y && my <= cr.y + cr.h;
+        }
+        const flash = !!this._cmpCopyFlash;
+        ctx.save();
+        ctx.fillStyle = flash ? "#3ec371" : (hover ? BRAND : "#2a2c2e");
+        ctx.strokeStyle = flash ? "#3ec371" : (hover ? BRAND : "#444");
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(cr.x, cr.y, cr.w, cr.h, 3);
+        else ctx.rect(cr.x, cr.y, cr.w, cr.h);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = (flash || hover) ? "#fff" : "#999";
+        ctx.font = "9px 'Segoe UI',sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          flash ? "Copied" : "Copy " + this._cmpShowWhich,
+          cr.x + cr.w / 2,
+          cr.y + cr.h / 2,
+        );
+        ctx.restore();
+      }
+
       // ── Image area ──
       const imgH = h - IMG_Y;
       if (!this._cmpImg1 && !this._cmpImg2) {
@@ -430,6 +516,14 @@ app.registerExtension({
     // ── Mouse ────────────────────────────────────────────
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
+      // Copy button (only visible in Show 1/2). Checked first so the
+      // click is never accidentally routed to anything else - rects
+      // don't overlap, this is just belt-and-braces.
+      if (this._cmpShowWhich !== 0 && inside(pos, copyRect(this.size[0]))) {
+        copyShownImage(this);
+        return true;
+      }
+
       // Show toggle: toggles between Show 1 and Show 2
       if (inside(pos, showRect())) {
         this._cmpShowWhich = this._cmpShowWhich === 2 ? 1 : 2;
