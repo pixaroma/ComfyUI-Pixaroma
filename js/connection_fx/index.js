@@ -72,6 +72,13 @@ function drawApproachIndicators(canvas) {
   if (!cursor) return;
   const ctx = canvas.ctx;
   if (!ctx) return;
+  const ds = canvas.ds;
+  if (!ds) return;
+
+  const scale = ds.scale || 1;
+  const offset = ds.offset || [0, 0];
+  const toScreenX = (gx) => (gx + offset[0]) * scale;
+  const toScreenY = (gy) => (gy + offset[1]) * scale;
 
   const t = performance.now() / 1000;
   const pulse = 0.5 + 0.5 * Math.sin(t * 5);
@@ -101,15 +108,18 @@ function drawApproachIndicators(canvas) {
 
       const proximity = 1 - dist / PROXIMITY_RADIUS;
       const alpha = proximity * (0.55 + pulse * 0.45);
-      const haloRadius = 8 + proximity * 5 + pulse * 3;
+      const sx = toScreenX(pos[0]);
+      const sy = toScreenY(pos[1]);
+      const haloR = 9 + proximity * 5 + pulse * 3;
+      const dotR = 3.5 + proximity * 1.2;
 
       ctx.beginPath();
-      ctx.arc(pos[0], pos[1], haloRadius, 0, Math.PI * 2);
+      ctx.arc(sx, sy, haloR, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(246, 103, 68, ${alpha * 0.25})`;
       ctx.fill();
 
       ctx.beginPath();
-      ctx.arc(pos[0], pos[1], 3.5 + proximity * 1.2, 0, Math.PI * 2);
+      ctx.arc(sx, sy, dotR, 0, Math.PI * 2);
       ctx.fillStyle = `rgba(246, 103, 68, ${alpha})`;
       ctx.fill();
     }
