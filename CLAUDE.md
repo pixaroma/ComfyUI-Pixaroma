@@ -141,6 +141,86 @@ js/
 │                       #  does not discard the user's pick (same pattern
 │                       #  Text Overlay #12 documents).
 │
+├── connection_fx/      # Connection FX (single file, ~210 lines)
+│   └── index.js        # Frontend-only patch (no Python node). One
+│                       #  boolean setting `Pixaroma.Connection.FX`
+│                       #  under category ["👑 Pixaroma", "Connections"],
+│                       #  default OFF. When ON: (a) wraps
+│                       #  LGraphCanvas.prototype.drawFrontCanvas to
+│                       #  paint a pulsing BRAND #f66744 dot + halo at
+│                       #  every type-compatible target slot within
+│                       #  ~110 graph-units of the cursor while a wire
+│                       #  is being dragged - alpha scales with both
+│                       #  proximity and a sin(t*5) pulse, halo radius
+│                       #  too. Calls setDirty(true,true) per frame so
+│                       #  the pulse keeps animating during the drag.
+│                       #  Detects the drag via canvas.connecting_links
+│                       #  (newer API) with fallback to connecting_node
+│                       #  + connecting_output (older API). Wildcard
+│                       #  "*" types match everything. (b) wraps
+│                       #  LGraphNode.prototype.connect (which fires
+│                       #  once per successful connection, regardless of
+│                       #  per-node onConnectionsChange overrides like
+│                       #  the Switch Pixaroma configuring-gate) and
+│                       #  spawns 10 yellow position:fixed sparkle divs
+│                       #  in a circle at the target slot's screen
+│                       #  position. Slot graph -> screen conversion
+│                       #  uses (pos + ds.offset) * ds.scale + canvas
+│                       #  bounding rect offset. Hooks WRAP, never
+│                       #  replace; gated on `enabled` boolean so the
+│                       #  toggling cost is zero when off. CSS class
+│                       #  `pix-conn-fx-sparkle` injected once via
+│                       #  injectCSS() guarded by #pix-conn-fx-css ID.
+│
+├── run_button_fx/      # Run Button FX (single file, ~290 lines)
+│   └── index.js        # Frontend-only patch (no Python node). One ComfyUI
+│                       #  setting `Pixaroma.RunButton.FX` (combo) under
+│                       #  category ["👑 Pixaroma", "Run Button"] with
+│                       #  options: None / Pixaroma Orange / Flash /
+│                       #  Ignition / Thor / Sparkle / Rocket /
+│                       #  Shockwave.
+│                       #  Default OFF (None) - zero work when disabled.
+│                       #  Run button found by text-content match
+│                       #  (textContent === "Run" && has SVG) so it stays
+│                       #  reliable across dock/undock - the button is the
+│                       #  same DOM node when Vue just moves it, a new node
+│                       #  when Vue recreates it. MutationObserver on
+│                       #  document.body subtree re-finds the button only
+│                       #  when the cached reference falls out of DOM (early
+│                       #  return when document.body.contains(currentButton)),
+│                       #  batched via requestAnimationFrame so the high
+│                       #  mutation rate of Vue's reactivity layer is cheap.
+│                       #  FX implementation patterns: CONTINUOUS effects
+│                       #  (Pixaroma Orange / Pulse / Aurora) are CSS-class
+│                       #  toggles on the button itself with !important to
+│                       #  override Vue's built-in button styles. PER-CLICK
+│                       #  effects (Ignition / Lightning / Rocket) are
+│                       #  position:fixed overlay divs absolute-positioned
+│                       #  via button.getBoundingClientRect() into
+│                       #  document.body, so they can extend OUTSIDE the
+│                       #  button frame (flame to the left, arc beyond
+│                       #  border, rocket flame below) without fighting
+│                       #  the button's overflow:hidden. Each overlay
+│                       #  removes itself via setTimeout after its CSS
+│                       #  animation completes. CONTINUOUS particle
+│                       #  emission (Sparkle) uses setInterval spawning
+│                       #  body-level overlay divs at random x within the
+│                       #  button rect - interval cleared via the
+│                       #  cleanupCurrent closure when FX changes.
+│                       #  Each attachX(button) returns a cleanup fn;
+│                       #  applyFx() calls cleanupCurrent() before swapping
+│                       #  FX. Rocket shake uses the
+│                       #  classList.remove + void offsetWidth + add
+│                       #  trick to force CSS animation restart on each
+│                       #  click. All overlay class names are
+│                       #  `pix-rb-fx-*` (sparkle, flame, arc,
+│                       #  rocketflame) and button-applied class names
+│                       #  are `pix-rb-orange / -pulse / -aurora /
+│                       #  -rocket-shake`. CSS injected once via
+│                       #  injectCSS() guarded by #pix-rb-fx-css ID.
+│                       #  Zero perf cost when FX === "None" because
+│                       #  the observer is never started.
+│
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
 │   ├── core.mjs        # Class shell: constructor, open/close, UI building
@@ -558,6 +638,8 @@ Pixaroma registers user-facing settings in ComfyUI's Settings panel using the `s
 | `Pixaroma.Compare.DefaultMode` | combo | `js/compare/index.js` | Default view mode for new Compare nodes |
 | `Pixaroma.Preview.DefaultLayout` | combo | `js/preview/index.js` | Default batch layout (Grid / Strip) for Preview Image Pixaroma; per-node toggle in the widget overrides |
 | `Pixaroma.Preview.DefaultSaveMode` | combo | `js/preview/index.js` | Default `save_mode` (Preview / Save) for newly-created Preview Image Pixaroma nodes; saved workflows keep their original value because `configure()` runs AFTER `onNodeCreated` (Vue Compat #8). Distinct category leaf `"Preview (save mode)"` so it does not collide with DefaultLayout (Align Pattern #10) |
+| `Pixaroma.RunButton.FX` | combo | `js/run_button_fx/index.js` | Visual effect for ComfyUI's Run button. Options: None / Pixaroma Orange / Flash / Ignition / Thor / Sparkle / Rocket / Shockwave. Default None - zero perf cost when disabled (MutationObserver never starts). Pure visual layer, never blocks queueing. |
+| `Pixaroma.Connection.FX` | boolean | `js/connection_fx/index.js` | Connection feedback. When dragging a wire, paint pulsing orange "magnet" indicators on every type-compatible target slot within ~110 graph units of the cursor; on successful connection, spawn a small yellow sparkle burst at the target slot's screen position. Default OFF; zero perf cost when off. |
 
 ### Pixaroma node UI conventions (do not regress)
 
@@ -1138,6 +1220,7 @@ Files are named by concern. Match the task to the file:
 | Change Note default colour / size / placeholder | `js/note/index.js` DEFAULT_CFG + `nodes/node_note.py` widget default (keep in sync) |
 | Add / manage inline note icons (SVG library) | Drop SVGs into `assets/icons/note/`. Label derivation + list endpoint live in `server_routes.py`'s `/pixaroma/api/note/icons/list` route, mirrored in `js/note/icons.mjs::deriveLabel`. Both must stay in sync if you change the rules. To add a new SIZE preset, edit ALL of: `js/note/css.mjs` (new `.pix-note-ic[data-size="<id>"]` rule), `js/note/sanitize.mjs` (extend `IC_SIZE_RE`), `js/note/icons.mjs::openIconPop` (new pill in `sizes` array). Picker color + size are session-sticky on `editor._iconPickerColor` / `editor._iconPickerSize`, set in `core.mjs::open()` and reset in `_cleanup()`. Atomic Backspace/Delete handler also lives in `core.mjs::open()` (`_iconKeyHandler` listener on `_editArea`). |
 | Change inline-icon rendering (size / alignment / color model) | `js/note/css.mjs` base `.pix-note-ic` rule + per-icon rules dynamically injected by `js/note/icons.mjs::injectIconCSS`. Picker popup styles: `.pix-note-iconpop` family in `css.mjs`. |
+| Change Run Button FX (add / remove an effect, tweak colors / timing) | `js/run_button_fx/index.js` (single file). Add the new option name to `FX_OPTIONS`, add a case branch to `applyFx()`. Continuous CSS effects: add a `.pix-rb-<name>` class to the CSS block in `injectCSS()` and add it to `FX_CLASSES` so cleanup removes it. Per-click overlays: write a `spawnX(button)` that builds a `position:fixed` div positioned via `button.getBoundingClientRect()`, an `attachX(button)` that wires the click handler and returns its cleanup fn. The setting is `Pixaroma.RunButton.FX` under `["👑 Pixaroma", "Run Button"]`. |
 | Toggle / change Align Pixaroma snap behavior | `js/align/index.js` (single file). Settings: `Pixaroma.Align.Enabled` (boolean, mirrors the toolbar button) + `Pixaroma.Align.SnapDistance` (slider 4-16). Hooks: window pointermove for snap (NOT `LGraphCanvas.processMouseMove`, which Vue does not invoke); `LGraphCanvas.drawFrontCanvas` wrap for guide rendering (NOT `onDrawForeground`, unreliable in Vue per Compat #1). WRAP-don't-replace pattern coexists with rgthree-comfy and the "NodeAlign" extension. Shift bypasses snap (Alt is taken by ComfyUI for duplicate-during-drag). Active guides drawn in BRAND #f66744 with `lineWidth = 1` in screen space (manual graph -> screen transform) so the stroke is exactly 1 screen pixel at any zoom. Snap distance is `state.snapDistPx / canvas.ds.scale` graph units, computed every tick (so zoom changes mid-drag are honored). |
 | Change Remove Background Pixaroma behavior / outputs | `nodes/node_remove_background.py` is now a thin wrapper (~80 lines) over `nodes/_bg_removal_helpers.py`. All BiRefNet machinery lives in the helper module: `SENTINEL_NO_MODELS`, `_DEFAULT_MODEL_NAME`, `_BIREFNET_MARKER`, `_HR_RE`, `_resolution_for_filename`, `_PixaromaBgModel` (Swin-L subclass that takes a config dict), `_load_bg_model` (BiRefNet marker + embed_dim=192 Swin-L check, refuses lite/non-BiRefNet weights), `_get_cached_model` (LRU cap 2 keyed by `(path, image_size)`), `_list_models` (pins `birefnet.safetensors` to position 0 as the default), `_INSTALL_MESSAGE`. The helper ALSO exposes `BIREFNET_VARIANTS`, `is_birefnet_model_id`, `get_birefnet_inventory`, `run_birefnet_on_pil` - all used by `server_routes.py` for the Composer + Paint AI Remove BG flow (1.3.34). `get_birefnet_inventory` and `run_birefnet_on_pil` use `folder_paths.get_full_path("background_removal", filename)` (NOT `get_folder_paths(...)[0]`) so `extra_model_paths.yaml` configurations are honoured - Easy Install users keep models in shared external dirs like `E:/models/background_removal/`. Filename -> resolution rule is unchanged: `matt` -> 2048; `hr` word-piece (`(?<![a-z])hr(?![a-z])`) -> 2048; else 1024. ComfyUI's native loader hardcodes 1024 in `comfy/background_removal/birefnet.json` so we bypass `comfy.bg_removal_model.load()`. Three outputs: `image` (RGBA), `mask` (fg=1), `inverted_mask` (bg=1). Old `BACKGROUND_REMOVAL` wire input was removed in 1.3.33. |
 | Change Switch Pixaroma slot management / mutex behavior / state schema / row cap | `js/switch/core.mjs` (`MAX_INPUTS = 32`, `STATE_PROP = "switchState"`, `normalizeSlots` / `handleConnect` / `actuallyDisconnect` / `getUpstreamType` / `updateOutputType`). Drawing in `js/switch/render.mjs` (rowCenterY math aligned with LG `NODE_SLOT_HEIGHT` so labels and toggles sit on input-dot rows, Vue Compat #16). Inline label DOM `<input>` editor in `js/switch/editor.mjs` (font/padding/border scaled by canvas zoom at open time). Configure-replay gate `_pixSwitchConfiguring` in `js/switch/index.js` (Vue Compat #17 - any state-mutating `onConnectionsChange` handler MUST be gated on the flag or saved `activeIndex` silently dies on every workflow load and Ctrl+Z undo). Hidden `SwitchState` injection via `app.graphToPrompt` hook at the bottom of `index.js` (Pattern #9). Slot count grows via `handleConnect` appending a trailing empty when the last empty is connected (caps at `MAX_INPUTS`). Disconnect deferred via `setTimeout(0)` so wire-replace (LG fires disconnect-then-connect on the same slot when the user drags a new wire onto an already-wired input) is cancelled by `handleConnect` via the `_pendingDisconnects` Map. Per-row default label shows the upstream output type (MODEL, IMAGE, CLIP...) when no user label is set; clearing the label reverts to the type placeholder via the commit-empty-deletes-key path in `editor.mjs`. Python side in `nodes/node_switch.py` pre-declares 32 optional `input_N` slots typed `ANY` (from `nodes/_type_helpers.py`) + a hidden `SwitchState` STRING input; `pick(SwitchState, **kwargs)` returns `kwargs.get(f"input_{idx}")` with a clear ValueError when the active row is unconnected. |
