@@ -101,9 +101,20 @@ function injectCSS() {
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.6);
   padding: 18px 22px 16px;
-  min-width: 600px;
+  min-width: 680px;
   max-width: 90vw;
   font: 13px system-ui, sans-serif;
+}
+/* Force the embedded color pickers to a proper roomy size with a
+   Photoshop-style square SV plane (the picker module only sets this
+   when the picker sits inside .pix-cp-modal-box, which is a sibling
+   modal — we replicate the override for our own modal class). */
+.pix-nc-modal .pix-cp {
+  width: 280px;
+}
+.pix-nc-modal .pix-cp-sv {
+  aspect-ratio: 1;
+  height: auto;
 }
 .pix-nc-modal-title {
   font-size: 15px;
