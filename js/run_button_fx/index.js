@@ -88,20 +88,27 @@ function injectCSS() {
       100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
     }
 
-    .pix-rb-fx-arc {
+    .pix-rb-fx-lightning {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
-      border: 2px solid #aaccff;
-      border-radius: 6px;
-      box-shadow: 0 0 12px #aaccff, inset 0 0 6px #aaccff;
-      box-sizing: border-box;
-      animation: pix-rb-arc-anim 450ms ease-out forwards;
+      overflow: visible;
     }
-    @keyframes pix-rb-arc-anim {
-      0%   { opacity: 0; transform: scale(0.92); }
-      20%  { opacity: 1; transform: scale(1.05); }
-      100% { opacity: 0; transform: scale(1.3); }
+    .pix-rb-fx-lightning polyline {
+      fill: none;
+      stroke: #ffffff;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 0 3px #aaccff) drop-shadow(0 0 8px #4488ff);
+      opacity: 0;
+      animation: pix-rb-bolt-anim 380ms ease-out forwards;
+    }
+    @keyframes pix-rb-bolt-anim {
+      0%   { opacity: 0; stroke-width: 4; }
+      8%   { opacity: 1; stroke-width: 3; }
+      35%  { opacity: 1; stroke-width: 2; }
+      100% { opacity: 0; stroke-width: 1; }
     }
 
     button.pix-rb-rocket-shake {
@@ -193,17 +200,79 @@ function spawnExhaust(button) {
   }
 }
 
-function spawnArc(button) {
+function jaggedBoltPoints(x1, y1, x2, y2, segments, jitter) {
+  const points = [[x1, y1]];
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy) || 1;
+  const perpX = -dy / len;
+  const perpY = dx / len;
+  for (let i = 1; i < segments; i++) {
+    const t = i / segments;
+    const cx = x1 + dx * t;
+    const cy = y1 + dy * t;
+    const off = (Math.random() - 0.5) * jitter * 2;
+    points.push([cx + perpX * off, cy + perpY * off]);
+  }
+  points.push([x2, y2]);
+  return points;
+}
+
+function pointsToAttr(pts) {
+  return pts.map((p) => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+}
+
+function spawnLightning(button) {
   const r = button.getBoundingClientRect();
-  const pad = 4;
-  const el = document.createElement("div");
-  el.className = "pix-rb-fx-arc";
-  el.style.left = (r.left - pad) + "px";
-  el.style.top = (r.top - pad) + "px";
-  el.style.width = (r.width + pad * 2) + "px";
-  el.style.height = (r.height + pad * 2) + "px";
-  document.body.appendChild(el);
-  setTimeout(() => el.remove(), 550);
+  const pad = 100;
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.classList.add("pix-rb-fx-lightning");
+  svg.style.left = (r.left - pad) + "px";
+  svg.style.top = (r.top - pad) + "px";
+  const W = r.width + pad * 2;
+  const H = r.height + pad * 2;
+  svg.style.width = W + "px";
+  svg.style.height = H + "px";
+  svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+
+  const cx = pad + r.width / 2;
+  const cy = pad + r.height / 2;
+
+  const boltCount = 5 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < boltCount; i++) {
+    const angle = (Math.PI * 2 * i) / boltCount + (Math.random() - 0.5) * 0.7;
+    const length = 65 + Math.random() * 55;
+    const ex = cx + Math.cos(angle) * length;
+    const ey = cy + Math.sin(angle) * length;
+    const main = jaggedBoltPoints(cx, cy, ex, ey, 7, 11);
+    const poly = document.createElementNS(svgNS, "polyline");
+    poly.setAttribute("points", pointsToAttr(main));
+    poly.style.animationDelay = (i * 25) + "ms";
+    svg.appendChild(poly);
+
+    if (Math.random() > 0.35) {
+      const split = Math.floor(main.length * (0.35 + Math.random() * 0.35));
+      const bx = main[split][0];
+      const by = main[split][1];
+      const bAngle = angle + (Math.random() - 0.5) * 1.4;
+      const bLen = 22 + Math.random() * 28;
+      const branch = jaggedBoltPoints(
+        bx, by,
+        bx + Math.cos(bAngle) * bLen,
+        by + Math.sin(bAngle) * bLen,
+        4, 8,
+      );
+      const bPoly = document.createElementNS(svgNS, "polyline");
+      bPoly.setAttribute("points", pointsToAttr(branch));
+      bPoly.style.animationDelay = (i * 25 + 50) + "ms";
+      bPoly.style.strokeWidth = "1.4";
+      svg.appendChild(bPoly);
+    }
+  }
+
+  document.body.appendChild(svg);
+  setTimeout(() => svg.remove(), 550);
 }
 
 function spawnSparkle(button) {
@@ -244,7 +313,7 @@ function attachIgnition(button) {
 }
 
 function attachLightning(button) {
-  const handler = () => spawnArc(button);
+  const handler = () => spawnLightning(button);
   button.addEventListener("click", handler);
   return () => button.removeEventListener("click", handler);
 }
