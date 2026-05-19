@@ -82,13 +82,14 @@ js/
 │                       #  append two entries to ANY node's right-click
 │                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
 │                       #  node colors". Submenu via LiteGraph.ContextMenu
-│                       #  callback pattern contains 12 curated dark
-│                       #  presets (Dark / Onyx / Steel / Slate / Midnight
-│                       #  / Indigo / Plum / Wine / Mocha / Forest / Sage
-│                       #  / Teal; title/body hex pairs defined in the
-│                       #  PRESETS array at the top of the file, ordered
-│                       #  as a wheel traversal so adjacent entries feel
-│                       #  related)
+│                       #  callback pattern contains 18 curated dark
+│                       #  presets (Dark / Onyx / Charcoal / Steel /
+│                       #  Slate / Midnight / Indigo / Mauve / Plum /
+│                       #  Wine / Crimson / Mocha / Amber / Olive /
+│                       #  Forest / Sage / Teal / Ocean; title/body hex
+│                       #  pairs defined in the PRESETS array at the top
+│                       #  of the file, ordered as a wheel traversal so
+│                       #  adjacent entries feel related)
 │                       #  plus a Favorite entry (reads two Pixaroma
 │                       #  settings Pixaroma.NodeColors.FavoriteTitle /
 │                       #  Body, type "color") plus "Pick custom..." which

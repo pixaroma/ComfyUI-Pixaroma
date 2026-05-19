@@ -16,7 +16,7 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // node is one of them, the action applies to all of them, and the label
 // shows "(N nodes)".
 
-// 12 curated dark presets (title slightly darker than body, matching
+// 18 curated dark presets (title slightly darker than body, matching
 // the brand convention from js/brand/index.js). Hues are spread around
 // the wheel so users can visually group nodes by function (samplers
 // green, upscalers teal, prompts wine, etc.). Ordered as a wheel
@@ -25,16 +25,22 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 const PRESETS = [
   { id: "dark",     label: "Dark",     title: "#1d1d1d", body: "#2a2a2a" },
   { id: "onyx",     label: "Onyx",     title: "#060606", body: "#141414" },
+  { id: "charcoal", label: "Charcoal", title: "#262220", body: "#36312f" },
   { id: "steel",    label: "Steel",    title: "#1c2228", body: "#2a3038" },
   { id: "slate",    label: "Slate",    title: "#1a2332", body: "#25334a" },
   { id: "midnight", label: "Midnight", title: "#0e1a2b", body: "#1a2940" },
   { id: "indigo",   label: "Indigo",   title: "#1a1d3a", body: "#2a2d54" },
+  { id: "mauve",    label: "Mauve",    title: "#2d1f3a", body: "#3d2d4d" },
   { id: "plum",     label: "Plum",     title: "#2a1a2e", body: "#3d2842" },
   { id: "wine",     label: "Wine",     title: "#2a141b", body: "#3d1d28" },
+  { id: "crimson",  label: "Crimson",  title: "#2e0d12", body: "#3d1a20" },
   { id: "mocha",    label: "Mocha",    title: "#1f1814", body: "#2e2218" },
+  { id: "amber",    label: "Amber",    title: "#2a1d10", body: "#3d2c1a" },
+  { id: "olive",    label: "Olive",    title: "#1f2614", body: "#2d3520" },
   { id: "forest",   label: "Forest",   title: "#13261c", body: "#1d3a2d" },
   { id: "sage",     label: "Sage",     title: "#1a2620", body: "#2a3a30" },
   { id: "teal",     label: "Teal",     title: "#102b2f", body: "#1a3f44" },
+  { id: "ocean",    label: "Ocean",    title: "#0a2535", body: "#14384a" },
 ];
 
 // Curated swatch sets for the Pick custom modal. The default
