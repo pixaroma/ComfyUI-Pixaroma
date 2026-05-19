@@ -1,4 +1,4 @@
-import { openPixaromaCompactColorPickerPopup } from "../shared/color_picker.mjs";
+import { openPixaromaColorPickerModal } from "../shared/color_picker.mjs";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -705,16 +705,19 @@ function buildMatchRatioPanel(node, state, writeState, onChange) {
     onChange?.();
   });
 
-  // Pixaroma compact picker — swatches + Reset / More-colors footer. Same
-  // picker the Note Pixaroma text / highlight / bg buttons use. The
-  // transparent tile is hidden here (showClear: false) — there's no
-  // meaningful "transparent pad" for cropping/padding to a target ratio.
+  // Photoshop-style modal picker - same one Text Overlay Pixaroma uses
+  // for text and behind colors. Swatches + SV plane + hue strip + hex
+  // input + Apply / Cancel. Modal backdrop locks the page so clicking
+  // the node body / canvas can't dismiss the picker mid-pick. showClear
+  // false because there's no meaningful "transparent pad" for crop-to-fill
+  // or match-aspect-ratio padding.
   swatch.addEventListener("click", (e) => {
     e.stopPropagation();
     const cur = (node.properties?.loadImagePixState ?
       (JSON.parse(node.properties.loadImagePixState).pad_color) : null)
       || state.pad_color || "#000000";
-    openPixaromaCompactColorPickerPopup(swatch, {
+    openPixaromaColorPickerModal({
+      title: "Pad color",
       initialColor: cur,
       showClear: false,
       onPick: (color) => {

@@ -56,6 +56,33 @@ export function injectCSS() {
       background: transparent;
       padding: 0;
     }
+    /* File row: [◀] [ dropdown ] [▶] - arrow buttons let the user flip
+       through images visually, matching native ComfyUI LoadImage. */
+    .pix-li-filerow {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .pix-li-filerow .pix-li-dropdown { flex: 1; min-width: 0; }
+    .pix-li-nav {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      transition: background 0.08s, border-color 0.08s, color 0.08s;
+      flex-shrink: 0;
+    }
+    .pix-li-nav:hover:not(.disabled) { border-color: ${BRAND}; color: ${BRAND}; }
+    .pix-li-nav:active:not(.disabled) { background: ${BRAND}; color: #fff; }
+    .pix-li-nav.disabled { opacity: 0.3; cursor: default; }
     .pix-li-dropdown {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -72,13 +99,34 @@ export function injectCSS() {
     .pix-li-dropdown:hover { border-color: #666; }
     .pix-li-dropdown .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .pix-li-dropdown .arrow { color: ${BRAND}; font-size: 10px; margin-left: 6px; }
+    .pix-li-dropdown .counter {
+      color: #777;
+      font-size: 9px;
+      margin-left: 6px;
+      flex-shrink: 0;
+    }
+    /* Subfolder section header inside the dropdown popup. Visual separator
+       only - not clickable. Items below it show the bare filename. */
+    .pix-li-popup-section {
+      padding: 4px 10px 3px;
+      font-size: 9px;
+      color: #777;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: #161616;
+      border-bottom: 1px solid #2a2a2a;
+      user-select: none;
+    }
+    .pix-li-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
     /* Dimensions info bar — replaces the "drag/paste" hint once an image
-       is loaded. Stacks: ORIGINAL on top, RESIZED below (when active).
-       Each line: tiny aspect rect, dims, simplified ratio label. */
+       is loaded. Horizontal layout: [INPUT  dims  ratio] → [OUTPUT  dims
+       ratio], both halves on the same line so we save vertical space
+       when a resize mode is active. When resize is Off, only the Input
+       half is rendered. */
     .pix-li-diminfo {
       display: flex;
-      flex-direction: column;
-      gap: 3px;
+      align-items: center;
+      gap: 6px;
       background: #1d1d1d;
       border: 1px solid #333;
       border-radius: 4px;
@@ -88,37 +136,39 @@ export function injectCSS() {
     .pix-li-diminfo-row {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
+      flex: 1;
+      min-width: 0; /* allow shrinking when both halves visible */
     }
     .pix-li-diminfo-tag {
       font-size: 8px;
       color: #777;
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      min-width: 38px;
     }
     .pix-li-diminfo-dims {
       color: #ddd;
       flex: 1;
+      white-space: nowrap;
     }
     .pix-li-diminfo-ratio {
       color: #888;
+      flex-shrink: 0;
     }
     .pix-li-diminfo-arrow {
       color: ${BRAND};
-      text-align: center;
-      font-size: 9px;
+      font-size: 11px;
       line-height: 1;
-      margin: -1px 0;
+      flex-shrink: 0;
     }
     .pix-li-diminfo .pix-li-shape {
       flex-shrink: 0;
     }
-    /* Highlight the OUTPUT row by tinting the dims orange when resize active. */
+    /* Highlight the OUTPUT half by tinting the dims orange when resize active. */
     .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 3px;
     }
     .pix-li-chip {
@@ -139,7 +189,7 @@ export function injectCSS() {
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-li-chip.span-full { grid-column: span 2; }
+    .pix-li-chip.span-full { grid-column: span 3; }
     .pix-li-panel {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -583,12 +633,35 @@ export function buildRoot() {
   hint.innerHTML = `or drag here · paste with <kbd>Ctrl+V</kbd>`;
   root.appendChild(hint);
 
-  // File dropdown.
+  // File row: [◀ prev] [ filename dropdown ] [▶ next]. Arrow buttons cycle
+  // through input/ images so users can flip through them visually, matching
+  // native ComfyUI LoadImage. Both the prev/next arrows and PageUp/PageDown
+  // (wired in index.js) route through setSelectedImage so the bottom preview
+  // updates immediately.
+  const fileRow = document.createElement("div");
+  fileRow.className = "pix-li-filerow";
+
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "pix-li-nav";
+  prev.dataset.role = "prev";
+  prev.title = "Previous image (PageUp)";
+  prev.textContent = "◀";
+
   const dd = document.createElement("div");
   dd.className = "pix-li-dropdown";
   dd.dataset.role = "dropdown";
-  dd.innerHTML = `<span class="name">— no image —</span><span class="arrow">▾</span>`;
-  root.appendChild(dd);
+  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▾</span>`;
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "pix-li-nav";
+  next.dataset.role = "next";
+  next.title = "Next image (PageDown)";
+  next.textContent = "▶";
+
+  fileRow.append(prev, dd, next);
+  root.appendChild(fileRow);
 
   // Dimensions info bar — shows once an image is loaded. Replaces the
   // hint text. Two rows when a resize is active (original → final), one
@@ -636,10 +709,37 @@ export function hideNativeImageCombo(node) {
   return imageWidget;
 }
 
-import { updateNativePreview } from "./api.mjs";
+import { updateNativePreview, setSelectedImage, splitFilenameSubfolder } from "./api.mjs";
 
-// Open a popup listing the underlying combo's options. Clicking an item
-// sets the combo value and the dropdown's label.
+// Group combo values by subfolder so the popup renders:
+//   ─ root ─
+//      file1.png
+//      file2.png
+//   ─ Studio1 ─
+//      bunny.png
+// Returns an array of { folder, files } in display order (root first, then
+// folders alphabetised). Each `files` entry is { full, name } where `full`
+// is the value to write back and `name` is the bare filename to display.
+function groupValuesByFolder(values) {
+  const map = new Map();
+  for (const v of values) {
+    const { subfolder, filename } = splitFilenameSubfolder(v);
+    if (!map.has(subfolder)) map.set(subfolder, []);
+    map.get(subfolder).push({ full: v, name: filename });
+  }
+  // Sort the file lists alphabetically. Folders: root first, then ABC.
+  for (const list of map.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+  const folders = [...map.keys()].sort((a, b) => {
+    if (a === "" && b !== "") return -1;
+    if (a !== "" && b === "") return 1;
+    return a.localeCompare(b);
+  });
+  return folders.map((folder) => ({ folder, files: map.get(folder) }));
+}
+
+// Open a popup listing the underlying combo's options grouped by subfolder.
+// Clicking an item sets the combo value to the FULL path (e.g.
+// "Studio1/bunny.png") and the dropdown's label.
 export function openImageDropdown(node, anchorEl, onPick) {
   const imageWidget = node._pixLiImageWidget;
   if (!imageWidget) return;
@@ -677,29 +777,45 @@ export function openImageDropdown(node, anchorEl, onPick) {
     empty.textContent = "(no images uploaded yet)";
     popup.appendChild(empty);
   } else {
-    for (const v of values) {
-      const item = document.createElement("div");
-      item.style.padding = "6px 10px";
-      item.style.cursor = "pointer";
-      item.style.borderBottom = "1px solid #2a2a2a";
-      if (v === imageWidget.value) {
-        item.style.color = "#f66744";
-        item.style.fontWeight = "600";
+    const groups = groupValuesByFolder(values);
+    const showHeaders = groups.length > 1 || (groups.length === 1 && groups[0].folder !== "");
+    let scrollTarget = null;
+    for (const group of groups) {
+      if (showHeaders) {
+        const head = document.createElement("div");
+        head.className = "pix-li-popup-section";
+        head.textContent = group.folder === "" ? "root" : group.folder;
+        popup.appendChild(head);
       }
-      item.textContent = v;
-      item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
-      item.addEventListener("mouseleave", () => { item.style.background = ""; });
-      item.addEventListener("click", (e) => {
-        e.stopPropagation();
-        imageWidget.value = v;
-        // Refresh the native bottom-of-node preview to match the new file.
-        updateNativePreview(node, v);
-        node.graph?.setDirtyCanvas?.(true, true);
-        closePopup();
-        if (onPick) onPick(v);
-      });
-      popup.appendChild(item);
+      for (const entry of group.files) {
+        const item = document.createElement("div");
+        item.style.padding = "6px 10px";
+        item.style.cursor = "pointer";
+        item.style.borderBottom = "1px solid #2a2a2a";
+        if (entry.full === imageWidget.value) {
+          item.style.color = "#f66744";
+          item.style.fontWeight = "600";
+          scrollTarget = item;
+        }
+        item.textContent = entry.name;
+        item.title = entry.full; // hover shows full path so it stays discoverable
+        item.addEventListener("mouseenter", () => { item.style.background = "#2a2a2a"; });
+        item.addEventListener("mouseleave", () => { item.style.background = ""; });
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          setSelectedImage(node, entry.full);
+          closePopup();
+          if (onPick) onPick(entry.full);
+        });
+        popup.appendChild(item);
+      }
     }
+    // Defer until popup is in DOM so scrollTop math is valid
+    if (scrollTarget) queueMicrotask(() => {
+      try {
+        scrollTarget.scrollIntoView({ block: "nearest" });
+      } catch (_e) { /* ignore */ }
+    });
   }
 
   document.body.appendChild(popup);

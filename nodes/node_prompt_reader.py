@@ -35,12 +35,18 @@ class PixaromaPromptReader:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Walk input/ recursively so subfolder PNGs are listed too. Forward
+        # slashes in the paths so folder_paths.get_annotated_filepath resolves
+        # them correctly cross-platform. Mirrors node_load_image.py.
         input_dir = folder_paths.get_input_directory()
+        files = []
         try:
-            files = [
-                f for f in os.listdir(input_dir)
-                if os.path.isfile(os.path.join(input_dir, f))
-            ]
+            if os.path.isdir(input_dir):
+                for root, _dirs, fnames in os.walk(input_dir):
+                    rel_root = os.path.relpath(root, input_dir)
+                    for fname in fnames:
+                        rel = fname if rel_root == "." else os.path.join(rel_root, fname)
+                        files.append(rel.replace("\\", "/"))
             files = folder_paths.filter_files_content_types(files, ["image"])
         except Exception:
             files = []

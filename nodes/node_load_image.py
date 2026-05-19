@@ -383,11 +383,21 @@ class PixaromaLoadImage:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Walk input/ recursively so subfolders are visible in the dropdown.
+        # Native ComfyUI's LoadImage uses os.listdir (root only), which means
+        # files inside e.g. input/Studio1/ never appear. Users on shared input
+        # folders accumulate subfolders fast, so recursive listing is the
+        # expected behaviour. Paths are reported relative to input/, with
+        # forward slashes, matching what folder_paths.get_annotated_filepath
+        # expects on the read side.
         input_dir = folder_paths.get_input_directory()
-        files = [
-            f for f in os.listdir(input_dir)
-            if os.path.isfile(os.path.join(input_dir, f))
-        ]
+        files = []
+        if os.path.isdir(input_dir):
+            for root, _dirs, fnames in os.walk(input_dir):
+                rel_root = os.path.relpath(root, input_dir)
+                for fname in fnames:
+                    rel = fname if rel_root == "." else os.path.join(rel_root, fname)
+                    files.append(rel.replace("\\", "/"))
         files = folder_paths.filter_files_content_types(files, ["image"])
         return {
             "required": {

@@ -14,6 +14,11 @@ import { BRAND } from "../shared/index.mjs";
 
 const STATE_PROP = "promptReaderState";
 
+// Tracks the currently-selected Prompt Reader node so the global PageUp /
+// PageDown keydown listener can route the step to the right one. Cleared
+// on deselect or removal.
+let _activePromptReaderNode = null;
+
 // ── State helpers ──────────────────────────────────────────────────────────
 
 function readState(node) {
@@ -58,10 +63,64 @@ function injectCSS() {
       color: #fff;
       font-weight: 600;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
       font-family: inherit;
       transition: background 0.08s;
     }
     .pix-pr-upload-btn:hover { background: #ff7e5a; }
+    /* Icon mirrors Load Image Pixaroma's upload button for consistency. */
+    .pix-pr-upload-btn .ico {
+      width: 14px; height: 14px;
+      background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/upload.svg") center/14px 14px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/upload.svg") center/14px 14px no-repeat;
+    }
+    /* File row: [◀] [ dropdown ] [▶] - mirrors Load Image Pixaroma. */
+    .pix-pr-filerow {
+      display: flex;
+      gap: 4px;
+      align-items: stretch;
+    }
+    .pix-pr-filerow .pix-pr-dropdown { flex: 1; min-width: 0; }
+    .pix-pr-nav {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      width: 26px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      transition: background 0.08s, border-color 0.08s, color 0.08s;
+      flex-shrink: 0;
+    }
+    .pix-pr-nav:hover:not(.disabled) { border-color: ${BRAND}; color: ${BRAND}; }
+    .pix-pr-nav:active:not(.disabled) { background: ${BRAND}; color: #fff; }
+    .pix-pr-nav.disabled { opacity: 0.3; cursor: default; }
+    .pix-pr-dropdown .counter {
+      color: #777;
+      font-size: 9px;
+      margin-left: 6px;
+      flex-shrink: 0;
+    }
+    .pix-pr-popup-section {
+      padding: 4px 10px 3px;
+      font-size: 9px;
+      color: #777;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: #161616;
+      border-bottom: 1px solid #2a2a2a;
+      user-select: none;
+    }
+    .pix-pr-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
     .pix-pr-hint {
       font-size: 9px;
       color: #777;
@@ -179,8 +238,13 @@ function buildRoot() {
   const btnUpload = document.createElement("button");
   btnUpload.type = "button";
   btnUpload.className = "pix-pr-upload-btn";
-  btnUpload.textContent = "Upload Image";
   btnUpload.dataset.role = "upload";
+  // Icon + label, matching Load Image Pixaroma's upload button.
+  const upIco = document.createElement("span");
+  upIco.className = "ico";
+  const upLbl = document.createElement("span");
+  upLbl.textContent = "Upload Image";
+  btnUpload.append(upIco, upLbl);
   root.appendChild(btnUpload);
 
   const hint = document.createElement("div");
@@ -189,11 +253,32 @@ function buildRoot() {
   hint.dataset.role = "hint";
   root.appendChild(hint);
 
+  // File row with prev/next arrows so users can flip through images
+  // visually, mirroring Load Image Pixaroma.
+  const fileRow = document.createElement("div");
+  fileRow.className = "pix-pr-filerow";
+
+  const prev = document.createElement("button");
+  prev.type = "button";
+  prev.className = "pix-pr-nav";
+  prev.dataset.role = "prev";
+  prev.title = "Previous image (PageUp)";
+  prev.textContent = "◀";
+
   const dd = document.createElement("div");
   dd.className = "pix-pr-dropdown";
   dd.dataset.role = "dropdown";
-  dd.innerHTML = `<span class="name">— no image —</span><span class="arrow">▾</span>`;
-  root.appendChild(dd);
+  dd.innerHTML = `<span class="name">— no image —</span><span class="counter" data-role="counter"></span><span class="arrow">▾</span>`;
+
+  const next = document.createElement("button");
+  next.type = "button";
+  next.className = "pix-pr-nav";
+  next.dataset.role = "next";
+  next.title = "Next image (PageDown)";
+  next.textContent = "▶";
+
+  fileRow.append(prev, dd, next);
+  root.appendChild(fileRow);
 
   // Order: dropdown → readout → status (info + Copy). The status pill is
   // placed AFTER the readout because (a) the user reads the prompt first
@@ -272,6 +357,9 @@ async function uploadImage(node, file, hintName = null) {
       w.options.values = values;
     }
     w.value = saved;
+    // Defensive cache - issue #38 hardening. Same pattern used by every
+    // other pick path (dropdown click, arrow nav, native drag-drop).
+    node._pixPrSelectedFilename = saved;
   }
   node.graph?.setDirtyCanvas?.(true, true);
   return saved;
@@ -375,10 +463,53 @@ function restoreFromState(node) {
 }
 
 function refreshDropdown(node) {
-  const dd = node._pixPrRoot?.querySelector('[data-role="dropdown"] .name');
-  if (!dd) return;
+  const root = node._pixPrRoot;
+  if (!root) return;
   const w = node._pixPrImageWidget;
-  dd.textContent = (w?.value && w.value !== "") ? w.value : "— no image —";
+  const nameEl = root.querySelector('[data-role="dropdown"] .name');
+  const counter = root.querySelector('[data-role="counter"]');
+  const value = w?.value || "";
+  if (nameEl) nameEl.textContent = value ? value : "— no image —";
+  const values = w?.options?.values || [];
+  if (counter) {
+    if (value && values.length > 1) {
+      const idx = values.indexOf(value);
+      counter.textContent = idx >= 0 ? `${idx + 1} / ${values.length}` : "";
+    } else {
+      counter.textContent = "";
+    }
+  }
+  const prev = root.querySelector('[data-role="prev"]');
+  const next = root.querySelector('[data-role="next"]');
+  const disabled = values.length < 2;
+  if (prev) prev.classList.toggle("disabled", disabled);
+  if (next) next.classList.toggle("disabled", disabled);
+}
+
+// Split "Studio1/cat.png" into {subfolder, filename}. Mirrors the same
+// helper in load_image/api.mjs so the two nodes share grouping behaviour.
+function splitPath(path) {
+  if (!path) return { subfolder: "", filename: "" };
+  const norm = String(path).replace(/\\/g, "/");
+  const idx = norm.lastIndexOf("/");
+  if (idx < 0) return { subfolder: "", filename: norm };
+  return { subfolder: norm.slice(0, idx), filename: norm.slice(idx + 1) };
+}
+
+// Step the selected image by `offset` (+1 / -1), wrapping. Routes through
+// the same callback path as a manual pick so the extract refresh happens.
+function pickByOffset(node, offset) {
+  const w = node._pixPrImageWidget;
+  if (!w) return;
+  const values = w.options?.values || [];
+  if (values.length === 0) return;
+  const cur = values.indexOf(w.value);
+  let next;
+  if (cur < 0) next = offset > 0 ? 0 : values.length - 1;
+  else next = ((cur + offset) % values.length + values.length) % values.length;
+  w.value = values[next];
+  node._pixPrSelectedFilename = values[next];
+  onImageChanged(node);
 }
 
 async function onImageChanged(node) {
@@ -421,18 +552,50 @@ function openDropdown(node, anchorEl) {
     empty.textContent = "(no images uploaded yet)";
     popup.appendChild(empty);
   } else {
+    // Group by subfolder: root first, then alphabetised folders. Each item
+    // shows only the bare filename; the `title` attribute holds the full
+    // path for hover discoverability.
+    const map = new Map();
     for (const v of values) {
-      const item = document.createElement("div");
-      item.className = "pix-pr-popup-item" + (v === w.value ? " active" : "");
-      item.textContent = v;
-      item.addEventListener("click", (e) => {
-        e.stopPropagation();
-        w.value = v;
-        close();
-        onImageChanged(node);
-      });
-      popup.appendChild(item);
+      const { subfolder, filename } = splitPath(v);
+      if (!map.has(subfolder)) map.set(subfolder, []);
+      map.get(subfolder).push({ full: v, name: filename });
     }
+    for (const list of map.values()) list.sort((a, b) => a.name.localeCompare(b.name));
+    const folders = [...map.keys()].sort((a, b) => {
+      if (a === "" && b !== "") return -1;
+      if (a !== "" && b === "") return 1;
+      return a.localeCompare(b);
+    });
+    const showHeaders = folders.length > 1 || (folders.length === 1 && folders[0] !== "");
+    let scrollTarget = null;
+    for (const folder of folders) {
+      if (showHeaders) {
+        const head = document.createElement("div");
+        head.className = "pix-pr-popup-section";
+        head.textContent = folder === "" ? "root" : folder;
+        popup.appendChild(head);
+      }
+      for (const entry of map.get(folder)) {
+        const item = document.createElement("div");
+        item.className = "pix-pr-popup-item" + (entry.full === w.value ? " active" : "");
+        item.textContent = entry.name;
+        item.title = entry.full;
+        if (entry.full === w.value) scrollTarget = item;
+        item.addEventListener("click", (e) => {
+          e.stopPropagation();
+          w.value = entry.full;
+          node._pixPrSelectedFilename = entry.full;
+          close();
+          onImageChanged(node);
+        });
+        popup.appendChild(item);
+      }
+    }
+    if (scrollTarget) queueMicrotask(() => {
+      try { scrollTarget.scrollIntoView({ block: "nearest" }); }
+      catch (_e) { /* ignore */ }
+    });
   }
   document.body.appendChild(popup);
 
@@ -543,9 +706,13 @@ function setupNode(node) {
     const orig = imageWidget.callback;
     imageWidget.callback = function () {
       const r = orig?.apply(this, arguments);
+      if (imageWidget.value) node._pixPrSelectedFilename = imageWidget.value;
       onImageChanged(node);
       return r;
     };
+    // Seed the defensive cache from whatever value the widget has at setup
+    // (covers saved-workflow restore where configure() landed before us).
+    if (imageWidget.value) node._pixPrSelectedFilename = imageWidget.value;
   }
 
   // Upload button. Errors surface inline via the status pill (Note Pattern
@@ -566,6 +733,19 @@ function setupNode(node) {
   root.querySelector('[data-role="dropdown"]')?.addEventListener("click", (e) => {
     e.stopPropagation();
     openDropdown(node, e.currentTarget);
+  });
+
+  // Prev / Next arrows - flip through input/ images visually. PageUp/PageDown
+  // when the node is selected do the same. Mirrors Load Image Pixaroma.
+  root.querySelector('[data-role="prev"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.currentTarget.classList.contains("disabled")) return;
+    pickByOffset(node, -1);
+  });
+  root.querySelector('[data-role="next"]')?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (e.currentTarget.classList.contains("disabled")) return;
+    pickByOffset(node, +1);
   });
 
   // Copy button
@@ -644,12 +824,26 @@ app.registerExtension({
         refreshDropdown(this);
         const wval = this._pixPrImageWidget?.value || "";
         if (wval) {
+          this._pixPrSelectedFilename = wval;
           onImageChanged(this);
         } else {
           restoreFromState(this);
         }
       });
       return r;
+    };
+
+    // Track the active node so the global PageUp / PageDown handler knows
+    // which Prompt Reader to step.
+    const origSel = nodeType.prototype.onSelected;
+    const origDes = nodeType.prototype.onDeselected;
+    nodeType.prototype.onSelected = function () {
+      _activePromptReaderNode = this;
+      return origSel?.apply(this, arguments);
+    };
+    nodeType.prototype.onDeselected = function () {
+      if (_activePromptReaderNode === this) _activePromptReaderNode = null;
+      return origDes?.apply(this, arguments);
     };
 
     // Cleanup on node removal. The file-dropdown popup attaches FOUR
@@ -671,6 +865,7 @@ app.registerExtension({
       this._pixPrReqId = (this._pixPrReqId | 0) + 1;
       this._pixPrRoot = null;
       this._pixPrImageWidget = null;
+      if (_activePromptReaderNode === this) _activePromptReaderNode = null;
       return r;
     };
   },
@@ -680,3 +875,16 @@ app.registerExtension({
     setupNode(node);
   },
 });
+
+// Global PageUp / PageDown to step the active Prompt Reader node's image,
+// matching the equivalent shortcut in Load Image Pixaroma.
+window.addEventListener("keydown", (e) => {
+  if (!_activePromptReaderNode) return;
+  if (e.key !== "PageUp" && e.key !== "PageDown") return;
+  const tag = (e.target?.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.target?.isContentEditable) return;
+  e.preventDefault();
+  e.stopPropagation();
+  pickByOffset(_activePromptReaderNode, e.key === "PageUp" ? -1 : +1);
+}, true);

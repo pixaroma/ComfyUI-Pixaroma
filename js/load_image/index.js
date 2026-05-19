@@ -4,16 +4,52 @@ import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
 } from "./ui.mjs";
-import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput } from "./api.mjs";
+import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput, setSelectedImage } from "./api.mjs";
 import { buildModePanel, previewResize } from "./resize_modes.mjs";
 
 let _activeLoadImageNode = null;
 
 function refreshDropdown(node) {
-  const dd = node._pixLiRoot?.querySelector('[data-role="dropdown"] .name');
-  if (!dd) return;
+  const root = node._pixLiRoot;
+  if (!root) return;
   const w = node._pixLiImageWidget;
-  dd.textContent = (w?.value && w.value !== "") ? w.value : "— no image —";
+  const ddName = root.querySelector('[data-role="dropdown"] .name');
+  const counter = root.querySelector('[data-role="counter"]');
+  const value = w?.value || "";
+  if (ddName) ddName.textContent = value ? value : "— no image —";
+  // Counter "3 / 247" tells the user where they are when arrow-stepping.
+  // Hidden when no images are uploaded yet.
+  if (counter) {
+    const values = w?.options?.values || [];
+    if (value && values.length > 1) {
+      const idx = values.indexOf(value);
+      counter.textContent = idx >= 0 ? `${idx + 1} / ${values.length}` : "";
+    } else {
+      counter.textContent = "";
+    }
+  }
+  // Disable arrow buttons when there's nothing to step through.
+  const values = w?.options?.values || [];
+  const prev = root.querySelector('[data-role="prev"]');
+  const next = root.querySelector('[data-role="next"]');
+  const disabled = values.length < 2;
+  if (prev) prev.classList.toggle("disabled", disabled);
+  if (next) next.classList.toggle("disabled", disabled);
+}
+
+// Step the selected image by `offset` (+1 or -1), wrapping at the ends.
+// Used by the arrow buttons and PageUp/PageDown shortcuts.
+function pickByOffset(node, offset) {
+  const w = node._pixLiImageWidget;
+  if (!w) return;
+  const values = w.options?.values || [];
+  if (values.length === 0) return;
+  const cur = values.indexOf(w.value);
+  // If nothing currently selected, "next" → first, "prev" → last.
+  let next;
+  if (cur < 0) next = offset > 0 ? 0 : values.length - 1;
+  else next = ((cur + offset) % values.length + values.length) % values.length;
+  setSelectedImage(node, values[next]);
 }
 
 // Reduce a w:h ratio to its simplest integer form when there's a clean
@@ -98,11 +134,14 @@ function updateInfoBar(node) {
     return row;
   }
 
+  // Horizontal layout: [Input row] → [Output row] on the same line. Saves
+  // a row of vertical space when a resize mode is active. When Off, only
+  // the Input half is rendered.
   info.appendChild(makeRow("Input", W, H, false));
   if (resizeActive) {
     const arrow = document.createElement("div");
     arrow.className = "pix-li-diminfo-arrow";
-    arrow.textContent = "↓";
+    arrow.textContent = "→";
     info.appendChild(arrow);
     info.appendChild(makeRow("Output", outW, outH, true));
   }
@@ -192,6 +231,19 @@ window.addEventListener("keydown", async (e) => {
     console.error("[PixaromaLoadImage] paste failed", err);
     alert("Paste failed: " + err.message);
   }
+}, true);
+
+// Global PageUp / PageDown for the active load-image node - matches native
+// ComfyUI LoadImage's arrow-key stepping convention.
+window.addEventListener("keydown", (e) => {
+  if (!_activeLoadImageNode) return;
+  if (e.key !== "PageUp" && e.key !== "PageDown") return;
+  const tag = (e.target?.tagName || "").toUpperCase();
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.target?.isContentEditable) return;
+  e.preventDefault();
+  e.stopPropagation();
+  pickByOffset(_activeLoadImageNode, e.key === "PageUp" ? -1 : +1);
 }, true);
 
 // State pattern mirrors Resolution Pixaroma (CLAUDE.md Vue Compat #9):
@@ -287,6 +339,13 @@ function setupLoadImageNode(node) {
   });
   node._pixLiWidget = widget;
 
+  // Default node width for fresh-on-canvas placements. Wider than the
+  // LiteGraph default so the [Input → Output] info bar and the 3-column
+  // chip grid fit comfortably side-by-side. LiteGraph's configure runs
+  // AFTER nodeCreated and overwrites with the saved value, so existing
+  // workflows keep whatever width the user had.
+  if (!node.size || node.size[0] < 380) node.size[0] = 380;
+
   // Track the currently-focused load-image node for Ctrl+V routing.
   // (One global listener; nodes register/unregister themselves on selection.)
   node._pixLiOnSelected = () => { _activeLoadImageNode = node; };
@@ -337,15 +396,21 @@ function setupLoadImageNode(node) {
   // would show stale dimensions from the previous image after a native
   // drop. Also refreshes the file dropdown's displayed name so the user
   // sees the new filename in our custom dropdown. Wraps any existing
-  // callback (post-decoration) so other extensions still work.
+  // callback (post-decoration) so other extensions still work. Also
+  // updates the defensive `_pixLiSelectedFilename` cache so an external
+  // pick (native drag-drop) is treated the same as one of ours.
   if (imageWidget) {
     const origCallback = imageWidget.callback;
     imageWidget.callback = function () {
       const ret = origCallback?.apply(this, arguments);
+      if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
       refreshAfterImageReady();
       refreshDropdown(node);
       return ret;
     };
+    // Seed the cache from whatever value the widget has at setup time
+    // (covers saved-workflow restore, where configure() landed before us).
+    if (imageWidget.value) node._pixLiSelectedFilename = imageWidget.value;
   }
 
   // Wire upload button.
@@ -396,6 +461,28 @@ function setupLoadImageNode(node) {
     openImageDropdown(node, dd, () => refreshDropdown(node));
   });
 
+  // Prev / Next arrow buttons - flip through the image list visually,
+  // matching native ComfyUI LoadImage behaviour the user is comparing
+  // against. Wraps around at both ends. setSelectedImage updates the
+  // bottom preview automatically so the user sees each image as they step.
+  const prevBtn = root.querySelector('[data-role="prev"]');
+  const nextBtn = root.querySelector('[data-role="next"]');
+  prevBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (prevBtn.classList.contains("disabled")) return;
+    pickByOffset(node, -1);
+  });
+  nextBtn?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (nextBtn.classList.contains("disabled")) return;
+    pickByOffset(node, +1);
+  });
+
+  // Filename-change hook used by setSelectedImage (api.mjs). Centralised
+  // here so all pick paths (dropdown / arrows / upload / paste / drop)
+  // funnel into one update.
+  node._pixLiOnFilenameChanged = () => refreshDropdown(node);
+
   // Initial dropdown sync (defer so the native combo's `value` is restored).
   queueMicrotask(() => refreshDropdown(node));
 
@@ -435,7 +522,15 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure?.apply(this, arguments);
       // Wait a microtask so widget values are settled.
-      queueMicrotask(() => refreshDropdown(this));
+      queueMicrotask(() => {
+        refreshDropdown(this);
+        // Refresh the defensive cache from the restored widget.value.
+        // Saved workflows should also benefit from the cache - it prevents
+        // any later Vue tab-switch / configure replay from drifting the
+        // value mid-session.
+        const w = this._pixLiImageWidget;
+        if (w?.value) this._pixLiSelectedFilename = w.value;
+      });
       // Refresh info bar after a short delay so the image (set async by
       // ComfyUI's image_upload hook on workflow restore) has a chance to
       // populate node.imgs[0]. The poll inside setupLoadImageNode covers
@@ -504,6 +599,19 @@ app.graphToPrompt = async function (...args) {
       const state = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
       entry.inputs = entry.inputs || {};
       entry.inputs[HIDDEN_INPUT_NAME] = state;
+      // Defensive image filename sync (issue #38 hardening). If a Vue
+      // configure replay or autosave snapshot drifted widget.value back
+      // to a previously-saved filename, our cache `_pixLiSelectedFilename`
+      // holds whatever the user last picked in this session. Use it for
+      // both the widget AND the submitted entry so the workflow sees
+      // what the user actually chose. No-op when the cache matches
+      // (the normal case) or when the user hasn't picked anything yet.
+      const cached = node?._pixLiSelectedFilename;
+      const w = node?._pixLiImageWidget;
+      if (cached && w && entry.inputs.image !== cached) {
+        w.value = cached;
+        entry.inputs.image = cached;
+      }
     }
   }
   return result;
