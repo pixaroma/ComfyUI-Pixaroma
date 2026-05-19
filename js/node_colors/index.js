@@ -16,31 +16,43 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // node is one of them, the action applies to all of them, and the label
 // shows "(N nodes)".
 
-// 18 curated dark presets (title slightly darker than body, matching
-// the brand convention from js/brand/index.js). Hues are spread around
-// the wheel so users can visually group nodes by function (samplers
-// green, upscalers teal, prompts wine, etc.). Ordered as a wheel
-// traversal: neutrals -> cool -> purple -> red -> warm -> green ->
-// cyan, so adjacent entries feel related.
+// 18 curated SUBTLE presets (title and body in matching dark hue, title
+// slightly darker than body, matching the brand convention from
+// js/brand/index.js). Hues are spread around the wheel so users can
+// visually group nodes by function. Ordered as a wheel traversal:
+// neutrals -> cool -> purple -> red -> warm -> green -> cyan, so
+// adjacent entries feel related.
 const PRESETS = [
-  { id: "dark",     label: "Dark",     title: "#1d1d1d", body: "#2a2a2a" },
-  { id: "onyx",     label: "Onyx",     title: "#060606", body: "#141414" },
-  { id: "charcoal", label: "Charcoal", title: "#262220", body: "#36312f" },
-  { id: "steel",    label: "Steel",    title: "#1c2228", body: "#2a3038" },
-  { id: "slate",    label: "Slate",    title: "#1a2332", body: "#25334a" },
-  { id: "midnight", label: "Midnight", title: "#0e1a2b", body: "#1a2940" },
-  { id: "indigo",   label: "Indigo",   title: "#1a1d3a", body: "#2a2d54" },
-  { id: "mauve",    label: "Mauve",    title: "#2d1f3a", body: "#3d2d4d" },
-  { id: "plum",     label: "Plum",     title: "#2a1a2e", body: "#3d2842" },
-  { id: "wine",     label: "Wine",     title: "#2a141b", body: "#3d1d28" },
-  { id: "crimson",  label: "Crimson",  title: "#2e0d12", body: "#3d1a20" },
-  { id: "mocha",    label: "Mocha",    title: "#1f1814", body: "#2e2218" },
-  { id: "amber",    label: "Amber",    title: "#2a1d10", body: "#3d2c1a" },
-  { id: "olive",    label: "Olive",    title: "#1f2614", body: "#2d3520" },
-  { id: "forest",   label: "Forest",   title: "#13261c", body: "#1d3a2d" },
-  { id: "sage",     label: "Sage",     title: "#1a2620", body: "#2a3a30" },
-  { id: "teal",     label: "Teal",     title: "#102b2f", body: "#1a3f44" },
-  { id: "ocean",    label: "Ocean",    title: "#0a2535", body: "#14384a" },
+  { id: "pixadark",     label: "PixaDark",     title: "#1d1d1d", body: "#2a2a2a" },
+  { id: "pixaonyx",     label: "PixaOnyx",     title: "#060606", body: "#141414" },
+  { id: "pixacharcoal", label: "PixaCharcoal", title: "#262220", body: "#36312f" },
+  { id: "pixasteel",    label: "PixaSteel",    title: "#1c2228", body: "#2a3038" },
+  { id: "pixaslate",    label: "PixaSlate",    title: "#1a2332", body: "#25334a" },
+  { id: "pixamidnight", label: "PixaMidnight", title: "#0e1a2b", body: "#1a2940" },
+  { id: "pixaindigo",   label: "PixaIndigo",   title: "#1a1d3a", body: "#2a2d54" },
+  { id: "pixamauve",    label: "PixaMauve",    title: "#2d1f3a", body: "#3d2d4d" },
+  { id: "pixaplum",     label: "PixaPlum",     title: "#2a1a2e", body: "#3d2842" },
+  { id: "pixawine",     label: "PixaWine",     title: "#2a141b", body: "#3d1d28" },
+  { id: "pixacrimson",  label: "PixaCrimson",  title: "#2e0d12", body: "#3d1a20" },
+  { id: "pixamocha",    label: "PixaMocha",    title: "#1f1814", body: "#2e2218" },
+  { id: "pixaamber",    label: "PixaAmber",    title: "#2a1d10", body: "#3d2c1a" },
+  { id: "pixaolive",    label: "PixaOlive",    title: "#1f2614", body: "#2d3520" },
+  { id: "pixaforest",   label: "PixaForest",   title: "#13261c", body: "#1d3a2d" },
+  { id: "pixasage",     label: "PixaSage",     title: "#1a2620", body: "#2a3a30" },
+  { id: "pixateal",     label: "PixaTeal",     title: "#102b2f", body: "#1a3f44" },
+  { id: "pixaocean",    label: "PixaOcean",    title: "#0a2535", body: "#14384a" },
+];
+
+// 5 BOLD accent presets (more saturated title color with a consistent
+// #1d1d1d body so they read as one unified "branded" family). Title
+// hexes are the user's hand-picked May-2026 favorites; #9d4912 was
+// added to fill the warm-orange gap between PixaRed and PixaGreen.
+const BOLD_PRESETS = [
+  { id: "pixared",    label: "PixaRed",    title: "#9d1212", body: "#1d1d1d" },
+  { id: "pixaorange", label: "PixaOrange", title: "#9d4912", body: "#1d1d1d" },
+  { id: "pixagreen",  label: "PixaGreen",  title: "#004835", body: "#1d1d1d" },
+  { id: "pixablue",   label: "PixaBlue",   title: "#0d2a3a", body: "#1d1d1d" },
+  { id: "pixapurple", label: "PixaPurple", title: "#3a1d3a", body: "#1d1d1d" },
 ];
 
 // Curated swatch sets for the Pick custom modal. The default
@@ -446,7 +458,14 @@ function buildSubmenuOptions(targets) {
     content: `${swatchHTML(p.title, p.body)}${p.label}`,
     callback: () => applyColors(targets, p.title, p.body),
   }));
-  items.push(null); // separator
+  items.push(null); // separator: subtle -> bold
+  for (const p of BOLD_PRESETS) {
+    items.push({
+      content: `${swatchHTML(p.title, p.body)}${p.label}`,
+      callback: () => applyColors(targets, p.title, p.body),
+    });
+  }
+  items.push(null); // separator: bold -> favorite + custom
   const fav = getFavorite();
   items.push({
     content: `${swatchHTML(fav.title, fav.body)}Favorite (from settings)`,
