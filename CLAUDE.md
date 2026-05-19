@@ -83,20 +83,24 @@ js/
 │                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
 │                       #  node colors". Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern contains 18 SUBTLE dark
-│                       #  presets (PixaDark / PixaOnyx / PixaCharcoal /
-│                       #  PixaSteel / PixaSlate / PixaMidnight /
-│                       #  PixaIndigo / PixaMauve / PixaPlum / PixaWine /
-│                       #  PixaCrimson / PixaMocha / PixaAmber /
-│                       #  PixaOlive / PixaForest / PixaSage / PixaTeal /
-│                       #  PixaOcean; title/body hex pairs defined in
-│                       #  PRESETS at the top of the file, ordered as a
-│                       #  wheel traversal so adjacent entries feel
-│                       #  related) PLUS 5 BOLD accent presets (PixaRed /
-│                       #  PixaOrange / PixaGreen / PixaBlue / PixaPurple;
-│                       #  saturated title color with a consistent
-│                       #  #1d1d1d body so they read as a unified branded
-│                       #  family) defined in BOLD_PRESETS. Submenu
-│                       #  separator splits the two groups visually)
+│                       #  presets (Dark / Onyx / Charcoal / Steel /
+│                       #  Slate / Midnight / Indigo / Mauve / Plum /
+│                       #  Wine / Crimson / Mocha / Amber / Olive /
+│                       #  Forest / Sage / Teal / Ocean; title/body hex
+│                       #  pairs defined in PRESETS at the top of the
+│                       #  file, ordered as a wheel traversal so
+│                       #  adjacent entries feel related) PLUS 5 BOLD
+│                       #  accent presets (PixaRed / PixaOrange /
+│                       #  PixaGreen / PixaBlue / PixaPurple; saturated
+│                       #  title color with a consistent #1d1d1d body
+│                       #  so they read as a unified branded family)
+│                       #  defined in BOLD_PRESETS. The Pixa* prefix is
+│                       #  INTENTIONALLY ONLY applied to the 5 bold
+│                       #  presets so they stand out in the submenu as
+│                       #  the user's easy-find favorites; the 18
+│                       #  subtle presets stay on plain hue names.
+│                       #  Submenu separator splits the two groups
+│                       #  visually.
 │                       #  plus a Favorite entry (reads two Pixaroma
 │                       #  settings Pixaroma.NodeColors.FavoriteTitle /
 │                       #  Body, type "color") plus "Pick custom..." which
