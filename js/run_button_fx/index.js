@@ -23,44 +23,37 @@ function injectCSS() {
   style.id = "pix-rb-fx-css";
   style.textContent = `
     button.pix-rb-orange {
-      background: linear-gradient(180deg, #ff7a4d, #f66744) !important;
+      background: #f66744 !important;
+      background-image: none !important;
       color: #ffffff !important;
-      border-color: #c44520 !important;
-      transition: filter 180ms, transform 120ms, box-shadow 180ms;
+      border-color: #f66744 !important;
+      box-shadow: none !important;
     }
     button.pix-rb-orange:hover {
-      filter: brightness(1.15);
-      box-shadow: 0 0 14px rgba(246, 103, 68, 0.65);
-    }
-    button.pix-rb-orange:active {
-      transform: scale(0.96);
+      background: #f66744 !important;
+      background-image: none !important;
+      filter: brightness(1.08);
+      box-shadow: none !important;
     }
 
     .pix-rb-fx-flame {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
-      background: radial-gradient(ellipse at right center,
-        rgba(255, 245, 120, 1) 0%,
-        rgba(255, 180, 40, 0.95) 18%,
-        rgba(255, 100, 30, 0.85) 42%,
-        rgba(220, 40, 30, 0.55) 70%,
-        rgba(220, 40, 30, 0) 100%);
-      filter: blur(2.5px);
+      background: radial-gradient(ellipse at 80% 50%,
+        rgba(255, 245, 120, 0.85) 0%,
+        rgba(255, 180, 40, 0.7) 18%,
+        rgba(255, 100, 30, 0.45) 42%,
+        rgba(220, 40, 30, 0.18) 70%,
+        rgba(220, 40, 30, 0) 92%);
+      filter: blur(5px);
       transform-origin: right center;
-      clip-path: polygon(
-        0% 50%,
-        12% 35%, 25% 28%, 40% 25%, 55% 22%, 70% 28%, 85% 32%,
-        100% 38%, 100% 62%,
-        85% 68%, 70% 72%, 55% 78%, 40% 75%, 25% 72%, 12% 65%
-      );
       animation: pix-rb-flame-anim 650ms ease-out forwards;
     }
     @keyframes pix-rb-flame-anim {
-      0%   { transform: scaleX(0.2) scaleY(0.8); opacity: 0; }
-      18%  { transform: scaleX(1) scaleY(1); opacity: 1; }
-      55%  { transform: scaleX(1.3) scaleY(0.95); opacity: 0.85; }
-      100% { transform: scaleX(1.7) scaleY(0.6); opacity: 0; }
+      0%   { transform: scaleX(0.3); opacity: 0; }
+      20%  { transform: scaleX(1); opacity: 1; }
+      100% { transform: scaleX(1.7); opacity: 0; }
     }
 
     .pix-rb-fx-sparkle {
@@ -128,27 +121,20 @@ function injectCSS() {
       position: fixed;
       pointer-events: none;
       z-index: 99999;
-      background: radial-gradient(ellipse at top center,
-        rgba(255, 245, 120, 1) 0%,
-        rgba(255, 180, 40, 0.95) 18%,
-        rgba(255, 100, 30, 0.85) 42%,
-        rgba(220, 40, 30, 0.55) 70%,
-        rgba(220, 40, 30, 0) 100%);
-      filter: blur(2.5px);
+      background: radial-gradient(ellipse at 50% 20%,
+        rgba(255, 245, 120, 0.85) 0%,
+        rgba(255, 180, 40, 0.7) 18%,
+        rgba(255, 100, 30, 0.45) 42%,
+        rgba(220, 40, 30, 0.18) 70%,
+        rgba(220, 40, 30, 0) 92%);
+      filter: blur(5px);
       transform-origin: top center;
-      clip-path: polygon(
-        50% 100%,
-        35% 88%, 28% 75%, 22% 60%, 25% 45%, 28% 30%, 32% 15%,
-        38% 0%, 62% 0%,
-        68% 15%, 72% 30%, 75% 45%, 78% 60%, 72% 75%, 65% 88%
-      );
       animation: pix-rb-exhaust-anim 700ms ease-out forwards;
     }
     @keyframes pix-rb-exhaust-anim {
-      0%   { transform: scaleY(0.2) scaleX(0.8); opacity: 0; }
-      18%  { transform: scaleY(1) scaleX(1); opacity: 1; }
-      55%  { transform: scaleY(1.3) scaleX(0.95); opacity: 0.85; }
-      100% { transform: scaleY(1.7) scaleX(0.6); opacity: 0; }
+      0%   { transform: scaleY(0.3); opacity: 0; }
+      20%  { transform: scaleY(1); opacity: 1; }
+      100% { transform: scaleY(1.7); opacity: 0; }
     }
   `;
   document.head.appendChild(style);
