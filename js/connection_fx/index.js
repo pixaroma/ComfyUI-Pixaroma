@@ -200,7 +200,7 @@ function spawnConnectionSparkles(node, slotIndex) {
   const cx = rect.left + (pos[0] + ds.offset[0]) * ds.scale;
   const cy = rect.top + (pos[1] + ds.offset[1]) * ds.scale;
 
-  const pad = 40;
+  const pad = 60;
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
   svg.classList.add("pix-conn-fx-bolts");
@@ -215,10 +215,10 @@ function spawnConnectionSparkles(node, slotIndex) {
   const boltCount = 5 + Math.floor(Math.random() * 2);
   for (let i = 0; i < boltCount; i++) {
     const angle = (Math.PI * 2 * i) / boltCount + (Math.random() - 0.5) * 0.6;
-    const length = 12 + Math.random() * 10;
+    const length = 20 + Math.random() * 16;
     const ex = lcx + Math.cos(angle) * length;
     const ey = lcy + Math.sin(angle) * length;
-    const main = jaggedBoltPoints(lcx, lcy, ex, ey, 4, 3);
+    const main = jaggedBoltPoints(lcx, lcy, ex, ey, 5, 4);
     const poly = document.createElementNS(svgNS, "polyline");
     poly.setAttribute("points", pointsToAttr(main));
     poly.style.animationDelay = (i * 18) + "ms";
@@ -226,7 +226,7 @@ function spawnConnectionSparkles(node, slotIndex) {
 
     if (Math.random() > 0.5) {
       const fAngle = angle + (Math.random() - 0.5) * 1.4;
-      const fLen = 4 + Math.random() * 5;
+      const fLen = 6 + Math.random() * 7;
       const fork = jaggedBoltPoints(
         ex, ey,
         ex + Math.cos(fAngle) * fLen,
