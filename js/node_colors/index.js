@@ -29,6 +29,46 @@ const PRESETS = [
   { id: "teal",   label: "Teal",   title: "#102b2f", body: "#1a3f44" },
 ];
 
+// Curated swatch sets for the Pick custom modal. The default
+// PIXAROMA_PALETTE has a wide range including bright pastels that read
+// poorly as node chrome (LiteGraph paints title text in dim gray #999,
+// which only contrasts on darker fills). These two palettes constrain
+// the user to colors that actually look good as title / body fills.
+//
+// 3 rows of 12, same shape as the default palette:
+//   Row 1: pure dark neutrals (gray ramp)
+//   Row 2: warm hues (red / brown / amber / olive)
+//   Row 3: cool hues (green / teal / blue / plum)
+//
+// Title palette sits at ~6-22% lightness so dim gray text reads.
+// Body palette is the same hues shifted ~5-8 points lighter so the
+// title-then-body Pixaroma convention is preserved (title slightly
+// darker than body).
+
+const TITLE_SWATCHES = [
+  // Neutrals
+  "#000000", "#0a0a0a", "#141414", "#1a1a1a", "#1d1d1d", "#242424",
+  "#2a2a2a", "#2f2f2f", "#353535", "#3a3a3a", "#404040", "#4a4a4a",
+  // Warm dark hues
+  "#2a141b", "#3a141a", "#3a1d14", "#2e1f1f", "#2a1f12", "#3a2814",
+  "#2a2614", "#1f2814", "#2a2a14", "#3a3514", "#3a3220", "#3a1d28",
+  // Cool dark hues
+  "#13261c", "#1f3327", "#102b2f", "#0d2a3a", "#1a2332", "#181f3a",
+  "#1f1a3a", "#2a1a2e", "#3a1d3a", "#2e1f2e", "#3a1f2a", "#14143a",
+];
+
+const BODY_SWATCHES = [
+  // Neutrals (slightly lighter than title row)
+  "#141414", "#1a1a1a", "#1d1d1d", "#242424", "#2a2a2a", "#2f2f2f",
+  "#353535", "#3a3a3a", "#404040", "#454545", "#4a4a4a", "#505050",
+  // Warm hues (lighter than title row)
+  "#3d1d28", "#4a1f24", "#4a281d", "#3d2e2e", "#3d2e1a", "#4d3a20",
+  "#3d3520", "#2d3520", "#3d3d1d", "#4a4220", "#4d4230", "#4d281a",
+  // Cool hues (lighter than title row)
+  "#1d3a2d", "#284a3a", "#1a3f44", "#1a3a4d", "#25334a", "#232d55",
+  "#2d2a5c", "#3d2842", "#4d2a4d", "#3d2a3d", "#4d2a3a", "#1f1f4d",
+];
+
 const FAVORITE_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
 const FAVORITE_BODY_ID  = "Pixaroma.NodeColors.FavoriteBody";
 
@@ -287,6 +327,7 @@ function openCustomColorsModal(opts) {
   titleCol.appendChild(titleLabel);
   const titlePicker = createPixaromaColorPicker({
     initialColor: titleHex,
+    swatches: TITLE_SWATCHES,
     hideReset: true,
     onChange: (c) => { titleHex = c; preview.setTitle(c); },
   });
@@ -302,6 +343,7 @@ function openCustomColorsModal(opts) {
   bodyCol.appendChild(bodyLabel);
   const bodyPicker = createPixaromaColorPicker({
     initialColor: bodyHex,
+    swatches: BODY_SWATCHES,
     hideReset: true,
     onChange: (c) => { bodyHex = c; preview.setBody(c); },
   });
