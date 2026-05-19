@@ -77,34 +77,46 @@ js/
 │                       #  do NOT re-add per-node color guards.
 │
 ├── node_colors/        # Right-click "Pixaroma colors" submenu (single
-│   └── index.js        #  global extension, ~150 lines). Wraps
+│   └── index.js        #  global extension, ~300 lines). Wraps
 │                       #  LGraphCanvas.prototype.getNodeMenuOptions to
 │                       #  append two entries to ANY node's right-click
-│                       #  menu: "👑 Pixaroma colors" submenu + "Reset
+│                       #  menu: "👑 Pixaroma colors" submenu + "👑 Reset
 │                       #  node colors". Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern contains 6 curated dark
-│                       #  presets (Dark / Slate / Forest / Plum / Rose /
-│                       #  Amber; title/body hex pairs defined in the
-│                       #  PRESETS array at the top of the file) plus a
-│                       #  Favorite entry (reads two Pixaroma settings
-│                       #  Pixaroma.NodeColors.FavoriteTitle/Body, type
-│                       #  "color") plus "Pick custom..." which opens the
-│                       #  Pixaroma Color Picker modal twice (title then
-│                       #  body) and saves the picked pair as the new
-│                       #  Favorite for next time. Multi-select aware:
-│                       #  when 2+ nodes are selected AND the right-clicked
-│                       #  node is one of them, all entries apply to the
-│                       #  whole selection and the top-level label shows
-│                       #  "(N nodes)". Colors are written onto each
-│                       #  node's .color / .bgcolor, so they serialize
-│                       #  into the workflow JSON and travel to recipients
-│                       #  without requiring this plugin installed. The
-│                       #  Dark preset reuses the same hex values
+│                       #  presets (Dark / Slate / Forest / Plum / Wine /
+│                       #  Teal; title/body hex pairs defined in the
+│                       #  PRESETS array at the top of the file, hues
+│                       #  spread around the wheel for visual grouping)
+│                       #  plus a Favorite entry (reads two Pixaroma
+│                       #  settings Pixaroma.NodeColors.FavoriteTitle /
+│                       #  Body, type "color") plus "Pick custom..." which
+│                       #  opens a custom side-by-side modal (built from
+│                       #  scratch using createPixaromaColorPicker twice,
+│                       #  NOT openPixaromaColorPickerModal) so both title
+│                       #  and body pickers are visible at once with a
+│                       #  small live-preview node above that updates as
+│                       #  the user drags either SV plane. Apply stores
+│                       #  the picked pair as the new Favorite for next
+│                       #  time. Multi-select aware: when 2+ nodes are
+│                       #  selected AND the right-clicked node is one of
+│                       #  them, all entries apply to the whole selection
+│                       #  and the top-level labels show "(N nodes)".
+│                       #  Colors are written onto each node's .color /
+│                       #  .bgcolor, so they serialize into the workflow
+│                       #  JSON and travel to recipients without
+│                       #  requiring this plugin installed. The Dark
+│                       #  preset reuses the same hex values
 │                       #  brand/index.js uses for category-auto-coloring.
 │                       #  Settings live under distinct leaf categories
 │                       #  "Favorite Title" + "Favorite Body" so the Vue
 │                       #  settings panel does NOT dedupe them (Align
-│                       #  Pattern #10).
+│                       #  Pattern #10). Custom modal CSS is `pix-nc-*`
+│                       #  prefixed and injected once via injectCSS()
+│                       #  guarded by `#pix-nc-css` ID. Click-outside-to-
+│                       #  cancel uses the mousedown-on-backdrop guard so
+│                       #  an SV-plane drag that releases off the modal
+│                       #  does not discard the user's pick (same pattern
+│                       #  Text Overlay #12 documents).
 │
 ├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
 │   ├── index.js        # Entry: ComfyUI extension registration
