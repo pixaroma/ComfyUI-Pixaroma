@@ -217,11 +217,31 @@ export class AudioStudioEditor {
     injectAudioStudioCSS();
 
     // Vue-compat (CLAUDE.md Pattern #6): neuter Ctrl+Z escape paths while
-    // editor is open. Patches restored in forceClose().
+    // editor is open. Patches restored in forceClose() - AND they self-heal
+    // (Vue Compat #2): if the overlay is torn down without forceClose running
+    // (e.g. closing the workflow tab while the editor is open), the patches
+    // would otherwise stay installed forever and the user could no longer open
+    // or create ANY workflow until a page refresh. Each wrapper checks whether
+    // our overlay is still in the DOM; if it's gone, it restores the originals
+    // and passes the call through. Ctrl+Z while the editor is genuinely open
+    // is still blocked.
     this._savedLoadGraphData = app.loadGraphData.bind(app);
-    app.loadGraphData = () => Promise.resolve();
     this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-    app.graph.configure = () => {};
+    const ed = this;
+    app.loadGraphData = function (...args) {
+      if (!ed._overlayAlive()) {
+        ed._restoreGraphPatches();
+        return app.loadGraphData(...args);
+      }
+      return Promise.resolve();
+    };
+    app.graph.configure = function (...args) {
+      if (!ed._overlayAlive()) {
+        ed._restoreGraphPatches();
+        return app.graph.configure(...args);
+      }
+      return undefined;
+    };
 
     // Build the standard Pixaroma editor shell. This gives us:
     //   * .pxf-titlebar with logo + "AudioReact Pixaroma" + undo/redo + close
@@ -749,16 +769,29 @@ export class AudioStudioEditor {
     });
   }
 
-  forceClose() {
-    // Restore Vue-compat patches
+  // Is this editor's overlay still in the document? Used by the self-healing
+  // loadGraphData/configure patches to detect a teardown that bypassed
+  // forceClose (Vue Compat #2).
+  _overlayAlive() {
+    return !!(this.overlay && this.overlay.isConnected);
+  }
+
+  // Restore the graph patches we installed in open(). Idempotent + safe to
+  // call from BOTH forceClose AND the self-heal path.
+  _restoreGraphPatches() {
     if (this._savedLoadGraphData) {
       app.loadGraphData = this._savedLoadGraphData;
       this._savedLoadGraphData = null;
     }
     if (this._savedGraphConfigure) {
-      app.graph.configure = this._savedGraphConfigure;
+      if (app.graph) app.graph.configure = this._savedGraphConfigure;
       this._savedGraphConfigure = null;
     }
+  }
+
+  forceClose() {
+    // Restore Vue-compat patches
+    this._restoreGraphPatches();
     if (this._keyHandler) {
       window.removeEventListener("keydown", this._keyHandler, true);
       this._keyHandler = null;

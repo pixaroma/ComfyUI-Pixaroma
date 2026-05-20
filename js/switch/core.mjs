@@ -67,6 +67,12 @@ export function normalizeSlots(node) {
   if (!node.inputs) return;
   const state = readState(node);
 
+  // Slot count BEFORE we trim/append. Used to decide whether the node really
+  // needs a resize: on a plain workflow load the saved slots already match,
+  // so nothing structural changes and we must NOT rewrite node.size (a stale
+  // rewrite falsely flags the workflow "modified" on open+close - issue #39).
+  const beforeLen = node.inputs.length;
+
   // Count how many slots currently carry a live wire.
   let connected = 0;
   for (const s of node.inputs) {
@@ -95,15 +101,26 @@ export function normalizeSlots(node) {
     addInputSlot(node, node.inputs.length + 1);
   }
 
-  // Re-apply correct names and zero-width labels to every slot.
+  // Re-apply correct names and zero-width labels to every slot. Write ONLY
+  // when the value actually differs - re-assigning the identical string still
+  // counts as a touched slot on some LiteGraph forks and can dirty the
+  // workflow on a plain load.
   for (let i = 0; i < node.inputs.length; i++) {
-    node.inputs[i].name = SLOT_NAME(i + 1);
-    node.inputs[i].label = "​"; // zero-width space
+    const nm = SLOT_NAME(i + 1);
+    if (node.inputs[i].name !== nm) node.inputs[i].name = nm;
+    if (node.inputs[i].label !== "​") node.inputs[i].label = "​"; // zero-width space
   }
 
-  state.visibleCount = node.inputs.length;
-  node.size[0] = Math.max(node.size[0] || 0, DEFAULT_W);
-  node.size[1] = computeNodeHeight(state.visibleCount);
+  if (state.visibleCount !== node.inputs.length) state.visibleCount = node.inputs.length;
+  const w = Math.max(node.size[0] || 0, DEFAULT_W);
+  if (node.size[0] !== w) node.size[0] = w;
+  // Only resize when the slot count actually changed (connect/disconnect or a
+  // fresh-node setup). On a plain load the saved slots already match, so the
+  // saved height is authoritative and must be left untouched.
+  if (node.inputs.length !== beforeLen) {
+    const h = computeNodeHeight(node.inputs.length);
+    if (node.size[1] !== h) node.size[1] = h;
+  }
 
   // Prune label keys that fall outside the current slot range.
   // Stale keys can arise from hand-edited workflow JSON or (theoretically)
@@ -215,8 +232,19 @@ export function updateOutputType(node) {
   const state = readState(node);
   const out = node.outputs?.[0];
   if (!out) return;
-  const upType = state.activeIndex ? getUpstreamType(node, state.activeIndex) : null;
-  out.type = upType || "*";
+  const hasActiveLink =
+    state.activeIndex >= 1 && node.inputs?.[state.activeIndex - 1]?.link != null;
+  const upType = hasActiveLink ? getUpstreamType(node, state.activeIndex) : null;
+  if (upType) {
+    if (out.type !== upType) out.type = upType;
+  } else if (!hasActiveLink) {
+    // No active connection at all - safe to clear to the wildcard.
+    if (out.type !== "*") out.type = "*";
+  }
+  // else: the active slot IS wired but its upstream type can't be resolved
+  // yet (workflow load, before all nodes/links are in place). Leave the saved
+  // out.type untouched - clobbering it to "*" both loses the type AND falsely
+  // flags the workflow "modified" on a plain open (issue #39).
 }
 
 export function handleConnect(node, slotIdx1) {

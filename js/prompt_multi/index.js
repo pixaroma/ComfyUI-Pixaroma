@@ -264,6 +264,12 @@ app.registerExtension({
         const { handlers, rerender } = makeHandlers(node, root);
         node._pixPmRoot = root;
         node._pixPmRerender = rerender;
+        // DOM-only render (no auto-grow). Used on workflow load so the saved
+        // node.size is trusted - the grow path rewrites node.size by a few px
+        // (DOM measurement rounding) which would falsely flag the workflow
+        // "modified" on a plain open. Auto-grow stays on user-action paths
+        // (add/delete/toggle/mode pill) where a size change is legitimate.
+        node._pixPmRenderOnly = () => renderRows(node, root, handlers);
 
         node.addDOMWidget("promptmulti", "div", root, {
           serialize: false,
@@ -276,7 +282,7 @@ app.registerExtension({
           node.setDirtyCanvas(true, true);
         };
 
-        rerender();
+        node._pixPmRenderOnly();
         node.setDirtyCanvas(true, true);
       });
     };
@@ -285,7 +291,9 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       restoreFromProperties(this);
-      if (this._pixPmRerender) this._pixPmRerender();
+      // DOM-only render on load (no auto-grow) so the saved node.size is
+      // preserved and the workflow isn't falsely flagged "modified".
+      if (this._pixPmRenderOnly) this._pixPmRenderOnly();
       return r;
     };
 
@@ -377,6 +385,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPmRoot = null;
       this._pixPmRerender = null;
+      this._pixPmRenderOnly = null;
       this._pixPmGrow = null;
       this._pixPmRefreshClear = null;
       // Hide tooltip if this node was the one being hovered; otherwise it
@@ -455,16 +464,47 @@ app.graphToPrompt = async function (...args) {
 //
 // If no Prompt Multi node exists, the patch falls through to the original.
 
+// A node only "drives the queue" if it is actually part of the workflow
+// being run. A Prompt Multi node that is muted/bypassed OR not wired to
+// anything must NOT intercept the Run - otherwise a leftover node sitting on
+// the canvas with no enabled rows blocks every unrelated workflow with the
+// "Enable at least one non-empty prompt to run" toast (GitHub issue #39).
+//
+// mode 2 = muted (LiteGraph NEVER), mode 4 = bypass (ComfyUI). Anything else
+// (0 / undefined) counts as active.
+function isMultiNodeActive(node) {
+  return node.mode !== 2 && node.mode !== 4;
+}
+
+// Connected = at least one output slot (text or prompts) has a live link.
+// An unwired Prompt Multi feeds nothing and should be ignored by the loop.
+function isMultiNodeConnected(node) {
+  const outs = node.outputs || [];
+  for (const o of outs) {
+    if (o && Array.isArray(o.links) && o.links.length > 0) return true;
+  }
+  return false;
+}
+
+function isMultiNodeDriving(node) {
+  if (!node) return false;
+  const isClass = node.comfyClass === "PixaromaPromptMulti" || node.type === "PixaromaPromptMulti";
+  return isClass && isMultiNodeActive(node) && isMultiNodeConnected(node);
+}
+
+// Find the first PixaromaPromptMulti node that actually drives the queue
+// (active + connected). Returns null when no participating node exists, so
+// the patch falls through to a normal single run.
 function findFirstPromptMultiNode() {
   const graph = app.graph;
   if (!graph) return null;
   const top = graph._nodes || graph.nodes || [];
   for (const n of top) {
-    if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+    if (isMultiNodeDriving(n)) return n;
   }
   function walk(nodes) {
     for (const n of nodes || []) {
-      if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+      if (isMultiNodeDriving(n)) return n;
       const sub = n?.subgraph?._nodes || n?.subgraph?.nodes;
       if (sub) {
         const hit = walk(sub);

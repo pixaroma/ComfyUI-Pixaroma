@@ -49,11 +49,33 @@ export class TextOverlayEditor {
 
   async open() {
     const app = window.app;
-    // Vue Compat #6: neuter Ctrl+Z escape
+    // Vue Compat #6: neuter Ctrl+Z escape (changeTracker.undo -> loadGraphData
+    // -> graph.configure). Vue Compat #2: the overlay can be torn down WITHOUT
+    // our close() running (e.g. closing the workflow tab while the editor is
+    // open), which would otherwise leave these two functions disabled forever
+    // - the user then can't open OR create ANY workflow until a page refresh
+    // (confirmed via console: loadGraphData stuck at "() => Promise.resolve()"
+    // with zero overlays in the DOM). So the patched functions SELF-HEAL: the
+    // moment they're called while our overlay is gone (or after close), they
+    // restore the originals and pass the call through. Ctrl+Z while the editor
+    // is genuinely open is still blocked (overlay alive -> return early).
     this._savedLoadGraphData = app.loadGraphData.bind(app);
-    app.loadGraphData = () => Promise.resolve();
     this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-    app.graph.configure = () => {};
+    const self = this;
+    app.loadGraphData = function (...args) {
+      if (self._closed || !self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.loadGraphData(...args);
+      }
+      return Promise.resolve();
+    };
+    app.graph.configure = function (...args) {
+      if (self._closed || !self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.graph.configure(...args);
+      }
+      return undefined;
+    };
 
     // Resurrection-close safety net
     this._origOnRemoved = this.node.onRemoved;
@@ -175,12 +197,20 @@ export class TextOverlayEditor {
       this.node._textOverlayBodyPanel?.setTextReadOnly?.(true, "Text input is wired - upstream value is used");
     }
 
-    // First-time auto-center: when a fresh node opens for the first time with
-    // an upstream image, center the text on the canvas so it fits regardless
-    // of aspect ratio. Flag is cleared so subsequent opens respect the saved
-    // position.
-    if (this.state?._autoCenterPending && this.baseImage && this.state.text) {
-      this._autoCenter();
+    // First-run positioning. If the node body queued a "Position on canvas"
+    // intent (_alignPending) while the image dims were unknown, OR this is a
+    // fresh node that has never been centered (_autoCenterPending), resolve it
+    // now that the editor has the image. Clear BOTH flags so a stale pending
+    // value can't override the user's editor edits on the next workflow run
+    // (an explicit align choice wins over auto-center, matching Python +
+    // the graphToPrompt hook).
+    if (this.baseImage && this.state?.text) {
+      if (this.state._alignPending) {
+        this.alignToCanvas(this.state._alignPending);
+      } else if (this.state._autoCenterPending) {
+        this._autoCenter();
+      }
+      delete this.state._alignPending;
       delete this.state._autoCenterPending;
     }
 
@@ -205,6 +235,27 @@ export class TextOverlayEditor {
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
   }
 
+  // Is this editor's fullscreen overlay still in the document? Used by the
+  // self-healing loadGraphData/configure patches to detect a teardown that
+  // bypassed close() (Vue Compat #2).
+  _overlayAlive() {
+    return !!(this.layout && this.layout.overlay && this.layout.overlay.isConnected);
+  }
+
+  // Restore the loadGraphData/configure functions we neutered in open().
+  // Idempotent + safe to call from BOTH close() and the self-heal path.
+  _restoreGraphPatches() {
+    const app = window.app;
+    if (this._savedLoadGraphData) {
+      app.loadGraphData = this._savedLoadGraphData;
+      this._savedLoadGraphData = null;
+    }
+    if (this._savedGraphConfigure) {
+      if (app.graph) app.graph.configure = this._savedGraphConfigure;
+      this._savedGraphConfigure = null;
+    }
+  }
+
   close() {
     if (this._closed) return;
     this._closed = true;
@@ -219,8 +270,7 @@ export class TextOverlayEditor {
     // it reflects current wiring state, not editor session. The
     // index.js onConnectionsChange handler keeps it in sync.
     if (typeof this._uninstallInteractions === "function") this._uninstallInteractions();
-    if (this._savedLoadGraphData) window.app.loadGraphData = this._savedLoadGraphData;
-    if (this._savedGraphConfigure) window.app.graph.configure = this._savedGraphConfigure;
+    this._restoreGraphPatches();
     if (this._origOnRemoved !== undefined) this.node.onRemoved = this._origOnRemoved;
     this.editorPanel?.destroy?.();
     this.layout?.unmount?.();

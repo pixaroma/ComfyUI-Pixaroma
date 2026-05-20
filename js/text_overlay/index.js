@@ -31,25 +31,39 @@ app.registerExtension({
 
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
-      const r = origConfigure?.apply(this, arguments);
-      ensureValidState(this);
-      // After configure, push current state into the body panel UI
-      if (this._textOverlayBodyPanel) {
-        this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
+      // Gate the text-lock RESIZE during load. LGraphNode.configure() replays
+      // onConnectionsChange for every wired slot (Vue Compat #17); without the
+      // flag, that replay would resize the node by 1-2px (computeSize rounding)
+      // and falsely mark the workflow modified on a plain open. Cleared in
+      // finally so it always resets.
+      this._textOverlayConfiguring = true;
+      try {
+        const r = origConfigure?.apply(this, arguments);
+        ensureValidState(this);
+        // panelHeight() returns a fixed constant (BASE_H +/- HINT_H), so
+        // node.size is the same on every load and the workflow is never
+        // falsely flagged "modified".
+        // After configure, push current state into the body panel UI
+        if (this._textOverlayBodyPanel) {
+          this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
+        }
+        refreshOpenButton(this);
+        refreshTextLock(this); // allowResize defaults false - no resize on load
+        return r;
+      } finally {
+        this._textOverlayConfiguring = false;
       }
-      refreshOpenButton(this);
-      refreshTextLock(this);
-      return r;
     };
 
     // Update the Open button + text-lock indicator when wires change
     // so the user sees the right state immediately (image wire affects
-    // the Open button; text wire grays out the textarea).
+    // the Open button; text wire grays out the textarea). Allow the resize
+    // only for REAL user wire changes (not the configure-replay during load).
     const origOnConnectionsChange = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function () {
       const r = origOnConnectionsChange?.apply(this, arguments);
       refreshOpenButton(this);
-      refreshTextLock(this);
+      refreshTextLock(this, !this._textOverlayConfiguring);
       return r;
     };
   },
@@ -104,6 +118,11 @@ function setupTextOverlayNode(node) {
     // editor sidebar point at the same restored object. We mutate keys
     // rather than replace the object so existing references stay valid.
     onReset: (layer) => resetStateInPlace(layer),
+    // "Position on canvas" buttons on the node body. Moves the whole text
+    // block to a canvas edge / center. The editor sidebar panel does NOT
+    // get this callback (the editor has its own top align toolbar), so the
+    // row only appears on the node body where there's no canvas to drag.
+    onAlignCanvas: (mode) => alignOnCanvasFromBody(node, mode),
   });
   node._textOverlayBodyPanel = bodyPanel;
   node._textOverlayBodyRoot = root;
@@ -131,24 +150,45 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayMeasureHeight = measureContentHeight;
 
+  // FIXED panel height - the only approach that can't dirty the workflow.
+  // Every measurement-based attempt failed: the live DOM height varies a few
+  // px between save and reload (font/layout timing), AND storing it in
+  // node.properties added a key the saved baseline lacked - either way
+  // node.size differed on load and ComfyUI flagged the workflow "modified"
+  // even when nothing was edited. A constant removes measurement (and any
+  // stored property) from the load path entirely, so node.size is the SAME
+  // value every save and load -> never dirty. The height only depends on
+  // whether the text-lock hint row is shown (text input wired), which is
+  // restored consistently from the saved graph. BASE_H is the panel's content
+  // height with the hint hidden; if the panel layout changes (add/remove a
+  // row), update BASE_H to match (the only maintenance cost of this approach).
+  const BASE_H = 412;   // content height, text input NOT wired
+  const HINT_H = 18;    // extra height when the text input IS wired (lock hint)
+  function panelHeight() {
+    const wired = node.inputs?.find((i) => i.name === "text")?.link != null;
+    return BASE_H + (wired ? HINT_H : 0);
+  }
+  node._textOverlayPanelHeight = panelHeight;
+
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
     serialize: false,
-    getMinHeight: measureContentHeight,
+    getMinHeight: panelHeight,
     // Cap height at content size so manual node resize gives the slack to
     // ComfyUI's input slot area / blank space, not stretches this panel.
     // Without getMaxHeight the layout engine treats this widget as
     // stretchable and the bottom of the panel sits below where the
     // background ends, leaving the Reset button visually outside the node.
-    getMaxHeight: measureContentHeight,
+    getMaxHeight: panelHeight,
   });
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.
-  // The compact layout (after collapsing Rotate/X/Y into one row) fits
-  // in roughly 380 px including title + slots; pick 390 so there is a
-  // touch of breathing room.
+  // The compact layout plus the "Text align" + "Position on canvas" rows
+  // fits in roughly 450 px including title + slots; pick 455 so there is a
+  // touch of breathing room. (getMinHeight enforces the true content height
+  // anyway, but a matching default avoids an initial resize jump.)
   if (!node.size || node.size[0] < 320) {
-    node.size = [340, 390];
+    node.size = [340, 455];
   }
 
   // Enforce a minimum node width so the user can't drag-shrink so narrow
@@ -167,7 +207,10 @@ function setupTextOverlayNode(node) {
     return _origOnDrawForeground ? _origOnDrawForeground(ctx) : undefined;
   };
 
-  // Defer panel population past configure() so saved state is restored first
+  // Defer panel population past configure() so saved state is restored first.
+  // No deferred height capture here - panelHeight() stores the height
+  // synchronously the first time it runs (see comment there), which keeps
+  // node.size and the persisted height in agreement.
   queueMicrotask(() => {
     bodyPanel.setLayer(node.properties[STATE_PROP]);
     refreshTextLock(node);
@@ -215,17 +258,25 @@ function isUpstreamImageReady(node) {
 // the textarea to editable when the wire is detached. Re-fits the node
 // height so the orange hint line under the textarea doesn't leave
 // stale empty space when removed.
-function refreshTextLock(node) {
+function refreshTextLock(node, allowResize = false) {
   const panel = node._textOverlayBodyPanel;
   if (!panel || typeof panel.setTextReadOnly !== "function") return;
   const link = node.inputs?.find((i) => i.name === "text")?.link;
   const wired = link != null;
   panel.setTextReadOnly(wired, wired ? "Text input is wired - upstream value is used" : "");
+  // The node-height snap runs ONLY for real user wire changes. On a plain
+  // workflow load the saved size already fits the hint state, and a
+  // computeSize() rounding difference of 1-2px would otherwise rewrite
+  // node.size and falsely flag the workflow as modified (issue: "Save
+  // Changes?" prompt on open+close with no edits).
+  if (!allowResize) return;
   // Defer to next frame so the hint's DOM layout settles before
   // computeSize re-measures. LiteGraph's computeSize returns the
   // total node height (chrome + slots + widgets) so we don't need
   // to guess the chrome offset.
   requestAnimationFrame(() => {
+    // Wire state changed -> panelHeight() now returns BASE_H +/- HINT_H, so
+    // computeSize() already reflects the new height; just snap node.size to it.
     if (typeof node.computeSize === "function" && node.size) {
       const min = node.computeSize();
       if (Array.isArray(min) && min.length === 2 && typeof min[1] === "number") {
@@ -299,10 +350,11 @@ api.addEventListener("executed", (e) => {
       executedNode._textOverlayBaseImageURL =
         `/view?filename=${encodeURIComponent(base.filename)}${subfolder}&type=${encodeURIComponent(type)}&t=${Date.now()}`;
     }
-    // Python auto-centered the text on this run (first-run path for
-    // generative chains where the JS hook couldn't center pre-submit).
-    // Persist the centered x/y on the node and clear the pending flag
-    // so subsequent runs respect the position.
+    // Python resolved the text position on this run (first-run path for
+    // generative chains where the JS hook couldn't position pre-submit -
+    // covers both auto-center and an explicit "Position on canvas" choice).
+    // Persist the x/y on the node and clear both pending flags so
+    // subsequent runs respect the position.
     const ac = detail.output?.pixaroma_text_overlay_autocentered?.[0];
     if (ac && Number.isFinite(ac.x) && Number.isFinite(ac.y)) {
       const state = executedNode.properties?.[STATE_PROP];
@@ -310,6 +362,7 @@ api.addEventListener("executed", (e) => {
         state.x = ac.x;
         state.y = ac.y;
         delete state._autoCenterPending;
+        delete state._alignPending;
         if (executedNode._textOverlayBodyPanel) {
           executedNode._textOverlayBodyPanel.setLayer(state);
         }
@@ -375,25 +428,32 @@ app.graphToPrompt = async function (...args) {
       const node = findPixNode(index, id);
       const state = node?.properties?.[STATE_PROP] || DEFAULT_STATE;
 
-      // First-run auto-center: if the node has never been centered (fresh
-      // node, _autoCenterPending flag still set) and the upstream image is
-      // available, compute centered x/y now so the first workflow render
-      // shows the text in the middle of the image instead of top-left.
-      // Mirrors the same logic the editor's _autoCenter() runs on open.
-      if (state._autoCenterPending && state.text && node) {
+      // First-run positioning. Two pending intents resolve here when the
+      // upstream image is available at submit time (Load Image case):
+      //   _alignPending     - user clicked a "Position on canvas" button on
+      //                        the node body before dims were known.
+      //   _autoCenterPending- fresh node that has never been centered.
+      // An explicit align choice wins over the default auto-center. If the
+      // image isn't available yet (generative chain), Python resolves it.
+      if ((state._alignPending || state._autoCenterPending) && state.text && node) {
         try {
           const img = getUpstreamImage(node);
           if (img && img.naturalWidth && img.naturalHeight) {
             const bbox = await measureTextBbox(state);
-            state.x = Math.max(0, Math.round((img.naturalWidth - bbox.w) / 2));
-            state.y = Math.max(0, Math.round((img.naturalHeight - bbox.h) / 2));
+            if (state._alignPending) {
+              applyAlignMode(state, state._alignPending, img.naturalWidth, img.naturalHeight, bbox);
+            } else {
+              state.x = Math.max(0, Math.round((img.naturalWidth - bbox.w) / 2));
+              state.y = Math.max(0, Math.round((img.naturalHeight - bbox.h) / 2));
+            }
+            delete state._alignPending;
             delete state._autoCenterPending;
             // Sync body panel + repaint so user sees the new position
             if (node._textOverlayBodyPanel) node._textOverlayBodyPanel.setLayer(state);
             node.setDirtyCanvas?.(true, true);
           }
         } catch (e) {
-          console.warn("[Text Overlay] auto-center on submit failed", e);
+          console.warn("[Text Overlay] position on submit failed", e);
         }
       }
 
@@ -422,7 +482,7 @@ function getUpstreamImage(node) {
 // math as the live editor (and the Python renderer). Returns { w, h }.
 let _measureCanvas = null;
 async function measureTextBbox(state) {
-  const variant = await loadFontForLayer(state.font || "Inter", state.weight || 400, !!state.italic);
+  const variant = await loadFontForLayer(state.font || "Roboto", state.weight || 400, !!state.italic);
   const fontStr = canvasFontString(variant, state.fontSize || 96);
   if (!_measureCanvas) {
     _measureCanvas = document.createElement("canvas");
@@ -449,4 +509,108 @@ async function measureTextBbox(state) {
     w: Math.ceil(maxLineW + 2 * padX),
     h: Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx + 2 * padY),
   };
+}
+
+// ── "Position on canvas" from the node body ──────────────────────────────
+// Mirrors the editor's core.mjs::alignToCanvas so a user gets the same
+// result whether they click the buttons on the node body or in the editor.
+
+// Snap the whole text block to a canvas edge / center. Same formulas as
+// core.mjs::alignToCanvas (no clamping, so right/bottom align edges even
+// when the text is wider/taller than the canvas).
+function applyAlignMode(s, mode, W, H, bbox) {
+  switch (mode) {
+    case "left":    s.x = 0; break;
+    case "centerH": s.x = Math.round((W - bbox.w) / 2); break;
+    case "right":   s.x = Math.round(W - bbox.w); break;
+    case "top":     s.y = 0; break;
+    case "centerV": s.y = Math.round((H - bbox.h) / 2); break;
+    case "bottom":  s.y = Math.round(H - bbox.h); break;
+  }
+}
+
+// Resolve the canvas (= upstream image) dimensions for the node body.
+// Two sources: the upstream node's imgs[0] (Load Image case, instant), or
+// the stashed base-image PNG the Python node writes for generative chains
+// (loaded once and cached). Returns { w, h } or null when dims are unknown.
+async function resolveCanvasDims(node) {
+  const img = getUpstreamImage(node);
+  if (img && img.naturalWidth > 0 && img.naturalHeight > 0) {
+    return { w: img.naturalWidth, h: img.naturalHeight };
+  }
+  const url = node._textOverlayBaseImageURL;
+  if (url) {
+    try {
+      const baseImg = await loadBaseImage(node, url);
+      if (baseImg && baseImg.naturalWidth > 0) {
+        return { w: baseImg.naturalWidth, h: baseImg.naturalHeight };
+      }
+    } catch { /* fall through to null */ }
+  }
+  return null;
+}
+
+// Load + cache the stashed base image so repeated align clicks don't refetch.
+function loadBaseImage(node, url) {
+  if (node._textOverlayBaseImageEl && node._textOverlayBaseImageEl._srcUrl === url) {
+    return Promise.resolve(node._textOverlayBaseImageEl);
+  }
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => { im._srcUrl = url; node._textOverlayBaseImageEl = im; resolve(im); };
+    im.onerror = reject;
+    im.src = url;
+  });
+}
+
+async function alignOnCanvasFromBody(node, mode) {
+  const state = node.properties?.[STATE_PROP];
+  if (!state || !state.text) return;
+  const dims = await resolveCanvasDims(node);
+  if (!dims) {
+    // Dimensions unknown yet (generative chain not run). Record the intent
+    // and let Python resolve it on the next run (the auto-center round-trip).
+    state._alignPending = mode;
+    delete state._autoCenterPending; // explicit choice wins over auto-center
+    node.setDirtyCanvas?.(true, true);
+    showTextOverlayToast("Position will apply on the next run (image size not known yet).");
+    return;
+  }
+  try {
+    const bbox = await measureTextBbox(state);
+    applyAlignMode(state, mode, dims.w, dims.h, bbox);
+    delete state._alignPending;
+    syncTextOverlayPanels(node, state);
+  } catch (e) {
+    console.warn("[Text Overlay] align-on-canvas failed", e);
+  }
+}
+
+// Push state into the body panel + (if open) the editor sidebar panel and
+// repaint the editor canvas, so the node body and editor stay in lockstep.
+function syncTextOverlayPanels(node, state) {
+  node._textOverlayBodyPanel?.setLayer(state);
+  if (node._textOverlayEditor && node._textOverlayEditor.layout?.overlay?.isConnected) {
+    node._textOverlayEditor.editorPanel?.setLayer?.(state);
+    node._textOverlayEditor.requestRender?.();
+  }
+  node.setDirtyCanvas?.(true, true);
+}
+
+// Brief toast (modern toast API with a hand-rolled banner fallback for older
+// ComfyUI builds, same pattern as Prompt Multi).
+function showTextOverlayToast(msg) {
+  const tm = app.extensionManager?.toast;
+  if (tm && typeof tm.add === "function") {
+    try { tm.add({ severity: "info", summary: "Text Overlay", detail: msg, life: 3500 }); return; }
+    catch { /* fall through */ }
+  }
+  try {
+    const banner = document.createElement("div");
+    banner.textContent = msg;
+    banner.style.cssText = "position:fixed;top:60px;right:20px;background:#1d1d1d;color:#fff;font:14px sans-serif;padding:10px 14px;border-radius:6px;border:2px solid #f66744;z-index:99999;";
+    document.body.appendChild(banner);
+    setTimeout(() => banner.remove(), 3500);
+  } catch { /* no-op */ }
 }

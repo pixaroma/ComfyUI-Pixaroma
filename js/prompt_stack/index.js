@@ -187,6 +187,12 @@ app.registerExtension({
         const { handlers, rerender } = makeHandlers(node, root);
         node._pixPsRoot = root;
         node._pixPsRerender = rerender;
+        // DOM-only render (no auto-grow). Used on workflow load so the saved
+        // node.size is trusted - the grow path rewrites node.size by a few px
+        // (DOM measurement rounding) which would falsely flag the workflow
+        // "modified" on a plain open. Auto-grow stays on the user-action
+        // handlers (add/delete/text) where a size change is legitimate.
+        node._pixPsRenderOnly = () => renderRows(node, root, handlers);
 
         node.addDOMWidget("promptstack", "div", root, {
           serialize: false,
@@ -201,7 +207,7 @@ app.registerExtension({
           node.setDirtyCanvas(true, true);
         };
 
-        rerender();
+        node._pixPsRenderOnly();
 
         if (node.size[0] < DEFAULT_W) node.size[0] = DEFAULT_W;
         if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
@@ -214,7 +220,9 @@ app.registerExtension({
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       stripLegacyWireSlots(this);
       restoreFromProperties(this);
-      if (this._pixPsRerender) this._pixPsRerender();
+      // DOM-only render on load (no auto-grow) so the saved node.size is
+      // preserved and the workflow isn't falsely flagged "modified".
+      if (this._pixPsRenderOnly) this._pixPsRenderOnly();
       return r;
     };
 
@@ -246,6 +254,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPsRoot = null;
       this._pixPsRerender = null;
+      this._pixPsRenderOnly = null;
       this._pixPsGrow = null;
       this._pixPsRefreshClear = null;
       if (origRemoved) return origRemoved.apply(this, arguments);

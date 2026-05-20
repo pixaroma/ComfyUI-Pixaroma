@@ -300,13 +300,17 @@ export function renderRows(node, root, rowHandlers) {
     const rowEl = document.createElement("div");
     rowEl.className = "pix-pm-row" + (row.enabled ? "" : " is-disabled");
     rowEl.dataset.id = row.id;
-    rowEl.draggable = true;
+    // The HANDLE is the drag source, NOT the whole row - otherwise the browser
+    // reports the row as the dragstart target and the "only drag from the
+    // handle" gate never matches, cancelling every drag (see prompt_stack).
+    rowEl.draggable = false;
 
     const head = document.createElement("div");
     head.className = "pix-pm-row-head";
 
     const handle = document.createElement("span");
     handle.className = "pix-pm-handle";
+    handle.draggable = true;
     handle.textContent = "⋮⋮"; // two vertical ellipses
     handle.title = "Drag to reorder";
     head.appendChild(handle);

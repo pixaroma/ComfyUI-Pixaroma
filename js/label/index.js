@@ -6,7 +6,22 @@ import { parseCfg, LabelEditor } from "./core.mjs";
 // ─── Setup helpers ───────────────────────────────────────────
 const NO_TITLE = (typeof LiteGraph !== "undefined" && LiteGraph.NO_TITLE) || 1;
 
-function setupLabel(node) {
+// Size the label box to its text. Must NOT run on the LOAD path: measureLabel
+// can come back a few px different than when the workflow was saved (canvas
+// metrics / timing), and rewriting node.size on load falsely flags the
+// workflow "modified" on a plain open (Vue Compat #18 - same class as the
+// Text Overlay dirty-on-load bug, observed here as size 210 -> 193). So this
+// runs ONLY for fresh creation and explicit user edits (editor Save); on load
+// we trust the saved node.size.
+function resizeLabelToContent(node) {
+  const m = measureLabel(node._labelCfg || DEFAULTS);
+  if (node.size) {
+    node.size[0] = Math.max(m.w, 60);
+    node.size[1] = Math.max(m.h, 30);
+  }
+}
+
+function setupLabel(node, withResize = false) {
   try {
     hideJsonWidget(node.widgets, "label_json");
     node._labelCfg = parseCfg(node);
@@ -14,13 +29,10 @@ function setupLabel(node) {
     node.bgcolor = "transparent";
     node.flags = node.flags || {};
     node.flags.no_title = true;
-    // Remove input slots so no connections can be made
-    if (node.inputs) node.inputs.length = 0;
-    const m = measureLabel(node._labelCfg);
-    if (node.size) {
-      node.size[0] = Math.max(m.w, 60);
-      node.size[1] = Math.max(m.h, 30);
-    }
+    // Remove input slots so no connections can be made (only when some exist,
+    // so a saved label with none doesn't get a needless write on load).
+    if (node.inputs && node.inputs.length) node.inputs.length = 0;
+    if (withResize) resizeLabelToContent(node);
   } catch (err) {
     console.error("[Pixaroma Label] setupLabel error:", err);
   }
@@ -39,7 +51,7 @@ app.registerExtension({
     const _origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       const r = _origCreated?.apply(this, arguments);
-      setupLabel(this);
+      setupLabel(this, true); // fresh node: size it to the default text
       this.badges = [];
       if (allow_debug) console.log("PixaromaLabel", this);
       return r;
@@ -49,7 +61,7 @@ app.registerExtension({
     const _origCfg = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (data) {
       const r = _origCfg?.apply(this, arguments);
-      setupLabel(this);
+      setupLabel(this); // load: trust the saved node.size, do NOT re-measure
       return r;
     };
 
@@ -62,8 +74,10 @@ app.registerExtension({
 
       const c = this._labelCfg || DEFAULTS;
       const m = measureLabel(c);
-      this.size[0] = m.w;
-      this.size[1] = m.h;
+      // Do NOT write this.size here. Rewriting node.size every frame from the
+      // live measurement was rewriting the saved size on load and dirtying the
+      // workflow (Vue Compat #18). node.size is set on creation + editor save;
+      // the label is drawn at the measured m below regardless.
 
       ctx.save();
       ctx.globalAlpha = c.opacity;

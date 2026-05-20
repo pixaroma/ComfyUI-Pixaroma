@@ -65,16 +65,41 @@ class PixaromaTextOverlay:
         if text is not None:
             state["text"] = str(text)
 
-        # First-run auto-center. The JS graphToPrompt hook can only
-        # center the text when upstream has imgs[0] available (Load
-        # Image case). For generative chains (KSampler -> VAE Decode ->
-        # Text Overlay), the upstream image doesn't exist yet at submit
-        # time, so the JS hook can't center. Do it here in Python where
-        # the image dims are real. Send the centered position back via
-        # the ui payload so the JS state persists the centered x/y
-        # instead of staying at the (20, 20) default forever.
+        # First-run positioning. The JS graphToPrompt hook can only position
+        # the text when upstream has imgs[0] available (Load Image case). For
+        # generative chains (KSampler -> VAE Decode -> Text Overlay), the
+        # upstream image doesn't exist yet at submit time, so the JS hook
+        # can't position. Do it here in Python where the image dims are real.
+        # Two pending intents (explicit align wins over default auto-center):
+        #   _alignPending      - user clicked a "Position on canvas" button on
+        #                        the node body before dims were known.
+        #   _autoCenterPending - fresh node that has never been centered.
+        # Send the resolved position back via the ui payload so the JS state
+        # persists the x/y instead of staying at the default forever.
         autocentered = None
-        if state.get("_autoCenterPending") and state.get("text"):
+        align_mode = state.get("_alignPending")
+        if align_mode and state.get("text"):
+            try:
+                H, W = image.shape[1], image.shape[2]
+                bbox_w, bbox_h = compute_text_bbox(state)
+                if align_mode == "left":
+                    state["x"] = 0
+                elif align_mode == "centerH":
+                    state["x"] = (W - bbox_w) // 2
+                elif align_mode == "right":
+                    state["x"] = W - bbox_w
+                elif align_mode == "top":
+                    state["y"] = 0
+                elif align_mode == "centerV":
+                    state["y"] = (H - bbox_h) // 2
+                elif align_mode == "bottom":
+                    state["y"] = H - bbox_h
+                state.pop("_alignPending", None)
+                state.pop("_autoCenterPending", None)
+                autocentered = {"x": state.get("x", 0), "y": state.get("y", 0)}
+            except Exception as e:
+                print(f"[Text Overlay Pixaroma] WARN: align-on-canvas failed: {e}")
+        elif state.get("_autoCenterPending") and state.get("text"):
             try:
                 H, W = image.shape[1], image.shape[2]
                 bbox_w, bbox_h = compute_text_bbox(state)

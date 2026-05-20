@@ -92,18 +92,49 @@ export function restoreFromProperties(node) {
   writeState(node, readState(node));
 }
 
-// Find the first PixaromaPromptPack node in the graph (top-level pass first,
-// then subgraph recursion). Used by the queuePrompt patch in index.js.
+// A node only "drives the queue" if it is actually part of the workflow
+// being run. A Prompt Pack node that is muted/bypassed OR not wired to
+// anything must NOT intercept the Run - otherwise an empty leftover node
+// sitting on the canvas blocks every unrelated workflow with the "Paste at
+// least one prompt to run" toast (GitHub issue #39).
+//
+// mode 2 = muted (LiteGraph NEVER), mode 4 = bypass (ComfyUI). Anything
+// else (0 / undefined) counts as active.
+function isPackNodeActive(node) {
+  return node.mode !== 2 && node.mode !== 4;
+}
+
+// Connected = at least one output slot has a live link. Prompt Pack's only
+// output is `text`; if it isn't wired, the node feeds nothing and should be
+// ignored by the queue loop.
+function isPackNodeConnected(node) {
+  const outs = node.outputs || [];
+  for (const o of outs) {
+    if (o && Array.isArray(o.links) && o.links.length > 0) return true;
+  }
+  return false;
+}
+
+function isPackNodeDriving(node) {
+  if (!node) return false;
+  const isClass = node.comfyClass === "PixaromaPromptPack" || node.type === "PixaromaPromptPack";
+  return isClass && isPackNodeActive(node) && isPackNodeConnected(node);
+}
+
+// Find the first PixaromaPromptPack node that actually drives the queue
+// (active + connected), top-level pass first, then subgraph recursion. Used
+// by the queuePrompt patch in index.js. Returns null when no participating
+// node exists, so the patch falls through to a normal single run.
 export function findFirstPromptPackNode(app) {
   const graph = app.graph;
   if (!graph) return null;
   const top = graph._nodes || graph.nodes || [];
   for (const n of top) {
-    if (n?.comfyClass === "PixaromaPromptPack" || n?.type === "PixaromaPromptPack") return n;
+    if (isPackNodeDriving(n)) return n;
   }
   function walk(nodes) {
     for (const n of nodes || []) {
-      if (n?.comfyClass === "PixaromaPromptPack" || n?.type === "PixaromaPromptPack") return n;
+      if (isPackNodeDriving(n)) return n;
       const sub = n?.subgraph?._nodes || n?.subgraph?.nodes;
       if (sub) {
         const hit = walk(sub);

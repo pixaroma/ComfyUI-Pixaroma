@@ -26,7 +26,7 @@ const BRAND = "#f66744";
  *  @param {Function} [opts.onReset] - called with (layer) when Reset is clicked
  *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
-export function createTextEditorPanel({ mount, onChange, onReset }) {
+export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
@@ -91,19 +91,25 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   ui.italicBtn.title = "Italic";
   fontRow.appendChild(ui.italicBtn);
 
-  // Align: 3 icon buttons
-  const alignRow = el("div", "pix-to-row3");
-  root.appendChild(alignRow);
-  const ALIGN_ICONS = {
+  // Text align: 3 icon buttons. This aligns the LINES *within* the text
+  // block relative to each other (left / centered / right) - it does NOT
+  // move the text on the canvas. With a single line of text there is no
+  // visible change, which is exactly what confused users in issue #39, so
+  // the caption + the separate "Position on canvas" row below make the
+  // distinction clear.
+  const ALIGN_ICON = {
     left:   "/pixaroma/assets/icons/ui/align-left.svg",
     center: "/pixaroma/assets/icons/ui/align-center-h.svg",
     right:  "/pixaroma/assets/icons/ui/align-right.svg",
   };
+  root.appendChild(caption("Text align (within block)"));
+  const alignRow = el("div", "pix-to-row3");
+  root.appendChild(alignRow);
   ui.alignChips = ["left", "center", "right"].map((a) => {
     const b = el("button", "pix-to-chip pix-to-align-chip");
-    b.type = "button"; b.dataset.align = a; b.title = `Align ${a}`;
+    b.type = "button"; b.dataset.align = a; b.title = `Text align ${a} (lines within the text block)`;
     const img = document.createElement("img");
-    img.src = ALIGN_ICONS[a]; img.alt = a; img.draggable = false;
+    img.src = ALIGN_ICON[a]; img.alt = a; img.draggable = false;
     b.appendChild(img);
     b.addEventListener("click", () => {
       const l = layerNow(); if (!l) return;
@@ -132,6 +138,47 @@ export function createTextEditorPanel({ mount, onChange, onReset }) {
   ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
   ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
   ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+
+  // Position on canvas: snap the WHOLE text block to a canvas edge / center.
+  // This is the control most users reach for ("move the text to the left/
+  // middle/right of the image"). Only rendered when the owner provides an
+  // onAlignCanvas callback (the owner knows the canvas dimensions + how to
+  // measure the text bbox). Horizontal trio (left / center / right) + vertical
+  // trio (top / middle / bottom).
+  if (typeof onAlignCanvas === "function") {
+    const POS_ICON = {
+      left:    "/pixaroma/assets/icons/ui/align-left.svg",
+      centerH: "/pixaroma/assets/icons/ui/align-center-h.svg",
+      right:   "/pixaroma/assets/icons/ui/align-right.svg",
+      top:     "/pixaroma/assets/icons/ui/align-top.svg",
+      centerV: "/pixaroma/assets/icons/ui/align-center-v.svg",
+      bottom:  "/pixaroma/assets/icons/ui/align-bottom.svg",
+    };
+    const POS_TITLE = {
+      left: "Move text to left edge", centerH: "Center text horizontally", right: "Move text to right edge",
+      top: "Move text to top edge", centerV: "Center text vertically", bottom: "Move text to bottom edge",
+    };
+    root.appendChild(caption("Position on canvas (whole text)"));
+    const posRow = el("div", "pix-to-row6");
+    root.appendChild(posRow);
+    for (const mode of ["left", "centerH", "right", "top", "centerV", "bottom"]) {
+      const b = el("button", "pix-to-chip pix-to-align-chip");
+      b.type = "button"; b.title = POS_TITLE[mode];
+      const img = document.createElement("img");
+      img.src = POS_ICON[mode]; img.alt = mode; img.draggable = false;
+      b.appendChild(img);
+      b.addEventListener("click", () => {
+        const l = layerNow(); if (!l) return;
+        onAlignCanvas(mode);
+        // Momentary action (snap to position), not a persistent mode like
+        // the text-align chips - so flash orange briefly to acknowledge the
+        // press instead of staying lit.
+        b.classList.add("is-flashing");
+        setTimeout(() => b.classList.remove("is-flashing"), 450);
+      });
+      posRow.appendChild(b);
+    }
+  }
 
   // Colors: two clickable cells in one row. Each shows [swatch  LABEL  hex].
   // Click opens the compact color picker.
@@ -251,6 +298,15 @@ function el(tag, className) {
   const e = document.createElement(tag);
   if (className) e.className = className;
   return e;
+}
+
+// Small grey row caption used to disambiguate the two align controls
+// ("Text align" vs "Position on canvas"). Kept intentionally tiny so it
+// doesn't read like a heavy section header (v2 panel is header-light).
+function caption(text) {
+  const c = el("div", "pix-to-caption");
+  c.textContent = text;
+  return c;
 }
 
 function chipBtn(text, className, onClick) {
@@ -575,10 +631,25 @@ function injectCSS() {
     .pix-to-style-btn.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
     .pix-to-italic-btn { font-style: italic; font-family: serif; }
 
+    /* Small row caption (disambiguates Text align vs Position on canvas) */
+    .pix-to-caption {
+      font: 10px ui-sans-serif, system-ui, sans-serif;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin: 2px 0 -2px 1px;
+    }
+
     /* Align row: 3 icon chips, full width */
     .pix-to-row3 {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
+      gap: 3px;
+    }
+    /* Position-on-canvas row: 6 icon chips (H trio + V trio) */
+    .pix-to-row6 {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
       gap: 3px;
     }
 
@@ -597,12 +668,16 @@ function injectCSS() {
     }
     .pix-to-chip:hover { border-color: #666; color: #ddd; }
     .pix-to-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    /* Brief click acknowledgement for the momentary "Position on canvas"
+       buttons (they have no persistent active state). */
+    .pix-to-chip.is-flashing { background: ${BRAND}; border-color: ${BRAND}; }
     .pix-to-align-chip img {
       width: 14px; height: 14px;
       pointer-events: none;
       filter: brightness(0) saturate(100%) invert(75%);
     }
-    .pix-to-align-chip.active img { filter: brightness(0) invert(1); }
+    .pix-to-align-chip.active img,
+    .pix-to-align-chip.is-flashing img { filter: brightness(0) invert(1); }
 
     /* 2-column grid for number inputs + colors */
     .pix-to-grid2 {

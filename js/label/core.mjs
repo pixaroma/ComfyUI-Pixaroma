@@ -35,6 +35,15 @@ export function saveCfg(node, cfg) {
     }
     if (w.callback) w.callback(w.value);
   }
+  // Resize the node to fit the edited content. This is an explicit user edit,
+  // so a size change is legitimate (the node no longer re-measures on load -
+  // see setupLabel in index.js - so this is the place that keeps the box
+  // fitted to the text).
+  const m = measureLabel(cfg);
+  if (node.size) {
+    node.size[0] = Math.max(m.w, 60);
+    node.size[1] = Math.max(m.h, 30);
+  }
   if (app.graph) {
     app.graph.setDirtyCanvas(true, true);
     if (typeof app.graph.change === "function") app.graph.change();

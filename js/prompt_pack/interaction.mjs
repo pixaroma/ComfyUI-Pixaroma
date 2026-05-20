@@ -45,15 +45,18 @@ export function wireEvents(node, root) {
 
   // Block ComfyUI / LiteGraph keyboard shortcuts from leaking out of the
   // textarea (e.g. Q for queue, Delete for node delete, Ctrl+Enter, etc.).
-  // stopPropagation on keydown is enough - ComfyUI listens at document level.
+  // Must be stopImmediatePropagation, NOT stopPropagation - ComfyUI/LiteGraph
+  // listen at the document level and stopPropagation alone leaks (Load Image
+  // Pattern #6; matches Prompt Stack / Prompt Multi).
   els.ta.addEventListener("keydown", (e) => {
-    e.stopPropagation();
+    e.stopImmediatePropagation();
   });
 
   // Prevent the canvas from grabbing focus when the user clicks inside the
   // textarea - same defensive pattern used in other Pixaroma nodes.
+  els.ta.addEventListener("pointerdown", (e) => e.stopImmediatePropagation());
   els.ta.addEventListener("mousedown", (e) => {
-    e.stopPropagation();
+    e.stopImmediatePropagation();
   });
 
   // Copy all - dumps the whole textarea to the clipboard. Mirrors Text
