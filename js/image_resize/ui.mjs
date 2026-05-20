@@ -57,8 +57,8 @@ export function injectCSS() {
     .pix-ir-root .pix-li-spin-down::before{
       border:none;width:auto;height:auto;font-size:8px;line-height:1;
       transform:translate(-50%,-50%);}
-    .pix-ir-root .pix-li-spin-up::before{content:"\25B2";}
-    .pix-ir-root .pix-li-spin-down::before{content:"\25BC";}
+    .pix-ir-root .pix-li-spin-up::before{content:"▲";}
+    .pix-ir-root .pix-li-spin-down::before{content:"▼";}
   `;
   const s = document.createElement("style");
   s.id = "pix-ir-css";
