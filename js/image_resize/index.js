@@ -185,6 +185,26 @@ function applyInlineLabel(panel, mode) {
   num.classList.add("pix-ir-num-labeled");
 }
 
+// Fit / Crop (W x H) panels: keep the mode title as a centered light header,
+// drop the per-field WIDTH/HEIGHT labels and put short W / H labels INSIDE each
+// input, and remove the redundant size text under the aspect rectangle.
+function applyWHLayout(panel) {
+  panel.querySelector(".pix-li-panel-label")?.classList.add("pix-ir-wh-header");
+  const tags = ["W", "H"];
+  panel.querySelectorAll(".pix-li-wh-field").forEach((f, i) => {
+    f.querySelector(".pix-li-wh-label")?.remove();
+    const num = f.querySelector(".pix-li-numinput");
+    if (num && !num.querySelector(".pix-ir-inline-label")) {
+      const lab = document.createElement("span");
+      lab.className = "pix-ir-inline-label";
+      lab.textContent = tags[i] || "";
+      num.insertBefore(lab, num.firstChild);
+      num.classList.add("pix-ir-num-labeled");
+    }
+  });
+  panel.querySelector(".pix-li-wh-rect-label")?.remove();
+}
+
 function renderUI(node) {
   const root = node._pixIrRoot;
   // Render even when the root is not yet attached to the document: on a fresh
@@ -202,6 +222,7 @@ function renderUI(node) {
     () => node.setDirtyCanvas(true, true), STATE_PROP);
   if (panel) {
     applyInlineLabel(panel, state.mode);
+    if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
     root.appendChild(panel);
   }
 

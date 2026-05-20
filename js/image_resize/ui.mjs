@@ -66,6 +66,13 @@ export function injectCSS() {
        is removed in JS to save vertical space. */
     .pix-ir-root .pix-ir-inline-label{display:flex;align-items:center;color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;padding:0 4px 0 9px;white-space:nowrap;flex:none;}
     .pix-ir-root .pix-ir-num-labeled input{text-align:right !important;padding-right:8px !important;}
+    /* Fit / Crop (W x H) panel: dark swap button, center-aligned row (the
+       above-field labels are removed in JS), centered light-gray title, and a
+       more-visible aspect rectangle. */
+    .pix-ir-root .pix-li-swap{background:#1d1d1d !important;}
+    .pix-ir-root .pix-li-wh-row{align-items:center;}
+    .pix-ir-root .pix-ir-wh-header{text-align:center !important;color:#d6d6d6 !important;}
+    .pix-ir-root .pix-li-wh-rect{background:rgba(246,103,68,0.35);border-width:2px;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. Drop the internal divider + match the
        spinner fill so the field reads as ONE uniform dark box (no "two
