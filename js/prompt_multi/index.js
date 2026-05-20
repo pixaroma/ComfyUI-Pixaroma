@@ -79,6 +79,7 @@ function paintPill(ctx, r, label, active, hover) {
 // while a pill is hovered. Same pattern as Prompt Pack.
 let _tooltipEl = null;
 let _tooltipMoveHandler = null;
+let _tooltipNode = null;
 function ensureTooltip() {
   if (_tooltipEl) return _tooltipEl;
   _tooltipEl = document.createElement("div");
@@ -102,12 +103,22 @@ function ensureTooltip() {
   document.body.appendChild(_tooltipEl);
   return _tooltipEl;
 }
-function showTooltip(text) {
+function showTooltip(text, node) {
   const el = ensureTooltip();
   el.textContent = text;
   el.style.display = "block";
+  _tooltipNode = node || null;
   if (!_tooltipMoveHandler) {
     _tooltipMoveHandler = (e) => {
+      // Pills are painted on the canvas, so the cursor must be over the canvas
+      // element to be over a pill. Once it moves onto a DOM widget (text rows)
+      // or off the node, the canvas stops redrawing and the draw-loop hover
+      // check can't fire - so hide here instead.
+      const canvasEl = app.canvas?.canvas;
+      if (canvasEl && e.target !== canvasEl) {
+        hideTooltip();
+        return;
+      }
       el.style.left = `${e.clientX + 14}px`;
       el.style.top = `${e.clientY + 18}px`;
     };
@@ -119,6 +130,12 @@ function hideTooltip() {
   if (_tooltipMoveHandler) {
     document.removeEventListener("mousemove", _tooltipMoveHandler);
     _tooltipMoveHandler = null;
+  }
+  // Reset the hovered node's pill state so the draw-loop transition check
+  // re-fires showTooltip when the cursor returns to the pill.
+  if (_tooltipNode) {
+    _tooltipNode._pixPmHoverPill = null;
+    _tooltipNode = null;
   }
 }
 
@@ -346,9 +363,9 @@ app.registerExtension({
       if (this._pixPmHoverPill !== newHover) {
         this._pixPmHoverPill = newHover;
         if (newHover === "queue") {
-          showTooltip("Queue Text: click Run and the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.");
+          showTooltip("Queue Text: click Run and the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode.", this);
         } else if (newHover === "list") {
-          showTooltip("List Prompts: click Run and the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.");
+          showTooltip("List Prompts: click Run and the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.", this);
         } else {
           hideTooltip();
         }

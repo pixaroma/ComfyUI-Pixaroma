@@ -64,6 +64,7 @@ function insideRect(pos, r) {
 // lazily on first use; visibility is gated by show/hideTooltip calls.
 let _tooltipEl = null;
 let _tooltipMoveHandler = null;
+let _tooltipNode = null;
 
 function ensureTooltip() {
   if (_tooltipEl) return _tooltipEl;
@@ -89,12 +90,22 @@ function ensureTooltip() {
   return _tooltipEl;
 }
 
-function showTooltip(text) {
+function showTooltip(text, node) {
   const el = ensureTooltip();
   el.textContent = text;
   el.style.display = "block";
+  _tooltipNode = node || null;
   if (!_tooltipMoveHandler) {
     _tooltipMoveHandler = (e) => {
+      // The pills are painted on the LiteGraph canvas, so the cursor must be
+      // over the canvas element to be over a pill. The moment it moves onto a
+      // DOM widget (the text box) or off the node, the canvas stops redrawing
+      // and the draw-loop hover check can't fire - so hide here instead.
+      const canvasEl = app.canvas?.canvas;
+      if (canvasEl && e.target !== canvasEl) {
+        hideTooltip();
+        return;
+      }
       el.style.left = `${e.clientX + 14}px`;
       el.style.top = `${e.clientY + 18}px`;
     };
@@ -107,6 +118,13 @@ function hideTooltip() {
   if (_tooltipMoveHandler) {
     document.removeEventListener("mousemove", _tooltipMoveHandler);
     _tooltipMoveHandler = null;
+  }
+  // Reset the hovered node's pill state so the draw-loop transition check
+  // (this._pixPpHoverPill !== newHover) re-fires showTooltip when the cursor
+  // returns to the pill. Without this the tooltip would stay hidden on return.
+  if (_tooltipNode) {
+    _tooltipNode._pixPpHoverPill = null;
+    _tooltipNode = null;
   }
 }
 
@@ -245,9 +263,9 @@ app.registerExtension({
       if (this._pixPpHoverPill !== newHover) {
         this._pixPpHoverPill = newHover;
         if (newHover === "paragraph") {
-          showTooltip("Paragraph mode: each prompt is separated by a blank line. Best for long, multi-line prompts.");
+          showTooltip("Paragraph mode: each prompt is separated by a blank line. Best for long, multi-line prompts.", this);
         } else if (newHover === "line") {
-          showTooltip("Line mode: one prompt per line. Best for short prompts or quick lists.");
+          showTooltip("Line mode: one prompt per line. Best for short prompts or quick lists.", this);
         } else {
           hideTooltip();
         }
