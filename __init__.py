@@ -52,6 +52,8 @@ from .nodes.node_remove_background import NODE_CLASS_MAPPINGS as _MAPS_REMOVE_BG
 from .nodes.node_remove_background import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_REMOVE_BG
 from .nodes.node_text_overlay import NODE_CLASS_MAPPINGS as _MAPS_TEXT_OVERLAY
 from .nodes.node_text_overlay import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_OVERLAY
+from .nodes.node_image_resize import NODE_CLASS_MAPPINGS as _MAPS_IMAGE_RESIZE
+from .nodes.node_image_resize import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_IMAGE_RESIZE
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -91,6 +93,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SHOW_TEXT,
     **_MAPS_REMOVE_BG,
     **_MAPS_TEXT_OVERLAY,
+    **_MAPS_IMAGE_RESIZE,
 }
 
 # combine all node display name mappings
@@ -122,6 +125,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SHOW_TEXT,
     **_NAMES_REMOVE_BG,
     **_NAMES_TEXT_OVERLAY,
+    **_NAMES_IMAGE_RESIZE,
 }
 
 # web directory for loading js files
