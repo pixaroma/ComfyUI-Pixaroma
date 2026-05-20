@@ -20,7 +20,7 @@ const DEFAULT_STATE = {
   preview_open: false,
 };
 const WH_MODES = new Set(["fit_inside", "cover"]);
-const MIN_W = 320; // minimum node width — refine via the console sizer if needed
+const MIN_W = 334; // minimum node width (user-chosen via the console sizer)
 
 function readState(node) {
   const v = node.properties?.[STATE_PROP];
@@ -332,8 +332,8 @@ app.registerExtension({
 
       // ── two-row INPUT / OUTPUT block ──
       const rows = [
-        { label: "INPUT", w: info.inW, h: info.inH },
-        { label: "OUTPUT", w: info.outW, h: info.outH },
+        { label: "IN", w: info.inW, h: info.inH },
+        { label: "OUT", w: info.outW, h: info.outH },
       ];
       const labelFont = `9px ${fam}`;
       const dimsFont = `bold 12px ${fam}`;
@@ -343,7 +343,7 @@ app.registerExtension({
       // Fixed column widths (sized to reference strings, NOT the live values)
       // so the panel never grows / shifts when the numbers or ratio change.
       ctx.font = labelFont;
-      const labelW = ctx.measureText("OUTPUT").width;
+      const labelW = ctx.measureText("OUT").width;
       ctx.font = dimsFont;
       const dimsW = ctx.measureText("00000×00000").width;
       ctx.font = ratioFont;
