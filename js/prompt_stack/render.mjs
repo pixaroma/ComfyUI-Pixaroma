@@ -288,13 +288,20 @@ export function renderRows(node, root, rowHandlers) {
     const rowEl = document.createElement("div");
     rowEl.className = "pix-ps-row" + (row.enabled ? "" : " is-disabled");
     rowEl.dataset.id = row.id;
-    rowEl.draggable = true;
+    // The HANDLE is the drag source, NOT the whole row. If the row itself is
+    // draggable, the browser reports the row as the drag source (dragstart
+    // e.target = the row), so the "only drag from the handle" gate can never
+    // match and the drag is always cancelled. Making just the handle
+    // draggable means e.target IS the handle, the gate passes, and dragging
+    // in the textarea still selects text normally.
+    rowEl.draggable = false;
 
     const head = document.createElement("div");
     head.className = "pix-ps-row-head";
 
     const handle = document.createElement("span");
     handle.className = "pix-ps-handle";
+    handle.draggable = true;
     handle.textContent = "⋮⋮"; // two vertical ellipses
     handle.title = "Drag to reorder";
     head.appendChild(handle);
