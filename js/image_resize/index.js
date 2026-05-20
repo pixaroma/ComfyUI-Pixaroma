@@ -79,11 +79,18 @@ function refreshReadout(node) {
   const cached = node.properties?.pixIrDims;       // {in_w,in_h,out_w,out_h} from last run
   const live = getInputDims(node);
   if (live) {
+    // Upstream image size is known (e.g. a loader feeding in) — predict live.
     const { w, h } = previewResize(live.w, live.h, state);
     ro.innerHTML = `<b>${live.w}×${live.h}</b> → <b>${w}×${h}</b>`;
   } else if (cached) {
+    // No live size, but we learned it from the last run.
     ro.innerHTML = `<b>${cached.in_w}×${cached.in_h}</b> → <b>${cached.out_w}×${cached.out_h}</b>`;
+  } else if (!isWired(node, "image")) {
+    // Nothing connected yet — guide the user.
+    ro.textContent = "Connect an image";
   } else {
+    // Wired to something whose size isn't known until it runs (e.g. a
+    // mid-workflow image that hasn't been generated yet).
     ro.textContent = "Run once to read size";
   }
 }
@@ -247,6 +254,9 @@ app.registerExtension({
         if (connected) maybeAutoSwitch(this); // user intent only (Vue Compat #17)
         renderUI(this);
         refit(this);
+        // Upstream loader may populate its image a tick after the wire lands;
+        // re-read the size shortly after so the readout updates without a run.
+        setTimeout(() => refreshReadout(this), 200);
       }
       return r;
     };
