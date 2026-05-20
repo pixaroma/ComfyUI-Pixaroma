@@ -54,7 +54,10 @@ export function injectCSS() {
        gray. !important so it beats the shared .pix-li-numinput rule regardless
        of stylesheet injection order. */
     .pix-ir-root .pix-li-numinput{background:#1d1d1d !important;}
-    .pix-ir-root .pix-li-numinput input{background:transparent !important;}
+    /* The shared .pix-li-panel input[type="text"] rule gives the input its own
+       border + radius, drawing a second box INSIDE the wrapper ("two strokes").
+       Strip it so only the wrapper draws the box. */
+    .pix-ir-root .pix-li-numinput input{background:transparent !important;border:none !important;border-radius:0 !important;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. Drop the internal divider + match the
        spinner fill so the field reads as ONE uniform dark box (no "two
