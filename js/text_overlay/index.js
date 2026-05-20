@@ -40,14 +40,9 @@ app.registerExtension({
       try {
         const r = origConfigure?.apply(this, arguments);
         ensureValidState(this);
-        // Anchor the panel's stable height to the SAVED node height so the
-        // getMinHeight/getMaxHeight measurement (which jitters +/-2px from
-        // font/layout timing) returns the saved value and doesn't rewrite
-        // node.size on load (the 470 => 472 dirty). Real content changes still
-        // update it via the HEIGHT_TOL check in panelHeight().
-        if (this.size && typeof this.size[1] === "number") {
-          this._textOverlayStableH = this.size[1];
-        }
+        // node.properties.textOverlayPanelH was restored by configure above;
+        // panelHeight() returns it verbatim, so node.size stays exactly as
+        // saved on load (no measurement-jitter rewrite, no false "modified").
         // After configure, push current state into the body panel UI
         if (this._textOverlayBodyPanel) {
           this._textOverlayBodyPanel.setLayer(this.properties[STATE_PROP]);
@@ -155,26 +150,30 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayMeasureHeight = measureContentHeight;
 
-  // Stable panel height. measureContentHeight reads the live DOM, which can
-  // come back 1-2px different at save vs reload (font/layout sub-pixel
-  // rounding) - e.g. 470 saved, 472 measured on reopen. Pinning getMinHeight/
-  // getMaxHeight straight to that jitter rewrites node.size on a plain load
-  // and falsely flags the workflow "modified" (confirmed: size.1 470 => 472).
-  // So we hold a sticky value (anchored to the saved size in onConfigure) and
-  // only adopt a new measurement when it moves by more than a few px (a real
-  // content change like the text-lock hint appearing). HEIGHT_TOL absorbs the
-  // jitter without masking genuine resizes.
-  const HEIGHT_TOL = 8;
+  // PERSISTED panel height. measureContentHeight reads the live DOM, which
+  // comes back up to ~14px different at save vs reload (font/layout timing) -
+  // pinning getMinHeight/getMaxHeight to that jitter rewrote node.size on a
+  // plain load and falsely flagged the workflow "modified" (confirmed:
+  // size.1 458 => 472). The fix: store the height in node.properties (which
+  // LiteGraph serializes into the workflow), so it's IDENTICAL on every load
+  // and node.size never changes on reopen. It's (re)captured only on first
+  // creation (deferred below, after layout settles) and on a real content
+  // change (the text-lock hint appearing/disappearing -> _recomputeHeight).
   function panelHeight() {
-    const measured = measureContentHeight();
-    if (node._textOverlayStableH == null) {
-      node._textOverlayStableH = measured;
-    } else if (Math.abs(measured - node._textOverlayStableH) > HEIGHT_TOL) {
-      node._textOverlayStableH = measured;
+    const props = node.properties;
+    if (props && typeof props.textOverlayPanelH === "number" && props.textOverlayPanelH > 0) {
+      return props.textOverlayPanelH;
     }
-    return node._textOverlayStableH;
+    // Fresh node not yet captured: measure live (transient is fine on a brand
+    // new node; the deferred capture below stores a settled value).
+    return measureContentHeight();
   }
   node._textOverlayPanelHeight = panelHeight;
+  // Recompute + persist after a genuine content change (hint toggle).
+  node._textOverlayRecomputeHeight = () => {
+    const props = node.properties || (node.properties = {});
+    props.textOverlayPanelH = measureContentHeight();
+  };
 
   node.addDOMWidget("pix_text_overlay_ui", "div", root, {
     canvasOnly: true,
@@ -217,6 +216,20 @@ function setupTextOverlayNode(node) {
   queueMicrotask(() => {
     bodyPanel.setLayer(node.properties[STATE_PROP]);
     refreshTextLock(node);
+    // Fresh-node ONLY: once layout + fonts settle, capture the panel height
+    // and persist it so future loads are byte-identical. Loaded workflows
+    // already have textOverlayPanelH restored by configure - never overwrite
+    // it here or the dirty-on-load returns. Double rAF lets the panel settle.
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const props = node.properties || (node.properties = {});
+      if (typeof props.textOverlayPanelH !== "number") {
+        props.textOverlayPanelH = node._textOverlayMeasureHeight();
+        if (typeof node.computeSize === "function" && node.size) {
+          node.size[1] = node.computeSize()[1];
+        }
+        node.setDirtyCanvas?.(true, true);
+      }
+    }));
   });
 }
 
@@ -278,6 +291,9 @@ function refreshTextLock(node, allowResize = false) {
   // total node height (chrome + slots + widgets) so we don't need
   // to guess the chrome offset.
   requestAnimationFrame(() => {
+    // Real content change (hint shown/hidden): refresh the persisted panel
+    // height so computeSize() reflects the new content before we snap size.
+    node._textOverlayRecomputeHeight?.();
     if (typeof node.computeSize === "function" && node.size) {
       const min = node.computeSize();
       if (Array.isArray(min) && min.length === 2 && typeof min[1] === "number") {
