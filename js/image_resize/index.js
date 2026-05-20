@@ -235,7 +235,7 @@ function renderUI(node) {
   root.appendChild(chips);
 
   const panel = buildModePanel(state.mode, node, state, writeState,
-    () => node.setDirtyCanvas(true, true), STATE_PROP, { previewMaxW: 118, previewMaxH: 76 });
+    () => node.setDirtyCanvas(true, true), STATE_PROP, { previewMaxW: 134, previewMaxH: 86 });
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
