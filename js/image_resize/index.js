@@ -111,15 +111,14 @@ function aspectRectDims(w, h, maxW, maxH) {
   return { rw: Math.max(2, Math.round(rw)), rh: Math.max(2, Math.round(rh)) };
 }
 
-// Square top, rounded bottom corners — the "tab dropping from the title bar".
-function bottomRoundedPath(ctx, x, y, w, h, r) {
+// Rounded rectangle (all corners).
+function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + w, y);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
-  ctx.lineTo(x + r, y + h);
-  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
 
@@ -374,82 +373,67 @@ app.registerExtension({
       const info = getReadoutInfo(this);
       const cx = this.size[0] / 2;
       const fam = "ui-sans-serif, system-ui, sans-serif";
-      const labelFont = `9px ${fam}`;
-      const dimsFont = `bold 12px ${fam}`;
-      const ratioFont = `9px ${fam}`;
-      const gap = 7, rectMaxW = 16, rectMaxH = 12, padX = 9;
+      const capFont = `8px ${fam}`;          // INPUT / OUTPUT captions
+      const dimsFont = `bold 11px ${fam}`;
+      const ratioFont = `8px ${fam}`;
+      const gap = 6, rectMaxW = 16, rectMaxH = 12, padX = 12;
       ctx.save();
       ctx.textBaseline = "middle";
 
-      // Fixed-size tab that drops straight down from the title bar (square top,
-      // rounded bottom) to ~the height slot row — a dark recessed notch. Column
-      // widths use reference strings so the tab never resizes with the values.
-      ctx.font = labelFont;
-      const labelW = ctx.measureText("OUT").width;
+      // Rounded rectangle (no stroke) spanning the image-input top to the
+      // height-input bottom. Fixed width via reference column strings so it
+      // never resizes with the values.
       ctx.font = dimsFont;
       const dimsW = ctx.measureText("00000×00000").width;
       ctx.font = ratioFont;
       const ratioW = ctx.measureText("~1:1.50").width;
-      const boxW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW + padX * 2;
+      const dataW = dimsW + gap + rectMaxW + gap + ratioW;
+      const boxW = dataW + padX * 2;
       const boxLeft = cx - boxW / 2;
-      const BOX_TOP = 0, BOX_BOTTOM = 86;
-      const boxH = BOX_BOTTOM - BOX_TOP, boxR = 12;
-      bottomRoundedPath(ctx, boxLeft, BOX_TOP, boxW, boxH, boxR);
+      const BOX_TOP = 4, BOX_BOTTOM = 84;
+      roundRectPath(ctx, boxLeft, BOX_TOP, boxW, BOX_BOTTOM - BOX_TOP, 12);
       ctx.fillStyle = "#1d1d1d";
       ctx.fill();
-      // Subtle #444 outline like the buttons — sides + rounded bottom only, top
-      // left open so the tab merges seamlessly into the title bar.
-      ctx.beginPath();
-      ctx.moveTo(boxLeft + 0.5, BOX_TOP);
-      ctx.lineTo(boxLeft + 0.5, BOX_BOTTOM - boxR);
-      ctx.arcTo(boxLeft + 0.5, BOX_BOTTOM - 0.5, boxLeft + boxR, BOX_BOTTOM - 0.5, boxR);
-      ctx.lineTo(boxLeft + boxW - boxR, BOX_BOTTOM - 0.5);
-      ctx.arcTo(boxLeft + boxW - 0.5, BOX_BOTTOM - 0.5, boxLeft + boxW - 0.5, BOX_BOTTOM - boxR, boxR);
-      ctx.lineTo(boxLeft + boxW - 0.5, BOX_TOP);
-      ctx.strokeStyle = "#444";
-      ctx.lineWidth = 1;
-      ctx.stroke();
-      const midY = (BOX_TOP + BOX_BOTTOM) / 2;
 
       if (info.mode === "msg") {
         ctx.font = `13px ${fam}`;
         ctx.textAlign = "center";
         ctx.fillStyle = BRAND;
-        ctx.fillText(info.text, cx, midY);
+        ctx.fillText(info.text, cx, (BOX_TOP + BOX_BOTTOM) / 2);
         ctx.restore();
         return r;
       }
 
-      const rows = [
-        { label: "IN", w: info.inW, h: info.inH },
-        { label: "OUT", w: info.outW, h: info.outH },
-      ];
-      const xLabel = boxLeft + padX;
-      const xDims = xLabel + labelW + gap;
-      const xRect = xDims + dimsW + gap;
-      const xRatio = xRect + rectMaxW + gap;
-      const rowGap = 24;
-      rows.forEach((o, i) => {
-        const y = midY - rowGap / 2 + i * rowGap;
-        ctx.textAlign = "left";
-        ctx.font = labelFont;
-        ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(o.label, xLabel, y);
+      // One data row centered at (cx, y): dims (right-aligned) + ratio rect + ratio.
+      const drawData = (y, w, h) => {
+        const startX = cx - dataW / 2;
         ctx.font = dimsFont;
         ctx.fillStyle = BRAND;
-        ctx.fillText(`${o.w}×${o.h}`, xDims, y);
-        const { rw, rh } = aspectRectDims(o.w, o.h, rectMaxW, rectMaxH);
+        ctx.textAlign = "right";
+        ctx.fillText(`${w}×${h}`, startX + dimsW, y);
+        const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
         ctx.strokeStyle = "rgba(200,200,200,0.7)";
         ctx.lineWidth = 1;
         ctx.strokeRect(
-          Math.round(xRect + (rectMaxW - rw) / 2) + 0.5,
+          Math.round(startX + dimsW + gap + (rectMaxW - rw) / 2) + 0.5,
           Math.round(y - rh / 2) + 0.5,
           rw, rh,
         );
         ctx.font = ratioFont;
         ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(o.w, o.h), xRatio, y);
-      });
+        ctx.textAlign = "left";
+        ctx.fillText(ratioLabel(w, h), startX + dimsW + gap + rectMaxW + gap, y);
+      };
+
+      ctx.textAlign = "center";
+      ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
+      ctx.fillText("INPUT", cx, 15);
+      drawData(30, info.inW, info.inH);
+      ctx.font = `10px ${fam}`; ctx.fillStyle = "#9a9a9a";
+      ctx.fillText("▾", cx, 44);
+      ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
+      ctx.fillText("OUTPUT", cx, 58);
+      drawData(73, info.outW, info.outH);
 
       ctx.restore();
       return r;
