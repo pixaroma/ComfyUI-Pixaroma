@@ -72,10 +72,13 @@ export function injectCSS() {
     .pix-ir-root .pix-li-swap{background:#1d1d1d !important;}
     .pix-ir-root .pix-ir-wh-header{text-align:center !important;color:#d6d6d6 !important;}
     .pix-ir-root .pix-li-wh-rect{background:rgba(246,103,68,0.35);border-width:2px;}
-    .pix-ir-root .pix-ir-wh-grid{display:flex;gap:12px;align-items:center;}
-    .pix-ir-root .pix-ir-wh-col{flex:1;display:flex;flex-direction:column;gap:6px;min-width:0;}
+    /* Fixed 50/50 columns: the W/H stack is always the left half (extends to
+       center, ~aligned with the first 2 buttons) so the inputs never resize
+       with the rect; the rect is centered in the right half. */
+    .pix-ir-root .pix-ir-wh-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center;}
+    .pix-ir-root .pix-ir-wh-col{display:flex;flex-direction:column;gap:6px;min-width:0;}
     .pix-ir-root .pix-ir-wh-col .pix-li-swap{width:100%;height:24px;align-self:auto;}
-    .pix-ir-root .pix-ir-wh-grid .pix-li-wh-preview{flex:none;margin-top:0;}
+    .pix-ir-root .pix-ir-wh-grid .pix-li-wh-preview{margin-top:0;justify-content:center;}
     /* Solid filled triangle arrows (▲▼) like the chosen mockup, replacing the
        shared outline-chevron carets. Drop the internal divider + match the
        spinner fill so the field reads as ONE uniform dark box (no "two
