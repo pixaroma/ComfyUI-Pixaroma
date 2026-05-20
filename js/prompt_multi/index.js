@@ -455,16 +455,47 @@ app.graphToPrompt = async function (...args) {
 //
 // If no Prompt Multi node exists, the patch falls through to the original.
 
+// A node only "drives the queue" if it is actually part of the workflow
+// being run. A Prompt Multi node that is muted/bypassed OR not wired to
+// anything must NOT intercept the Run - otherwise a leftover node sitting on
+// the canvas with no enabled rows blocks every unrelated workflow with the
+// "Enable at least one non-empty prompt to run" toast (GitHub issue #39).
+//
+// mode 2 = muted (LiteGraph NEVER), mode 4 = bypass (ComfyUI). Anything else
+// (0 / undefined) counts as active.
+function isMultiNodeActive(node) {
+  return node.mode !== 2 && node.mode !== 4;
+}
+
+// Connected = at least one output slot (text or prompts) has a live link.
+// An unwired Prompt Multi feeds nothing and should be ignored by the loop.
+function isMultiNodeConnected(node) {
+  const outs = node.outputs || [];
+  for (const o of outs) {
+    if (o && Array.isArray(o.links) && o.links.length > 0) return true;
+  }
+  return false;
+}
+
+function isMultiNodeDriving(node) {
+  if (!node) return false;
+  const isClass = node.comfyClass === "PixaromaPromptMulti" || node.type === "PixaromaPromptMulti";
+  return isClass && isMultiNodeActive(node) && isMultiNodeConnected(node);
+}
+
+// Find the first PixaromaPromptMulti node that actually drives the queue
+// (active + connected). Returns null when no participating node exists, so
+// the patch falls through to a normal single run.
 function findFirstPromptMultiNode() {
   const graph = app.graph;
   if (!graph) return null;
   const top = graph._nodes || graph.nodes || [];
   for (const n of top) {
-    if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+    if (isMultiNodeDriving(n)) return n;
   }
   function walk(nodes) {
     for (const n of nodes || []) {
-      if (n?.comfyClass === "PixaromaPromptMulti" || n?.type === "PixaromaPromptMulti") return n;
+      if (isMultiNodeDriving(n)) return n;
       const sub = n?.subgraph?._nodes || n?.subgraph?.nodes;
       if (sub) {
         const hit = walk(sub);
