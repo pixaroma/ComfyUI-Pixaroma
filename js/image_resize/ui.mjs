@@ -53,7 +53,10 @@ export function injectCSS() {
     /* Dark input fields (#1d1d1d) to match the buttons, not the lighter body
        gray. !important so it beats the shared .pix-li-numinput rule regardless
        of stylesheet injection order. */
-    .pix-ir-root .pix-li-numinput{background:#1d1d1d !important;}
+    .pix-ir-root .pix-li-numinput{background:#1d1d1d !important;align-items:center;min-height:28px;}
+    /* keep the arrow column full-height even though the row centers its items */
+    .pix-ir-root .pix-li-numinput .pix-li-spin{align-self:stretch;}
+    .pix-ir-root .pix-li-numinput input{line-height:1.2;}
     /* The shared .pix-li-panel input[type="text"] rule gives the input its own
        border + radius, drawing a second box INSIDE the wrapper ("two strokes").
        Strip it so only the wrapper draws the box. */
