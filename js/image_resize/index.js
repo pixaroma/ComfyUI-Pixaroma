@@ -111,13 +111,15 @@ function aspectRectDims(w, h, maxW, maxH) {
   return { rw: Math.max(2, Math.round(rw)), rh: Math.max(2, Math.round(rh)) };
 }
 
-function roundRectPath(ctx, x, y, w, h, r) {
+// Square top, rounded bottom corners — the "tab dropping from the title bar".
+function bottomRoundedPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
+  ctx.moveTo(x, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
   ctx.closePath();
 }
 
@@ -334,70 +336,51 @@ app.registerExtension({
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
       const info = getReadoutInfo(this);
       const cx = this.size[0] / 2;
-      const cy = 44;
       const fam = "ui-sans-serif, system-ui, sans-serif";
-      ctx.save();
-      ctx.textBaseline = "middle";
-
-      if (info.mode === "msg") {
-        ctx.font = `11px ${fam}`;
-        const tw = ctx.measureText(info.text).width;
-        const padX = 10, padY = 6;
-        const bw = tw + padX * 2, bh = 22;
-        roundRectPath(ctx, cx - bw / 2, cy - bh / 2, bw, bh, bh / 2);
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        ctx.fill();
-        ctx.textAlign = "center";
-        ctx.fillStyle = BRAND;
-        ctx.fillText(info.text, cx, cy);
-        ctx.restore();
-        return r;
-      }
-
-      // ── two-row INPUT / OUTPUT block ──
-      const rows = [
-        { label: "IN", w: info.inW, h: info.inH },
-        { label: "OUT", w: info.outW, h: info.outH },
-      ];
       const labelFont = `9px ${fam}`;
       const dimsFont = `bold 12px ${fam}`;
       const ratioFont = `9px ${fam}`;
-      const gap = 7, rectMaxW = 16, rectMaxH = 12;
+      const gap = 7, rectMaxW = 16, rectMaxH = 12, padX = 9;
+      ctx.save();
+      ctx.textBaseline = "middle";
 
-      // Fixed column widths (sized to reference strings, NOT the live values)
-      // so the panel never grows / shifts when the numbers or ratio change.
+      // Fixed-size tab that drops straight down from the title bar (square top,
+      // rounded bottom) to ~the height slot row — a dark recessed notch. Column
+      // widths use reference strings so the tab never resizes with the values.
       ctx.font = labelFont;
       const labelW = ctx.measureText("OUT").width;
       ctx.font = dimsFont;
       const dimsW = ctx.measureText("00000×00000").width;
       ctx.font = ratioFont;
       const ratioW = ctx.measureText("~1:1.50").width;
-
-      const padX = 9, padY = 6, rowH = 17;
-      const contentW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW;
-      const bw = contentW + padX * 2;
-      const bh = rows.length * rowH + padY * 2;
-
-      // Shrink the whole block uniformly if it would crowd the slot labels.
-      const avail = this.size[0] - 130;
-      const s = Math.min(1, avail / bw);
-      ctx.translate(cx, cy);
-      ctx.scale(s, s);
-
-      const left = -bw / 2, top = -bh / 2;
-      // Dark recessed "notch" look (like a phone camera cutout): darker fill,
-      // generously rounded corners.
-      roundRectPath(ctx, left, top, bw, bh, 12);
+      const boxW = labelW + gap + dimsW + gap + rectMaxW + gap + ratioW + padX * 2;
+      const boxLeft = cx - boxW / 2;
+      const BOX_TOP = 0, BOX_BOTTOM = 86;
+      bottomRoundedPath(ctx, boxLeft, BOX_TOP, boxW, BOX_BOTTOM - BOX_TOP, 12);
       ctx.fillStyle = "rgba(0,0,0,0.5)";
       ctx.fill();
+      const midY = (BOX_TOP + BOX_BOTTOM) / 2;
 
-      const xLabel = left + padX;
+      if (info.mode === "msg") {
+        ctx.font = `11px ${fam}`;
+        ctx.textAlign = "center";
+        ctx.fillStyle = BRAND;
+        ctx.fillText(info.text, cx, midY);
+        ctx.restore();
+        return r;
+      }
+
+      const rows = [
+        { label: "IN", w: info.inW, h: info.inH },
+        { label: "OUT", w: info.outW, h: info.outH },
+      ];
+      const xLabel = boxLeft + padX;
       const xDims = xLabel + labelW + gap;
       const xRect = xDims + dimsW + gap;
       const xRatio = xRect + rectMaxW + gap;
-
+      const rowGap = 24;
       rows.forEach((o, i) => {
-        const y = top + padY + rowH * i + rowH / 2;
+        const y = midY - rowGap / 2 + i * rowGap;
         ctx.textAlign = "left";
         ctx.font = labelFont;
         ctx.fillStyle = "#9a9a9a";
@@ -405,7 +388,6 @@ app.registerExtension({
         ctx.font = dimsFont;
         ctx.fillStyle = BRAND;
         ctx.fillText(`${o.w}×${o.h}`, xDims, y);
-        // ratio rectangle
         const { rw, rh } = aspectRectDims(o.w, o.h, rectMaxW, rectMaxH);
         ctx.strokeStyle = "rgba(200,200,200,0.7)";
         ctx.lineWidth = 1;
