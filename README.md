@@ -227,12 +227,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **May 20, 2026 · v1.3.48**
+### **May 20, 2026 · v1.3.48–1.3.49**
 - **Text Overlay: move the whole caption in one click.** A new **Position on canvas** row on the node body snaps the text to any edge or the center of the image. The left/center/right buttons are now clearly labelled **Text align** (they line up multiple lines inside the text block).
 - **Prompt Pack & Prompt Multi no longer block a Run when they're not in use.** A leftover prompt node sitting on the canvas (unwired or muted) used to stop every workflow with a "paste a prompt" warning. Now it only speaks up when it's actually wired into the run.
 - **Fixed: opening and closing a workflow no longer falsely asks to "Save Changes?".** Text Overlay, Prompt Stack, Prompt Multi, Switch, and Label title cards were marking a workflow as edited just by being opened. (Re-save an affected workflow once to clear it for good.)
 - **Fixed: drag the ⋮⋮ handle to reorder rows** in Prompt Stack and Prompt Multi — it now works.
 - **Fixed: the fullscreen editors can no longer freeze the UI.** Closing a workflow while a Text Overlay / Note / AudioReact editor was open could leave you unable to open or create workflows until a refresh; it now recovers on its own.
+- **Fixed: Connection FX no longer sparkles every wire when you open a workflow.** The sparkle now fires only when you connect two nodes yourself, not when a saved workflow loads all its wires.
 
 ### **May 19, 2026 · v1.3.40–1.3.47**
 - **NEW: Run Button FX & Connection FX.** Optional flair in Settings: 8 styles for the Run button (flames, lightning, sparkles, shockwave…) and a magnetic glow with particles while you drag a wire to a slot. Both off by default.
