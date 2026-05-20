@@ -357,7 +357,7 @@ app.registerExtension({
       const boxLeft = cx - boxW / 2;
       const BOX_TOP = 0, BOX_BOTTOM = 86;
       bottomRoundedPath(ctx, boxLeft, BOX_TOP, boxW, BOX_BOTTOM - BOX_TOP, 12);
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      ctx.fillStyle = "#1d1d1d";
       ctx.fill();
       const midY = (BOX_TOP + BOX_BOTTOM) / 2;
 
