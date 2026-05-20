@@ -65,8 +65,8 @@ class PixaromaLoadImage:
         "paste, multi-frame, alpha to mask) plus inline resize: max "
         "megapixels, longest side, scale by, fit inside, crop to fill, "
         "match aspect ratio. Snap chips, resample picker, upscale guard. "
-        "Outputs: IMAGE, MASK, WIDTH, HEIGHT, FILENAME, ORIGINAL_WIDTH, "
-        "ORIGINAL_HEIGHT.\n\n"
+        "Outputs: image, mask, width, height, filename, original_width, "
+        "original_height.\n\n"
         "Eliminates the need for downstream Get Image Size + Image Scale + "
         "Image Resize chains in most workflows."
     )
@@ -104,8 +104,8 @@ class PixaromaLoadImage:
     CATEGORY = "👑 Pixaroma"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT")
     RETURN_NAMES = (
-        "IMAGE", "MASK", "WIDTH", "HEIGHT",
-        "FILENAME", "ORIGINAL_WIDTH", "ORIGINAL_HEIGHT",
+        "image", "mask", "width", "height",
+        "filename", "original_width", "original_height",
     )
     FUNCTION = "load_image"
 

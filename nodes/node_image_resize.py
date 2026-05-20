@@ -72,8 +72,8 @@ class PixaromaImageResize:
         "node. Modes: Off, Max megapixels, Longest side, Scale by, Fit inside, "
         "Crop to fill, Match aspect ratio. Resizes an optional mask alongside "
         "(crisp). Wire a width/height in (e.g. from Resolution Pixaroma) to "
-        "resize to an exact size. Foldable result preview. Outputs IMAGE, MASK, "
-        "WIDTH, HEIGHT."
+        "resize to an exact size. Foldable result preview. Outputs image, mask, "
+        "width, height."
     )
 
     @classmethod
@@ -94,7 +94,7 @@ class PixaromaImageResize:
 
     CATEGORY = "👑 Pixaroma"
     RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("IMAGE", "MASK", "WIDTH", "HEIGHT")
+    RETURN_NAMES = ("image", "mask", "width", "height")
     FUNCTION = "resize"
 
     def resize(self, image, mask=None, width=None, height=None, ImageResizeState=""):
