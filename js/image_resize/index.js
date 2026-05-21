@@ -213,6 +213,7 @@ function effectiveWiredState(state, info, ow, oh) {
   // longest_side wins over width/height (mirrors Python _apply_wired_size).
   if (info.wiredLongest) {
     if (info.valLongest == null) return state; // unreadable wire — caller falls back
+    if (info.valLongest <= 0) return { ...state, mode: "off" }; // 0/neg = no target, passthrough
     // Respect the Upscaling toggle (state.allow_upscale flows through via ...state).
     return { ...state, mode: "longest_side", longest_side: info.valLongest };
   }
@@ -221,6 +222,7 @@ function effectiveWiredState(state, info, ow, oh) {
     const v = info.wiredW ? info.valW : info.valH;
     const od = info.wiredW ? ow : oh;
     if (v == null || !od) return state; // unreadable wire — caller falls back
+    if (v <= 0) return { ...state, mode: "off" }; // 0/neg = no target, passthrough
     // Respect the Upscaling toggle (state.allow_upscale flows through via ...state).
     return { ...state, mode: "scale_factor", scale_factor: v / od };
   }

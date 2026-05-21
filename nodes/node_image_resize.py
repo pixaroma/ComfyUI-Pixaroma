@@ -77,8 +77,14 @@ def _apply_wired_size(state: dict, width, height, longest_side, orig_w: int, ori
         # Scale the LONGER side to the wired target. Respect the Upscaling
         # toggle (state["allow_upscale"]) exactly like the typed Longest side
         # mode, so a wired value and a typed value behave identically.
-        state["mode"] = "longest_side"
-        state["longest_side"] = int(longest_side)
+        ls = int(longest_side)
+        if ls > 0:
+            state["mode"] = "longest_side"
+            state["longest_side"] = ls
+        else:
+            # A 0 / negative wired target means "no target" -> pass through
+            # unchanged (avoids a tiny clamped output, and the JS preview agrees).
+            state["mode"] = "off"
         return state
 
     has_w = width is not None
@@ -90,12 +96,14 @@ def _apply_wired_size(state: dict, width, height, longest_side, orig_w: int, ori
         # Exactly one wired -> aspect-preserving scale to that dimension via the
         # scale_factor path. Respects the Upscaling toggle (allow_upscale) like
         # the typed modes, so the toggle is never silently overridden.
-        if has_w:
-            factor = (int(width) / orig_w) if orig_w else 1.0
-        else:
-            factor = (int(height) / orig_h) if orig_h else 1.0
+        wired_val = int(width) if has_w else int(height)
+        if wired_val <= 0:
+            # 0 / negative wired dimension means "no target" -> pass through.
+            state["mode"] = "off"
+            return state
+        orig_dim = orig_w if has_w else orig_h
         state["mode"] = "scale_factor"
-        state["scale_factor"] = factor
+        state["scale_factor"] = (wired_val / orig_dim) if orig_dim else 1.0
         return state
 
     # Both wired -> exact box.
