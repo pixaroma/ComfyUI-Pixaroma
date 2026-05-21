@@ -4,7 +4,7 @@ import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
-  buildPreview, openResamplePopup, RESAMPLE_IDS, resampleLabel,
+  openResamplePopup, RESAMPLE_IDS, resampleLabel,
 } from "./ui.mjs";
 
 injectCSS();
@@ -19,7 +19,6 @@ const DEFAULT_STATE = {
   pad_color: "#808080", pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0,
   crop_anchor: "center", crop_scale: true,
   snap: 0, resample: "auto", allow_upscale: true,
-  preview_open: false,
 };
 const WH_MODES = new Set(["fit_inside", "cover"]);
 const MIN_W = 360; // minimum node width (the two IN/OUT cards need the room)
@@ -122,17 +121,6 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y + h, x, y, r);
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
-}
-
-function renderPreviewThumb(node) {
-  const body = node._pixIrEls?.body;
-  if (!body) return;
-  const p = node.properties?.pixIrPreview; // {url, out_w, out_h}
-  if (!p?.url) {
-    body.innerHTML = `<div class="pix-ir-hint">Run the workflow to see the result</div>`;
-    return;
-  }
-  body.innerHTML = `<img src="${p.url}"><div class="pix-ir-badge">${p.out_w} × ${p.out_h}</div>`;
 }
 
 function isWired(node, name) {
@@ -316,16 +304,11 @@ function renderUI(node) {
   const footer = buildFooter(state);
   root.appendChild(footer);
 
-  const { wrap: ruWrap, box, prev, dd, next, valueEl } = buildResampleAndUpscale(state);
+  const { wrap: ruWrap, upBtn, prev, dd, next, valueEl } = buildResampleAndUpscale(state);
   root.appendChild(ruWrap);
 
-  const { wrap: prevWrap, bar, body } = buildPreview(state);
-  root.appendChild(prevWrap);
-
-  node._pixIrEls = { body, bar };
   applyWiredLocks(node, root);
   node.setDirtyCanvas(true, true); // repaint the canvas-painted size readout
-  if (state.preview_open) renderPreviewThumb(node);
 
   // ── wiring ──
   chips.addEventListener("click", (e) => {
@@ -360,15 +343,12 @@ function renderUI(node) {
   dd.addEventListener("click", () => openResamplePopup(dd, readState(node).resample || "auto", setResample));
   prev.addEventListener("click", () => cycleResample(-1));
   next.addEventListener("click", () => cycleResample(1));
-  box.addEventListener("change", () => {
-    writeState(node, { ...readState(node), allow_upscale: box.checked });
+  upBtn.addEventListener("click", () => {
+    const on = !(readState(node).allow_upscale !== false); // flip current state
+    writeState(node, { ...readState(node), allow_upscale: on });
+    upBtn.classList.toggle("is-on", on);
+    upBtn.textContent = on ? "Upscaling: On" : "Upscaling: Off";
     node.setDirtyCanvas(true, true);
-  });
-  bar.addEventListener("click", () => {
-    const s = readState(node);
-    writeState(node, { ...s, preview_open: !s.preview_open });
-    renderUI(node);
-    refit(node);
   });
 }
 
@@ -432,7 +412,6 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       this._pixIrRoot = null;
-      this._pixIrEls = null;
       return _origRemoved?.apply(this, arguments);
     };
 
@@ -531,12 +510,7 @@ api.addEventListener("executed", ({ detail }) => {
   const f = frames[0];
   if (!node.properties) node.properties = {};
   node.properties.pixIrDims = { in_w: f.in_w, in_h: f.in_h, out_w: f.out_w, out_h: f.out_h };
-  if (f.filename) {
-    const url = `/view?filename=${encodeURIComponent(f.filename)}&subfolder=${encodeURIComponent(f.subfolder || "")}&type=${f.type || "temp"}&t=${Date.now()}`;
-    node.properties.pixIrPreview = { url, out_w: f.out_w, out_h: f.out_h };
-  }
   node.setDirtyCanvas(true, true);
-  if (readState(node).preview_open) renderPreviewThumb(node);
 });
 
 // ── graphToPrompt: inject state into the hidden input (subgraph-safe) ──

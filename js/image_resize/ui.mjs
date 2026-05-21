@@ -49,25 +49,12 @@ export function injectCSS() {
     .pix-ir-rs-item.active .pix-ir-rs-item-label{color:${BRAND};font-weight:600;}
     .pix-ir-rs-item-label{font-size:13px;color:#ddd;white-space:nowrap;}
     .pix-ir-rs-item-hint{font-size:11px;color:#888;text-align:right;}
-    .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
-    /* Custom checkbox so the tick is WHITE on orange (matches our buttons);
-       accent-color let the browser pick a dark tick. */
-    .pix-ir-chk input{appearance:none;-webkit-appearance:none;margin:0;flex:none;
-      width:15px;height:15px;border:1px solid #555;border-radius:3px;background:#1d1d1d;
-      cursor:pointer;position:relative;}
-    .pix-ir-chk input:checked{background:${BRAND};border-color:${BRAND};}
-    .pix-ir-chk input:checked::after{content:"";position:absolute;left:5px;top:2px;
-      width:3px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
-    .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
-      font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
-      border-radius:5px;cursor:pointer;user-select:none;}
-    .pix-ir-prevtoggle{color:#777;}
-    .pix-ir-thumb{border-radius:6px;overflow:hidden;background:#1d1d1d;position:relative;
-      min-height:80px;display:flex;align-items:center;justify-content:center;}
-    .pix-ir-thumb img{max-width:100%;max-height:240px;display:block;}
-    .pix-ir-badge{position:absolute;bottom:5px;left:0;right:0;text-align:center;
-      font-size:10px;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.8);}
-    .pix-ir-hint{font-size:10px;color:#7d7d7d;text-align:center;padding:14px 4px;}
+    /* Allow-upscaling toggle button: orange "On", gray "Off". Centered. */
+    .pix-ir-upbtn{align-self:center;background:#1d1d1d;border:1px solid #444;border-radius:5px;
+      color:#aaa;font-size:11px;padding:7px 18px;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
+    .pix-ir-upbtn:hover{border-color:#666;color:#ddd;}
+    .pix-ir-upbtn.is-on{background:${BRAND};border-color:${BRAND};color:#fff;}
+    .pix-ir-upbtn.is-on:hover{background:${BRAND};border-color:${BRAND};color:#fff;}
     /* Image-Resize-only restyle of the shared mode panels (Option A — soft
        card): a faint borderless raised panel groups the active mode's
        settings, full-width inputs align with the chip grid, and a wider/bolder
@@ -225,16 +212,14 @@ export function buildResampleAndUpscale(state) {
   next.type = "button"; next.className = "pix-ir-rs-nav"; next.title = "Next"; next.textContent = "▶";
   rsRow.append(prev, dd, next);
 
-  const chk = document.createElement("label");
-  chk.className = "pix-ir-chk";
-  const box = document.createElement("input");
-  box.type = "checkbox";
-  box.className = "pix-ir-upscale";
-  box.checked = state.allow_upscale !== false;
-  chk.append(box, document.createTextNode("Allow upscaling"));
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  const upOn = state.allow_upscale !== false;
+  upBtn.className = "pix-ir-upbtn" + (upOn ? " is-on" : "");
+  upBtn.textContent = upOn ? "Upscaling: On" : "Upscaling: Off";
 
-  wrap.append(rsRow, chk);
-  return { wrap, box, prev, dd, next, valueEl };
+  wrap.append(rsRow, upBtn);
+  return { wrap, upBtn, prev, dd, next, valueEl };
 }
 
 // Custom resample dropdown popup — dark Pixaroma styling instead of the native
@@ -280,16 +265,3 @@ export function openResamplePopup(anchorEl, currentValue, onPick) {
   }, 0);
 }
 
-export function buildPreview(state) {
-  const wrap = document.createElement("div");
-  wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;";
-  const bar = document.createElement("div");
-  bar.className = "pix-ir-prevbar";
-  bar.innerHTML = `<span>Preview</span><span class="pix-ir-prevtoggle">${state.preview_open ? "hide ▾" : "show ▸"}</span>`;
-  const body = document.createElement("div");
-  body.className = "pix-ir-thumb";
-  body.style.display = state.preview_open ? "flex" : "none";
-  body.innerHTML = `<div class="pix-ir-hint">Run the workflow to see the result</div>`;
-  wrap.append(bar, body);
-  return { wrap, bar, body };
-}
