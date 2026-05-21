@@ -41,6 +41,7 @@ class PixaromaCrop:
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
+    OUTPUT_TOOLTIPS = ("The cropped image.", "Cropped width in pixels.", "Cropped height in pixels.")
     FUNCTION = "load_crop"
     CATEGORY = "👑 Pixaroma"
     OUTPUT_NODE = True

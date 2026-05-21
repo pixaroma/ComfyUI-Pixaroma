@@ -6,6 +6,7 @@
 
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
@@ -63,7 +64,12 @@ app.registerExtension({
     nodeType.prototype.onConnectionsChange = function () {
       const r = origOnConnectionsChange?.apply(this, arguments);
       refreshOpenButton(this);
-      refreshTextLock(this, !this._textOverlayConfiguring);
+      // Allow the resize only for REAL user wire changes - not the per-node
+      // configure window NOR the graph-level connection replay during load
+      // (which fires after _textOverlayConfiguring is cleared). Currently safe
+      // because the panel height is a constant, but the load-wide guard makes
+      // it robust if that ever changes (Switch #40 / Image Resize bug class).
+      refreshTextLock(this, !this._textOverlayConfiguring && !isGraphLoading());
       return r;
     };
   },

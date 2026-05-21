@@ -34,6 +34,7 @@ class PixaromaPromptStack:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
+    OUTPUT_TOOLTIPS = ("All enabled chunks joined into one string using your separator.",)
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 

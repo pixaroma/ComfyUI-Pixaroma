@@ -33,6 +33,7 @@ class PixaromaText:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
+    OUTPUT_TOOLTIPS = ("The text typed into the field.",)
     FUNCTION = "out"
     CATEGORY = "👑 Pixaroma"
 

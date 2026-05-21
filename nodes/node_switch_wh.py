@@ -26,10 +26,10 @@ class PixaromaSwitchWH:
         return {
             "required": {},
             "optional": {
-                "width_a": ("INT", {"forceInput": True}),
-                "height_a": ("INT", {"forceInput": True}),
-                "width_b": ("INT", {"forceInput": True}),
-                "height_b": ("INT", {"forceInput": True}),
+                "width_a": ("INT", {"forceInput": True, "tooltip": "Width of source A (e.g. a Load Image Pixaroma's width). Click A on the node to send the A pair to the output."}),
+                "height_a": ("INT", {"forceInput": True, "tooltip": "Height of source A. Pairs with width_a."}),
+                "width_b": ("INT", {"forceInput": True, "tooltip": "Width of source B (e.g. a Resolution Pixaroma's width). Click B on the node to send the B pair to the output."}),
+                "height_b": ("INT", {"forceInput": True, "tooltip": "Height of source B. Pairs with width_b."}),
             },
             "hidden": {
                 "SwitchWHState": ("STRING", {"default": "A"}),
@@ -38,6 +38,7 @@ class PixaromaSwitchWH:
 
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
+    OUTPUT_TOOLTIPS = ("The width from the active (highlighted) source.", "The height from the active (highlighted) source.")
     FUNCTION = "pick"
     CATEGORY = "👑 Pixaroma"
 

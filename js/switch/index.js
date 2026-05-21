@@ -17,6 +17,29 @@ import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
 
 const HIDDEN_INPUT_NAME = "SwitchState";
 
+// True while a workflow is loading. The per-node _pixSwitchConfiguring flag
+// (set in onConfigure) does NOT cover connection restoration: LiteGraph
+// restores links at the GRAPH level AFTER each node's onConfigure has returned
+// and cleared its flag, so handleConnect runs for every restored wire and
+// overwrites the saved activeIndex (issue #40 - "switch resets on tab switch /
+// reload"). Wrapping app.loadGraphData (the funnel for workflow open, tab
+// switch, and Ctrl+Z undo - same fix as Image Resize) gives a load-wide guard,
+// with a 300ms trailing window for the link restore that settles a tick later.
+let _swLoadingGraph = false;
+if (app && app.loadGraphData && !app._pixSwLoadWrapped) {
+  app._pixSwLoadWrapped = true;
+  const _origLoadGraphData = app.loadGraphData.bind(app);
+  app.loadGraphData = function (...args) {
+    _swLoadingGraph = true;
+    let r;
+    try { r = _origLoadGraphData(...args); }
+    finally {
+      Promise.resolve(r).finally(() => setTimeout(() => { _swLoadingGraph = false; }, 300));
+    }
+    return r;
+  };
+}
+
 app.registerExtension({
   name: "Pixaroma.Switch",
 
@@ -94,7 +117,11 @@ app.registerExtension({
     nodeType.prototype.onConnectionsChange = function (
       type, slotIndex, isConnected, link, ioSlot
     ) {
-      if (type === 1 /* INPUT */ && !this._pixSwitchConfiguring) {
+      // Two guards: _pixSwitchConfiguring (this node's onConfigure window) and
+      // _swLoadingGraph (the graph-level link-restore window that fires AFTER
+      // onConfigure - this is the one that was overwriting the saved
+      // activeIndex on reload / tab switch, issue #40).
+      if (type === 1 /* INPUT */ && !this._pixSwitchConfiguring && !_swLoadingGraph) {
         if (isConnected) handleConnect(this, slotIndex + 1);
         else handleDisconnect(this, slotIndex + 1);
       }

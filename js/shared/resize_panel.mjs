@@ -690,7 +690,7 @@ function buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra = {}
       for (const q of qpEls) {
         q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
       }
-      const s = JSON.parse(node.properties?.[stateKey] || "{}");
+      const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
       writeState(node, { ...s, max_mp: v });
       onChange?.();
     },
@@ -709,7 +709,7 @@ function buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra = {}
     for (const el of qpEls) {
       el.classList.toggle("active", Math.abs(parseFloat(el.dataset.v) - v) < 0.001);
     }
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, max_mp: v });
     onChange?.();
   });
@@ -747,7 +747,7 @@ function buildLongestSidePanel(node, state, writeState, onChange, stateKey, extr
       for (const q of qpEls) {
         q.classList.toggle("active", parseInt(q.dataset.v, 10) === v);
       }
-      const s = JSON.parse(node.properties?.[stateKey] || "{}");
+      const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
       writeState(node, { ...s, longest_side: v });
       onChange?.();
     },
@@ -766,7 +766,7 @@ function buildLongestSidePanel(node, state, writeState, onChange, stateKey, extr
     for (const el of qpEls) {
       el.classList.toggle("active", parseInt(el.dataset.v, 10) === v);
     }
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, longest_side: v });
     onChange?.();
   });
@@ -805,7 +805,7 @@ function buildScalePanel(node, state, writeState, onChange, stateKey, extra = {}
       for (const q of qpEls) {
         q.classList.toggle("active", Math.abs(parseFloat(q.dataset.v) - v) < 0.001);
       }
-      const s = JSON.parse(node.properties?.[stateKey] || "{}");
+      const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
       writeState(node, { ...s, scale_factor: v });
       onChange?.();
     },
@@ -824,7 +824,7 @@ function buildScalePanel(node, state, writeState, onChange, stateKey, extra = {}
     for (const el of qpEls) {
       el.classList.toggle("active", Math.abs(parseFloat(el.dataset.v) - v) < 0.001);
     }
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, scale_factor: v });
     onChange?.();
   });
@@ -853,7 +853,7 @@ function buildWHPanel(node, state, writeState, onChange, opts, stateKey) {
       min: 8, max: 16384, step: 1,
       onCommit: (v) => {
         v = Math.round(v);
-        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
         writeState(node, { ...s, [key]: v });
         wh[key] = v;
         refreshPreview();
@@ -932,7 +932,7 @@ function buildWHPanel(node, state, writeState, onChange, opts, stateKey) {
     wh[opts.wKey] = b; wh[opts.hKey] = a;
     wField.inp.value = String(b);
     hField.inp.value = String(a);
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, [opts.wKey]: b, [opts.hKey]: a });
     refreshPreview();
     onChange?.();
@@ -1018,7 +1018,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra
     const h = Math.max(1, Math.min(999, Math.round(rh || 1)));
     cwIn.value = String(w);
     chIn.value = String(h);
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, ratio_w: w, ratio_h: h });
     onChange?.();
   }
@@ -1063,7 +1063,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra
     const rid = el.dataset.rid;
     const preset = RATIO_PRESETS.find((r) => r.id === rid);
     if (!preset) return;
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     const updates = { ...s, ratio_preset: rid };
     if (extra.cropOnly) updates.ratio_action = "crop";
     if (rid !== "custom") {
@@ -1085,7 +1085,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra
     if (!opt) return;
     e.stopPropagation();
     const action = opt.dataset.action;
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, ratio_action: action });
     cropOpt.classList.toggle("active", action === "crop");
     padOpt.classList.toggle("active", action === "pad");
@@ -1111,7 +1111,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra
       onPick: (color) => {
         const c = color || "#000000";
         swatch.style.background = c;
-        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
         writeState(node, { ...s, pad_color: c });
       },
     });
@@ -1137,7 +1137,7 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
   const inDims = extra.inputDims || null;
   function updateCenter() {
     if (inDims && inDims.w && inDims.h) {
-      const s = JSON.parse(node.properties?.[stateKey] || "{}");
+      const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
       const { w, h } = previewResize(inDims.w, inDims.h, { ...s, mode: "pad" });
       center.innerHTML = `<div class="pix-li-pad-outdims">${w} × ${h}</div>`;
     } else {
@@ -1155,7 +1155,7 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
       min: 0, max: 8192, step: 1,
       onCommit: (v) => {
         v = Math.max(0, Math.round(v));
-        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
         writeState(node, { ...s, [key]: v });
         input.value = String(v);
         updateCenter();
@@ -1207,7 +1207,7 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
 
   resetBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    const s = JSON.parse(node.properties?.[stateKey] || "{}");
+    const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
     writeState(node, { ...s, pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0 });
     for (const k of ["pad_top", "pad_bottom", "pad_left", "pad_right"]) {
       if (padInputs[k]) padInputs[k].value = "0";
@@ -1228,7 +1228,7 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
       onPick: (color) => {
         const c = color || "#000000";
         swatch.style.background = c;
-        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        const s = { ...state, ...JSON.parse(node.properties?.[stateKey] || "{}") };
         writeState(node, { ...s, pad_color: c });
         onChange?.();
       },

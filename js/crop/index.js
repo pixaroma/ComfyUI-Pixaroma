@@ -3,6 +3,7 @@
 // ============================================================
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { CropEditor } from "./core.mjs";
 import "./interaction.mjs"; // mixin: mouse/keyboard events
 import "./render.mjs"; // mixin: canvas rendering, ratio, save
@@ -594,6 +595,12 @@ app.registerExtension({
       if (type !== LiteGraph.INPUT) return;
       const inputName = node.inputs?.[slotIndex]?.name;
       if (inputName !== "image") return;
+      // Skip the graph-level connection replay during workflow load: it fires
+      // AFTER onConfigure restored the persisted crop source, and would delete
+      // it (wiping the saved preview on every open / tab switch / undo - same
+      // bug class as Switch #40 / Image Resize). Genuine user wire changes
+      // still invalidate the stale cached source.
+      if (isGraphLoading()) return;
       // Wire changed → cached URL is stale.
       node._pixaromaCropSourceURL = null;
       if (node.properties) {

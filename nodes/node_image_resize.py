@@ -65,28 +65,45 @@ def _mask_to_pils(mask_t, count, size):
     return out[:count]
 
 
-def _apply_wired_size(state: dict, width, height, orig_w: int, orig_h: int) -> dict:
-    """Wired width/height drive the target size. ONE axis wired = aspect-
-    preserving scale to that dimension (the other axis is computed). BOTH wired
+def _apply_wired_size(state: dict, width, height, longest_side, orig_w: int, orig_h: int) -> dict:
+    """Wired inputs drive the target size. PRECEDENCE: a wired longest_side
+    wins over width/height - it scales so the LONGER side hits the target
+    (aspect kept, orientation-agnostic). Otherwise: ONE axis wired = aspect-
+    preserving scale to that dimension (the other axis is computed); BOTH wired
     = exact W x H box via the active mode (Fit inside keeps its fit, anything
     else is forced to Crop to fill). Mirrored in JS `effectiveWiredState` -
     keep the two in lockstep."""
+    if longest_side is not None:
+        # Scale the LONGER side to the wired target. Respect the Upscaling
+        # toggle (state["allow_upscale"]) exactly like the typed Longest side
+        # mode, so a wired value and a typed value behave identically.
+        ls = int(longest_side)
+        if ls > 0:
+            state["mode"] = "longest_side"
+            state["longest_side"] = ls
+        else:
+            # A 0 / negative wired target means "no target" -> pass through
+            # unchanged (avoids a tiny clamped output, and the JS preview agrees).
+            state["mode"] = "off"
+        return state
+
     has_w = width is not None
     has_h = height is not None
     if not has_w and not has_h:
         return state
 
     if has_w != has_h:
-        # Exactly one wired -> aspect-preserving scale to that dimension. Reuse
-        # the scale_factor path; force allow_upscale since the wire is an
-        # explicit target the user asked to hit exactly.
-        if has_w:
-            factor = (int(width) / orig_w) if orig_w else 1.0
-        else:
-            factor = (int(height) / orig_h) if orig_h else 1.0
+        # Exactly one wired -> aspect-preserving scale to that dimension via the
+        # scale_factor path. Respects the Upscaling toggle (allow_upscale) like
+        # the typed modes, so the toggle is never silently overridden.
+        wired_val = int(width) if has_w else int(height)
+        if wired_val <= 0:
+            # 0 / negative wired dimension means "no target" -> pass through.
+            state["mode"] = "off"
+            return state
+        orig_dim = orig_w if has_w else orig_h
         state["mode"] = "scale_factor"
-        state["scale_factor"] = factor
-        state["allow_upscale"] = True
+        state["scale_factor"] = (wired_val / orig_dim) if orig_dim else 1.0
         return state
 
     # Both wired -> exact box.
@@ -105,8 +122,9 @@ class PixaromaImageResize:
         "Resize an image (and its mask) mid-workflow. Pick a mode - Off, Max "
         "megapixels, Longest side, Scale by, Fit inside, Crop to fill, Match "
         "aspect ratio, or Pad (add a border for outpainting). Optionally wire a "
-        "width/height (e.g. from Resolution Pixaroma) to drive the size. Outputs "
-        "image, mask, width, height."
+        "width/height (e.g. from Resolution Pixaroma) to drive the size, or wire "
+        "a single longest_side to scale the longer edge to that value (portrait "
+        "or landscape, no need to pick an axis). Outputs image, mask, width, height."
     )
 
     @classmethod
@@ -119,6 +137,7 @@ class PixaromaImageResize:
                 "mask": ("MASK", {"tooltip": "Optional mask. Resized alongside the image with crisp (nearest) edges. In Pad mode the added border becomes white (the inpaint region)."}),
                 "width": ("INT", {"forceInput": True, "tooltip": "Optional target width (e.g. from Resolution Pixaroma). Wire only width OR only height to scale keeping aspect ratio; wire both for an exact size. While wired, the matching field is locked."}),
                 "height": ("INT", {"forceInput": True, "tooltip": "Optional target height (e.g. from Resolution Pixaroma). Wire only width OR only height to scale keeping aspect ratio; wire both for an exact size. While wired, the matching field is locked."}),
+                "longest_side": ("INT", {"forceInput": True, "tooltip": "Optional single target for the LONGER side. Wire one number (e.g. from Number Pixaroma) and the image scales so its longest side equals this value, aspect ratio kept - works for portrait or landscape without choosing width or height. Takes priority over width/height when connected."}),
             },
             "hidden": {
                 "ImageResizeState": ("STRING", {"default": json.dumps(DEFAULT_STATE)}),
@@ -126,24 +145,25 @@ class PixaromaImageResize:
         }
 
     CATEGORY = "👑 Pixaroma"
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "width", "height", "longest_side")
     OUTPUT_TOOLTIPS = (
         "The resized image.",
         "The resized mask (white = the padded / inpaint area when using Pad).",
         "Final output width in pixels.",
         "Final output height in pixels.",
+        "The longer of the output's width and height, whatever the resize produced. Use it when you want the longest dimension without caring about orientation.",
     )
     FUNCTION = "resize"
 
-    def resize(self, image, mask=None, width=None, height=None, ImageResizeState=""):
+    def resize(self, image, mask=None, width=None, height=None, longest_side=None, ImageResizeState=""):
         state = parse_resize_state(ImageResizeState, DEFAULT_STATE)
 
         rgb_frames = _tensor_to_pils(image)
         orig_w, orig_h = rgb_frames[0].size
         mask_frames = _mask_to_pils(mask, len(rgb_frames), (orig_w, orig_h))
 
-        state = _apply_wired_size(state, width, height, orig_w, orig_h)
+        state = _apply_wired_size(state, width, height, longest_side, orig_w, orig_h)
 
         out_imgs, out_masks = [], []
         final_w = final_h = None
@@ -163,7 +183,8 @@ class PixaromaImageResize:
             final_w, final_h = orig_w, orig_h
 
         ui = self._build_preview_payload(out_imgs[0], orig_w, orig_h, final_w, final_h)
-        return {"ui": ui, "result": (out_image, out_mask, final_w, final_h)}
+        longest = max(final_w, final_h)
+        return {"ui": ui, "result": (out_image, out_mask, final_w, final_h, longest)}
 
     def _build_preview_payload(self, first_frame_t, in_w, in_h, out_w, out_h):
         """Stash the first resized frame to temp/ and return the executed UI

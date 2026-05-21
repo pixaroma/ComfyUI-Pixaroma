@@ -23,6 +23,29 @@ const DEFAULT_STATE = {
 const WH_MODES = new Set(["fit_inside", "cover"]);
 const MIN_W = 360; // minimum node width (the two IN/OUT cards need the room)
 
+// True while a workflow is loading. The per-node _pixIrConfiguring flag does
+// NOT cover connection restoration: LiteGraph restores links at the GRAPH level
+// AFTER each node's onConfigure has returned (and cleared its flag), so the
+// auto-swap in onConnectionsChange would see the restored wires as fresh user
+// connections and disconnect the saved longest_side / width / height wire on
+// every open. Wrapping app.loadGraphData (the funnel for workflow open, tab
+// switch, and Ctrl+Z undo - same pattern as Connection FX) gives a load-wide
+// guard with a trailing window for link restoration that settles a tick later.
+let _irLoadingGraph = false;
+if (app && app.loadGraphData && !app._pixIrLoadWrapped) {
+  app._pixIrLoadWrapped = true;
+  const _origLoadGraphData = app.loadGraphData.bind(app);
+  app.loadGraphData = function (...args) {
+    _irLoadingGraph = true;
+    let r;
+    try { r = _origLoadGraphData(...args); }
+    finally {
+      Promise.resolve(r).finally(() => setTimeout(() => { _irLoadingGraph = false; }, 300));
+    }
+    return r;
+  };
+}
+
 function readState(node) {
   const v = node.properties?.[STATE_PROP];
   if (typeof v === "string" && v) {
@@ -94,11 +117,14 @@ function getReadoutInfo(node, wi) {
   const live = getInputDims(node);
   const info = wi || wireInfo(node);
 
-  // Width/height wired: predict via the wired mirror so the card matches Python.
-  if (info.count > 0 && live) {
-    const needW = info.wiredW && info.valW == null;
-    const needH = info.wiredH && info.valH == null;
-    if (!needW && !needH) {
+  // Wired inputs: predict via the wired mirror so the card matches Python.
+  // longest_side wins over width/height (precedence), so when it's wired only
+  // its readability matters.
+  if ((info.count > 0 || info.wiredLongest) && live) {
+    const needL = info.wiredLongest && info.valLongest == null;
+    const needW = !info.wiredLongest && info.wiredW && info.valW == null;
+    const needH = !info.wiredLongest && info.wiredH && info.valH == null;
+    if (!needW && !needH && !needL) {
       const eff = effectiveWiredState(state, info, live.w, live.h);
       const { w, h } = previewResize(live.w, live.h, eff);
       return { mode: "dual", inW: live.w, inH: live.h, outW: w, outH: h };
@@ -145,6 +171,23 @@ function isWired(node, name) {
   return !!(inp && inp.link != null);
 }
 
+// Small toast (Image Resize). Silent no-op if the toast API isn't present
+// (older Easy Install builds), so it never throws on a connect.
+function toast(msg) {
+  const t = app?.extensionManager?.toast;
+  if (t?.add) t.add({ severity: "info", summary: "Image Resize Pixaroma", detail: msg, life: 2500 });
+}
+
+// Disconnect a named input if it currently has a wire. Returns true if it did.
+function disconnectInputByName(node, name) {
+  const i = node.inputs?.findIndex((inp) => inp?.name === name);
+  if (i != null && i >= 0 && node.inputs[i]?.link != null) {
+    node.disconnectInput(i);
+    return true;
+  }
+  return false;
+}
+
 // Best-effort read of a wired INT input's value at edit time. Works for
 // Resolution Pixaroma (value lives in properties.resolutionState; the link's
 // origin_slot picks w vs h) and plain INT widget nodes. Returns null for
@@ -176,11 +219,13 @@ function readWiredInt(node, name) {
 function wireInfo(node) {
   const wiredW = isWired(node, "width");
   const wiredH = isWired(node, "height");
+  const wiredLongest = isWired(node, "longest_side");
   return {
-    wiredW, wiredH,
+    wiredW, wiredH, wiredLongest,
     count: (wiredW ? 1 : 0) + (wiredH ? 1 : 0),
     valW: wiredW ? readWiredInt(node, "width") : null,
     valH: wiredH ? readWiredInt(node, "height") : null,
+    valLongest: wiredLongest ? readWiredInt(node, "longest_side") : null,
   };
 }
 
@@ -188,12 +233,21 @@ function wireInfo(node) {
 // effective state to feed previewResize so the OUTPUT card matches Python.
 // Single wire = aspect scale to that dim; both = exact box (Fit/Crop).
 function effectiveWiredState(state, info, ow, oh) {
+  // longest_side wins over width/height (mirrors Python _apply_wired_size).
+  if (info.wiredLongest) {
+    if (info.valLongest == null) return state; // unreadable wire — caller falls back
+    if (info.valLongest <= 0) return { ...state, mode: "off" }; // 0/neg = no target, passthrough
+    // Respect the Upscaling toggle (state.allow_upscale flows through via ...state).
+    return { ...state, mode: "longest_side", longest_side: info.valLongest };
+  }
   if (!info.wiredW && !info.wiredH) return state;
   if (info.wiredW !== info.wiredH) { // exactly one wired
     const v = info.wiredW ? info.valW : info.valH;
     const od = info.wiredW ? ow : oh;
     if (v == null || !od) return state; // unreadable wire — caller falls back
-    return { ...state, mode: "scale_factor", scale_factor: v / od, allow_upscale: true };
+    if (v <= 0) return { ...state, mode: "off" }; // 0/neg = no target, passthrough
+    // Respect the Upscaling toggle (state.allow_upscale flows through via ...state).
+    return { ...state, mode: "scale_factor", scale_factor: v / od };
   }
   if (info.valW == null || info.valH == null) return state; // unreadable wire
   if (state.mode === "fit_inside") return { ...state, mode: "fit_inside", fit_w: info.valW, fit_h: info.valH };
@@ -260,6 +314,26 @@ function buildSingleWirePanel(node, info, live) {
   // upstream wired value changes (DOM has no event for that; the draw loop is
   // the only signal, same one the OUTPUT card already rides).
   node._pixIrWireCells = { wEl: wRow.valEl, hEl: hRow.valEl };
+  return panel;
+}
+
+// longest_side wired summary: one row "LONGEST SIDE | value | from wire". The
+// OUTPUT card paints the resulting W×H; this just confirms the wired target.
+// Read-only (the value comes from the wire). Reuses the single-wire row CSS.
+function buildLongestWirePanel(node, info) {
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel pix-ir-wirepanel";
+  const row = document.createElement("div");
+  row.className = "pix-ir-wirerow";
+  const l = document.createElement("span"); l.className = "pix-ir-wirelbl is-wide"; l.textContent = "LONGEST SIDE";
+  const v = document.createElement("span"); v.className = "pix-ir-wireval";
+  v.textContent = info.valLongest == null ? "—" : String(info.valLongest);
+  const t = document.createElement("span"); t.className = "pix-ir-wiretag"; t.textContent = "from wire";
+  row.append(l, v, t);
+  panel.append(row);
+  // Cache the value cell so onDrawForeground can refresh it live when the
+  // upstream wired value changes (same draw-loop pattern as the single-wire panel).
+  node._pixIrLongestCell = v;
   return panel;
 }
 
@@ -397,6 +471,7 @@ function renderUI(node) {
   // about to be detached); the panels below re-set whichever applies.
   node._pixIrWireCells = null;
   node._pixIrLockedInputs = null;
+  node._pixIrLongestCell = null;
   root.innerHTML = "";
 
   const info = wireInfo(node);
@@ -410,7 +485,14 @@ function renderUI(node) {
   //  2 wired -> exact box, only Fit inside / Crop to fill apply (others disabled).
   // Display mode for 2-wired: honour Fit if active, else show Crop to fill.
   let dispMode = state.mode;
-  if (info.count === 1) {
+  if (info.wiredLongest) {
+    // longest_side wire wins: force Longest side display, lock every chip.
+    dispMode = "longest_side";
+    for (const c of chips.querySelectorAll(".pix-ir-chip")) {
+      c.classList.add("disabled");
+      c.classList.toggle("active", c.dataset.mode === "longest_side");
+    }
+  } else if (info.count === 1) {
     for (const c of chips.querySelectorAll(".pix-ir-chip")) { c.classList.add("disabled"); c.classList.remove("active"); }
   } else if (info.count === 2) {
     dispMode = WH_MODES.has(state.mode) ? state.mode : "cover";
@@ -422,7 +504,9 @@ function renderUI(node) {
   }
 
   let panel = null;
-  if (info.count === 1) {
+  if (info.wiredLongest) {
+    panel = buildLongestWirePanel(node, info);
+  } else if (info.count === 1) {
     panel = buildSingleWirePanel(node, info, live);
   } else {
     panel = buildModePanel(dispMode, node, state, writeState,
@@ -533,10 +617,36 @@ app.registerExtension({
       }
     };
 
+    const INPUT_TYPE = (typeof LiteGraph !== "undefined" && LiteGraph.INPUT != null) ? LiteGraph.INPUT : 1;
     const _origConn = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (type, idx, connected, link, ioSlot) {
       const r = _origConn?.apply(this, arguments);
-      if (!this._pixIrConfiguring && this._pixIrRoot) {
+      // Auto-swap sizing sources: longest_side and width/height are competing
+      // ways to set the size, so connecting one drops the other(s). width and
+      // height may coexist (exact box) - only longest_side is exclusive vs them.
+      // Only on a genuine user connect; never during configure/load. Three
+      // guards: _pixIrConfiguring (this node's onConfigure window),
+      // _irLoadingGraph (the graph-level link-restore window that fires AFTER
+      // onConfigure - this is the one that was disconnecting saved wires on
+      // open), and _pixIrAutoSwapping (re-entrancy from the disconnectInput
+      // calls below).
+      if (type === INPUT_TYPE && connected && !this._pixIrConfiguring && !this._pixIrAutoSwapping && !_irLoadingGraph) {
+        const name = this.inputs?.[idx]?.name || ioSlot?.name;
+        this._pixIrAutoSwapping = true;
+        try {
+          if (name === "longest_side") {
+            const dW = disconnectInputByName(this, "width");
+            const dH = disconnectInputByName(this, "height");
+            if (dW || dH) toast("longest_side now drives the size, so width/height was disconnected.");
+          } else if (name === "width" || name === "height") {
+            if (disconnectInputByName(this, "longest_side"))
+              toast("width/height now drive the size, so longest_side was disconnected.");
+          }
+        } finally {
+          this._pixIrAutoSwapping = false;
+        }
+      }
+      if (!this._pixIrConfiguring && !this._pixIrAutoSwapping && this._pixIrRoot) {
         renderUI(this); // re-render for the new wire count (no state mutation)
         refit(this);
         // Upstream loader may populate its image a tick after the wire lands;
@@ -551,6 +661,7 @@ app.registerExtension({
       this._pixIrRoot = null;
       this._pixIrWireCells = null;
       this._pixIrLockedInputs = null;
+      this._pixIrLongestCell = null;
       closeResamplePopup(); // tear down popup + its document listeners if open
       return _origRemoved?.apply(this, arguments);
     };
@@ -584,6 +695,11 @@ app.registerExtension({
         if (c.wEl.textContent !== w) c.wEl.textContent = w;
         if (c.hEl.textContent !== h) c.hEl.textContent = h;
       }
+      // Keep the longest_side summary value live (upstream wired value can change).
+      if (this._pixIrLongestCell && wi.valLongest != null) {
+        const s = String(wi.valLongest);
+        if (this._pixIrLongestCell.textContent !== s) this._pixIrLongestCell.textContent = s;
+      }
       // Locked W/H fields (both-wired): keep the shown value in sync with the
       // live upstream value (it can change after render).
       if (this._pixIrLockedInputs) {
@@ -596,7 +712,7 @@ app.registerExtension({
       const capFont = `8px ${fam}`;
       const dimsFont = `bold 10px ${fam}`;
       const ratioFont = `8px ${fam}`;
-      const midY = 44; // vertical center of the 4 slot rows
+      const midY = 54; // vertical center of the 5 slot rows (TOP_PAD 4 + 5*20/2)
       ctx.save();
       ctx.textBaseline = "middle";
 
@@ -616,42 +732,87 @@ app.registerExtension({
       // Tall (span the slot rows) + grow with node width to use the middle
       // space, clamped so they never crowd the slot labels. Each card stacks
       // label / dims / aspect rect / ratio.
-      const arrowW = 16, gap = 8, cardH = 76;
-      let cardW = (this.size[0] - 184 - arrowW - gap * 2) / 2;
-      cardW = Math.max(66, Math.min(cardW, 120));
-      const totalW = cardW * 2 + gap * 2 + arrowW;
-      const startX = cx - totalW / 2;
-      const cardY = midY - cardH / 2;
-      const rectMaxW = 40, rectMaxH = 18;
+      // Two cards aligned with the mode-chip grid below (INPUT over column 2,
+      // OUTPUT over column 3 of the 4-column grid: repeat(4,1fr), 5px gap, inside
+      // the root's 8px padding) and JOINED by a center bridge with notches above
+      // and below it. GRID_PAD = root padding (8) + DOM widget body inset (~8);
+      // tweak if the cards don't sit over columns 2/3. NECK_INSET pulls the inner
+      // edges in a few px so the bridge has room for the chevron (outer edges
+      // stay on the column boundaries).
+      const GRID_PAD = 16, COL_GAP = 5, NECK_INSET = 3;
+      const gridW = Math.max(40, this.size[0] - GRID_PAD * 2);
+      const colW = (gridW - COL_GAP * 3) / 4;
+      const cardW = colW - NECK_INSET, cardH = 90;
+      const L1 = GRID_PAD + colW + COL_GAP;          // INPUT left  (column 2 left)
+      const R1 = L1 + cardW;                          // INPUT right (inset)
+      const R2 = GRID_PAD + 3 * colW + 2 * COL_GAP;   // OUTPUT right (column 3 right)
+      const L2 = R2 - cardW;                          // OUTPUT left (inset)
+      const arrowCx = (R1 + L2) / 2;                  // bridge center
+      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+      const rectMaxW = 46, rectMaxH = 30;
 
-      const drawCard = (x, label, w, h, accent) => {
-        roundRectPath(ctx, x, cardY, cardW, cardH, 6);
-        ctx.fillStyle = "#1d1d1d"; ctx.fill();
-        roundRectPath(ctx, x + 0.5, cardY + 0.5, cardW - 1, cardH - 1, 6);
-        ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+      // Single connected outline: rounded OUTER corners on both cards, joined by
+      // a center bridge (square inner junctions), with the gap above and below
+      // the bridge left open. One fill + one 1px stroke so the border flows as
+      // one shape (matches the 1px button borders).
+      ctx.beginPath();
+      ctx.moveTo(L1 + R, T);
+      ctx.lineTo(R1 - R, T);
+      ctx.arcTo(R1, T, R1, T + R, R);          // INPUT top-right
+      ctx.lineTo(R1, bT);                       // down to bridge top
+      ctx.lineTo(L2, bT);                       // bridge top across
+      ctx.lineTo(L2, T + R);                    // up OUTPUT inner edge
+      ctx.arcTo(L2, T, L2 + R, T, R);          // OUTPUT top-left
+      ctx.lineTo(R2 - R, T);
+      ctx.arcTo(R2, T, R2, T + R, R);          // OUTPUT top-right
+      ctx.lineTo(R2, Bm - R);
+      ctx.arcTo(R2, Bm, R2 - R, Bm, R);        // OUTPUT bottom-right
+      ctx.lineTo(L2 + R, Bm);
+      ctx.arcTo(L2, Bm, L2, Bm - R, R);        // OUTPUT bottom-left
+      ctx.lineTo(L2, bB);                       // up to bridge bottom
+      ctx.lineTo(R1, bB);                       // bridge bottom across
+      ctx.lineTo(R1, Bm - R);                   // down INPUT inner edge
+      ctx.arcTo(R1, Bm, R1 - R, Bm, R);        // INPUT bottom-right
+      ctx.lineTo(L1 + R, Bm);
+      ctx.arcTo(L1, Bm, L1, Bm - R, R);        // INPUT bottom-left
+      ctx.lineTo(L1, T + R);
+      ctx.arcTo(L1, T, L1 + R, T, R);          // INPUT top-left
+      ctx.closePath();
+      ctx.fillStyle = "#1d1d1d"; ctx.fill();
+      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+      // Per-card content (caption / dims / aspect square / ratio). The square's
+      // border turns orange only when the output size actually changed.
+      const drawContent = (x, label, w, h, accent) => {
         const ccx = x + cardW / 2;
         ctx.textAlign = "center";
         const maxTxt = cardW - 8; // keep text inside the card (5-digit dims, etc.)
         ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 13, maxTxt);
+        ctx.fillText(label, ccx, cardY + 15, maxTxt);
         ctx.font = dimsFont; ctx.fillStyle = BRAND;
         ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
         const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
-        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 47 - rh / 2) + 0.5;
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 53 - rh / 2) + 0.5;
         if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
         ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(w, h), ccx, cardY + 67, maxTxt);
+        ctx.fillText(ratioLabel(w, h), ccx, cardY + 77, maxTxt);
       };
 
-      // Output rect goes orange only when the size actually changed; if input
-      // and output match it stays gray like the input (nothing happened).
       const changed = info.inW !== info.outW || info.inH !== info.outH;
-      drawCard(startX, "INPUT", info.inW, info.inH, false);
-      ctx.font = `14px ${fam}`; ctx.fillStyle = "#9a9a9a"; ctx.textAlign = "center";
-      ctx.fillText("→", startX + cardW + gap + arrowW / 2, midY);
-      drawCard(startX + cardW + gap + arrowW + gap, "OUTPUT", info.outW, info.outH, changed);
+      drawContent(L1, "INPUT", info.inW, info.inH, false);
+      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+      // Compact ">" chevron centered on the bridge, 1px to match the buttons.
+      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+      ctx.lineCap = "round"; ctx.lineJoin = "round";
+      ctx.beginPath();
+      ctx.moveTo(arrowCx - 2.5, midY - 4);
+      ctx.lineTo(arrowCx + 2.5, midY);
+      ctx.lineTo(arrowCx - 2.5, midY + 4);
+      ctx.stroke();
 
       ctx.restore();
       return r;

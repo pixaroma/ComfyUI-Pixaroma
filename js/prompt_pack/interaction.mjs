@@ -44,11 +44,14 @@ export function wireEvents(node, root) {
   });
 
   // Block ComfyUI / LiteGraph keyboard shortcuts from leaking out of the
-  // textarea (e.g. Q for queue, Delete for node delete, Ctrl+Enter, etc.).
+  // textarea (e.g. Q for queue, Delete for node delete, etc.).
   // Must be stopImmediatePropagation, NOT stopPropagation - ComfyUI/LiteGraph
   // listen at the document level and stopPropagation alone leaks (Load Image
   // Pattern #6; matches Prompt Stack / Prompt Multi).
+  // Exception: let Ctrl/Cmd+Enter bubble so the "run workflow" shortcut fires
+  // straight from the prompt field (issue #41).
   els.ta.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
     e.stopImmediatePropagation();
   });
 

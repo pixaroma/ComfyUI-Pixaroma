@@ -38,6 +38,7 @@ class PixaromaPaint:
 
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
+    OUTPUT_TOOLTIPS = ("The painted image.", "Image width in pixels.", "Image height in pixels.")
     FUNCTION = "load_painting"
     CATEGORY = "👑 Pixaroma"
     OUTPUT_NODE = True

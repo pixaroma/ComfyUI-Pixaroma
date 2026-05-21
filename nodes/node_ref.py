@@ -29,6 +29,7 @@ class PixaromaReferenceNode:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("output",)
+    OUTPUT_TOOLTIPS = ("Example string output (developer reference node).",)
     FUNCTION = "dom_func"
     DESCRIPTION = "Example to create test dom HTML object in nodes"
     OUTPUT_NODE = True

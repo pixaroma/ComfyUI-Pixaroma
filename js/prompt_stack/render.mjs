@@ -318,6 +318,7 @@ export function renderRows(node, root, rowHandlers) {
     label.className = "pix-ps-label";
     label.value = row.label || "";
     label.placeholder = `Row ${state.rows.indexOf(row) + 1}`;
+    label.title = "Optional name for this chunk, just a reminder for you. It is not part of the prompt.";
     head.appendChild(label);
     attachLabelEditor(node, label, row.id);
 

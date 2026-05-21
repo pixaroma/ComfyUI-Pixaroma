@@ -7,7 +7,7 @@ import { BRAND } from "../shared/index.mjs";
 export function injectCSS() {
   if (document.getElementById("pix-ir-css")) return;
   const css = `
-    .pix-ir-root{width:100%;box-sizing:border-box;padding:8px;background:#2a2a2a;
+    .pix-ir-root{width:100%;box-sizing:border-box;padding:2px 8px 8px;background:#2a2a2a;
       border-radius:4px;color:#ddd;font-family:ui-sans-serif,system-ui,sans-serif;
       font-size:11px;display:flex;flex-direction:column;gap:8px;}
     .pix-ir-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
@@ -22,6 +22,9 @@ export function injectCSS() {
     .pix-ir-root .pix-ir-wirerow{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#1d1d1d;border:1px solid #444;border-radius:4px;margin-bottom:6px;}
     .pix-ir-root .pix-ir-wirerow:last-child{margin-bottom:0;}
     .pix-ir-root .pix-ir-wirelbl{color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:14px;flex:none;}
+    /* Wide variant for full-word labels (e.g. "LONGEST SIDE") so they stay on
+       one line instead of wrapping into the 14px W/H slot. */
+    .pix-ir-root .pix-ir-wirelbl.is-wide{width:auto;white-space:nowrap;}
     .pix-ir-root .pix-ir-wireval{color:#e0e0e0;font-size:13px;font-weight:600;flex:1;}
     .pix-ir-root .pix-ir-wiretag{color:#888;font-size:9px;text-transform:uppercase;letter-spacing:.5px;}
     /* Shared chips render in a 1fr grid with a 1px border — border-box so the

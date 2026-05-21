@@ -24,6 +24,7 @@ class PixaromaShowText:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
+    OUTPUT_TOOLTIPS = ("The same text shown in the box, passed through so you can keep chaining it.",)
     FUNCTION = "show"
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"

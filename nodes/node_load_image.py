@@ -91,7 +91,7 @@ class PixaromaLoadImage:
         files = folder_paths.filter_files_content_types(files, ["image"])
         return {
             "required": {
-                "image": (sorted(files), {"image_upload": True}),
+                "image": (sorted(files), {"image_upload": True, "tooltip": "The image to load from ComfyUI's input folder. Use the Upload Image button, drag a file onto the node, paste from the clipboard, or pick one from the dropdown."}),
             },
             "hidden": {
                 "LoadImagePixState": (
@@ -106,6 +106,15 @@ class PixaromaLoadImage:
     RETURN_NAMES = (
         "image", "mask", "width", "height",
         "filename", "original_width", "original_height",
+    )
+    OUTPUT_TOOLTIPS = (
+        "The loaded image, after any resize.",
+        "The image's mask, from its alpha channel (blank if it has none).",
+        "Output width in pixels, after any resize.",
+        "Output height in pixels, after any resize.",
+        "The image's filename.",
+        "Width of the original image, before any resize.",
+        "Height of the original image, before any resize.",
     )
     FUNCTION = "load_image"
 
