@@ -65,6 +65,33 @@ app.registerExtension({
       return r;
     };
 
+    // ── Minimum size = the measured text size ────────────
+    // Without this, LiteGraph clamps every node to its default minimum width
+    // (~210px), so a label whose text is narrower than that gets a 210-wide
+    // box while the colored pill is only drawn as wide as the text - the empty
+    // gap users saw on short labels. Opening + saving couldn't fix it: the
+    // editor's saveCfg sets node.size to the measured width, but the next
+    // interaction re-clamped it back up to the 210 default min. Returning the
+    // measured size as computeSize lowers that floor so short labels stay tight
+    // AND a re-save now sticks.
+    //
+    // This is a MINIMUM only (LiteGraph uses computeSize as a floor, never to
+    // force-resize on load), so a larger saved size is preserved - we never
+    // shrink a saved label on load, which keeps the dirty-on-load behavior
+    // unchanged (Vue Compat #18) and leaves the "oversized background label"
+    // use case intact. Cached by cfg signature so it's cheap per frame.
+    nodeType.prototype.computeSize = function (out) {
+      const c = this._labelCfg || DEFAULTS;
+      const key = `${c.text}|${c.fontSize}|${c.fontFamily}|${c.fontWeight}|${c.padding}|${c.lineHeight}`;
+      let cache = this._labelSizeCache;
+      if (!cache || cache.key !== key) {
+        const m = measureLabel(c);
+        cache = this._labelSizeCache = { key, w: Math.max(m.w, 1), h: Math.max(m.h, 1) };
+      }
+      if (out) { out[0] = cache.w; out[1] = cache.h; return out; }
+      return [cache.w, cache.h];
+    };
+
     // ── Drawing ──────────────────────────────────────────
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
