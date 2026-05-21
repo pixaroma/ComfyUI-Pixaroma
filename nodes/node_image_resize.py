@@ -44,26 +44,37 @@ def _mask_to_pils(mask_t, count, size):
 
 
 def _apply_wired_size(state: dict, width, height, orig_w: int, orig_h: int) -> dict:
-    """If width/height INT inputs are wired, override the target size of the
-    active W x H mode. Force 'cover' (exact-size, crop overflow) when the active
-    mode does not consume W x H. Mirrors the JS auto-switch on connect."""
-    if width is None and height is None:
+    """Wired width/height drive the target size. ONE axis wired = aspect-
+    preserving scale to that dimension (the other axis is computed). BOTH wired
+    = exact W x H box via the active mode (Fit inside keeps its fit, anything
+    else is forced to Crop to fill). Mirrored in JS `effectiveWiredState` -
+    keep the two in lockstep."""
+    has_w = width is not None
+    has_h = height is not None
+    if not has_w and not has_h:
         return state
-    mode = state.get("mode", "off")
-    if mode == "fit_inside":
-        if width is not None:
-            state["fit_w"] = int(width)
-        if height is not None:
-            state["fit_h"] = int(height)
-    elif mode == "cover":
-        if width is not None:
-            state["cover_w"] = int(width)
-        if height is not None:
-            state["cover_h"] = int(height)
+
+    if has_w != has_h:
+        # Exactly one wired -> aspect-preserving scale to that dimension. Reuse
+        # the scale_factor path; force allow_upscale since the wire is an
+        # explicit target the user asked to hit exactly.
+        if has_w:
+            factor = (int(width) / orig_w) if orig_w else 1.0
+        else:
+            factor = (int(height) / orig_h) if orig_h else 1.0
+        state["mode"] = "scale_factor"
+        state["scale_factor"] = factor
+        state["allow_upscale"] = True
+        return state
+
+    # Both wired -> exact box.
+    if state.get("mode", "off") == "fit_inside":
+        state["fit_w"] = int(width)
+        state["fit_h"] = int(height)
     else:
         state["mode"] = "cover"
-        state["cover_w"] = int(width) if width is not None else orig_w
-        state["cover_h"] = int(height) if height is not None else orig_h
+        state["cover_w"] = int(width)
+        state["cover_h"] = int(height)
     return state
 
 

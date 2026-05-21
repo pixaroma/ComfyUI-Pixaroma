@@ -92,6 +92,23 @@ function getReadoutInfo(node) {
   const state = readState(node);
   const cached = node.properties?.pixIrDims;       // {in_w,in_h,out_w,out_h} from last run
   const live = getInputDims(node);
+  const info = wireInfo(node);
+
+  // Width/height wired: predict via the wired mirror so the card matches Python.
+  if (info.count > 0 && live) {
+    const needW = info.wiredW && info.valW == null;
+    const needH = info.wiredH && info.valH == null;
+    if (!needW && !needH) {
+      const eff = effectiveWiredState(state, info, live.w, live.h);
+      const { w, h } = previewResize(live.w, live.h, eff);
+      return { mode: "dual", inW: live.w, inH: live.h, outW: w, outH: h };
+    }
+    // Wired from a source we can't read at edit time (math/reroute): show the
+    // real dims if a run happened, else say it's wire-driven (no wrong number).
+    if (cached) return { mode: "dual", inW: live.w, inH: live.h, outW: cached.out_w, outH: cached.out_h };
+    return { mode: "msg", text: "Output set by wired inputs" };
+  }
+
   if (live) {
     const { w, h } = previewResize(live.w, live.h, state);
     return { mode: "dual", inW: live.w, inH: live.h, outW: w, outH: h };
@@ -128,29 +145,106 @@ function isWired(node, name) {
   return !!(inp && inp.link != null);
 }
 
-// Lock the matching W/H field in the active panel when its wire is connected.
-// buildWHPanel renders Width then Height as the first two text inputs.
-function applyWiredLocks(node, root) {
-  const state = readState(node);
-  if (!WH_MODES.has(state.mode)) return;
-  const numEls = [...root.querySelectorAll(".pix-li-numinput input")];
-  if (isWired(node, "width") && numEls[0]) lockField(numEls[0]);
-  if (isWired(node, "height") && numEls[1]) lockField(numEls[1]);
+// Best-effort read of a wired INT input's value at edit time. Works for
+// Resolution Pixaroma (value lives in properties.resolutionState; the link's
+// origin_slot picks w vs h) and plain INT widget nodes. Returns null for
+// sources we can't read (math/reroute/computed) — callers then fall back to a
+// "set by wires" state / post-run dims.
+function readWiredInt(node, name) {
+  const inp = node.inputs?.find((i) => i.name === name);
+  if (!inp || inp.link == null) return null;
+  let l = node.graph?.links?.[inp.link];
+  if (!l && typeof node.graph?.links?.get === "function") l = node.graph.links.get(inp.link);
+  if (!l) return null;
+  const up = node.graph.getNodeById(l.origin_id);
+  if (!up) return null;
+  if (up.comfyClass === "PixaromaResolution" || up.type === "PixaromaResolution") {
+    try {
+      const s = JSON.parse(up.properties.resolutionState);
+      const v = l.origin_slot === 1 ? s.h : s.w; // slot 0 = width, 1 = height
+      return Number.isFinite(v) ? Math.round(v) : null;
+    } catch { return null; }
+  }
+  const w = up.widgets?.find((x) => typeof x.value === "number");
+  return Number.isFinite(w?.value) ? Math.round(w.value) : null;
 }
-function lockField(inp) {
+
+// Central wired-input state: which axes are wired + their best-effort values.
+function wireInfo(node) {
+  const wiredW = isWired(node, "width");
+  const wiredH = isWired(node, "height");
+  return {
+    wiredW, wiredH,
+    count: (wiredW ? 1 : 0) + (wiredH ? 1 : 0),
+    valW: wiredW ? readWiredInt(node, "width") : null,
+    valH: wiredH ? readWiredInt(node, "height") : null,
+  };
+}
+
+// JS mirror of Python `_apply_wired_size` (keep in lockstep). Returns the
+// effective state to feed previewResize so the OUTPUT card matches Python.
+// Single wire = aspect scale to that dim; both = exact box (Fit/Crop).
+function effectiveWiredState(state, info, ow, oh) {
+  if (!info.wiredW && !info.wiredH) return state;
+  if (info.wiredW !== info.wiredH) { // exactly one wired
+    const factor = info.wiredW ? (ow ? info.valW / ow : 1) : (oh ? info.valH / oh : 1);
+    return { ...state, mode: "scale_factor", scale_factor: factor, allow_upscale: true };
+  }
+  if (state.mode === "fit_inside") return { ...state, mode: "fit_inside", fit_w: info.valW, fit_h: info.valH };
+  return { ...state, mode: "cover", cover_w: info.valW, cover_h: info.valH };
+}
+
+// Lock the W/H field(s) of the active Fit/Crop panel to the wire(s) (both-wired
+// case). buildWHPanel renders Width then Height as the first two text inputs.
+// Only the fit/cover panels have these inputs, so this is a no-op elsewhere
+// (single-wire shows a summary panel; no-wire modes have no wires).
+function applyWiredLocks(node, root) {
+  const info = wireInfo(node);
+  const numEls = [...root.querySelectorAll(".pix-li-numinput input")];
+  if (info.wiredW && numEls[0]) lockField(numEls[0], info.valW);
+  if (info.wiredH && numEls[1]) lockField(numEls[1], info.valH);
+}
+function lockField(inp, val) {
   inp.readOnly = true;
   inp.style.opacity = "0.55";
   inp.title = "Driven by wired input";
+  if (val != null) inp.value = String(val); // show the actual wired number
 }
 
-// On connect of width/height while NOT in a W×H mode, switch to Crop to fill
-// (the "make it exactly this size" default). User-intent only — gated by the
-// configuring flag at the call site (Vue Compat #17).
+// On connecting the SECOND of width/height while NOT already in a W×H mode,
+// switch to Crop to fill (the exact-box default). Single-wire keeps the mode
+// (it's a fixed aspect scale, mode is irrelevant). User-intent only — gated by
+// the configuring flag at the call site (Vue Compat #17).
 function maybeAutoSwitch(node) {
-  const state = readState(node);
-  if ((isWired(node, "width") || isWired(node, "height")) && !WH_MODES.has(state.mode)) {
-    writeState(node, { ...state, mode: "cover" });
+  const info = wireInfo(node);
+  if (info.count === 2 && !WH_MODES.has(readState(node).mode)) {
+    writeState(node, { ...readState(node), mode: "cover" });
   }
+}
+
+// Single-wire summary panel: shows the wired dimension + the auto-computed
+// other dimension (keeps aspect). Read-only — no mode applies here.
+function buildSingleWirePanel(node, info, live) {
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel pix-ir-wirepanel";
+  const wv = info.wiredW ? info.valW : info.valH;
+  let aw = null, ah = null;
+  if (live && wv != null) {
+    if (info.wiredW) { aw = wv; ah = Math.round(live.h * wv / live.w); }
+    else { ah = wv; aw = Math.round(live.w * wv / live.h); }
+  } else if (info.wiredW) { aw = wv; } else { ah = wv; }
+  const mkRow = (label, val, tag) => {
+    const r = document.createElement("div");
+    r.className = "pix-ir-wirerow";
+    const l = document.createElement("span"); l.className = "pix-ir-wirelbl"; l.textContent = label;
+    const v = document.createElement("span"); v.className = "pix-ir-wireval"; v.textContent = val == null ? "—" : String(val);
+    const t = document.createElement("span"); t.className = "pix-ir-wiretag"; t.textContent = tag;
+    r.append(l, v, t);
+    return r;
+  };
+  panel.appendChild(mkRow("W", aw, info.wiredW ? "from wire" : "auto · keeps aspect"));
+  panel.appendChild(mkRow("H", ah, info.wiredW ? "auto · keeps aspect" : "from wire"));
+  return panel;
 }
 
 // Single-input modes: drop the section header and move its name INTO the
@@ -285,21 +379,45 @@ function renderUI(node) {
   const state = readState(node);
   root.innerHTML = "";
 
+  const info = wireInfo(node);
+  const live = getInputDims(node);
+
   const chips = buildModeChips(state);
   root.appendChild(chips);
 
-  const panel = buildModePanel(state.mode, node, state, writeState,
-    () => node.setDirtyCanvas(true, true), STATE_PROP,
-    { previewMaxW: 134, previewMaxH: 96, cropOnly: true, inputDims: getInputDims(node), oneLine: true });
-  if (panel) {
-    applyInlineLabel(panel, state.mode);
-    if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
-    if (state.mode === "cover") applyCoverControls(node, panel);
-    // No redundant title row — the highlighted button names the mode. Saves a
-    // row of height; matches the Pad panel which never had a title.
-    panel.querySelector(".pix-li-panel-label")?.remove();
-    root.appendChild(panel);
+  // When width/height are wired, restrict the modes (Wired W/H design):
+  //  1 wired -> fixed aspect scale, NO mode applies (all chips disabled).
+  //  2 wired -> exact box, only Fit inside / Crop to fill apply (others disabled).
+  // Display mode for 2-wired: honour Fit if active, else show Crop to fill.
+  let dispMode = state.mode;
+  if (info.count === 1) {
+    for (const c of chips.querySelectorAll(".pix-ir-chip")) { c.classList.add("disabled"); c.classList.remove("active"); }
+  } else if (info.count === 2) {
+    dispMode = WH_MODES.has(state.mode) ? state.mode : "cover";
+    for (const c of chips.querySelectorAll(".pix-ir-chip")) {
+      const m = c.dataset.mode;
+      c.classList.toggle("disabled", m !== "fit_inside" && m !== "cover");
+      c.classList.toggle("active", m === dispMode);
+    }
   }
+
+  let panel = null;
+  if (info.count === 1) {
+    panel = buildSingleWirePanel(node, info, live);
+  } else {
+    panel = buildModePanel(dispMode, node, state, writeState,
+      () => node.setDirtyCanvas(true, true), STATE_PROP,
+      { previewMaxW: 134, previewMaxH: 96, cropOnly: true, inputDims: live, oneLine: true });
+    if (panel) {
+      applyInlineLabel(panel, dispMode);
+      if (dispMode === "fit_inside" || dispMode === "cover") applyWHLayout(panel);
+      if (dispMode === "cover") applyCoverControls(node, panel);
+      // No redundant title row — the highlighted button names the mode. Saves a
+      // row of height; matches the Pad panel which never had a title.
+      panel.querySelector(".pix-li-panel-label")?.remove();
+    }
+  }
+  if (panel) root.appendChild(panel);
 
   const footer = buildFooter(state);
   root.appendChild(footer);
@@ -313,7 +431,7 @@ function renderUI(node) {
   // ── wiring ──
   chips.addEventListener("click", (e) => {
     const c = e.target.closest(".pix-ir-chip");
-    if (!c) return;
+    if (!c || c.classList.contains("disabled")) return; // disabled while wired
     writeState(node, { ...readState(node), mode: c.dataset.mode });
     renderUI(node);
     refit(node);

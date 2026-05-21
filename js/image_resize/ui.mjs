@@ -16,6 +16,14 @@ export function injectCSS() {
       text-align:center;cursor:pointer;user-select:none;transition:background .08s,border-color .08s;}
     .pix-ir-chip:hover{border-color:${BRAND};color:#ddd;}
     .pix-ir-chip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
+    /* Disabled while width/height are wired (mode doesn't apply). */
+    .pix-ir-chip.disabled{opacity:.32;pointer-events:none;}
+    /* Single-wire summary panel: read-only W / H rows. */
+    .pix-ir-root .pix-ir-wirerow{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#1d1d1d;border:1px solid #444;border-radius:4px;margin-bottom:6px;}
+    .pix-ir-root .pix-ir-wirerow:last-child{margin-bottom:0;}
+    .pix-ir-root .pix-ir-wirelbl{color:${BRAND};font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;width:14px;flex:none;}
+    .pix-ir-root .pix-ir-wireval{color:#e0e0e0;font-size:13px;font-weight:600;flex:1;}
+    .pix-ir-root .pix-ir-wiretag{color:#888;font-size:9px;text-transform:uppercase;letter-spacing:.5px;}
     .pix-ir-chip.span2{grid-column:span 2;}
     .pix-ir-foot{display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;}
     .pix-ir-snap{display:inline-flex;align-items:center;gap:5px;}
