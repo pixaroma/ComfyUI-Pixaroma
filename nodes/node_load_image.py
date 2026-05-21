@@ -107,6 +107,15 @@ class PixaromaLoadImage:
         "image", "mask", "width", "height",
         "filename", "original_width", "original_height",
     )
+    OUTPUT_TOOLTIPS = (
+        "The loaded image, after any resize.",
+        "The image's mask, from its alpha channel (blank if it has none).",
+        "Output width in pixels, after any resize.",
+        "Output height in pixels, after any resize.",
+        "The image's filename.",
+        "Width of the original image, before any resize.",
+        "Height of the original image, before any resize.",
+    )
     FUNCTION = "load_image"
 
     def load_image(self, image: str, LoadImagePixState: str = ""):

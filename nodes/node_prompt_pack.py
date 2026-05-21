@@ -39,6 +39,7 @@ class PixaromaPromptPack:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
+    OUTPUT_TOOLTIPS = ("The current prompt for this queue run (one prompt from the block). Wire to CLIP Text Encode.",)
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 

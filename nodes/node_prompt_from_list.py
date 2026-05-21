@@ -36,7 +36,7 @@ class PixaromaPromptFromList:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "prompts": (PIXAROMA_PROMPT_LIST,),
+                "prompts": (PIXAROMA_PROMPT_LIST, {"tooltip": "The prompts list from a Prompt Multi Pixaroma node set to List mode."}),
                 "index": ("INT", {
                     "default": 1,
                     "min": 1,
@@ -49,6 +49,7 @@ class PixaromaPromptFromList:
 
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
+    OUTPUT_TOOLTIPS = ("The prompt picked from the list at the chosen index. Empty if the index is out of range.",)
     FUNCTION = "pick"
     CATEGORY = "👑 Pixaroma"
 

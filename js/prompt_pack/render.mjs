@@ -196,6 +196,7 @@ export function buildRoot() {
   const counter = document.createElement("div");
   counter.className = "pix-pp-counter empty";
   counter.textContent = "0 prompts";
+  counter.title = "How many prompts are in the box right now. During a run it counts down how many are left.";
 
   bottombar.appendChild(actions);
   bottombar.appendChild(counter);

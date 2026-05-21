@@ -182,6 +182,7 @@ function buildRoot() {
   const ta = document.createElement("textarea");
   ta.className = "pix-text-ta";
   ta.placeholder = "text";
+  ta.title = "Type your text or prompt here. Press Ctrl+Enter to run the workflow.";
   ta.spellcheck = false;
   tawrap.appendChild(ta);
 

@@ -38,6 +38,7 @@ class PixaromaSwitchWH:
 
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
+    OUTPUT_TOOLTIPS = ("The width from the active (highlighted) source.", "The height from the active (highlighted) source.")
     FUNCTION = "pick"
     CATEGORY = "👑 Pixaroma"
 

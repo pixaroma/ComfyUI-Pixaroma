@@ -132,6 +132,11 @@ class PixaromaAudioStudio:
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT")
     RETURN_NAMES = ("video_frames", "audio", "fps")
+    OUTPUT_TOOLTIPS = (
+        "The rendered animation as a batch of image frames. Wire to Save Mp4 Pixaroma or a preview.",
+        "The audio track, passed through so you can mux it onto the video downstream.",
+        "Frames per second of the render.",
+    )
     FUNCTION = "generate"
     CATEGORY = "👑 Pixaroma"
 

@@ -58,6 +58,10 @@ class PixaromaPromptMulti:
 
     RETURN_TYPES = ("STRING", PIXAROMA_PROMPT_LIST)
     RETURN_NAMES = ("text", "prompts")
+    OUTPUT_TOOLTIPS = (
+        "The active row's prompt for this queue run. Use in Queue mode - wire to CLIP Text Encode.",
+        "The list of all enabled prompts. Use in List mode - wire into Prompt From List Pixaroma nodes.",
+    )
     FUNCTION = "build"
     CATEGORY = "👑 Pixaroma"
 

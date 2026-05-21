@@ -17,6 +17,7 @@ class Pixaroma3D:
     CATEGORY = "👑 Pixaroma"
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
+    OUTPUT_TOOLTIPS = ("The rendered 3D scene.", "Image width in pixels.", "Image height in pixels.")
     FUNCTION = "load_render"
     DESCRIPTION = (
         "3D Builder Pixaroma - a full 3D scene editor that runs inside ComfyUI. "

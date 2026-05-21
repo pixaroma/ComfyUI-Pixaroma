@@ -45,6 +45,7 @@ class PixaromaNumber:
 
     RETURN_TYPES = ("INT", "FLOAT")
     RETURN_NAMES = ("int", "float")
+    OUTPUT_TOOLTIPS = ("The value as a whole number (rounded to nearest).", "The value as a decimal number, kept as-is.")
     FUNCTION = "out"
     CATEGORY = "👑 Pixaroma"
 

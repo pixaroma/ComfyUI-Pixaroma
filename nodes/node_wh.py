@@ -41,6 +41,7 @@ class PixaromaWH:
 
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
+    OUTPUT_TOOLTIPS = ("The width you typed.", "The height you typed.")
     FUNCTION = "out"
     CATEGORY = "👑 Pixaroma"
 

@@ -34,6 +34,11 @@ class PixaromaRemoveBackground:
 
     RETURN_TYPES = ("IMAGE", "MASK", "MASK")
     RETURN_NAMES = ("image", "mask", "inverted_mask")
+    OUTPUT_TOOLTIPS = (
+        "The cutout image (RGBA) with the background made transparent.",
+        "Mask where the kept foreground is white.",
+        "Mask where the removed background is white (the foreground mask, inverted).",
+    )
     FUNCTION = "execute"
     CATEGORY = "👑 Pixaroma"
     DESCRIPTION = (

@@ -70,6 +70,7 @@ class PixaromaPreview:
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
+    OUTPUT_TOOLTIPS = ("The image(s) passed through unchanged, so you can chain a preview inline without breaking the wire.",)
     FUNCTION = "preview"
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma"

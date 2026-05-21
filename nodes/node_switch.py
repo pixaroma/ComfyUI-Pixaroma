@@ -47,6 +47,7 @@ class PixaromaSwitch:
 
     RETURN_TYPES = (ANY,)
     RETURN_NAMES = ("output",)
+    OUTPUT_TOOLTIPS = ("The input from the active (highlighted) row, passed through unchanged.",)
     FUNCTION = "pick"
     CATEGORY = "👑 Pixaroma"
 

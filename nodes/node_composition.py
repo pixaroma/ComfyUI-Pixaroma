@@ -360,6 +360,7 @@ class PixaromaImageComposition:
     # ADDED: New Width and Height INT outputs!
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("image", "width", "height")
+    OUTPUT_TOOLTIPS = ("The composited image.", "Image width in pixels.", "Image height in pixels.")
     FUNCTION = "load_composite"
     CATEGORY = "👑 Pixaroma"
     OUTPUT_NODE = True

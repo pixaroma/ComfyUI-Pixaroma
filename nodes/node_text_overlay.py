@@ -51,6 +51,7 @@ class PixaromaTextOverlay:
 
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
+    OUTPUT_TOOLTIPS = ("The input image with your text drawn on top.",)
     FUNCTION = "build"
 
     def build(self, image, text=None, TextOverlayState="{}"):
