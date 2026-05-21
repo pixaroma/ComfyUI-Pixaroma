@@ -267,7 +267,14 @@ function wireEvents(node, root) {
     syncToNative(node, root);
     updateClearEnabled(root);
   });
-  els.ta.addEventListener("keydown", (e) => { e.stopPropagation(); });
+  els.ta.addEventListener("keydown", (e) => {
+    // Let Ctrl/Cmd+Enter bubble up to ComfyUI's "run workflow" shortcut
+    // (issue #41) - this node is used for prompts, so running straight
+    // from the keyboard matters. Everything else is stopped so single-key
+    // shortcuts (Q queue, Delete, etc) don't fire while typing.
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
+    e.stopPropagation();
+  });
   els.ta.addEventListener("mousedown", (e) => { e.stopPropagation(); });
 
   els.copyBtn.addEventListener("click", async (e) => {

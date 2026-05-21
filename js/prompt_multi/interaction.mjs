@@ -26,6 +26,8 @@ export function attachLabelEditor(node, inputEl, rowId) {
   });
 
   inputEl.addEventListener("keydown", (e) => {
+    // Let Ctrl/Cmd+Enter bubble to ComfyUI's "run workflow" shortcut (issue #41).
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
     e.stopImmediatePropagation();
     if (e.key === "Enter") {
       e.preventDefault();
@@ -75,6 +77,8 @@ export function attachTextareaEditor(node, taEl, rowId) {
   });
 
   taEl.addEventListener("keydown", (e) => {
+    // Let Ctrl/Cmd+Enter bubble to ComfyUI's "run workflow" shortcut (issue #41).
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;
     e.stopImmediatePropagation();
   });
 
