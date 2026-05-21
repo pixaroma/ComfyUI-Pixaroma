@@ -19,6 +19,7 @@ from ._resize_helpers import _resize_frame, RESIZE_DEFAULTS, parse_resize_state
 DEFAULT_STATE = {
     **RESIZE_DEFAULTS,
     "preview_open": False,
+    "pad_color": "#808080",  # gray default for Pad (Load Image keeps black)
 }
 
 # Modes that consume an explicit W x H target. Wired width/height feed these.

@@ -50,7 +50,14 @@ export function injectCSS() {
     .pix-ir-rs-item-label{font-size:13px;color:#ddd;white-space:nowrap;}
     .pix-ir-rs-item-hint{font-size:11px;color:#888;text-align:right;}
     .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
-    .pix-ir-chk input{accent-color:${BRAND};cursor:pointer;}
+    /* Custom checkbox so the tick is WHITE on orange (matches our buttons);
+       accent-color let the browser pick a dark tick. */
+    .pix-ir-chk input{appearance:none;-webkit-appearance:none;margin:0;flex:none;
+      width:15px;height:15px;border:1px solid #555;border-radius:3px;background:#1d1d1d;
+      cursor:pointer;position:relative;}
+    .pix-ir-chk input:checked{background:${BRAND};border-color:${BRAND};}
+    .pix-ir-chk input:checked::after{content:"";position:absolute;left:5px;top:2px;
+      width:3px;height:7px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg);}
     .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
       font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
       border-radius:5px;cursor:pointer;user-select:none;}

@@ -321,11 +321,17 @@ export function injectResizePanelCSS() {
     .pix-li-pad-outhint { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3; }
     .pix-li-pad-resetcell { grid-column: 1; grid-row: 3; display: flex; align-items: center; justify-content: center; }
     .pix-li-pad-reset {
+      display: inline-flex; align-items: center; gap: 5px;
       background: #1d1d1d; border: 1px solid #444; border-radius: 4px;
       color: #aaa; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
       padding: 6px 9px; cursor: pointer; white-space: nowrap;
     }
     .pix-li-pad-reset:hover { border-color: ${BRAND}; color: ${BRAND}; }
+    .pix-li-pad-reset-ic {
+      width: 11px; height: 11px; flex: none; background-color: currentColor;
+      -webkit-mask: url("/pixaroma/assets/icons/ui/reset.svg") center/11px 11px no-repeat;
+              mask: url("/pixaroma/assets/icons/ui/reset.svg") center/11px 11px no-repeat;
+    }
     .pix-li-pad-colorcell {
       grid-column: 3; grid-row: 3;
       display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -1178,7 +1184,9 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
   resetBtn.type = "button";
   resetBtn.className = "pix-li-pad-reset";
   resetBtn.title = "Reset padding to 0";
-  resetBtn.textContent = "↺ Reset";
+  const resetIc = document.createElement("span");
+  resetIc.className = "pix-li-pad-reset-ic";
+  resetBtn.append(resetIc, document.createTextNode("Reset"));
   resetCell.appendChild(resetBtn);
 
   const colorCell = document.createElement("div");
