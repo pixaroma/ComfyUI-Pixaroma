@@ -558,15 +558,15 @@ app.registerExtension({
       const LEFT_PAD = 12, LABEL_RESERVE = 120, NECK_INSET = 3, COL_GAP = 6;
       const pairW = Math.max(120, this.size[0] - LEFT_PAD - LABEL_RESERVE);
       const cardW = (pairW - COL_GAP) / 2 - NECK_INSET / 2;
-      const cardH = 78;
+      const cardH = 118;
       const L1 = LEFT_PAD;                 // INPUT left
       const R1 = L1 + cardW;               // INPUT right
       const R2 = LEFT_PAD + pairW;         // OUTPUT right
       const L2 = R2 - cardW;               // OUTPUT left
       const arrowCx = (R1 + L2) / 2;
       const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
-      const R = 6, bridgeH = 20, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
-      const rectMaxW = 38, rectMaxH = 24;
+      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+      const rectMaxW = 54, rectMaxH = 40;
 
       // Single joined outline (two rounded cards + center bridge).
       ctx.beginPath();
@@ -589,17 +589,17 @@ app.registerExtension({
         const ccx = x + cardW / 2;
         ctx.textAlign = "center";
         const maxTxt = cardW - 8;
-        ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 13, maxTxt);
-        ctx.font = `bold 10px ${fam}`; ctx.fillStyle = BRAND;
-        ctx.fillText(`${w}×${h}`, ccx, cardY + 25, maxTxt);
+        ctx.font = `9px ${fam}`; ctx.fillStyle = "#9a9a9a";
+        ctx.fillText(label, ccx, cardY + 18, maxTxt);
+        ctx.font = `bold 11px ${fam}`; ctx.fillStyle = BRAND;
+        ctx.fillText(`${w}×${h}`, ccx, cardY + 36, maxTxt);
         const { rw, rh } = aspectRectDimsLi(w, h, rectMaxW, rectMaxH);
-        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 46 - rh / 2) + 0.5;
+        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 72 - rh / 2) + 0.5;
         if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
         ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
         ctx.strokeRect(rx, ry, rw, rh);
         ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 67, maxTxt);
+        ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 104, maxTxt);
       };
 
       const changed = info.inW !== info.outW || info.inH !== info.outH;
