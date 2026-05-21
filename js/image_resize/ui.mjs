@@ -107,7 +107,8 @@ const MODE_CHIPS = [
   { id: "scale_factor", label: "Scale By" },
   { id: "fit_inside", label: "Fit" },
   { id: "cover", label: "Crop" },
-  { id: "match_ratio", label: "Match ratio", span2: true },
+  { id: "match_ratio", label: "Match ratio" },
+  { id: "pad", label: "Pad" },
 ];
 
 export function buildModeChips(state) {

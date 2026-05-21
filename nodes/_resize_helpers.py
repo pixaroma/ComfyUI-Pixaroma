@@ -26,6 +26,7 @@ RESIZE_DEFAULTS = {
     "ratio_w": 1, "ratio_h": 1,
     "ratio_action": "crop",
     "pad_color": "#000000",
+    "pad_top": 0, "pad_bottom": 0, "pad_left": 0, "pad_right": 0,
     "snap": 0,
     "resample": "auto",
     "allow_upscale": True,
@@ -130,6 +131,7 @@ def _resize_frame(
         "fit_inside": _apply_fit_inside,
         "cover": _apply_cover,
         "match_ratio": _apply_match_ratio,
+        "pad": _apply_pad,
     }
     fn = dispatch.get(mode, _apply_off)
     return fn(pil_rgb, pil_mask, state, orig_w, orig_h)
@@ -352,6 +354,51 @@ def _apply_match_ratio(pil_rgb, pil_mask, state, orig_w, orig_h):
 
     if (final_w, final_h) != (new_w, new_h):
         # Snap nudged dims — resize the crop/pad result.
+        factor = final_w / new_w
+        resample = _pick_resample(state.get("resample", "auto"), factor)
+        rgb_out = rgb_out.resize((final_w, final_h), resample)
+        mask_out = mask_out.resize((final_w, final_h), Image.NEAREST)
+
+    return rgb_out, mask_out, final_w, final_h
+
+
+def _apply_pad(pil_rgb, pil_mask, state, orig_w, orig_h):
+    """Pixel padding for inpainting / outpainting. Adds the requested pixel
+    counts to each side, fills the new border with pad_color, and marks the
+    padded border white (255 = 1.0, the inpaint region) while the original
+    image area keeps its own mask values. Snap / clamp applied to final dims."""
+    pt = max(0, int(state.get("pad_top", 0)))
+    pb = max(0, int(state.get("pad_bottom", 0)))
+    pl = max(0, int(state.get("pad_left", 0)))
+    pr = max(0, int(state.get("pad_right", 0)))
+
+    new_w = orig_w + pl + pr
+    new_h = orig_h + pt + pb
+
+    if pl == pr == pt == pb == 0:
+        # Nothing to pad — honor snap like Off, otherwise passthrough.
+        sw, sh = _apply_snap(orig_w, orig_h, state.get("snap", 0))
+        sw, sh = _clamp_dims(sw, sh)
+        if (sw, sh) == (orig_w, orig_h):
+            return pil_rgb, pil_mask, sw, sh
+        factor = sw / orig_w
+        resample = _pick_resample(state.get("resample", "auto"), factor)
+        return (
+            pil_rgb.resize((sw, sh), resample),
+            pil_mask.resize((sw, sh), Image.NEAREST),
+            sw, sh,
+        )
+
+    pad_color = _hex_to_rgb(state.get("pad_color", "#000000"))
+    rgb_out = Image.new("RGB", (new_w, new_h), pad_color)
+    # Padded border = 255 (inpaint region); original area keeps its own mask.
+    mask_out = Image.new("L", (new_w, new_h), 255)
+    rgb_out.paste(pil_rgb, (pl, pt))
+    mask_out.paste(pil_mask, (pl, pt))
+
+    final_w, final_h = _apply_snap(new_w, new_h, state.get("snap", 0))
+    final_w, final_h = _clamp_dims(final_w, final_h)
+    if (final_w, final_h) != (new_w, new_h):
         factor = final_w / new_w
         resample = _pick_resample(state.get("resample", "auto"), factor)
         rgb_out = rgb_out.resize((final_w, final_h), resample)

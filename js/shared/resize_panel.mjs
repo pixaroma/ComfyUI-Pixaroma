@@ -274,6 +274,31 @@ export function injectResizePanelCSS() {
       border-color: rgba(255,255,255,0.85);
     }
     .pix-li-ratio-chip.pix-li-ratio-custom-chip { display: block; }
+    /* Pad panel — per-side pixel boxes in a cross around a live size readout. */
+    .pix-li-padgrid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      gap: 6px;
+      align-items: center;
+      justify-items: center;
+    }
+    .pix-li-pad-top { grid-column: 2; grid-row: 1; }
+    .pix-li-pad-left { grid-column: 1; grid-row: 2; }
+    .pix-li-pad-right { grid-column: 3; grid-row: 2; }
+    .pix-li-pad-bottom { grid-column: 2; grid-row: 3; }
+    .pix-li-pad-mid {
+      grid-column: 2; grid-row: 2;
+      min-height: 40px;
+      display: flex; align-items: center; justify-content: center;
+      text-align: center;
+    }
+    .pix-li-pad-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
+    .pix-li-pad-lbl { font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
+    .pix-li-pad-input-wrap { width: 100%; max-width: 78px; }
+    .pix-li-pad-outdims { font-size: 11px; font-weight: 600; color: ${BRAND}; }
+    .pix-li-pad-outhint { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3; }
+    .pix-li-pad-colorrow { justify-content: center; margin-top: 8px; }
   `;
   const s = document.createElement("style");
   s.id = "pix-resize-panel-css";
@@ -514,6 +539,13 @@ export function previewResize(W, H, state) {
       if (cur > tgt) { nw = W; nh = Math.round(W / tgt); }
       else           { nw = Math.round(H * tgt); nh = H; }
     }
+  } else if (mode === "pad") {
+    const pl = Math.max(0, +state.pad_left || 0);
+    const pr = Math.max(0, +state.pad_right || 0);
+    const pt = Math.max(0, +state.pad_top || 0);
+    const pb = Math.max(0, +state.pad_bottom || 0);
+    nw = W + pl + pr;
+    nh = H + pt + pb;
   }
 
   // Snap post-modifier — FLOOR to nearest multiple, not round-to-nearest.
@@ -858,7 +890,10 @@ const RATIO_PRESETS = [
   { id: "custom", w: null, h: null, label: "Custom" },
 ];
 
-function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
+// `extra.cropOnly` hides the Crop/Pad toggle + pad color so Match ratio just
+// crops (Image Resize splits Pad into its own mode). Load Image omits the flag
+// and keeps the toggle.
+function buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra = {}) {
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Match Aspect Ratio"));
@@ -934,7 +969,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
   padOpt.dataset.action = "pad";
   if (state.ratio_action === "pad") padOpt.classList.add("active");
   seg.append(cropOpt, padOpt);
-  panel.appendChild(seg);
+  if (!extra.cropOnly) panel.appendChild(seg);
 
   // Pad color row
   const padRow = document.createElement("div");
@@ -945,7 +980,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
   swatch.style.background = state.pad_color || "#000000";
   padRow.appendChild(swatch);
   padRow.style.display = state.ratio_action === "pad" ? "flex" : "none";
-  panel.appendChild(padRow);
+  if (!extra.cropOnly) panel.appendChild(padRow);
 
   panel.appendChild(makeReadout(""));
 
@@ -959,6 +994,7 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
     if (!preset) return;
     const s = JSON.parse(node.properties?.[stateKey] || "{}");
     const updates = { ...s, ratio_preset: rid };
+    if (extra.cropOnly) updates.ratio_action = "crop";
     if (rid !== "custom") {
       updates.ratio_w = preset.w;
       updates.ratio_h = preset.h;
@@ -1013,6 +1049,99 @@ function buildMatchRatioPanel(node, state, writeState, onChange, stateKey) {
   return panel;
 }
 
+// ── Pad panel (pixel padding for inpainting / outpainting) ──────────────────
+// Per-side pixel boxes in a cross around a live output-size readout, plus a pad
+// color. Output = input + left+right (W) and top+bottom (H); the padded border
+// becomes the white inpaint-mask region (Python _apply_pad). `extra.inputDims`
+// ({w,h} or null) lets the center show the live result size.
+function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) {
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel";
+
+  const grid = document.createElement("div");
+  grid.className = "pix-li-padgrid";
+
+  const center = document.createElement("div");
+  center.className = "pix-li-pad-mid";
+  const inDims = extra.inputDims || null;
+  function updateCenter() {
+    if (inDims && inDims.w && inDims.h) {
+      const s = JSON.parse(node.properties?.[stateKey] || "{}");
+      const { w, h } = previewResize(inDims.w, inDims.h, { ...s, mode: "pad" });
+      center.innerHTML = `<div class="pix-li-pad-outdims">${w} × ${h}</div>`;
+    } else {
+      center.innerHTML = `<div class="pix-li-pad-outhint">output<br>size</div>`;
+    }
+  }
+
+  function makePadField(labelText, key) {
+    const cell = document.createElement("div");
+    cell.className = "pix-li-pad-cell";
+    const lbl = document.createElement("div");
+    lbl.className = "pix-li-pad-lbl";
+    lbl.textContent = labelText;
+    const { wrap, input } = makeNumericInput({
+      value: state[key] ?? 0,
+      min: 0, max: 8192, step: 1,
+      onCommit: (v) => {
+        v = Math.max(0, Math.round(v));
+        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        writeState(node, { ...s, [key]: v });
+        input.value = String(v);
+        updateCenter();
+        onChange?.();
+      },
+    });
+    wrap.classList.add("pix-li-pad-input-wrap");
+    cell.append(lbl, wrap);
+    return cell;
+  }
+
+  const topCell = makePadField("Top", "pad_top");
+  const leftCell = makePadField("Left", "pad_left");
+  const rightCell = makePadField("Right", "pad_right");
+  const botCell = makePadField("Bottom", "pad_bottom");
+  topCell.classList.add("pix-li-pad-top");
+  leftCell.classList.add("pix-li-pad-left");
+  rightCell.classList.add("pix-li-pad-right");
+  botCell.classList.add("pix-li-pad-bottom");
+
+  grid.append(topCell, leftCell, center, rightCell, botCell);
+  panel.appendChild(grid);
+  updateCenter();
+
+  // Pad color row (centered under the cross)
+  const padRow = document.createElement("div");
+  padRow.className = "pix-li-pad-row pix-li-pad-colorrow";
+  padRow.innerHTML = `<span>Pad color</span>`;
+  const swatch = document.createElement("div");
+  swatch.className = "pix-li-pad-swatch";
+  swatch.style.background = state.pad_color || "#000000";
+  padRow.appendChild(swatch);
+  panel.appendChild(padRow);
+
+  swatch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const cur = (node.properties?.[stateKey]
+      ? JSON.parse(node.properties[stateKey]).pad_color : null)
+      || state.pad_color || "#000000";
+    openPixaromaColorPickerModal({
+      title: "Pad color",
+      initialColor: cur,
+      showClear: false,
+      onPick: (color) => {
+        const c = color || "#000000";
+        swatch.style.background = c;
+        const s = JSON.parse(node.properties?.[stateKey] || "{}");
+        writeState(node, { ...s, pad_color: c });
+        onChange?.();
+      },
+    });
+  });
+
+  return panel;
+}
+
 function buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra) {
   return buildWHPanel(node, state, writeState, onChange, {
     headerLabel: "Fit Inside (no crop)",
@@ -1038,6 +1167,7 @@ export function buildModePanel(mode, node, state, writeState, onChange, stateKey
   if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange, stateKey);
   if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange, stateKey, extra);
-  if (mode === "match_ratio") return buildMatchRatioPanel(node, state, writeState, onChange, stateKey);
+  if (mode === "match_ratio") return buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra);
+  if (mode === "pad") return buildPadPanel(node, state, writeState, onChange, stateKey, extra);
   return null;
 }

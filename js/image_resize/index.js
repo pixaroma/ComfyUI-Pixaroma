@@ -16,7 +16,8 @@ const DEFAULT_STATE = {
   mode: "off", max_mp: 1.0, longest_side: 1024, scale_factor: 1.0,
   fit_w: 1024, fit_h: 1024, cover_w: 1024, cover_h: 1024,
   ratio_preset: "1:1", ratio_w: 1, ratio_h: 1, ratio_action: "crop",
-  pad_color: "#000000", snap: 0, resample: "auto", allow_upscale: true,
+  pad_color: "#000000", pad_top: 0, pad_bottom: 0, pad_left: 0, pad_right: 0,
+  snap: 0, resample: "auto", allow_upscale: true,
   preview_open: false,
 };
 const WH_MODES = new Set(["fit_inside", "cover"]);
@@ -234,7 +235,8 @@ function renderUI(node) {
   root.appendChild(chips);
 
   const panel = buildModePanel(state.mode, node, state, writeState,
-    () => node.setDirtyCanvas(true, true), STATE_PROP, { previewMaxW: 134, previewMaxH: 86 });
+    () => node.setDirtyCanvas(true, true), STATE_PROP,
+    { previewMaxW: 134, previewMaxH: 86, cropOnly: true, inputDims: getInputDims(node) });
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
