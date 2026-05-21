@@ -1029,83 +1029,107 @@ export function renderGlobalControls(node, state, writeState, onChange) {
   const wrap = document.createElement("div");
   wrap.className = "pix-li-global";
 
-  // Snap row
-  const snapRow = document.createElement("div");
-  snapRow.className = "pix-li-snap-row";
-  const magnet = document.createElement("span");
-  magnet.className = "pix-li-magnet";
-  snapRow.appendChild(magnet);
-  const snapBtns = document.createElement("div");
-  snapBtns.className = "pix-li-snap-btns";
+  // Centered snap footer: magnet + "Snap" + chips.
+  const foot = document.createElement("div");
+  foot.className = "pix-li-foot";
+  const snap = document.createElement("div");
+  snap.className = "pix-li-snap2";
+  const icon = document.createElement("span");
+  icon.className = "pix-li-snap-icon";
+  snap.appendChild(icon);
+  const lbl = document.createElement("span");
+  lbl.className = "pix-li-snap-lbl";
+  lbl.textContent = "Snap";
+  snap.appendChild(lbl);
   for (const v of SNAP_OPTIONS) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = "pix-li-snap-btn" + (v === (state.snap || 0) ? " active" : "");
-    b.textContent = v === 0 ? "Off" : String(v);
+    const b = document.createElement("div");
+    b.className = "pix-li-schip" + (v === (state.snap || 0) ? " active" : "");
     b.dataset.v = String(v);
-    snapBtns.appendChild(b);
+    b.textContent = v === 0 ? "Off" : String(v);
+    b.title = v === 0 ? "No snapping."
+      : `Round the output dimensions down to a multiple of ${v} px (keeps latents aligned).`;
+    snap.appendChild(b);
   }
-  snapRow.appendChild(snapBtns);
-  wrap.appendChild(snapRow);
+  foot.appendChild(snap);
+  wrap.appendChild(foot);
 
-  // Resample row — custom Pixaroma-styled dropdown (native <select>
-  // renders very differently across Mac/Win/Linux; matching it to the
-  // rest of the node's look needs our own popup).
+  // Resample picker: [◀] [ Resample: Auto ▾ ] [▶]
   const rsRow = document.createElement("div");
-  rsRow.className = "pix-li-rs-row";
-  const rsLabel = document.createElement("span");
-  rsLabel.style.fontSize = "10px";
-  rsLabel.style.color = "#888";
-  rsLabel.textContent = "Resample";
+  rsRow.className = "pix-li-rs2-row";
+  const prev = document.createElement("button");
+  prev.type = "button"; prev.className = "pix-li-rs2-nav"; prev.title = "Previous resample filter"; prev.textContent = "◀";
+  const dd = document.createElement("div");
+  dd.className = "pix-li-rs2-dd";
+  dd.title = "Resampling filter used when scaling. Click to pick, or use the arrows.";
   const rsValue = document.createElement("span");
-  rsValue.className = "pix-li-rs-value";
-  rsValue.dataset.role = "rs-value";
-  const curResample = state.resample || "auto";
-  rsValue.textContent = curResample.charAt(0).toUpperCase() + curResample.slice(1);
+  rsValue.className = "pix-li-rs2-value";
+  rsValue.textContent = "Resample: " + resampleLabel(state.resample || "auto");
   const rsArrow = document.createElement("span");
-  rsArrow.className = "pix-li-rs-arrow";
-  rsArrow.textContent = "▾";
-  rsRow.append(rsLabel, rsValue, rsArrow);
+  rsArrow.className = "pix-li-rs2-arrow"; rsArrow.textContent = "▼";
+  dd.append(rsValue, rsArrow);
+  const next = document.createElement("button");
+  next.type = "button"; next.className = "pix-li-rs2-nav"; next.title = "Next resample filter"; next.textContent = "▶";
+  rsRow.append(prev, dd, next);
   wrap.appendChild(rsRow);
 
-  // Upscale toggle row
-  const upRow = document.createElement("label");
-  upRow.className = "pix-li-up-row";
-  const cb = document.createElement("input");
-  cb.type = "checkbox";
-  cb.checked = !!state.allow_upscale;
-  const upLbl = document.createElement("span");
-  upLbl.textContent = "Allow upscaling";
-  upRow.append(cb, upLbl);
-  wrap.appendChild(upRow);
+  // Upscaling toggle button.
+  const upBtn = document.createElement("button");
+  upBtn.type = "button";
+  upBtn.title = "Allow the image to grow larger than its original size. Off = never upscale.";
+  const upOn = state.allow_upscale !== false;
+  upBtn.className = "pix-li-upbtn" + (upOn ? " is-on" : "");
+  upBtn.textContent = upOn ? "Upscaling: On" : "Upscaling: Off";
+  wrap.appendChild(upBtn);
 
-  // Wire events
-  snapBtns.addEventListener("click", (e) => {
-    const b = e.target.closest(".pix-li-snap-btn");
+  // ── events ──
+  const RESAMPLE_IDS = RESAMPLE_OPTIONS.map((o) => o.id);
+  const setResample = (id) => {
+    const s = readStateLocal(node);
+    writeState(node, { ...s, resample: id });
+    rsValue.textContent = "Resample: " + resampleLabel(id);
+    onChange?.();
+  };
+  const cycleResample = (delta) => {
+    const cur = (readStateLocal(node).resample) || "auto";
+    let i = RESAMPLE_IDS.indexOf(cur); if (i < 0) i = 0;
+    i = (i + delta + RESAMPLE_IDS.length) % RESAMPLE_IDS.length;
+    setResample(RESAMPLE_IDS[i]);
+  };
+  foot.addEventListener("click", (e) => {
+    const b = e.target.closest(".pix-li-schip");
     if (!b) return;
     e.stopPropagation();
     const v = parseInt(b.dataset.v, 10);
-    for (const x of snapBtns.querySelectorAll(".pix-li-snap-btn")) {
-      x.classList.toggle("active", parseInt(x.dataset.v, 10) === v);
-    }
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, snap: v });
+    for (const x of foot.querySelectorAll(".pix-li-schip")) x.classList.toggle("active", x === b);
+    writeState(node, { ...readStateLocal(node), snap: v });
     onChange?.();
   });
-  rsRow.addEventListener("click", (e) => {
+  dd.addEventListener("click", (e) => {
     e.stopPropagation();
-    openResamplePopup(rsRow, state.resample || "auto", (picked) => {
-      rsValue.textContent = picked.charAt(0).toUpperCase() + picked.slice(1);
-      const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-      writeState(node, { ...s, resample: picked });
-      onChange?.();
-    });
+    openResamplePopup(dd, (readStateLocal(node).resample) || "auto", setResample);
   });
-  cb.addEventListener("change", () => {
-    const s = JSON.parse(node.properties?.loadImagePixState || "{}");
-    writeState(node, { ...s, allow_upscale: cb.checked });
+  prev.addEventListener("click", (e) => { e.stopPropagation(); cycleResample(-1); });
+  next.addEventListener("click", (e) => { e.stopPropagation(); cycleResample(1); });
+  upBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const on = !(readStateLocal(node).allow_upscale !== false);
+    writeState(node, { ...readStateLocal(node), allow_upscale: on });
+    upBtn.classList.toggle("is-on", on);
+    upBtn.textContent = on ? "Upscaling: On" : "Upscaling: Off";
     onChange?.();
   });
 
   return wrap;
+}
+
+// Local state read for event handlers (avoids depending on index.js import).
+function readStateLocal(node) {
+  try { return JSON.parse(node.properties?.loadImagePixState || "{}"); }
+  catch { return {}; }
+}
+
+// Map a resample id to its display label.
+function resampleLabel(id) {
+  const o = RESAMPLE_OPTIONS.find((x) => x.id === id) || RESAMPLE_OPTIONS[0];
+  return o.label;
 }
