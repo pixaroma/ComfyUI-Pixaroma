@@ -329,7 +329,15 @@ function setupLoadImageNode(node) {
     }
     const padding = 10; // root padding: 2px top + 8px bottom
     const gaps = Math.max(0, visible - 1) * 7; // flex `gap: 7px` between children
-    return Math.max(280, totalH + padding + gaps);
+    // Before the DOM widget is attached to the document, every child's
+    // offsetHeight is 0 (queueMicrotask renders before LiteGraph's first paint),
+    // so return a sane placeholder in that pre-layout case ONLY. Once laid out,
+    // hug the REAL content height with no floor. A 280px floor made short modes
+    // (e.g. "Off", which has no settings panel ≈ 220px of content) pad the
+    // controls widget taller than its content, leaving dead space between the
+    // "Upscaling" button and the image preview — that was the Off-mode gap.
+    if (totalH < 20) return 280;
+    return totalH + padding + gaps;
   }
   node._pixLiMeasureHeight = measureContentHeight;
 
