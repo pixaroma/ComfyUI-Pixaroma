@@ -168,28 +168,28 @@ export function injectCSS() {
     .pix-li-diminfo-row.out .pix-li-diminfo-dims { color: ${BRAND}; font-weight: 600; }
     .pix-li-chips {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 3px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
     }
     .pix-li-chip {
+      box-sizing: border-box;
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 6px 4px;
+      padding: 6px 3px;
       text-align: center;
-      font-size: 10px;
+      font-size: 9.5px;
       color: #ccc;
       cursor: pointer;
       user-select: none;
       transition: background 0.08s, border-color 0.08s;
     }
-    .pix-li-chip:hover { border-color: #666; }
+    .pix-li-chip:hover { border-color: ${BRAND}; color: #ddd; }
     .pix-li-chip.active {
       background: ${BRAND};
       color: #fff;
       border-color: ${BRAND};
     }
-    .pix-li-chip.span-full { grid-column: span 3; }
     .pix-li-panel {
       background: #1d1d1d;
       border: 1px solid #444;
@@ -604,6 +604,87 @@ export function injectCSS() {
       color: #aaa;
     }
     .pix-li-up-row input { accent-color: ${BRAND}; cursor: pointer; }
+    /* ── Image Resize design language, scoped to .pix-li-root ── */
+    /* Centered snap footer: magnet + "Snap" + chips. */
+    .pix-li-foot { display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; }
+    .pix-li-snap2 { display:inline-flex; align-items:center; gap:5px; }
+    .pix-li-snap-icon { display:inline-block; width:12px; height:12px; background-color:#888; flex:none;
+      -webkit-mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat;
+              mask:url("/pixaroma/assets/icons/ui/magnet.svg") center/12px 12px no-repeat; }
+    .pix-li-snap-lbl { font-size:9px; color:#7d7d7d; text-transform:uppercase; letter-spacing:.5px; }
+    .pix-li-schip { background:#1d1d1d; border:1px solid #444; border-radius:3px; color:#aaa;
+      font-size:8.5px; padding:3px 5px; min-width:16px; text-align:center; cursor:pointer; user-select:none; }
+    .pix-li-schip:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-schip.active { background:${BRAND}; color:#fff; border-color:${BRAND}; }
+    /* Resample picker: [◀] [ Resample: Auto ▾ ] [▶] */
+    .pix-li-rs2-row { display:flex; align-items:stretch; gap:6px; }
+    .pix-li-rs2-nav { flex:0 0 30px; background:#1d1d1d; border:1px solid #444; border-radius:4px;
+      color:${BRAND}; font-size:11px; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
+    .pix-li-rs2-nav:hover { border-color:${BRAND}; }
+    .pix-li-rs2-dd { flex:1; display:flex; align-items:center; justify-content:space-between;
+      background:#1d1d1d; border:1px solid #444; border-radius:4px; padding:6px 10px; cursor:pointer; user-select:none; }
+    .pix-li-rs2-dd:hover { border-color:${BRAND}; }
+    .pix-li-rs2-value { color:#ddd; font-size:11px; }
+    .pix-li-rs2-arrow { color:${BRAND}; font-size:13px; margin-left:6px; line-height:1; }
+    /* Upscaling toggle button. */
+    .pix-li-upbtn { align-self:center; background:#1d1d1d; border:1px solid #444; border-radius:5px;
+      color:#aaa; font-size:11px; padding:7px 18px; cursor:pointer; user-select:none; transition:background .08s,border-color .08s; }
+    .pix-li-upbtn:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-upbtn.is-on, .pix-li-upbtn.is-on:hover { background:${BRAND}; border-color:${BRAND}; color:#fff; }
+    /* Per-mode panel overrides (mirror image_resize .pix-ir-root .pix-li-* block). */
+    .pix-li-root .pix-li-panel { background:rgba(255,255,255,.04); border:none; border-radius:6px; padding:9px 10px; }
+    .pix-li-root .pix-li-panel-readout { display:none; }
+    .pix-li-root .pix-li-ratio-chips { margin-bottom:0; }
+    .pix-li-root .pix-li-custom-ratio-row { margin:8px 0 0; }
+    .pix-li-root .pix-li-input-wide { width:100% !important; max-width:none; }
+    .pix-li-root .pix-li-numinput { background:#1d1d1d !important; align-items:center; min-height:28px; }
+    .pix-li-root .pix-li-numinput .pix-li-spin { align-self:stretch; }
+    .pix-li-root .pix-li-numinput input { line-height:1.2; background:transparent !important; border:none !important; border-radius:0 !important; }
+    .pix-li-root .pix-li-inline-label { display:flex; align-items:center; color:${BRAND}; font-size:9px; font-weight:600;
+      text-transform:uppercase; letter-spacing:.5px; padding:0 4px 0 9px; white-space:nowrap; flex:none; }
+    .pix-li-root .pix-li-num-labeled input { text-align:right !important; padding-right:8px !important; }
+    .pix-li-root .pix-li-swap { background:#1d1d1d !important; }
+    .pix-li-root .pix-li-wh-header { text-align:center !important; color:#d6d6d6 !important; }
+    .pix-li-root .pix-li-wh-rect { background:rgba(246,103,68,0.35); border-width:2px; }
+    .pix-li-root .pix-li-wh-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px; align-items:center; }
+    .pix-li-root .pix-li-wh-col { display:flex; flex-direction:column; gap:6px; min-width:0; }
+    .pix-li-root .pix-li-wh-col .pix-li-swap { width:100%; height:24px; align-self:auto; }
+    .pix-li-root .pix-li-wh-grid .pix-li-wh-preview { margin-top:0; justify-content:center; }
+    /* Filled triangle spinner glyphs (replace shared outline chevrons). NOTE:
+       use the literal triangle characters - a backslash-escape inside a JS
+       template literal throws (CLAUDE.md UI Pattern #12). */
+    .pix-li-root .pix-li-spin { width:16px; border-left:none; }
+    .pix-li-root .pix-li-spin > button { background:transparent; }
+    .pix-li-root .pix-li-spin-up::before, .pix-li-root .pix-li-spin-down::before {
+      border:none; width:auto; height:auto; font-size:8px; line-height:1; transform:translate(-50%,-50%); }
+    .pix-li-root .pix-li-spin-up::before { content:"▲"; }
+    .pix-li-root .pix-li-spin-down::before { content:"▼"; }
+    /* Crop-to-fill extras: Fill/Crop toggle + 3x3 anchor grid. */
+    .pix-li-root .pix-li-swaprow { display:flex; gap:6px; align-items:stretch; }
+    .pix-li-root .pix-li-wh-col .pix-li-swaprow .pix-li-swap { flex:0 0 46px; width:auto; height:auto; align-self:stretch; }
+    .pix-li-root .pix-li-fillcrop { flex:1; display:grid; grid-template-columns:1fr 1fr; background:#1d1d1d; border:1px solid #444; border-radius:4px; overflow:hidden; }
+    .pix-li-root .pix-li-fillcrop > div { display:flex; align-items:center; justify-content:center; font-size:9.5px; padding:5px 0; color:#aaa; cursor:pointer; user-select:none; }
+    .pix-li-root .pix-li-fillcrop > div:hover { color:#ddd; background:rgba(255,255,255,.08); }
+    .pix-li-root .pix-li-fillcrop > div.active { background:${BRAND}; color:#fff; }
+    .pix-li-root .pix-li-anchor { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,1fr); gap:3px;
+      width:100%; max-width:96px; aspect-ratio:1; margin:0 auto; background:#1d1d1d; border:1px solid #444; border-radius:5px; padding:5px; box-sizing:border-box; }
+    .pix-li-root .pix-li-anchor-cell { background:rgba(255,255,255,.07); border-radius:2px; cursor:pointer; transition:background .08s; }
+    .pix-li-root .pix-li-anchor-cell:hover { background:rgba(255,255,255,.18); }
+    .pix-li-root .pix-li-anchor-cell.active { background:${BRAND}; }
+    /* Bring shared quick-pick + ratio chips in line (orange hover). */
+    .pix-li-root .pix-li-quickpick { box-sizing:border-box; }
+    .pix-li-root .pix-li-quickpick:hover { border-color:${BRAND}; color:#ddd; }
+    .pix-li-root .pix-li-ratio-chip { box-sizing:border-box; }
+    .pix-li-root .pix-li-ratio-chip:hover { border-color:${BRAND}; color:#ddd; }
+    /* Collapsible dropdown popup. */
+    .pix-li-pop-folder { display:flex; align-items:center; gap:6px; padding:5px 10px; cursor:pointer; user-select:none;
+      background:#161616; border-bottom:1px solid #2a2a2a; font-size:9px; color:#999; text-transform:uppercase; letter-spacing:.5px; }
+    .pix-li-pop-folder:hover { color:#ddd; }
+    .pix-li-pop-folder:not(:first-child) { border-top:1px solid #2a2a2a; }
+    .pix-li-pop-caret { display:inline-block; width:8px; color:${BRAND}; font-size:9px; flex:none; transition:transform .08s; }
+    .pix-li-pop-foldername { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pix-li-pop-count { color:#666; font-size:9px; flex:none; }
+    .pix-li-pop-files.collapsed { display:none; }
   `;
   const el = document.createElement("style");
   el.id = "pixaroma-load-image-css";
