@@ -293,12 +293,18 @@ export function injectResizePanelCSS() {
       display: flex; align-items: center; justify-content: center;
       text-align: center;
     }
-    .pix-li-pad-cell { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
-    .pix-li-pad-lbl { font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
-    .pix-li-pad-input-wrap { width: 100%; max-width: 78px; }
+    .pix-li-pad-input-wrap { width: 100%; max-width: 82px; }
+    .pix-li-pad-inlabel {
+      display: flex; align-items: center;
+      color: ${BRAND}; font-size: 9px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      padding: 0 2px 0 7px; flex: none;
+    }
+    .pix-li-pad-labeled input { text-align: right !important; padding-right: 6px !important; }
     .pix-li-pad-outdims { font-size: 11px; font-weight: 600; color: ${BRAND}; }
     .pix-li-pad-outhint { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3; }
-    .pix-li-pad-colorrow { justify-content: center; margin-top: 8px; }
+    .pix-li-pad-colorcell { grid-column: 3; grid-row: 3; display: flex; align-items: center; justify-content: center; }
+    .pix-li-pad-colorcell .pix-li-pad-swatch { width: 26px; height: 26px; }
   `;
   const s = document.createElement("style");
   s.id = "pix-resize-panel-css";
@@ -1074,12 +1080,9 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
     }
   }
 
-  function makePadField(labelText, key) {
-    const cell = document.createElement("div");
-    cell.className = "pix-li-pad-cell";
-    const lbl = document.createElement("div");
-    lbl.className = "pix-li-pad-lbl";
-    lbl.textContent = labelText;
+  // Letter label sits INSIDE each input (T/L/R/B) to save node height; the
+  // cross position reinforces which side. Full name in the hover title.
+  function makePadField(letter, title, key, placeClass) {
     const { wrap, input } = makeNumericInput({
       value: state[key] ?? 0,
       min: 0, max: 8192, step: 1,
@@ -1092,33 +1095,32 @@ function buildPadPanel(node, state, writeState, onChange, stateKey, extra = {}) 
         onChange?.();
       },
     });
-    wrap.classList.add("pix-li-pad-input-wrap");
-    cell.append(lbl, wrap);
-    return cell;
+    wrap.classList.add("pix-li-pad-input-wrap", "pix-li-pad-labeled", placeClass);
+    wrap.title = title;
+    const lab = document.createElement("span");
+    lab.className = "pix-li-pad-inlabel";
+    lab.textContent = letter;
+    wrap.insertBefore(lab, wrap.firstChild);
+    return wrap;
   }
 
-  const topCell = makePadField("Top", "pad_top");
-  const leftCell = makePadField("Left", "pad_left");
-  const rightCell = makePadField("Right", "pad_right");
-  const botCell = makePadField("Bottom", "pad_bottom");
-  topCell.classList.add("pix-li-pad-top");
-  leftCell.classList.add("pix-li-pad-left");
-  rightCell.classList.add("pix-li-pad-right");
-  botCell.classList.add("pix-li-pad-bottom");
+  const topW = makePadField("T", "Top padding (px)", "pad_top", "pix-li-pad-top");
+  const leftW = makePadField("L", "Left padding (px)", "pad_left", "pix-li-pad-left");
+  const rightW = makePadField("R", "Right padding (px)", "pad_right", "pix-li-pad-right");
+  const botW = makePadField("B", "Bottom padding (px)", "pad_bottom", "pix-li-pad-bottom");
 
-  grid.append(topCell, leftCell, center, rightCell, botCell);
-  panel.appendChild(grid);
-  updateCenter();
-
-  // Pad color row (centered under the cross)
-  const padRow = document.createElement("div");
-  padRow.className = "pix-li-pad-row pix-li-pad-colorrow";
-  padRow.innerHTML = `<span>Pad color</span>`;
+  // Pad color lives in the otherwise-empty bottom-right cell.
+  const colorCell = document.createElement("div");
+  colorCell.className = "pix-li-pad-colorcell";
   const swatch = document.createElement("div");
   swatch.className = "pix-li-pad-swatch";
+  swatch.title = "Pad color";
   swatch.style.background = state.pad_color || "#000000";
-  padRow.appendChild(swatch);
-  panel.appendChild(padRow);
+  colorCell.appendChild(swatch);
+
+  grid.append(topW, leftW, center, rightW, botW, colorCell);
+  panel.appendChild(grid);
+  updateCenter();
 
   swatch.addEventListener("click", (e) => {
     e.stopPropagation();
