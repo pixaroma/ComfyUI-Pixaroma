@@ -33,11 +33,21 @@ def _tensor_to_pils(image_t):
 
 
 def _mask_to_pils(mask_t, count, size):
-    """BHW float tensor -> list of L PIL images; blank (zeros) if mask_t is None."""
+    """BHW float tensor -> list of L PIL images, each conformed to `size` (the
+    image size) so the mask always matches the image. Blank (zeros) when mask_t
+    is None. ComfyUI's LoadImage emits a 64x64 zero mask when the image has no
+    alpha, so an incoming mask is frequently the wrong size; resize it (NEAREST,
+    to keep crisp edges) up front, otherwise the output mask won't match the
+    output image."""
     if mask_t is None:
         return [Image.new("L", size, 0) for _ in range(count)]
     arr = (mask_t.clamp(0, 1).cpu().numpy() * 255.0).round().astype(np.uint8)
-    out = [Image.fromarray(m, "L") for m in arr]
+    out = []
+    for m in arr:
+        pim = Image.fromarray(m, "L")
+        if pim.size != size:
+            pim = pim.resize(size, Image.NEAREST)
+        out.append(pim)
     while len(out) < count:
         out.append(Image.new("L", size, 0))
     return out[:count]
@@ -80,14 +90,11 @@ def _apply_wired_size(state: dict, width, height, orig_w: int, orig_h: int) -> d
 
 class PixaromaImageResize:
     DESCRIPTION = (
-        "Image Resize Pixaroma - resize any image mid-workflow with one compact "
-        "node. Modes: Off, Max megapixels, Longest side, Scale by, Fit inside, "
-        "Crop to fill, Match aspect ratio, and Pad (add a pixel border for "
-        "outpainting / inpainting). Crop to fill has a 9-point anchor plus a "
-        "Fill/Crop toggle (scale-and-crop vs cut a 1:1-pixel piece). Resizes an "
-        "optional mask alongside with crisp edges. Wire a width/height (e.g. "
-        "from Resolution Pixaroma): one wire scales keeping aspect, both wires "
-        "set an exact size. Outputs image, mask, width, height."
+        "Resize an image (and its mask) mid-workflow. Pick a mode - Off, Max "
+        "megapixels, Longest side, Scale by, Fit inside, Crop to fill, Match "
+        "aspect ratio, or Pad (add a border for outpainting). Optionally wire a "
+        "width/height (e.g. from Resolution Pixaroma) to drive the size. Outputs "
+        "image, mask, width, height."
     )
 
     @classmethod
