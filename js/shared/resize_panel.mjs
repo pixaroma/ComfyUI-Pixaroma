@@ -555,7 +555,7 @@ export function previewResize(W, H, state) {
     const f = tgt / Math.max(W, H);
     ({ w: nw, h: nh } = applyFactor(f));
   } else if (mode === "scale_factor") {
-    let f = +state.scale_factor || 1.0;
+    let f = Math.max(0.01, +state.scale_factor || 1.0); // mirror Python _apply_scale_factor floor
     ({ w: nw, h: nh } = applyFactor(f));
   } else if (mode === "fit_inside") {
     const tw = +state.fit_w || 1024, th = +state.fit_h || 1024;

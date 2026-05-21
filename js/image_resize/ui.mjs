@@ -242,6 +242,12 @@ export function buildResampleAndUpscale(state) {
 // Closes on outside mousedown / pointerdown / wheel / Escape (all capture
 // phase); the wheel + mousedown guards skip events inside the popup so a scroll
 // inside the list doesn't dismiss it (Load Image Pattern #14).
+// Tracks the open resample popup's close() so the node's onRemoved can tear it
+// down (otherwise deleting the node while the popup is open leaks the four
+// document capture listeners). Mirrors Prompt Reader Pattern #4.
+let _activeResampleClose = null;
+export function closeResamplePopup() { _activeResampleClose?.(); }
+
 export function openResamplePopup(anchorEl, currentValue, onPick) {
   document.querySelector(".pix-ir-rs-popup")?.remove();
   const popup = document.createElement("div");
@@ -268,7 +274,9 @@ export function openResamplePopup(anchorEl, currentValue, onPick) {
     document.removeEventListener("pointerdown", onDocDown, true);
     document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
+    if (_activeResampleClose === close) _activeResampleClose = null;
   }
+  _activeResampleClose = close;
   const onDocDown = (e) => { if (!popup.contains(e.target)) close(); };
   const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
   const onKey = (e) => { if (e.key === "Escape") close(); };

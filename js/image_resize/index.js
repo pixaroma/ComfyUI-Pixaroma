@@ -4,7 +4,7 @@ import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
-  openResamplePopup, RESAMPLE_IDS, resampleLabel,
+  openResamplePopup, closeResamplePopup, RESAMPLE_IDS, resampleLabel,
 } from "./ui.mjs";
 
 injectCSS();
@@ -165,8 +165,11 @@ function readWiredInt(node, name) {
       return Number.isFinite(v) ? Math.round(v) : null;
     } catch { return null; }
   }
-  const w = up.widgets?.find((x) => typeof x.value === "number");
-  return Number.isFinite(w?.value) ? Math.round(w.value) : null;
+  // Plain INT source: only trust it when there's exactly ONE numeric widget
+  // (unambiguous). Multi-widget nodes (seed/steps/cfg…) would give a wrong
+  // guess — return null so the card shows "set by wires" rather than a lie.
+  const nums = (up.widgets || []).filter((x) => typeof x.value === "number");
+  return nums.length === 1 && Number.isFinite(nums[0].value) ? Math.round(nums[0].value) : null;
 }
 
 // Central wired-input state: which axes are wired + their best-effort values.
@@ -187,9 +190,12 @@ function wireInfo(node) {
 function effectiveWiredState(state, info, ow, oh) {
   if (!info.wiredW && !info.wiredH) return state;
   if (info.wiredW !== info.wiredH) { // exactly one wired
-    const factor = info.wiredW ? (ow ? info.valW / ow : 1) : (oh ? info.valH / oh : 1);
-    return { ...state, mode: "scale_factor", scale_factor: factor, allow_upscale: true };
+    const v = info.wiredW ? info.valW : info.valH;
+    const od = info.wiredW ? ow : oh;
+    if (v == null || !od) return state; // unreadable wire — caller falls back
+    return { ...state, mode: "scale_factor", scale_factor: v / od, allow_upscale: true };
   }
+  if (info.valW == null || info.valH == null) return state; // unreadable wire
   if (state.mode === "fit_inside") return { ...state, mode: "fit_inside", fit_w: info.valW, fit_h: info.valH };
   return { ...state, mode: "cover", cover_w: info.valW, cover_h: info.valH };
 }
@@ -533,6 +539,7 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       this._pixIrRoot = null;
+      closeResamplePopup(); // tear down popup + its document listeners if open
       return _origRemoved?.apply(this, arguments);
     };
 
