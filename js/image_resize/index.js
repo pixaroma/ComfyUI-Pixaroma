@@ -23,6 +23,29 @@ const DEFAULT_STATE = {
 const WH_MODES = new Set(["fit_inside", "cover"]);
 const MIN_W = 360; // minimum node width (the two IN/OUT cards need the room)
 
+// True while a workflow is loading. The per-node _pixIrConfiguring flag does
+// NOT cover connection restoration: LiteGraph restores links at the GRAPH level
+// AFTER each node's onConfigure has returned (and cleared its flag), so the
+// auto-swap in onConnectionsChange would see the restored wires as fresh user
+// connections and disconnect the saved longest_side / width / height wire on
+// every open. Wrapping app.loadGraphData (the funnel for workflow open, tab
+// switch, and Ctrl+Z undo - same pattern as Connection FX) gives a load-wide
+// guard with a trailing window for link restoration that settles a tick later.
+let _irLoadingGraph = false;
+if (app && app.loadGraphData && !app._pixIrLoadWrapped) {
+  app._pixIrLoadWrapped = true;
+  const _origLoadGraphData = app.loadGraphData.bind(app);
+  app.loadGraphData = function (...args) {
+    _irLoadingGraph = true;
+    let r;
+    try { r = _origLoadGraphData(...args); }
+    finally {
+      Promise.resolve(r).finally(() => setTimeout(() => { _irLoadingGraph = false; }, 300));
+    }
+    return r;
+  };
+}
+
 function readState(node) {
   const v = node.properties?.[STATE_PROP];
   if (typeof v === "string" && v) {
@@ -601,10 +624,13 @@ app.registerExtension({
       // Auto-swap sizing sources: longest_side and width/height are competing
       // ways to set the size, so connecting one drops the other(s). width and
       // height may coexist (exact box) - only longest_side is exclusive vs them.
-      // Only on a genuine user connect; never during configure/load (Vue Compat
-      // #18: mutating wires on load would falsely flag the workflow modified).
-      // _pixIrAutoSwapping guards re-entrancy from the disconnectInput calls.
-      if (type === INPUT_TYPE && connected && !this._pixIrConfiguring && !this._pixIrAutoSwapping) {
+      // Only on a genuine user connect; never during configure/load. Three
+      // guards: _pixIrConfiguring (this node's onConfigure window),
+      // _irLoadingGraph (the graph-level link-restore window that fires AFTER
+      // onConfigure - this is the one that was disconnecting saved wires on
+      // open), and _pixIrAutoSwapping (re-entrancy from the disconnectInput
+      // calls below).
+      if (type === INPUT_TYPE && connected && !this._pixIrConfiguring && !this._pixIrAutoSwapping && !_irLoadingGraph) {
         const name = this.inputs?.[idx]?.name || ioSlot?.name;
         this._pixIrAutoSwapping = true;
         try {
