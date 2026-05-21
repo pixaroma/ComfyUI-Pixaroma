@@ -230,8 +230,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **May 21, 2026 · v1.3.51**
+### **May 21, 2026 · v1.3.51–1.3.52**
 - **NEW: Image Resize Pixaroma.** Resize an image (and its mask) anywhere in your workflow with one compact node. Choose **Off**, **Max megapixels**, **Longest side**, **Scale by**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** - which adds a border for outpainting and marks the new area as the mask to fill. **Crop to fill** lets you pick which part of the image to keep (the top, a corner, the center…) and whether to scale-and-crop or cut a piece at its original size. A live **Input → Output** preview shows the exact result and lights up only when the size actually changes. Wire a **width or height** in (for example from Resolution Pixaroma): connect just one to scale while keeping the shape, or both for an exact size - the node adapts on its own.
+- **Image Resize: wire in a single "longest side" value.** Connect one number and the node scales the longer edge of your image to that size, keeping the shape, so you no longer have to decide between width and height. It also gained a matching **longest side** output. Wired sizes now follow the **Upscaling** toggle, and a value of 0 simply passes the image through untouched.
+- **Press Ctrl+Enter to run while typing.** Text, Prompt Pack, Prompt Multi, and Prompt Stack fields no longer swallow the Run shortcut.
+- **Every node now explains itself.** Hover any control for a quick tip, and the side Info panel describes what each input and output does.
+- **Nodes remember their settings on reload.** Switch, Image Resize, and Crop no longer reset their choices when you reopen a workflow or switch tabs.
+- **Title cards hug their text** instead of stretching into a wide empty box.
 
 ### **May 20, 2026 · v1.3.48–1.3.50**
 - **Text Overlay: move the whole caption in one click.** A new **Position on canvas** row on the node body snaps the text to any edge or the center of the image. The left/center/right buttons are now clearly labelled **Text align** (they line up multiple lines inside the text block).
