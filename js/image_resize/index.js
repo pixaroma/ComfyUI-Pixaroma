@@ -302,7 +302,7 @@ function renderUI(node) {
 
   const panel = buildModePanel(state.mode, node, state, writeState,
     () => node.setDirtyCanvas(true, true), STATE_PROP,
-    { previewMaxW: 134, previewMaxH: 86, cropOnly: true, inputDims: getInputDims(node) });
+    { previewMaxW: 134, previewMaxH: 86, cropOnly: true, inputDims: getInputDims(node), oneLine: true });
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);

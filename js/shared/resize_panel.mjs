@@ -637,15 +637,15 @@ function makeSwapButton(title) {
 
 // ── Per-mode panel builders ─────────────────────────────────────────────────
 
-function buildMaxMPPanel(node, state, writeState, onChange, stateKey) {
+function buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra = {}) {
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Max Megapixels"));
 
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
-  quickWrap.style.gridTemplateColumns = "repeat(3, 1fr)";
   const QUICK = [0.25, 0.5, 1.0, 2.0, 4.0, 8.0];
+  quickWrap.style.gridTemplateColumns = `repeat(${extra.oneLine ? QUICK.length : 3}, 1fr)`;
   const cur = +state.max_mp || 1.0;
   const qpEls = [];
   for (const v of QUICK) {
@@ -752,15 +752,15 @@ function buildLongestSidePanel(node, state, writeState, onChange, stateKey) {
   return panel;
 }
 
-function buildScalePanel(node, state, writeState, onChange, stateKey) {
+function buildScalePanel(node, state, writeState, onChange, stateKey, extra = {}) {
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Scale by ×"));
 
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
-  quickWrap.style.gridTemplateColumns = "repeat(4, 1fr)";
-  const QUICK = [0.25, 0.5, 2, 4];
+  const QUICK = extra.oneLine ? [0.25, 0.5, 1, 2, 4] : [0.25, 0.5, 2, 4];
+  quickWrap.style.gridTemplateColumns = `repeat(${QUICK.length}, 1fr)`;
   const cur = +state.scale_factor || 1.0;
   const qpEls = [];
   for (const v of QUICK) {
@@ -1210,9 +1210,9 @@ function buildCoverPanel(node, state, writeState, onChange, stateKey, extra) {
 // Crop aspect rectangle. Defaults (90x40) keep Load Image unchanged.
 export function buildModePanel(mode, node, state, writeState, onChange, stateKey = "loadImagePixState", extra = {}) {
   if (mode === "off") return null;
-  if (mode === "max_mp") return buildMaxMPPanel(node, state, writeState, onChange, stateKey);
+  if (mode === "max_mp") return buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "longest_side") return buildLongestSidePanel(node, state, writeState, onChange, stateKey);
-  if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange, stateKey);
+  if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "match_ratio") return buildMatchRatioPanel(node, state, writeState, onChange, stateKey, extra);
