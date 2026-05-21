@@ -273,7 +273,10 @@ export function injectResizePanelCSS() {
       background: rgba(255,255,255,0.4);
       border-color: rgba(255,255,255,0.85);
     }
-    .pix-li-ratio-chip.pix-li-ratio-custom-chip { display: block; }
+    /* Custom chip is text-only (no shape) — keep the base flex centering so
+       "Custom" sits dead-center like every other chip (display:block left it
+       top-aligned within the stretched grid cell). */
+    .pix-li-ratio-chip.pix-li-ratio-custom-chip { width: 100%; }
     /* Pad panel — per-side pixel boxes in a cross around a live size readout. */
     .pix-li-padgrid {
       display: grid;
