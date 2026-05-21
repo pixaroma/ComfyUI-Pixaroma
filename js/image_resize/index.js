@@ -4,7 +4,7 @@ import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
-  buildPreview,
+  buildPreview, openResamplePopup, RESAMPLE_IDS, resampleLabel,
 } from "./ui.mjs";
 
 injectCSS();
@@ -316,7 +316,7 @@ function renderUI(node) {
   const footer = buildFooter(state);
   root.appendChild(footer);
 
-  const { wrap: ruWrap, sel, box } = buildResampleAndUpscale(state);
+  const { wrap: ruWrap, box, prev, dd, next, valueEl } = buildResampleAndUpscale(state);
   root.appendChild(ruWrap);
 
   const { wrap: prevWrap, bar, body } = buildPreview(state);
@@ -345,10 +345,21 @@ function renderUI(node) {
     }
     node.setDirtyCanvas(true, true);
   });
-  sel.addEventListener("change", () => {
-    writeState(node, { ...readState(node), resample: sel.value });
+  const setResample = (id) => {
+    writeState(node, { ...readState(node), resample: id });
+    valueEl.textContent = "Resample: " + resampleLabel(id);
     node.setDirtyCanvas(true, true);
-  });
+  };
+  const cycleResample = (delta) => {
+    const cur = readState(node).resample || "auto";
+    let i = RESAMPLE_IDS.indexOf(cur);
+    if (i < 0) i = 0;
+    i = (i + delta + RESAMPLE_IDS.length) % RESAMPLE_IDS.length;
+    setResample(RESAMPLE_IDS[i]);
+  };
+  dd.addEventListener("click", () => openResamplePopup(dd, readState(node).resample || "auto", setResample));
+  prev.addEventListener("click", () => cycleResample(-1));
+  next.addEventListener("click", () => cycleResample(1));
   box.addEventListener("change", () => {
     writeState(node, { ...readState(node), allow_upscale: box.checked });
     node.setDirtyCanvas(true, true);

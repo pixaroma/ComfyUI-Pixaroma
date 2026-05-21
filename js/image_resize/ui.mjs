@@ -28,9 +28,27 @@ export function injectCSS() {
       min-width:16px;text-align:center;cursor:pointer;user-select:none;}
     .pix-ir-schip:hover{border-color:#666;color:#ddd;}
     .pix-ir-schip.active{background:${BRAND};color:#fff;border-color:${BRAND};}
-    .pix-ir-resample{background:#1d1d1d;border:1px solid #444;
-      border-radius:4px;color:#ddd;font-size:11px;padding:5px;font-family:inherit;width:100%;}
-    .pix-ir-resample:focus{outline:none;border-color:${BRAND};}
+    /* Custom resample picker: [◀] [ Resample: Auto ▾ ] [▶] — native <select>
+       renders with OS chrome (blue highlight etc), so we use our own dark
+       dropdown to match the rest of the node. */
+    .pix-ir-rs-row{display:flex;align-items:stretch;gap:6px;}
+    .pix-ir-rs-nav{flex:0 0 30px;background:#1d1d1d;border:1px solid #444;border-radius:4px;
+      color:${BRAND};font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;}
+    .pix-ir-rs-nav:hover{border-color:${BRAND};background:rgba(246,103,68,.12);}
+    .pix-ir-rs-dd{flex:1;display:flex;align-items:center;justify-content:space-between;
+      background:#1d1d1d;border:1px solid #444;border-radius:4px;padding:6px 10px;cursor:pointer;user-select:none;}
+    .pix-ir-rs-dd:hover{border-color:#666;}
+    .pix-ir-rs-value{color:#ddd;font-size:11px;}
+    .pix-ir-rs-arrow{color:${BRAND};font-size:10px;margin-left:6px;}
+    /* Popup is appended to document.body, so these are NOT scoped to .pix-ir-root. */
+    .pix-ir-rs-popup{position:fixed;z-index:99999;background:#181818;border:1px solid #555;
+      border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.5);overflow:hidden;}
+    .pix-ir-rs-item{padding:6px 10px;cursor:pointer;display:flex;flex-direction:column;gap:1px;border-bottom:1px solid #2a2a2a;}
+    .pix-ir-rs-item:last-child{border-bottom:none;}
+    .pix-ir-rs-item:hover{background:#2a2a2a;}
+    .pix-ir-rs-item.active .pix-ir-rs-item-label{color:${BRAND};font-weight:600;}
+    .pix-ir-rs-item-label{font-size:11px;color:#ddd;}
+    .pix-ir-rs-item-hint{font-size:9px;color:#777;}
     .pix-ir-chk{display:flex;align-items:center;gap:6px;font-size:10.5px;color:#cfcfcf;cursor:pointer;user-select:none;}
     .pix-ir-prevbar{display:flex;align-items:center;justify-content:space-between;
       font-size:10px;color:#9a9a9a;padding:5px 7px;background:rgba(0,0,0,.22);
@@ -159,18 +177,39 @@ export function buildFooter(state) {
   return foot;
 }
 
+const RESAMPLE_OPTIONS = [
+  { id: "auto",     label: "Auto",     hint: "Lanczos for shrink, Bilinear for grow" },
+  { id: "nearest",  label: "Nearest",  hint: "Pixel-perfect, no smoothing" },
+  { id: "bilinear", label: "Bilinear", hint: "Fast, smooth" },
+  { id: "bicubic",  label: "Bicubic",  hint: "Slower, sharper" },
+  { id: "lanczos",  label: "Lanczos",  hint: "Slowest, sharpest" },
+];
+export const RESAMPLE_IDS = RESAMPLE_OPTIONS.map((o) => o.id);
+export function resampleLabel(id) {
+  return (RESAMPLE_OPTIONS.find((o) => o.id === id) || RESAMPLE_OPTIONS[0]).label;
+}
+
 export function buildResampleAndUpscale(state) {
   const wrap = document.createElement("div");
   wrap.style.cssText = "display:flex;flex-direction:column;gap:8px;";
-  const sel = document.createElement("select");
-  sel.className = "pix-ir-resample";
-  for (const o of ["auto", "nearest", "bilinear", "bicubic", "lanczos"]) {
-    const opt = document.createElement("option");
-    opt.value = o;
-    opt.textContent = "Resample: " + o[0].toUpperCase() + o.slice(1);
-    if ((state.resample || "auto") === o) opt.selected = true;
-    sel.appendChild(opt);
-  }
+
+  // [◀] [ Resample: Auto ▾ ] [▶]
+  const rsRow = document.createElement("div");
+  rsRow.className = "pix-ir-rs-row";
+  const prev = document.createElement("button");
+  prev.type = "button"; prev.className = "pix-ir-rs-nav"; prev.title = "Previous"; prev.textContent = "◀";
+  const dd = document.createElement("div");
+  dd.className = "pix-ir-rs-dd";
+  const valueEl = document.createElement("span");
+  valueEl.className = "pix-ir-rs-value";
+  valueEl.textContent = "Resample: " + resampleLabel(state.resample || "auto");
+  const arrow = document.createElement("span");
+  arrow.className = "pix-ir-rs-arrow"; arrow.textContent = "▾";
+  dd.append(valueEl, arrow);
+  const next = document.createElement("button");
+  next.type = "button"; next.className = "pix-ir-rs-nav"; next.title = "Next"; next.textContent = "▶";
+  rsRow.append(prev, dd, next);
+
   const chk = document.createElement("label");
   chk.className = "pix-ir-chk";
   const box = document.createElement("input");
@@ -178,8 +217,52 @@ export function buildResampleAndUpscale(state) {
   box.className = "pix-ir-upscale";
   box.checked = state.allow_upscale !== false;
   chk.append(box, document.createTextNode("Allow upscaling"));
-  wrap.append(sel, chk);
-  return { wrap, sel, box };
+
+  wrap.append(rsRow, chk);
+  return { wrap, box, prev, dd, next, valueEl };
+}
+
+// Custom resample dropdown popup — dark Pixaroma styling instead of the native
+// <select> chrome. Anchored to the dropdown row; click an item to commit.
+// Closes on outside mousedown / pointerdown / wheel / Escape (all capture
+// phase); the wheel + mousedown guards skip events inside the popup so a scroll
+// inside the list doesn't dismiss it (Load Image Pattern #14).
+export function openResamplePopup(anchorEl, currentValue, onPick) {
+  document.querySelector(".pix-ir-rs-popup")?.remove();
+  const popup = document.createElement("div");
+  popup.className = "pix-ir-rs-popup";
+  const rect = anchorEl.getBoundingClientRect();
+  popup.style.left = `${rect.left}px`;
+  popup.style.top = `${rect.bottom + 2}px`;
+  popup.style.width = `${rect.width}px`;
+  for (const opt of RESAMPLE_OPTIONS) {
+    const item = document.createElement("div");
+    item.className = "pix-ir-rs-item" + (opt.id === currentValue ? " active" : "");
+    const lbl = document.createElement("span");
+    lbl.className = "pix-ir-rs-item-label"; lbl.textContent = opt.label;
+    const hint = document.createElement("span");
+    hint.className = "pix-ir-rs-item-hint"; hint.textContent = opt.hint;
+    item.append(lbl, hint);
+    item.addEventListener("click", (e) => { e.stopPropagation(); onPick(opt.id); close(); });
+    popup.appendChild(item);
+  }
+  document.body.appendChild(popup);
+  function close() {
+    popup.remove();
+    document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("pointerdown", onDocDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+  }
+  const onDocDown = (e) => { if (!popup.contains(e.target)) close(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("pointerdown", onDocDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
 }
 
 export function buildPreview(state) {
