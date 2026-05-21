@@ -686,7 +686,7 @@ app.registerExtension({
       const capFont = `8px ${fam}`;
       const dimsFont = `bold 10px ${fam}`;
       const ratioFont = `8px ${fam}`;
-      const midY = 44; // vertical center of the 4 slot rows
+      const midY = 54; // vertical center of the 5 slot rows (TOP_PAD 4 + 5*20/2)
       ctx.save();
       ctx.textBaseline = "middle";
 

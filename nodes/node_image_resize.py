@@ -145,13 +145,14 @@ class PixaromaImageResize:
         }
 
     CATEGORY = "👑 Pixaroma"
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height")
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "width", "height", "longest_side")
     OUTPUT_TOOLTIPS = (
         "The resized image.",
         "The resized mask (white = the padded / inpaint area when using Pad).",
         "Final output width in pixels.",
         "Final output height in pixels.",
+        "The longer of the output's width and height, whatever the resize produced. Use it when you want the longest dimension without caring about orientation.",
     )
     FUNCTION = "resize"
 
@@ -182,7 +183,8 @@ class PixaromaImageResize:
             final_w, final_h = orig_w, orig_h
 
         ui = self._build_preview_payload(out_imgs[0], orig_w, orig_h, final_w, final_h)
-        return {"ui": ui, "result": (out_image, out_mask, final_w, final_h)}
+        longest = max(final_w, final_h)
+        return {"ui": ui, "result": (out_image, out_mask, final_w, final_h, longest)}
 
     def _build_preview_payload(self, first_frame_t, in_w, in_h, out_w, out_h):
         """Stash the first resized frame to temp/ and return the executed UI
