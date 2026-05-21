@@ -94,11 +94,14 @@ function getReadoutInfo(node, wi) {
   const live = getInputDims(node);
   const info = wi || wireInfo(node);
 
-  // Width/height wired: predict via the wired mirror so the card matches Python.
-  if (info.count > 0 && live) {
-    const needW = info.wiredW && info.valW == null;
-    const needH = info.wiredH && info.valH == null;
-    if (!needW && !needH) {
+  // Wired inputs: predict via the wired mirror so the card matches Python.
+  // longest_side wins over width/height (precedence), so when it's wired only
+  // its readability matters.
+  if ((info.count > 0 || info.wiredLongest) && live) {
+    const needL = info.wiredLongest && info.valLongest == null;
+    const needW = !info.wiredLongest && info.wiredW && info.valW == null;
+    const needH = !info.wiredLongest && info.wiredH && info.valH == null;
+    if (!needW && !needH && !needL) {
       const eff = effectiveWiredState(state, info, live.w, live.h);
       const { w, h } = previewResize(live.w, live.h, eff);
       return { mode: "dual", inW: live.w, inH: live.h, outW: w, outH: h };
@@ -176,11 +179,13 @@ function readWiredInt(node, name) {
 function wireInfo(node) {
   const wiredW = isWired(node, "width");
   const wiredH = isWired(node, "height");
+  const wiredLongest = isWired(node, "longest_side");
   return {
-    wiredW, wiredH,
+    wiredW, wiredH, wiredLongest,
     count: (wiredW ? 1 : 0) + (wiredH ? 1 : 0),
     valW: wiredW ? readWiredInt(node, "width") : null,
     valH: wiredH ? readWiredInt(node, "height") : null,
+    valLongest: wiredLongest ? readWiredInt(node, "longest_side") : null,
   };
 }
 
@@ -188,6 +193,11 @@ function wireInfo(node) {
 // effective state to feed previewResize so the OUTPUT card matches Python.
 // Single wire = aspect scale to that dim; both = exact box (Fit/Crop).
 function effectiveWiredState(state, info, ow, oh) {
+  // longest_side wins over width/height (mirrors Python _apply_wired_size).
+  if (info.wiredLongest) {
+    if (info.valLongest == null) return state; // unreadable wire — caller falls back
+    return { ...state, mode: "longest_side", longest_side: info.valLongest, allow_upscale: true };
+  }
   if (!info.wiredW && !info.wiredH) return state;
   if (info.wiredW !== info.wiredH) { // exactly one wired
     const v = info.wiredW ? info.valW : info.valH;
@@ -260,6 +270,26 @@ function buildSingleWirePanel(node, info, live) {
   // upstream wired value changes (DOM has no event for that; the draw loop is
   // the only signal, same one the OUTPUT card already rides).
   node._pixIrWireCells = { wEl: wRow.valEl, hEl: hRow.valEl };
+  return panel;
+}
+
+// longest_side wired summary: one row "LONGEST SIDE | value | from wire". The
+// OUTPUT card paints the resulting W×H; this just confirms the wired target.
+// Read-only (the value comes from the wire). Reuses the single-wire row CSS.
+function buildLongestWirePanel(node, info) {
+  const panel = document.createElement("div");
+  panel.className = "pix-li-panel pix-ir-wirepanel";
+  const row = document.createElement("div");
+  row.className = "pix-ir-wirerow";
+  const l = document.createElement("span"); l.className = "pix-ir-wirelbl"; l.textContent = "LONGEST SIDE";
+  const v = document.createElement("span"); v.className = "pix-ir-wireval";
+  v.textContent = info.valLongest == null ? "—" : String(info.valLongest);
+  const t = document.createElement("span"); t.className = "pix-ir-wiretag"; t.textContent = "from wire";
+  row.append(l, v, t);
+  panel.append(row);
+  // Cache the value cell so onDrawForeground can refresh it live when the
+  // upstream wired value changes (same draw-loop pattern as the single-wire panel).
+  node._pixIrLongestCell = v;
   return panel;
 }
 
@@ -397,6 +427,7 @@ function renderUI(node) {
   // about to be detached); the panels below re-set whichever applies.
   node._pixIrWireCells = null;
   node._pixIrLockedInputs = null;
+  node._pixIrLongestCell = null;
   root.innerHTML = "";
 
   const info = wireInfo(node);
@@ -410,7 +441,14 @@ function renderUI(node) {
   //  2 wired -> exact box, only Fit inside / Crop to fill apply (others disabled).
   // Display mode for 2-wired: honour Fit if active, else show Crop to fill.
   let dispMode = state.mode;
-  if (info.count === 1) {
+  if (info.wiredLongest) {
+    // longest_side wire wins: force Longest side display, lock every chip.
+    dispMode = "longest_side";
+    for (const c of chips.querySelectorAll(".pix-ir-chip")) {
+      c.classList.add("disabled");
+      c.classList.toggle("active", c.dataset.mode === "longest_side");
+    }
+  } else if (info.count === 1) {
     for (const c of chips.querySelectorAll(".pix-ir-chip")) { c.classList.add("disabled"); c.classList.remove("active"); }
   } else if (info.count === 2) {
     dispMode = WH_MODES.has(state.mode) ? state.mode : "cover";
@@ -422,7 +460,9 @@ function renderUI(node) {
   }
 
   let panel = null;
-  if (info.count === 1) {
+  if (info.wiredLongest) {
+    panel = buildLongestWirePanel(node, info);
+  } else if (info.count === 1) {
     panel = buildSingleWirePanel(node, info, live);
   } else {
     panel = buildModePanel(dispMode, node, state, writeState,
@@ -551,6 +591,7 @@ app.registerExtension({
       this._pixIrRoot = null;
       this._pixIrWireCells = null;
       this._pixIrLockedInputs = null;
+      this._pixIrLongestCell = null;
       closeResamplePopup(); // tear down popup + its document listeners if open
       return _origRemoved?.apply(this, arguments);
     };
@@ -583,6 +624,11 @@ app.registerExtension({
         const c = this._pixIrWireCells, w = String(info.outW), h = String(info.outH);
         if (c.wEl.textContent !== w) c.wEl.textContent = w;
         if (c.hEl.textContent !== h) c.hEl.textContent = h;
+      }
+      // Keep the longest_side summary value live (upstream wired value can change).
+      if (this._pixIrLongestCell && wi.valLongest != null) {
+        const s = String(wi.valLongest);
+        if (this._pixIrLongestCell.textContent !== s) this._pixIrLongestCell.textContent = s;
       }
       // Locked W/H fields (both-wired): keep the shown value in sync with the
       // live upstream value (it can change after render).
