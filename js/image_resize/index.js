@@ -185,11 +185,10 @@ function applyInlineLabel(panel, mode) {
   num.classList.add("pix-ir-num-labeled");
 }
 
-// Fit / Crop (W x H) panels: keep the mode title as a centered light header,
-// drop the per-field WIDTH/HEIGHT labels and put short W / H labels INSIDE each
-// input, and remove the redundant size text under the aspect rectangle.
+// Fit / Crop (W x H) panels: drop the per-field WIDTH/HEIGHT labels and put
+// short W / H labels INSIDE each input, and remove the redundant size text
+// under the aspect rectangle. (The mode title row is removed by the caller.)
 function applyWHLayout(panel) {
-  panel.querySelector(".pix-li-panel-label")?.classList.add("pix-ir-wh-header");
   const fields = [...panel.querySelectorAll(".pix-li-wh-field")];
   const tags = ["W", "H"];
   fields.forEach((f, i) => {
@@ -240,6 +239,9 @@ function renderUI(node) {
   if (panel) {
     applyInlineLabel(panel, state.mode);
     if (state.mode === "fit_inside" || state.mode === "cover") applyWHLayout(panel);
+    // No redundant title row — the highlighted button names the mode. Saves a
+    // row of height; matches the Pad panel which never had a title.
+    panel.querySelector(".pix-li-panel-label")?.remove();
     root.appendChild(panel);
   }
 

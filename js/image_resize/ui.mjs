@@ -103,10 +103,10 @@ export function injectCSS() {
 const MODE_CHIPS = [
   { id: "off", label: "Off" },
   { id: "max_mp", label: "Max MP" },
-  { id: "longest_side", label: "Longest" },
-  { id: "scale_factor", label: "Scale By" },
-  { id: "fit_inside", label: "Fit" },
-  { id: "cover", label: "Crop" },
+  { id: "longest_side", label: "Longest side" },
+  { id: "scale_factor", label: "Scale by ×" },
+  { id: "fit_inside", label: "Fit inside" },
+  { id: "cover", label: "Crop to fill" },
   { id: "match_ratio", label: "Match ratio" },
   { id: "pad", label: "Pad" },
 ];
