@@ -26,9 +26,10 @@ export function injectResizePanelCSS() {
     .pix-li-panel-row { display: flex; align-items: center; gap: 8px; }
     .pix-li-panel-label {
       font-size: 9px;
-      color: ${BRAND};
+      color: #999;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      text-align: center;
       margin-bottom: 6px;
     }
     .pix-li-panel input[type="range"] { flex: 1; accent-color: ${BRAND}; }
@@ -127,9 +128,10 @@ export function injectResizePanelCSS() {
     }
     .pix-li-custom-ratio-input-wrap { width: 64px; }
     .pix-li-custom-ratio-swap {
-      width: 24px;
-      height: 22px;
-      background: #2a2a2a;
+      width: 28px;
+      align-self: stretch;
+      min-height: 22px;
+      background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 3px;
       color: #aaa;
