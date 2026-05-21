@@ -695,15 +695,15 @@ function buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra = {}
   return panel;
 }
 
-function buildLongestSidePanel(node, state, writeState, onChange, stateKey) {
+function buildLongestSidePanel(node, state, writeState, onChange, stateKey, extra = {}) {
   const panel = document.createElement("div");
   panel.className = "pix-li-panel";
   panel.appendChild(makePanelHeader("Longest Side"));
 
   const quickWrap = document.createElement("div");
   quickWrap.className = "pix-li-quickpicks";
-  quickWrap.style.gridTemplateColumns = "repeat(5, 1fr)";
-  const QUICK = [512, 768, 1024, 1536, 2048];
+  const QUICK = extra.oneLine ? [512, 768, 1024, 1280, 1536, 2048] : [512, 768, 1024, 1536, 2048];
+  quickWrap.style.gridTemplateColumns = `repeat(${QUICK.length}, 1fr)`;
   const cur = +state.longest_side || 1024;
   const qpEls = [];
   for (const v of QUICK) {
@@ -1211,7 +1211,7 @@ function buildCoverPanel(node, state, writeState, onChange, stateKey, extra) {
 export function buildModePanel(mode, node, state, writeState, onChange, stateKey = "loadImagePixState", extra = {}) {
   if (mode === "off") return null;
   if (mode === "max_mp") return buildMaxMPPanel(node, state, writeState, onChange, stateKey, extra);
-  if (mode === "longest_side") return buildLongestSidePanel(node, state, writeState, onChange, stateKey);
+  if (mode === "longest_side") return buildLongestSidePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "scale_factor") return buildScalePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "fit_inside") return buildFitInsidePanel(node, state, writeState, onChange, stateKey, extra);
   if (mode === "cover") return buildCoverPanel(node, state, writeState, onChange, stateKey, extra);
