@@ -127,8 +127,9 @@ export function injectResizePanelCSS() {
       margin-bottom: 6px;
     }
     .pix-li-custom-ratio-input-wrap { width: 64px; }
-    .pix-li-custom-ratio-swap {
+    .pix-li-custom-ratio-row .pix-li-custom-ratio-swap {
       width: 28px;
+      height: auto;
       align-self: stretch;
       min-height: 22px;
       background: #1d1d1d;
