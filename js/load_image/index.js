@@ -176,27 +176,34 @@ function renderUI(node) {
   // Refresh dims info bar (input + output dims).
   updateInfoBar(node);
 
-  // Force an immediate resize ONLY when the content height grew past the
-  // current node height. Two reasons:
-  // (1) Without this, switching to a taller panel takes 1-3 seconds
-  //     because LiteGraph doesn't auto-adjust node.size when getMinHeight
-  //     changes — it only re-measures during certain lifecycle events.
-  // (2) Force-growing only (NEVER shrinking) preserves the user's manual
-  //     resize. If they dragged the node taller for a roomier preview and
-  //     then switch to a smaller panel, we leave the node's height alone.
-  //     They can manually shrink if they want.
-  const newH = node._pixLiMeasureHeight?.();
-  if (typeof newH === "number" && newH !== node._pixLiLastMeasuredH) {
-    node._pixLiLastMeasuredH = newH;
-    if (typeof node.computeSize === "function") {
-      const min = node.computeSize();
-      if (Array.isArray(min) && min.length === 2) {
-        // Only grow — preserve user's manual taller resize.
-        if (min[1] > (node.size?.[1] || 0)) node.size[1] = min[1];
-      }
-    }
-  }
+  // NOTE: node-height fitting is NOT done here. renderUI runs on the load path
+  // (configure / initial microtask) too, and resizing there dirties the saved
+  // workflow (Vue Compat #18). Height fitting happens only on genuine user
+  // actions via fitPreview() (mode-chip click + fresh drop), gated on
+  // !isGraphLoading().
   node.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Auto-fit the node height so the native image preview hugs the controls with
+// a small, consistent gap in every mode (the "Hug the controls" choice). Snaps
+// node.size[1] to the content minimum (controls + preview min), both growing
+// and shrinking — that's what removes the big float left over when a tall mode
+// panel grew the node and a shorter mode didn't shrink it back. The user can
+// still drag the node taller for a bigger preview; it re-snugs on the next
+// mode change. Deferred to rAF so the freshly-rendered panel has laid out
+// before measuring. Gated on !isGraphLoading so it never resizes during a
+// workflow load (Vue Compat #18 / #19).
+function fitPreview(node) {
+  if (isGraphLoading()) return;
+  requestAnimationFrame(() => {
+    if (!node._pixLiRoot || isGraphLoading()) return;
+    if (typeof node.computeSize !== "function") return;
+    const min = node.computeSize();
+    if (Array.isArray(min) && min.length === 2 && Math.abs((node.size?.[1] || 0) - min[1]) > 0.5) {
+      node.size[1] = min[1];
+      node.setDirtyCanvas?.(true, true);
+    }
+  });
 }
 
 // Global Ctrl+V handler for the active load-image node.
@@ -487,10 +494,17 @@ function setupLoadImageNode(node) {
     if (cur.mode === mode) return;
     writeState(node, { ...cur, mode });
     renderUI(node);
+    fitPreview(node); // re-snug the preview under the new (taller/shorter) panel
   });
 
-  // Initial render — defer so configure() has time to land state.
-  queueMicrotask(() => renderUI(node));
+  // Initial render — defer so configure() has time to land state. Fit the
+  // height ONLY on a fresh drop (no saved state yet); a loaded workflow keeps
+  // its saved size (Vue Compat #18 — never resize on the load path).
+  queueMicrotask(() => {
+    const wasConfigured = node.properties?.[STATE_PROP] !== undefined;
+    renderUI(node);
+    if (!wasConfigured) fitPreview(node);
+  });
 }
 
 app.registerExtension({
