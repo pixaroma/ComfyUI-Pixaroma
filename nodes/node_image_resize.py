@@ -18,7 +18,6 @@ from ._resize_helpers import _resize_frame, RESIZE_DEFAULTS, parse_resize_state
 
 DEFAULT_STATE = {
     **RESIZE_DEFAULTS,
-    "preview_open": False,
     "pad_color": "#808080",  # gray default for Pad (Load Image keeps black)
 }
 
@@ -27,9 +26,22 @@ _WH_MODES = ("fit_inside", "cover")
 
 
 def _tensor_to_pils(image_t):
-    """BHWC float tensor -> list of RGB PIL images."""
+    """BHWC float tensor -> list of RGB PIL images. Defensive about channel
+    count: ComfyUI IMAGE is normally 3-channel, but a stray 1-channel image
+    (grayscale, or a mask rewired into the image slot) or a 4-channel RGBA
+    tensor must not crash the run. 1ch -> replicated to RGB; 4ch -> alpha
+    dropped (the node has a separate mask output)."""
     arr = (image_t.clamp(0, 1).cpu().numpy() * 255.0).round().astype(np.uint8)
-    return [Image.fromarray(frame, "RGB") for frame in arr]
+    out = []
+    for frame in arr:
+        if frame.ndim == 2:
+            frame = np.stack([frame] * 3, axis=-1)
+        elif frame.shape[-1] == 1:
+            frame = np.repeat(frame, 3, axis=-1)
+        elif frame.shape[-1] >= 4:
+            frame = frame[..., :3]
+        out.append(Image.fromarray(frame, "RGB"))
+    return out
 
 
 def _mask_to_pils(mask_t, count, size):

@@ -207,8 +207,13 @@ function effectiveWiredState(state, info, ow, oh) {
 function applyWiredLocks(node, root) {
   const info = wireInfo(node);
   const numEls = [...root.querySelectorAll(".pix-li-numinput input")];
-  if (info.wiredW && numEls[0]) lockField(numEls[0], info.valW);
-  if (info.wiredH && numEls[1]) lockField(numEls[1], info.valH);
+  const wInp = info.wiredW ? numEls[0] : null;
+  const hInp = info.wiredH ? numEls[1] : null;
+  if (wInp) lockField(wInp, info.valW);
+  if (hInp) lockField(hInp, info.valH);
+  // Cache so onDrawForeground can refresh the shown value live (the upstream
+  // wired value can change after render — same staleness class as the summary).
+  if (wInp || hInp) node._pixIrLockedInputs = { wInp, hInp };
 }
 function lockField(inp, val) {
   inp.readOnly = true;
@@ -220,16 +225,11 @@ function lockField(inp, val) {
   if (wrap) { wrap.style.opacity = "0.55"; wrap.title = "Driven by wired input"; }
 }
 
-// On connecting the SECOND of width/height while NOT already in a W×H mode,
-// switch to Crop to fill (the exact-box default). Single-wire keeps the mode
-// (it's a fixed aspect scale, mode is irrelevant). User-intent only — gated by
-// the configuring flag at the call site (Vue Compat #17).
-function maybeAutoSwitch(node) {
-  const info = wireInfo(node);
-  if (info.count === 2 && !WH_MODES.has(readState(node).mode)) {
-    writeState(node, { ...readState(node), mode: "cover" });
-  }
-}
+// NOTE: there is intentionally no "auto-switch mode on connect". When both
+// width/height are wired the RENDER forces a Crop-to-fill display (dispMode)
+// and Python/effectiveWiredState force cover at run time - all WITHOUT writing
+// state.mode. That keeps the user's chosen mode intact so disconnecting the
+// wires restores it (and avoids dirtying the workflow on a connect/disconnect).
 
 // Single-wire summary panel: shows the wired dimension + the auto-computed
 // other dimension (keeps aspect). Read-only — no mode applies here.
@@ -239,8 +239,10 @@ function buildSingleWirePanel(node, info, live) {
   const wv = info.wiredW ? info.valW : info.valH;
   let aw = null, ah = null;
   if (live && wv != null) {
-    if (info.wiredW) { aw = wv; ah = Math.round(live.h * wv / live.w); }
-    else { ah = wv; aw = Math.round(live.w * wv / live.h); }
+    // Compute via the same path as the OUTPUT card (snap-aware) so the first
+    // render matches the value onDrawForeground will paint — no one-frame flash.
+    const r = previewResize(live.w, live.h, effectiveWiredState(readState(node), info, live.w, live.h));
+    aw = r.w; ah = r.h;
   } else if (info.wiredW) { aw = wv; } else { ah = wv; }
   const mkRow = (label, val, tag) => {
     const r = document.createElement("div");
@@ -391,8 +393,11 @@ function renderUI(node) {
   // Bailing on !isConnected here left the body blank until the first wire/edit.
   if (!root) return;
   const state = readState(node);
+  // Null the live-refresh caches BEFORE wiping the DOM (their old elements are
+  // about to be detached); the panels below re-set whichever applies.
+  node._pixIrWireCells = null;
+  node._pixIrLockedInputs = null;
   root.innerHTML = "";
-  node._pixIrWireCells = null; // detached on rebuild; re-set by the single-wire panel
 
   const info = wireInfo(node);
   const live = getInputDims(node);
@@ -532,8 +537,7 @@ app.registerExtension({
     nodeType.prototype.onConnectionsChange = function (type, idx, connected, link, ioSlot) {
       const r = _origConn?.apply(this, arguments);
       if (!this._pixIrConfiguring && this._pixIrRoot) {
-        if (connected) maybeAutoSwitch(this); // user intent only (Vue Compat #17)
-        renderUI(this);
+        renderUI(this); // re-render for the new wire count (no state mutation)
         refit(this);
         // Upstream loader may populate its image a tick after the wire lands;
         // re-read the size shortly after so the readout updates without a run.
@@ -574,6 +578,13 @@ app.registerExtension({
         const c = this._pixIrWireCells, w = String(info.outW), h = String(info.outH);
         if (c.wEl.textContent !== w) c.wEl.textContent = w;
         if (c.hEl.textContent !== h) c.hEl.textContent = h;
+      }
+      // Locked W/H fields (both-wired): keep the shown value in sync with the
+      // live upstream value (it can change after render).
+      if (this._pixIrLockedInputs) {
+        const wi = wireInfo(this), li = this._pixIrLockedInputs;
+        if (li.wInp && wi.valW != null && li.wInp.value !== String(wi.valW)) li.wInp.value = String(wi.valW);
+        if (li.hInp && wi.valH != null && li.hInp.value !== String(wi.valH)) li.hInp.value = String(wi.valH);
       }
       const cx = this.size[0] / 2;
       const fam = "ui-sans-serif, system-ui, sans-serif";
