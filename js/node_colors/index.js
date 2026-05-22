@@ -3,15 +3,15 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // ── Pixaroma node + group colors: right-click menu + presets + favorites ─
 // NODES — right-click any node:
-//   • 👑 Pixaroma colors → favorites + Save to slot + Pick custom +
+//   • 👑 Pixaroma Node Colors → favorites + Save to slot + Pick custom +
 //     Neutrals / Plain hues / Pixa hues subfolders (title+body picker).
-//   • 👑 Copy colors / 👑 Paste colors (session clipboard, pair).
-//   • 👑 Reset node colors clears the override.
+//   • 👑 Copy Node Colors / 👑 Paste Node Colors (session clipboard, pair).
+//   • 👑 Reset Node Colors clears the override.
 // GROUPS — right-click a group → TOP-LEVEL canvas menu (like nodes, NOT
-// buried under "Edit Group"): 👑 Pixaroma colors (favorites + Save + Pick
-//   custom + the hand-picked GROUP_COLORS listed directly) + 👑 Copy color +
-//   👑 Paste color + 👑 Reset color. Single-color picker — a group has ONE
-//   fill color, not
+// buried under "Edit Group"): 👑 Pixaroma Group Colors (favorites + Save +
+//   Pick custom + the hand-picked GROUP_COLORS listed directly) + 👑 Copy
+//   Group Color + 👑 Paste Group Color + 👑 Reset Group Color. Single-color
+//   picker — a group has ONE fill color, not
 //   title+body. Added by wrapping getCanvasMenuOptions and gating on a group
 //   under the cursor (this.graph_mouse + graph.getGroupOnPos), since
 //   getCanvasMenuOptions receives no event/position argument.
@@ -956,7 +956,7 @@ app.registerExtension({
         options.push(
           null,
           {
-            content: `👑 Pixaroma colors${suffix}`,
+            content: `👑 Pixaroma Node Colors${suffix}`,
             has_submenu: true,
             callback: function (value, opts, e, menu) {
               new LiteGraph.ContextMenu(
@@ -966,19 +966,19 @@ app.registerExtension({
             },
           },
           {
-            content: `👑 Copy colors`,
+            content: `👑 Copy Node Colors`,
             callback: () => { colorClipboard = captureColors(node); },
           }
         );
         // Paste only appears once colors have been copied this session.
         if (colorClipboard) {
           options.push({
-            content: `👑 Paste colors${suffix}`,
+            content: `👑 Paste Node Colors${suffix}`,
             callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
           });
         }
         options.push({
-          content: `👑 Reset node colors${suffix}`,
+          content: `👑 Reset Node Colors${suffix}`,
           callback: () => resetColors(targets),
         });
         return options;
@@ -1011,7 +1011,7 @@ app.registerExtension({
         const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
         options.push(null);
         options.push({
-          content: `👑 Pixaroma colors${suffix}`,
+          content: `👑 Pixaroma Group Colors${suffix}`,
           has_submenu: true,
           callback: function (value, opts, e, menu) {
             new LiteGraph.ContextMenu(
@@ -1021,7 +1021,7 @@ app.registerExtension({
           },
         });
         options.push({
-          content: `👑 Copy color`,
+          content: `👑 Copy Group Color`,
           callback: () => {
             const c = captureGroupColor(group);
             colorClipboard = { title: c, body: c };
@@ -1029,12 +1029,12 @@ app.registerExtension({
         });
         if (colorClipboard) {
           options.push({
-            content: `👑 Paste color${suffix}`,
+            content: `👑 Paste Group Color${suffix}`,
             callback: () => applyGroupColor(targets, pickGroupColor(colorClipboard)),
           });
         }
         options.push({
-          content: `👑 Reset color${suffix}`,
+          content: `👑 Reset Group Color${suffix}`,
           callback: () => resetGroupColor(targets),
         });
         return options;

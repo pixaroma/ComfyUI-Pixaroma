@@ -111,10 +111,11 @@ js/
 │                       #  stand out in the submenu as the user's
 │                       #  easy-find branded rail.
 │                       #  --- May 2026 v3: copy/paste + 4 favorites +
-│                       #  groups. NODE menu top-level: "👑 Pixaroma
-│                       #  colors" submenu + "👑 Copy colors" + "👑 Paste
-│                       #  colors" (shown only once something is copied) +
-│                       #  "👑 Reset node colors". The submenu LEADS with
+│                       #  groups. Top-level labels are Node/Group-qualified:
+│                       #  NODE menu top-level: "👑 Pixaroma Node Colors"
+│                       #  submenu + "👑 Copy Node Colors" + "👑 Paste Node
+│                       #  Colors" (shown only once something is copied) +
+│                       #  "👑 Reset Node Colors". The submenu LEADS with
 │                       #  the filled Favorites, then "Save these colors
 │                       #  to ▸" (4 slots) + "Pick custom...", then the 27
 │                       #  presets tucked into THREE subfolders (Neutrals
@@ -146,11 +147,11 @@ js/
 │                       #  appends "Edit Group" right after, so our items land
 │                       #  just above it; node right-clicks use
 │                       #  getNodeMenuOptions so there's no double-add).
-│                       #  "👑 Pixaroma colors ▸" (favorites + Save this color
-│                       #  to ▸ + Pick custom (single-color modal) + the
+│                       #  "👑 Pixaroma Group Colors ▸" (favorites + Save this
+│                       #  color to ▸ + Pick custom (single-color modal) + the
 │                       #  hand-picked GROUP_COLORS list, no subfolders) +
-│                       #  "👑 Copy color" + "👑 Paste color" + "👑 Reset
-│                       #  color". A group has ONE fill
+│                       #  "👑 Copy Group Color" + "👑 Paste Group Color" +
+│                       #  "👑 Reset Group Color". A group has ONE fill
 │                       #  color (group.color), serialized in workflow
 │                       #  groups[]. Its ~25% transparency is LiteGraph's
 │                       #  hardcoded render (0.25 fill / 1.0 stroke ×
