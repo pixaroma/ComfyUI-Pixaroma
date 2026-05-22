@@ -555,6 +555,18 @@ function setupLoadImageNode(node) {
 app.registerExtension({
   name: "Pixaroma.LoadImage",
 
+  settings: [
+    {
+      id: "Pixaroma.LoadImage.ThumbSize",
+      name: "Dropdown thumbnail size",
+      type: "combo",
+      defaultValue: "Large",
+      options: ["Small", "Large"],
+      tooltip: "Thumbnail size shown in the Load Image Pixaroma file dropdown.",
+      category: ["👑 Pixaroma", "Load Image"],
+    },
+  ],
+
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaLoadImage") return;
 

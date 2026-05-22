@@ -1,3 +1,4 @@
+import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
 
 let _cssInjected = false;
@@ -768,6 +769,26 @@ function groupValuesByFolder(values) {
 // Open a popup listing the underlying combo's options grouped by subfolder.
 // Clicking an item sets the combo value to the FULL path (e.g.
 // "Studio1/bunny.png") and the dropdown's label.
+// Build a same-origin /view URL for a combo value like "3d/cat.png".
+// Relative path → works on whatever host/port ComfyUI runs on. No cache-buster
+// so the browser caches thumbnails across re-opens.
+function thumbURL(full) {
+  const { subfolder, filename } = splitFilenameSubfolder(full);
+  return `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}`;
+}
+
+// Read/write the persisted thumbnail size ("Small" | "Large"). Falls back to
+// "Large" if the setting isn't registered yet or settings aren't ready.
+function getThumbSize() {
+  try {
+    const v = app.ui.settings.getSettingValue("Pixaroma.LoadImage.ThumbSize");
+    return v === "Small" ? "Small" : "Large";
+  } catch (_e) { return "Large"; }
+}
+function setThumbSize(v) {
+  try { app.ui.settings.setSettingValue("Pixaroma.LoadImage.ThumbSize", v); } catch (_e) { /* ignore */ }
+}
+
 export function openImageDropdown(node, anchorEl, onPick) {
   const imageWidget = node._pixLiImageWidget;
   if (!imageWidget) return;
