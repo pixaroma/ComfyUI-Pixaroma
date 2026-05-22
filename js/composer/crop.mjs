@@ -262,46 +262,61 @@ PixaromaEditor.prototype.handleCropMouseMove = function (coords, shiftKey) {
   if (!this.isMouseDown || !this._cropDragHandle || !this._cropLayer) return;
   this._cropDraftTouched = true;
   const p = this._cropPointInSource(coords);
-  const start = this._cropDragStart;
-  let { x, y, w, h } = start.rect;
-  const dx = p.lx - start.lx;
-  const dy = p.ly - start.ly;
+  const start = this._cropDragStart.rect;
+  const dx = p.lx - this._cropDragStart.lx;
+  const dy = p.ly - this._cropDragStart.ly;
   const { w: sw, h: sh } = srcSize(this._cropLayer.sourceImg);
   const MIN = 8;
   const hd = this._cropDragHandle;
 
   if (hd === "inside") {
-    x += dx;
-    y += dy;
-  } else {
-    if (hd.includes("w")) {
-      x += dx;
-      w -= dx;
-    }
-    if (hd.includes("e")) w += dx;
-    if (hd.includes("n")) {
-      y += dy;
-      h -= dy;
-    }
-    if (hd.includes("s")) h += dy;
-    if (
-      shiftKey &&
-      start.rect.w > 0 &&
-      start.rect.h > 0 &&
-      (hd === "nw" || hd === "ne" || hd === "sw" || hd === "se")
-    ) {
-      const ar = start.rect.w / start.rect.h;
-      h = w / ar;
-      if (hd.includes("n")) y = start.rect.y + start.rect.h - h;
-    }
+    // Move the whole box; clamp within the source (size unchanged).
+    const nx = Math.max(0, Math.min(start.x + dx, sw - start.w));
+    const ny = Math.max(0, Math.min(start.y + dy, sh - start.h));
+    this._cropDraft = { x: nx, y: ny, w: start.w, h: start.h };
+    this.draw();
+    return;
   }
-  if (w < MIN) w = MIN;
-  if (h < MIN) h = MIN;
-  x = Math.max(0, Math.min(x, sw - MIN));
-  y = Math.max(0, Math.min(y, sh - MIN));
-  w = Math.min(w, sw - x);
-  h = Math.min(h, sh - y);
-  this._cropDraft = { x, y, w, h };
+
+  // Work in absolute edges so the NON-dragged edges stay pinned. (Deriving
+  // size from a clamped position used to push the opposite edge when dragging
+  // top/left past the boundary.)
+  let left = start.x;
+  let top = start.y;
+  let right = start.x + start.w;
+  let bottom = start.y + start.h;
+  if (hd.includes("w")) left = start.x + dx;
+  if (hd.includes("e")) right = start.x + start.w + dx;
+  if (hd.includes("n")) top = start.y + dy;
+  if (hd.includes("s")) bottom = start.y + start.h + dy;
+
+  // Shift = lock aspect (corners only): derive height from the new width,
+  // moving the dragged vertical edge.
+  if (
+    shiftKey &&
+    start.w > 0 &&
+    start.h > 0 &&
+    (hd === "nw" || hd === "ne" || hd === "sw" || hd === "se")
+  ) {
+    const ar = start.w / start.h;
+    const newH = (right - left) / ar;
+    if (hd.includes("n")) top = bottom - newH;
+    else bottom = top + newH;
+  }
+
+  // Clamp each DRAGGED edge to the source bounds, keeping the opposite (fixed)
+  // edge put and enforcing the minimum size against it.
+  left = Math.max(0, Math.min(left, right - MIN));
+  top = Math.max(0, Math.min(top, bottom - MIN));
+  right = Math.min(sw, Math.max(right, left + MIN));
+  bottom = Math.min(sh, Math.max(bottom, top + MIN));
+
+  this._cropDraft = {
+    x: left,
+    y: top,
+    w: right - left,
+    h: bottom - top,
+  };
   this.draw();
 };
 
