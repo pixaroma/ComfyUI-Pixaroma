@@ -123,8 +123,19 @@ class PixaromaPreview:
                     "type": "temp",
                 })
 
+        # Hand the EXECUTION-time prompt + workflow to the frontend so the
+        # Save Disk / Save Output buttons embed the seed that ACTUALLY produced
+        # this image. The buttons otherwise call app.graphToPrompt() at click
+        # time, which - with "control after generate: randomize" - captures the
+        # NEXT (already-randomized) seed, so dragging the saved PNG back into
+        # ComfyUI reproduced a different image. This matches what save_mode=save
+        # bakes in server-side.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
         return {
-            "ui": {"pixaroma_preview_frames": results},
+            "ui": {
+                "pixaroma_preview_frames": results,
+                "pixaroma_preview_meta": [{"prompt": prompt, "workflow": workflow}],
+            },
             "result": (image,),
         }
 

@@ -281,6 +281,20 @@ async function getWorkflowAndPrompt() {
   return { workflow, prompt: output };
 }
 
+// Prefer the EXECUTION-time prompt/workflow captured when this node's frames
+// arrived (the exact seed that produced the displayed image). Fall back to the
+// live graph only if we have no captured metadata (e.g. a preview restored from
+// a previous session via node.properties, with no run this session).
+async function resolveSaveMeta(node) {
+  if (node._pixaromaExecWorkflow || node._pixaromaExecPrompt) {
+    return {
+      workflow: node._pixaromaExecWorkflow,
+      prompt: node._pixaromaExecPrompt,
+    };
+  }
+  return await getWorkflowAndPrompt();
+}
+
 // Try to resolve the value of a wired STRING input by walking back along
 // the link to the upstream node and reading its widget. Returns null if
 // the input is not wired OR we can't read a clean value (in which case
@@ -403,7 +417,7 @@ async function saveToOutput(node) {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
     const dataURL = await blobToDataURL(blob);
-    const { workflow, prompt } = await getWorkflowAndPrompt();
+    const { workflow, prompt } = await resolveSaveMeta(node);
     const resp = await fetch("/pixaroma/api/preview/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,7 +450,7 @@ async function saveToDisk(node) {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
     const dataURL = await blobToDataURL(blob);
-    const { workflow, prompt } = await getWorkflowAndPrompt();
+    const { workflow, prompt } = await resolveSaveMeta(node);
     const resp = await fetch("/pixaroma/api/preview/prepare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1179,6 +1193,16 @@ api.addEventListener("executed", ({ detail }) => {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
   if (!node || node.type !== "PixaromaPreview") return;
+
+  // Capture the EXECUTION-time prompt + workflow (the seed that actually made
+  // this image) so the Save buttons embed it instead of the live, post-
+  // "randomize" graph state. Runtime-only (NOT persisted to node.properties —
+  // that would recursively bloat the saved workflow with a copy of itself).
+  const execMeta = detail?.output?.pixaroma_preview_meta?.[0];
+  if (execMeta) {
+    node._pixaromaExecPrompt = execMeta.prompt ?? null;
+    node._pixaromaExecWorkflow = execMeta.workflow ?? null;
+  }
 
   // Persist meta on node.properties so the preview survives workflow
   // switching / reload — LiteGraph serializes `properties` to JSON.
