@@ -56,6 +56,8 @@ export class PixaromaEditor {
   }
 
   setMode(mode) {
+    // Leaving crop mode applies the in-progress crop before anything else.
+    if (this.activeMode === "crop" && mode !== "crop") this.exitCropMode();
     this.activeMode = mode;
     if (mode === "eraser") {
       // Eraser mode: crosshair cursor, highlight the toggle button
@@ -64,17 +66,41 @@ export class PixaromaEditor {
         this.btnEraserToggle.classList.add("pxf-btn-accent");
         this.btnEraserToggle.innerText = "Disable  [E]";
       }
+      if (this.btnCropToggle) {
+        this.btnCropToggle.classList.remove("pxf-btn-accent");
+        this.btnCropToggle.innerText = "Enable  [C]";
+      }
       if (this.selectedLayerIds.size === 1) this.setupEraserOnSelection();
       if (this._layout)
         this._layout.setStatus(
           "Eraser mode \u00b7 Drag to erase \u00b7 [ / ] resize \u00b7 E to toggle off",
         );
+    } else if (mode === "crop") {
+      // Crop mode: crosshair cursor, highlight the toggle button
+      this.canvas.style.cursor = "crosshair";
+      if (this.btnCropToggle) {
+        this.btnCropToggle.classList.add("pxf-btn-accent");
+        this.btnCropToggle.innerText = "Done  [C]";
+      }
+      if (this.btnEraserToggle) {
+        this.btnEraserToggle.classList.remove("pxf-btn-accent");
+        this.btnEraserToggle.innerText = "Enable  [E]";
+      }
+      if (this.selectedLayerIds.size === 1) this.enterCropMode();
+      if (this._layout)
+        this._layout.setStatus(
+          "Crop mode \u00b7 Drag the box / handles \u00b7 Shift = lock aspect \u00b7 C to apply",
+        );
     } else {
-      // Select mode: default cursor, reset toggle button
+      // Select mode: default cursor, reset toggle buttons
       this.canvas.style.cursor = "default";
       if (this.btnEraserToggle) {
         this.btnEraserToggle.classList.remove("pxf-btn-accent");
         this.btnEraserToggle.innerText = "Enable  [E]";
+      }
+      if (this.btnCropToggle) {
+        this.btnCropToggle.classList.remove("pxf-btn-accent");
+        this.btnCropToggle.innerText = "Enable  [C]";
       }
       // Context-aware tooltip on returning to select mode
       if (this._layout) {

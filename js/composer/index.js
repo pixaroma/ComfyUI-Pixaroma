@@ -15,6 +15,7 @@ import {
 // Import core class first, then mixins as side-effects
 import { PixaromaEditor } from "./core.mjs";
 import "./eraser.mjs";
+import "./crop.mjs";
 import "./render.mjs";
 import "./interaction.mjs";
 import "./placeholder.mjs";

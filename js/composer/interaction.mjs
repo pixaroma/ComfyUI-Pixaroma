@@ -190,6 +190,20 @@ PixaromaEditor.prototype.attachEvents = function () {
           );
       }
     }
+    if (e.code === "KeyC" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (this.activeMode === "crop") {
+        this.setMode(null);
+      } else if (this.selectedLayerIds.size === 1) {
+        this.setMode("crop");
+      } else if (this.selectedLayerIds.size > 1) {
+        if (this._layout)
+          this._layout.setStatus(
+            "Crop requires a single layer selected",
+            "warn",
+          );
+      }
+    }
     if (e.code === "KeyV" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       this.setMode(null);

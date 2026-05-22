@@ -148,6 +148,12 @@ export class PixaromaUI {
         core.eraserPanel.style.pointerEvents = "none";
       }
       if (core.activeMode === "eraser") core.setMode(null);
+      // Dim crop panel and force crop off
+      if (core.cropPanel) {
+        core.cropPanel.style.opacity = "0.3";
+        core.cropPanel.style.pointerEvents = "none";
+      }
+      if (core.activeMode === "crop") core.setMode(null);
     } else {
       core.toolsPanel.style.opacity = "1";
       core.toolsPanel.style.pointerEvents = "auto";
@@ -169,6 +175,25 @@ export class PixaromaUI {
             "Eraser requires a single layer selected",
             "warn",
           );
+      }
+
+      // Crop requires exactly one NON-placeholder layer selected
+      {
+        const cropLayer = core.getActiveLayer();
+        const cropOk =
+          core.selectedLayerIds.size === 1 &&
+          cropLayer &&
+          !cropLayer.isPlaceholder;
+        if (core.cropPanel) {
+          core.cropPanel.style.opacity = cropOk ? "1" : "0.3";
+          core.cropPanel.style.pointerEvents = cropOk ? "auto" : "none";
+        }
+        if (!cropOk && core.activeMode === "crop") core.setMode(null);
+        if (core.btnResetCrop) {
+          const hasCrop = !!(cropLayer && cropLayer.cropRect);
+          core.btnResetCrop.style.opacity = hasCrop ? "1" : "0.3";
+          core.btnResetCrop.disabled = !hasCrop;
+        }
       }
 
       // Sync transform sliders to the first selected layer
@@ -1040,7 +1065,7 @@ export class PixaromaUI {
     // --- 2. Eraser Panel ---
     const eraserPanel = createPanel("Eraser", {
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
     });
     core.eraserPanel = eraserPanel.el;
     core.eraserPanel.style.opacity = "0.3";
@@ -1112,6 +1137,47 @@ export class PixaromaUI {
     eraserPanel.content.appendChild(core.btnResetEraser);
 
     layout.rightSidebar.insertBefore(core.eraserPanel, layout.sidebarFooter);
+
+    // --- 2b. Crop Panel ---
+    const cropPanel = createPanel("Crop", {
+      collapsible: true,
+      collapsed: false,
+    });
+    core.cropPanel = cropPanel.el;
+    core.cropPanel.style.opacity = "0.3";
+    core.cropPanel.style.pointerEvents = "none";
+
+    core.btnCropToggle = createButton("Enable  [C]", {
+      variant: "standard",
+      onClick: () => {
+        if (core.activeMode === "crop") {
+          core.setMode(null);
+        } else {
+          if (core.selectedLayerIds.size !== 1) {
+            layout.setStatus("Crop requires a single layer selected", "warn");
+            return;
+          }
+          core.setMode("crop");
+        }
+      },
+    });
+    core.btnCropToggle.style.width = "100%";
+    core.btnCropToggle.style.marginBottom = "8px";
+    core.btnCropToggle.title =
+      "Trim this layer to a rectangle (non-destructive - re-open to adjust)";
+    cropPanel.content.appendChild(core.btnCropToggle);
+
+    core.btnResetCrop = createButton("Reset crop", {
+      variant: "full",
+      onClick: () => core.resetCrop(),
+    });
+    core.btnResetCrop.style.width = "100%";
+    core.btnResetCrop.style.opacity = "0.3";
+    core.btnResetCrop.disabled = true;
+    core.btnResetCrop.title = "Restore the full image on this layer";
+    cropPanel.content.appendChild(core.btnResetCrop);
+
+    layout.rightSidebar.insertBefore(core.cropPanel, layout.sidebarFooter);
 
     // --- 3. Background Removal panel ---
     const bgRemovalPanel = createPanel("AI Background Removal", {
