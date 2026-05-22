@@ -108,19 +108,6 @@ export function injectCSS() {
       margin-left: 6px;
       flex-shrink: 0;
     }
-    /* Subfolder section header inside the dropdown popup. Visual separator
-       only - not clickable. Items below it show the bare filename. */
-    .pix-li-popup-section {
-      padding: 4px 10px 3px;
-      font-size: 9px;
-      color: #777;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      background: #161616;
-      border-bottom: 1px solid #2a2a2a;
-      user-select: none;
-    }
-    .pix-li-popup-section:not(:first-child) { border-top: 1px solid #2a2a2a; }
     .pix-li-chips {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -465,61 +452,6 @@ export function injectCSS() {
       flex-direction: column;
       gap: 5px;
     }
-    .pix-li-snap-row, .pix-li-rs-row {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 5px 8px;
-    }
-    .pix-li-magnet {
-      display: inline-block;
-      width: 11px; height: 11px;
-      background-color: #888;
-      -webkit-mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
-              mask: url("/pixaroma/assets/icons/ui/magnet.svg") center/11px 11px no-repeat;
-    }
-    .pix-li-snap-btns {
-      display: inline-flex;
-      gap: 2px;
-      margin-left: auto;
-    }
-    .pix-li-snap-btn {
-      background: #1d1d1d;
-      border: 1px solid #444;
-      border-radius: 3px;
-      color: #aaa;
-      font-size: 9px;
-      padding: 2px 5px;
-      min-width: 18px;
-      cursor: pointer;
-      font-family: inherit;
-      line-height: 1;
-    }
-    .pix-li-snap-btn:hover { color: #ddd; border-color: #666; }
-    .pix-li-snap-btn.active {
-      background: ${BRAND};
-      color: #fff;
-      border-color: ${BRAND};
-    }
-    /* Resample row — custom dropdown trigger styled like the file picker. */
-    .pix-li-rs-row {
-      cursor: pointer;
-      user-select: none;
-    }
-    .pix-li-rs-row:hover { border-color: #666; }
-    .pix-li-rs-value {
-      color: #ccc;
-      font-size: 10px;
-      margin-left: auto;
-    }
-    .pix-li-rs-arrow {
-      color: ${BRAND};
-      font-size: 9px;
-      margin-left: 4px;
-    }
     .pix-li-rs-popup {
       position: fixed;
       z-index: 99999;
@@ -545,20 +477,6 @@ export function injectCSS() {
     .pix-li-rs-item.active .pix-li-rs-item-label { color: ${BRAND}; font-weight: 600; }
     .pix-li-rs-item-label { font-size: 11px; }
     .pix-li-rs-item-hint { font-size: 9px; color: #777; }
-    .pix-li-up-row {
-      background: #1d1d1d;
-      border: 1px solid #333;
-      border-radius: 4px;
-      padding: 5px 8px;
-      display: flex;
-      align-items: center;
-      gap: 5px;
-      cursor: pointer;
-      user-select: none;
-      font-size: 10px;
-      color: #aaa;
-    }
-    .pix-li-up-row input { accent-color: ${BRAND}; cursor: pointer; }
     /* ── Image Resize design language, scoped to .pix-li-root ── */
     /* Centered snap footer: magnet + "Snap" + chips. */
     .pix-li-foot { display:flex; align-items:center; justify-content:center; gap:6px; flex-wrap:wrap; }
