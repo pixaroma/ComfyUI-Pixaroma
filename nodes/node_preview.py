@@ -1,4 +1,3 @@
-import math
 import os
 import uuid
 
@@ -6,25 +5,10 @@ import folder_paths
 import numpy as np
 from PIL import Image
 
-from ._save_helpers import _build_pnginfo, _safe_prefix
-
-
-def _json_safe(obj):
-    """Recursively replace non-finite floats (NaN / Infinity) with None.
-
-    The ComfyUI websocket sends the node's ui payload as strict JSON, and the
-    frontend JSON.parse rejects `NaN`. The PROMPT we hand to the frontend
-    contains `is_changed: [NaN]` for this node (IS_CHANGED returns nan), which
-    would otherwise make the WHOLE executed message unparseable - dropping the
-    preview frames AND the save metadata. Sanitizing keeps the payload valid.
-    """
-    if isinstance(obj, float):
-        return obj if math.isfinite(obj) else None
-    if isinstance(obj, dict):
-        return {k: _json_safe(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_json_safe(v) for v in obj]
-    return obj
+# _json_safe: strip NaN/Inf (PROMPT's is_changed:[NaN]) so the ui payload sent
+# over the websocket is valid JSON - else the frontend JSON.parse drops the
+# whole executed message (preview frames + save metadata both lost).
+from ._save_helpers import _build_pnginfo, _json_safe, _safe_prefix
 
 
 def _tensor_to_pil(tensor):
