@@ -149,38 +149,55 @@ function normalizeFavorites(arr) {
   return out;
 }
 
-function getFavorites() {
-  const s = app.ui?.settings;
-  const raw = s?.getSettingValue?.(FAVORITES_ID);
-  if (raw) {
-    try {
-      return normalizeFavorites(typeof raw === "string" ? JSON.parse(raw) : raw);
-    } catch (e) { /* fall through to migration */ }
-  }
-  // Nothing stored yet → migrate a non-default legacy favorite into slot 1,
-  // otherwise start empty. Not persisted until the user saves a slot.
-  const favs = emptyFavorites();
-  const lt = s?.getSettingValue?.(LEGACY_FAV_TITLE_ID);
-  const lb = s?.getSettingValue?.(LEGACY_FAV_BODY_ID);
-  if (lt && lb && !(lt === LEGACY_DEFAULT_TITLE && lb === LEGACY_DEFAULT_BODY)) {
-    favs[0] = { title: lt, body: lb };
-  }
-  return favs;
-}
+// In-memory authoritative cache, write-through to the settings store.
+// Reading from the cache instead of re-parsing the setting on every call
+// keeps rapid saves consistent (no race against the async setter's flush)
+// and makes the migrated / initial state impossible to lose mid-session.
+let _favoritesCache = null;
 
-function setFavorites(favs) {
+function persistFavorites(favs) {
   const s = app.ui?.settings;
   if (!s) return;
-  const json = JSON.stringify(normalizeFavorites(favs));
+  const json = JSON.stringify(favs);
   try {
     if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync(FAVORITES_ID, json);
     else if (typeof s.setSettingValue === "function") s.setSettingValue(FAVORITES_ID, json);
   } catch (e) { /* non-fatal: colors are already applied to the nodes */ }
 }
 
+function loadFavoritesFromStore() {
+  const s = app.ui?.settings;
+  const raw = s?.getSettingValue?.(FAVORITES_ID);
+  if (raw) {
+    try {
+      return normalizeFavorites(typeof raw === "string" ? JSON.parse(raw) : raw);
+    } catch (e) { /* corrupted → fall through to migration / empty */ }
+  }
+  // Nothing valid stored yet → migrate a non-default legacy favorite into
+  // slot 1, otherwise start empty.
+  const favs = emptyFavorites();
+  const lt = s?.getSettingValue?.(LEGACY_FAV_TITLE_ID);
+  const lb = s?.getSettingValue?.(LEGACY_FAV_BODY_ID);
+  if (lt && lb && !(lt === LEGACY_DEFAULT_TITLE && lb === LEGACY_DEFAULT_BODY)) {
+    favs[0] = { title: lt, body: lb };
+    persistFavorites(favs); // lock the migration in so it can't be lost
+  }
+  return favs;
+}
+
+function getFavorites() {
+  if (!_favoritesCache) _favoritesCache = loadFavoritesFromStore();
+  return _favoritesCache;
+}
+
+function setFavorites(favs) {
+  _favoritesCache = normalizeFavorites(favs);
+  persistFavorites(_favoritesCache);
+}
+
 function saveFavoriteSlot(index, title, body) {
   if (index < 0 || index >= FAVORITE_SLOTS) return;
-  const favs = getFavorites();
+  const favs = getFavorites().slice();
   favs[index] = { title, body };
   setFavorites(favs);
 }
