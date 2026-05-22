@@ -1,3 +1,4 @@
+import math
 import os
 import uuid
 
@@ -6,6 +7,24 @@ import numpy as np
 from PIL import Image
 
 from ._save_helpers import _build_pnginfo, _safe_prefix
+
+
+def _json_safe(obj):
+    """Recursively replace non-finite floats (NaN / Infinity) with None.
+
+    The ComfyUI websocket sends the node's ui payload as strict JSON, and the
+    frontend JSON.parse rejects `NaN`. The PROMPT we hand to the frontend
+    contains `is_changed: [NaN]` for this node (IS_CHANGED returns nan), which
+    would otherwise make the WHOLE executed message unparseable - dropping the
+    preview frames AND the save metadata. Sanitizing keeps the payload valid.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 
 def _tensor_to_pil(tensor):
@@ -131,10 +150,13 @@ class PixaromaPreview:
         # ComfyUI reproduced a different image. This matches what save_mode=save
         # bakes in server-side.
         workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        # Sanitize: PROMPT contains is_changed:[NaN] (IS_CHANGED returns nan),
+        # which is invalid JSON and would break the whole executed message.
+        meta = _json_safe({"prompt": prompt, "workflow": workflow})
         return {
             "ui": {
                 "pixaroma_preview_frames": results,
-                "pixaroma_preview_meta": [{"prompt": prompt, "workflow": workflow}],
+                "pixaroma_preview_meta": [meta],
             },
             "result": (image,),
         }
