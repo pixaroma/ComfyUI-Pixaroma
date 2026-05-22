@@ -190,6 +190,20 @@ PixaromaEditor.prototype.attachEvents = function () {
           );
       }
     }
+    if (e.code === "KeyC" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (this.activeMode === "crop") {
+        this.setMode(null);
+      } else if (this.selectedLayerIds.size === 1) {
+        this.setMode("crop");
+      } else if (this.selectedLayerIds.size > 1) {
+        if (this._layout)
+          this._layout.setStatus(
+            "Crop requires a single layer selected",
+            "warn",
+          );
+      }
+    }
     if (e.code === "KeyV" && !e.ctrlKey && !e.metaKey) {
       e.preventDefault();
       this.setMode(null);
@@ -245,11 +259,21 @@ PixaromaEditor.prototype.attachEvents = function () {
       window.removeEventListener("mouseup", this._composerMouseUp);
     if (this._composerBlur)
       window.removeEventListener("blur", this._composerBlur);
+    // Restore the Ctrl+Z graph-undo neutering installed at open (Vue Compat #6).
+    this._restoreGraphPatches?.();
   };
 
   // Handle hover cursor + clicks on the extended hit area outside canvas bounds
   if (this.selHitArea) {
     this.selHitArea.addEventListener("mousemove", (e) => {
+      // Crop mode: show resize cursors based on the crop box, not the layer's
+      // transform handles.
+      if (this.activeMode === "crop") {
+        this.selHitArea.style.cursor = this.cropCursorFor(
+          this.getCanvasCoordinates(e),
+        );
+        return;
+      }
       if (
         this.isMouseDown ||
         this.selectedLayerIds.size !== 1 ||
@@ -295,6 +319,21 @@ PixaromaEditor.prototype.attachEvents = function () {
 
     this.selHitArea.addEventListener("mousedown", (e) => {
       if (e.button === 1 || this.spacePressed) return; // let it bubble for pan
+      // Crop mode: grab a crop handle if the box extends into the padding
+      // region. Never pan/deselect here (that would exit crop).
+      if (this.activeMode === "crop" && e.button === 0) {
+        const cc = this.getCanvasCoordinates(e);
+        const p = this._cropPointInSource(cc);
+        const hd = this._cropHitTest(p.lx, p.ly);
+        if (hd) {
+          e.preventDefault();
+          e.stopPropagation();
+          this._cropDragHandle = hd;
+          this._cropDragStart = { lx: p.lx, ly: p.ly, rect: { ...this._cropDraft } };
+          this.isMouseDown = true;
+        }
+        return;
+      }
       // Check for handle grab
       if (
         e.button === 0 &&
@@ -538,12 +577,17 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.btnDupLayer.onclick = () => {
     if (this.selectedLayerIds.size === 0) return;
+    // Commit any in-progress crop first so the duplicate captures the applied
+    // result (and _cropLayer doesn't dangle onto the original after the spread).
+    if (this.activeMode === "crop") this.setMode(null);
     const usedPH = new Set(this.layers.filter((l) => l.isPlaceholder).map((l) => l.inputIndex));
     const nextPHIdx = () => { let i = 1; while (usedPH.has(i)) i++; usedPH.add(i); return i; };
     const newLayers = [];
     this.layers.forEach((layer) => {
       if (this.selectedLayerIds.has(layer.id)) {
         const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+        // Deep-copy cropRect so re-cropping one copy can't alias the other.
+        if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
         // Deep-copy eraser mask so edits don't affect the original
         if (layer.eraserMaskCanvas_internal) {
           const mc = document.createElement("canvas");
@@ -589,6 +633,9 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.removeBgBtn.addEventListener("click", async () => {
     if (this.selectedLayerIds.size === 0) return;
+    // Commit any in-progress crop so we operate on the applied (cropped) image,
+    // and so the post-rembg crop reset below has a settled starting point.
+    if (this.activeMode === "crop") this.setMode(null);
     const layer = this.getActiveLayer();
     if (!layer || !layer.img) {
       if (this._layout)
@@ -667,9 +714,24 @@ PixaromaEditor.prototype.attachEvents = function () {
         const newImg = new Image();
         newImg.crossOrigin = "Anonymous";
         newImg.onload = () => {
+          // The POST + decode is async: bail if the editor was closed or the
+          // layer deleted meanwhile, so we don't write to a dead layer or fire
+          // draw()/pushHistory() onto a stale (or freshly-reopened) session.
+          if (!this.overlay?.isConnected || !this.layers.some((l) => l.id === layer.id)) {
+            return;
+          }
           layer.img = newImg;
           layer.rawB64_internal = data.image;
           layer.savedOnServer = false;
+          // The bg-removed result is the cropped pixels with background gone.
+          // Make it the new full source and clear the crop so the invariant
+          // (layer.img === crop(sourceImg, cropRect)) holds - otherwise a later
+          // re-crop or Reset Crop would re-bake from the pre-rembg source and
+          // silently discard the background removal.
+          layer.sourceImg = newImg;
+          layer.cropRect = null;
+          layer._cropMaskOriginX = 0;
+          layer._cropMaskOriginY = 0;
           this.draw();
           this.pushHistory();
           // Surface the real model name the server used — on "auto"
@@ -692,6 +754,9 @@ PixaromaEditor.prototype.attachEvents = function () {
   });
 
   this.saveBtn.addEventListener("click", async () => {
+    // Commit any in-progress crop before serializing so a mid-crop Save
+    // captures the dragged box (setMode(null) → exitCropMode applies it).
+    if (this.activeMode === "crop") this.setMode(null);
     this._layout.setSaving();
 
     try {
@@ -740,6 +805,10 @@ PixaromaEditor.prototype.attachEvents = function () {
         if (layer.bgRemovalQuality && layer.bgRemovalQuality !== "normal") layerEntry.bgRemovalQuality = layer.bgRemovalQuality;
         if (layer.blendMode && layer.blendMode !== "Normal") layerEntry.blendMode = layer.blendMode;
         if (layer.blur && layer.blur > 0) layerEntry.blur = layer.blur;
+        // cropRect is in SOURCE-image pixels. src above is the full uncropped
+        // source (rawServerPath is never overwritten by cropping), so the crop
+        // stays re-editable after reload.
+        if (layer.cropRect) layerEntry.cropRect = layer.cropRect;
         if (layer.isPlaceholder) {
           layerEntry.isPlaceholder = true;
           layerEntry.placeholderColor = layer.placeholderColor;
@@ -757,7 +826,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       finalRenderCanvas.width = this.canvas.width;
       finalRenderCanvas.height = this.canvas.height;
       const rCtx = finalRenderCanvas.getContext("2d");
-      rCtx.fillStyle = "#1e1e1e";
+      // Use the user's chosen bg (this.canvas is already opaque-filled by
+      // draw(true), so this is mostly defensive against a future transparent
+      // path - but it must not hardcode #1e1e1e when the user picked another bg).
+      rCtx.fillStyle = this._bgColor || "#1e1e1e";
       rCtx.fillRect(0, 0, finalRenderCanvas.width, finalRenderCanvas.height);
       rCtx.drawImage(this.canvas, 0, 0);
       const finalDataURL = finalRenderCanvas.toDataURL("image/png");
@@ -840,23 +912,36 @@ PixaromaEditor.prototype.attachEvents = function () {
         this.isMouseDown = false;
         this.canvas.style.cursor = "default";
       }
+    } else if (this.activeMode === "crop") {
+      this.handleCropMouseDown(coords);
     } else {
       this.onSelectMouseDown(e, coords);
     }
     this.draw();
   });
 
-  this.canvas.addEventListener("mouseleave", () => {
-    if (this.activeMode === "eraser" && this.isMouseDown) {
-      this.isMouseDown = false;
-      this.canvas.style.cursor = "crosshair";
-      this.draw();
-      this.pushHistory();
-    }
-  });
+  // NOTE: we deliberately do NOT end the eraser stroke when the cursor leaves
+  // the canvas. Leaving and re-entering while the button is held continues the
+  // SAME stroke (the window-level mouseup commits + pushes history when the
+  // button is actually released, anywhere on screen). Ending here was a bug:
+  // dragging the brush off-canvas and back stopped erasing mid-stroke.
 
   this._composerMouseMove = (e) => {
     try {
+      // Crop mode owns its own drag lifecycle (apply happens on exit, not here).
+      if (this.activeMode === "crop") {
+        if (this.overlay.id !== "pixaroma-editor-instance") return;
+        const cc = this.getCanvasCoordinates(e);
+        if (this.isMouseDown && e.buttons & 1) {
+          this.handleCropMouseMove(cc, e.shiftKey);
+        } else if (this.isMouseDown) {
+          this.handleCropMouseUp();
+        } else {
+          // Hover over the canvas: show the matching resize cursor.
+          this.canvas.style.cursor = this.cropCursorFor(cc);
+        }
+        return;
+      }
       if (this.isMouseDown && e.buttons !== 1) {
         this.isMouseDown = false;
         this.interactionMode = null;
@@ -908,9 +993,12 @@ PixaromaEditor.prototype.attachEvents = function () {
               coords.y,
             );
             this.drawEraserLine(layer, startLayerCoords, endLayerCoords);
-            this.lastX = coords.x;
-            this.lastY = coords.y;
           }
+          // Advance the last position EVERY move (even off-canvas) so a quick
+          // excursion off the canvas and back resumes the same stroke without
+          // erasing a long straight chord across the gap.
+          this.lastX = coords.x;
+          this.lastY = coords.y;
         } else {
           this.lastX = coords.x;
           this.lastY = coords.y;
@@ -933,6 +1021,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.isPanning = false;
       this.workspace.classList.remove("panning");
     }
+    if (this.activeMode === "crop") {
+      this.handleCropMouseUp();
+      return;
+    }
     if (this.isMouseDown) {
       this.isMouseDown = false;
       this.interactionMode = null;
@@ -952,9 +1044,25 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.workspace.classList.remove("panning");
     }
     if (this.isMouseDown) {
+      const wasErasing = this.activeMode === "eraser";
+      const wasCropping = this.activeMode === "crop";
+      // Only an ACTUAL drag pushes history. A bare mousedown (select a layer)
+      // then alt-tab leaves interactionMode null - pushing then would add a
+      // no-op duplicate undo step.
+      const wasTransforming = !!this.interactionMode;
       this.isMouseDown = false;
       this.interactionMode = null;
-      this.canvas.style.cursor = "default";
+      if (this.canvas) this.canvas.style.cursor =
+        wasErasing || wasCropping ? "crosshair" : "default";
+      // Commit the in-progress action so focus loss mid-gesture (e.g. alt-tab)
+      // doesn't strand it: an eraser stroke or a transform drag needs an undo
+      // snapshot; a crop drag just needs its handle released (crop applies on
+      // Done, not here).
+      if (wasCropping) {
+        this._cropDragHandle = null;
+      } else if (wasErasing || wasTransforming) {
+        this.pushHistory();
+      }
     }
   };
   window.addEventListener("blur", this._composerBlur);
@@ -1031,6 +1139,7 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
       this.layers.forEach((layer) => {
         if (this.selectedLayerIds.has(layer.id)) {
           const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+          if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
           // Deep-copy eraser mask so edits don't affect the original
           if (layer.eraserMaskCanvas_internal) {
             const mc = document.createElement("canvas");

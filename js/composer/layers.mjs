@@ -58,6 +58,9 @@ export class PixaromaLayers {
   static captureState(layers) {
     return layers.map((l) => {
       const copy = { ...l };
+      // Deep-copy cropRect so undo/redo snapshots are independent (the live
+      // layer always assigns a NEW cropRect object, but be safe).
+      if (l.cropRect) copy.cropRect = { ...l.cropRect };
       // Deep-copy eraser mask canvas so undo/redo restores mask state
       if (l.eraserMaskCanvas_internal && l.hasMask_internal) {
         const cloneCvs = document.createElement("canvas");

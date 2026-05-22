@@ -17,6 +17,15 @@ PixaromaEditor.prototype.pushHistory = function () {
 };
 
 PixaromaEditor.prototype.undo = function () {
+  // Ctrl+Z while cropping CANCELS the in-progress crop (discards the draft) and
+  // consumes the keystroke - it does NOT also step back history. Otherwise the
+  // layer you were about to crop gets removed (the step before "add layer").
+  // Press Ctrl+Z again (now out of crop mode) to undo for real.
+  if (this.activeMode === "crop") {
+    this._clearCropState();
+    this.draw();
+    return;
+  }
   if (this.historyIndex > 0) {
     this.historyIndex--;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
@@ -30,6 +39,12 @@ PixaromaEditor.prototype.undo = function () {
 };
 
 PixaromaEditor.prototype.redo = function () {
+  // Mirror undo: a redo while cropping just cancels the crop draft.
+  if (this.activeMode === "crop") {
+    this._clearCropState();
+    this.draw();
+    return;
+  }
   if (this.historyIndex < this.history.length - 1) {
     this.historyIndex++;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
@@ -154,6 +169,17 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
     // Defensive: layer.img can briefly be null during async upload / restore.
     // _ensureSelPad already skips this case; mirror that here.
     if (!layer.img) return;
+    // In crop mode the active layer is drawn by drawCropOverlay (full source +
+    // box), so skip it in the normal loop to avoid double-drawing. Only for the
+    // interactive render — a clean render (save composite) must draw it normally
+    // so the crop UI never bakes into the saved PNG.
+    if (
+      !cleanRender &&
+      this.activeMode === "crop" &&
+      this._cropLayer &&
+      layer.id === this._cropLayer.id
+    )
+      return;
 
     const isSelected = this.selectedLayerIds.has(layer.id);
     this.ctx.save();
@@ -286,6 +312,12 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
       oc.restore();
     }
   });
+
+  // Crop-mode overlay: full source dimmed + bright kept region + box/handles.
+  // Interactive render only — never bake the crop UI into a save composite.
+  if (!cleanRender && this.activeMode === "crop" && this._cropLayer)
+    this.drawCropOverlay();
+
   this.ctx.globalAlpha = 1.0;
 };
 
@@ -384,6 +416,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           eraserMaskCtx_internal: null,
           hasMask_internal: false,
           savedMaskPath_internal: mLayer.maskSrc || null,
+          cropRect: mLayer.cropRect || null,
+          sourceImg: null,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -417,6 +451,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           rawServerPath: mLayer.src,
           savedOnServer: true,
           savedMaskPath_internal: mLayer.maskSrc || null,
+          cropRect: mLayer.cropRect || null,
+          sourceImg: null,
         };
         loadedCount++;
         if (loadedCount === layersToLoad.length) this.finishRestore();
@@ -457,6 +493,11 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             rawServerPath: mLayer.src,
             savedOnServer: true,
             savedMaskPath_internal: mLayer.maskSrc || null,
+            // Do NOT crop the 512px "Missing Image" placeholder with the real
+            // image's (out-of-bounds) rect - it would blank the marker. The
+            // true cropRect stays in the saved JSON for when the file returns.
+            cropRect: null,
+            sourceImg: null,
           };
           loadedCount++;
           if (loadedCount === layersToLoad.length) this.finishRestore(true);
@@ -472,6 +513,16 @@ PixaromaEditor.prototype.attemptRestore = async function () {
 };
 
 PixaromaEditor.prototype.finishRestore = function (hadError = false) {
+  // Re-bake crops BEFORE loading masks, so the mask canvas (loaded next, sized
+  // to layer.img) matches the cropped image. recenter=false: cx/cy already hold
+  // the saved cropped center, so we must not shift them again.
+  this.layers.forEach((l) => {
+    if (l && l.cropRect && l.img) {
+      l.sourceImg = l.img;
+      this.applyCropToLayer(l, false);
+    }
+  });
+
   this.layers.forEach((l) => {
     if (l.savedMaskPath_internal) {
       const maskFileName = l.savedMaskPath_internal.split(/[\\/]/).pop();

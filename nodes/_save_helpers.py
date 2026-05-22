@@ -6,10 +6,29 @@ Used by node_preview.py (Python entry) and server_routes.py (HTTP routes).
 """
 
 import json
+import math
 import re
 import time
 
 from PIL.PngImagePlugin import PngInfo
+
+
+def _json_safe(obj):
+    """Recursively replace non-finite floats (NaN / Infinity) with None.
+
+    PROMPT contains `is_changed: [NaN]` for any node whose IS_CHANGED returns
+    nan (e.g. Preview Image Pixaroma). Python's json.dumps writes that as the
+    bare token `NaN`, which is invalid JSON - so the embedded PNG metadata
+    chunk can't be parsed by strict readers, and the same value over the
+    ComfyUI websocket breaks the frontend JSON.parse. Sanitize first.
+    """
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
 
 
 # ---- date-token expansion (VHS-compatible %date:fmt% syntax) ----
@@ -164,18 +183,18 @@ def _build_pnginfo(prompt=None, workflow=None, extra_pnginfo=None):
     pnginfo = PngInfo()
     if prompt is not None:
         try:
-            pnginfo.add_text("prompt", json.dumps(prompt))
+            pnginfo.add_text("prompt", json.dumps(_json_safe(prompt)))
         except Exception:
             pass
     if workflow is not None:
         try:
-            pnginfo.add_text("workflow", json.dumps(workflow))
+            pnginfo.add_text("workflow", json.dumps(_json_safe(workflow)))
         except Exception:
             pass
     if isinstance(extra_pnginfo, dict):
         for k, v in extra_pnginfo.items():
             try:
-                pnginfo.add_text(k, json.dumps(v))
+                pnginfo.add_text(k, json.dumps(_json_safe(v)))
             except Exception:
                 pass
     return pnginfo

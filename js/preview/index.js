@@ -41,6 +41,10 @@ function buildViewUrl(entry) {
 function loadFrameImage(url, onLoad) {
   const img = new Image();
   img.onload = () => { if (onLoad) onLoad(img); };
+  // Flag a failed load (e.g. the temp/ PNG was cleared on a ComfyUI restart)
+  // so draw() can show "re-run" instead of a silent gray box, and trigger a
+  // repaint so that message appears immediately.
+  img.onerror = () => { img._pixFailed = true; if (onLoad) onLoad(img); };
   img.src = url;
   return img;
 }
@@ -61,6 +65,20 @@ const LAYOUT_TOGGLE_PAD = 6;       // padding from widget corner
 // Tracks which preview node is currently in expanded mode, so the global
 // keydown listener can route arrow-key navigation to the right node.
 let _activePreviewNode = null;
+
+// Make `node` the active (keyboard-driven) preview. If a DIFFERENT node was
+// previously expanded, collapse it first - otherwise it would stay visually
+// expanded but unreachable by keyboard (arrows/Esc now drive the new node),
+// stranding the old one (only its X button could close it).
+function setActivePreview(node) {
+  const prev = _activePreviewNode;
+  if (prev && prev !== node && prev._pixaromaExpanded) {
+    prev._pixaromaExpanded = false;
+    if (prev.properties) prev.properties.pixaromaExpanded = false;
+    prev.setDirtyCanvas?.(true, true);
+  }
+  _activePreviewNode = node;
+}
 
 // Layout mode helpers. The default for new nodes comes from the
 // Pixaroma.Preview.DefaultLayout setting (registered below); per-node
@@ -120,7 +138,7 @@ function handleStripClick(node, lx, ly) {
         node._pixaromaSelectedFrame = next;
         node.properties = node.properties || {};
         node.properties.pixaromaSelected = next;
-        _activePreviewNode = node;
+        setActivePreview(node);
         node.setDirtyCanvas(true, true);
       }
       return true;
@@ -137,7 +155,7 @@ function handleStripClick(node, lx, ly) {
         node.properties = node.properties || {};
         node.properties.pixaromaSelected = s.idx;
         node.properties.pixaromaExpanded = true;
-        _activePreviewNode = node;
+        setActivePreview(node);
         node.setDirtyCanvas(true, true);
         return true;
       }
@@ -281,6 +299,24 @@ async function getWorkflowAndPrompt() {
   return { workflow, prompt: output };
 }
 
+// Prefer the EXECUTION-time prompt/workflow captured when this node's frames
+// arrived (the exact seed that produced the displayed image). Fall back to the
+// live graph only if we have no captured metadata (e.g. a preview restored from
+// a previous session via node.properties, with no run this session).
+async function resolveSaveMeta(node) {
+  // Gate on the WORKFLOW specifically - that's the chunk ComfyUI reads to
+  // rebuild the graph on drag-back. If we only had the prompt (e.g. an API
+  // run with no extra_pnginfo), we'd embed a workflow-less PNG that can't be
+  // dragged back, so fall through to the live graph in that case.
+  if (node._pixaromaExecWorkflow) {
+    return {
+      workflow: node._pixaromaExecWorkflow,
+      prompt: node._pixaromaExecPrompt,
+    };
+  }
+  return await getWorkflowAndPrompt();
+}
+
 // Try to resolve the value of a wired STRING input by walking back along
 // the link to the upstream node and reading its widget. Returns null if
 // the input is not wired OR we can't read a clean value (in which case
@@ -371,6 +407,13 @@ async function copyToClipboard(node) {
     await navigator.clipboard.write([new ClipboardItem({ "image/png": pngBlob })]);
     showToast(node, "Copied to clipboard");
   } catch (err) {
+    // NotAllowedError is the common one on http://127.0.0.1 when the page
+    // isn't focused (e.g. right after clicking a canvas-painted button) -
+    // give a clear hint instead of the raw error.
+    if (err?.name === "NotAllowedError") {
+      showToast(node, "Copy blocked — click the page, then try again");
+      return;
+    }
     showToast(node, `Copy failed: ${err.message || err}`);
   }
 }
@@ -403,7 +446,7 @@ async function saveToOutput(node) {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
     const dataURL = await blobToDataURL(blob);
-    const { workflow, prompt } = await getWorkflowAndPrompt();
+    const { workflow, prompt } = await resolveSaveMeta(node);
     const resp = await fetch("/pixaroma/api/preview/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -436,7 +479,7 @@ async function saveToDisk(node) {
     const blob = await getPreviewBlob(node);
     if (!blob) throw new Error("no preview blob");
     const dataURL = await blobToDataURL(blob);
-    const { workflow, prompt } = await getWorkflowAndPrompt();
+    const { workflow, prompt } = await resolveSaveMeta(node);
     const resp = await fetch("/pixaroma/api/preview/prepare", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -811,6 +854,19 @@ function createStripWidget() {
           ctx.save();
           ctx.fillStyle = "#222";
           ctx.fillRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+          // Temp PNG gone (e.g. ComfyUI restart) - say so on the big preview
+          // (skip tiny thumbnails where the text would overflow).
+          if (f?.img?._pixFailed && imgRect.w > 120) {
+            ctx.fillStyle = "#888";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(
+              "Preview expired — run again",
+              imgRect.x + imgRect.w / 2,
+              imgRect.y + imgRect.h / 2,
+            );
+          }
           ctx.restore();
         }
 
@@ -901,6 +957,19 @@ function createStripWidget() {
           ctx.save();
           ctx.fillStyle = "#222";
           ctx.fillRect(imgRect.x, imgRect.y, imgRect.w, imgRect.h);
+          // Temp PNG gone (e.g. ComfyUI restart) - say so on the big preview
+          // (skip tiny thumbnails where the text would overflow).
+          if (f?.img?._pixFailed && imgRect.w > 120) {
+            ctx.fillStyle = "#888";
+            ctx.font = "12px sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(
+              "Preview expired — run again",
+              imgRect.x + imgRect.w / 2,
+              imgRect.y + imgRect.h / 2,
+            );
+          }
           ctx.restore();
         }
         if (total > 1) {
@@ -1179,6 +1248,16 @@ api.addEventListener("executed", ({ detail }) => {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
   if (!node || node.type !== "PixaromaPreview") return;
+
+  // Capture the EXECUTION-time prompt + workflow (the seed that actually made
+  // this image) so the Save buttons embed it instead of the live, post-
+  // "randomize" graph state. Runtime-only (NOT persisted to node.properties —
+  // that would recursively bloat the saved workflow with a copy of itself).
+  const execMeta = detail?.output?.pixaroma_preview_meta?.[0];
+  if (execMeta) {
+    node._pixaromaExecPrompt = execMeta.prompt ?? null;
+    node._pixaromaExecWorkflow = execMeta.workflow ?? null;
+  }
 
   // Persist meta on node.properties so the preview survives workflow
   // switching / reload — LiteGraph serializes `properties` to JSON.

@@ -56,6 +56,8 @@ export class PixaromaEditor {
   }
 
   setMode(mode) {
+    // Leaving crop mode applies the in-progress crop before anything else.
+    if (this.activeMode === "crop" && mode !== "crop") this.exitCropMode();
     this.activeMode = mode;
     if (mode === "eraser") {
       // Eraser mode: crosshair cursor, highlight the toggle button
@@ -64,17 +66,51 @@ export class PixaromaEditor {
         this.btnEraserToggle.classList.add("pxf-btn-accent");
         this.btnEraserToggle.innerText = "Disable  [E]";
       }
+      if (this.btnCropToggle) {
+        this.btnCropToggle.classList.remove("pxf-btn-accent");
+        this.btnCropToggle.innerText = "Enable  [C]";
+      }
       if (this.selectedLayerIds.size === 1) this.setupEraserOnSelection();
       if (this._layout)
         this._layout.setStatus(
           "Eraser mode \u00b7 Drag to erase \u00b7 [ / ] resize \u00b7 E to toggle off",
         );
+    } else if (mode === "crop") {
+      // enterCropMode may bail (placeholder / no image) and reset activeMode.
+      if (this.selectedLayerIds.size === 1) this.enterCropMode();
+      if (this.activeMode === "crop") {
+        // Crop mode active: crosshair cursor, highlight the toggle button.
+        this.canvas.style.cursor = "crosshair";
+        if (this.btnCropToggle) {
+          this.btnCropToggle.classList.add("pxf-btn-accent");
+          this.btnCropToggle.innerText = "Done  [C]";
+        }
+        if (this.btnEraserToggle) {
+          this.btnEraserToggle.classList.remove("pxf-btn-accent");
+          this.btnEraserToggle.innerText = "Enable  [E]";
+        }
+        if (this._layout)
+          this._layout.setStatus(
+            "Crop mode \u00b7 Drag the box / handles \u00b7 Shift = lock aspect \u00b7 C to apply",
+          );
+      } else {
+        // Bailed \u2014 fall back to select-mode visuals.
+        this.canvas.style.cursor = "default";
+        if (this.btnCropToggle) {
+          this.btnCropToggle.classList.remove("pxf-btn-accent");
+          this.btnCropToggle.innerText = "Enable  [C]";
+        }
+      }
     } else {
-      // Select mode: default cursor, reset toggle button
+      // Select mode: default cursor, reset toggle buttons
       this.canvas.style.cursor = "default";
       if (this.btnEraserToggle) {
         this.btnEraserToggle.classList.remove("pxf-btn-accent");
         this.btnEraserToggle.innerText = "Enable  [E]";
+      }
+      if (this.btnCropToggle) {
+        this.btnCropToggle.classList.remove("pxf-btn-accent");
+        this.btnCropToggle.innerText = "Enable  [C]";
       }
       // Context-aware tooltip on returning to select mode
       if (this._layout) {
@@ -193,5 +229,63 @@ export class PixaromaEditor {
 
   captureState() {
     return PixaromaLayers.captureState(this.layers);
+  }
+
+  // Is this editor's fullscreen overlay still in the DOM? Used by the
+  // self-healing graph patches to detect a teardown that bypassed cleanup
+  // (Vue Compat #2).
+  _overlayAlive() {
+    return !!(this.overlay && this.overlay.isConnected);
+  }
+
+  // Vue Compat #6: neuter the Ctrl+Z escape. ComfyUI's change-tracker undo runs
+  // via requestAnimationFrame and reaches the graph through app.loadGraphData ->
+  // app.graph.configure; preventDefault on the keydown does NOT stop it. While
+  // the editor is open we no-op both so Ctrl+Z can only drive the editor's own
+  // undo, never tear down the workflow underneath. The patches SELF-HEAL: if
+  // they are ever called while our overlay is gone (tab closed mid-edit, etc),
+  // they restore the originals and pass through - otherwise loadGraphData would
+  // stay disabled forever and brick the whole UI until a page refresh.
+  _installGraphPatches() {
+    const app = window.app;
+    if (!app || !app.graph) return;
+    // A stale patch from a torn-down editor may still be installed; restore it
+    // before capturing the originals so we never save a no-op as "the original".
+    if (app._pixComposerOrigLoad) {
+      app.loadGraphData = app._pixComposerOrigLoad;
+      if (app.graph && app._pixComposerOrigConfigure)
+        app.graph.configure = app._pixComposerOrigConfigure;
+    }
+    app._pixComposerOrigLoad = app.loadGraphData.bind(app);
+    app._pixComposerOrigConfigure = app.graph.configure.bind(app.graph);
+    const self = this;
+    app.loadGraphData = function (...args) {
+      if (!self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.loadGraphData(...args);
+      }
+      return Promise.resolve();
+    };
+    app.graph.configure = function (...args) {
+      if (!self._overlayAlive()) {
+        self._restoreGraphPatches();
+        return window.app.graph.configure(...args);
+      }
+      return undefined;
+    };
+  }
+
+  // Restore the neutered functions. Idempotent; safe from cleanup AND self-heal.
+  _restoreGraphPatches() {
+    const app = window.app;
+    if (!app) return;
+    if (app._pixComposerOrigLoad) {
+      app.loadGraphData = app._pixComposerOrigLoad;
+      app._pixComposerOrigLoad = null;
+    }
+    if (app.graph && app._pixComposerOrigConfigure) {
+      app.graph.configure = app._pixComposerOrigConfigure;
+      app._pixComposerOrigConfigure = null;
+    }
   }
 }

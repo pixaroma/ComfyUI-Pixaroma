@@ -5,7 +5,10 @@ import folder_paths
 import numpy as np
 from PIL import Image
 
-from ._save_helpers import _build_pnginfo, _safe_prefix
+# _json_safe: strip NaN/Inf (PROMPT's is_changed:[NaN]) so the ui payload sent
+# over the websocket is valid JSON - else the frontend JSON.parse drops the
+# whole executed message (preview frames + save metadata both lost).
+from ._save_helpers import _build_pnginfo, _json_safe, _safe_prefix
 
 
 def _tensor_to_pil(tensor):
@@ -123,8 +126,22 @@ class PixaromaPreview:
                     "type": "temp",
                 })
 
+        # Hand the EXECUTION-time prompt + workflow to the frontend so the
+        # Save Disk / Save Output buttons embed the seed that ACTUALLY produced
+        # this image. The buttons otherwise call app.graphToPrompt() at click
+        # time, which - with "control after generate: randomize" - captures the
+        # NEXT (already-randomized) seed, so dragging the saved PNG back into
+        # ComfyUI reproduced a different image. This matches what save_mode=save
+        # bakes in server-side.
+        workflow = extra_pnginfo.get("workflow") if isinstance(extra_pnginfo, dict) else None
+        # Sanitize: PROMPT contains is_changed:[NaN] (IS_CHANGED returns nan),
+        # which is invalid JSON and would break the whole executed message.
+        meta = _json_safe({"prompt": prompt, "workflow": workflow})
         return {
-            "ui": {"pixaroma_preview_frames": results},
+            "ui": {
+                "pixaroma_preview_frames": results,
+                "pixaroma_preview_meta": [meta],
+            },
             "result": (image,),
         }
 

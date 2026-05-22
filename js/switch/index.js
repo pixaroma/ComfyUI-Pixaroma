@@ -230,6 +230,22 @@ app.graphToPrompt = async function (...args) {
       // Python surfaces a clear "not connected" error rather than a crash.
       const activeIdx = state?.activeIndex || 1;
       entry.inputs = entry.inputs || {};
+      // Execution pruning: drop every input_N link EXCEPT the active one so
+      // ComfyUI only executes the chosen upstream branch. Without this the
+      // SwitchState injection makes Python RETURN only the active input, but
+      // the prompt still lists every wire as a dependency, so ComfyUI runs all
+      // upstream branches anyway (reported: "processing all inputs"). This is
+      // submission-only - the visible wires and saved workflow keep every
+      // connection; only the run is pruned. If the active slot is unconnected,
+      // no input_N survives and Python raises its clear "not connected" error.
+      for (const inputName of Object.keys(entry.inputs)) {
+        if (inputName.startsWith("input_")) {
+          const slot = Number(inputName.slice("input_".length));
+          if (!Number.isFinite(slot) || slot !== activeIdx) {
+            delete entry.inputs[inputName];
+          }
+        }
+      }
       entry.inputs[HIDDEN_INPUT_NAME] = String(activeIdx);
     }
   }
