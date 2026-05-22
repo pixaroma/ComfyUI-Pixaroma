@@ -854,6 +854,8 @@ PixaromaEditor.prototype.attachEvents = function () {
         this.isMouseDown = false;
         this.canvas.style.cursor = "default";
       }
+    } else if (this.activeMode === "crop") {
+      this.handleCropMouseDown(coords);
     } else {
       this.onSelectMouseDown(e, coords);
     }
@@ -871,6 +873,17 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this._composerMouseMove = (e) => {
     try {
+      // Crop mode owns its own drag lifecycle (apply happens on exit, not here).
+      if (this.activeMode === "crop") {
+        if (this.overlay.id !== "pixaroma-editor-instance") return;
+        const cc = this.getCanvasCoordinates(e);
+        if (this.isMouseDown && e.buttons & 1) {
+          this.handleCropMouseMove(cc, e.shiftKey);
+        } else if (this.isMouseDown) {
+          this.handleCropMouseUp();
+        }
+        return;
+      }
       if (this.isMouseDown && e.buttons !== 1) {
         this.isMouseDown = false;
         this.interactionMode = null;
@@ -946,6 +959,10 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (this.isPanning) {
       this.isPanning = false;
       this.workspace.classList.remove("panning");
+    }
+    if (this.activeMode === "crop") {
+      this.handleCropMouseUp();
+      return;
     }
     if (this.isMouseDown) {
       this.isMouseDown = false;

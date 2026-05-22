@@ -154,6 +154,14 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
     // Defensive: layer.img can briefly be null during async upload / restore.
     // _ensureSelPad already skips this case; mirror that here.
     if (!layer.img) return;
+    // In crop mode the active layer is drawn by drawCropOverlay (full source +
+    // box), so skip it in the normal loop to avoid double-drawing.
+    if (
+      this.activeMode === "crop" &&
+      this._cropLayer &&
+      layer.id === this._cropLayer.id
+    )
+      return;
 
     const isSelected = this.selectedLayerIds.has(layer.id);
     this.ctx.save();
@@ -286,6 +294,10 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
       oc.restore();
     }
   });
+
+  // Crop-mode overlay: full source dimmed + bright kept region + box/handles.
+  if (this.activeMode === "crop" && this._cropLayer) this.drawCropOverlay();
+
   this.ctx.globalAlpha = 1.0;
 };
 
