@@ -136,15 +136,20 @@ js/
 │                       #  twice, NOT openPixaromaColorPickerModal) seeded
 │                       #  from the clipboard / first favorite; Apply feeds
 │                       #  the clipboard, NOT a favorite slot.
-│                       #  GROUP menu: hooks
-│                       #  LGraphGroup.prototype.getMenuOptions (Vue-safe;
-│                       #  LGraphCanvas.getGroupMenuOptions is deprecated).
-│                       #  Appends inside the native "Edit Group" submenu:
-│                       #  flat "👑 Favorite N" + "👑 Copy color" + "👑
-│                       #  Paste color" for few-click access, plus "👑
-│                       #  Pixaroma colors ▸" holding Save this color to ▸
-│                       #  / Pick custom (single-color modal) / Neutrals ▸
-│                       #  / Hues ▸ / Reset color. A group has ONE fill
+│                       #  GROUP menu: TOP-LEVEL of the canvas right-click
+│                       #  menu (like nodes, NOT under "Edit Group"). Wraps
+│                       #  LGraphCanvas.prototype.getCanvasMenuOptions and
+│                       #  gates on a group under the cursor via
+│                       #  this.graph_mouse + graph.getGroupOnPos
+│                       #  (getCanvasMenuOptions takes NO event arg, so the
+│                       #  position comes from graph_mouse; processContextMenu
+│                       #  appends "Edit Group" right after, so our items land
+│                       #  just above it; node right-clicks use
+│                       #  getNodeMenuOptions so there's no double-add).
+│                       #  Mirrors nodes: "👑 Pixaroma colors ▸" (favorites +
+│                       #  Save this color to ▸ + Pick custom (single-color
+│                       #  modal) + Neutrals ▸ / Hues ▸) + "👑 Copy color" +
+│                       #  "👑 Paste color" + "👑 Reset color". A group has ONE fill
 │                       #  color (group.color), serialized in workflow
 │                       #  groups[]. Its ~25% transparency is LiteGraph's
 │                       #  hardcoded render (0.25 fill / 1.0 stroke ×

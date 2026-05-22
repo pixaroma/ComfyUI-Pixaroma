@@ -7,10 +7,13 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 //     Neutrals / Plain hues / Pixa hues subfolders (title+body picker).
 //   • 👑 Copy colors / 👑 Paste colors (session clipboard, pair).
 //   • 👑 Reset node colors clears the override.
-// GROUPS — right-click a group → "Edit Group" submenu:
-//   • Flat 👑 Favorite N + 👑 Copy color + 👑 Paste color for quick access,
-//     plus 👑 Pixaroma colors → Save / Pick custom / Neutrals / Hues / Reset
-//     (single-color picker — a group has ONE fill color, not title+body).
+// GROUPS — right-click a group → TOP-LEVEL canvas menu (like nodes, NOT
+// buried under "Edit Group"): 👑 Pixaroma colors (favorites + Save + Pick
+//   custom + Neutrals / Hues subfolders) + 👑 Copy color + 👑 Paste color +
+//   👑 Reset color. Single-color picker — a group has ONE fill color, not
+//   title+body. Added by wrapping getCanvasMenuOptions and gating on a group
+//   under the cursor (this.graph_mouse + graph.getGroupOnPos), since
+//   getCanvasMenuOptions receives no event/position argument.
 //
 // Node colors → node.color / node.bgcolor; group color → group.color. Both
 // serialize into the workflow JSON (groups[] array) and travel to recipients
@@ -878,11 +881,22 @@ const GROUP_PRESET_GROUPS = [
   { label: "Hues",     presets: GROUP_HUES },
 ];
 
-// The "👑 Pixaroma colors" submenu for a group. Favorites + Copy/Paste sit
-// one level up (flat in the Edit Group menu) for fewer clicks; this submenu
-// holds the less-frequent Save / Pick custom / presets / Reset.
+// The "👑 Pixaroma colors" submenu for a group — mirrors the node submenu:
+// filled Favorites on top, then Save / Pick custom, then the preset
+// subfolders. Copy / Paste / Reset are top-level siblings (see setup()).
 function buildGroupColorsSubmenu(targets, group) {
   const items = [];
+
+  // Favorites (filled only) — applies each favorite's identity color.
+  const filled = getFavorites().map((f, i) => ({ f, i })).filter((x) => x.f);
+  for (const { f, i } of filled) {
+    items.push({
+      content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
+      callback: () => applyGroupColor(targets, pickGroupColor(f)),
+    });
+  }
+  if (filled.length) items.push(null); // separator: favorites -> save/custom
+
   items.push({
     content: "Save this color to",
     has_submenu: true,
@@ -910,11 +924,6 @@ function buildGroupColorsSubmenu(targets, group) {
       },
     });
   }
-  items.push(null); // separator: presets -> reset
-  items.push({
-    content: "Reset color",
-    callback: () => resetGroupColor(targets),
-  });
   return items;
 }
 
@@ -962,34 +971,41 @@ app.registerExtension({
       };
     }
 
-    // ── Group right-click ("Edit Group") menu ──────────────────────────
-    // Hook LGraphGroup.prototype.getMenuOptions (the Vue-safe group menu
-    // builder; the LGraphCanvas.getGroupMenuOptions form is deprecated).
-    // Groups have one fill color, so this is the single-color variant; the
-    // clipboard + favorites are SHARED with nodes (cross-type) via
-    // pickGroupColor. Quick items (favorites, copy, paste) sit flat in the
-    // Edit Group menu; the rest lives under "👑 Pixaroma colors".
-    const LGraphGroupCls =
-      (typeof LiteGraph !== "undefined" && LiteGraph.LGraphGroup) ||
-      (typeof window !== "undefined" && window.LGraphGroup);
-    if (LGraphGroupCls?.prototype?.getMenuOptions) {
-      const origGroupMenu = LGraphGroupCls.prototype.getMenuOptions;
-      LGraphGroupCls.prototype.getMenuOptions = function () {
-        const options = origGroupMenu.apply(this, arguments) || [];
-        const group = this;
+    // ── Group colors at the TOP LEVEL of the canvas right-click menu ────
+    // (like the node entries — NOT buried under "Edit Group"). The canvas
+    // menu is built by getCanvasMenuOptions; processContextMenu appends
+    // "Edit Group" right after when a group is under the cursor, so our
+    // entries sit just above it. getCanvasMenuOptions receives no event, so
+    // we read the right-click position from this.graph_mouse (graph space)
+    // and gate on a group being under it — node right-clicks go through
+    // getNodeMenuOptions instead, so there's no double-add. Groups have one
+    // fill color; the clipboard + favorites are SHARED with nodes
+    // (cross-type) via pickGroupColor.
+    if (typeof LGraphCanvas !== "undefined" && LGraphCanvas?.prototype?.getCanvasMenuOptions) {
+      const origGetCanvasMenuOptions = LGraphCanvas.prototype.getCanvasMenuOptions;
+      LGraphCanvas.prototype.getCanvasMenuOptions = function () {
+        const options = origGetCanvasMenuOptions.apply(this, arguments) || [];
+        const graph = this.graph || app.graph;
+        const gm = this.graph_mouse || app.canvas?.graph_mouse;
+        let group = null;
+        if (graph && typeof graph.getGroupOnPos === "function" && gm) {
+          group = graph.getGroupOnPos(gm[0], gm[1]) || null;
+        }
+        if (!group) return options; // empty canvas → leave the menu alone
+
         const targets = getTargetGroups(group);
         const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
-
         options.push(null);
-        // Favorites (filled only) — flat for quick access; applies the
-        // favorite's identity color to the group.
-        const filled = getFavorites().map((f, i) => ({ f, i })).filter((x) => x.f);
-        for (const { f, i } of filled) {
-          options.push({
-            content: `${swatchHTML(f.title, f.body)}👑 Favorite ${i + 1}${suffix}`,
-            callback: () => applyGroupColor(targets, pickGroupColor(f)),
-          });
-        }
+        options.push({
+          content: `👑 Pixaroma colors${suffix}`,
+          has_submenu: true,
+          callback: function (value, opts, e, menu) {
+            new LiteGraph.ContextMenu(
+              buildGroupColorsSubmenu(targets, group),
+              { event: e, parentMenu: menu }
+            );
+          },
+        });
         options.push({
           content: `👑 Copy color`,
           callback: () => {
@@ -1004,14 +1020,8 @@ app.registerExtension({
           });
         }
         options.push({
-          content: `👑 Pixaroma colors${suffix}`,
-          has_submenu: true,
-          callback: function (value, opts, e, menu) {
-            new LiteGraph.ContextMenu(
-              buildGroupColorsSubmenu(targets, group),
-              { event: e, parentMenu: menu }
-            );
-          },
+          content: `👑 Reset color${suffix}`,
+          callback: () => resetGroupColor(targets),
         });
         return options;
       };
