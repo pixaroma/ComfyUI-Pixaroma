@@ -18,6 +18,9 @@ PixaromaEditor.prototype.pushHistory = function () {
 
 PixaromaEditor.prototype.undo = function () {
   if (this.historyIndex > 0) {
+    // Cancel any in-progress crop first: undo rebuilds this.layers with fresh
+    // {...l} copies, which would strand the cached _cropLayer reference.
+    if (this.activeMode === "crop") this._clearCropState();
     this.historyIndex--;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
     this.verifySelection();
@@ -31,6 +34,7 @@ PixaromaEditor.prototype.undo = function () {
 
 PixaromaEditor.prototype.redo = function () {
   if (this.historyIndex < this.history.length - 1) {
+    if (this.activeMode === "crop") this._clearCropState();
     this.historyIndex++;
     this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
     this.verifySelection();
@@ -478,7 +482,10 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             rawServerPath: mLayer.src,
             savedOnServer: true,
             savedMaskPath_internal: mLayer.maskSrc || null,
-            cropRect: mLayer.cropRect || null,
+            // Do NOT crop the 512px "Missing Image" placeholder with the real
+            // image's (out-of-bounds) rect - it would blank the marker. The
+            // true cropRect stays in the saved JSON for when the file returns.
+            cropRect: null,
             sourceImg: null,
           };
           loadedCount++;

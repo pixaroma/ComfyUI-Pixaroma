@@ -131,24 +131,71 @@ PixaromaEditor.prototype.enterCropMode = function () {
     this._cropDraft = { x: mx, y: my, w: sw - 2 * mx, h: sh - 2 * my };
   }
   this._cropLayer = layer;
+  this._cropLayerId = layer.id; // track by id - object refs go stale on undo/delete
   this._cropFullCenter = this._computeFullSourceCenter(layer, sw, sh);
   this._cropDragHandle = null;
+  this._cropDragStart = null;
   this._cropDraftTouched = false;
   this.draw();
 };
 
+// Re-resolve the crop layer from the live this.layers by id. The cached
+// this._cropLayer object reference goes stale whenever the layers array is
+// rebuilt (undo/redo do `layers.map(l => ({...l}))`) or the layer is removed
+// (delete / clear canvas). Returns the live layer (and re-syncs the cache) or
+// null if it's gone.
+PixaromaEditor.prototype._cropLayerLive = function () {
+  if (this._cropLayerId == null) return null;
+  const live = this.layers.find((l) => l.id === this._cropLayerId);
+  if (live) {
+    this._cropLayer = live;
+    return live;
+  }
+  return null;
+};
+
+// Abandon crop mode WITHOUT applying the in-progress draft, and reset the UI.
+// Used when the crop layer vanished (undo/delete/clear) or on undo/redo.
+PixaromaEditor.prototype._clearCropState = function () {
+  const wasCrop = this.activeMode === "crop";
+  this._cropLayer = null;
+  this._cropLayerId = null;
+  this._cropDraft = null;
+  this._cropFullCenter = null;
+  this._cropDragHandle = null;
+  this._cropDragStart = null;
+  this._cropDraftTouched = false;
+  if (wasCrop) {
+    this.activeMode = null;
+    this.isMouseDown = false;
+    if (this.canvas) this.canvas.style.cursor = "default";
+    if (this.btnCropToggle) {
+      this.btnCropToggle.classList.remove("pxf-btn-accent");
+      this.btnCropToggle.innerText = "Enable  [C]";
+    }
+  }
+};
+
 PixaromaEditor.prototype.exitCropMode = function () {
-  const layer = this._cropLayer;
+  // Re-resolve by id: the cached _cropLayer may be a stale object after an
+  // undo/redo rebuilt this.layers. If the layer is gone entirely, just clear.
+  const layer = this._cropLayerLive();
   const draft = this._cropDraft;
   const touched = this._cropDraftTouched;
   const srcCenter =
     this._cropFullCenter || (layer ? { cx: layer.cx, cy: layer.cy } : null);
+  if (!layer || !draft || !layer.sourceImg) {
+    this._clearCropState();
+    this.draw();
+    return;
+  }
   this._cropLayer = null;
+  this._cropLayerId = null;
   this._cropDraft = null;
   this._cropFullCenter = null;
   this._cropDragHandle = null;
+  this._cropDragStart = null;
   this._cropDraftTouched = false;
-  if (!layer || !draft) return;
   // The box was never dragged → leave the layer's crop exactly as it was
   // (so "enable crop, change mind, Done" applies nothing).
   if (!touched) {
@@ -156,18 +203,27 @@ PixaromaEditor.prototype.exitCropMode = function () {
     return;
   }
   const { w: sw, h: sh } = srcSize(layer.sourceImg);
+  // 0.5 tolerance so a drag that lands a hair short of the edge still reads as
+  // "full" (no phantom 1px crop). Integer-round + clamp the stored rect so the
+  // JS bake, save, Python crop, and mini-preview all agree (no sub-pixel drift).
   const isFull =
-    Math.round(draft.x) <= 0 &&
-    Math.round(draft.y) <= 0 &&
-    Math.round(draft.w) >= sw &&
-    Math.round(draft.h) >= sh;
-  layer.cropRect = isFull
-    ? null
-    : { x: draft.x, y: draft.y, w: draft.w, h: draft.h };
+    draft.x <= 0.5 &&
+    draft.y <= 0.5 &&
+    draft.w >= sw - 0.5 &&
+    draft.h >= sh - 0.5;
+  let cr = null;
+  if (!isFull) {
+    const x = Math.max(0, Math.min(Math.round(draft.x), sw - 1));
+    const y = Math.max(0, Math.min(Math.round(draft.y), sh - 1));
+    const w = Math.max(1, Math.min(Math.round(draft.w), sw - x));
+    const h = Math.max(1, Math.min(Math.round(draft.h), sh - y));
+    cr = { x, y, w, h };
+  }
+  layer.cropRect = cr;
   // Re-center: the new image center (crop center, or source center if full)
   // mapped to its current canvas position so the kept region does not jump.
-  const ccX = isFull ? sw / 2 : draft.x + draft.w / 2;
-  const ccY = isFull ? sh / 2 : draft.y + draft.h / 2;
+  const ccX = cr ? cr.x + cr.w / 2 : sw / 2;
+  const ccY = cr ? cr.y + cr.h / 2 : sh / 2;
   const cc = srcPointToCanvas(layer, ccX, ccY, sw, sh, srcCenter);
   layer.cx = cc.x;
   layer.cy = cc.y;
@@ -229,11 +285,15 @@ PixaromaEditor.prototype._cropPointInSource = function (coords) {
 PixaromaEditor.prototype._cropHitTest = function (lx, ly) {
   const d = this._cropDraft;
   if (!d) return null;
-  const tol = 10 / (this.viewZoom * Math.abs(this._cropLayer.scaleX || 1));
-  const nearX = (v) => Math.abs(lx - v) <= tol;
-  const nearY = (v) => Math.abs(ly - v) <= tol;
-  const inX = lx >= d.x - tol && lx <= d.x + d.w + tol;
-  const inY = ly >= d.y - tol && ly <= d.y + d.h + tol;
+  // Tolerance is 10 screen px converted to SOURCE px per axis. Use scaleX for
+  // x and scaleY for y so non-uniform scale (Horiz/Vert stretch) keeps the grab
+  // zones a uniform screen size on both axes.
+  const tolX = 10 / (this.viewZoom * Math.abs(this._cropLayer.scaleX || 1));
+  const tolY = 10 / (this.viewZoom * Math.abs(this._cropLayer.scaleY || 1));
+  const nearX = (v) => Math.abs(lx - v) <= tolX;
+  const nearY = (v) => Math.abs(ly - v) <= tolY;
+  const inX = lx >= d.x - tolX && lx <= d.x + d.w + tolX;
+  const inY = ly >= d.y - tolY && ly <= d.y + d.h + tolY;
   const L = nearX(d.x) && inY;
   const R = nearX(d.x + d.w) && inY;
   const T = nearY(d.y) && inX;
@@ -299,9 +359,15 @@ PixaromaEditor.prototype.handleCropMouseMove = function (coords, shiftKey) {
     (hd === "nw" || hd === "ne" || hd === "sw" || hd === "se")
   ) {
     const ar = start.w / start.h;
-    const newH = (right - left) / ar;
-    if (hd.includes("n")) top = bottom - newH;
-    else bottom = top + newH;
+    // Guard against a cross-drag (right past left) producing a negative/zero
+    // width, which would fling the locked edge wildly. Only lock when the
+    // current width is sane; the final clamp below handles the boundary.
+    const curW = right - left;
+    if (curW >= MIN) {
+      const newH = curW / ar;
+      if (hd.includes("n")) top = bottom - newH;
+      else bottom = top + newH;
+    }
   }
 
   // Clamp each DRAGGED edge to the source bounds, keeping the opposite (fixed)
@@ -330,9 +396,15 @@ PixaromaEditor.prototype.handleCropMouseUp = function () {
 // in the layer's local frame, onto the main canvas. Called from _drawImpl
 // while in crop mode (the active layer is skipped in the normal layer loop).
 PixaromaEditor.prototype.drawCropOverlay = function () {
-  const layer = this._cropLayer;
+  // Self-heal: if the active crop layer was removed (delete / clear canvas) or
+  // replaced (undo/redo), re-resolve by id; if it's gone, exit crop cleanly.
+  // This runs every frame in crop mode, so the ghost lasts zero frames.
+  const layer = this._cropLayerLive();
   const d = this._cropDraft;
-  if (!layer || !d || !layer.sourceImg) return;
+  if (!layer || !d || !layer.sourceImg) {
+    if (!layer && this.activeMode === "crop") this._clearCropState();
+    return;
+  }
   const src = layer.sourceImg;
   const { w: sw, h: sh } = srcSize(src);
   const fc = this._cropFullCenter || { cx: layer.cx, cy: layer.cy };

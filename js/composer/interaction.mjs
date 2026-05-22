@@ -575,12 +575,17 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.btnDupLayer.onclick = () => {
     if (this.selectedLayerIds.size === 0) return;
+    // Commit any in-progress crop first so the duplicate captures the applied
+    // result (and _cropLayer doesn't dangle onto the original after the spread).
+    if (this.activeMode === "crop") this.setMode(null);
     const usedPH = new Set(this.layers.filter((l) => l.isPlaceholder).map((l) => l.inputIndex));
     const nextPHIdx = () => { let i = 1; while (usedPH.has(i)) i++; usedPH.add(i); return i; };
     const newLayers = [];
     this.layers.forEach((layer) => {
       if (this.selectedLayerIds.has(layer.id)) {
         const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+        // Deep-copy cropRect so re-cropping one copy can't alias the other.
+        if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
         // Deep-copy eraser mask so edits don't affect the original
         if (layer.eraserMaskCanvas_internal) {
           const mc = document.createElement("canvas");
@@ -1016,9 +1021,20 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.workspace.classList.remove("panning");
     }
     if (this.isMouseDown) {
+      const wasErasing = this.activeMode === "eraser";
+      const wasCropping = this.activeMode === "crop";
       this.isMouseDown = false;
       this.interactionMode = null;
-      this.canvas.style.cursor = "default";
+      if (this.canvas) this.canvas.style.cursor =
+        wasErasing || wasCropping ? "crosshair" : "default";
+      // Commit the in-progress action so focus loss mid-gesture (e.g. alt-tab)
+      // doesn't strand it: an eraser stroke needs an undo snapshot; a crop drag
+      // just needs its handle released (the crop applies on Done, not here).
+      if (wasCropping) {
+        this._cropDragHandle = null;
+      } else {
+        this.pushHistory();
+      }
     }
   };
   window.addEventListener("blur", this._composerBlur);
@@ -1095,6 +1111,7 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
       this.layers.forEach((layer) => {
         if (this.selectedLayerIds.has(layer.id)) {
           const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
+          if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
           // Deep-copy eraser mask so edits don't affect the original
           if (layer.eraserMaskCanvas_internal) {
             const mc = document.createElement("canvas");
