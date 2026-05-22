@@ -892,14 +892,11 @@ PixaromaEditor.prototype.attachEvents = function () {
     this.draw();
   });
 
-  this.canvas.addEventListener("mouseleave", () => {
-    if (this.activeMode === "eraser" && this.isMouseDown) {
-      this.isMouseDown = false;
-      this.canvas.style.cursor = "crosshair";
-      this.draw();
-      this.pushHistory();
-    }
-  });
+  // NOTE: we deliberately do NOT end the eraser stroke when the cursor leaves
+  // the canvas. Leaving and re-entering while the button is held continues the
+  // SAME stroke (the window-level mouseup commits + pushes history when the
+  // button is actually released, anywhere on screen). Ending here was a bug:
+  // dragging the brush off-canvas and back stopped erasing mid-stroke.
 
   this._composerMouseMove = (e) => {
     try {
@@ -968,9 +965,12 @@ PixaromaEditor.prototype.attachEvents = function () {
               coords.y,
             );
             this.drawEraserLine(layer, startLayerCoords, endLayerCoords);
-            this.lastX = coords.x;
-            this.lastY = coords.y;
           }
+          // Advance the last position EVERY move (even off-canvas) so a quick
+          // excursion off the canvas and back resumes the same stroke without
+          // erasing a long straight chord across the gap.
+          this.lastX = coords.x;
+          this.lastY = coords.y;
         } else {
           this.lastX = coords.x;
           this.lastY = coords.y;
