@@ -333,6 +333,17 @@ app.registerExtension({
       }
 
       function drawLayer(ctx, layer, img, maskImg) {
+        // Apply non-destructive crop (source-image pixels). Saved cx/cy already
+        // hold the cropped center, so once img is the cropped sub-rect the rest
+        // of the math positions it correctly. Matches the editor + Python.
+        if (layer.cropRect && !layer.isPlaceholder && img) {
+          const cr = layer.cropRect;
+          const cc = document.createElement("canvas");
+          cc.width = Math.max(1, Math.round(cr.w));
+          cc.height = Math.max(1, Math.round(cr.h));
+          cc.getContext("2d").drawImage(img, cr.x, cr.y, cr.w, cr.h, 0, 0, cc.width, cc.height);
+          img = cc;
+        }
         const natW = img.naturalWidth || img.width;
         const natH = img.naturalHeight || img.height;
         const sx = Math.abs(layer.scaleX || 1), sy = Math.abs(layer.scaleY || 1);
