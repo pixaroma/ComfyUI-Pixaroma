@@ -465,6 +465,23 @@ class PixaromaImageComposition:
                             continue
                         if layer.get("removeBgOnExec"):
                             layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                    # Apply non-destructive crop (cropRect is in source-image
+                    # pixels). Order matches the JS bake: crop -> mask -> transform.
+                    # The eraser mask is saved at the cropped size, so it must run
+                    # AFTER the crop. (Crop-only layers without a placeholder/mask
+                    # take the fast path and never reach here - their crop is
+                    # already baked into the saved composite PNG.)
+                    crop = layer.get("cropRect")
+                    if crop and layer_img is not None:
+                        try:
+                            cx0 = max(0, int(crop["x"]))
+                            cy0 = max(0, int(crop["y"]))
+                            cx1 = min(layer_img.width, int(crop["x"]) + int(crop["w"]))
+                            cy1 = min(layer_img.height, int(crop["y"]) + int(crop["h"]))
+                            if cx1 > cx0 and cy1 > cy0:
+                                layer_img = layer_img.crop((cx0, cy0, cx1, cy1))
+                        except (KeyError, TypeError, ValueError):
+                            pass
                     # Apply eraser mask if present (mask white = erased)
                     mask_src = layer.get("maskSrc")
                     if mask_src:
