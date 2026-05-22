@@ -4,18 +4,20 @@
 // layer.img so all existing render/handle/eraser math keeps working unchanged.
 import { PixaromaEditor } from "./core.mjs";
 
-// Forward-transform a layer-image-space point (lx,ly) to main-canvas coords,
-// using the given image width/height. Mirrors the render chain in
-// render.mjs _drawImpl and is the inverse of getCoordinatesInLayerImage.
-function layerImgPointToCanvas(layer, lx, ly, imgW, imgH) {
-  let x = (lx - imgW / 2) * layer.scaleX;
-  let y = (ly - imgH / 2) * layer.scaleY;
+// Forward-transform a SOURCE-space point (lx,ly) to main-canvas coords, given
+// where the source center sits on canvas (srcCenter). Mirrors the render chain
+// in render.mjs _drawImpl. srcCenter must be the source center, NOT layer.cx/cy
+// (those coincide only before the first crop; after a crop layer.cx/cy is the
+// cropped center).
+function srcPointToCanvas(layer, lx, ly, sw, sh, srcCenter) {
+  let x = (lx - sw / 2) * layer.scaleX;
+  let y = (ly - sh / 2) * layer.scaleY;
   if (layer.flippedX) x = -x;
   if (layer.flippedY) y = -y;
   const rad = (layer.rotation * Math.PI) / 180;
   return {
-    x: x * Math.cos(rad) - y * Math.sin(rad) + layer.cx,
-    y: x * Math.sin(rad) + y * Math.cos(rad) + layer.cy,
+    x: x * Math.cos(rad) - y * Math.sin(rad) + srcCenter.cx,
+    y: x * Math.sin(rad) + y * Math.cos(rad) + srcCenter.cy,
   };
 }
 
@@ -23,16 +25,37 @@ function srcSize(img) {
   return { w: img.width || img.naturalWidth, h: img.height || img.naturalHeight };
 }
 
-// (Re)bake layer.img from sourceImg + cropRect.
-// recenter=true  → user just applied a crop; shift cx/cy so the kept region
-//                  stays put, and (if a mask exists) re-map it to the new size.
-// recenter=false → restore path; cx/cy is already the saved cropped center,
-//                  and the mask (if any) is loaded fresh afterwards.
-PixaromaEditor.prototype.applyCropToLayer = function (layer, recenter = true) {
+// (Re)bake layer.img from sourceImg + cropRect. Does NOT touch cx/cy — callers
+// re-center first (exitCropMode / resetCrop know the source center via
+// _cropFullCenter; restore keeps the saved cx/cy).
+// remapMask=true → a live edit; re-map any existing in-memory eraser mask to
+//                  the new cropped size. (Restore loads the mask fresh, so it
+//                  passes false.)
+PixaromaEditor.prototype.applyCropToLayer = function (layer, remapMask = false) {
   if (!layer.sourceImg) layer.sourceImg = layer.img;
   const cr = layer.cropRect;
 
   if (!cr) {
+    // Back to full source. Expand any eraser mask to source size, keeping its
+    // painted content at the previous crop origin (crop + erase + reset).
+    if (
+      remapMask &&
+      layer.eraserMaskCanvas_internal &&
+      layer.hasMask_internal &&
+      layer.sourceImg
+    ) {
+      const old = layer.eraserMaskCanvas_internal;
+      const prevX = layer._cropMaskOriginX || 0;
+      const prevY = layer._cropMaskOriginY || 0;
+      const { w: sw0, h: sh0 } = srcSize(layer.sourceImg);
+      const nm = document.createElement("canvas");
+      nm.width = sw0;
+      nm.height = sh0;
+      const nmCtx = nm.getContext("2d");
+      nmCtx.drawImage(old, prevX, prevY);
+      layer.eraserMaskCanvas_internal = nm;
+      layer.eraserMaskCtx_internal = nmCtx;
+    }
     layer.img = layer.sourceImg;
     layer._cropMaskOriginX = 0;
     layer._cropMaskOriginY = 0;
@@ -40,13 +63,6 @@ PixaromaEditor.prototype.applyCropToLayer = function (layer, recenter = true) {
   }
 
   const src = layer.sourceImg;
-  const { w: sw, h: sh } = srcSize(src);
-
-  if (recenter) {
-    const cc = layerImgPointToCanvas(layer, cr.x + cr.w / 2, cr.y + cr.h / 2, sw, sh);
-    layer.cx = cc.x;
-    layer.cy = cc.y;
-  }
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(cr.w));
@@ -57,7 +73,7 @@ PixaromaEditor.prototype.applyCropToLayer = function (layer, recenter = true) {
   // Re-map an existing in-memory eraser mask to the new cropped size. The old
   // mask is sized to the PREVIOUS layer.img, whose origin in source coords is
   // the previous crop origin (or 0,0 if previously uncropped).
-  if (recenter && layer.eraserMaskCanvas_internal && layer.hasMask_internal) {
+  if (remapMask && layer.eraserMaskCanvas_internal && layer.hasMask_internal) {
     const oldMask = layer.eraserMaskCanvas_internal;
     const prevX = layer._cropMaskOriginX || 0;
     const prevY = layer._cropMaskOriginY || 0;
@@ -112,6 +128,8 @@ PixaromaEditor.prototype.enterCropMode = function () {
 PixaromaEditor.prototype.exitCropMode = function () {
   const layer = this._cropLayer;
   const draft = this._cropDraft;
+  const srcCenter =
+    this._cropFullCenter || (layer ? { cx: layer.cx, cy: layer.cy } : null);
   this._cropLayer = null;
   this._cropDraft = null;
   this._cropFullCenter = null;
@@ -123,7 +141,16 @@ PixaromaEditor.prototype.exitCropMode = function () {
     Math.round(draft.y) <= 0 &&
     Math.round(draft.w) >= sw &&
     Math.round(draft.h) >= sh;
-  layer.cropRect = isFull ? null : { x: draft.x, y: draft.y, w: draft.w, h: draft.h };
+  layer.cropRect = isFull
+    ? null
+    : { x: draft.x, y: draft.y, w: draft.w, h: draft.h };
+  // Re-center: the new image center (crop center, or source center if full)
+  // mapped to its current canvas position so the kept region does not jump.
+  const ccX = isFull ? sw / 2 : draft.x + draft.w / 2;
+  const ccY = isFull ? sh / 2 : draft.y + draft.h / 2;
+  const cc = srcPointToCanvas(layer, ccX, ccY, sw, sh, srcCenter);
+  layer.cx = cc.x;
+  layer.cy = cc.y;
   this.applyCropToLayer(layer, true);
   this.ui.updateActiveLayerUI();
   this.draw();
@@ -132,11 +159,27 @@ PixaromaEditor.prototype.exitCropMode = function () {
 
 PixaromaEditor.prototype.resetCrop = function () {
   const layer = this.getActiveLayer();
-  if (!layer) return;
-  if (this.activeMode === "crop") this.setMode(null);
-  if (!layer.cropRect) return;
+  if (!layer || !layer.cropRect) return;
+  const { w: sw, h: sh } = srcSize(layer.sourceImg || layer.img);
+  // Where the source center currently sits on canvas (keep the view stable).
+  const srcCenter = this._computeFullSourceCenter(layer, sw, sh);
+  if (this.activeMode === "crop") {
+    // Drop crop-mode state WITHOUT re-applying the in-progress draft.
+    this._cropLayer = null;
+    this._cropDraft = null;
+    this._cropFullCenter = null;
+    this._cropDragHandle = null;
+    this.activeMode = null;
+    if (this.btnCropToggle) {
+      this.btnCropToggle.classList.remove("pxf-btn-accent");
+      this.btnCropToggle.innerText = "Enable  [C]";
+    }
+    this.canvas.style.cursor = "default";
+  }
   layer.cropRect = null;
-  this.applyCropToLayer(layer, false);
+  layer.cx = srcCenter.cx;
+  layer.cy = srcCenter.cy;
+  this.applyCropToLayer(layer, true);
   this.ui.updateActiveLayerUI();
   this.draw();
   this.pushHistory();
