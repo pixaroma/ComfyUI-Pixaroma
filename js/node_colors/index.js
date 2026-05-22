@@ -119,28 +119,84 @@ const BODY_SWATCHES = [
   "#2d2a5c", "#3d2842", "#4d2a4d", "#3d2a3d", "#4d2a3a", "#1f1f4d",
 ];
 
-const FAVORITE_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
-const FAVORITE_BODY_ID  = "Pixaroma.NodeColors.FavoriteBody";
+// ── Favorites: 4 fixed slots, persisted as ONE compact JSON value in
+// ComfyUI's settings store (unregistered key → no Settings-panel clutter;
+// managed entirely through the right-click menu). Each slot is either
+// null (empty) or { title, body }.
+const FAVORITES_ID = "Pixaroma.NodeColors.Favorites";
+const FAVORITE_SLOTS = 4;
+// Legacy single-favorite settings (no longer shown in the panel). Read
+// once for migration into slot 1 if a user had customized them.
+const LEGACY_FAV_TITLE_ID = "Pixaroma.NodeColors.FavoriteTitle";
+const LEGACY_FAV_BODY_ID  = "Pixaroma.NodeColors.FavoriteBody";
+const LEGACY_DEFAULT_TITLE = "#1d1d1d";
+const LEGACY_DEFAULT_BODY  = "#2a2a2a";
 
-function getFavorite() {
-  const s = app.ui?.settings;
-  const t = s?.getSettingValue?.(FAVORITE_TITLE_ID) || "#1d1d1d";
-  const b = s?.getSettingValue?.(FAVORITE_BODY_ID)  || "#2a2a2a";
-  return { title: t, body: b };
+function emptyFavorites() {
+  return new Array(FAVORITE_SLOTS).fill(null);
 }
 
-function setFavorite(title, body) {
+function normalizeFavorites(arr) {
+  const out = emptyFavorites();
+  if (Array.isArray(arr)) {
+    for (let i = 0; i < FAVORITE_SLOTS; i++) {
+      const e = arr[i];
+      if (e && typeof e.title === "string" && typeof e.body === "string") {
+        out[i] = { title: e.title, body: e.body };
+      }
+    }
+  }
+  return out;
+}
+
+function getFavorites() {
+  const s = app.ui?.settings;
+  const raw = s?.getSettingValue?.(FAVORITES_ID);
+  if (raw) {
+    try {
+      return normalizeFavorites(typeof raw === "string" ? JSON.parse(raw) : raw);
+    } catch (e) { /* fall through to migration */ }
+  }
+  // Nothing stored yet → migrate a non-default legacy favorite into slot 1,
+  // otherwise start empty. Not persisted until the user saves a slot.
+  const favs = emptyFavorites();
+  const lt = s?.getSettingValue?.(LEGACY_FAV_TITLE_ID);
+  const lb = s?.getSettingValue?.(LEGACY_FAV_BODY_ID);
+  if (lt && lb && !(lt === LEGACY_DEFAULT_TITLE && lb === LEGACY_DEFAULT_BODY)) {
+    favs[0] = { title: lt, body: lb };
+  }
+  return favs;
+}
+
+function setFavorites(favs) {
   const s = app.ui?.settings;
   if (!s) return;
+  const json = JSON.stringify(normalizeFavorites(favs));
   try {
-    if (typeof s.setSettingValueAsync === "function") {
-      s.setSettingValueAsync(FAVORITE_TITLE_ID, title);
-      s.setSettingValueAsync(FAVORITE_BODY_ID,  body);
-    } else if (typeof s.setSettingValue === "function") {
-      s.setSettingValue(FAVORITE_TITLE_ID, title);
-      s.setSettingValue(FAVORITE_BODY_ID,  body);
-    }
+    if (typeof s.setSettingValueAsync === "function") s.setSettingValueAsync(FAVORITES_ID, json);
+    else if (typeof s.setSettingValue === "function") s.setSettingValue(FAVORITES_ID, json);
   } catch (e) { /* non-fatal: colors are already applied to the nodes */ }
+}
+
+function saveFavoriteSlot(index, title, body) {
+  if (index < 0 || index >= FAVORITE_SLOTS) return;
+  const favs = getFavorites();
+  favs[index] = { title, body };
+  setFavorites(favs);
+}
+
+// ── Session clipboard for Copy / Paste colors (cleared on page reload).
+let colorClipboard = null; // { title, body } or null
+
+// Effective colors of a node: explicit override → per-class default →
+// LiteGraph default. So Copy / Save work even on a node still using the
+// theme defaults.
+function captureColors(node) {
+  const dt = (typeof LiteGraph !== "undefined" && LiteGraph.NODE_DEFAULT_COLOR) || "#1d1d1d";
+  const db = (typeof LiteGraph !== "undefined" && LiteGraph.NODE_DEFAULT_BGCOLOR) || "#2a2a2a";
+  const title = node?.color   || node?.constructor?.color   || dt;
+  const body  = node?.bgcolor || node?.constructor?.bgcolor || db;
+  return { title, body };
 }
 
 function getTargetNodes(currentNode) {
@@ -459,13 +515,15 @@ function openCustomColorsModal(opts) {
 }
 
 function pickCustom(nodes) {
-  const fav = getFavorite();
+  const seed = colorClipboard
+    || getFavorites().find((f) => f)
+    || { title: "#1d1d1d", body: "#2a2a2a" };
   openCustomColorsModal({
-    initialTitle: fav.title,
-    initialBody:  fav.body,
+    initialTitle: seed.title,
+    initialBody:  seed.body,
     onApply: (titleHex, bodyHex) => {
       applyColors(nodes, titleHex, bodyHex);
-      setFavorite(titleHex, bodyHex);
+      colorClipboard = { title: titleHex, body: bodyHex };
     },
   });
 }
@@ -477,7 +535,22 @@ function swatchHTML(titleHex, bodyHex) {
   return `<span style="display:inline-block; width:32px; height:14px; border:1px solid rgba(255,255,255,0.18); border-radius:3px; vertical-align:middle; margin-right:10px; background: linear-gradient(to bottom, ${titleHex} 0%, ${titleHex} 50%, ${bodyHex} 50%, ${bodyHex} 100%);"></span>`;
 }
 
-function buildSubmenuOptions(targets) {
+// Sub-submenu listing the 4 favorite slots; picking one writes the
+// right-clicked node's colors into that slot.
+function buildSaveSubmenu(node) {
+  const favs = getFavorites();
+  return favs.map((f, i) => ({
+    content: f
+      ? `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`
+      : `Favorite ${i + 1} (empty)`,
+    callback: () => {
+      const c = captureColors(node);
+      saveFavoriteSlot(i, c.title, c.body);
+    },
+  }));
+}
+
+function buildSubmenuOptions(targets, node) {
   const items = [];
   // Group 1: Standalone neutrals
   for (const p of STANDALONES) {
@@ -502,11 +575,32 @@ function buildSubmenuOptions(targets) {
       callback: () => applyColors(targets, p.title, p.body),
     });
   }
-  items.push(null); // separator: presets -> favorite + custom
-  const fav = getFavorite();
+
+  // Group 4: Favorites (only the filled slots are applyable here).
+  const favs = getFavorites();
+  const filled = favs
+    .map((f, i) => ({ f, i }))
+    .filter((x) => x.f);
+  if (filled.length) {
+    items.push(null); // separator: presets -> favorites
+    for (const { f, i } of filled) {
+      items.push({
+        content: `${swatchHTML(f.title, f.body)}Favorite ${i + 1}`,
+        callback: () => applyColors(targets, f.title, f.body),
+      });
+    }
+  }
+
+  items.push(null); // separator: -> save + custom
   items.push({
-    content: `${swatchHTML(fav.title, fav.body)}Favorite (from settings)`,
-    callback: () => applyColors(targets, fav.title, fav.body),
+    content: "Save these colors to",
+    has_submenu: true,
+    callback: function (value, opts, e, menu) {
+      new LiteGraph.ContextMenu(
+        buildSaveSubmenu(node),
+        { event: e, parentMenu: menu, node: node }
+      );
+    },
   });
   items.push({
     content: "Pick custom...",
@@ -517,25 +611,6 @@ function buildSubmenuOptions(targets) {
 
 app.registerExtension({
   name: "Pixaroma.NodeColors",
-
-  settings: [
-    {
-      id: FAVORITE_TITLE_ID,
-      name: "Favorite Title Color (default #1d1d1d)",
-      type: "color",
-      defaultValue: "#1d1d1d",
-      tooltip: "Your personal favorite title bar color. Applied by the 'Favorite' entry in the right-click menu under '👑 Pixaroma colors'. NOTE: ComfyUI's color field shows saved values without '#' but requires '#' when typing, so enter '#1d1d1d' to reset, or use the color picker.",
-      category: ["👑 Pixaroma", "Favorite Title"],
-    },
-    {
-      id: FAVORITE_BODY_ID,
-      name: "Favorite Body Color (default #2a2a2a)",
-      type: "color",
-      defaultValue: "#2a2a2a",
-      tooltip: "Your personal favorite body color. Applied by the 'Favorite' entry in the right-click menu under '👑 Pixaroma colors'. NOTE: same '#' typing rule as the Favorite Title setting.",
-      category: ["👑 Pixaroma", "Favorite Body"],
-    },
-  ],
 
   async setup() {
     if (typeof LGraphCanvas === "undefined" || !LGraphCanvas?.prototype?.getNodeMenuOptions) {
@@ -554,16 +629,27 @@ app.registerExtension({
           has_submenu: true,
           callback: function (value, opts, e, menu) {
             new LiteGraph.ContextMenu(
-              buildSubmenuOptions(targets),
+              buildSubmenuOptions(targets, node),
               { event: e, parentMenu: menu, node: node }
             );
           },
         },
         {
-          content: `👑 Reset node colors${suffix}`,
-          callback: () => resetColors(targets),
+          content: `👑 Copy colors`,
+          callback: () => { colorClipboard = captureColors(node); },
         }
       );
+      // Paste only appears once colors have been copied this session.
+      if (colorClipboard) {
+        options.push({
+          content: `👑 Paste colors${suffix}`,
+          callback: () => applyColors(targets, colorClipboard.title, colorClipboard.body),
+        });
+      }
+      options.push({
+        content: `👑 Reset node colors${suffix}`,
+        callback: () => resetColors(targets),
+      });
       return options;
     };
   },
