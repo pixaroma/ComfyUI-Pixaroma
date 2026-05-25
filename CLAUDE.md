@@ -84,9 +84,12 @@ js/
 │                       #  click menu. Submenu via LiteGraph.ContextMenu
 │                       #  callback pattern. May 2026 v4: the node
 │                       #  presets are the user's 127 hand-curated
-│                       #  finals (HUE_FOLDERS), organized as ONE
-│                       #  FOLDER PER HUE: Red, Orange, Gold, Green,
-│                       #  Teal, Cyan, Blue, Indigo, Purple, Pink.
+│                       #  finals (HUE_FOLDERS), organized as a leading
+│                       #  "Dark" folder (Default #1d1d1d/#2a2a2a =
+│                       #  brand default, Onyx, Charcoal, + 6 dark
+│                       #  low-sat color tints) then ONE FOLDER PER
+│                       #  HUE: Red, Orange, Gold, Green, Teal, Cyan,
+│                       #  Blue, Indigo, Purple, Pink.
 │                       #  Each folder holds that hue's title+body
 │                       #  shades ordered dark -> light: Deepest /
 │                       #  Moody / Deep / Jewel / Mid / Rich / Bold /
@@ -110,8 +113,8 @@ js/
 │                       #  "👑 Reset Node Colors". The submenu LEADS with
 │                       #  the filled Favorites, then "Save these colors
 │                       #  to ▸" (4 slots) + "Pick custom...", then the
-│                       #  127 presets tucked into 10 HUE subfolders
-│                       #  (Red ... Pink) so favorites/save are
+│                       #  presets tucked into 11 subfolders (Dark +
+│                       #  Red ... Pink) so favorites/save are
 │                       #  reachable without scanning every swatch.
 │                       #  Favorites are 4 fixed slots persisted as ONE
 │                       #  compact JSON value via an UNREGISTERED settings

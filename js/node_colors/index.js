@@ -43,6 +43,17 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // this plugin. Each shade: { label, title, body }. To add/remove a shade,
 // edit the relevant hue's `presets` array.
 const HUE_FOLDERS = [
+  { label: "Dark", presets: [
+    { label: "Default", title: "#1d1d1d", body: "#2a2a2a" },
+    { label: "Onyx", title: "#060606", body: "#141414" },
+    { label: "Charcoal", title: "#262220", body: "#36312f" },
+    { label: "Red", title: "#231011", body: "#351d1d" },
+    { label: "Amber", title: "#231a10", body: "#352a1d" },
+    { label: "Green", title: "#102316", body: "#1d3525" },
+    { label: "Teal", title: "#102223", body: "#1d3435" },
+    { label: "Blue", title: "#101923", body: "#1d2835" },
+    { label: "Purple", title: "#1b1023", body: "#2b1d35" },
+  ] },
   { label: "Red", presets: [
     { label: "Deepest", title: "#2f0a0b", body: "#521416" },
     { label: "Deep", title: "#360c0d", body: "#62181b" },
