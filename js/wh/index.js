@@ -31,14 +31,16 @@ app.registerExtension({
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
-      // Defer one tick so the widgets are fully registered before we
-      // read computeSize - otherwise the width might still be the
-      // pre-widgets default.
-      queueMicrotask(() => {
-        const fit = this.computeSize();
-        this.size = [fit[0], TIGHT_H];
-        this.setDirtyCanvas(true, true);
-      });
+      // Tight default for FRESH nodes only, assigned SYNCHRONOUSLY. The
+      // native INT widgets are already registered by the time onNodeCreated
+      // fires, so computeSize() is accurate here. A queueMicrotask would run
+      // AFTER configure() (Vue Compat #8) on workflow load / tab switch /
+      // duplicate and clobber the user's saved size back to this tight
+      // default — the resize-persistence trap (Pixaroma UI convention #9).
+      const fit = this.computeSize();
+      this.size[0] = fit[0];
+      this.size[1] = TIGHT_H;
+      this.setDirtyCanvas(true, true);
     };
   },
 });

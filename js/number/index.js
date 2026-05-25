@@ -23,11 +23,16 @@ app.registerExtension({
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
-      queueMicrotask(() => {
-        const fit = this.computeSize();
-        this.size = [fit[0], TIGHT_H];
-        this.setDirtyCanvas(true, true);
-      });
+      // Tight default for FRESH nodes only. Assign SYNCHRONOUSLY: configure()
+      // runs AFTER onNodeCreated (Vue Compat #8) on workflow load / tab switch
+      // / duplicate and restores the user's saved size. A queueMicrotask here
+      // would fire AFTER configure() and clobber the saved size back to the
+      // tight auto-default — the resize-persistence trap (Pixaroma UI
+      // convention #9). Mutate size[0]/[1] rather than replacing the array.
+      const fit = this.computeSize();
+      this.size[0] = fit[0];
+      this.size[1] = TIGHT_H;
+      this.setDirtyCanvas(true, true);
     };
   },
 });
