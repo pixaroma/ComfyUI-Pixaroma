@@ -90,13 +90,24 @@ def apply_fx(arr, adj, amount01, seed=0):
     H, W = c.shape[0], c.shape[1]
 
     # Pass A - per pixel
-    if a["exposure"]:   c *= 2.0 ** (a["exposure"] / 100.0)
-    if a["brightness"]: c += a["brightness"] / 200.0
-    if a["contrast"]:   c = (c - 0.5) * (1 + a["contrast"] / 100.0) + 0.5
-    if a["blacks"]:     c += (a["blacks"] / 100.0) * 0.5 * np.clip(1 - 2 * c, 0, 1)
-    if a["shadows"]:    c += (a["shadows"] / 100.0) * 0.5 * ((1 - c) ** 2)
-    if a["highlights"]: c += (a["highlights"] / 100.0) * 0.5 * (c ** 2)
-    if a["whites"]:     c += (a["whites"] / 100.0) * 0.5 * np.clip(2 * c - 1, 0, 1)
+    # Tone ops are applied to LUMINANCE, then re-applied to every channel as a
+    # single per-pixel GAIN, preserving the R:G:B ratio (like a real exposure
+    # control). The old per-channel tone + final-only clamp could push one noisy
+    # shadow channel past the others and clamp the rest to black, turning sparse
+    # source noise into saturated speckle dots; a ratio-preserving gain can't
+    # isolate a channel, so the dots are gone. See docs/composer-fx-math.md.
+    if (a["exposure"] or a["brightness"] or a["contrast"] or a["blacks"]
+            or a["shadows"] or a["highlights"] or a["whites"]):
+        L = _luma(c)
+        Lt = L
+        if a["exposure"]:   Lt = Lt * (2.0 ** (a["exposure"] / 100.0))
+        if a["brightness"]: Lt = Lt + a["brightness"] / 200.0
+        if a["contrast"]:   Lt = (Lt - 0.5) * (1 + a["contrast"] / 100.0) + 0.5
+        if a["blacks"]:     Lt = Lt + (a["blacks"] / 100.0) * 0.5 * np.clip(1 - 2 * Lt, 0, 1)
+        if a["shadows"]:    Lt = Lt + (a["shadows"] / 100.0) * 0.5 * ((1 - Lt) ** 2)
+        if a["highlights"]: Lt = Lt + (a["highlights"] / 100.0) * 0.5 * (Lt ** 2)
+        if a["whites"]:     Lt = Lt + (a["whites"] / 100.0) * 0.5 * np.clip(2 * Lt - 1, 0, 1)
+        c = c * np.clip(Lt / np.maximum(L, 1e-4), 0.0, 4.0)
     if a["temperature"]:
         c[:, :, 0] += a["temperature"] / 100.0 * 0.10
         c[:, :, 2] -= a["temperature"] / 100.0 * 0.10
@@ -111,8 +122,10 @@ def apply_fx(arr, adj, amount01, seed=0):
     if a["hue"]:
         M = _hue_matrix(a["hue"]); c = c @ M.T
     if a["clarity"]:
+        # midtone contrast, also ratio-preserving (luma gain) so it can't speckle
         L = _luma(c); m = 1 - np.abs(2 * L - 1)
-        c = (c - 0.5) * (1 + (a["clarity"] / 100.0) * 0.5 * m) + 0.5
+        Lt = (L - 0.5) * (1 + (a["clarity"] / 100.0) * 0.5 * m) + 0.5
+        c = c * np.clip(Lt / np.maximum(L, 1e-4), 0.0, 4.0)
 
     # Pass B - spatial sharpness
     if a["sharpness"]:

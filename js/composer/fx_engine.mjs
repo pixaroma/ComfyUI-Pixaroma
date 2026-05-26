@@ -82,15 +82,28 @@ export function applyFx(rgba, width, height, adj, amount01, seed = 0) {
   }
 
   const M = a.hue ? hueMatrix(a.hue) : null;
+  // Tone ops are applied to LUMINANCE and re-applied to every channel as a single
+  // per-pixel GAIN, preserving R:G:B ratio (like a real exposure control). The old
+  // per-channel tone + final-only clamp could push one noisy shadow channel past
+  // the others and clamp the rest to black, turning sparse source noise into
+  // saturated speckle dots; a ratio-preserving gain can't isolate a channel.
+  // Mirror of nodes/_fx_adjust_engine.py. See docs/composer-fx-math.md.
+  const toneOn = !!(a.exposure || a.brightness || a.contrast || a.blacks || a.shadows || a.highlights || a.whites);
   for (let i = 0; i < n; i++) {
     let cr = r[i], cg = g[i], cb = b[i];
-    if (a.exposure) { const f = 2 ** (a.exposure / 100); cr *= f; cg *= f; cb *= f; }
-    if (a.brightness) { const o = a.brightness / 200; cr += o; cg += o; cb += o; }
-    if (a.contrast) { const f = 1 + a.contrast / 100; cr = (cr - 0.5) * f + 0.5; cg = (cg - 0.5) * f + 0.5; cb = (cb - 0.5) * f + 0.5; }
-    if (a.blacks) { const k = a.blacks / 100 * 0.5; cr += k * clamp(1 - 2 * cr, 0, 1); cg += k * clamp(1 - 2 * cg, 0, 1); cb += k * clamp(1 - 2 * cb, 0, 1); }
-    if (a.shadows) { const k = a.shadows / 100 * 0.5; cr += k * (1 - cr) * (1 - cr); cg += k * (1 - cg) * (1 - cg); cb += k * (1 - cb) * (1 - cb); }
-    if (a.highlights) { const k = a.highlights / 100 * 0.5; cr += k * cr * cr; cg += k * cg * cg; cb += k * cb * cb; }
-    if (a.whites) { const k = a.whites / 100 * 0.5; cr += k * clamp(2 * cr - 1, 0, 1); cg += k * clamp(2 * cg - 1, 0, 1); cb += k * clamp(2 * cb - 1, 0, 1); }
+    if (toneOn) {
+      const L = LR * cr + LG * cg + LB * cb;
+      let Lt = L;
+      if (a.exposure) Lt *= 2 ** (a.exposure / 100);
+      if (a.brightness) Lt += a.brightness / 200;
+      if (a.contrast) Lt = (Lt - 0.5) * (1 + a.contrast / 100) + 0.5;
+      if (a.blacks) Lt += a.blacks / 100 * 0.5 * clamp(1 - 2 * Lt, 0, 1);
+      if (a.shadows) Lt += a.shadows / 100 * 0.5 * (1 - Lt) * (1 - Lt);
+      if (a.highlights) Lt += a.highlights / 100 * 0.5 * Lt * Lt;
+      if (a.whites) Lt += a.whites / 100 * 0.5 * clamp(2 * Lt - 1, 0, 1);
+      const gain = clamp(Lt / Math.max(L, 1e-4), 0, 4);
+      cr *= gain; cg *= gain; cb *= gain;
+    }
     if (a.temperature) { const o = a.temperature / 100 * 0.10; cr += o; cb -= o; }
     if (a.tint) { cg += a.tint / 100 * 0.10; }
     if (a.saturation) { const L = LR * cr + LG * cg + LB * cb, f = 1 + a.saturation / 100; cr = L + (cr - L) * f; cg = L + (cg - L) * f; cb = L + (cb - L) * f; }
@@ -106,7 +119,12 @@ export function applyFx(rgba, width, height, adj, amount01, seed = 0) {
       const nb = M[6] * cr + M[7] * cg + M[8] * cb;
       cr = nr; cg = ng; cb = nb;
     }
-    if (a.clarity) { const L = LR * cr + LG * cg + LB * cb, m = 1 - Math.abs(2 * L - 1), f = 1 + a.clarity / 100 * 0.5 * m; cr = (cr - 0.5) * f + 0.5; cg = (cg - 0.5) * f + 0.5; cb = (cb - 0.5) * f + 0.5; }
+    if (a.clarity) {
+      const L = LR * cr + LG * cg + LB * cb, m = 1 - Math.abs(2 * L - 1);
+      const Lt = (L - 0.5) * (1 + a.clarity / 100 * 0.5 * m) + 0.5;
+      const gain = clamp(Lt / Math.max(L, 1e-4), 0, 4);
+      cr *= gain; cg *= gain; cb *= gain;
+    }
     r[i] = cr; g[i] = cg; b[i] = cb;
   }
 

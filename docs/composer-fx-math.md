@@ -12,22 +12,39 @@ Implemented identically by `js/composer/fx_engine.mjs` (preview) and
 ## Pipeline order
 Tone -> Color -> Detail (clarity, sharpness, grain) -> Effects (vignette, fade) -> Amount blend.
 
-### Per-pixel pass A (no neighbours), in this order
-1. exposure E:    `c *= 2 ** (E/100)`
-2. brightness B:  `c += B/200`
-3. contrast K:    `c = (c-0.5)*(1+K/100) + 0.5`
-4. blacks  Bl:    `w = clamp(1-2c,0,1);      c += (Bl/100)*0.5*w`
-5. shadows Sh:    `w = (1-c)*(1-c);          c += (Sh/100)*0.5*w`
-6. highlights Hi: `w = c*c;                  c += (Hi/100)*0.5*w`
-7. whites  Wh:    `w = clamp(2c-1,0,1);      c += (Wh/100)*0.5*w`
+### Pass A - Tone (steps 1-7): applied to LUMINANCE as a ratio-preserving gain
+Tone ops do NOT run per-channel. Compute luma `L`, run the curve on the SCALAR
+luma to get `Lt`, then scale every channel by ONE gain. Skip the whole block if
+all seven are 0.
+```
+Lt = L
+1. exposure E:    Lt *= 2 ** (E/100)
+2. brightness B:  Lt += B/200
+3. contrast K:    Lt = (Lt-0.5)*(1+K/100) + 0.5
+4. blacks  Bl:    Lt += (Bl/100)*0.5*clamp(1-2*Lt, 0, 1)
+5. shadows Sh:    Lt += (Sh/100)*0.5*(1-Lt)^2
+6. highlights Hi: Lt += (Hi/100)*0.5*Lt^2
+7. whites  Wh:    Lt += (Wh/100)*0.5*clamp(2*Lt-1, 0, 1)
+gain:             c *= clamp(Lt / max(L, 1e-4), 0, 4)
+```
+WHY luma-gain, not per-channel: per-channel tone + a final-only clamp can drive
+one noisy shadow channel positive while the other two clamp to black, ISOLATING
+it into a fully-saturated speckle dot (sparse JPEG/AI source noise becomes green/
+blue/red confetti). A single luma gain preserves the R:G:B ratio and cannot
+isolate a channel, so noise stays neutral. This is exactly why a multiplicative
+exposure stays clean while an additive per-channel brightness does not.
+
+### Pass A - Color (steps 8-12), per-channel, in this order
 8. temperature T: `r += T/100*0.10;  b -= T/100*0.10`
 9. tint Ti:       `g += Ti/100*0.10`
 10. saturation S: `c = L + (c-L)*(1+S/100)`
 11. vibrance V:   `mx=max(r,g,b); mn=min(r,g,b); sat = mx<=0 ? 0 : (mx-mn)/mx;
                    amt = (V/100)*(1-sat);  c = L + (c-L)*(1+amt)`
 12. hue Hd (deg): rotate (r,g,b) by matrix M(Hd) below.
-13. clarity Cl (midtone-contrast approximation, NON-spatial in v1 - documented simplification):
-    `m = 1 - abs(2L-1);  c = (c-0.5)*(1 + (Cl/100)*0.5*m) + 0.5`
+13. clarity Cl (midtone contrast, ALSO a ratio-preserving luma gain so it cannot
+    speckle; NON-spatial approximation in v1):
+    `m = 1 - abs(2L-1);  Lt = (L-0.5)*(1 + (Cl/100)*0.5*m) + 0.5;
+     c *= clamp(Lt / max(L, 1e-4), 0, 4)`
 
 Hue matrix M(a), a in radians = Hd*pi/180 (luminance-preserving YIQ-style):
 ```
