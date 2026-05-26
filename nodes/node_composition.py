@@ -7,6 +7,7 @@ import time
 import folder_paths
 from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
+from ._fx_adjust_engine import apply_fx, is_neutral, _fx_seed
 from ._bg_removal_helpers import (
     is_birefnet_model_id,
     run_birefnet_on_pil,
@@ -432,6 +433,25 @@ class PixaromaImageComposition:
                 canvas = Image.new("RGBA", (doc_w, doc_h), bg_rgba)
                 for layer in layers:
                     if not layer.get("visible", True):
+                        continue
+                    # FX adjustment layer: grade everything composited so far
+                    # (canvas = every layer below this one), then move on. The
+                    # static fast path bakes the grade at save time; this branch
+                    # re-applies it on the dynamic path (placeholder/rembg/mask)
+                    # where live pixels differ from the baked composite.
+                    if layer.get("isAdjustment"):
+                        amount01 = float(layer.get("opacity", 1) or 0)
+                        adj = layer.get("adjustments") or {}
+                        if is_neutral(adj, amount01):
+                            continue
+                        seed = _fx_seed(layer.get("id", ""))
+                        rgb = np.asarray(canvas.convert("RGB"), dtype=np.float32) / 255.0
+                        graded = apply_fx(rgb, adj, amount01, seed)
+                        graded_img = Image.fromarray(
+                            (graded * 255.0).round().astype(np.uint8), "RGB"
+                        ).convert("RGBA")
+                        graded_img.putalpha(canvas.getchannel("A"))
+                        canvas = graded_img
                         continue
                     if layer.get("isPlaceholder"):
                         ph_w = layer.get("naturalWidth", 512)
