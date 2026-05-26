@@ -12,34 +12,41 @@ const BG_PAD_X = 16;
 const BG_PAD_Y = 10;
 const BG_RADIUS = 0;
 
-/** Render one text overlay onto the canvas context.
- *  Async because font must be loaded first.
+/** Render the text of `state` onto a fresh offscreen canvas sized to the text
+ *  bbox. Returns the canvas (its width/height ARE the bbox). Async: font load.
+ *  Used by renderTextLayer (Text Overlay) AND the Image Composer text layer.
  *
- *  @param {CanvasRenderingContext2D} ctx
- *  @param {Object} layer  text + font + position state — see DEFAULT_STATE in js/text_overlay/defaults.mjs for the shape
+ *  @param {Object} state  text + font style — { text, font, weight, italic,
+ *    fontSize, lineHeight, letterSpacing, align, color, bgColor }.
+ *    Empty text → a 1x1 transparent canvas.
+ *  @returns {Promise<HTMLCanvasElement>}
  */
-export async function renderTextLayer(ctx, layer) {
-  if (!layer) return;
-  const text = String(layer.text ?? "");
-  if (!text) return;
+export async function renderTextToCanvas(state) {
+  const text = String(state.text ?? "");
+  const variant = await loadFontForLayer(state.font, state.weight || 400, !!state.italic);
+  const fontStr = canvasFontString(variant, state.fontSize);
+  const lineHeightPx = Math.round(state.fontSize * (state.lineHeight ?? 1.2));
+  const letterSpacing = state.letterSpacing ?? 0;
 
-  const variant = await loadFontForLayer(layer.font, layer.weight || 400, !!layer.italic);
-  const fontStr = canvasFontString(variant, layer.fontSize);
-  const lineHeightPx = Math.round(layer.fontSize * (layer.lineHeight ?? 1.2));
-  const letterSpacing = layer.letterSpacing ?? 0;
+  if (!text) {
+    const empty = document.createElement("canvas");
+    empty.width = 1;
+    empty.height = 1;
+    return empty;
+  }
+
   const lines = text.split("\n");
 
-  // Measure each line + font metrics
-  ctx.save();
-  ctx.font = fontStr;
-  const lineWidths = lines.map((line) => measureLine(ctx, line, letterSpacing));
+  // Measure each line + font metrics on a throwaway context.
+  const meas = document.createElement("canvas").getContext("2d");
+  meas.font = fontStr;
+  const lineWidths = lines.map((line) => measureLine(meas, line, letterSpacing));
   const maxLineW = Math.max(0, ...lineWidths);
-  const metrics = ctx.measureText("Mg");
-  const ascender = metrics.actualBoundingBoxAscent || layer.fontSize * 0.78;
-  const descender = metrics.actualBoundingBoxDescent || layer.fontSize * 0.22;
-  ctx.restore();
+  const metrics = meas.measureText("Mg");
+  const ascender = metrics.actualBoundingBoxAscent || state.fontSize * 0.78;
+  const descender = metrics.actualBoundingBoxDescent || state.fontSize * 0.22;
 
-  const bgColor = layer.bgColor || null;
+  const bgColor = state.bgColor || null;
   const padX = bgColor ? BG_PAD_X : 0;
   const padY = bgColor ? BG_PAD_Y : 0;
   const bboxW = Math.max(1, Math.ceil(maxLineW + 2 * padX));
@@ -70,19 +77,33 @@ export async function renderTextLayer(ctx, layer) {
   sctx.save();
   sctx.font = fontStr;
   sctx.textBaseline = "alphabetic";
-  sctx.fillStyle = layer.color || "#FFFFFF";
+  sctx.fillStyle = state.color || "#FFFFFF";
   for (let i = 0; i < lines.length; i++) {
-    const lx = lineOriginX(layer.align, padX, maxLineW, lineWidths[i]);
+    const lx = lineOriginX(state.align, padX, maxLineW, lineWidths[i]);
     const ly = padY + ascender + i * lineHeightPx;
     drawLine(sctx, lines[i], lx, ly, letterSpacing);
   }
   sctx.restore();
 
-  // 3. Composite onto target ctx with rotation + opacity
+  return scratch;
+}
+
+/** Render one text overlay onto the canvas context (Text Overlay node).
+ *  Async because font must be loaded first.
+ *
+ *  @param {CanvasRenderingContext2D} ctx
+ *  @param {Object} layer  text + font + position state — see DEFAULT_STATE in js/text_overlay/defaults.mjs for the shape
+ */
+export async function renderTextLayer(ctx, layer) {
+  if (!layer) return;
+  if (!String(layer.text ?? "")) return;
+  const scratch = await renderTextToCanvas(layer);
+
+  // Composite onto target ctx with position + rotation + opacity.
   ctx.save();
-  ctx.translate(layer.x + bboxW / 2, layer.y + bboxH / 2);
+  ctx.translate(layer.x + scratch.width / 2, layer.y + scratch.height / 2);
   if (layer.rotation) ctx.rotate((layer.rotation * Math.PI) / 180);
-  ctx.translate(-bboxW / 2, -bboxH / 2);
+  ctx.translate(-scratch.width / 2, -scratch.height / 2);
   ctx.globalAlpha = layer.opacity ?? 1;
   ctx.drawImage(scratch, 0, 0);
   ctx.restore();
