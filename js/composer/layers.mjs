@@ -1,5 +1,8 @@
 export class PixaromaLayers {
   static getTransformedPoints(layer) {
+    // FX/adjustment layers have no image and no canvas geometry — return an
+    // empty point list so hit-test / handle-drawing callers no-op for them.
+    if (!layer || !layer.img) return [];
     const w = layer.img.width * layer.scaleX;
     const h = layer.img.height * layer.scaleY;
     const rad = (layer.rotation * Math.PI) / 180;
@@ -27,6 +30,8 @@ export class PixaromaLayers {
   }
 
   static isPointInLayer(px, py, layer) {
+    // FX/adjustment layers aren't clickable on the canvas (no geometry).
+    if (!layer || !layer.img) return false;
     const w = layer.img.width * layer.scaleX;
     const h = layer.img.height * layer.scaleY;
     const rad = (layer.rotation * Math.PI) / 180;

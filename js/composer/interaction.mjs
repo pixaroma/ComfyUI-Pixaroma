@@ -21,7 +21,7 @@ PixaromaEditor.prototype.attachEvents = function () {
   const alignSelection = (type) => {
     if (this.selectedLayerIds.size < 2) return;
     const selectedLayers = this.layers.filter(
-      (l) => this.selectedLayerIds.has(l.id) && !l.locked,
+      (l) => this.selectedLayerIds.has(l.id) && !l.locked && !l.isAdjustment,
     );
     if (selectedLayers.length === 0) return;
 
@@ -284,7 +284,7 @@ PixaromaEditor.prototype.attachEvents = function () {
       }
       const coords = this.getCanvasCoordinates(e);
       const layer = this.getActiveLayer();
-      if (layer && !layer.locked) {
+      if (layer && !layer.locked && layer.img) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {
           this.selHitArea.style.cursor = "crosshair";
@@ -342,7 +342,7 @@ PixaromaEditor.prototype.attachEvents = function () {
       ) {
         const coords = this.getCanvasCoordinates(e);
         const layer = this.getActiveLayer();
-        if (layer && !layer.locked) {
+        if (layer && !layer.locked && layer.img) {
           const pts = PixaromaLayers.getTransformedPoints(layer);
           let hitHandle = false;
           if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15)
@@ -1083,7 +1083,7 @@ PixaromaEditor.prototype.attachEvents = function () {
 PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
   if (this.selectedLayerIds.size === 1) {
     const layer = this.getActiveLayer();
-    if (layer && !layer.locked) {
+    if (layer && !layer.locked && layer.img) {
       const pts = PixaromaLayers.getTransformedPoints(layer);
       if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15)
         this.interactionMode = "rotate";
@@ -1206,7 +1206,7 @@ PixaromaEditor.prototype.onSelectMouseMove = function (e, coords) {
   if (!this.isMouseDown) {
     if (this.selectedLayerIds.size === 1) {
       const layer = this.getActiveLayer();
-      if (layer && !layer.locked) {
+      if (layer && !layer.locked && layer.img) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {
           this.canvas.style.cursor = "crosshair";

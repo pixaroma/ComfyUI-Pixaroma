@@ -325,7 +325,30 @@ export class PixaromaUI {
       const tCvs = document.createElement("canvas");
       tCvs.width = 26;
       tCvs.height = 26;
-      if (layer.img) {
+      if (layer.isAdjustment) {
+        // FX layer has no image — paint the fx.svg icon (tinted BRAND) on a
+        // dark tile instead of leaving a transparent checkerboard.
+        const tctx = tCvs.getContext("2d");
+        tctx.fillStyle = "#2a2a2a";
+        tctx.fillRect(0, 0, 26, 26);
+        const icon = this._getFxThumbImg();
+        if (icon.complete && icon.naturalWidth) {
+          const sc = document.createElement("canvas");
+          sc.width = 26; sc.height = 26;
+          const sctx = sc.getContext("2d");
+          sctx.drawImage(icon, 4, 4, 18, 18);
+          sctx.globalCompositeOperation = "source-in";
+          sctx.fillStyle = "#f66744";
+          sctx.fillRect(0, 0, 26, 26);
+          tctx.drawImage(sc, 0, 0);
+        } else {
+          tctx.fillStyle = "#f66744";
+          tctx.font = "bold 16px Arial";
+          tctx.textAlign = "center";
+          tctx.textBaseline = "middle";
+          tctx.fillText("✦", 13, 13);
+        }
+      } else if (layer.img) {
         this._thumbCtx.clearRect(0, 0, 26, 26);
         const iw = layer.img.naturalWidth || layer.img.width;
         const ih = layer.img.naturalHeight || layer.img.height;
@@ -400,6 +423,19 @@ export class PixaromaUI {
     core.draw();
   }
 
+  // Lazily load the FX layer thumbnail icon (assets/icons/layers/fx.svg).
+  // Re-renders the layer panel once it loads so the thumbnail appears.
+  _getFxThumbImg() {
+    if (!this._fxThumbImg) {
+      const img = new Image();
+      img.onload = () => this.refreshLayersPanel();
+      img.onerror = () => {};
+      img.src = "/pixaroma/assets/icons/layers/fx.svg";
+      this._fxThumbImg = img;
+    }
+    return this._fxThumbImg;
+  }
+
   // Build the FX Adjustments panel (preset strip + grouped sliders). Stored on
   // this._fxPanel = { root, sliders }. Shown/hidden by updateActiveLayerUI.
   _buildFxPanel() {
@@ -460,37 +496,31 @@ export class PixaromaUI {
 
       for (const key of keys) {
         const [min, max] = FX_RANGES[key] || [-100, 100];
-        const row = document.createElement("div");
-        row.className = "pix-fx-row";
-        const lab = document.createElement("span");
-        lab.className = "pix-fx-lab";
-        lab.textContent = key;
-        const sld = document.createElement("input");
-        sld.type = "range";
-        sld.min = String(min);
-        sld.max = String(max);
-        sld.value = "0";
-        sld.className = "pix-fx-slider";
-        const val = document.createElement("span");
-        val.className = "pix-fx-val";
-        val.textContent = "0";
-        sld.addEventListener("input", () => {
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        // Use the shared slider component (slider + editable number box) so FX
+        // controls match the Transform panel exactly.
+        const r = createSliderRow(label, min, max, 0, (v) => {
           const ly = core.getActiveLayer();
           if (!ly || !ly.isAdjustment) return;
-          ly.adjustments[key] = +sld.value;
+          ly.adjustments[key] = Math.round(v);
           ly.presetId = "Custom";
-          val.textContent = sld.value;
           core.draw();
+        }, { labelWidth: "76px" });
+        // pushHistory on commit (release / number-box change), not every tick.
+        r.slider.addEventListener("change", () => core.pushHistory());
+        r.numInput.addEventListener("change", () => core.pushHistory());
+        r.slider.addEventListener("dblclick", () => {
+          r.setValue(0);
+          const ly = core.getActiveLayer();
+          if (ly && ly.isAdjustment) {
+            ly.adjustments[key] = 0;
+            ly.presetId = "Custom";
+            core.draw();
+            core.pushHistory();
+          }
         });
-        sld.addEventListener("change", () => core.pushHistory());
-        sld.addEventListener("dblclick", () => {
-          sld.value = "0";
-          sld.dispatchEvent(new Event("input"));
-          core.pushHistory();
-        });
-        row.append(lab, sld, val);
-        panel.content.appendChild(row);
-        sliders[key] = { sld, val };
+        panel.content.appendChild(r.el);
+        sliders[key] = r;
       }
     }
     this._fxPanel = { root, sliders };
@@ -501,8 +531,7 @@ export class PixaromaUI {
     if (!this._fxPanel || !ly || !ly.adjustments) return;
     for (const key in this._fxPanel.sliders) {
       const v = ly.adjustments[key] ?? 0;
-      this._fxPanel.sliders[key].sld.value = String(v);
-      this._fxPanel.sliders[key].val.textContent = String(v);
+      this._fxPanel.sliders[key].setValue(v);
     }
   }
 
