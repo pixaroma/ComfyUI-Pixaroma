@@ -69,6 +69,8 @@ export class PixaromaLayers {
       // Deep-copy FX adjustments so undo/redo snapshots don't alias the live
       // layer's adjustments object.
       if (l.adjustments) copy.adjustments = { ...l.adjustments };
+      // Deep-copy text layer state so undo/redo snapshots are independent.
+      if (l.textState) copy.textState = { ...l.textState };
       // Deep-copy eraser mask canvas so undo/redo restores mask state
       if (l.eraserMaskCanvas_internal && l.hasMask_internal) {
         const cloneCvs = document.createElement("canvas");

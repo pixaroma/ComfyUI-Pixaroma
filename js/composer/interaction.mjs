@@ -829,6 +829,13 @@ PixaromaEditor.prototype.attachEvents = function () {
           layerEntry.naturalWidth = layer.img.width;
           layerEntry.naturalHeight = layer.img.height;
         }
+        // Text layer: its baked bitmap uploads via the normal image path above
+        // (src). Persist the text-ness + content so the round-trip doesn't
+        // downgrade it to a plain image, and so it stays re-editable on reopen.
+        if (layer.isText) {
+          layerEntry.isText = true;
+          layerEntry.textState = { ...layer.textState };
+        }
         return layerEntry;
       });
       const layerMeta = await Promise.all(uploadPromises);

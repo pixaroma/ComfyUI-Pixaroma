@@ -468,6 +468,11 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           id: mLayer.id,
           name: mLayer.name,
           img: img,
+          // Text layer: its saved src IS the baked text bitmap, so it loads
+          // through this normal image path; carry the text-ness + content so it
+          // stays a re-editable text layer (panel swap, "T", crisp resize).
+          isText: !!mLayer.isText,
+          textState: mLayer.textState ? { ...mLayer.textState } : undefined,
           cx: mLayer.cx,
           cy: mLayer.cy,
           scaleX: mLayer.scaleX,
@@ -512,6 +517,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             id: mLayer.id,
             name: mLayer.name + " (Missing)",
             img: placeholder,
+            isText: !!mLayer.isText,
+            textState: mLayer.textState ? { ...mLayer.textState } : undefined,
             cx: mLayer.cx,
             cy: mLayer.cy,
             scaleX: mLayer.scaleX,
