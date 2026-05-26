@@ -329,6 +329,11 @@ export class PixaromaUI {
         // FX layer has no image — paint the fx.svg icon (tinted BRAND) on a
         // dark tile instead of leaving a transparent checkerboard.
         const tctx = tCvs.getContext("2d");
+        // Fill the whole 28px wrapper (canvas is 26px + inline baseline gap left
+        // a checkerboard strip) so no transparency grid shows behind the icon.
+        tCvs.style.display = "block";
+        tCvs.style.width = "100%";
+        tCvs.style.height = "100%";
         tctx.fillStyle = "#2a2a2a";
         tctx.fillRect(0, 0, 26, 26);
         const icon = this._getFxThumbImg();
@@ -505,7 +510,7 @@ export class PixaromaUI {
           ly.adjustments[key] = Math.round(v);
           ly.presetId = "Custom";
           core.draw();
-        }, { labelWidth: "76px" });
+        }, { step: 1 });
         // pushHistory on commit (release / number-box change), not every tick.
         r.slider.addEventListener("change", () => core.pushHistory());
         r.numInput.addEventListener("change", () => core.pushHistory());
@@ -801,10 +806,9 @@ export class PixaromaUI {
     core._convertPhBtn = convertPhBtn;
     imagesPanel.content.appendChild(convertPhBtn);
 
-    const addFxBtn = createButton("✦ Add FX Layer", { variant: "full" });
+    const addFxBtn = createButton("Add FX Layer", { variant: "full" });
     addFxBtn.title =
       "Add a color-grade / FX layer that adjusts every layer below it";
-    addFxBtn.classList.add("pix-fx-addbtn");
     addFxBtn.style.marginTop = "4px";
     addFxBtn.onclick = () => core.addFxLayer();
     imagesPanel.content.appendChild(addFxBtn);
