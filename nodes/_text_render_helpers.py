@@ -287,13 +287,18 @@ def render_text_layer(base_img, layer):
         ly = pad_y + ascender + i * line_height_px
         _draw_line(draw, pil_font, ln, lx, ly, letter_spacing_eff, fill_color)
 
-    # 3. Synthesized italic skew
+    # 3. Synthesized italic skew. The skew shifts the bottom of glyphs LEFT by
+    # m*bbox_h; widen the canvas by that overhang and shift content RIGHT by it
+    # (AFFINE c = -slant) so the lean isn't clipped at the left edge. Mirror of
+    # js/framework/text_render.mjs.
     if synthesized_italic:
         m = math.tan(math.radians(12))
+        slant = int(math.ceil(m * bbox_h))
         layer_img = layer_img.transform(
-            layer_img.size, Image.AFFINE, (1, m, 0, 0, 1, 0),
+            (bbox_w + slant, bbox_h), Image.AFFINE, (1, m, -slant, 0, 1, 0),
             resample=Image.BICUBIC,
         )
+        bbox_w = bbox_w + slant
 
     # 4. Layer-level opacity (final pass)
     if opacity < 1.0:

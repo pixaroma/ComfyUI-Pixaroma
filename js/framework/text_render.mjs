@@ -49,8 +49,13 @@ export async function renderTextToCanvas(state) {
   const bgColor = state.bgColor || null;
   const padX = bgColor ? BG_PAD_X : 0;
   const padY = bgColor ? BG_PAD_Y : 0;
-  const bboxW = Math.max(1, Math.ceil(maxLineW + 2 * padX));
   const bboxH = Math.max(1, Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx + 2 * padY));
+  // Synthesized italic skews the bottom of glyphs LEFT by skew*bboxH. Widen the
+  // bitmap by that overhang and translate drawing RIGHT by it so the lean isn't
+  // clipped at the left edge. Mirror of nodes/_text_render_helpers.py.
+  const skew = variant.synthesizedItalic ? Math.tan((12 * Math.PI) / 180) : 0;
+  const slant = Math.ceil(skew * bboxH);
+  const bboxW = Math.max(1, Math.ceil(maxLineW + 2 * padX) + slant);
 
   // Off-screen scratch canvas
   const scratch = document.createElement("canvas");
@@ -58,9 +63,9 @@ export async function renderTextToCanvas(state) {
   scratch.height = bboxH;
   const sctx = scratch.getContext("2d");
 
-  // Synthesized italic skew
-  if (variant.synthesizedItalic) {
-    sctx.setTransform(1, 0, -Math.tan((12 * Math.PI) / 180), 1, 0, 0);
+  // Synthesized italic skew (+ right-translate by the overhang)
+  if (skew) {
+    sctx.setTransform(1, 0, -skew, 1, slant, 0);
   }
 
   // 1. Background pill
