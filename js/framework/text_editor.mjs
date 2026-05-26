@@ -26,7 +26,7 @@ const BRAND = "#f66744";
  *  @param {Function} [opts.onReset] - called with (layer) when Reset is clicked
  *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
-export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas }) {
+export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas, composerMode = false }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
@@ -129,15 +129,19 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
   ui.sizeInput    = inputCell(typoGrid, "Size",          8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
   ui.lineInput    = inputCell(typoGrid, "Line height", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
   ui.letterInput  = inputCell(typoGrid, "Letter sp",   -10,   50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
-  ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
+  // Opacity + transform (Rotate/X/Y) are omitted in composerMode: the Image
+  // Composer owns position/rotation/opacity via the canvas + layer controls.
+  if (!composerMode) {
+    ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
 
-  // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
-  // balanced (no empty cell next to Rotate) and saves a row of height.
-  const transformGrid = el("div", "pix-to-grid3");
-  root.appendChild(transformGrid);
-  ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
-  ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
-  ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+    // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
+    // balanced (no empty cell next to Rotate) and saves a row of height.
+    const transformGrid = el("div", "pix-to-grid3");
+    root.appendChild(transformGrid);
+    ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+    ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
+    ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+  }
 
   // Position on canvas: snap the WHOLE text block to a canvas edge / center.
   // This is the control most users reach for ("move the text to the left/
@@ -253,10 +257,11 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
       ui.sizeInput.setValue(layer.fontSize ?? 96);
       ui.lineInput.setValue(layer.lineHeight ?? 1.2);
       ui.letterInput.setValue(layer.letterSpacing ?? 0);
-      ui.opacityInput.setValue(Math.round((layer.opacity ?? 1) * 100));
-      ui.rotateInput.setValue(layer.rotation ?? 0);
-      ui.posXInput.setValue(layer.x ?? 0);
-      ui.posYInput.setValue(layer.y ?? 0);
+      // These four are absent in composerMode — guard each.
+      ui.opacityInput && ui.opacityInput.setValue(Math.round((layer.opacity ?? 1) * 100));
+      ui.rotateInput && ui.rotateInput.setValue(layer.rotation ?? 0);
+      ui.posXInput && ui.posXInput.setValue(layer.x ?? 0);
+      ui.posYInput && ui.posYInput.setValue(layer.y ?? 0);
       ui.textColorCell.setValue(layer.color ?? "#FFFFFF");
       ui.bgColorCell.setValue(layer.bgColor || null);
     } finally {
@@ -266,6 +271,8 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
 
   /** Set position input ranges based on the canvas dimensions. */
   function setCanvasBounds(canvasWidth, canvasHeight) {
+    // No-op in composerMode (no position inputs).
+    if (!ui.posXInput || !ui.posYInput) return;
     ui.posXInput.setRange(-canvasWidth, canvasWidth * 2);
     ui.posYInput.setRange(-canvasHeight, canvasHeight * 2);
   }
