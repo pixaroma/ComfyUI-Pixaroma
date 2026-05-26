@@ -2,6 +2,15 @@ import { PixaromaUI } from "./ui.mjs";
 import { PixaromaLayers } from "./layers.mjs";
 import { installFocusTrap } from "../shared/index.mjs";
 import { NEUTRAL } from "./fx_engine.mjs";
+import { renderTextToCanvas } from "../framework/text_render.mjs";
+
+// Default style for a fresh text layer. Field names match the shared text panel
+// (js/framework/text_editor.mjs) so setLayer(layer.textState) edits these directly.
+const DEFAULT_TEXT_STATE = {
+  text: "Your text", font: "Roboto", weight: 400, italic: false,
+  fontSize: 96, lineHeight: 1.2, letterSpacing: 0, align: "center",
+  color: "#FFFFFF", bgColor: null,
+};
 
 export class PixaromaEditor {
   constructor(node) {
@@ -225,6 +234,56 @@ export class PixaromaEditor {
     this.ui.updateActiveLayerUI();
     this.draw();
     this.pushHistory();
+  }
+
+  // Create an editable text layer on top of the stack. Its rendered-text bitmap
+  // lives in layer.img so it reuses the whole image-layer pipeline (move/scale/
+  // rotate/blend/save). textState holds the content + style.
+  async addTextLayer() {
+    const id = "txt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const layer = {
+      id,
+      name: "Text",
+      isText: true,
+      textState: { ...DEFAULT_TEXT_STATE },
+      img: null,
+      cx: this.canvas.width / 2,
+      cy: this.canvas.height / 2,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flippedX: false,
+      flippedY: false,
+      blendMode: "Normal",
+      blur: 0,
+      rawB64_internal: null,
+      rawServerPath: null,
+      savedOnServer: false,
+      savedMaskPath_internal: null,
+      cropRect: null,
+    };
+    this.layers.push(layer);
+    this.selectedLayerIds = new Set([id]);
+    this.syncActiveLayerIndex();
+    await this.rebuildTextLayer(layer);
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  }
+
+  // (Re)render a text layer's bitmap from its textState into layer.img and mark
+  // it for re-upload. Keeps cx/cy (center) so the text never jumps when resized.
+  async rebuildTextLayer(layer) {
+    if (!layer || !layer.isText) return;
+    const canvas = await renderTextToCanvas(layer.textState);
+    if (!this.layers.includes(layer)) return; // deleted mid-await
+    layer.img = canvas;
+    layer.rawB64_internal = canvas.toDataURL("image/png");
+    layer.savedOnServer = false;
+    layer.rawServerPath = null;
   }
 
   getCanvasCoordinates(e) {
