@@ -41,7 +41,9 @@ PixaromaEditor.prototype.addPlaceholderLayer = function () {
   const h = Math.round(this.docHeight / 2);
 
   const layer = {
-    id: Date.now().toString(),
+    // Random suffix (like the image/text/FX/duplicate paths) so two rapid
+    // adds can't collide on a same-millisecond id.
+    id: Date.now().toString() + Math.random().toString(36).slice(2, 6),
     name: inputName,
     isPlaceholder: true,
     placeholderColor: color,
