@@ -602,6 +602,10 @@ PixaromaEditor.prototype.attachEvents = function () {
         const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
         // Deep-copy cropRect so re-cropping one copy can't alias the other.
         if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
+        // Deep-copy FX adjustments + text state so editing one copy doesn't
+        // alias the other (they're objects; {...layer} shares them by reference).
+        if (layer.adjustments) dup.adjustments = { ...layer.adjustments };
+        if (layer.textState) dup.textState = { ...layer.textState };
         // Deep-copy eraser mask so edits don't affect the original
         if (layer.eraserMaskCanvas_internal) {
           const mc = document.createElement("canvas");
@@ -1192,6 +1196,8 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
         if (this.selectedLayerIds.has(layer.id)) {
           const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
           if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
+          if (layer.adjustments) dup.adjustments = { ...layer.adjustments };
+          if (layer.textState) dup.textState = { ...layer.textState };
           // Deep-copy eraser mask so edits don't affect the original
           if (layer.eraserMaskCanvas_internal) {
             const mc = document.createElement("canvas");
