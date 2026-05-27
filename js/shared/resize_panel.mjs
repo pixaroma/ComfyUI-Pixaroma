@@ -432,7 +432,7 @@ function roundToStep(v, step) {
 // utility classes to either.
 //
 //   opts: { value, min, max, step, format(v)->string, parse(s)->number, onCommit(num) }
-function makeNumericInput(opts) {
+export function makeNumericInput(opts) {
   const wrap = document.createElement("div");
   wrap.className = "pix-li-numinput";
 
