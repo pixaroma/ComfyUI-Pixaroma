@@ -50,9 +50,11 @@ def _save_preview_png(pil_img, doc_w, doc_h):
 # ── Helpers for placeholder compositing ──────────────────────────────────────
 
 def _hex_to_rgba(hex_str):
-    hex_str = hex_str.lstrip("#")
-    r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
-    return (r, g, b, 255)
+    try:
+        h = (hex_str or "").lstrip("#")
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+    except (ValueError, IndexError, TypeError):
+        return (30, 30, 30, 255)  # neutral fallback on a malformed colour
 
 
 def _tensor_to_pil(tensor):
@@ -186,9 +188,11 @@ def _apply_eraser_mask(img, mask_path, input_dir):
     # Mask uses destination-out: opaque pixels in mask = erased
     # So we subtract mask alpha from image alpha
     r, g, b, a = img.split()
-    mask_a = mask_img.split()[3]  # alpha channel of mask
-    # Where mask is opaque, set image alpha to 0
-    a = ImageChops.subtract(a, mask_a)
+    mask_a = mask_img.split()[3]  # alpha channel of mask (opaque = erased)
+    # destination-out: result_alpha = image_alpha * (1 - mask_alpha). Use
+    # multiply(a, invert(mask_a)) NOT subtract, so soft-brush partial alpha and
+    # already-transparent pixels match the editor's canvas compositing exactly.
+    a = ImageChops.multiply(a, ImageChops.invert(mask_a))
     return Image.merge("RGBA", (r, g, b, a))
 
 
@@ -412,6 +416,8 @@ class PixaromaImageComposition:
             doc_empty = torch.zeros((1, doc_h, doc_w, 3), dtype=torch.float32)
 
             layers = meta.get("layers", [])
+            if not isinstance(layers, list):
+                layers = []
             input_dir = os.path.realpath(folder_paths.get_input_directory())
             has_placeholders = any(l.get("isPlaceholder") for l in layers)
             has_auto_rembg = any(l.get("removeBgOnExec") for l in layers)
@@ -456,11 +462,11 @@ class PixaromaImageComposition:
                     if layer.get("isPlaceholder"):
                         ph_w = layer.get("naturalWidth", 512)
                         ph_h = layer.get("naturalHeight", 512)
-                        img_input = kwargs.get(f"image_{layer['inputIndex']}")
+                        img_input = kwargs.get(f"image_{layer.get('inputIndex', 1)}")
                         if img_input is not None:
                             layer_img = _tensor_to_pil(img_input)
                             if layer.get("removeBgOnExec"):
-                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                             # Quality fix: scale the slot up to source resolution
                             # if the upstream image is larger. Adjust scaleX/Y in
                             # a layer copy so the visual size matches the editor.
@@ -489,7 +495,7 @@ class PixaromaImageComposition:
                         if layer_img is None:
                             continue
                         if layer.get("removeBgOnExec"):
-                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                     # Apply non-destructive crop (cropRect is in source-image
                     # pixels). Order matches the JS bake: crop -> mask -> transform.
                     # The eraser mask is saved at the cropped size, so it must run
@@ -582,7 +588,16 @@ class PixaromaImageComposition:
 
         except Exception as e:
             print(f"[Pixaroma] Fatal Load Error: {e}")
-            return (empty_image, 1024, 1024)
+            # Best-effort: return a blank sized to the DOCUMENT if we can recover
+            # its dims, so downstream nodes get the right width/height even when
+            # compositing failed (a hardcoded 1024x1024 here mismatches doc_w/h
+            # and breaks nodes that trust the INT outputs).
+            try:
+                _m = json.loads(project_json)
+                _dw, _dh = int(_m.get("doc_w", 1024)), int(_m.get("doc_h", 1024))
+                return (torch.zeros((1, _dh, _dw, 3), dtype=torch.float32), _dw, _dh)
+            except Exception:
+                return (empty_image, 1024, 1024)
 
 
 NODE_CLASS_MAPPINGS = {
