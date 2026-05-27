@@ -10,6 +10,7 @@ import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { resetStateInPlace } from "./defaults.mjs";
 import { renderTextLayer } from "../framework/text_render.mjs";
 import { getFontCatalog, resolveFontVariant, loadFontForLayer } from "../framework/fonts.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 const UI_ICON = "/pixaroma/assets/icons/ui/";
 
@@ -48,34 +49,16 @@ export class TextOverlayEditor {
   set state(v) { this.node.properties.textOverlayState = v; }
 
   async open() {
-    const app = window.app;
-    // Vue Compat #6: neuter Ctrl+Z escape (changeTracker.undo -> loadGraphData
-    // -> graph.configure). Vue Compat #2: the overlay can be torn down WITHOUT
-    // our close() running (e.g. closing the workflow tab while the editor is
-    // open), which would otherwise leave these two functions disabled forever
-    // - the user then can't open OR create ANY workflow until a page refresh
-    // (confirmed via console: loadGraphData stuck at "() => Promise.resolve()"
-    // with zero overlays in the DOM). So the patched functions SELF-HEAL: the
-    // moment they're called while our overlay is gone (or after close), they
-    // restore the originals and pass the call through. Ctrl+Z while the editor
-    // is genuinely open is still blocked (overlay alive -> return early).
-    this._savedLoadGraphData = app.loadGraphData.bind(app);
-    this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-    const self = this;
-    app.loadGraphData = function (...args) {
-      if (self._closed || !self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.loadGraphData(...args);
-      }
-      return Promise.resolve();
-    };
-    app.graph.configure = function (...args) {
-      if (self._closed || !self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.graph.configure(...args);
-      }
-      return undefined;
-    };
+    // Vue Compat #6: block Ctrl+Z from escaping the editor and reverting or
+    // deleting the node (changeTracker.undo -> loadGraphData/configure, AND the
+    // Vue command-store Undo/Redo path). Use the SHARED graph-undo guard
+    // (js/shared/graph_undo_guard.mjs): refcount-safe, self-healing (restores if
+    // the overlay is torn down without our close() running - Vue Compat #2), and
+    // it covers the FULL set (loadGraphData, graph.configure, graph.undo,
+    // graph.redo, AND the Comfy.Undo/Redo command dispatch - which the old
+    // hand-rolled patch here missed). Uninstalled on every teardown path via
+    // close() + layout.onCleanup (set after mount below).
+    this._undoGuardOff = installGraphUndoGuard(() => this._overlayAlive());
 
     // Resurrection-close safety net
     this._origOnRemoved = this.node.onRemoved;
@@ -105,6 +88,12 @@ export class TextOverlayEditor {
       onZoomFit: () => this.zoomFit(),
     });
     this.layout.mount();
+
+    // Uninstall the undo guard on EVERY teardown path. layout.unmount() (the ✕
+    // button, Save auto-close, and node removal all route through it) fires
+    // onCleanup, so wiring it here covers all three exactly once (idempotent
+    // with close(), which also uninstalls directly).
+    this.layout.onCleanup = () => { this._undoGuardOff?.(); this._undoGuardOff = null; };
 
     this._buildAlignmentBar();
     this._buildCanvasSettings(); // left sidebar
@@ -235,25 +224,11 @@ export class TextOverlayEditor {
     if (this.node._textOverlayBodyPanel) this.node._textOverlayBodyPanel.setLayer(s);
   }
 
-  // Is this editor's fullscreen overlay still in the document? Used by the
-  // self-healing loadGraphData/configure patches to detect a teardown that
-  // bypassed close() (Vue Compat #2).
+  // Is this editor's fullscreen overlay still in the document? The shared
+  // graph-undo guard calls this as its isAlive predicate (Vue Compat #2): once
+  // it returns false, the guard self-restores on the next graph operation.
   _overlayAlive() {
     return !!(this.layout && this.layout.overlay && this.layout.overlay.isConnected);
-  }
-
-  // Restore the loadGraphData/configure functions we neutered in open().
-  // Idempotent + safe to call from BOTH close() and the self-heal path.
-  _restoreGraphPatches() {
-    const app = window.app;
-    if (this._savedLoadGraphData) {
-      app.loadGraphData = this._savedLoadGraphData;
-      this._savedLoadGraphData = null;
-    }
-    if (this._savedGraphConfigure) {
-      if (app.graph) app.graph.configure = this._savedGraphConfigure;
-      this._savedGraphConfigure = null;
-    }
   }
 
   close() {
@@ -270,7 +245,8 @@ export class TextOverlayEditor {
     // it reflects current wiring state, not editor session. The
     // index.js onConnectionsChange handler keeps it in sync.
     if (typeof this._uninstallInteractions === "function") this._uninstallInteractions();
-    this._restoreGraphPatches();
+    this._undoGuardOff?.();
+    this._undoGuardOff = null;
     if (this._origOnRemoved !== undefined) this.node.onRemoved = this._origOnRemoved;
     this.editorPanel?.destroy?.();
     this.layout?.unmount?.();
