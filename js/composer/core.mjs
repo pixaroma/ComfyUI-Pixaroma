@@ -349,36 +349,65 @@ export class PixaromaEditor {
   _installGraphPatches() {
     const app = window.app;
     if (!app || !app.graph) return;
-    // A stale patch from a torn-down editor may still be installed; restore it
-    // before capturing the originals so we never save a no-op as "the original".
-    if (app._pixComposerOrigLoad) {
-      app.loadGraphData = app._pixComposerOrigLoad;
-      if (app.graph && app._pixComposerOrigConfigure)
-        app.graph.configure = app._pixComposerOrigConfigure;
-    }
+    // REFCOUNTED across all open Composer editors. Two Composer nodes can both
+    // have an editor open; the patch must stay installed (Ctrl+Z blocked) until
+    // EVERY overlay is gone, so closing one editor never un-blocks another.
+    if (!app._pixComposerEditors) app._pixComposerEditors = new Set();
+    app._pixComposerEditors.add(this);
+
+    // Install the wrapper exactly ONCE, capturing the REAL originals. The guard
+    // flag prevents a second editor from saving the no-op wrapper as "original".
+    if (app._pixComposerPatchInstalled) return;
     app._pixComposerOrigLoad = app.loadGraphData.bind(app);
     app._pixComposerOrigConfigure = app.graph.configure.bind(app.graph);
-    const self = this;
-    app.loadGraphData = function (...args) {
-      if (!self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.loadGraphData(...args);
+    app._pixComposerPatchInstalled = true;
+
+    const anyOverlayAlive = () => {
+      if (!app._pixComposerEditors) return false;
+      for (const ed of app._pixComposerEditors) {
+        try { if (ed._overlayAlive && ed._overlayAlive()) return true; } catch {}
       }
-      return Promise.resolve();
+      return false;
+    };
+    // SELF-HEAL: if called while NO overlay is alive (all editors torn down
+    // without cleanup, e.g. tab closed mid-edit), restore the originals + clear
+    // state so loadGraphData/configure can never stay bricked. Returns the
+    // originals captured before clearing so the call still passes through.
+    const heal = () => {
+      const ol = app._pixComposerOrigLoad, oc = app._pixComposerOrigConfigure;
+      if (ol) app.loadGraphData = ol;
+      if (app.graph && oc) app.graph.configure = oc;
+      app._pixComposerOrigLoad = null;
+      app._pixComposerOrigConfigure = null;
+      app._pixComposerPatchInstalled = false;
+      if (app._pixComposerEditors) app._pixComposerEditors.clear();
+      return { ol, oc };
+    };
+    app.loadGraphData = function (...args) {
+      if (anyOverlayAlive()) return Promise.resolve();
+      const { ol } = heal();
+      return (ol || window.app.loadGraphData)(...args);
     };
     app.graph.configure = function (...args) {
-      if (!self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.graph.configure(...args);
-      }
-      return undefined;
+      if (anyOverlayAlive()) return undefined;
+      const { oc } = heal();
+      return oc ? oc(...args) : window.app.graph.configure(...args);
     };
   }
 
-  // Restore the neutered functions. Idempotent; safe from cleanup AND self-heal.
+  // Drop THIS editor from the live set. Only truly restore the originals when NO
+  // Composer overlay remains alive (closing one of two open editors keeps the
+  // block intact for the other). Idempotent; safe from cleanup AND self-heal.
   _restoreGraphPatches() {
     const app = window.app;
     if (!app) return;
+    if (app._pixComposerEditors) app._pixComposerEditors.delete(this);
+    const stillAlive =
+      app._pixComposerEditors &&
+      [...app._pixComposerEditors].some((ed) => {
+        try { return ed._overlayAlive && ed._overlayAlive(); } catch { return false; }
+      });
+    if (stillAlive) return; // another editor is still open — keep the patch
     if (app._pixComposerOrigLoad) {
       app.loadGraphData = app._pixComposerOrigLoad;
       app._pixComposerOrigLoad = null;
@@ -387,5 +416,7 @@ export class PixaromaEditor {
       app.graph.configure = app._pixComposerOrigConfigure;
       app._pixComposerOrigConfigure = null;
     }
+    app._pixComposerPatchInstalled = false;
+    if (app._pixComposerEditors) app._pixComposerEditors.clear();
   }
 }

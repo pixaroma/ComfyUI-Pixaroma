@@ -136,6 +136,10 @@ app.registerExtension({
 
     // ── Open button ──
     node.addWidget("button", "Open Image Composer", null, () => {
+      // Don't stack a second editor on this node — that would orphan the first
+      // (leaked listeners + graph patches, stacked overlays). The drop-to-open
+      // path already guards this; the button must too.
+      if (isEditorOpen(node)) return;
       const editor = new PixaromaEditor(node);
       node._pixaromaEditor = editor;
 
