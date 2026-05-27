@@ -2,6 +2,18 @@
 import { PixaromaEditor } from "./core.mjs";
 import { applyFx, isNeutral, fxSeed } from "./fx_engine.mjs";
 
+// Clone a layer for history restore. Shallow-copy the layer, but DEEP-copy the
+// mutable sub-objects the panels edit IN PLACE (adjustments / textState /
+// cropRect) so a live edit right after undo/redo can't corrupt the stored
+// snapshot (the snapshots themselves are already deep via captureState).
+function cloneLayerForHistory(l) {
+  const c = { ...l };
+  if (l.adjustments) c.adjustments = { ...l.adjustments };
+  if (l.textState) c.textState = { ...l.textState };
+  if (l.cropRect) c.cropRect = { ...l.cropRect };
+  return c;
+}
+
 PixaromaEditor.prototype.pushHistory = function () {
   if (this.isRestoringHistory) return;
   this.history = this.history.slice(0, this.historyIndex + 1);
@@ -30,7 +42,7 @@ PixaromaEditor.prototype.undo = function () {
   if (this.historyIndex > 0) {
     this.historyIndex--;
     this.layers = this.history[this.historyIndex].map((l) =>
-      l.adjustments ? { ...l, adjustments: { ...l.adjustments } } : { ...l },
+      cloneLayerForHistory(l),
     );
     this.verifySelection();
     this.isRestoringHistory = true;
@@ -51,7 +63,7 @@ PixaromaEditor.prototype.redo = function () {
   if (this.historyIndex < this.history.length - 1) {
     this.historyIndex++;
     this.layers = this.history[this.historyIndex].map((l) =>
-      l.adjustments ? { ...l, adjustments: { ...l.adjustments } } : { ...l },
+      cloneLayerForHistory(l),
     );
     this.verifySelection();
     this.isRestoringHistory = true;
@@ -531,6 +543,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             flippedY: mLayer.flippedY,
             blendMode: mLayer.blendMode || "Normal",
             blur: mLayer.blur || 0,
+            removeBgOnExec: !!mLayer.removeBgOnExec,
+            bgRemovalQuality: mLayer.bgRemovalQuality,
             rawB64_internal: null,
             rawServerPath: mLayer.src,
             savedOnServer: true,
