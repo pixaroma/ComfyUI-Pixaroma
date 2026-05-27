@@ -15,77 +15,56 @@ from functools import lru_cache
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _FONTS_DIR = _PLUGIN_ROOT / "assets" / "fonts"
 
-# Bundle catalog. Mirror of server_routes.py::pixaroma_fonts_list BUNDLE.
-# (file, id, weight, italic, label, category, wght_axis|None)
-# For variable fonts (wght_axis not None), font.set_variation_by_axes is called
-# at load time. For static fonts (wght_axis None), no variation step.
-_BUNDLE = [
-    ("Inter-Variable.ttf",                  "Inter",            400, False, "Inter",            "sans",        400),
-    ("Inter-Variable.ttf",                  "Inter",            700, False, "Inter",            "sans",        700),
-    ("Roboto-Variable.ttf",                 "Roboto",           400, False, "Roboto",           "sans",        400),
-    ("Roboto-Variable.ttf",                 "Roboto",           700, False, "Roboto",           "sans",        700),
-    ("Montserrat-Variable.ttf",             "Montserrat",       400, False, "Montserrat",       "sans",        400),
-    ("Montserrat-Variable.ttf",             "Montserrat",       800, False, "Montserrat",       "sans",        800),
-    ("Oswald-Variable.ttf",                 "Oswald",           600, False, "Oswald",           "sans",        600),
-    ("PlayfairDisplay-Variable.ttf",        "PlayfairDisplay",  700, False, "Playfair Display", "serif",       700),
-    ("PlayfairDisplay-Italic-Variable.ttf", "PlayfairDisplay",  700, True,  "Playfair Display", "serif",       700),
-    ("Lora-Variable.ttf",                   "Lora",             400, False, "Lora",             "serif",       400),
-    ("Lora-Variable.ttf",                   "Lora",             700, False, "Lora",             "serif",       700),
-    ("BebasNeue-Regular.ttf",               "BebasNeue",        400, False, "Bebas Neue",       "display",     None),
-    ("Anton-Regular.ttf",                   "Anton",            400, False, "Anton",            "display",     None),
-    ("Caveat-Variable.ttf",                 "Caveat",           500, False, "Caveat",           "handwriting", 500),
-    ("JetBrainsMono-Variable.ttf",          "JetBrainsMono",    500, False, "JetBrains Mono",   "mono",        500),
-]
+from ._font_catalog import full_catalog, resolve_custom_file
 
 
 def _get_catalog():
-    """Return [{id, label, category, weights:[{weight, italic, file, wght?}]}],
-    grouped + filtered to files that exist on disk."""
-    grouped = {}
-    for filename, font_id, weight, italic, label, category, wght_axis in _BUNDLE:
-        if not (_FONTS_DIR / filename).is_file():
-            continue
-        bucket = grouped.setdefault(font_id, {"id": font_id, "label": label, "category": category, "weights": []})
-        entry = {"weight": weight, "italic": italic, "file": filename}
-        if wght_axis is not None:
-            entry["wght"] = wght_axis
-        bucket["weights"].append(entry)
-    return list(grouped.values())
+    """Merged builtin + custom catalog (see nodes/_font_catalog.py)."""
+    return full_catalog()
 
 
 def resolve_font_variant(font_id: str, weight: int, italic: bool):
-    """Best-match per math doc section 1. Returns dict with file path + flags."""
+    """Best-match per math doc section 1. Returns dict with file + source + flags."""
     catalog = _get_catalog()
     font = next((f for f in catalog if f["id"] == font_id), None)
     if not font:
         font = next((f for f in catalog if f["id"] == "Inter"), None)
         if not font:
             raise RuntimeError("No fonts in catalog (assets/fonts/ empty?). Run scripts/download_fonts.py")
+
+    def _mk(v, synth):
+        return {"file": v["file"], "weight": v["weight"], "italic": v["italic"],
+                "wght": v.get("wght"), "source": font.get("source", "builtin"),
+                "synthesized_italic": synth}
+
     # exact
     for v in font["weights"]:
         if v["weight"] == weight and v["italic"] == bool(italic):
-            return {"file": v["file"], "weight": v["weight"], "italic": v["italic"],
-                    "wght": v.get("wght"), "synthesized_italic": False}
+            return _mk(v, False)
     # italic flip
     if italic:
         for v in font["weights"]:
             if v["weight"] == weight and not v["italic"]:
-                return {"file": v["file"], "weight": v["weight"], "italic": False,
-                        "wght": v.get("wght"), "synthesized_italic": True}
+                return _mk(v, True)
     # closest weight (italic preference if available)
     same = [v for v in font["weights"] if v["italic"] == bool(italic)]
     pool = same if same else font["weights"]
-    pool = sorted(pool, key=lambda v: abs(v["weight"] - weight))
-    v = pool[0]
-    return {"file": v["file"], "weight": v["weight"], "italic": v["italic"],
-            "wght": v.get("wght"), "synthesized_italic": bool(italic) and not v["italic"]}
+    v = sorted(pool, key=lambda v: abs(v["weight"] - weight))[0]
+    return _mk(v, bool(italic) and not v["italic"])
 
 
 @lru_cache(maxsize=128)
-def _cached_pil_font(file: str, size: int, wght: int):
-    """Cache PIL ImageFont instances per (file, size, wght) for the process lifetime.
-    For variable fonts (wght != 0), activate the wght axis after load."""
-    f = ImageFont.truetype(str(_FONTS_DIR / file), size=int(size))
+def _cached_pil_font(file: str, size: int, wght: int, source: str):
+    """Cache PIL ImageFont per (file, size, wght, source) for the process lifetime.
+    Builtin fonts load from assets/fonts/; custom fonts resolve across the
+    registered fonts dirs. For variable fonts (wght != 0), activate the wght axis."""
+    if source == "custom":
+        path = resolve_custom_file(file)
+        if not path:
+            raise RuntimeError(f"Custom font file not found: {file}")
+    else:
+        path = str(_FONTS_DIR / file)
+    f = ImageFont.truetype(path, size=int(size))
     if wght:
         try:
             f.set_variation_by_axes([wght])
@@ -99,7 +78,8 @@ def load_pil_font(font_id: str, weight: int, italic: bool, size: int):
     """Returns (PIL.ImageFont.FreeTypeFont, synthesized_italic_bool)."""
     variant = resolve_font_variant(font_id, weight, italic)
     wght = variant.get("wght") or 0
-    return _cached_pil_font(variant["file"], int(round(size)), wght), variant["synthesized_italic"]
+    src = variant.get("source", "builtin")
+    return _cached_pil_font(variant["file"], int(round(size)), wght, src), variant["synthesized_italic"]
 
 
 # ────────────────────────────────────────────────────────────────────────────
