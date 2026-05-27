@@ -20,7 +20,7 @@ const HIDDEN_INPUT_NAME = "TextWatermarkState";
 // height with the text-lock hint hidden; if the panel layout changes
 // (add/remove a row), update BASE_H to match. HINT_H is the extra height when
 // the `text` input is wired (the lock-hint row appears).
-const BASE_H = 500;
+const BASE_H = 448;
 const HINT_H = 18;
 const MIN_W = 320;
 

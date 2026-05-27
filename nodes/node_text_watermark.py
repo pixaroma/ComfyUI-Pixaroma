@@ -8,6 +8,7 @@ a fixed pixel value or a percentage of each image's width - so a mixed-size
 batch gets a visually consistent watermark.
 """
 import json
+import math
 import numpy as np
 import torch
 from PIL import Image
@@ -111,6 +112,17 @@ class PixaromaTextWatermark:
             print(f"[Text Watermark Pixaroma] WARN: bbox failed: {e}")
             return
 
+        # Synthesized italic (fonts with no real italic, e.g. Anton) leans the
+        # text and the renderer widens the layer by a slant overhang on the
+        # right so the lean isn't clipped. compute_text_bbox does NOT include
+        # that overhang, so right / center anchoring must add it back - else a
+        # right-anchored italic watermark pushes its lean off the edge. Matches
+        # the slant math in _text_render_helpers.render_text_layer (12 degrees,
+        # no supersampling on the non-rotated path).
+        eff_w = bbox_w
+        if bool(state.get("italic", False)):
+            eff_w += int(math.ceil(math.tan(math.radians(12)) * bbox_h))
+
         margin_x = int(state.get("marginX", 20))
         margin_y = int(state.get("marginY", 20))
         anchor = state.get("anchor", "bottom-right")
@@ -120,9 +132,9 @@ class PixaromaTextWatermark:
         if col == "left":
             x = margin_x
         elif col == "center":
-            x = int(round((W - bbox_w) / 2))
+            x = int(round((W - eff_w) / 2))
         else:  # right
-            x = W - bbox_w - margin_x
+            x = W - eff_w - margin_x
 
         if row == "top":
             y = margin_y
