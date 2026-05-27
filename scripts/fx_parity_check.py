@@ -12,8 +12,12 @@ import tempfile
 
 import numpy as np
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from nodes._fx_adjust_engine import apply_fx, PRESETS  # noqa: E402
+# Import the engine directly off the nodes/ dir. Do NOT use `from nodes._fx...`
+# — `nodes` collides with ComfyUI's top-level nodes.py when it's on sys.path,
+# which makes `nodes` resolve to that module ("'nodes' is not a package").
+# _fx_adjust_engine.py has no relative imports, so loading it standalone is safe.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "nodes"))
+from _fx_adjust_engine import apply_fx, PRESETS  # noqa: E402
 
 W, H = 24, 16
 rng = np.random.default_rng(7)
