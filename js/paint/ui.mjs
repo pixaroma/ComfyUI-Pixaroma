@@ -926,6 +926,11 @@ proto._resizeDoc = function () {
   });
   this.docW = nw;
   this.docH = nh;
+  // Resize is a hard reset for undo: existing history entries hold ImageData at
+  // the OLD doc size; putImageData-ing them into the resized canvas would paste
+  // clipped/misaligned. Clear history rather than corrupt it.
+  this.history = [];
+  this.historyIndex = -1;
   this._contentBoundsCache.clear();
   this._applyDocSize();
   this._renderDisplay();

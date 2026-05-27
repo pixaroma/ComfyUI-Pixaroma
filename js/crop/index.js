@@ -613,6 +613,11 @@ app.registerExtension({
       }
       if (connected) {
         rebuildPreviewFromUpstream();
+      } else {
+        // Wire removed → the upstream image is gone. Fall back to the saved
+        // disk composite/src (or blank) so a stale upstream preview doesn't
+        // linger and make the node look still-connected.
+        restoreNodePreview(parts, cropJson, node);
       }
     };
 

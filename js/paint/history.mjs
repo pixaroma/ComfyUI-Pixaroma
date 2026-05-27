@@ -13,6 +13,7 @@ proto._pushHistory = function () {
     this.history = this.history.slice(0, this.historyIndex + 1);
   this.history.push({
     layerIdx: this.activeIdx,
+    layerId: ly.id,
     data: id,
     transform: { ...ly.transform },
   });
@@ -53,6 +54,17 @@ proto._pushFullSnapshot = function () {
   }
 };
 
+// Resolve the layer a pixel-history entry belongs to. Prefer the stable layer
+// id (so an undo lands on the right layer even after a reorder/delete shifted
+// indices); fall back to the recorded index for older entries without an id.
+proto._layerForHistoryEntry = function (entry) {
+  if (entry.layerId != null) {
+    const byId = this.layers.find((l) => l.id === entry.layerId);
+    if (byId) return byId;
+  }
+  return this.layers[entry.layerIdx];
+};
+
 proto.undo = function () {
   if (this.historyIndex < 0) {
     this._setStatus("Nothing to undo");
@@ -88,7 +100,7 @@ proto.undo = function () {
     });
     this.activeIdx = entry.activeIdx;
   } else {
-    const ly = this.layers[entry.layerIdx];
+    const ly = this._layerForHistoryEntry(entry);
     if (ly) {
       entry._afterData = ly.ctx.getImageData(0, 0, this.docW, this.docH);
       entry._afterTransform = { ...ly.transform };
@@ -130,7 +142,7 @@ proto.redo = function () {
       this.activeIdx = entry._afterActiveIdx;
     }
   } else {
-    const ly = this.layers[entry.layerIdx];
+    const ly = this._layerForHistoryEntry(entry);
     if (ly) {
       if (entry._afterData) {
         ly.ctx.putImageData(entry._afterData, 0, 0);
