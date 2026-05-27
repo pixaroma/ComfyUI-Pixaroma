@@ -18,6 +18,8 @@
 // loop iteration left behind and is not relied on at workflow load - the
 // next Run overwrites it before any prompt is captured.
 
+import { feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
+
 export const STATE_PROP = "promptPackState";
 export const MODE_PARAGRAPH = "paragraph";
 export const MODE_LINE = "line";
@@ -118,7 +120,12 @@ function isPackNodeConnected(node) {
 function isPackNodeDriving(node) {
   if (!node) return false;
   const isClass = node.comfyClass === "PixaromaPromptPack" || node.type === "PixaromaPromptPack";
-  return isClass && isPackNodeActive(node) && isPackNodeConnected(node);
+  // feedsOnlyInactiveSwitch: when this node is wired ONLY into a Switch
+  // Pixaroma input that the Switch isn't currently routing, its prompts can't
+  // reach any output this run, so it must NOT drive the queue (otherwise
+  // every driver wired into one Switch loops and the counts multiply).
+  return isClass && isPackNodeActive(node) && isPackNodeConnected(node)
+    && !feedsOnlyInactiveSwitch(node);
 }
 
 // Find the first PixaromaPromptPack node that actually drives the queue

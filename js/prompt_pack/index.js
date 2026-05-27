@@ -12,6 +12,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, applyState, updateCounter } from "./render.mjs";
 import { wireEvents, showNoPromptsToast } from "./interaction.mjs";
+import { isQueueLoopActive, beginQueueLoop, endQueueLoop } from "../shared/queue_drivers.mjs";
 
 const BRAND = "#f66744";
 
@@ -485,6 +486,11 @@ const _origQueuePrompt = app.queuePrompt.bind(app);
 // graph. Only batchCount is overridden (to 1) per prompt inside the loop;
 // number, queueNodeIds, and any future args are preserved.
 app.queuePrompt = async function (...args) {
+  // Another Pixaroma queue-driver (e.g. Prompt Multi) is already looping this
+  // Run - pass straight through so the two loops don't multiply (3 prompts * 3
+  // rows = 9). The shared lock makes the drivers mutually exclusive.
+  if (isQueueLoopActive()) return _origQueuePrompt(...args);
+
   const ppNode = findFirstPromptPackNode(app);
   if (!ppNode) return _origQueuePrompt(...args);
 
@@ -519,6 +525,10 @@ app.queuePrompt = async function (...args) {
   }
 
   const results = [];
+  // Hold the shared queue-driver lock for the whole loop so a nested driver
+  // wrapper (Prompt Multi) falls through to a single call instead of looping
+  // again and multiplying the submission count.
+  beginQueueLoop();
   _batch.activeCapture = true;
   try {
     for (let i = 0; i < prompts.length; i++) {
@@ -539,6 +549,7 @@ app.queuePrompt = async function (...args) {
     }
   } finally {
     _batch.activeCapture = false;
+    endQueueLoop();
   }
 
   // Safety net: if nothing ended up tracked (unsupported ComfyUI version

@@ -16,6 +16,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
+import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 
 const BRAND = "#f66744";
 
@@ -506,7 +507,12 @@ function isMultiNodeConnected(node) {
 function isMultiNodeDriving(node) {
   if (!node) return false;
   const isClass = node.comfyClass === "PixaromaPromptMulti" || node.type === "PixaromaPromptMulti";
-  return isClass && isMultiNodeActive(node) && isMultiNodeConnected(node);
+  // feedsOnlyInactiveSwitch: when this node is wired ONLY into a Switch
+  // Pixaroma input that the Switch isn't currently routing, its rows can't
+  // reach any output this run, so it must NOT drive the queue (otherwise
+  // every driver wired into one Switch loops and the counts multiply).
+  return isClass && isMultiNodeActive(node) && isMultiNodeConnected(node)
+    && !feedsOnlyInactiveSwitch(node);
 }
 
 // Find the first PixaromaPromptMulti node that actually drives the queue
@@ -565,6 +571,11 @@ const _origQueuePrompt = app.queuePrompt;
 // overridden (to 1) inside the per-row loop; number, queueNodeIds, and any
 // future args are preserved.
 app.queuePrompt = async function (...args) {
+  // Another Pixaroma queue-driver (e.g. Prompt Pack) is already looping this
+  // Run - pass straight through so the two loops don't multiply (3 rows * 3
+  // prompts = 9). The shared lock makes the drivers mutually exclusive.
+  if (isQueueLoopActive()) return _origQueuePrompt.apply(app, args);
+
   const pmNode = findFirstPromptMultiNode();
   if (!pmNode) return _origQueuePrompt.apply(app, args);
 
@@ -582,18 +593,22 @@ app.queuePrompt = async function (...args) {
     return;
   }
 
-  const results = [];
-  for (const { index } of enabled) {
-    pmNode.properties = pmNode.properties || {};
-    if (!pmNode.properties[STATE_PROP]) pmNode.properties[STATE_PROP] = { rows: [], activeIndex: 0 };
-    pmNode.properties[STATE_PROP].activeIndex = index;
-    try {
-      const loopArgs = args.slice(); loopArgs[1] = 1; // batchCount=1, keep number + queueNodeIds
-      const r = await _origQueuePrompt.apply(app, loopArgs);
-      results.push(r);
-    } catch (err) {
-      console.error("Pixaroma.PromptMulti: per-row enqueue failed", err);
+  // Hold the shared lock for the whole loop so a nested driver wrapper falls
+  // through to a single call instead of looping again.
+  return runQueueLoop(async () => {
+    const results = [];
+    for (const { index } of enabled) {
+      pmNode.properties = pmNode.properties || {};
+      if (!pmNode.properties[STATE_PROP]) pmNode.properties[STATE_PROP] = { rows: [], activeIndex: 0 };
+      pmNode.properties[STATE_PROP].activeIndex = index;
+      try {
+        const loopArgs = args.slice(); loopArgs[1] = 1; // batchCount=1, keep number + queueNodeIds
+        const r = await _origQueuePrompt.apply(app, loopArgs);
+        results.push(r);
+      } catch (err) {
+        console.error("Pixaroma.PromptMulti: per-row enqueue failed", err);
+      }
     }
-  }
-  return results[results.length - 1];
+    return results[results.length - 1];
+  });
 };
