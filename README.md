@@ -230,9 +230,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **May 27, 2026 · v1.3.59**
+### **May 27, 2026 · v1.3.59–1.3.60**
+- **NEW: Text Watermark node.** Stamp text onto an image or a whole batch in a fixed spot — pick a corner / edge / center on a 3×3 grid plus a margin, and it lands in the same place on every image no matter its size. Set the size in pixels or as a percentage of the image width (so mixed-size batches stay consistent), with font, color, opacity, rotation and an optional background bar. No separate editor to open.
 - **NEW: use your own fonts.** Drop `.ttf`/`.otf` files into `ComfyUI/models/fonts/` and they show up in the font picker for Text Overlay and Image Composer text — with a search box and a "Custom" group to find them fast.
-- **Undo inside an editor stays inside that editor.** In Paint, 3D Builder, Image Crop, Image Composer, Note and AudioReact, pressing **Ctrl+Z** now only undoes your edits in the open editor — it can no longer accidentally delete the node or revert the rest of your workflow behind it.
+- **Undo inside an editor stays inside that editor.** In Paint, 3D Builder, Image Crop, Image Composer, Note, AudioReact and Text Overlay, pressing **Ctrl+Z** now only undoes your edits in the open editor — it can no longer accidentally delete the node or revert the rest of your workflow behind it.
 - **3D Builder:** undoing the last object now also clears its shadow, and opening/closing the editor repeatedly no longer slows the viewport down over time.
 - **Text Overlay:** the red ✕ Close button now discards the changes you made that session (use Save to keep them).
 - Plus smaller touches: many Image Composer reliability fixes (erasing + undo, color-grade layers, saving and reloading), crisper text when resizing a text layer, and editor cleanups.
