@@ -1,6 +1,17 @@
 import { PixaromaUI } from "./ui.mjs";
 import { PixaromaLayers } from "./layers.mjs";
 import { installFocusTrap } from "../shared/index.mjs";
+import { NEUTRAL } from "./fx_engine.mjs";
+import { renderTextToCanvas } from "../framework/text_render.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
+
+// Default style for a fresh text layer. Field names match the shared text panel
+// (js/framework/text_editor.mjs) so setLayer(layer.textState) edits these directly.
+const DEFAULT_TEXT_STATE = {
+  text: "Your text", font: "Roboto", weight: 400, italic: false,
+  fontSize: 96, lineHeight: 1.2, letterSpacing: 0, align: "center",
+  color: "#FFFFFF", bgColor: null,
+};
 
 export class PixaromaEditor {
   constructor(node) {
@@ -56,6 +67,20 @@ export class PixaromaEditor {
   }
 
   setMode(mode) {
+    // Eraser + crop are image-only — never enter them on a text, FX, or
+    // placeholder layer (the panels are dimmed + [E]/[C] are gated, but guard
+    // the entry too; a placeholder's mask would misapply to the real image).
+    if (mode === "eraser" || mode === "crop") {
+      const al = this.getActiveLayer();
+      if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
+        if (this._layout)
+          this._layout.setStatus(
+            (mode === "eraser" ? "Eraser" : "Crop") + " doesn't apply to this layer",
+            "warn",
+          );
+        return;
+      }
+    }
     // Leaving crop mode applies the in-progress crop before anything else.
     if (this.activeMode === "crop" && mode !== "crop") this.exitCropMode();
     this.activeMode = mode;
@@ -199,8 +224,84 @@ export class PixaromaEditor {
     if (changed) {
       this.ui.updateActiveLayerUI();
       this.draw();
-      this.pushHistory();
+      // Text layers: re-bake the bitmap crisp at its new size (fold scale into
+      // font size), matching the canvas handles + sliders. Returns true if it
+      // handled the history commit; otherwise commit normally.
+      if (!this._commitTextScaleFold()) this.pushHistory();
     }
+  }
+
+  // Create a Photoshop-style FX/adjustment layer on top of the stack. It has no
+  // image; it grades every layer beneath it at render time (see render.mjs +
+  // node_composition.py). opacity doubles as the effect Amount.
+  addFxLayer() {
+    const id = "fx_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const layer = {
+      id,
+      name: "Color Grade",
+      isAdjustment: true,
+      adjustments: { ...NEUTRAL },
+      presetId: "Original",
+      visible: true,
+      opacity: 1, // = Amount
+      locked: false,
+    };
+    this.layers.push(layer);
+    this.selectedLayerIds = new Set([id]);
+    this.syncActiveLayerIndex();
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  }
+
+  // Create an editable text layer on top of the stack. Its rendered-text bitmap
+  // lives in layer.img so it reuses the whole image-layer pipeline (move/scale/
+  // rotate/blend/save). textState holds the content + style.
+  async addTextLayer() {
+    const id = "txt_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const layer = {
+      id,
+      name: "Text",
+      isText: true,
+      textState: { ...DEFAULT_TEXT_STATE },
+      img: null,
+      cx: this.canvas.width / 2,
+      cy: this.canvas.height / 2,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+      opacity: 1,
+      visible: true,
+      locked: false,
+      flippedX: false,
+      flippedY: false,
+      blendMode: "Normal",
+      blur: 0,
+      rawB64_internal: null,
+      rawServerPath: null,
+      savedOnServer: false,
+      savedMaskPath_internal: null,
+      cropRect: null,
+    };
+    this.layers.push(layer);
+    this.selectedLayerIds = new Set([id]);
+    this.syncActiveLayerIndex();
+    await this.rebuildTextLayer(layer);
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  }
+
+  // (Re)render a text layer's bitmap from its textState into layer.img and mark
+  // it for re-upload. Keeps cx/cy (center) so the text never jumps when resized.
+  async rebuildTextLayer(layer) {
+    if (!layer || !layer.isText) return;
+    const canvas = await renderTextToCanvas(layer.textState);
+    if (!this.layers.includes(layer)) return; // deleted mid-await
+    layer.img = canvas;
+    layer.rawB64_internal = canvas.toDataURL("image/png");
+    layer.savedOnServer = false;
+    layer.rawServerPath = null;
   }
 
   getCanvasCoordinates(e) {
@@ -247,45 +348,16 @@ export class PixaromaEditor {
   // they restore the originals and pass through - otherwise loadGraphData would
   // stay disabled forever and brick the whole UI until a page refresh.
   _installGraphPatches() {
-    const app = window.app;
-    if (!app || !app.graph) return;
-    // A stale patch from a torn-down editor may still be installed; restore it
-    // before capturing the originals so we never save a no-op as "the original".
-    if (app._pixComposerOrigLoad) {
-      app.loadGraphData = app._pixComposerOrigLoad;
-      if (app.graph && app._pixComposerOrigConfigure)
-        app.graph.configure = app._pixComposerOrigConfigure;
-    }
-    app._pixComposerOrigLoad = app.loadGraphData.bind(app);
-    app._pixComposerOrigConfigure = app.graph.configure.bind(app.graph);
-    const self = this;
-    app.loadGraphData = function (...args) {
-      if (!self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.loadGraphData(...args);
-      }
-      return Promise.resolve();
-    };
-    app.graph.configure = function (...args) {
-      if (!self._overlayAlive()) {
-        self._restoreGraphPatches();
-        return window.app.graph.configure(...args);
-      }
-      return undefined;
-    };
+    // Delegate to the shared, refcount-safe, self-healing guard. It also covers
+    // graph.undo/redo + the Comfy.Undo/Redo command (which this editor's old
+    // bespoke version did not), and unifies the patch with the other editors so
+    // they can never fight over app.loadGraphData. Idempotent: a re-open just
+    // re-registers via a fresh token.
+    if (!this._undoGuardOff)
+      this._undoGuardOff = installGraphUndoGuard(() => this._overlayAlive());
   }
 
-  // Restore the neutered functions. Idempotent; safe from cleanup AND self-heal.
   _restoreGraphPatches() {
-    const app = window.app;
-    if (!app) return;
-    if (app._pixComposerOrigLoad) {
-      app.loadGraphData = app._pixComposerOrigLoad;
-      app._pixComposerOrigLoad = null;
-    }
-    if (app.graph && app._pixComposerOrigConfigure) {
-      app.graph.configure = app._pixComposerOrigConfigure;
-      app._pixComposerOrigConfigure = null;
-    }
+    if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
   }
 }

@@ -1,5 +1,30 @@
 // Rendering, history/undo, restore — mixed into PixaromaEditor.prototype
 import { PixaromaEditor } from "./core.mjs";
+import { applyFx, isNeutral, fxSeed } from "./fx_engine.mjs";
+
+// Clone a layer for history restore. Shallow-copy the layer, but DEEP-copy the
+// mutable sub-objects the panels edit IN PLACE (adjustments / textState /
+// cropRect) so a live edit right after undo/redo can't corrupt the stored
+// snapshot (the snapshots themselves are already deep via captureState).
+function cloneLayerForHistory(l) {
+  const c = { ...l };
+  if (l.adjustments) c.adjustments = { ...l.adjustments };
+  if (l.textState) c.textState = { ...l.textState };
+  if (l.cropRect) c.cropRect = { ...l.cropRect };
+  // Deep-copy the eraser mask canvas too: a shallow {...l} shares the canvas
+  // with the history snapshot, so strokes drawn after an undo/redo would bleed
+  // into the stored snapshot and corrupt history.
+  if (l.eraserMaskCanvas_internal) {
+    const cvs = document.createElement("canvas");
+    cvs.width = l.eraserMaskCanvas_internal.width;
+    cvs.height = l.eraserMaskCanvas_internal.height;
+    const cctx = cvs.getContext("2d");
+    cctx.drawImage(l.eraserMaskCanvas_internal, 0, 0);
+    c.eraserMaskCanvas_internal = cvs;
+    c.eraserMaskCtx_internal = cctx;
+  }
+  return c;
+}
 
 PixaromaEditor.prototype.pushHistory = function () {
   if (this.isRestoringHistory) return;
@@ -28,7 +53,9 @@ PixaromaEditor.prototype.undo = function () {
   }
   if (this.historyIndex > 0) {
     this.historyIndex--;
-    this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
+    this.layers = this.history[this.historyIndex].map((l) =>
+      cloneLayerForHistory(l),
+    );
     this.verifySelection();
     this.isRestoringHistory = true;
     this.ui.updateActiveLayerUI();
@@ -47,7 +74,9 @@ PixaromaEditor.prototype.redo = function () {
   }
   if (this.historyIndex < this.history.length - 1) {
     this.historyIndex++;
-    this.layers = this.history[this.historyIndex].map((l) => ({ ...l }));
+    this.layers = this.history[this.historyIndex].map((l) =>
+      cloneLayerForHistory(l),
+    );
     this.verifySelection();
     this.isRestoringHistory = true;
     this.ui.updateActiveLayerUI();
@@ -166,6 +195,19 @@ PixaromaEditor.prototype._drawImpl = function (cleanRender) {
 
   this.layers.forEach((layer) => {
     if (!layer.visible) return;
+    // FX adjustment layer: grade everything composited so far (the pixels
+    // already on the canvas = every layer below this one), then move on. Runs
+    // for BOTH interactive and clean/save renders so the grade is baked into
+    // the saved composite PNG (which keeps the Python fast path correct).
+    if (layer.isAdjustment) {
+      const amount01 = layer.opacity ?? 1;
+      if (isNeutral(layer.adjustments, amount01)) return;
+      const W = this.canvas.width, H = this.canvas.height;
+      const id = this.ctx.getImageData(0, 0, W, H);
+      applyFx(id.data, W, H, layer.adjustments, amount01, fxSeed(layer.id));
+      this.ctx.putImageData(id, 0, 0);
+      return;
+    }
     // Defensive: layer.img can briefly be null during async upload / restore.
     // _ensureSelPad already skips this case; mirror that here.
     if (!layer.img) return;
@@ -380,6 +422,23 @@ PixaromaEditor.prototype.attemptRestore = async function () {
     this.layers = new Array(layersToLoad.length);
 
     layersToLoad.forEach((mLayer, i) => {
+      // FX adjustment layer: no image — build synchronously. This single branch
+      // covers all the restore paths (it never reaches img.onload/onerror).
+      if (mLayer.isAdjustment) {
+        this.layers[i] = {
+          id: mLayer.id,
+          name: mLayer.name || "Color Grade",
+          isAdjustment: true,
+          adjustments: { ...(mLayer.adjustments || {}) },
+          presetId: mLayer.presetId || "Custom",
+          visible: mLayer.visible !== false,
+          opacity: mLayer.opacity ?? 1,
+          locked: !!mLayer.locked,
+        };
+        loadedCount++;
+        if (loadedCount === layersToLoad.length) this.finishRestore();
+        return;
+      }
       // Placeholder layers don't need image loading — build canvas immediately
       if (mLayer.isPlaceholder) {
         const color = mLayer.placeholderColor || "#808080";
@@ -392,6 +451,7 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           placeholderColor: color,
           inputIndex: mLayer.inputIndex || 1,
           fillMode: mLayer.fillMode || "cover",
+          phRatio: mLayer.phRatio,
           removeBgOnExec: !!mLayer.removeBgOnExec,
           bgRemovalQuality: mLayer.bgRemovalQuality,
           img: this._makePlaceholderImage(w, h, color, mLayer.name, (bitmapImg) => {
@@ -433,6 +493,11 @@ PixaromaEditor.prototype.attemptRestore = async function () {
           id: mLayer.id,
           name: mLayer.name,
           img: img,
+          // Text layer: its saved src IS the baked text bitmap, so it loads
+          // through this normal image path; carry the text-ness + content so it
+          // stays a re-editable text layer (panel swap, "T", crisp resize).
+          isText: !!mLayer.isText,
+          textState: mLayer.textState ? { ...mLayer.textState } : undefined,
           cx: mLayer.cx,
           cy: mLayer.cy,
           scaleX: mLayer.scaleX,
@@ -477,6 +542,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             id: mLayer.id,
             name: mLayer.name + " (Missing)",
             img: placeholder,
+            isText: !!mLayer.isText,
+            textState: mLayer.textState ? { ...mLayer.textState } : undefined,
             cx: mLayer.cx,
             cy: mLayer.cy,
             scaleX: mLayer.scaleX,
@@ -489,6 +556,8 @@ PixaromaEditor.prototype.attemptRestore = async function () {
             flippedY: mLayer.flippedY,
             blendMode: mLayer.blendMode || "Normal",
             blur: mLayer.blur || 0,
+            removeBgOnExec: !!mLayer.removeBgOnExec,
+            bgRemovalQuality: mLayer.bgRemovalQuality,
             rawB64_internal: null,
             rawServerPath: mLayer.src,
             savedOnServer: true,

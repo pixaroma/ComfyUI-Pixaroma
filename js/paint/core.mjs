@@ -10,6 +10,7 @@ import {
   rgbToHsl,
   hslToRgb,
 } from "./engine.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 import { PaintAPI } from "./api.mjs";
 import {
   createEditorLayout,
@@ -233,6 +234,10 @@ export class PaintStudio {
     this._layout.mount();
     this._bindEvents();
 
+    // Block ComfyUI's Ctrl+Z from tearing down the workflow under the open
+    // editor (Vue Compat #6). Self-healing + refcount-safe shared guard.
+    this._undoGuardOff = installGraphUndoGuard(() => !!this.el.overlay?.isConnected);
+
     let data = {};
     try {
       data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {};
@@ -283,9 +288,10 @@ export class PaintStudio {
   }
 
   _close() {
+    // unmount() fires layout.onCleanup, which uninstalls the undo guard,
+    // unbinds events, and calls onClose — so every close path runs the same
+    // teardown exactly once (guards inside onCleanup make it idempotent).
     if (this._layout) this._layout.unmount();
-    this._unbindEvents();
-    if (this.onClose) this.onClose();
   }
 
   // ─── Build Modal ──────────────────────────────────────────
@@ -396,7 +402,14 @@ export class PaintStudio {
       this._diskSavePending = true;
       this._save();
     };
-    layout.onCleanup = () => this._unbindEvents();
+    layout.onCleanup = () => {
+      // Fires on EVERY close path (✕ button, Save auto-close, node removal):
+      // uninstall the undo guard, unbind events, and run onClose so the node's
+      // editor reference is cleared each time (not just on the ✕ button).
+      if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
+      this._unbindEvents();
+      if (this.onClose) this.onClose();
+    };
     this.el.overlay = layout.overlay;
     this.el.undoBtn = layout.undoBtn;
     this.el.redoBtn = layout.redoBtn;

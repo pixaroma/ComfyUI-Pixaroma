@@ -97,7 +97,7 @@ export class TextOverlayEditor {
       showTopOptionsBar: true,
       helpContent: HELP_HTML,
       onSave: () => this.save(),
-      onClose: () => this.close(),
+      onClose: () => this.cancelAndRestore(),
       onUndo: () => this.undo(),
       onRedo: () => this.redo(),
       onZoomIn: () => this.zoomBy(1.25),
@@ -288,15 +288,25 @@ export class TextOverlayEditor {
     this.layout.setSaved(true);
   }
 
-  // Cancel restore — called from the red X Close button (onClose → close()
-  // path). We restore state from the snapshot taken on open.
+  // Cancel — wired to the red ✕ Close button (onClose). Reverts every edit made
+  // this session by restoring the snapshot taken on open, IN PLACE so the shared
+  // state object (node.properties.textOverlayState, also held by the body panel
+  // and read by the graphToPrompt hook) keeps the same reference. Then closes.
+  // (Save auto-closes the editor, so there's no "cancel after save" path.)
   cancelAndRestore() {
     try {
       const snap = JSON.parse(this._cancelSnapshot || "{}");
-      this.state = snap;
+      const layer = this.state;
+      if (layer && typeof layer === "object") {
+        for (const k of Object.keys(layer)) delete layer[k];
+        Object.assign(layer, snap);
+      } else {
+        this.state = snap;
+      }
       if (this.node._textOverlayBodyPanel) {
         this.node._textOverlayBodyPanel.setLayer(this.state);
       }
+      this.node.setDirtyCanvas?.(true, true);
     } catch {}
     this.close();
   }

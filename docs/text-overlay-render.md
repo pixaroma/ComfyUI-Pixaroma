@@ -18,7 +18,13 @@ Given `(font_id, weight, italic)`:
 5. font_id not in catalog → fall back to `Inter`
 6. Even Inter missing → hard error
 
-Synthesized italic skews canvas/PIL transform by 12° horizontally.
+Synthesized italic skews canvas/PIL transform by 12° horizontally, applied to
+ONLY the text (the background pill stays an axis-aligned rectangle). The skew
+shifts the bottom of glyphs LEFT by `tan(12°)*bbox_h`; the bitmap is widened by
+that overhang (`slant = ceil(tan(12°)*bbox_h)`) and the text is shifted RIGHT by
+`slant`, so the lean is never clipped at the left edge (both engines). Python
+draws the text on its own layer, skews it, then composites over the pill; canvas
+draws the pill un-skewed then the text under a skew transform.
 
 ## 1b. Variable Font Handling
 
@@ -45,10 +51,10 @@ Native canvas does NOT honor CSS letter-spacing. We add it manually by drawing e
 
 When `layer.bgColor` is a hex string (not null / not empty):
 - Filled rounded rect at `(0, 0)` to `(bbox_width, bbox_height)`
-- Radius: `min(BG_RADIUS, bbox_width/2, bbox_height/2)` where `BG_RADIUS = 6`
+- Radius: `min(BG_RADIUS, bbox_width/2, bbox_height/2)` where `BG_RADIUS = 0` (sharp rectangle, per user preference)
 - Color: `bgColor` opaque (no alpha — pill is always full alpha; the layer's `opacity` applies to the whole composition including the pill)
 
-Hardcoded defaults: `BG_PAD_X = 16`, `BG_PAD_Y = 10`, `BG_RADIUS = 6`. No user controls for these in v2.
+Hardcoded defaults: `BG_PAD_X = 16`, `BG_PAD_Y = 10`, `BG_RADIUS = 0`. No user controls for these in v2.
 
 ## 4. Draw Order
 

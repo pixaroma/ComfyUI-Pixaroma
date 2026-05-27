@@ -71,15 +71,21 @@ export function createNodePreview(titleText, subtitleText, instructionText) {
   // browsers ComfyUI runs in.
   if (typeof ResizeObserver !== "undefined") {
     const ro = new ResizeObserver((entries) => {
+      // Self-disconnect once the box leaves the DOM (node removed/duplicated),
+      // otherwise the observer + its element reference leak for the page's life
+      // across every add/delete cycle (shared by Paint/Crop/Composer/3D).
+      if (!previewBox.isConnected) { ro.disconnect(); return; }
       for (const entry of entries) {
         const w = entry.contentRect.width;
-        if (w > 0 && previewBox.isConnected) {
+        if (w > 0) {
           previewBox.style.height = w + "px";
           previewBox.style.paddingBottom = "0";
         }
       }
     });
     ro.observe(previewBox);
+    // Expose the observer so a consumer can disconnect it explicitly in onRemoved.
+    return { container, previewBox, preview, dummy, infoLabel, resizeObserver: ro };
   }
 
   return { container, previewBox, preview, dummy, infoLabel };
@@ -111,8 +117,14 @@ export function showNodePreview(parts, src, dimText, node) {
 export function restoreNodePreview(parts, json, node) {
   try {
     const meta = JSON.parse(json);
-    if (!meta.composite_path) return;
-    const fn = meta.composite_path.split(/[\\/]/).pop();
+    // Prefer the saved composite; fall back to the raw source (e.g. a Crop node
+    // where the user pasted/dropped an image but never opened the editor — it
+    // has a src_path but no composite_path), otherwise the mini-preview is blank
+    // after a workflow tab switch. Composer/Paint/3D always have composite_path,
+    // so this fallback never changes their behavior.
+    const rel = meta.composite_path || meta.src_path;
+    if (!rel) return;
+    const fn = rel.split(/[\\/]/).pop();
     const url = `/view?filename=${encodeURIComponent(fn)}&type=input&subfolder=pixaroma&t=${Date.now()}`;
     const dimText = `${meta.doc_w || "?"}\u00d7${meta.doc_h || "?"}`;
     showNodePreview(parts, url, dimText, node);

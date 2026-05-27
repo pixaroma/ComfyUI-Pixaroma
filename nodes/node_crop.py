@@ -232,7 +232,11 @@ class PixaromaCrop:
         try:
             img = Image.open(full_path).convert("RGB")
             arr = np.array(img).astype(np.float32) / 255.0
-            return (torch.from_numpy(arr)[None,], doc_w, doc_h)
+            t = torch.from_numpy(arr)[None,]
+            # Report the ACTUAL loaded dimensions, not the stale doc_w/doc_h from
+            # meta — they can disagree if the composite was modified externally,
+            # and downstream nodes (EmptyLatentImage, etc.) trust these outputs.
+            return (t, int(t.shape[2]), int(t.shape[1]))
         except Exception as e:
             print(f"[PixaromaCrop] Load error: {e}")
             return (empty_image, 1024, 1024)

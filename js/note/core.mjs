@@ -4,6 +4,7 @@ import { injectCSS } from "./css.mjs";
 import { sanitize } from "./sanitize.mjs";
 import { buildCodeViewDOM } from "./codeview.mjs";
 import { renderContent } from "./render.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 export class NoteEditor {
   constructor(node) {
@@ -447,76 +448,13 @@ export class NoteEditor {
     document.addEventListener("drop", this._dropBlock, true);
     window.addEventListener("dragover", this._dragOverBlock, true);
     document.addEventListener("dragover", this._dragOverBlock, true);
-    // Belt-and-suspenders: neuter the graph's undo/redo and the Vue
-    // frontend's Comfy.Undo/Comfy.Redo commands while the editor is open
-    // so that even if a ComfyUI shortcut listener slips past our capture
-    // blocker, the actual undo routines are no-ops.
-    if (app.graph) {
-      this._savedGraphUndo = app.graph.undo;
-      this._savedGraphRedo = app.graph.redo;
-      app.graph.undo = function () {};
-      app.graph.redo = function () {};
-    }
-    // The real undo path (seen in the stack trace) is:
-    //   changeTracker.undo → app.loadGraphData → graph.configure → graph.clear
-    // The wrappers above don't cover this path — `changeTracker.undo` lives
-    // in the Vue workflow store, out of reach. Block it by patching the
-    // single bottleneck every path goes through: `app.loadGraphData`. While
-    // the editor is open, swallow the call so the graph state can't be
-    // reloaded (undo/redo, template load, etc. all pause).
-    // Vue Compat #2/#6 SELF-HEAL: if the overlay is torn down WITHOUT our
-    // _cleanup running (e.g. the workflow tab is closed while the editor is
-    // open), these patches would otherwise stay installed forever and the
-    // user could no longer open OR create any workflow until a page refresh.
-    // So each wrapper checks whether our overlay (this._el) is still in the
-    // DOM; if it's gone, it restores the originals and passes the call
-    // through. Ctrl+Z while the editor is genuinely open is still blocked.
-    const ed = this;
-    if (typeof app.loadGraphData === "function") {
-      this._savedLoadGraphData = app.loadGraphData.bind(app);
-      app.loadGraphData = function (...args) {
-        if (!ed._overlayAlive()) {
-          ed._restoreGraphPatches();
-          return window.app.loadGraphData(...args);
-        }
-        console.warn("[pix-note] loadGraphData blocked while note editor is open");
-        return Promise.resolve();
-      };
-    }
-    if (app.graph && typeof app.graph.configure === "function") {
-      this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-      app.graph.configure = function (...args) {
-        if (!ed._overlayAlive()) {
-          ed._restoreGraphPatches();
-          return window.app.graph.configure(...args);
-        }
-        console.warn("[pix-note] graph.configure blocked while note editor is open");
-      };
-    }
-    // Try to intercept the Vue frontend's command dispatch for Undo/Redo.
-    // The exact API differs between ComfyUI versions; wrap whatever we can
-    // find so Comfy.Undo and Comfy.Redo become no-ops while editor is open.
-    try {
-      const cmd = app?.extensionManager?.command;
-      const execPath = cmd?.execute ? cmd : (cmd?.commandStore || cmd);
-      if (execPath && typeof execPath.execute === "function") {
-        this._savedCmdExecute = execPath.execute.bind(execPath);
-        const orig = this._savedCmdExecute;
-        const ed = this;
-        execPath.execute = (id, ...rest) => {
-          // Self-heal (Vue Compat #2): if the overlay was torn down without
-          // _cleanup running, restore the originals and pass through - so
-          // Comfy.Undo/Redo aren't blocked forever after a tab-close.
-          if (!ed._overlayAlive()) {
-            ed._restoreGraphPatches();
-            return execPath.execute(id, ...rest);
-          }
-          if (id === "Comfy.Undo" || id === "Comfy.Redo") return;
-          return orig(id, ...rest);
-        };
-        this._cmdExecPath = execPath;
-      }
-    } catch (e) { /* Vue frontend API surface may change — non-fatal. */ }
+    // Block ComfyUI's Ctrl+Z from tearing down the workflow under the open
+    // editor (Vue Compat #6) via the shared, refcount-safe, self-healing guard.
+    // Same coverage as before — loadGraphData / configure / graph.undo/redo +
+    // the Comfy.Undo/Redo command-store path — but the refcount fixes the prior
+    // two-editor FIFO brick. The onRemoved net + MutationObserver below stay as
+    // extra teardown safety nets.
+    this._undoGuardOff = installGraphUndoGuard(() => this._overlayAlive());
     // Node-resurrection safety net: if Ctrl+Z still slips through and the
     // node is removed from the graph while the editor is open, LiteGraph's
     // onRemoved fires. Close the editor gracefully so the user isn't stuck
@@ -606,28 +544,7 @@ export class NoteEditor {
   // call from BOTH _cleanup AND the self-heal path inside the patched
   // loadGraphData/configure (so the editor can't permanently brick the UI).
   _restoreGraphPatches() {
-    const app = window.app;
-    if (this._savedGraphUndo !== undefined) {
-      if (app.graph) {
-        app.graph.undo = this._savedGraphUndo;
-        app.graph.redo = this._savedGraphRedo;
-      }
-      this._savedGraphUndo = undefined;
-      this._savedGraphRedo = undefined;
-    }
-    if (this._savedLoadGraphData) {
-      app.loadGraphData = this._savedLoadGraphData;
-      this._savedLoadGraphData = null;
-    }
-    if (this._savedGraphConfigure) {
-      if (app.graph) app.graph.configure = this._savedGraphConfigure;
-      this._savedGraphConfigure = null;
-    }
-    if (this._cmdExecPath && this._savedCmdExecute) {
-      this._cmdExecPath.execute = this._savedCmdExecute;
-      this._cmdExecPath = null;
-      this._savedCmdExecute = null;
-    }
+    if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
   }
 
   _cleanup() {

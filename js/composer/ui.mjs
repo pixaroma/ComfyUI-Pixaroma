@@ -12,12 +12,14 @@ import {
   createTransformPanel,
   createSelectInput,
   createRow,
+  createTextEditorPanel,
 } from "../framework/index.mjs";
 // PixaromaAPI is used below to query rembg install status when the
 // AI Background Removal panel builds. Without this import the whole
 // right sidebar fails to build and the editor won't open.
 import { PixaromaAPI } from "./api.mjs";
 import { fetchBgRemovalInfo, buildBgRemovalDropdown } from "../framework/bg_removal_dropdown.mjs";
+import { PRESETS, NEUTRAL } from "./fx_engine.mjs";
 
 // Legacy values that predate the multi-model dropdown — remapped to
 // whatever the modern dropdown calls the same quality tier, so an
@@ -46,6 +48,24 @@ function _applyBgQualityToSelect(selectEl, stored) {
   if (hasOption) selectEl.value = v;
 }
 
+// Return the name of the preset whose values EXACTLY match the given
+// adjustments (every field, merged over NEUTRAL), else null. Drives the
+// orange chip highlight by VALUE: editing any slider away from a preset's
+// numbers deselects it; returning to those exact numbers re-selects it.
+// "Original" (all zeros) matches a fully-neutral layer.
+function matchPresetName(adj) {
+  if (!adj) return null;
+  for (const name in PRESETS) {
+    const merged = { ...NEUTRAL, ...PRESETS[name] };
+    let eq = true;
+    for (const k in NEUTRAL) {
+      if ((adj[k] ?? 0) !== merged[k]) { eq = false; break; }
+    }
+    if (eq) return name;
+  }
+  return null;
+}
+
 // ─── Editor-specific CSS (layer items, eraser, etc.) ────────
 const COMPOSER_STYLE_ID = "pixaroma-composer-styles";
 function injectComposerStyles() {
@@ -62,6 +82,20 @@ function injectComposerStyles() {
         .pix-view-btn:hover { background: #3a3d40; color: #f66744; }
         .pix-view-btn:disabled { opacity: 0.3 !important; cursor: not-allowed; }
         .pxf-workspace.panning, .pxf-workspace.panning * { cursor: grabbing !important; }
+        /* FX adjustment layer panel */
+        .pix-fx-addbtn { border-color:#f66744 !important; color:#f66744 !important; }
+        /* Preset chips reuse the shared .pxf-ratio-btn look (gray base, #444 hover,
+           orange .active) so selection/hover/click match the ratio grid + every
+           other pxf-* control. Only spacing + long-name clipping is overridden. */
+        .pix-fx-presets { margin-bottom:10px; }
+        .pix-fx-presets .pxf-ratio-btn { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-left:2px; padding-right:2px; }
+        .pix-fx-group { display:flex; justify-content:space-between; align-items:center; font-size:10px; text-transform:uppercase; letter-spacing:0.05em; color:#888; margin:10px 0 5px; }
+        .pix-fx-reset { color:#f66744; cursor:pointer; font-size:10px; text-transform:none; }
+        .pix-fx-reset:hover { text-decoration:underline; }
+        .pix-fx-row { display:flex; align-items:center; gap:7px; margin-bottom:5px; }
+        .pix-fx-lab { width:78px; font-size:11px; color:#bbb; text-transform:capitalize; }
+        .pix-fx-slider { flex:1; accent-color:#f66744; }
+        .pix-fx-val { width:32px; text-align:right; font-size:10px; color:#f66744; font-weight:700; }
     `;
   document.head.appendChild(s);
 }
@@ -84,6 +118,17 @@ export class PixaromaUI {
 
   updateActiveLayerUI() {
     const core = this.core;
+
+    // FX adjustment layer selected? Swap the left Transform Properties panel
+    // for the Adjustments panel (and vice-versa).
+    const _activeLayer = core.getActiveLayer();
+    const _isFx = !!(_activeLayer && _activeLayer.isAdjustment);
+    const _isText = !!(_activeLayer && _activeLayer.isText);
+    if (this._fxPanel) this._fxPanel.root.style.display = _isFx ? "" : "none";
+    if (this._textPanel) this._textPanel.root.style.display = _isText ? "" : "none";
+    // FX has no geometry → hide Transform. Text HAS geometry → keep Transform
+    // (it shows alongside the Text panel; only image-only tools are hidden).
+    if (core.toolsPanel) core.toolsPanel.style.display = _isFx ? "none" : "";
 
     // Context-aware tooltips based on current state
     if (core._layout && core.activeMode !== "eraser") {
@@ -121,6 +166,51 @@ export class PixaromaUI {
       });
       if (core._layout?.titlebarCenter)
         core._layout.titlebarCenter.style.opacity = "0.3";
+    }
+
+    // FX layer: image-only panels don't apply. Dim them, exit eraser/crop, sync
+    // the Adjustments sliders + the Amount (layer-panel opacity), then bail.
+    if (_isFx) {
+      if (core.activeMode === "eraser" || core.activeMode === "crop") core.setMode(null);
+      for (const p of [core.eraserPanel, core.cropPanel]) {
+        if (p) { p.style.opacity = "0.3"; p.style.pointerEvents = "none"; }
+      }
+      if (core.removeBgBtn) { core.removeBgBtn.style.opacity = "0.3"; core.removeBgBtn.style.pointerEvents = "none"; }
+      if (core._autoBgRow) { core._autoBgRow.style.opacity = "0.3"; core._autoBgRow.style.pointerEvents = "none"; }
+      if (core._convertPhBtn) { core._convertPhBtn.style.opacity = "0.3"; core._convertPhBtn.style.pointerEvents = "none"; }
+      if (core._layerPanel && core._layerPanel.setOpacity)
+        core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      this.refreshFxControls(_activeLayer);
+      this.refreshLayersPanel();
+      return;
+    }
+
+    // Text layer: KEEP Transform Properties (text has real geometry) + blend +
+    // opacity, show the Text panel, and dim ONLY the image-only tools (eraser /
+    // crop / AI background removal / convert-to-placeholder).
+    if (_isText) {
+      if (core.activeMode === "eraser" || core.activeMode === "crop") core.setMode(null);
+      if (core.toolsPanel) { core.toolsPanel.style.opacity = "1"; core.toolsPanel.style.pointerEvents = "auto"; }
+      if (core.btnDelLayer) core.btnDelLayer.style.opacity = "1";
+      if (core.btnDupLayer) core.btnDupLayer.style.opacity = "1";
+      for (const p of [core.eraserPanel, core.cropPanel]) {
+        if (p) { p.style.opacity = "0.3"; p.style.pointerEvents = "none"; }
+      }
+      if (core.removeBgBtn) { core.removeBgBtn.style.opacity = "0.3"; core.removeBgBtn.style.pointerEvents = "none"; }
+      if (core._autoBgRow) { core._autoBgRow.style.opacity = "0.3"; core._autoBgRow.style.pointerEvents = "none"; }
+      if (core._convertPhBtn) { core._convertPhBtn.style.opacity = "0.3"; core._convertPhBtn.style.pointerEvents = "none"; }
+      // Sync blend + opacity + transform sliders to the text layer.
+      if (core._layerPanel && core._layerPanel.setBlend) core._layerPanel.setBlend(_activeLayer.blendMode || "Normal");
+      if (core._layerPanel && core._layerPanel.setOpacity) core._layerPanel.setOpacity(Math.round((_activeLayer.opacity ?? 1) * 100));
+      if (core.opacitySlider) { core.opacitySlider.value = Math.round(_activeLayer.opacity * 100); core.opacityNum.value = Math.round(_activeLayer.opacity * 100); }
+      if (core.blurSlider) { core.blurSlider.value = _activeLayer.blur || 0; core.blurNum.value = _activeLayer.blur || 0; }
+      if (core.rotateSlider) { core.rotateSlider.value = _activeLayer.rotation; core.rotateNum.value = _activeLayer.rotation; }
+      if (core.scaleSlider) { core.scaleSlider.value = Math.round(_activeLayer.scaleX * 100); core.scaleNum.value = Math.round(_activeLayer.scaleX * 100); }
+      if (core.stretchHSlider) { core.stretchHSlider.value = Math.round(_activeLayer.scaleX * 100); core.stretchHNum.value = Math.round(_activeLayer.scaleX * 100); }
+      if (core.stretchVSlider) { core.stretchVSlider.value = Math.round(_activeLayer.scaleY * 100); core.stretchVNum.value = Math.round(_activeLayer.scaleY * 100); }
+      if (this._textPanel) this._textPanel.panel.setLayer(_activeLayer.textState);
+      this.refreshLayersPanel();
+      return;
     }
 
     if (core.selectedLayerIds.size === 0) {
@@ -288,7 +378,49 @@ export class PixaromaUI {
       const tCvs = document.createElement("canvas");
       tCvs.width = 26;
       tCvs.height = 26;
-      if (layer.img) {
+      if (layer.isAdjustment) {
+        // FX layer has no image — paint the fx.svg icon (tinted BRAND) on a
+        // dark tile instead of leaving a transparent checkerboard.
+        const tctx = tCvs.getContext("2d");
+        // Fill the whole 28px wrapper (canvas is 26px + inline baseline gap left
+        // a checkerboard strip) so no transparency grid shows behind the icon.
+        tCvs.style.display = "block";
+        tCvs.style.width = "100%";
+        tCvs.style.height = "100%";
+        tctx.fillStyle = "#2a2a2a";
+        tctx.fillRect(0, 0, 26, 26);
+        const icon = this._getFxThumbImg();
+        if (icon.complete && icon.naturalWidth) {
+          const sc = document.createElement("canvas");
+          sc.width = 26; sc.height = 26;
+          const sctx = sc.getContext("2d");
+          sctx.drawImage(icon, 4, 4, 18, 18);
+          sctx.globalCompositeOperation = "source-in";
+          sctx.fillStyle = "#f66744";
+          sctx.fillRect(0, 0, 26, 26);
+          tctx.drawImage(sc, 0, 0);
+        } else {
+          tctx.fillStyle = "#f66744";
+          tctx.font = "bold 16px Arial";
+          tctx.textAlign = "center";
+          tctx.textBaseline = "middle";
+          tctx.fillText("✦", 13, 13);
+        }
+      } else if (layer.isText) {
+        // Text layer — paint a bold "T" glyph (tinted BRAND) on a dark tile,
+        // rather than a tiny preview of the text bitmap.
+        const tctx = tCvs.getContext("2d");
+        tCvs.style.display = "block";
+        tCvs.style.width = "100%";
+        tCvs.style.height = "100%";
+        tctx.fillStyle = "#2a2a2a";
+        tctx.fillRect(0, 0, 26, 26);
+        tctx.fillStyle = "#f66744";
+        tctx.font = "bold 18px Arial";
+        tctx.textAlign = "center";
+        tctx.textBaseline = "middle";
+        tctx.fillText("T", 13, 14);
+      } else if (layer.img) {
         this._thumbCtx.clearRect(0, 0, 26, 26);
         const iw = layer.img.naturalWidth || layer.img.width;
         const ih = layer.img.naturalHeight || layer.img.height;
@@ -361,6 +493,156 @@ export class PixaromaUI {
     core.syncActiveLayerIndex();
     this.updateActiveLayerUI();
     core.draw();
+  }
+
+  // Lazily load the FX layer thumbnail icon (assets/icons/layers/fx.svg).
+  // Re-renders the layer panel once it loads so the thumbnail appears.
+  _getFxThumbImg() {
+    if (!this._fxThumbImg) {
+      const img = new Image();
+      img.onload = () => this.refreshLayersPanel();
+      img.onerror = () => {};
+      img.src = "/pixaroma/assets/icons/layers/fx.svg";
+      this._fxThumbImg = img;
+    }
+    return this._fxThumbImg;
+  }
+
+  // Build the FX Adjustments panel (preset strip + grouped sliders). Stored on
+  // this._fxPanel = { root, sliders }. Shown/hidden by updateActiveLayerUI.
+  _buildFxPanel() {
+    const core = this.core;
+    const FX_GROUPS = [
+      ["Tone", ["brightness", "contrast", "exposure", "highlights", "shadows", "whites", "blacks"]],
+      ["Color", ["saturation", "vibrance", "temperature", "tint", "hue"]],
+      ["Detail", ["sharpness", "clarity", "grain"]],
+      ["Effects", ["vignette", "fade"]],
+    ];
+    // Default range is [-100, 100]; these keys differ.
+    const FX_RANGES = { hue: [-180, 180], sharpness: [0, 100], grain: [0, 100], vignette: [0, 100], fade: [0, 100] };
+
+    const panel = createPanel("Adjustments", { collapsible: true, collapsed: false });
+    const root = panel.el;
+
+    const strip = document.createElement("div");
+    strip.className = "pxf-ratio-grid pix-fx-presets";
+    const presetChips = new Map();
+    for (const name of Object.keys(PRESETS)) {
+      const chip = document.createElement("button");
+      chip.className = "pxf-ratio-btn";
+      chip.textContent = name;
+      chip.title = `Apply the ${name} look`;
+      chip.onclick = () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isAdjustment) return;
+        ly.adjustments = { ...NEUTRAL, ...PRESETS[name] };
+        ly.presetId = name;
+        this.refreshFxControls(ly);
+        core.draw();
+        core.pushHistory();
+      };
+      presetChips.set(name, chip);
+      strip.appendChild(chip);
+    }
+    this._presetChips = presetChips;
+    panel.content.appendChild(strip);
+
+    const sliders = {};
+    for (const [group, keys] of FX_GROUPS) {
+      const gh = document.createElement("div");
+      gh.className = "pix-fx-group";
+      const gname = document.createElement("span");
+      gname.textContent = group;
+      const greset = document.createElement("span");
+      greset.className = "pix-fx-reset";
+      greset.textContent = "reset";
+      greset.title = `Reset ${group} to default`;
+      greset.onclick = () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isAdjustment) return;
+        for (const k of keys) ly.adjustments[k] = 0;
+        ly.presetId = "Custom";
+        this.refreshFxControls(ly);
+        core.draw();
+        core.pushHistory();
+      };
+      gh.append(gname, greset);
+      panel.content.appendChild(gh);
+
+      for (const key of keys) {
+        const [min, max] = FX_RANGES[key] || [-100, 100];
+        const label = key.charAt(0).toUpperCase() + key.slice(1);
+        // Use the shared slider component (slider + editable number box) so FX
+        // controls match the Transform panel exactly.
+        const r = createSliderRow(label, min, max, 0, (v) => {
+          const ly = core.getActiveLayer();
+          if (!ly || !ly.isAdjustment) return;
+          ly.adjustments[key] = Math.round(v);
+          ly.presetId = "Custom";
+          this.refreshPresetSelection(ly);
+          core.draw();
+        }, { step: 1 });
+        // pushHistory on commit (release / number-box change), not every tick.
+        r.slider.addEventListener("change", () => core.pushHistory());
+        r.numInput.addEventListener("change", () => core.pushHistory());
+        r.slider.addEventListener("dblclick", () => {
+          r.setValue(0);
+          const ly = core.getActiveLayer();
+          if (ly && ly.isAdjustment) {
+            ly.adjustments[key] = 0;
+            ly.presetId = "Custom";
+            this.refreshPresetSelection(ly);
+            core.draw();
+            core.pushHistory();
+          }
+        });
+        panel.content.appendChild(r.el);
+        sliders[key] = r;
+      }
+    }
+    this._fxPanel = { root, sliders };
+  }
+
+  // Push an FX layer's adjustment values into the sliders.
+  refreshFxControls(ly) {
+    if (!this._fxPanel || !ly || !ly.adjustments) return;
+    for (const key in this._fxPanel.sliders) {
+      const v = ly.adjustments[key] ?? 0;
+      this._fxPanel.sliders[key].setValue(v);
+    }
+    this.refreshPresetSelection(ly);
+  }
+
+  // Light up the chip whose values match the layer (orange .active), clear
+  // the rest. Value-based, so it tracks slider edits live. Safe to call any time.
+  refreshPresetSelection(ly) {
+    if (!this._presetChips) return;
+    const match = (ly && ly.isAdjustment) ? matchPresetName(ly.adjustments) : null;
+    for (const [name, chip] of this._presetChips) {
+      chip.classList.toggle("active", name === match);
+    }
+  }
+
+  // Build the text properties panel (composerMode = no opacity/rotate/x/y rows).
+  // Shown/hidden by updateActiveLayerUI. Edits mutate the active layer's
+  // textState; on change we re-render the bitmap, redraw, and (debounced) push
+  // history so typing isn't one undo step per keystroke.
+  _buildTextPanel() {
+    const core = this.core;
+    const panel = createPanel("Text", { collapsible: true, collapsed: false });
+    let histTimer = null;
+    const tp = createTextEditorPanel({
+      mount: panel.content,
+      composerMode: true,
+      onChange: () => {
+        const ly = core.getActiveLayer();
+        if (!ly || !ly.isText) return;
+        core.rebuildTextLayer(ly).then(() => core.draw());
+        clearTimeout(histTimer);
+        histTimer = setTimeout(() => core.pushHistory(), 400);
+      },
+    });
+    this._textPanel = { root: panel.el, panel: tp };
   }
 
   build() {
@@ -629,6 +911,19 @@ export class PixaromaUI {
     core._convertPhBtn = convertPhBtn;
     imagesPanel.content.appendChild(convertPhBtn);
 
+    const addFxBtn = createButton("Add FX Layer", { variant: "full" });
+    addFxBtn.title =
+      "Add a color-grade / FX layer that adjusts every layer below it";
+    addFxBtn.style.marginTop = "4px";
+    addFxBtn.onclick = () => core.addFxLayer();
+    imagesPanel.content.appendChild(addFxBtn);
+
+    const addTextBtn = createButton("Add Text Layer", { variant: "full" });
+    addTextBtn.title = "Add an editable text layer";
+    addTextBtn.style.marginTop = "4px";
+    addTextBtn.onclick = () => core.addTextLayer();
+    imagesPanel.content.appendChild(addTextBtn);
+
     layout.leftSidebar.appendChild(imagesPanel.el);
 
     // --- BG Color + Clear/Reset in Canvas Settings ---
@@ -835,6 +1130,18 @@ export class PixaromaUI {
     core.blurNum = tp.blurNum;
 
     layout.leftSidebar.appendChild(core.toolsPanel);
+
+    // FX Adjustments panel — occupies the Transform Properties slot when an FX
+    // layer is selected (updateActiveLayerUI toggles which of the two shows).
+    this._buildFxPanel();
+    layout.leftSidebar.appendChild(this._fxPanel.root);
+    this._fxPanel.root.style.display = "none";
+
+    // Text properties panel — occupies the Transform Properties slot when a
+    // text layer is selected (updateActiveLayerUI toggles which one shows).
+    this._buildTextPanel();
+    layout.leftSidebar.appendChild(this._textPanel.root);
+    this._textPanel.root.style.display = "none";
 
     // Status tooltip
     core.statusText = layout.statusText;

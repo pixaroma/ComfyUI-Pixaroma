@@ -14,7 +14,7 @@
 // ║  recognise the control without a FONT label, etc.            ║
 // ╚═══════════════════════════════════════════════════════════════╝
 
-import { getFontCatalog, loadFontForLayer } from "./fonts.mjs";
+import { getFontCatalog, loadFontForLayer, refreshFontCatalog } from "./fonts.mjs";
 import { openPixaromaColorPickerModal } from "../shared/color_picker.mjs";
 
 const BRAND = "#f66744";
@@ -26,14 +26,16 @@ const BRAND = "#f66744";
  *  @param {Function} [opts.onReset] - called with (layer) when Reset is clicked
  *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
-export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas }) {
+export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas, composerMode = false }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
   let fontCatalog = null;
 
   const root = document.createElement("div");
-  root.className = "pix-to-root";
+  // composerMode mounts in a narrow sidebar — force single-column grids so the
+  // number/color cells get full width and don't clip (see .pix-to-narrow CSS).
+  root.className = "pix-to-root" + (composerMode ? " pix-to-narrow" : "");
   mount.appendChild(root);
 
   function fireChange() {
@@ -69,6 +71,10 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
       ui.fontDropdownName.textContent = labelForFont(fontCatalog, id);
       ui.fontDropdownName.style.fontFamily = `"Pix-${id}", system-ui`;
       fireChange();
+    }, (cat) => {
+      fontCatalog = cat;
+      const l = layerNow();
+      if (l) ui.fontDropdownName.textContent = labelForFont(cat, l.font);
     });
   });
   fontRow.appendChild(ui.fontDropdown);
@@ -129,15 +135,19 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
   ui.sizeInput    = inputCell(typoGrid, "Size",          8,  512,   96, 1,   (v) => { const l = layerNow(); if (l) { l.fontSize = v;       fireChange(); }});
   ui.lineInput    = inputCell(typoGrid, "Line height", 0.5,    4,  1.2, 0.1, (v) => { const l = layerNow(); if (l) { l.lineHeight = v;     fireChange(); }});
   ui.letterInput  = inputCell(typoGrid, "Letter sp",   -10,   50,    0, 0.5, (v) => { const l = layerNow(); if (l) { l.letterSpacing = v;  fireChange(); }});
-  ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
+  // Opacity + transform (Rotate/X/Y) are omitted in composerMode: the Image
+  // Composer owns position/rotation/opacity via the canvas + layer controls.
+  if (!composerMode) {
+    ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
 
-  // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
-  // balanced (no empty cell next to Rotate) and saves a row of height.
-  const transformGrid = el("div", "pix-to-grid3");
-  root.appendChild(transformGrid);
-  ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
-  ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
-  ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+    // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
+    // balanced (no empty cell next to Rotate) and saves a row of height.
+    const transformGrid = el("div", "pix-to-grid3");
+    root.appendChild(transformGrid);
+    ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+    ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
+    ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+  }
 
   // Position on canvas: snap the WHOLE text block to a canvas edge / center.
   // This is the control most users reach for ("move the text to the left/
@@ -223,17 +233,16 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
     root.appendChild(resetRow);
   }
 
-  // Load font catalog; pre-load fonts so popup items render in their own typeface.
+  // Load font catalog. Only the CURRENT font is eagerly loaded (for the
+  // dropdown label); popup rows load their own face lazily on scroll.
   getFontCatalog().then(async (cat) => {
     fontCatalog = cat;
     if (currentLayer) {
       ui.fontDropdownName.textContent = labelForFont(cat, currentLayer.font);
       ui.fontDropdownName.style.fontFamily = `"Pix-${currentLayer.font}", system-ui`;
-    }
-    for (const f of cat) {
-      const firstWeight = f.weights?.[0];
-      if (!firstWeight) continue;
-      loadFontForLayer(f.id, firstWeight.weight, firstWeight.italic).catch(() => {});
+      if (cat.some((f) => f.id === currentLayer.font)) {
+        loadFontForLayer(currentLayer.font, currentLayer.weight ?? 400, !!currentLayer.italic).catch(() => {});
+      }
     }
   }).catch((e) => console.warn("[text_editor] font catalog load failed", e));
 
@@ -253,10 +262,11 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
       ui.sizeInput.setValue(layer.fontSize ?? 96);
       ui.lineInput.setValue(layer.lineHeight ?? 1.2);
       ui.letterInput.setValue(layer.letterSpacing ?? 0);
-      ui.opacityInput.setValue(Math.round((layer.opacity ?? 1) * 100));
-      ui.rotateInput.setValue(layer.rotation ?? 0);
-      ui.posXInput.setValue(layer.x ?? 0);
-      ui.posYInput.setValue(layer.y ?? 0);
+      // These four are absent in composerMode — guard each.
+      ui.opacityInput && ui.opacityInput.setValue(Math.round((layer.opacity ?? 1) * 100));
+      ui.rotateInput && ui.rotateInput.setValue(layer.rotation ?? 0);
+      ui.posXInput && ui.posXInput.setValue(layer.x ?? 0);
+      ui.posYInput && ui.posYInput.setValue(layer.y ?? 0);
       ui.textColorCell.setValue(layer.color ?? "#FFFFFF");
       ui.bgColorCell.setValue(layer.bgColor || null);
     } finally {
@@ -266,6 +276,8 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas 
 
   /** Set position input ranges based on the canvas dimensions. */
   function setCanvasBounds(canvasWidth, canvasHeight) {
+    // No-op in composerMode (no position inputs).
+    if (!ui.posXInput || !ui.posYInput) return;
     ui.posXInput.setRange(-canvasWidth, canvasWidth * 2);
     ui.posYInput.setRange(-canvasHeight, canvasHeight * 2);
   }
@@ -485,37 +497,138 @@ function colorCell(parent, label, initialHex, getInitial, onPick, withClear) {
 
 // ── Custom font popup (mirrors openImageDropdown) ─────────────────────────────
 
-function openFontPopup(anchorEl, catalog, currentId, onPick) {
+function openFontPopup(anchorEl, catalog, currentId, onPick, onCatalog) {
   document.querySelector(".pix-to-popup")?.remove();
   const popup = document.createElement("div");
   popup.className = "pix-to-popup";
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
-  popup.style.top  = `${rect.bottom + 2}px`;
-  popup.style.width = `${rect.width}px`;
+  popup.style.top = "0px"; // real position set after measuring (below)
+  popup.style.width = `${Math.max(rect.width, 200)}px`;
 
-  let lastCat = null;
-  for (const f of catalog) {
-    if (lastCat && lastCat !== f.category) {
-      const sep = document.createElement("div");
-      sep.className = "pix-to-popup-sep";
-      popup.appendChild(sep);
+  // ── search row (filter + refresh) ──
+  const searchRow = document.createElement("div");
+  searchRow.className = "pix-to-popup-search";
+  const mag = document.createElement("span");
+  mag.className = "pix-to-popup-mag";
+  mag.textContent = "⌕";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Filter fonts…";
+  const refreshBtn = document.createElement("button");
+  refreshBtn.type = "button";
+  refreshBtn.className = "pix-to-popup-refresh";
+  refreshBtn.title = "Rescan models/fonts for newly added fonts";
+  refreshBtn.textContent = "↻";
+  searchRow.append(mag, input, refreshBtn);
+  popup.appendChild(searchRow);
+
+  // ── scrollable list ──
+  const list = document.createElement("div");
+  list.className = "pix-to-popup-list";
+  popup.appendChild(list);
+
+  // Lazy preview: load a row's own font only when it scrolls into view.
+  let io = null;
+  const buildList = (cat, query) => {
+    list.innerHTML = "";
+    if (io) { io.disconnect(); io = null; }
+    io = new IntersectionObserver((entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const rowEl = en.target;
+        io.unobserve(rowEl);
+        const id = rowEl.dataset.fontId;
+        const f = cat.find((x) => x.id === id);
+        const w0 = f?.weights?.[0];
+        if (!w0) continue;
+        loadFontForLayer(f.id, w0.weight, w0.italic)
+          .then(() => { rowEl.style.fontFamily = `"Pix-${f.id}", system-ui`; })
+          .catch(() => {});
+      }
+    }, { root: list });
+
+    const q = (query || "").trim().toLowerCase();
+    let lastCat = null;
+    let shown = 0;
+    for (const f of cat) {
+      if (q && !f.label.toLowerCase().includes(q)) continue;
+      if (lastCat && lastCat !== f.category) {
+        const sep = document.createElement("div");
+        sep.className = "pix-to-popup-sep";
+        list.appendChild(sep);
+      }
+      lastCat = f.category;
+      const item = document.createElement("div");
+      item.className = "pix-to-popup-item" + (f.id === currentId ? " active" : "");
+      item.textContent = f.label;
+      item.dataset.fontId = f.id;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        onPick(f.id);
+        dismiss();
+      });
+      list.appendChild(item);
+      io.observe(item);
+      shown++;
     }
-    lastCat = f.category;
-    const item = document.createElement("div");
-    item.className = "pix-to-popup-item" + (f.id === currentId ? " active" : "");
-    item.textContent = f.label;
-    item.style.fontFamily = `"Pix-${f.id}", system-ui`;
-    item.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onPick(f.id);
-      close();
-    });
-    popup.appendChild(item);
-  }
+    if (shown === 0) {
+      const empty = document.createElement("div");
+      empty.className = "pix-to-popup-empty";
+      empty.textContent = "(no matches)";
+      list.appendChild(empty);
+    }
+  };
+
+  let workingCat = catalog;
+  // Teardown: removes the popup + the observer. Reassigned after the popup is
+  // in the DOM to the closer returned by attachPopupCloseListeners, which ALSO
+  // detaches the document listeners (so no listener leak on row-click/Escape).
+  let dismiss = () => { if (io) io.disconnect(); popup.remove(); };
+
+  // Typing filters; keystrokes must not reach the canvas (pan/shortcuts).
+  input.addEventListener("input", () => buildList(workingCat, input.value));
+  input.addEventListener("keydown", (e) => {
+    e.stopImmediatePropagation();
+    if (e.key === "Escape") dismiss();
+  });
+
+  refreshBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    refreshBtn.disabled = true;
+    try {
+      workingCat = await refreshFontCatalog();
+      onCatalog?.(workingCat);
+      buildList(workingCat, input.value);
+    } catch (err) {
+      console.warn("[text_editor] font refresh failed", err);
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  });
+
   document.body.appendChild(popup);
-  attachPopupCloseListeners(popup, close);
-  function close() { popup.remove(); }
+  // Wire close + build rows AFTER the popup is connected: the IntersectionObserver
+  // root (the scroll list) must be in the DOM for lazy previews to fire, and the
+  // returned closer is the single teardown path that also detaches listeners.
+  dismiss = attachPopupCloseListeners(popup, () => { if (io) io.disconnect(); popup.remove(); });
+  buildList(workingCat, "");
+
+  // Position: open downward; if it would overflow the viewport bottom, flip
+  // above the anchor; clamp into the viewport as a last resort. Also clamp the
+  // left edge so a narrow sidebar near the screen edge doesn't push it off.
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const ph = Math.min(popup.offsetHeight, 340);
+  let top = rect.bottom + 2;
+  if (top + ph > vh - 8) {
+    const above = rect.top - 2 - ph;
+    top = above >= 8 ? above : Math.max(8, vh - 8 - ph);
+  }
+  let left = rect.left;
+  if (left + popup.offsetWidth > vw - 8) left = Math.max(8, vw - 8 - popup.offsetWidth);
+  popup.style.top = `${top}px`;
+  popup.style.left = `${left}px`;
+  setTimeout(() => input.focus(), 0);
 }
 
 // Shared close-listener wiring for our custom popups. Mirrors Load Image
@@ -538,6 +651,7 @@ function attachPopupCloseListeners(popup, closeFn) {
     document.addEventListener("wheel", onWheel, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
+  return doClose;
 }
 
 // ── CSS injection (once per page) ─────────────────────────────────────────────
@@ -679,18 +793,22 @@ function injectCSS() {
     .pix-to-align-chip.active img,
     .pix-to-align-chip.is-flashing img { filter: brightness(0) invert(1); }
 
-    /* 2-column grid for number inputs + colors */
+    /* 2-column grid for number inputs + colors. minmax(0,1fr) lets columns
+       shrink below their content min-size so cells never overflow the panel. */
     .pix-to-grid2 {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
       gap: 4px;
     }
     /* 3-column grid used by the Rotate / X / Y row */
     .pix-to-grid3 {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
       gap: 4px;
     }
+    /* Narrow (composer sidebar) — stack to one column so every cell gets full
+       width and the longer labels (LINE HEIGHT / LETTER SP / BEHIND) fit. */
+    .pix-to-narrow .pix-to-grid2 { grid-template-columns: 1fr; }
 
     /* Numeric input cell: [LABEL  value] */
     .pix-to-input-cell {
@@ -821,10 +939,48 @@ function injectCSS() {
       box-shadow: 0 4px 16px rgba(0,0,0,0.4);
       font: 13px ui-sans-serif, system-ui, sans-serif;
       color: #ddd;
-      max-height: 320px;
-      overflow-y: auto;
+      max-height: 340px;
       min-width: 160px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
     }
+    .pix-to-popup-search {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 8px;
+      border-bottom: 1px solid #333;
+      background: #1d1d1d;
+      flex-shrink: 0;
+    }
+    .pix-to-popup-mag { color: #888; font-size: 14px; }
+    .pix-to-popup-search input {
+      flex: 1;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #e0e0e0;
+      font: 12px ui-sans-serif, system-ui, sans-serif;
+    }
+    .pix-to-popup-search input::placeholder { color: #777; }
+    .pix-to-popup-refresh {
+      background: rgba(255,255,255,0.06);
+      color: #ccc;
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 4px;
+      width: 22px;
+      height: 22px;
+      cursor: pointer;
+      line-height: 1;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+    .pix-to-popup-refresh:hover { border-color: ${BRAND}; color: #fff; }
+    .pix-to-popup-refresh:disabled { opacity: 0.5; cursor: default; }
+    .pix-to-popup-list { overflow-y: auto; flex: 1; }
+    .pix-to-popup-empty { padding: 10px 12px; color: #777; font: 12px ui-sans-serif, system-ui, sans-serif; }
     .pix-to-popup-item {
       padding: 6px 10px;
       cursor: pointer;

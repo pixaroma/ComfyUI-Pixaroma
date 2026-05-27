@@ -21,7 +21,7 @@ PixaromaEditor.prototype.attachEvents = function () {
   const alignSelection = (type) => {
     if (this.selectedLayerIds.size < 2) return;
     const selectedLayers = this.layers.filter(
-      (l) => this.selectedLayerIds.has(l.id) && !l.locked,
+      (l) => this.selectedLayerIds.has(l.id) && !l.locked && !l.isAdjustment,
     );
     if (selectedLayers.length === 0) return;
 
@@ -141,9 +141,12 @@ PixaromaEditor.prototype.attachEvents = function () {
             this.draw();
           });
         }
-        // Debounce history push so a wheel-burst is one undo step
+        // Debounce history push so a wheel-burst is one undo step. Text layers
+        // re-bake the bitmap crisp (fold scale into font size) once it settles.
         clearTimeout(this._scaleWheelTimer);
-        this._scaleWheelTimer = setTimeout(() => this.pushHistory(), 300);
+        this._scaleWheelTimer = setTimeout(() => {
+          if (!this._commitTextScaleFold()) this.pushHistory();
+        }, 300);
       }
       return;
     }
@@ -181,7 +184,15 @@ PixaromaEditor.prototype.attachEvents = function () {
       if (this.activeMode === "eraser") {
         this.setMode(null);
       } else if (this.selectedLayerIds.size === 1) {
-        this.setMode("eraser");
+        // Eraser is image-only: text + FX have no editable pixels, and a
+        // placeholder is a UI tile whose mask would misapply to the real image.
+        const al = this.getActiveLayer();
+        if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
+          if (this._layout)
+            this._layout.setStatus("Eraser doesn't apply to this layer", "warn");
+        } else {
+          this.setMode("eraser");
+        }
       } else if (this.selectedLayerIds.size > 1) {
         if (this._layout)
           this._layout.setStatus(
@@ -195,7 +206,14 @@ PixaromaEditor.prototype.attachEvents = function () {
       if (this.activeMode === "crop") {
         this.setMode(null);
       } else if (this.selectedLayerIds.size === 1) {
-        this.setMode("crop");
+        // Crop is image-only: not for text, FX, or placeholder layers.
+        const al = this.getActiveLayer();
+        if (al && (al.isText || al.isAdjustment || al.isPlaceholder)) {
+          if (this._layout)
+            this._layout.setStatus("Crop doesn't apply to this layer", "warn");
+        } else {
+          this.setMode("crop");
+        }
       } else if (this.selectedLayerIds.size > 1) {
         if (this._layout)
           this._layout.setStatus(
@@ -284,7 +302,7 @@ PixaromaEditor.prototype.attachEvents = function () {
       }
       const coords = this.getCanvasCoordinates(e);
       const layer = this.getActiveLayer();
-      if (layer && !layer.locked) {
+      if (layer && !layer.locked && layer.img) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {
           this.selHitArea.style.cursor = "crosshair";
@@ -342,7 +360,7 @@ PixaromaEditor.prototype.attachEvents = function () {
       ) {
         const coords = this.getCanvasCoordinates(e);
         const layer = this.getActiveLayer();
-        if (layer && !layer.locked) {
+        if (layer && !layer.locked && layer.img) {
           const pts = PixaromaLayers.getTransformedPoints(layer);
           let hitHandle = false;
           if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15)
@@ -487,13 +505,19 @@ PixaromaEditor.prototype.attachEvents = function () {
       num.value = e.target.value;
       updateCanvas(parseFloat(e.target.value));
     });
-    slider.addEventListener("change", () => this.pushHistory());
+    slider.addEventListener("change", () => {
+      // Text layers: a scale change re-renders the bitmap crisp (fold into font
+      // size), matching the canvas corner handles. Other props just commit.
+      if (prop === "scale" && this._commitTextScaleFold()) return;
+      this.pushHistory();
+    });
     num.addEventListener("change", (e) => {
       let v = parseFloat(e.target.value);
       v = Math.max(slider.min, Math.min(slider.max, v));
       num.value = v;
       slider.value = v;
       updateCanvas(v);
+      if (prop === "scale" && this._commitTextScaleFold()) return;
       this.pushHistory();
     });
   };
@@ -516,13 +540,17 @@ PixaromaEditor.prototype.attachEvents = function () {
       num.value = e.target.value;
       updateCanvas(parseFloat(e.target.value));
     });
-    slider.addEventListener("change", () => this.pushHistory());
+    slider.addEventListener("change", () => {
+      if (this._commitTextScaleFold()) return; // text: re-render crisp at new size
+      this.pushHistory();
+    });
     num.addEventListener("change", (e) => {
       let v = parseFloat(e.target.value);
       v = Math.max(slider.min, Math.min(slider.max, v));
       num.value = v;
       slider.value = v;
       updateCanvas(v);
+      if (this._commitTextScaleFold()) return;
       this.pushHistory();
     });
   };
@@ -588,6 +616,10 @@ PixaromaEditor.prototype.attachEvents = function () {
         const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
         // Deep-copy cropRect so re-cropping one copy can't alias the other.
         if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
+        // Deep-copy FX adjustments + text state so editing one copy doesn't
+        // alias the other (they're objects; {...layer} shares them by reference).
+        if (layer.adjustments) dup.adjustments = { ...layer.adjustments };
+        if (layer.textState) dup.textState = { ...layer.textState };
         // Deep-copy eraser mask so edits don't affect the original
         if (layer.eraserMaskCanvas_internal) {
           const mc = document.createElement("canvas");
@@ -623,7 +655,8 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this.btnDelLayer.addEventListener("click", () => {
     if (this.selectedLayerIds.size === 0) return;
-    this.layers = this.layers.filter((l) => !this.selectedLayerIds.has(l.id));
+    // Keep locked layers even if they're part of the selection.
+    this.layers = this.layers.filter((l) => !this.selectedLayerIds.has(l.id) || l.locked);
     this.selectedLayerIds.clear();
     this.syncActiveLayerIndex();
     this.ui.updateActiveLayerUI();
@@ -762,6 +795,19 @@ PixaromaEditor.prototype.attachEvents = function () {
     try {
       // Upload all unsaved layers and masks in parallel
       const uploadPromises = this.layers.map(async (layer) => {
+        // FX adjustment layer: no image to upload — serialize just its values.
+        if (layer.isAdjustment) {
+          return {
+            id: layer.id,
+            name: layer.name,
+            isAdjustment: true,
+            adjustments: { ...layer.adjustments },
+            presetId: layer.presetId || "Custom",
+            visible: layer.visible,
+            opacity: layer.opacity ?? 1,
+            locked: !!layer.locked,
+          };
+        }
         let finalSrcPath = layer.rawServerPath || null;
         if (!layer.savedOnServer && layer.rawB64_internal) {
           const dRaw = await PixaromaAPI.uploadLayer(
@@ -775,14 +821,20 @@ PixaromaEditor.prototype.attachEvents = function () {
 
         let finalMaskPath = layer.savedMaskPath_internal || null;
         if (layer.hasMask_internal && layer.eraserMaskCanvas_internal) {
-          const maskB64 =
-            layer.eraserMaskCanvas_internal.toDataURL("image/png");
-          const dMask = await PixaromaAPI.uploadLayer(
-            layer.id + "_mask_" + Date.now(),
-            maskB64,
-          );
-          finalMaskPath = dMask.path;
-          layer.savedMaskPath_internal = finalMaskPath;
+          // Only re-upload when the mask actually changed (or was never
+          // uploaded). Otherwise every Save would write a new timestamped
+          // mask file forever, none of them ever cleaned up.
+          if (layer.maskDirty_internal || !layer.savedMaskPath_internal) {
+            const maskB64 =
+              layer.eraserMaskCanvas_internal.toDataURL("image/png");
+            const dMask = await PixaromaAPI.uploadLayer(
+              layer.id + "_mask_" + Date.now(),
+              maskB64,
+            );
+            layer.savedMaskPath_internal = dMask.path;
+            layer.maskDirty_internal = false;
+          }
+          finalMaskPath = layer.savedMaskPath_internal;
         }
 
         const layerEntry = {
@@ -814,8 +866,16 @@ PixaromaEditor.prototype.attachEvents = function () {
           layerEntry.placeholderColor = layer.placeholderColor;
           layerEntry.inputIndex = layer.inputIndex;
           layerEntry.fillMode = layer.fillMode || "cover";
+          if (layer.phRatio) layerEntry.phRatio = layer.phRatio;
           layerEntry.naturalWidth = layer.img.width;
           layerEntry.naturalHeight = layer.img.height;
+        }
+        // Text layer: its baked bitmap uploads via the normal image path above
+        // (src). Persist the text-ness + content so the round-trip doesn't
+        // downgrade it to a plain image, and so it stays re-editable on reopen.
+        if (layer.isText) {
+          layerEntry.isText = true;
+          layerEntry.textState = { ...layer.textState };
         }
         return layerEntry;
       });
@@ -838,6 +898,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       const finalMeta = {
         doc_w: this.docWidth,
         doc_h: this.docHeight,
+        // Scope live-preview events to THIS node so a 2nd composer node in the
+        // same workflow doesn't pick up this one's preview (read by the Python
+        // node + the JS preview matcher).
+        project_id: this.projectID,
         // Save the user's chosen canvas BG so the dynamic-compose path
         // (Python composer when there are placeholders / auto-rembg /
         // masks) and the JS rebuildPreview can fill the canvas with it
@@ -1030,6 +1094,9 @@ PixaromaEditor.prototype.attachEvents = function () {
       this.interactionMode = null;
       this.canvas.style.cursor = "default";
       this.verifySelection();
+      // Text layer resized via handles: fold scale into font size + re-render
+      // crisp (async; commits history itself). See _commitTextScaleFold.
+      if (this._commitTextScaleFold()) return;
       this.ui.updateActiveLayerUI();
       this.draw();
       this.pushHistory();
@@ -1068,10 +1135,31 @@ PixaromaEditor.prototype.attachEvents = function () {
   window.addEventListener("blur", this._composerBlur);
 };
 
+// If the active layer is a text layer that was scaled (via canvas handles OR
+// the Transform Scale/Horiz/Vert sliders), fold the scale into font size and
+// re-render the bitmap SHARP at its new displayed size, so text never blurs.
+// Uniform via the geometric mean so any handle/slider produces clean text.
+// Async rebuild -> commits history + redraws in the .then(). Returns true if it
+// handled the commit (caller should NOT also pushHistory), false otherwise.
+PixaromaEditor.prototype._commitTextScaleFold = function () {
+  const tl = this.getActiveLayer();
+  if (!tl || !tl.isText || (tl.scaleX === 1 && tl.scaleY === 1)) return false;
+  const factor = Math.sqrt(Math.abs(tl.scaleX * tl.scaleY)) || 1;
+  tl.textState.fontSize = Math.min(512, Math.max(4, Math.round(tl.textState.fontSize * factor)));
+  tl.scaleX = 1;
+  tl.scaleY = 1;
+  this.rebuildTextLayer(tl).then(() => {
+    this.ui.updateActiveLayerUI();
+    this.draw();
+    this.pushHistory();
+  });
+  return true;
+};
+
 PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
   if (this.selectedLayerIds.size === 1) {
     const layer = this.getActiveLayer();
-    if (layer && !layer.locked) {
+    if (layer && !layer.locked && layer.img) {
       const pts = PixaromaLayers.getTransformedPoints(layer);
       if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15)
         this.interactionMode = "rotate";
@@ -1140,6 +1228,8 @@ PixaromaEditor.prototype.onSelectMouseDown = function (e, coords) {
         if (this.selectedLayerIds.has(layer.id)) {
           const dup = { ...layer, id: Date.now().toString() + Math.random(), cx: layer.cx + 20, cy: layer.cy + 20 };
           if (layer.cropRect) dup.cropRect = { ...layer.cropRect };
+          if (layer.adjustments) dup.adjustments = { ...layer.adjustments };
+          if (layer.textState) dup.textState = { ...layer.textState };
           // Deep-copy eraser mask so edits don't affect the original
           if (layer.eraserMaskCanvas_internal) {
             const mc = document.createElement("canvas");
@@ -1194,7 +1284,7 @@ PixaromaEditor.prototype.onSelectMouseMove = function (e, coords) {
   if (!this.isMouseDown) {
     if (this.selectedLayerIds.size === 1) {
       const layer = this.getActiveLayer();
-      if (layer && !layer.locked) {
+      if (layer && !layer.locked && layer.img) {
         const pts = PixaromaLayers.getTransformedPoints(layer);
         if (Math.hypot(coords.x - pts[8].x, coords.y - pts[8].y) <= 15) {
           this.canvas.style.cursor = "crosshair";

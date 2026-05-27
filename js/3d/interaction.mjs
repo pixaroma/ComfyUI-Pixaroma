@@ -799,4 +799,8 @@ Pixaroma3DEditor.prototype._applySnap = function (state) {
   }
   if (this.objects.length) this._select(this.objects[0], false);
   this._updateLayers();
+  // Refresh the shadow map after rebuilding the scene from the snapshot —
+  // otherwise undoing the last object leaves its ground shadow frozen in the
+  // map (autoUpdate is off). Also re-fits the frustum when objects remain.
+  this._updateShadowFrustum?.();
 };

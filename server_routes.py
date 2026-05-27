@@ -17,6 +17,18 @@ from .nodes._bg_removal_helpers import (
     is_birefnet_model_id,
     run_birefnet_on_pil,
 )
+from .nodes._font_catalog import full_catalog as _font_full_catalog
+from .nodes._font_catalog import (
+    get_custom_fonts_dir as _font_custom_dir,
+    resolve_custom_file as _font_resolve_custom,
+)
+
+# Ensure ComfyUI/models/fonts/ exists so users have a place to drop fonts.
+try:
+    _PIXAROMA_CUSTOM_FONTS_DIR = _font_custom_dir()
+except Exception as _e:
+    _PIXAROMA_CUSTOM_FONTS_DIR = None
+    print(f"[Pixaroma] could not prepare custom fonts dir: {_e}")
 
 # --- PORTABLE COMFYUI FIX ---
 # Force rembg to download and read AI models from ComfyUI/models/rembg
@@ -71,7 +83,7 @@ async def serve_pixaroma_asset(request):
     ):
         return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, filename))
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
@@ -86,7 +98,7 @@ async def serve_pixaroma_asset_sub(request):
         if not _SAFE_ID_RE.match(part):
             return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, subdir, filename))
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
@@ -104,7 +116,7 @@ async def serve_pixaroma_asset_sub2(request):
     file_path = os.path.realpath(
         os.path.join(PIXAROMA_ASSETS_DIR, subdir, subdir2, filename)
     )
-    if not file_path.startswith(PIXAROMA_ASSETS_DIR):
+    if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
         return web.Response(status=403)
     if not os.path.isfile(file_path):
         return web.Response(status=404)
@@ -173,57 +185,35 @@ async def list_note_icons(request):
         return web.json_response({"icons": []})
 
 
-PIXAROMA_FONTS_DIR = os.path.join(PIXAROMA_ASSETS_DIR, "fonts")
-
-
 @PromptServer.instance.routes.get("/pixaroma/api/fonts/list")
 async def pixaroma_fonts_list(request):
-    """Enumerate assets/fonts/ and return the font catalog JSON.
-
-    Catalog format: [ { id, label, category, weights: [{weight, italic, file, wght?}] }, ... ]
-    See docs/text-overlay-render.md for the consumer contract.
-    For variable fonts, multiple weight entries share the same .ttf file and
-    carry a `wght` field (the wght axis value to activate at render time).
-    """
-    fonts_dir = PIXAROMA_FONTS_DIR
-    if not os.path.isdir(fonts_dir):
+    """Return the merged builtin + custom font catalog. `?refresh=1` rescans
+    the drop-in folder first. See docs/text-overlay-render.md for the contract."""
+    refresh = request.rel_url.query.get("refresh") in ("1", "true", "yes")
+    try:
+        return web.json_response(_font_full_catalog(refresh=refresh))
+    except Exception as e:
+        # Never 500 on a listing failure — empty means "no fonts" to the UI.
+        print(f"[Pixaroma] font catalog build failed: {e}")
         return web.json_response([])
 
-    # (file, font_id, weight, italic, label, category, wght_axis|None)
-    BUNDLE = [
-        ("Inter-Variable.ttf",                  "Inter",            400, False, "Inter",            "sans",        400),
-        ("Inter-Variable.ttf",                  "Inter",            700, False, "Inter",            "sans",        700),
-        ("Roboto-Variable.ttf",                 "Roboto",           400, False, "Roboto",           "sans",        400),
-        ("Roboto-Variable.ttf",                 "Roboto",           700, False, "Roboto",           "sans",        700),
-        ("Montserrat-Variable.ttf",             "Montserrat",       400, False, "Montserrat",       "sans",        400),
-        ("Montserrat-Variable.ttf",             "Montserrat",       800, False, "Montserrat",       "sans",        800),
-        ("Oswald-Variable.ttf",                 "Oswald",           600, False, "Oswald",           "sans",        600),
-        ("PlayfairDisplay-Variable.ttf",        "PlayfairDisplay",  700, False, "Playfair Display", "serif",       700),
-        ("PlayfairDisplay-Italic-Variable.ttf", "PlayfairDisplay",  700, True,  "Playfair Display", "serif",       700),
-        ("Lora-Variable.ttf",                   "Lora",             400, False, "Lora",             "serif",       400),
-        ("Lora-Variable.ttf",                   "Lora",             700, False, "Lora",             "serif",       700),
-        ("BebasNeue-Regular.ttf",               "BebasNeue",        400, False, "Bebas Neue",       "display",     None),
-        ("Anton-Regular.ttf",                   "Anton",            400, False, "Anton",            "display",     None),
-        ("Caveat-Variable.ttf",                 "Caveat",           500, False, "Caveat",           "handwriting", 500),
-        ("JetBrainsMono-Variable.ttf",          "JetBrainsMono",    500, False, "JetBrains Mono",   "mono",        500),
-    ]
 
-    grouped = {}
-    for filename, font_id, weight, italic, label, category, wght_axis in BUNDLE:
-        if not os.path.isfile(os.path.join(fonts_dir, filename)):
-            continue
-        bucket = grouped.setdefault(font_id, {"id": font_id, "label": label, "category": category, "weights": []})
-        entry = {"weight": weight, "italic": italic, "file": filename}
-        if wght_axis is not None:
-            entry["wght"] = wght_axis
-        bucket["weights"].append(entry)
+_FONT_NAME_RE = re.compile(r"^[^/\\]+\.(ttf|otf)$", re.IGNORECASE)
 
-    CAT_ORDER = ["sans", "serif", "display", "handwriting", "mono"]
-    result = sorted(
-        grouped.values(),
-        key=lambda f: (CAT_ORDER.index(f["category"]) if f["category"] in CAT_ORDER else 99, f["label"]),
-    )
-    return web.json_response(result)
+
+@PromptServer.instance.routes.get("/pixaroma/api/fonts/file/{name}")
+async def pixaroma_fonts_file(request):
+    """Serve a user drop-in font file by exact name, with a realpath guard."""
+    name = request.match_info["name"]
+    if not name or ".." in name or not _FONT_NAME_RE.match(name):
+        return web.Response(status=400)
+    path = _font_resolve_custom(name)
+    if not path:
+        return web.Response(status=404)
+    ext = os.path.splitext(name)[1].lower()
+    ctype = "font/otf" if ext == ".otf" else "font/ttf"
+    headers = {"Cache-Control": "public, max-age=3600", "Content-Type": ctype}
+    return web.FileResponse(path, headers=headers)
 
 
 PIXAROMA_INPUT_ROOT = os.path.realpath(

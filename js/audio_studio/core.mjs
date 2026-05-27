@@ -4,6 +4,7 @@ import { decodeAudio, computeAll, encodeWav, getAudioContext } from "./audio_ana
 import { getUpstreamImageUrl, getInlineSourceUrl, uploadSource, getSysInfo } from "./api.mjs";
 import { createEditorLayout, createButton } from "../framework/index.mjs";
 import { UI_ICON } from "../framework/theme.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 const BRAND_ORANGE = "#f66744";
 const BRAND_RED    = "#e74c3c";
@@ -225,23 +226,11 @@ export class AudioStudioEditor {
     // our overlay is still in the DOM; if it's gone, it restores the originals
     // and passes the call through. Ctrl+Z while the editor is genuinely open
     // is still blocked.
-    this._savedLoadGraphData = app.loadGraphData.bind(app);
-    this._savedGraphConfigure = app.graph.configure.bind(app.graph);
-    const ed = this;
-    app.loadGraphData = function (...args) {
-      if (!ed._overlayAlive()) {
-        ed._restoreGraphPatches();
-        return app.loadGraphData(...args);
-      }
-      return Promise.resolve();
-    };
-    app.graph.configure = function (...args) {
-      if (!ed._overlayAlive()) {
-        ed._restoreGraphPatches();
-        return app.graph.configure(...args);
-      }
-      return undefined;
-    };
+    // Shared, refcount-safe, self-healing guard. Also covers graph.undo/redo +
+    // the Comfy.Undo/Redo command (the old inline version only did
+    // loadGraphData/configure, so the command-store undo path could still
+    // escape), and refcounts so two editors closing FIFO can't brick the UI.
+    this._undoGuardOff = installGraphUndoGuard(() => this._overlayAlive());
 
     // Build the standard Pixaroma editor shell. This gives us:
     //   * .pxf-titlebar with logo + "AudioReact Pixaroma" + undo/redo + close
@@ -779,14 +768,7 @@ export class AudioStudioEditor {
   // Restore the graph patches we installed in open(). Idempotent + safe to
   // call from BOTH forceClose AND the self-heal path.
   _restoreGraphPatches() {
-    if (this._savedLoadGraphData) {
-      app.loadGraphData = this._savedLoadGraphData;
-      this._savedLoadGraphData = null;
-    }
-    if (this._savedGraphConfigure) {
-      if (app.graph) app.graph.configure = this._savedGraphConfigure;
-      this._savedGraphConfigure = null;
-    }
+    if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
   }
 
   forceClose() {

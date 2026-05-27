@@ -7,6 +7,7 @@ import time
 import folder_paths
 from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
+from ._fx_adjust_engine import apply_fx, is_neutral, _fx_seed
 from ._bg_removal_helpers import (
     is_birefnet_model_id,
     run_birefnet_on_pil,
@@ -49,9 +50,11 @@ def _save_preview_png(pil_img, doc_w, doc_h):
 # ── Helpers for placeholder compositing ──────────────────────────────────────
 
 def _hex_to_rgba(hex_str):
-    hex_str = hex_str.lstrip("#")
-    r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
-    return (r, g, b, 255)
+    try:
+        h = (hex_str or "").lstrip("#")
+        return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255)
+    except (ValueError, IndexError, TypeError):
+        return (30, 30, 30, 255)  # neutral fallback on a malformed colour
 
 
 def _tensor_to_pil(tensor):
@@ -185,9 +188,11 @@ def _apply_eraser_mask(img, mask_path, input_dir):
     # Mask uses destination-out: opaque pixels in mask = erased
     # So we subtract mask alpha from image alpha
     r, g, b, a = img.split()
-    mask_a = mask_img.split()[3]  # alpha channel of mask
-    # Where mask is opaque, set image alpha to 0
-    a = ImageChops.subtract(a, mask_a)
+    mask_a = mask_img.split()[3]  # alpha channel of mask (opaque = erased)
+    # destination-out: result_alpha = image_alpha * (1 - mask_alpha). Use
+    # multiply(a, invert(mask_a)) NOT subtract, so soft-brush partial alpha and
+    # already-transparent pixels match the editor's canvas compositing exactly.
+    a = ImageChops.multiply(a, ImageChops.invert(mask_a))
     return Image.merge("RGBA", (r, g, b, a))
 
 
@@ -411,6 +416,8 @@ class PixaromaImageComposition:
             doc_empty = torch.zeros((1, doc_h, doc_w, 3), dtype=torch.float32)
 
             layers = meta.get("layers", [])
+            if not isinstance(layers, list):
+                layers = []
             input_dir = os.path.realpath(folder_paths.get_input_directory())
             has_placeholders = any(l.get("isPlaceholder") for l in layers)
             has_auto_rembg = any(l.get("removeBgOnExec") for l in layers)
@@ -433,14 +440,33 @@ class PixaromaImageComposition:
                 for layer in layers:
                     if not layer.get("visible", True):
                         continue
+                    # FX adjustment layer: grade everything composited so far
+                    # (canvas = every layer below this one), then move on. The
+                    # static fast path bakes the grade at save time; this branch
+                    # re-applies it on the dynamic path (placeholder/rembg/mask)
+                    # where live pixels differ from the baked composite.
+                    if layer.get("isAdjustment"):
+                        amount01 = float(layer.get("opacity", 1) or 0)
+                        adj = layer.get("adjustments") or {}
+                        if is_neutral(adj, amount01):
+                            continue
+                        seed = _fx_seed(layer.get("id", ""))
+                        rgb = np.asarray(canvas.convert("RGB"), dtype=np.float32) / 255.0
+                        graded = apply_fx(rgb, adj, amount01, seed)
+                        graded_img = Image.fromarray(
+                            (graded * 255.0).round().astype(np.uint8), "RGB"
+                        ).convert("RGBA")
+                        graded_img.putalpha(canvas.getchannel("A"))
+                        canvas = graded_img
+                        continue
                     if layer.get("isPlaceholder"):
                         ph_w = layer.get("naturalWidth", 512)
                         ph_h = layer.get("naturalHeight", 512)
-                        img_input = kwargs.get(f"image_{layer['inputIndex']}")
+                        img_input = kwargs.get(f"image_{layer.get('inputIndex', 1)}")
                         if img_input is not None:
                             layer_img = _tensor_to_pil(img_input)
                             if layer.get("removeBgOnExec"):
-                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                                layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                             # Quality fix: scale the slot up to source resolution
                             # if the upstream image is larger. Adjust scaleX/Y in
                             # a layer copy so the visual size matches the editor.
@@ -469,7 +495,7 @@ class PixaromaImageComposition:
                         if layer_img is None:
                             continue
                         if layer.get("removeBgOnExec"):
-                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "auto"))
+                            layer_img = _remove_background(layer_img, layer.get("bgRemovalQuality", "normal"))
                     # Apply non-destructive crop (cropRect is in source-image
                     # pixels). Order matches the JS bake: crop -> mask -> transform.
                     # The eraser mask is saved at the cropped size, so it must run
@@ -491,15 +517,23 @@ class PixaromaImageComposition:
                     mask_src = layer.get("maskSrc")
                     if mask_src:
                         layer_img = _apply_eraser_mask(layer_img, mask_src, input_dir)
-                    composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
-                    # Quadratic curve: slider 0-100 maps to actual blur 0-50px
-                    # (finer control at low end). Mirrored in
-                    # js/composer/render.mjs + js/composer/index.js.
-                    blur_slider = layer.get("blur", 0)
-                    if blur_slider and blur_slider > 0:
-                        blur_radius = (blur_slider / 100.0) ** 2 * 50.0
-                        composed = composed.filter(ImageFilter.GaussianBlur(radius=blur_radius))
-                    canvas = _blend_over(canvas, composed, layer.get("blendMode", "Normal"))
+                    # Transform + blur + blend are the only unguarded throw-risk
+                    # left in the loop (earlier branches already handle their own
+                    # failures). Isolate them so one malformed layer is skipped
+                    # instead of failing the whole composite.
+                    try:
+                        composed = _apply_layer_transform(layer_img, layer, doc_w, doc_h)
+                        # Quadratic curve: slider 0-100 maps to actual blur 0-50px
+                        # (finer control at low end). Mirrored in
+                        # js/composer/render.mjs + js/composer/index.js.
+                        blur_slider = layer.get("blur", 0)
+                        if blur_slider and blur_slider > 0:
+                            blur_radius = (blur_slider / 100.0) ** 2 * 50.0
+                            composed = composed.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+                        canvas = _blend_over(canvas, composed, layer.get("blendMode", "Normal"))
+                    except Exception as _le:
+                        print(f"[Pixaroma] Composer: skipped a layer that failed to render: {_le}")
+                        continue
                 # Save the final composed image to temp so the node's
                 # mini preview gets the exact executed result (including
                 # auto-rembg / mask application). Without this, the JS
@@ -562,7 +596,16 @@ class PixaromaImageComposition:
 
         except Exception as e:
             print(f"[Pixaroma] Fatal Load Error: {e}")
-            return (empty_image, 1024, 1024)
+            # Best-effort: return a blank sized to the DOCUMENT if we can recover
+            # its dims, so downstream nodes get the right width/height even when
+            # compositing failed (a hardcoded 1024x1024 here mismatches doc_w/h
+            # and breaks nodes that trust the INT outputs).
+            try:
+                _m = json.loads(project_json)
+                _dw, _dh = int(_m.get("doc_w", 1024)), int(_m.get("doc_h", 1024))
+                return (torch.zeros((1, _dh, _dw, 3), dtype=torch.float32), _dw, _dh)
+            except Exception:
+                return (empty_image, 1024, 1024)
 
 
 NODE_CLASS_MAPPINGS = {

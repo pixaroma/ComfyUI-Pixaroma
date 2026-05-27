@@ -242,6 +242,7 @@ PixaromaEditor.prototype.resetCrop = function () {
   if (this.activeMode === "crop") {
     // Drop crop-mode state WITHOUT re-applying the in-progress draft.
     this._cropLayer = null;
+    this._cropLayerId = null;
     this._cropDraft = null;
     this._cropFullCenter = null;
     this._cropDragHandle = null;

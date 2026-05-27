@@ -27,6 +27,20 @@ export async function getFontCatalog() {
   return _catalogPromise;
 }
 
+/** Clear the cached catalog and re-fetch, rescanning the drop-in folder. */
+export async function refreshFontCatalog() {
+  _catalog = null;
+  // Assign the in-flight fetch to _catalogPromise so a concurrent
+  // getFontCatalog() awaits THIS refresh instead of launching a second fetch.
+  _catalogPromise = (async () => {
+    const resp = await fetch(FONT_LIST_URL + "?refresh=1", { cache: "no-store" });
+    if (!resp.ok) throw new Error(`fonts/list refresh HTTP ${resp.status}`);
+    _catalog = await resp.json();
+    return _catalog;
+  })();
+  return _catalogPromise;
+}
+
 /** Best-match font variant lookup. Falls back per math doc section 1. */
 export function resolveFontVariant(catalog, fontId, weight, italic) {
   let font = catalog.find((f) => f.id === fontId);
@@ -56,8 +70,17 @@ function makeVariant(font, w, synthesizedItalic) {
     italic: w.italic,
     file: w.file,
     wght: w.wght || null, // null = static font, no variable axis
+    source: font.source || "builtin",
     synthesizedItalic,
   };
+}
+
+/** File URL for a variant. Custom fonts come from the drop-in serving route. */
+export function urlForVariant(variant) {
+  if (variant.source === "custom") {
+    return `/pixaroma/api/fonts/file/${encodeURIComponent(variant.file)}`;
+  }
+  return FONT_BASE_URL + variant.file;
 }
 
 /** Load the underlying TTF file via FontFace API. Idempotent.
@@ -66,7 +89,7 @@ export async function ensureFontLoaded(variant) {
   const family = familyForVariant(variant);
   const fileKey = `${family}::${variant.file}`;
   if (_fileLoaders.has(fileKey)) return _fileLoaders.get(fileKey);
-  const url = FONT_BASE_URL + variant.file;
+  const url = urlForVariant(variant);
   const descriptors = {
     style: variant.italic ? "italic" : "normal",
   };

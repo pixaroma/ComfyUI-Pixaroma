@@ -368,7 +368,7 @@ export function createCropPanel(callbacks) {
 
   // Block keyboard from bubbling to ComfyUI canvas (would otherwise pan/zoom).
   for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ratioSelect, alignSelect]) {
-    el.addEventListener("keydown", (e) => e.stopPropagation());
+    el.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   }
 
   // ── Refresh: read cropJson + image dims, populate inputs ──

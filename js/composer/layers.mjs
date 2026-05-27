@@ -1,5 +1,8 @@
 export class PixaromaLayers {
   static getTransformedPoints(layer) {
+    // FX/adjustment layers have no image and no canvas geometry — return an
+    // empty point list so hit-test / handle-drawing callers no-op for them.
+    if (!layer || !layer.img) return [];
     const w = layer.img.width * layer.scaleX;
     const h = layer.img.height * layer.scaleY;
     const rad = (layer.rotation * Math.PI) / 180;
@@ -27,6 +30,8 @@ export class PixaromaLayers {
   }
 
   static isPointInLayer(px, py, layer) {
+    // FX/adjustment layers aren't clickable on the canvas (no geometry).
+    if (!layer || !layer.img) return false;
     const w = layer.img.width * layer.scaleX;
     const h = layer.img.height * layer.scaleY;
     const rad = (layer.rotation * Math.PI) / 180;
@@ -61,8 +66,17 @@ export class PixaromaLayers {
       // Deep-copy cropRect so undo/redo snapshots are independent (the live
       // layer always assigns a NEW cropRect object, but be safe).
       if (l.cropRect) copy.cropRect = { ...l.cropRect };
-      // Deep-copy eraser mask canvas so undo/redo restores mask state
-      if (l.eraserMaskCanvas_internal && l.hasMask_internal) {
+      // Deep-copy FX adjustments so undo/redo snapshots don't alias the live
+      // layer's adjustments object.
+      if (l.adjustments) copy.adjustments = { ...l.adjustments };
+      // Deep-copy text layer state so undo/redo snapshots are independent.
+      if (l.textState) copy.textState = { ...l.textState };
+      // Deep-copy eraser mask canvas so undo/redo restores mask state.
+      // Clone whenever the canvas exists (NOT gated on hasMask_internal): a
+      // snapshot taken after entering eraser but before the first stroke would
+      // otherwise shallow-share the live canvas, so a later stroke would bleed
+      // into the snapshot and undo wouldn't clear it.
+      if (l.eraserMaskCanvas_internal) {
         const cloneCvs = document.createElement("canvas");
         cloneCvs.width = l.eraserMaskCanvas_internal.width;
         cloneCvs.height = l.eraserMaskCanvas_internal.height;

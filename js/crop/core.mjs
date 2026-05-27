@@ -13,6 +13,7 @@ import {
   createCanvasToolbar,
 } from "../framework/index.mjs";
 import { ALIGNMENTS, computeAlignedXY, defaultAlignForMeta } from "./alignments.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
 export const RATIOS = [
   { label: "Free", w: 0, h: 0 },
@@ -91,6 +92,10 @@ export class CropEditor {
 
     this._buildUI();
     this.layout.mount();
+
+    // Block ComfyUI's Ctrl+Z from tearing down the workflow under the open
+    // editor (Vue Compat #6). Self-healing + refcount-safe shared guard.
+    this._undoGuardOff = installGraphUndoGuard(() => !!this.el.overlay?.isConnected);
 
     // Pick the source URL: live upstream wins; else fall back to saved disk path.
     let sourceURL = null;
@@ -172,9 +177,9 @@ export class CropEditor {
   }
 
   _close() {
+    // unmount() fires layout.onCleanup, which uninstalls the undo guard,
+    // unbinds keys, and calls onClose — every close path runs the same teardown.
     this.layout?.unmount();
-    this._unbindKeys();
-    if (this.onClose) this.onClose();
   }
 
   // --- Build UI ---
@@ -203,7 +208,11 @@ export class CropEditor {
       this._diskSavePending = true;
       this._save();
     };
-    layout.onCleanup = () => this._unbindKeys();
+    layout.onCleanup = () => {
+      if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
+      this._unbindKeys();
+      if (this.onClose) this.onClose();
+    };
     this.el.overlay = layout.overlay;
     this.el.workspace = layout.workspace;
     this.el.status = layout.statusText;

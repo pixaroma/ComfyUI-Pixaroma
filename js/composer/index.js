@@ -3,6 +3,7 @@ import { app } from "../../../../scripts/app.js";
 // listener) AND inside the execution-events try block further down.
 // Importing it once here keeps both call sites using the same module.
 import { api } from "../../../../scripts/api.js";
+import { applyFx, isNeutral, fxSeed } from "./fx_engine.mjs";
 import {
   allow_debug,
   createNodePreview,
@@ -135,6 +136,10 @@ app.registerExtension({
 
     // ── Open button ──
     node.addWidget("button", "Open Image Composer", null, () => {
+      // Don't stack a second editor on this node — that would orphan the first
+      // (leaked listeners + graph patches, stacked overlays). The drop-to-open
+      // path already guards this; the button must too.
+      if (isEditorOpen(node)) return;
       const editor = new PixaromaEditor(node);
       node._pixaromaEditor = editor;
 
@@ -400,6 +405,20 @@ app.registerExtension({
 
         loadList.forEach((item, i) => {
           if (item.layer.visible === false) return;
+
+          // FX adjustment layer: grade everything drawn so far (mirrors the
+          // editor _drawImpl + the Python dynamic-compose path). Keeps the node
+          // mini-preview matching the editor for placeholder workflows.
+          if (item.layer.isAdjustment) {
+            const ly = item.layer;
+            const amount01 = ly.opacity ?? 1;
+            if (isNeutral(ly.adjustments, amount01)) return;
+            const id = ctx.getImageData(0, 0, docW, docH);
+            applyFx(id.data, docW, docH, ly.adjustments, amount01, fxSeed(ly.id));
+            ctx.putImageData(id, 0, 0);
+            return;
+          }
+
           const img = images[i];
           const mask = maskImages[i] || null;
 

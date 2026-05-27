@@ -2,6 +2,7 @@
 // Pixaroma 3D Editor — Core class, constructor, UI building
 // ============================================================
 import { ThreeDAPI } from "./api.mjs";
+import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 import { openShapePicker } from "./picker.mjs";
 import {
   createEditorLayout,
@@ -207,6 +208,9 @@ export class Pixaroma3DEditor {
     injectExtraStyles();
     this._buildUI();
     this._layout.mount();
+    // Block ComfyUI's Ctrl+Z from tearing down the workflow under the open
+    // editor (Vue Compat #6). Self-healing + refcount-safe shared guard.
+    this._undoGuardOff = installGraphUndoGuard(() => !!this.el.overlay?.isConnected);
     this._setStatus("Loading Three.js...");
     try {
       await loadThree();
@@ -337,6 +341,7 @@ export class Pixaroma3DEditor {
       this._save();
     };
     layout.onCleanup = () => {
+      if (this._undoGuardOff) { this._undoGuardOff(); this._undoGuardOff = null; }
       if (this._shadowFitInterval) {
         clearInterval(this._shadowFitInterval);
         this._shadowFitInterval = null;

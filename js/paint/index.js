@@ -53,6 +53,9 @@ app.registerExtension({
 
     // ── Open button ──
     node.addWidget("button", "Open Paint", null, () => {
+      // Don't stack a second editor on this node — that orphans the first
+      // (leaked listeners + graph patches, stacked overlays).
+      if (node._pixaromaPaint?.el?.overlay?.isConnected) return;
       const studio = new PaintStudio();
       // Stash on the node so the drop-on-closed-node handler (below) can
       // route the dropped file through studio.addImageAsLayer once
@@ -135,6 +138,12 @@ app.registerExtension({
 
     // cleanup when node is removed
     node.onRemoved = () => {
+      // Tear down an open editor so its undo guard is restored + window
+      // listeners detached (deleting the node mid-edit would otherwise leak
+      // them, and — now that we install the guard — leave it bricked).
+      try {
+        if (node._pixaromaPaint?.el?.overlay?.isConnected) node._pixaromaPaint._close();
+      } catch (e) {}
       widget = null;
     };
 

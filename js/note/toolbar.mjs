@@ -778,9 +778,19 @@ NoteEditor.prototype._buildToolbar = function () {
       this._editArea.focus();
       restoreRange(savedRange);
       const { url, label } = result;
+      // Escape BOTH before building the anchor — the label is free user text and
+      // was injected raw, so `<img src=x onerror=...>` would execute at insert
+      // time (self-XSS in the ComfyUI origin). The sanitizer strips it on save,
+      // but it must never run live either. Mirrors blocks.mjs's escapeHtml.
+      const esc = (s) =>
+        String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
       document.execCommand(
         "insertHTML", false,
-        `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+        `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>`
       );
       this._dirty = true;
       this._refreshActiveStates();

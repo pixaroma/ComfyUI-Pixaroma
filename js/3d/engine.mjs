@@ -462,7 +462,10 @@ Pixaroma3DEditor.prototype._onResize = function () {
 };
 
 Pixaroma3DEditor.prototype._animate = function () {
-  if (!this.renderer) return;
+  // Self-terminate + dispose if the overlay was torn down without _close()
+  // running (Vue Compat #2) — otherwise the loop renders to a detached canvas
+  // forever and pins the WebGL context (Chrome caps ~16).
+  if (!this.renderer || !this.el.overlay?.isConnected) { this._close?.(); return; }
   this._animId = requestAnimationFrame(() => this._animate());
   this.orbitCtrl.update();
   // Composer renders scene + OutlinePass for live preview. Save path
@@ -546,7 +549,13 @@ Pixaroma3DEditor.prototype._applyLightDir = function () {
 
 Pixaroma3DEditor.prototype._updateShadowFrustum = function () {
   const THREE = getTHREE();
-  if (!this.light || !this.objects.length) return;
+  if (!this.light) return;
+  // Refresh the shadow map on EVERY call (autoUpdate is off). This is critical
+  // for the empty-scene case — e.g. undoing the last object — where no casters
+  // remain: without flipping needsUpdate here, the last object's shadow stays
+  // frozen in the map. The frustum-fit below only runs when objects exist.
+  this.light.shadow.needsUpdate = true;
+  if (!this.objects.length) return;
   const box = new THREE.Box3();
   this.objects.forEach((o) => {
     if (!o.visible) return;

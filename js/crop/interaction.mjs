@@ -325,6 +325,8 @@ proto._bindKeys = function () {
     const ctrl = e.ctrlKey || e.metaKey;
 
     if (key === "escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
       this._close();
       return;
     }

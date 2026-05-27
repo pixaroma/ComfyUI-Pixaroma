@@ -66,7 +66,11 @@ app.registerExtension({
 
     // ── Separate button widget ──
     node.addWidget("button", "Open 3D Builder", null, () => {
+      // Don't stack a second editor on this node (orphans the first; each 3D
+      // editor holds 2 WebGL contexts, so double-open burns toward Chrome's cap).
+      if (node._pixaroma3dEditor?.el?.overlay?.isConnected) return;
       const editor = new Pixaroma3DEditor();
+      node._pixaroma3dEditor = editor;
 
       // Apply default BG from ComfyUI settings (if user configured it).
       // ComfyUI's `color` setting type returns values without the leading
@@ -113,6 +117,7 @@ app.registerExtension({
         downloadDataURL(dataURL, "pixaroma_3d");
 
       editor.onClose = () => {
+        node._pixaroma3dEditor = null;
         node.setDirtyCanvas(true, true);
       };
 
@@ -139,6 +144,11 @@ app.registerExtension({
 
     // cleanup when node is removed
     node.onRemoved = () => {
+      // Tear down an open editor so its undo guard is restored + WebGL contexts
+      // released (deleting the node mid-edit would otherwise leak them).
+      try {
+        if (node._pixaroma3dEditor?.el?.overlay?.isConnected) node._pixaroma3dEditor._close();
+      } catch (e) {}
       widget = null;
     };
 

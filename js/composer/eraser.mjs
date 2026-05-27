@@ -17,7 +17,6 @@ PixaromaEditor.prototype.prepareLayerMask = function (
   layer.eraserMaskCanvas_internal.height = layer.img.height;
   layer.eraserMaskCtx_internal =
     layer.eraserMaskCanvas_internal.getContext("2d");
-  layer.eraserMaskCtx_internal.fillStyle = "black";
   layer.hasMask_internal = false;
 
   if (existingMaskUrl) {
@@ -53,26 +52,32 @@ PixaromaEditor.prototype.clearEraserMask = function (layer, skipRefresh) {
 
 PixaromaEditor.prototype.drawEraserLine = function (layer, start, end) {
   const ctx = layer.eraserMaskCtx_internal;
+  // De-scale the brush by the geometric mean of BOTH axes so the erased size
+  // matches the cursor on non-uniformly-scaled layers (the cursor is de-scaled
+  // on X and Y, so a scaleX-only divisor mis-sizes the brush when scaleX≠scaleY).
+  const scaleDivisor = Math.max(0.01, Math.sqrt(Math.abs(layer.scaleX * layer.scaleY)));
   ctx.save();
   ctx.beginPath();
   ctx.moveTo(start.lx, start.ly);
   ctx.lineTo(end.lx, end.ly);
-  ctx.lineWidth = (this.brushSize * 2) / Math.max(0.01, Math.abs(layer.scaleX));
+  ctx.lineWidth = (this.brushSize * 2) / scaleDivisor;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
   ctx.strokeStyle = "black";
 
   // BUG FIX: Cap the blur radius to prevent canvas crashing at extreme distances or tiny scales
   if (this.brushHardness < 0.95) {
-    let blurRad =
-      (this.brushSize * (1 - this.brushHardness)) /
-      Math.max(0.01, Math.abs(layer.scaleX));
+    let blurRad = (this.brushSize * (1 - this.brushHardness)) / scaleDivisor;
     blurRad = Math.min(blurRad, 100);
     ctx.filter = `blur(${blurRad}px)`;
   }
   ctx.stroke();
   ctx.restore();
 
+  // Mark the mask dirty so Save re-uploads it (and ONLY when it changed —
+  // see the save handler's dirty/never-uploaded check that prevents a new
+  // mask file being written on every Save).
+  layer.maskDirty_internal = true;
   if (!layer.hasMask_internal) {
     layer.hasMask_internal = true;
     this.ui.updateActiveLayerUI();
