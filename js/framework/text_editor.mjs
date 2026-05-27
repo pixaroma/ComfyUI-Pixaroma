@@ -26,7 +26,7 @@ const BRAND = "#f66744";
  *  @param {Function} [opts.onReset] - called with (layer) when Reset is clicked
  *  @returns {{ setLayer(layer), setCanvasBounds(w,h), destroy() }}
  */
-export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas, composerMode = false }) {
+export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas, composerMode = false, watermarkMode = false }) {
   injectCSS();
   let currentLayer = null;
   let suspendChange = false;
@@ -140,13 +140,34 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
   if (!composerMode) {
     ui.opacityInput = inputCell(typoGrid, "Opacity",       0,  100,  100, 1,   (v) => { const l = layerNow(); if (l) { l.opacity = v / 100;  fireChange(); }});
 
-    // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
-    // balanced (no empty cell next to Rotate) and saves a row of height.
-    const transformGrid = el("div", "pix-to-grid3");
-    root.appendChild(transformGrid);
-    ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
-    ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
-    ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+    if (watermarkMode) {
+      // Watermark mode: a Pixels / %-width size-unit toggle, then a position
+      // row that puts Rotate + Margin X / Y on the left and a compact 3x3
+      // anchor square (mirrors Load Image's crop anchor) on the right. Sitting
+      // them side by side saves vertical height vs. a separate anchor row.
+      // Margin X / Y are the inset from the anchored edge (replace absolute
+      // X / Y). The renderer is shared with Text Overlay; the node computes the
+      // final x/y from anchor + margin + size mode at render time.
+      buildSizeModeToggle();
+      const posRow = el("div", "pix-to-wm-posrow");
+      root.appendChild(posRow);
+      const posFields = el("div", "pix-to-wm-posfields");
+      posRow.appendChild(posFields);
+      ui.rotateInput  = inputCell(posFields, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+      ui.marginXInput = inputCell(posFields, "Marg X",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginX  = v; fireChange(); }});
+      ui.marginYInput = inputCell(posFields, "Marg Y",    0, 4096, 20, 1, (v) => { const l = layerNow(); if (l) { l.marginY  = v; fireChange(); }});
+      ui.marginXInput.el.title = "Horizontal inset from the anchored edge, in pixels";
+      ui.marginYInput.el.title = "Vertical inset from the anchored edge, in pixels";
+      buildAnchorGrid(posRow);
+    } else {
+      // Transform row: Rotate + X + Y in a 3-column grid. Keeps the rows
+      // balanced (no empty cell next to Rotate) and saves a row of height.
+      const transformGrid = el("div", "pix-to-grid3");
+      root.appendChild(transformGrid);
+      ui.rotateInput = inputCell(transformGrid, "Rotate", -180, 180,  0, 1, (v) => { const l = layerNow(); if (l) { l.rotation = v; fireChange(); }});
+      ui.posXInput   = inputCell(transformGrid, "X",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.x = v;        fireChange(); }});
+      ui.posYInput   = inputCell(transformGrid, "Y",         0, 4096, 0, 1, (v) => { const l = layerNow(); if (l) { l.y = v;        fireChange(); }});
+    }
   }
 
   // Position on canvas: snap the WHOLE text block to a canvas edge / center.
@@ -246,6 +267,62 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
     }
   }).catch((e) => console.warn("[text_editor] font catalog load failed", e));
 
+  // ── watermark-mode builders (hoisted; called from the !composerMode block) ──
+
+  // Pixels / %-width size-unit toggle. In % mode the Size field is read as a
+  // percentage of each image's width (consistent across mixed-size batches).
+  function buildSizeModeToggle() {
+    const row = el("div", "pix-to-sizemode");
+    const segPx  = el("button", "pix-to-seg"); segPx.type  = "button"; segPx.textContent  = "Pixels";  segPx.title  = "Size in pixels";
+    const segPct = el("button", "pix-to-seg"); segPct.type = "button"; segPct.textContent = "% width"; segPct.title = "Size as a percentage of each image's width (good for mixed-size batches)";
+    row.append(segPx, segPct);
+    root.appendChild(row);
+    function apply(mode, fromUser) {
+      segPx.classList.toggle("active", mode === "px");
+      segPct.classList.toggle("active", mode === "pct");
+      if (ui.sizeInput) ui.sizeInput.setRange(mode === "pct" ? 1 : 4, mode === "pct" ? 100 : 2048);
+      if (fromUser) {
+        const l = layerNow(); if (!l) return;
+        let v = l.fontSize;
+        if (mode === "pct" && (!(v >= 1) || v > 100)) v = 10;   // px value would be nonsense as a %
+        if (mode === "px"  && !(v >= 4)) v = 64;                 // % value would be tiny as px
+        l.sizeMode = mode;
+        l.fontSize = v;
+        if (ui.sizeInput) ui.sizeInput.setValue(v);
+        fireChange();
+      }
+    }
+    segPx.addEventListener("click", () => apply("px", true));
+    segPct.addEventListener("click", () => apply("pct", true));
+    ui.applySizeMode = apply;
+  }
+
+  // Compact 3x3 anchor square (mirrors Load Image's crop anchor). Grid
+  // position == image position (top-left cell = top-left anchor); the chosen
+  // cell stays orange. Appended into the caller's parent so it can sit beside
+  // the Rotate / Margin inputs.
+  function buildAnchorGrid(parent) {
+    const grid = el("div", "pix-to-anchor");
+    grid.title = "Watermark position";
+    const ANCHORS = [
+      ["top-left", "Top left"],     ["top-center", "Top center"],     ["top-right", "Top right"],
+      ["middle-left", "Middle left"], ["center", "Center"],            ["middle-right", "Middle right"],
+      ["bottom-left", "Bottom left"], ["bottom-center", "Bottom center"], ["bottom-right", "Bottom right"],
+    ];
+    ui.anchorCells = ANCHORS.map(([id, title]) => {
+      const c = el("div", "pix-to-anchor-cell"); c.dataset.anchor = id; c.title = title;
+      c.addEventListener("click", () => {
+        const l = layerNow(); if (!l) return;
+        l.anchor = id;
+        ui.anchorCells.forEach((x) => x.classList.toggle("active", x.dataset.anchor === id));
+        fireChange();
+      });
+      grid.appendChild(c);
+      return c;
+    });
+    parent.appendChild(grid);
+  }
+
   function setLayer(layer) {
     currentLayer = layer;
     suspendChange = true;
@@ -269,6 +346,14 @@ export function createTextEditorPanel({ mount, onChange, onReset, onAlignCanvas,
       ui.posYInput && ui.posYInput.setValue(layer.y ?? 0);
       ui.textColorCell.setValue(layer.color ?? "#FFFFFF");
       ui.bgColorCell.setValue(layer.bgColor || null);
+      // Watermark-mode controls (present only when watermarkMode === true).
+      if (ui.applySizeMode) ui.applySizeMode(layer.sizeMode === "pct" ? "pct" : "px", false);
+      ui.marginXInput && ui.marginXInput.setValue(layer.marginX ?? 20);
+      ui.marginYInput && ui.marginYInput.setValue(layer.marginY ?? 20);
+      if (ui.anchorCells) {
+        const a = layer.anchor ?? "bottom-right";
+        ui.anchorCells.forEach((c) => c.classList.toggle("active", c.dataset.anchor === a));
+      }
     } finally {
       suspendChange = false;
     }
@@ -810,21 +895,27 @@ function injectCSS() {
        width and the longer labels (LINE HEIGHT / LETTER SP / BEHIND) fit. */
     .pix-to-narrow .pix-to-grid2 { grid-template-columns: 1fr; }
 
-    /* Numeric input cell: [LABEL  value] */
+    /* Numeric input cell: [LABEL  value  spin]. Matches Load Image's
+       .pix-li-numinput: the cell STRETCHES its children (align-items:stretch)
+       so the spinner column fills the full cell height and its chevrons render
+       cleanly. No padding on the cell itself - the label and input supply
+       their own, the spin column sits flush against the right border. */
     .pix-to-input-cell {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      align-items: center;   /* center label + value; the spin column stretches itself */
       background: #1d1d1d;
       border: 1px solid #444;
       border-radius: 4px;
-      padding: 4px 8px;
       min-height: 28px;
+      overflow: hidden;   /* clip the recessed spinner column to the rounded corner */
     }
     .pix-to-input-cell:focus-within { border-color: ${BRAND}; }
     .pix-to-input-label {
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
       font: 10px ui-sans-serif, system-ui, sans-serif;
-      color: #888;
+      color: ${BRAND};
       text-transform: uppercase;
       letter-spacing: 0.5px;
       flex-shrink: 0;
@@ -836,27 +927,27 @@ function injectCSS() {
       outline: none;
       color: ${BRAND};
       font: 600 13px ui-sans-serif, system-ui, sans-serif;
+      line-height: 1.2;   /* explicit vertical centering (don't rely on input auto-center) */
       text-align: right;
       width: 100%;
       min-width: 0;
-      padding: 0;
+      padding: 0 6px;
       -moz-appearance: textfield;
     }
     .pix-to-input-val::-webkit-outer-spin-button,
     .pix-to-input-val::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
-    /* Custom +/- spinner buttons (mirrors Load Image .pix-li-spin pattern,
-       CSS chevrons so no extra SVG needed). */
-    /* +/- spinners. Use unicode triangle chars (▴ ▾) so they always
-       render as proper up/down arrows regardless of CSS border-rotation
-       rendering quirks. */
+    /* Spinner column: SOLID filled triangle glyphs (literal ▲ ▼ chars - never
+       a \\25B2 CSS escape, which throws inside this template literal). No
+       divider, transparent buttons, so the field reads as one uniform dark box
+       (mirrors the Image Resize / Load Image spinner). Stretches full cell
+       height via the cell's align-items:stretch. */
     .pix-to-spin {
       display: flex;
       flex-direction: column;
-      width: 14px;
+      width: 16px;
       flex-shrink: 0;
-      border-left: 1px solid #444;
-      margin: -4px -8px -4px 6px; /* extend to the cell edge */
+      align-self: stretch;   /* full cell height even though the cell centers its items */
     }
     .pix-to-spin > button {
       flex: 1;
@@ -864,18 +955,22 @@ function injectCSS() {
       border: none;
       padding: 0;
       cursor: pointer;
-      color: #888;
-      font: 10px ui-sans-serif, system-ui, sans-serif;
-      line-height: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      color: #aaa;
+      position: relative;
       outline: none;
     }
-    .pix-to-spin > button:hover { background: #2a2a2a; color: ${BRAND}; }
-    .pix-to-spin-up   { border-bottom: 1px solid #444; }
-    .pix-to-spin-up::before   { content: "▴"; }
-    .pix-to-spin-down::before { content: "▾"; }
+    .pix-to-spin > button:hover { color: ${BRAND}; }
+    .pix-to-spin-up::before,
+    .pix-to-spin-down::before {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 8px;
+      line-height: 1;
+    }
+    .pix-to-spin-up::before   { content: "▲"; }
+    .pix-to-spin-down::before { content: "▼"; }
 
     /* Color cell: [swatch LABEL hex] */
     .pix-to-color-cell {
@@ -990,6 +1085,48 @@ function injectCSS() {
     .pix-to-popup-item:hover { background: #2a2a2a; }
     .pix-to-popup-item.active { color: ${BRAND}; font-weight: 600; }
     .pix-to-popup-sep { height: 1px; background: #333; margin: 4px 0; }
+
+    /* Watermark: Pixels / %-width size-unit toggle (2-segment) */
+    .pix-to-sizemode { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+    .pix-to-seg {
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      color: #aaa;
+      cursor: pointer;
+      padding: 5px 0;
+      font: 600 11px ui-sans-serif, system-ui, sans-serif;
+      min-height: 26px;
+    }
+    .pix-to-seg:hover { border-color: #666; color: #ddd; }
+    .pix-to-seg.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+
+    /* Watermark position row: Rotate + Margin X/Y on the left, compact 3x3
+       anchor square on the right (mirrors Load Image's crop anchor). */
+    .pix-to-wm-posrow { display: flex; gap: 6px; align-items: stretch; }
+    .pix-to-wm-posfields { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .pix-to-anchor {
+      flex: none;
+      width: 92px;
+      aspect-ratio: 1;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(3, 1fr);
+      gap: 3px;
+      background: #1d1d1d;
+      border: 1px solid #444;
+      border-radius: 5px;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+    .pix-to-anchor-cell {
+      background: rgba(255, 255, 255, 0.07);
+      border-radius: 2px;
+      cursor: pointer;
+      transition: background 0.08s;
+    }
+    .pix-to-anchor-cell:hover { background: rgba(255, 255, 255, 0.18); }
+    .pix-to-anchor-cell.active { background: ${BRAND}; }
   `;
   document.head.appendChild(s);
 }
