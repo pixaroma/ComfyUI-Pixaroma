@@ -230,7 +230,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **May 28, 2026 · v1.3.62**
+### **May 28, 2026 · v1.3.62–1.3.63**
+- **NEW: Mute Switch Pixaroma.** Skip whole parts of a workflow with one click. Wire the last node of each "scene" (usually a KSampler) into a row, then use the small switches to pick what runs and what does not. Two pills at the top: Single (only one scene runs at a time, like a radio button) or Multi (any combination), and Mute (the scene does not run) or Bypass (each node passes its input through unchanged). Chain Mute Switches together to group scenes: an outer Mute Switch can pick a group, and inner Mute Switches fine-tune which scenes inside that group run. Labels on rows are editable so you can name your scenes.
+- **Tooltips on Mute Switch, Prompt Pack and Prompt Multi now match the standard Windows / Mac look** (white background, dark text, sharp corners) so they read the same way as the tooltips on regular buttons.
 - **NEW: Switch Source Pixaroma.** Flip a whole pipeline (or any set of wires) between two sources with one click. Wire your A bank and B bank for as many rows as you need (works for any wire type: MODEL, CLIP, VAE, IMAGE, LATENT, STRING…), then toggle A/B to swap them all at once. Two common setups: swap a combined Load Checkpoint against three separate model/CLIP/VAE loaders, or flip a "local" pipeline against an "api" one without ticking ten little switches. Output labels are editable per row, and you can pick whether empty rows leave the output blank or show a clear error.
 - **Prompt Reader sees through Switch Source.** Drop a saved image whose workflow ran through a Switch Source and the prompt comes back correctly, instead of "no prompt found".
 
