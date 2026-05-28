@@ -66,6 +66,14 @@ app.registerExtension({
     // Draw
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
+      // Self-heal min width / height (Vue Compat #13 + Preview Image #11).
+      const MIN_W = 240;
+      const MIN_H = 80;
+      let changed = false;
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; changed = true; }
+      if (this.size[1] < MIN_H) { this.size[1] = MIN_H; changed = true; }
+      if (changed) this.graph?.setDirtyCanvas?.(true, true);
+
       if (_origDraw) _origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
       drawMuteSwitch(this, ctx);
