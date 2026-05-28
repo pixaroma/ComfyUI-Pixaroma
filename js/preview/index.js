@@ -293,6 +293,15 @@ function bumpFilenameCounter(name, offset) {
   return `${m[1]}${newN}${m[3]}`;
 }
 
+// Strip the "_00001_" counter from an "img_00001_.png"-style name, leaving
+// "img.png". If the pattern doesn't match, returns the input unchanged.
+// Used by Save Disk when the user opts to omit the counter (the OS Save
+// dialog handles overwrite confirmation, so the safety net the counter
+// provides is unnecessary on that path).
+function stripFilenameCounter(name) {
+  return name.replace(/^(.+?)_\d+_(\.[^.]+)$/, "$1$2");
+}
+
 async function getWorkflowAndPrompt() {
   // app.graphToPrompt() returns { workflow, output }; "output" is the prompt.
   const { workflow, output } = await app.graphToPrompt();
@@ -497,15 +506,25 @@ async function saveToDisk(node) {
     }
     const { image_b64, suggested_filename } = await resp.json();
     if (suggested_filename) {
-      // Save-to-Disk writes to the user's chosen folder (not ComfyUI's
-      // output/), so folder_paths.get_save_image_path can't observe those
-      // files and always returns the same counter — every click would
-      // suggest the same name. Track a per-node click offset and bump
-      // the counter portion of the suggestion locally.
-      const offset = node._pixaromaDiskOffset ?? 0;
-      suggestedName = offset > 0
-        ? bumpFilenameCounter(suggested_filename, offset)
-        : suggested_filename;
+      let omit = false;
+      try {
+        omit = !!app.ui?.settings?.getSettingValue?.("Pixaroma.Preview.OmitCounterOnSaveDisk");
+      } catch {}
+      if (omit) {
+        // User asked for clean filenames. OS Save dialog handles the
+        // overwrite prompt, so no offset bumping needed.
+        suggestedName = stripFilenameCounter(suggested_filename);
+      } else {
+        // Save-to-Disk writes to the user's chosen folder (not ComfyUI's
+        // output/), so folder_paths.get_save_image_path can't observe those
+        // files and always returns the same counter — every click would
+        // suggest the same name. Track a per-node click offset and bump
+        // the counter portion of the suggestion locally.
+        const offset = node._pixaromaDiskOffset ?? 0;
+        suggestedName = offset > 0
+          ? bumpFilenameCounter(suggested_filename, offset)
+          : suggested_filename;
+      }
     }
     preparedBlob = await dataURLToBlob(image_b64);
   } catch (err) {
@@ -1060,6 +1079,18 @@ app.registerExtension({
       options: ["Preview", "Save"],
       tooltip: "Initial value of the save_mode widget on newly-created Preview Image Pixaroma nodes. Preview writes batch frames to ComfyUI's temp/ folder (auto-cleared on restart, no clutter). Save writes them to output/ with embedded workflow metadata, like native SaveImage. Existing nodes keep whatever save_mode they were saved with - this setting only affects fresh nodes you drop on the canvas.",
       category: ["👑 Pixaroma", "Preview (save mode)"],
+    },
+    {
+      // Distinct leaf category — Align Pattern #10. Affects ONLY the
+      // Save Disk button; Save Output keeps its counter because it
+      // writes silently to ComfyUI's output/ folder with no overwrite
+      // prompt (dropping the counter there would clobber prior runs).
+      id: "Pixaroma.Preview.OmitCounterOnSaveDisk",
+      name: "Save Disk: omit counter from filename",
+      type: "boolean",
+      defaultValue: false,
+      tooltip: "When ON, the Save Disk button suggests filenames without the auto-counter (e.g. 'myimage.png' instead of 'myimage_00001_.png'). The OS Save dialog will warn you before overwriting an existing file. Save Output is unaffected — it always keeps the counter to protect prior runs.",
+      category: ["👑 Pixaroma", "Preview (disk save)"],
     },
   ],
 
