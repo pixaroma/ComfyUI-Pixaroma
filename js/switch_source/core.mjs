@@ -104,9 +104,11 @@ export function updateInputLabels(node) {
   const n = rowCount(node);
   for (let r = 1; r <= n; r++) {
     const a = inputByName(node, A_NAME(r));
-    if (a && a.label !== "A") a.label = "A";
+    const aLabel = `A${r}`;
+    if (a && a.label !== aLabel) a.label = aLabel;
     const b = inputByName(node, B_NAME(r));
-    if (b && b.label !== "B") b.label = "B";
+    const bLabel = `B${r}`;
+    if (b && b.label !== bLabel) b.label = bLabel;
   }
 }
 
@@ -213,8 +215,8 @@ export function rebuildSlots(node, targetRows) {
 
     clearAllSlots(node);
 
-    for (let r = 1; r <= rows; r++) { const s = node.addInput(A_NAME(r), "*"); s.label = "A"; }
-    for (let r = 1; r <= rows; r++) { const s = node.addInput(B_NAME(r), "*"); s.label = "B"; }
+    for (let r = 1; r <= rows; r++) { const s = node.addInput(A_NAME(r), "*"); s.label = `A${r}`; }
+    for (let r = 1; r <= rows; r++) { const s = node.addInput(B_NAME(r), "*"); s.label = `B${r}`; }
     for (let r = 1; r <= rows; r++) { node.addOutput(OUT_NAME(r), "*"); }
 
     // Reconnect inputs whose slot still exists.
@@ -256,8 +258,8 @@ export function rebuildSlots(node, targetRows) {
 function buildBareRows(node, rows) {
   node._pixSsRebuilding = true;
   try {
-    for (let r = 1; r <= rows; r++) { const s = node.addInput(A_NAME(r), "*"); s.label = "A"; }
-    for (let r = 1; r <= rows; r++) { const s = node.addInput(B_NAME(r), "*"); s.label = "B"; }
+    for (let r = 1; r <= rows; r++) { const s = node.addInput(A_NAME(r), "*"); s.label = `A${r}`; }
+    for (let r = 1; r <= rows; r++) { const s = node.addInput(B_NAME(r), "*"); s.label = `B${r}`; }
     for (let r = 1; r <= rows; r++) { node.addOutput(OUT_NAME(r), "*"); }
   } finally {
     node._pixSsRebuilding = false;

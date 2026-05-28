@@ -161,10 +161,10 @@ function buildControls(node) {
   mToggle.className = "pix-ss-missingtoggle";
   const btnConn = document.createElement("button");
   btnConn.className = "pix-ss-btn"; btnConn.textContent = "Use connected"; btnConn.dataset.value = "connected";
-  btnConn.title = "If a row's active side isn't wired, use whatever IS wired (e.g. one shared model on both A and B).";
+  btnConn.title = "If a row's active side isn't wired, leave that output empty (no error). Use this when A and B have different numbers of wired rows.";
   const btnStrict = document.createElement("button");
   btnStrict.className = "pix-ss-btn"; btnStrict.textContent = "Strict"; btnStrict.dataset.value = "strict";
-  btnStrict.title = "Error if the active side of a wired row isn't connected (guarantees A means A).";
+  btnStrict.title = "If a row's active side isn't wired but the OTHER side is, raise an error. Use this to catch wiring mistakes.";
   mToggle.append(btnConn, btnStrict);
   row2.append(mLabel, mToggle);
   root.appendChild(row2);
@@ -380,14 +380,14 @@ app.graphToPrompt = async function (...args) {
       }
 
       entry.inputs = entry.inputs || {};
-      // Prune each row to the side actually used so only that branch executes.
+      // ACTIVE SIDE ONLY: always prune the inactive side, regardless of mode.
+      // The mode (use-connected vs strict) only affects Python's behaviour
+      // when the active side is empty - it never causes a fallback to the
+      // other side. aWired/bWired travel with the state so strict mode can
+      // tell whether the OTHER side was wired (i.e. the user probably meant
+      // to use the other bank and should see an error).
       for (let r = 1; r <= rows; r++) {
-        const aw = aWired.includes(r);
-        const bw = bWired.includes(r);
-        let used;
-        if (active === "A") used = aw ? "a" : (missing === "connected" && bw ? "b" : "a");
-        else used = bw ? "b" : (missing === "connected" && aw ? "a" : "b");
-        const drop = used === "a" ? `b_${r}` : `a_${r}`;
+        const drop = active === "A" ? `b_${r}` : `a_${r}`;
         if (drop in entry.inputs) delete entry.inputs[drop];
       }
 

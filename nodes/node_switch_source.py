@@ -24,17 +24,19 @@ class PixaromaSwitchSource:
     DESCRIPTION = (
         "Switch Source Pixaroma - flip a whole set of wires between two "
         "sources (A and B) with one toggle. Each row has an A input and a B "
-        "input and sends one of them to that row's output; the A/B toggle "
+        "input and sends ONE of them to that row's output; the A/B toggle "
         "picks the side for every row at once. Wire your 'local' nodes into "
         "the A inputs and your 'api' nodes into the B inputs (or any two "
         "setups), then flip between them in a single click instead of toggling "
         "several separate switches.\n\n"
         "Set how many rows you need with the Rows field. Works for any wire "
-        "type (MODEL, CLIP, VAE, IMAGE, LATENT, STRING, ...). 'Use connected' "
-        "mode lets a row that has only one side wired use that side on both A "
-        "and B (handy for a shared input); 'Strict' mode instead errors if the "
-        "chosen side is missing. Only the side actually used runs - the other "
-        "side's upstream nodes are skipped."
+        "type (MODEL, CLIP, VAE, IMAGE, LATENT, STRING, ...). The active side "
+        "is the only one that runs - the other side's upstream nodes are "
+        "skipped. 'Use connected' mode silently leaves a row empty if its "
+        "active side isn't wired (handy when banks have asymmetric wiring, "
+        "e.g. 3 wired on B and only 1 on A). 'Strict' mode raises an error "
+        "when the active side is missing but the other side was wired - "
+        "useful for catching wiring mistakes."
     )
 
     @classmethod
@@ -114,25 +116,22 @@ class PixaromaSwitchSource:
             if i > rows:
                 out.append(None)
                 continue
-            a = kwargs.get(f"a_{i}")
-            b = kwargs.get(f"b_{i}")
-            # The JS hook has already pruned each row to its used side, so at
-            # most one of a/b is present per row.
-            if active == "A":
-                val = a if a is not None else b
-                if val is None and missing == "strict" and i in b_wired:
+            # ACTIVE SIDE ONLY. The JS hook prunes the inactive side regardless
+            # of mode, so its upstream branch never runs. We never fall back.
+            val = kwargs.get(f"a_{i}") if active == "A" else kwargs.get(f"b_{i}")
+            if val is None and missing == "strict":
+                # Active is empty AND the user wired the OTHER side - almost
+                # certainly a wiring mistake. 'Use connected' mode just leaves
+                # the row empty silently instead.
+                other_wired = (i in b_wired) if active == "A" else (i in a_wired)
+                if other_wired:
+                    this_side = active
+                    other_side = "B" if active == "A" else "A"
                     raise ValueError(
-                        f"Switch Source Pixaroma: row {i} is set to A, but the A "
-                        f"input for that row is not connected (B is). Wire a_{i}, "
-                        f"switch to B, or use 'Use connected' mode."
-                    )
-            else:
-                val = b if b is not None else a
-                if val is None and missing == "strict" and i in a_wired:
-                    raise ValueError(
-                        f"Switch Source Pixaroma: row {i} is set to B, but the B "
-                        f"input for that row is not connected (A is). Wire b_{i}, "
-                        f"switch to A, or use 'Use connected' mode."
+                        f"Switch Source Pixaroma: row {i} is set to {this_side}, but "
+                        f"{this_side.lower()}_{i} is not connected ({other_side} is). "
+                        f"Wire {this_side.lower()}_{i}, switch to {other_side}, or use "
+                        f"'Use connected' mode to leave this row empty."
                     )
             out.append(val)
         return tuple(out)
