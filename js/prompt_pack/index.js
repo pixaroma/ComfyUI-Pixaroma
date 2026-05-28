@@ -71,19 +71,22 @@ function ensureTooltip() {
   if (_tooltipEl) return _tooltipEl;
   _tooltipEl = document.createElement("div");
   _tooltipEl.className = "pix-pp-tooltip";
+  // OS-native tooltip style (matches Switch Source DOM tooltips). White
+  // background, dark text, sharp corners, thin gray border - so canvas-
+  // painted controls and DOM controls feel the same.
   _tooltipEl.style.cssText = [
     "position: fixed",
-    "background: #1d1d1d",
-    "color: #ddd",
-    "padding: 6px 10px",
-    "border-radius: 4px",
-    "border: 1px solid #444",
-    "font: 11px 'Segoe UI', sans-serif",
-    "line-height: 1.35",
+    "background: #ffffff",
+    "color: #000000",
+    "padding: 3px 7px",
+    "border-radius: 0",
+    "border: 1px solid #767676",
+    "font: 12px 'Segoe UI', sans-serif",
+    "line-height: 1.3",
     "pointer-events: none",
     "z-index: 99999",
-    "max-width: 260px",
-    "box-shadow: 0 4px 12px rgba(0,0,0,0.4)",
+    "max-width: 280px",
+    "box-shadow: 0 2px 4px rgba(0,0,0,0.15)",
     "display: none",
     "white-space: normal",
   ].join("; ");
