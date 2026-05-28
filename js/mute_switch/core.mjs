@@ -187,6 +187,82 @@ export function handleDisconnect(node, slotIdx1) {
   node._pendingDisconnects.set(slotIdx1, timer);
 }
 
+// ── Toggle helpers ───────────────────────────────────────────────────────
+// These mutate state.rows / state.selectMode / state.muteMode and trigger
+// applyMuteState. Task 5 ships a stub applyMuteState; Task 7 wires the real
+// upstream walk + mode write.
+
+export function togglePillRow(node, slotIdx1) {
+  const state = readState(node);
+  const row = state.rows[slotIdx1 - 1];
+  if (!row) return;
+
+  // Only operate on connected slots - clicking a trailing-empty pill is a no-op.
+  const slot = node.inputs?.[slotIdx1 - 1];
+  if (slot == null || slot.link == null) return;
+
+  if (state.selectMode === "single") {
+    // Single mode: clicking the currently-ON row is a no-op (invariant
+    // forbids zero-ON). Clicking a different row turns it ON and turns
+    // every other row OFF.
+    if (row.enabled) return;
+    for (let i = 0; i < state.rows.length; i++) {
+      state.rows[i].enabled = (i === slotIdx1 - 1);
+    }
+  } else {
+    row.enabled = !row.enabled;
+  }
+  applyMuteState(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
+export function setSelectMode(node, newMode /* "single" | "multi" */) {
+  const state = readState(node);
+  if (state.selectMode === newMode) return;
+  state.selectMode = newMode;
+
+  if (newMode === "single") {
+    // Enforce "exactly one ON" invariant. Keep LOWEST-INDEX wired ON row;
+    // turn every other row OFF.
+    let firstOnIdx = -1;
+    for (let i = 0; i < state.rows.length; i++) {
+      const connected = node.inputs?.[i]?.link != null;
+      if (connected && state.rows[i].enabled) {
+        firstOnIdx = i;
+        break;
+      }
+    }
+    if (firstOnIdx === -1) {
+      // No row was ON - activate the first WIRED row.
+      for (let i = 0; i < state.rows.length; i++) {
+        if (node.inputs?.[i]?.link != null) {
+          firstOnIdx = i;
+          break;
+        }
+      }
+    }
+    for (let i = 0; i < state.rows.length; i++) {
+      state.rows[i].enabled = (i === firstOnIdx);
+    }
+  }
+  applyMuteState(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
+export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
+  const state = readState(node);
+  if (state.muteMode === newMode) return;
+  state.muteMode = newMode;
+  applyMuteState(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Stub - Task 7 replaces this with the real upstream walker + refcount.
+export function applyMuteState(node) {
+  // Intentionally empty for Task 5. Clicks update state correctly so the
+  // paint reflects them; the actual node.mode writes land in Task 7.
+}
+
 function actuallyDisconnect(node, slotIdx1) {
   if (!node.graph) return;
 
