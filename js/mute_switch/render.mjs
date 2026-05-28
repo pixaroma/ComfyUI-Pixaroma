@@ -249,18 +249,23 @@ let _tipOwnerNode = null;
 function ensureTipEl() {
   if (_tipEl) return _tipEl;
   _tipEl = document.createElement("div");
+  // Match the OS-native tooltip style used by Switch Source's DOM controls
+  // (which use the browser title attribute). White background, dark text,
+  // sharp corners, thin gray border - so canvas-painted controls and DOM
+  // controls feel the same.
   _tipEl.style.cssText = [
     "position: fixed",
     "z-index: 99999",
     "pointer-events: none",
-    "background: rgba(20,20,20,0.95)",
-    "color: #ddd",
-    "font: 11px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
-    "padding: 4px 8px",
-    "border-radius: 3px",
-    "border: 1px solid rgba(255,255,255,0.12)",
-    "max-width: 240px",
+    "background: #ffffff",
+    "color: #000000",
+    "font: 12px 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif",
+    "padding: 3px 7px",
+    "border-radius: 0",
+    "border: 1px solid #767676",
+    "max-width: 280px",
     "line-height: 1.3",
+    "box-shadow: 0 2px 4px rgba(0,0,0,0.15)",
     "display: none",
   ].join("; ");
   document.body.appendChild(_tipEl);
