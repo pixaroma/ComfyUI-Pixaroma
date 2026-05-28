@@ -16,6 +16,7 @@ export const MODE_BAR_H = 28;        // height of the two-pills row at top
 export const ROW_H = 20;             // matches LG NODE_SLOT_HEIGHT
 export const TOP_PAD = 4;            // gap between mode bar and first row
 export const SIDE_PAD = 8;
+export const OUTPUT_X_INSET = 10;    // pulls phantom output dot 10 px inside
 
 // Mode bar layout
 const MODE_PILL_W = 92;
@@ -26,7 +27,11 @@ const ROW_PILL_W = 28;
 const ROW_PILL_H = 14;
 const ROW_PILL_R = 7;
 const ROW_KNOB_R = 4;
-const ROW_PILL_RIGHT_PAD = 10;
+// Right-side margin. Wide enough to leave room for the phantom "out" output
+// dot (which we pull 10 px inside the body, mirroring the input-dot inset on
+// the left). Without this margin the pill would butt right up against the
+// edge and the output dot would have nowhere to sit.
+const ROW_PILL_RIGHT_PAD = 28;
 const DOT_GUTTER = 28;
 
 // ── Mode bar rects (body-local) ──────────────────────────────────────────
@@ -369,12 +374,14 @@ export function drawMuteSwitch(node, ctx) {
   const w = node.size[0];
 
   // Keep the phantom "out" output dot pinned just below the mode bar and
-  // glued to the right edge - covers the resize case where normalizeSlots
-  // doesn't re-fire (Vue Compat #13: onResize is unreliable).
+  // 10 px inside the right edge (mirrors the input-dot inset on the left).
+  // Re-applied per paint so it stays correct on resize (Vue Compat #13:
+  // onResize is unreliable).
   if (node.outputs?.[0]) {
+    const ox = w - OUTPUT_X_INSET;
     const oy = MODE_BAR_H + TOP_PAD + ROW_H / 2;
-    if (node.outputs[0].pos?.[0] !== w || node.outputs[0].pos?.[1] !== oy) {
-      node.outputs[0].pos = [w, oy];
+    if (node.outputs[0].pos?.[0] !== ox || node.outputs[0].pos?.[1] !== oy) {
+      node.outputs[0].pos = [ox, oy];
     }
   }
   const state = node.properties?.muteSwitchState;
