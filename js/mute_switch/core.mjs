@@ -270,6 +270,8 @@ export function applyMuteState(node) {
   // modified (Vue Compat #18).
   if (node._pixMsConfiguring) return;
 
+  pruneOrphanedOriginalModes(node);
+
   const state = readState(node);
   const originalModes = readOriginalModes(node);
   const targetMode = state.muteMode === "bypass" ? 4 : 2;
@@ -390,4 +392,45 @@ function actuallyDisconnect(node, slotIdx1) {
 
   applyMuteState(node);
   node.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Called from onRemoved. Restores every node we muted to its original mode,
+// then clears originalModes. Without this, deleting the Mute Switch while
+// rows were OFF would leave the upstream chain permanently muted (the
+// source-of-truth pill is gone).
+export function restoreAllOnRemove(node) {
+  if (!node.graph) return;
+  const originalModes = node.properties?.[ORIGINAL_MODES_PROP];
+  if (!originalModes) return;
+
+  const allNodes = node.graph._nodes || node.graph.nodes || [];
+  const nodesById = {};
+  for (const n of allNodes) {
+    if (n && n.id != null) nodesById[String(n.id)] = n;
+  }
+
+  for (const key of Object.keys(originalModes)) {
+    const n = nodesById[key];
+    if (n) n.mode = originalModes[key];
+  }
+  node.properties[ORIGINAL_MODES_PROP] = {};
+  node.graph.setDirtyCanvas?.(true, true);
+}
+
+// Drop originalModes entries whose node no longer exists in the graph.
+// Called at the start of applyMuteState so deleted upstream nodes do not
+// accumulate stale entries that would later try to "restore" something
+// that isn't there.
+export function pruneOrphanedOriginalModes(node) {
+  if (!node.graph) return;
+  const originalModes = node.properties?.[ORIGINAL_MODES_PROP];
+  if (!originalModes) return;
+  const allNodes = node.graph._nodes || node.graph.nodes || [];
+  const liveIds = new Set();
+  for (const n of allNodes) if (n && n.id != null) liveIds.add(String(n.id));
+  for (const key of Object.keys(originalModes)) {
+    if (!liveIds.has(key)) {
+      delete originalModes[key];
+    }
+  }
 }

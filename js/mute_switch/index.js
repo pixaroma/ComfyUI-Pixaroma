@@ -4,6 +4,7 @@ import {
   setupNode, restoreFromProperties,
   handleConnect, handleDisconnect,
   togglePillRow, setSelectMode, setMuteMode,
+  restoreAllOnRemove,
 } from "./core.mjs";
 import {
   drawMuteSwitch,
@@ -114,9 +115,10 @@ app.registerExtension({
       if (_origDown) return _origDown.call(this, e, pos);
     };
 
-    // Removal - cancel any open editor + clear pending disconnects.
+    // Removal - restore muted nodes + cancel editor + clear pending disconnects.
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      restoreAllOnRemove(this);
       cancelEditorForNode(this);
       if (this._pendingDisconnects?.size) {
         for (const timerId of this._pendingDisconnects.values()) {
