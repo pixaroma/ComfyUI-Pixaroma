@@ -18,7 +18,8 @@ export const MAX_ROWS = 16;
 export const ROW_H = 20;   // LiteGraph NODE_SLOT_HEIGHT
 export const TOP_PAD = 4;  // LiteGraph body top-padding
 const BOT_PAD = 8;
-export const CONTROL_BAND = 80; // reserved height for the DOM control strip
+export const CONTROL_BAND = 95; // reserved height for the DOM control strip
+                                // (label stacked above the toggle = 1 extra row)
 const DEFAULT_W = 250;
 
 const A_NAME = (r) => `a_${r}`;

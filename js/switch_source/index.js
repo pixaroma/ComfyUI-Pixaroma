@@ -81,9 +81,11 @@ function injectCSS() {
     .pix-ss-btn:hover { background:rgba(255,255,255,0.1); border-color:rgba(255,255,255,0.35); color:#fff; }
     .pix-ss-btn.active { background:${BRAND}; color:#fff; border-color:${BRAND}; }
     .pix-ss-abtoggle { display:flex; gap:4px; width:96px; }
-    .pix-ss-missingrow { align-items:center; }
-    .pix-ss-missing-label { font-size:10px; color:#999; white-space:nowrap; }
-    .pix-ss-missingtoggle { display:flex; gap:4px; flex:1; }
+    /* Stack label above the buttons so "When active row is empty:" fits even
+       at the min node width, and the buttons get the full row to themselves. */
+    .pix-ss-missingrow { flex-direction:column; gap:4px; align-items:stretch; }
+    .pix-ss-missing-label { font-size:10px; color:#999; white-space:nowrap; padding-left:4px; }
+    .pix-ss-missingtoggle { display:flex; gap:4px; width:100%; }
     .pix-ss-missingtoggle .pix-ss-btn { font-size:11px; letter-spacing:0; }
     /* Solid filled ▲▼ triangles (like Image Resize / Load Image), replacing the
        shared outline-chevron carets, and drop the internal divider so the Rows
@@ -156,15 +158,15 @@ function buildControls(node) {
   row2.className = "pix-ss-row pix-ss-missingrow";
   const mLabel = document.createElement("span");
   mLabel.className = "pix-ss-missing-label";
-  mLabel.textContent = "Missing side";
+  mLabel.textContent = "When active row is empty:";
   const mToggle = document.createElement("div");
   mToggle.className = "pix-ss-missingtoggle";
   const btnConn = document.createElement("button");
-  btnConn.className = "pix-ss-btn"; btnConn.textContent = "Use connected"; btnConn.dataset.value = "connected";
-  btnConn.title = "If a row's active side isn't wired, leave that output empty (no error). Use this when A and B have different numbers of wired rows.";
+  btnConn.className = "pix-ss-btn"; btnConn.textContent = "Allow empty"; btnConn.dataset.value = "connected";
+  btnConn.title = "Leave the output empty when the active side has no wire on a row. No error. Use this when A and B have different amounts of wires.";
   const btnStrict = document.createElement("button");
-  btnStrict.className = "pix-ss-btn"; btnStrict.textContent = "Strict"; btnStrict.dataset.value = "strict";
-  btnStrict.title = "If a row's active side isn't wired but the OTHER side is, raise an error. Use this to catch wiring mistakes.";
+  btnStrict.className = "pix-ss-btn"; btnStrict.textContent = "Show error"; btnStrict.dataset.value = "strict";
+  btnStrict.title = "Show an error when the active side has no wire but the OTHER side does. Catches the case where you wired the wrong bank by mistake.";
   mToggle.append(btnConn, btnStrict);
   row2.append(mLabel, mToggle);
   root.appendChild(row2);

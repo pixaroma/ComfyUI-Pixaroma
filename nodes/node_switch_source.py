@@ -32,11 +32,12 @@ class PixaromaSwitchSource:
         "Set how many rows you need with the Rows field. Works for any wire "
         "type (MODEL, CLIP, VAE, IMAGE, LATENT, STRING, ...). The active side "
         "is the only one that runs - the other side's upstream nodes are "
-        "skipped. 'Use connected' mode silently leaves a row empty if its "
-        "active side isn't wired (handy when banks have asymmetric wiring, "
-        "e.g. 3 wired on B and only 1 on A). 'Strict' mode raises an error "
-        "when the active side is missing but the other side was wired - "
-        "useful for catching wiring mistakes."
+        "skipped. The toggle below the A/B switch decides what happens when "
+        "the active side has no wire on a row: 'Allow empty' silently leaves "
+        "that output empty (handy when banks have asymmetric wiring, e.g. "
+        "3 wired on B and only 1 on A); 'Show error' raises a clear error "
+        "when the OTHER side was wired (catches the case where you dropped a "
+        "wire on the wrong bank by mistake)."
     )
 
     @classmethod
@@ -130,8 +131,8 @@ class PixaromaSwitchSource:
                     raise ValueError(
                         f"Switch Source Pixaroma: row {i} is set to {this_side}, but "
                         f"{this_side.lower()}_{i} is not connected ({other_side} is). "
-                        f"Wire {this_side.lower()}_{i}, switch to {other_side}, or use "
-                        f"'Use connected' mode to leave this row empty."
+                        f"Wire {this_side.lower()}_{i}, switch to {other_side}, or pick "
+                        f"'Allow empty' mode to leave this row empty."
                     )
             out.append(val)
         return tuple(out)
