@@ -1,5 +1,22 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+
+// Nodes 2.0 renders its own native .image-preview panel because this node
+// emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
+// An mp4 isn't a valid image, so that panel shows "Image failed to load". We
+// have our OWN <video> preview, so hide the native panel — scoped to THIS
+// node via :has() so nothing else is affected. Legacy has no .lg-node /
+// .image-preview, so this rule is a no-op there. (CLAUDE.md Nodes 2.0.)
+let _mp4CssInjected = false;
+function injectCSS() {
+  if (_mp4CssInjected) return;
+  _mp4CssInjected = true;
+  const style = document.createElement("style");
+  style.id = "pix-mp4-css";
+  style.textContent = `.lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }`;
+  document.head.appendChild(style);
+}
 
 // In-node video preview for Save Mp4 Pixaroma. The Python node returns
 // `{"ui": {"images": [...], "pixaroma_videos": [...]}}` after each encode;
@@ -88,11 +105,14 @@ app.registerExtension({
     const onNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       const ret = onNodeCreated?.apply(this, arguments);
+      injectCSS();
 
       // Wrap sizes itself to its child <video>'s intrinsic dimensions —
       // no fixed height, no background (so there's no surface to
-      // letterbox into).
+      // letterbox into). The pix-mp4-root class scopes the native-preview
+      // hide rule above.
       const wrap = document.createElement("div");
+      wrap.className = "pix-mp4-root";
       wrap.style.cssText = `
         width: 100%;
         display: flex;
@@ -150,8 +170,11 @@ app.registerExtension({
         "pixaroma_video_preview",
         "video_preview",
         wrap,
-        { canvasOnly: true, serialize: false, hideOnZoom: false }  // canvasOnly: hide from Parameters tab (Vue Compat #15)
+        { serialize: false, hideOnZoom: false }
       );
+      // canvasOnly set adaptively: true in legacy (out of Parameters tab),
+      // false in Nodes 2.0 so the <video> renders in the Vue body.
+      applyAdaptiveCanvasOnly(widget);
 
       // Vue's layout loop reads `widget.computedHeight` directly, NOT the
       // return value of computeSize. We must SET it here every time the
