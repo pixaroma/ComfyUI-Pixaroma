@@ -500,9 +500,13 @@ function createLoadImagePreviewWidget(node) {
     getMinHeight: measureH,
     serialize: false,
   });
-  // NO computeLayoutSize => fixed min-content row (content-sized), like the
-  // controls panel. A grower (computeLayoutSize) collapsed to 0 here.
+  // CRITICAL: addDOMWidget assigns a DEFAULT computeLayoutSize (a grower, since
+  // we pass no getMaxHeight) which collapses to 0 here. Set it to undefined so
+  // this is a fixed min-content row that renders by its DOM content height -
+  // EXACTLY what makes the controls panel render correctly. (Removing my custom
+  // computeLayoutSize wasn't enough; the default one has to be cleared too.)
   applyAdaptiveCanvasOnly(widget);
+  widget.computeLayoutSize = undefined;
 
   node._pixLiPreviewImg = img;
   node._pixLiPreviewImgWrap = imgWrap;
