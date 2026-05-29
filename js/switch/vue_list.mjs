@@ -117,6 +117,9 @@ export function buildSwitchVueList(node) {
       const custom = labels[slotIdx1];
       const type = connected ? getUpstreamType(node, slotIdx1) : null;
       const usefulType = type && type !== "*" ? type : null;
+      // Auto label = "<type> <slot#>" (e.g. "string 1"), matching the dot label;
+      // falls back to "input N" when the type isn't known yet.
+      const autoName = usefulType ? `${usefulType.toLowerCase()} ${slotIdx1}` : `input ${slotIdx1}`;
 
       // Connected rows get an editable name field; the trailing empty row gets
       // a plain dim "(empty)" label.
@@ -128,7 +131,7 @@ export function buildSwitchVueList(node) {
         labelEl.maxLength = 64;
         labelEl.spellcheck = false;
         labelEl.value = custom || "";
-        labelEl.placeholder = "name";
+        labelEl.placeholder = autoName;
         labelEl.title = "Click to rename this input";
         labelEl.addEventListener("keydown", (e) => {
           e.stopPropagation(); // keep typing instead of triggering canvas shortcuts
@@ -161,10 +164,11 @@ export function buildSwitchVueList(node) {
         labelEl.title = labelEl.textContent;
       }
 
-      // Wire-type tag so each connected row shows what kind of data is plugged
-      // in (STRING / IMAGE / MODEL ...), even once it has a custom name.
+      // Wire-type tag - shown ONLY when the row has a custom name (then the auto
+      // "string N" label is replaced, so the tag keeps the type visible). Unnamed
+      // rows don't need it: their label already reads "string 1" / "image 3".
       let typeEl = null;
-      if (connected && !isTrailing && usefulType) {
+      if (connected && !isTrailing && custom && usefulType) {
         typeEl = document.createElement("span");
         typeEl.className = "pix-sw-type";
         typeEl.textContent = usefulType;

@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import {
   setupNode, restoreFromProperties,
-  handleConnect, handleDisconnect, setActiveRow,
+  handleConnect, handleDisconnect, setActiveRow, refreshSlotLabels,
   STATE_PROP,
 } from "./core.mjs";
 import { drawSwitchRows, hitToggle, hitLabel, labelScreenRect } from "./render.mjs";
@@ -105,6 +105,19 @@ app.registerExtension({
         return r;
       } finally {
         this._pixSwitchConfiguring = false;
+        // Wire types aren't resolved until the graph-level link restore finishes
+        // (~a tick after configure). Refresh the dot labels once it settles so a
+        // saved "input N" / blank label upgrades to "string N" / "image N".
+        // Diff-gated (refreshSlotLabels only writes changed labels), so a
+        // workflow whose labels already match stays clean - no false "modified".
+        if (isVueNodes()) {
+          const self = this;
+          setTimeout(() => {
+            if (!self.graph) return;
+            refreshSlotLabels(self);
+            self._pixSwRefresh?.();
+          }, 400);
+        }
       }
     };
 

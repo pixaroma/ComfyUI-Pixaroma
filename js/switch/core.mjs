@@ -28,7 +28,31 @@ export const MAX_INPUTS = 32;
 export function slotDisplayLabel(node, slotIdx1) {
   if (!isVueNodes()) return "​"; // zero-width space
   const custom = readState(node).labels?.[slotIdx1];
-  return custom || `input ${slotIdx1}`;
+  if (custom) return custom;
+  const slot = node.inputs?.[slotIdx1 - 1];
+  const connected = slot && slot.link != null;
+  if (!connected) return `input ${slotIdx1}`;
+  const t = getUpstreamType(node, slotIdx1);
+  if (t && t !== "*") return `${t.toLowerCase()} ${slotIdx1}`; // e.g. "string 1"
+  // Connected but type not resolved yet (the configure/load race - links are
+  // restored a tick AFTER onConfigure). Keep the current non-blank label so we
+  // don't transiently downgrade it to "input N" and dirty the workflow; the
+  // deferred refresh in onConfigure re-runs this once links resolve to land on
+  // "<type> N".
+  const cur = slot.label;
+  return cur && cur !== "​" ? cur : `input ${slotIdx1}`;
+}
+
+// Re-apply slotDisplayLabel to every input slot (diff-gated so unchanged labels
+// are not rewritten - keeps a correctly-saved workflow from being flagged
+// "modified" on load). Called after connect/disconnect and on the deferred
+// post-load pass once wire types have resolved.
+export function refreshSlotLabels(node) {
+  if (!node.inputs) return;
+  for (let i = 0; i < node.inputs.length; i++) {
+    const lbl = slotDisplayLabel(node, i + 1);
+    if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
+  }
 }
 
 const SLOT_NAME = (i) => `input_${i}`; // 1-based
@@ -312,6 +336,7 @@ export function handleConnect(node, slotIdx1) {
   }
 
   updateOutputType(node);
+  refreshSlotLabels(node); // type just resolved on the new wire -> "string N"
   app.graph?.setDirtyCanvas?.(true, true);
   node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
@@ -344,9 +369,11 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
 
   // 2. Rename every remaining slot so suffixes stay contiguous.
   if (node.inputs) {
+    // Names only here; labels are re-applied at the end via refreshSlotLabels,
+    // AFTER state.labels has been shifted down (step 3) so a custom name follows
+    // its row to the new index.
     for (let i = 0; i < node.inputs.length; i++) {
       node.inputs[i].name = `input_${i + 1}`;
-      node.inputs[i].label = slotDisplayLabel(node, i + 1);
     }
   }
 
@@ -397,6 +424,7 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
   node.size[1] = computeNodeHeight(state.visibleCount);
 
   updateOutputType(node);
+  refreshSlotLabels(node); // labels re-applied with shifted indices + names
 
   // 7. Redraw.
   node.graph?.setDirtyCanvas?.(true, true);
