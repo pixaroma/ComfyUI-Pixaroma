@@ -158,15 +158,24 @@ app.registerExtension({
       // Comfy.VueNodes.Enabled drives LiteGraph.vueNodesMode (verified in the
       // frontend's useVueFeatureFlags.ts); flipping it re-renders the canvas.
       rNodes.value.classList.add("pix-vc-toggle");
-      rNodes.value.title = "Click to switch the node renderer (Nodes 2.0 ⇄ Legacy)";
+      rNodes.value.title = "Click to switch the node renderer (Nodes 2.0 ⇄ Legacy). The page reloads so existing nodes rebuild for the chosen renderer.";
       rNodes.value.addEventListener("click", async (e) => {
         e.stopPropagation();
         const cur = !!window.LiteGraph?.vueNodesMode;
         try {
           await app.ui.settings.setSettingValueAsync("Comfy.VueNodes.Enabled", !cur);
-          setTimeout(refreshNodeUI, 50);
+          // Reload so EVERY node rebuilds for the new renderer. Switching live
+          // leaves already-created nodes built for the old renderer (each node
+          // chooses canvas-vs-DOM widgets once, at creation), which misbehave
+          // until a refresh. setSettingValueAsync has already persisted the
+          // value to the backend (awaited above), so the reload picks it up.
+          // If the open workflow has unsaved edits, ComfyUI's own beforeunload
+          // guard will prompt before the reload - intended safety.
+          refreshNodeUI();
+          location.reload();
         } catch (err) {
           console.error("[PixaromaVersionCheck] renderer toggle failed:", err);
+          setTimeout(refreshNodeUI, 50);
         }
       });
 

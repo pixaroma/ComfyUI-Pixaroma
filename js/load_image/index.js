@@ -1,11 +1,12 @@
 import { app } from "/scripts/app.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import {
   injectCSS, buildRoot, hideNativeImageCombo, openImageDropdown,
   renderChips, renderGlobalControls,
 } from "./ui.mjs";
-import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput, setSelectedImage } from "./api.mjs";
+import { pickAndUploadFile, pasteFromClipboard, uploadImageToInput, setSelectedImage, updateNativePreview, splitFilenameSubfolder } from "./api.mjs";
 import { buildModePanel, previewResize } from "./resize_modes.mjs";
 import { applyInlineLabel, applyWHLayout, applyCoverControls } from "./panel_polish.mjs";
 
@@ -108,12 +109,179 @@ function getCardInfo(node) {
   return { mode: "dual", inW: W, inH: H, outW, outH };
 }
 
-// The size readout is now painted by onDrawForeground (INPUT → OUTPUT cards),
-// not a DOM bar. Toggle the upload hint by image presence, then request a
-// repaint so the painted cards reflect the latest state.
+// Paint the INPUT → OUTPUT size cards (or the "upload" message) into `ctx`
+// within the rect [leftPad .. leftPad+pairW] vertically centered on `midY`.
+// Shared by BOTH the legacy onDrawForeground (painting in the node's left dead
+// space) AND the Nodes 2.0 DOM cards canvas (where node-body painting is
+// skipped). All coordinates are in the ctx's own CSS-pixel space.
+function paintCardsInto(ctx, node, leftPad, midY, pairW) {
+  const info = getCardInfo(node);
+  const fam = "ui-sans-serif, system-ui, sans-serif";
+  ctx.save();
+  ctx.textBaseline = "middle";
+
+  if (info.mode === "msg") {
+    ctx.font = `12px ${fam}`;
+    const tw = ctx.measureText(info.text).width;
+    const bw = tw + 24, bh = 26;
+    const bx = leftPad, by = midY - bh / 2;
+    roundRectPathLi(ctx, bx, by, bw, bh, 8);
+    ctx.fillStyle = "#1d1d1d"; ctx.fill();
+    ctx.textAlign = "left"; ctx.fillStyle = BRAND;
+    ctx.fillText(info.text, bx + 12, midY);
+    ctx.restore();
+    return;
+  }
+
+  const NECK_INSET = 3, COL_GAP = 6;
+  const cardW = (pairW - COL_GAP) / 2 - NECK_INSET / 2;
+  const cardH = 118;
+  const L1 = leftPad;                 // INPUT left
+  const R1 = L1 + cardW;               // INPUT right
+  const R2 = leftPad + pairW;          // OUTPUT right
+  const L2 = R2 - cardW;               // OUTPUT left
+  const arrowCx = (R1 + L2) / 2;
+  const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+  const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+  const rectMaxW = 54, rectMaxH = 40;
+
+  // Single joined outline (two rounded cards + center bridge).
+  ctx.beginPath();
+  ctx.moveTo(L1 + R, T);
+  ctx.lineTo(R1 - R, T); ctx.arcTo(R1, T, R1, T + R, R);
+  ctx.lineTo(R1, bT); ctx.lineTo(L2, bT); ctx.lineTo(L2, T + R);
+  ctx.arcTo(L2, T, L2 + R, T, R);
+  ctx.lineTo(R2 - R, T); ctx.arcTo(R2, T, R2, T + R, R);
+  ctx.lineTo(R2, Bm - R); ctx.arcTo(R2, Bm, R2 - R, Bm, R);
+  ctx.lineTo(L2 + R, Bm); ctx.arcTo(L2, Bm, L2, Bm - R, R);
+  ctx.lineTo(L2, bB); ctx.lineTo(R1, bB); ctx.lineTo(R1, Bm - R);
+  ctx.arcTo(R1, Bm, R1 - R, Bm, R);
+  ctx.lineTo(L1 + R, Bm); ctx.arcTo(L1, Bm, L1, Bm - R, R);
+  ctx.lineTo(L1, T + R); ctx.arcTo(L1, T, L1 + R, T, R);
+  ctx.closePath();
+  ctx.fillStyle = "#1d1d1d"; ctx.fill();
+  ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+  const drawContent = (x, label, w, h, accent) => {
+    const ccx = x + cardW / 2;
+    ctx.textAlign = "center";
+    const maxTxt = cardW - 8;
+    ctx.font = `9px ${fam}`; ctx.fillStyle = "#9a9a9a";
+    ctx.fillText(label, ccx, cardY + 18, maxTxt);
+    ctx.font = `bold 11px ${fam}`; ctx.fillStyle = BRAND;
+    ctx.fillText(`${w}×${h}`, ccx, cardY + 36, maxTxt);
+    const { rw, rh } = aspectRectDimsLi(w, h, rectMaxW, rectMaxH);
+    const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 72 - rh / 2) + 0.5;
+    if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
+    ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
+    ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 104, maxTxt);
+  };
+
+  const changed = info.inW !== info.outW || info.inH !== info.outH;
+  drawContent(L1, "INPUT", info.inW, info.inH, false);
+  drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+  ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(arrowCx - 2.5, midY - 4);
+  ctx.lineTo(arrowCx + 2.5, midY);
+  ctx.lineTo(arrowCx - 2.5, midY + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Nodes 2.0: render the WHOLE preview (INPUT→OUTPUT cards at top + the selected
+// image fitted below + a dims line) into ONE canvas that fills the flex-grower
+// root - the EXACT shape Preview Image's strip uses (single absolute canvas in a
+// flex:1 root), which is the only DOM-widget layout proven to fill without
+// collapsing. DPR-aware.
+function _liSizeCanvas(cv, cssW, cssH) {
+  const dpr = window.devicePixelRatio || 1;
+  const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+  if (cv.width !== bw) cv.width = bw;
+  if (cv.height !== bh) cv.height = bh;
+  const ctx = cv.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  return ctx;
+}
+
+function _liCurrentImage(node) {
+  return (node.imgs?.[0]?.complete && node.imgs[0].naturalWidth) ? node.imgs[0]
+       : (node._pixLiPreviewImgEl?.complete && node._pixLiPreviewImgEl.naturalWidth) ? node._pixLiPreviewImgEl
+       : null;
+}
+
+// Draw both Nodes 2.0 canvases: the INPUT→OUTPUT cards (top, fixed band) and the
+// image + dims (bottom, height = image aspect at node width). Each lives inside
+// the controls panel root, so their explicit heights grow the node to fit.
+function renderLoadPreviewCanvas(node) {
+  // --- Cards canvas (top) ---
+  const cardsCv = node._pixLiCardsCanvas;
+  if (cardsCv && cardsCv.clientWidth > 0) {
+    const cssW = cardsCv.clientWidth;
+    const ctx = _liSizeCanvas(cardsCv, cssW, LI_CARDS_H);
+    paintCardsInto(ctx, node, 10, LI_CARDS_H / 2, cssW - 20);
+  }
+
+  // --- Image canvas (bottom) ---
+  const imgCv = node._pixLiImageCanvas;
+  if (imgCv && imgCv.clientWidth > 0) {
+    const cssW = imgCv.clientWidth;
+    const DIMS_H = 18;
+    const imgAreaH = liPreviewImgH(node);
+    const cssH = imgAreaH + DIMS_H;
+    if (imgCv.style.height !== cssH + "px") imgCv.style.height = cssH + "px";
+    const ctx = _liSizeCanvas(imgCv, cssW, cssH);
+    const im = _liCurrentImage(node);
+    if (im) {
+      const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
+      const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
+      ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round((imgAreaH - h) / 2), w, h);
+      ctx.fillStyle = "#9a9a9a";
+      ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+    }
+  }
+}
+
+// Nodes 2.0: refresh our own preview (native .image-preview is hidden because it
+// goes stale on programmatic picks). Ensures an Image is loaded (node.imgs[0]
+// when present, else fetch the /view URL for restore), grows the node, repaints.
+function updateLoadPreview(node) {
+  if (!isVueNodes()) return;
+  const im = node.imgs?.[0];
+  if (!(im?.complete && im.naturalWidth)) {
+    // node.imgs not ready (e.g. workflow restore) - load the selected file into
+    // our own Image so the canvas + cards have real dims to draw/measure.
+    const fn = node._pixLiImageWidget?.value;
+    if (fn) {
+      const { subfolder, filename } = splitFilenameSubfolder(fn);
+      const src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}&t=${Date.now()}`;
+      let el = node._pixLiPreviewImgEl;
+      if (!el) { el = new Image(); node._pixLiPreviewImgEl = el; }
+      el.onload = () => { renderLoadPreviewCanvas(node); node.setDirtyCanvas?.(true, true); };
+      if (el.src !== src) el.src = src;
+    }
+  }
+  renderLoadPreviewCanvas(node);
+  // The preview canvas lives inside the controls panel; setting its height grows
+  // the panel's content, which grows the node (same mechanism that sizes the
+  // controls). Nudge a repaint.
+  node.setDirtyCanvas?.(true, true);
+}
+
+// The size readout is painted by onDrawForeground (legacy) / the DOM cards
+// canvas (Nodes 2.0). Toggle the upload hint by image presence, refresh the
+// Nodes 2.0 cards, then request a canvas repaint for the legacy cards.
 function updateInfoBar(node) {
   const hint = node._pixLiRoot?.querySelector('[data-role="hint"]');
   if (hint) hint.style.display = node.imgs?.[0]?.naturalWidth ? "none" : "";
+  if (isVueNodes()) renderLoadPreviewCanvas(node);
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -174,6 +342,13 @@ function renderUI(node) {
   const globals = renderGlobalControls(node, state, writeState, () => updateInfoBar(node));
   root.appendChild(globals);
 
+  // Nodes 2.0: keep the cards canvas FIRST (above the controls) and the image
+  // canvas LAST (renderUI re-appends chips/panel/globals each render).
+  if (node._pixLiCardsCanvas && root.firstChild !== node._pixLiCardsCanvas) {
+    root.insertBefore(node._pixLiCardsCanvas, root.firstChild);
+  }
+  if (node._pixLiImageCanvas) root.appendChild(node._pixLiImageCanvas);
+
   // Refresh dims info bar (input + output dims).
   updateInfoBar(node);
 
@@ -198,6 +373,9 @@ function renderUI(node) {
 // freshly-rendered panel has laid out before measuring; gated on
 // !isGraphLoading so it never resizes during a workflow load (Vue Compat #19).
 function fitPreview(node) {
+  // Legacy only: resizes node.size to hug the native bottom preview. In Nodes
+  // 2.0 our preview widget flex-fills, so this would fight the Vue layout.
+  if (isVueNodes()) return;
   if (isGraphLoading()) return;
   requestAnimationFrame(() => {
     if (!node._pixLiRoot || isGraphLoading()) return;
@@ -291,6 +469,75 @@ export function writeState(node, state) {
   node.properties[STATE_PROP] = JSON.stringify(state);
 }
 
+// Nodes 2.0: hide ComfyUI's native output-image preview for this node. It's fed
+// by ComfyUI's internal node-output state (NOT node.imgs), goes stale on our
+// programmatic picks, and bottom-aligns with a gap. We render our own preview
+// instead (createLoadImagePreviewCanvas). Scoped to our node via :has(.pix-li-root)
+// so it's a no-op for every other node and in the legacy renderer.
+function injectLoadImageNodes2CSS() {
+  if (document.getElementById("pix-li-nodes2-css")) return;
+  const s = document.createElement("style");
+  s.id = "pix-li-nodes2-css";
+  s.textContent = ".lg-node:has(.pix-li-root) .image-preview{display:none !important;}";
+  document.head.appendChild(s);
+}
+
+// Cards strip height + image-area clamp constants for the Nodes 2.0 preview.
+// LI_PREVIEW_MAX_IMG_H caps the image preview so the node stays COMPACT in Nodes
+// 2.0 (where it auto-grows to content): a square/portrait image is contained
+// within this height rather than ballooning to full-width-aspect. Legacy is
+// untouched (drag-to-resize fill). Tune for a bigger/smaller default preview.
+const LI_CARDS_H = 124;
+const LI_PREVIEW_MIN_IMG_H = 80;
+const LI_PREVIEW_MAX_IMG_H = 240;
+
+// Compute the image-area height for the Nodes 2.0 preview: fit the selected
+// image to the node's content width at its OWN aspect (so the picture fills the
+// width with no letterbox), clamped. Deterministic (same image + node width =>
+// same height) so a reload recomputes the same value and never dirties (Vue
+// Compat #18). Falls back to a square assumption before the image dims arrive.
+function liPreviewImgH(node) {
+  const cw = Math.max(80, (node.size?.[0] || 400) - 24);
+  const im = node.imgs?.[0];
+  const aspect = im?.naturalWidth ? im.naturalHeight / im.naturalWidth : 1;
+  return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), LI_PREVIEW_MAX_IMG_H));
+}
+
+
+// Nodes 2.0 preview: a second DOM widget's host collapses to 0 on this node (the
+// 7 outputs / hidden image-upload widgets break the second widget's grid row,
+// even with Preview Image's exact strip shape). So we render into TWO <canvas>
+// children of the CONTROLS panel root (which renders fine and drives node height
+// via measureContentHeight). To match Legacy: the INPUT→OUTPUT CARDS canvas goes
+// at the TOP (prepended, above the Upload button), the IMAGE canvas at the
+// BOTTOM. Both have explicit heights so the panel grows to include them.
+function createLoadImagePreviewCanvas(node) {
+  const root = node._pixLiRoot;
+  if (!root) return;
+
+  // Cards canvas — at the TOP of the node body (like Legacy's top-right cards).
+  const cardsCv = document.createElement("canvas");
+  cardsCv.className = "pix-li-cards-canvas";
+  cardsCv.style.cssText = `display:block;width:100%;height:${LI_CARDS_H}px;box-sizing:border-box;`;
+  root.insertBefore(cardsCv, root.firstChild);
+  node._pixLiCardsCanvas = cardsCv;
+
+  // Image canvas — at the BOTTOM (fills, like Legacy's bottom preview).
+  const imgCv = document.createElement("canvas");
+  imgCv.className = "pix-li-preview-canvas";
+  imgCv.style.cssText = "display:block;width:100%;box-sizing:border-box;";
+  root.appendChild(imgCv);
+  node._pixLiImageCanvas = imgCv;
+
+  // Width changes (node resize) → repaint at the new width (onResize unreliable
+  // for DOM widgets, Compat #13).
+  const ro = new ResizeObserver(() => renderLoadPreviewCanvas(node));
+  ro.observe(imgCv);
+  node._pixLiPreviewRO = ro;
+
+  requestAnimationFrame(() => updateLoadPreview(node));
+}
+
 function setupLoadImageNode(node) {
   injectCSS();
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
@@ -342,7 +589,9 @@ function setupLoadImageNode(node) {
   node._pixLiMeasureHeight = measureContentHeight;
 
   const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
-    canvasOnly: true,  // Vue Compat #15 — hide from Parameters tab
+    // canvasOnly made adaptive below (applyAdaptiveCanvasOnly): true in legacy
+    // (hide from Parameters tab, Vue Compat #15), false in Nodes 2.0 (else the
+    // whole panel is excluded from the Vue body → empty node).
     getValue: () => null,
     setValue: () => {},
     getMinHeight: measureContentHeight,
@@ -358,7 +607,19 @@ function setupLoadImageNode(node) {
     margin: 0,
     serialize: false,
   });
+  applyAdaptiveCanvasOnly(widget);
   node._pixLiWidget = widget;
+
+  // Nodes 2.0 preview rebuild: the controls panel becomes a FIXED (min-content)
+  // row so it's not a grower, then add the fill preview widget (sole grower) and
+  // hide the stale native preview. (Legacy is untouched: the panel keeps its
+  // getMinHeight/getMaxHeight and the native bottom preview fills.) The renderer
+  // is fixed per page load, so this branch runs once per node instance.
+  if (isVueNodes()) {
+    widget.computeLayoutSize = undefined; // min-content row (CSS grid), not a flex grower
+    createLoadImagePreviewCanvas(node);
+    injectLoadImageNodes2CSS();
+  }
 
   // Default node width for fresh-on-canvas placements. Wider than the
   // LiteGraph default so the [Input → Output] info bar and the 3-column
@@ -396,9 +657,14 @@ function setupLoadImageNode(node) {
   // saved height is trusted then; Vue Compat #18).
   function onImageReady() {
     updateInfoBar(node);
+    // Nodes 2.0: refresh our own DOM image preview (native one is hidden/stale).
+    updateLoadPreview(node);
     if (node._pixLiFitPending) {
       node._pixLiFitPending = false;
-      fitPreview(node);
+      // fitPreview resizes node.size to hug the native bottom preview - a legacy
+      // concept. In Nodes 2.0 our preview widget flex-fills, so node-height
+      // fitting would fight the Vue layout (and re-introduce growth). Skip it.
+      if (!isVueNodes()) fitPreview(node);
     }
   }
   function refreshAfterImageReady() {
@@ -599,6 +865,12 @@ function setupLoadImageNode(node) {
     // Fresh drop: fit once the default image loads (the image-ready path reads
     // this flag). A restored workflow keeps its saved size (Vue Compat #18).
     if (!wasConfigured) node._pixLiFitPending = true;
+    // Nodes 2.0: explicitly fetch the selected image into node.imgs so our DOM
+    // preview + the cards' INPUT dims populate on restore (the native image path
+    // may feed internal state without setting node.imgs there).
+    if (isVueNodes() && node._pixLiImageWidget?.value && !node.imgs?.[0]?.naturalWidth) {
+      updateNativePreview(node, node._pixLiImageWidget.value);
+    }
   });
 }
 
@@ -652,89 +924,14 @@ app.registerExtension({
       const r = _origDraw?.apply(this, arguments);
       if (this.flags?.collapsed) return r;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
-
-      const info = getCardInfo(this);
-      const fam = "ui-sans-serif, system-ui, sans-serif";
-      // Vertical center of the 7 output slot rows: TOP_PAD(4) + 7*20/2 = 74.
-      const midY = 74;
-      ctx.save();
-      ctx.textBaseline = "middle";
-
-      if (info.mode === "msg") {
-        ctx.font = `12px ${fam}`;
-        const tw = ctx.measureText(info.text).width;
-        const bw = tw + 24, bh = 26;
-        const bx = 12, by = midY - bh / 2;
-        roundRectPathLi(ctx, bx, by, bw, bh, 8);
-        ctx.fillStyle = "#1d1d1d"; ctx.fill();
-        ctx.textAlign = "left"; ctx.fillStyle = BRAND;
-        ctx.fillText(info.text, bx + 12, midY);
-        ctx.restore();
-        return r;
-      }
-
-      // Two joined cards in the LEFT dead space; right edge stops clear of the
-      // longest output label ("original_height"). LABEL_RESERVE is the px kept
-      // free on the right for the output names.
-      const LEFT_PAD = 12, LABEL_RESERVE = 120, NECK_INSET = 3, COL_GAP = 6;
-      const pairW = Math.max(120, this.size[0] - LEFT_PAD - LABEL_RESERVE);
-      const cardW = (pairW - COL_GAP) / 2 - NECK_INSET / 2;
-      const cardH = 118;
-      const L1 = LEFT_PAD;                 // INPUT left
-      const R1 = L1 + cardW;               // INPUT right
-      const R2 = LEFT_PAD + pairW;         // OUTPUT right
-      const L2 = R2 - cardW;               // OUTPUT left
-      const arrowCx = (R1 + L2) / 2;
-      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
-      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
-      const rectMaxW = 54, rectMaxH = 40;
-
-      // Single joined outline (two rounded cards + center bridge).
-      ctx.beginPath();
-      ctx.moveTo(L1 + R, T);
-      ctx.lineTo(R1 - R, T); ctx.arcTo(R1, T, R1, T + R, R);
-      ctx.lineTo(R1, bT); ctx.lineTo(L2, bT); ctx.lineTo(L2, T + R);
-      ctx.arcTo(L2, T, L2 + R, T, R);
-      ctx.lineTo(R2 - R, T); ctx.arcTo(R2, T, R2, T + R, R);
-      ctx.lineTo(R2, Bm - R); ctx.arcTo(R2, Bm, R2 - R, Bm, R);
-      ctx.lineTo(L2 + R, Bm); ctx.arcTo(L2, Bm, L2, Bm - R, R);
-      ctx.lineTo(L2, bB); ctx.lineTo(R1, bB); ctx.lineTo(R1, Bm - R);
-      ctx.arcTo(R1, Bm, R1 - R, Bm, R);
-      ctx.lineTo(L1 + R, Bm); ctx.arcTo(L1, Bm, L1, Bm - R, R);
-      ctx.lineTo(L1, T + R); ctx.arcTo(L1, T, L1 + R, T, R);
-      ctx.closePath();
-      ctx.fillStyle = "#1d1d1d"; ctx.fill();
-      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
-
-      const drawContent = (x, label, w, h, accent) => {
-        const ccx = x + cardW / 2;
-        ctx.textAlign = "center";
-        const maxTxt = cardW - 8;
-        ctx.font = `9px ${fam}`; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 18, maxTxt);
-        ctx.font = `bold 11px ${fam}`; ctx.fillStyle = BRAND;
-        ctx.fillText(`${w}×${h}`, ccx, cardY + 36, maxTxt);
-        const { rw, rh } = aspectRectDimsLi(w, h, rectMaxW, rectMaxH);
-        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 72 - rh / 2) + 0.5;
-        if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
-        ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.font = `8px ${fam}`; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabelLi(w, h), ccx, cardY + 104, maxTxt);
-      };
-
-      const changed = info.inW !== info.outW || info.inH !== info.outH;
-      drawContent(L1, "INPUT", info.inW, info.inH, false);
-      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
-
-      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
-      ctx.lineCap = "round"; ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(arrowCx - 2.5, midY - 4);
-      ctx.lineTo(arrowCx + 2.5, midY);
-      ctx.lineTo(arrowCx - 2.5, midY + 4);
-      ctx.stroke();
-      ctx.restore();
+      // Nodes 2.0 skips node-body painting AND renders the cards in the DOM
+      // preview widget instead, so don't paint here.
+      if (isVueNodes()) return r;
+      // Legacy: paint the cards in the LEFT dead space (vertical center of the
+      // 7 output slot rows = 74). pairW stops clear of the longest output label
+      // ("original_height") via the 120px reserve.
+      const pairW = Math.max(120, this.size[0] - 12 - 120);
+      paintCardsInto(ctx, this, 12, 74, pairW);
       return r;
     };
 
@@ -784,6 +981,8 @@ app.registerExtension({
       document.querySelector(".pix-li-popup")?._pixClose?.();
       if (this._pixLiImgPoll) clearInterval(this._pixLiImgPoll);
       this._pixLiImgPoll = null;
+      try { this._pixLiPreviewRO?.disconnect(); } catch {}
+      this._pixLiPreviewRO = null;
       if (_activeLoadImageNode === this) _activeLoadImageNode = null;
       return _origRemoved?.apply(this, arguments);
     };

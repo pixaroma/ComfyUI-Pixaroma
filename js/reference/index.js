@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { allow_debug } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 
 app.registerExtension({
   name: "Pixaroma.referenceNode",
@@ -20,7 +21,9 @@ app.registerExtension({
         "custom",
         elements.container,
         {
-          canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+          // canvasOnly is made ADAPTIVE below (true in legacy = hide from the
+          // Parameters tab per Vue Compat #15; false in Nodes 2.0 so the Vue
+          // body still renders this DOM widget instead of an empty node).
           getValue: () => ({
             count: parseInt(elements.counterValue.textContent),
             text: elements.textarea.value,
@@ -36,6 +39,7 @@ app.registerExtension({
           margin: 5,
         },
       );
+      applyAdaptiveCanvasOnly(widget);
 
       // add slider
       let slider = this.addWidget("slider", "strength", 1.0, (v) => {}, {
