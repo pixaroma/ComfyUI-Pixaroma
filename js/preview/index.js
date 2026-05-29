@@ -14,11 +14,9 @@ function repaint(node) {
   if (!node) return;
   node.setDirtyCanvas?.(true, true);
   if (window.LiteGraph?.vueNodesMode) {
-    // Buttons stay a bridged canvas widget (triggerDraw); the strip is a DOM
-    // widget that repaints via its own render fn.
-    for (const w of node.widgets || []) {
-      if (w.name === "pixaroma_buttons") w.triggerDraw?.();
-    }
+    // Both buttons and strip are DOM widgets in Nodes 2.0: refresh the buttons'
+    // enabled-state and re-render the strip canvas.
+    node._pixUpdateBtns?.();
     node._pixStripRender?.();
   }
 }
@@ -276,6 +274,16 @@ function paintToast(ctx, rects, text) {
 }
 
 function showToast(node, text) {
+  // Nodes 2.0: DOM toast element on the buttons widget.
+  if (node._pixBtnToastEl) {
+    const el = node._pixBtnToastEl;
+    el.textContent = text;
+    el.classList.add("show");
+    clearTimeout(node._pixToastTimer);
+    node._pixToastTimer = setTimeout(() => el.classList.remove("show"), TOAST_MS);
+    return;
+  }
+  // Legacy: canvas-painted toast over the buttons canvas widget.
   node._pixaromaToast = { text, until: Date.now() + TOAST_MS };
   repaint(node);
   setTimeout(() => {
@@ -1107,6 +1115,80 @@ function createStripWidget() {
   };
 }
 
+// ---- Nodes 2.0 buttons: real DOM <button>s ----
+// In Nodes 2.0 the canvas-bridged buttons widget gets less usable width than
+// legacy for the same node size, so the 4 buttons overlap (text runs together).
+// A DOM flex row fits them to the real node width (shrink + ellipsis, never
+// overlap) and restores hover. Legacy keeps the canvas buttons widget.
+function injectButtonsCSS() {
+  if (document.getElementById("pix-preview-btns-css")) return;
+  const s = document.createElement("style");
+  s.id = "pix-preview-btns-css";
+  s.textContent = `
+    .pix-pv-btns { position:relative; width:100%; box-sizing:border-box; padding:0 ${SIDE_PAD}px; }
+    .pix-pv-btns-row { display:flex; gap:${BTN_GAP}px; }
+    .pix-pv-btn {
+      flex:1 1 0; min-width:0; height:${BTN_H}px; line-height:${BTN_H - 2}px;
+      border:1px solid ${BRAND}; border-radius:4px; background:${BRAND}; color:#fff;
+      font:12px sans-serif; padding:0 6px; box-sizing:border-box; cursor:pointer;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; user-select:none;
+    }
+    .pix-pv-btn:hover:not(:disabled) { background:${COLOR_ACTIVE_FILL_HOVER}; border-color:${COLOR_ACTIVE_FILL_HOVER}; }
+    .pix-pv-btn:disabled { background:${COLOR_DISABLED_FILL}; border-color:${COLOR_DISABLED_STROKE}; color:${COLOR_DISABLED_TEXT}; cursor:default; }
+    .pix-pv-toast {
+      position:absolute; left:${SIDE_PAD}px; right:${SIDE_PAD}px; top:0; height:${BTN_H}px;
+      display:none; align-items:center; justify-content:center;
+      background:rgba(0,0,0,0.86); border:1px solid ${BRAND}; border-radius:4px;
+      color:#fff; font:11px sans-serif; pointer-events:none;
+    }
+    .pix-pv-toast.show { display:flex; }
+  `;
+  document.head.appendChild(s);
+}
+
+function createButtonsDOMWidget(node) {
+  injectButtonsCSS();
+  const root = document.createElement("div");
+  root.className = "pix-pv-btns";
+  const row = document.createElement("div");
+  row.className = "pix-pv-btns-row";
+  const defs = [
+    ["Save Disk", saveToDisk],
+    ["Save Output", saveToOutput],
+    ["Copy", copyToClipboard],
+    ["Open", openInNewTab],
+  ];
+  const btnEls = [];
+  for (const [label, fn] of defs) {
+    const b = document.createElement("button");
+    b.className = "pix-pv-btn";
+    b.textContent = label;
+    b.title = label;
+    b.addEventListener("click", (e) => { e.stopPropagation(); fn(node); });
+    row.appendChild(b);
+    btnEls.push(b);
+  }
+  root.appendChild(row);
+  const toast = document.createElement("div");
+  toast.className = "pix-pv-toast";
+  root.appendChild(toast);
+
+  const widget = node.addDOMWidget("pixaroma_buttons", "pixaroma_preview_buttons", root, {
+    serialize: false,
+    hideOnZoom: false,
+    getMinHeight: () => BTN_H + STRIP_V_PAD * 2,
+  });
+  applyAdaptiveCanvasOnly(widget);
+
+  node._pixBtnToastEl = toast;
+  node._pixUpdateBtns = () => {
+    const active = !!(node._pixaromaFrames?.length);
+    for (const b of btnEls) b.disabled = !active;
+  };
+  node._pixUpdateBtns();
+  return widget;
+}
+
 // ---- Nodes 2.0 strip: a real DOM widget ----
 // In Nodes 2.0 a bridged-canvas custom widget CANNOT fill-and-resize: tying its
 // height to node.size feeds back (node height is content-derived there) and the
@@ -1227,14 +1309,15 @@ app.registerExtension({
       // applyAdaptiveCanvasOnly: keep these out of the legacy Parameters tab
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.
-      applyAdaptiveCanvasOnly(this.addCustomWidget(createButtonsWidget()));
-      // Strip: Nodes 2.0 gets a DOM-widget strip (fills + resizes via CSS flex,
-      // no growth loop); legacy keeps the canvas custom widget (fills via
-      // draw()'s node.size[1]-y). The renderer is fixed per page load, so only
-      // one path is ever active for a given node instance.
+      // Nodes 2.0 gets DOM widgets (buttons = flex row, strip = flex canvas) so
+      // they fit the real node width and don't fight the canvas bridge; legacy
+      // keeps the canvas custom widgets (which fill via draw()'s node.size[1]-y).
+      // The renderer is fixed per page load, so only one path is active per node.
       if (isVueNodes()) {
+        createButtonsDOMWidget(this);
         createStripDOMWidget(this);
       } else {
+        applyAdaptiveCanvasOnly(this.addCustomWidget(createButtonsWidget()));
         applyAdaptiveCanvasOnly(this.addCustomWidget(createStripWidget()));
       }
 
@@ -1324,6 +1407,7 @@ app.registerExtension({
       try { this._pixStripRO?.disconnect(); } catch {}
       this._pixStripRO = null;
       this._pixStripRender = null;
+      clearTimeout(this._pixToastTimer);
       return origRemoved ? origRemoved.apply(this, arguments) : undefined;
     };
 
