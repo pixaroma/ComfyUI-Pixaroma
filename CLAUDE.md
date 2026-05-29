@@ -766,7 +766,7 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Prompt Stack | DOM rows (type `div`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` + `setNodeHeight` uses `node.setSize()` so cross-renderer Reset shrinks (was stuck tall when rows grown in the other renderer; see resize gotcha above). |
 | Text Watermark | shared text_editor panel (type `div`, fixed getMinHeight) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-width clamp only. Full panel + watermark render confirmed. |
 | Text Overlay | shared text_editor panel (type `div`, fixed getMinHeight) + fullscreen editor | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; node body panel renders AND the fullscreen editor opens + works under Nodes 2.0 (first editor confirmed in 2.0 — see editor note below). |
-| Note | DOM rich-text body + fullscreen editor | 🟢 likely fine (+canvasOnly) | not started |
+| Note | DOM rich-text body (type `custom`) + fullscreen editor | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; no `onDrawForeground` painting; Edit button inside the DOM wrap; fullscreen editor expected fine (editors are renderer-agnostic). Pending user test. |
 | Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |

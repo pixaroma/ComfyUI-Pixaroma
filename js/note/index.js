@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { hideJsonWidget, allow_debug } from "../shared/index.mjs";
+import { hideJsonWidget, allow_debug, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { createNoteDOMWidget, renderContent, attachEditButton } from "./render.mjs";
 import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
@@ -97,11 +97,13 @@ function setupNote(node) {
     node._noteDOMWrap = wrap;
     node._noteBody = wrap.querySelector(".pix-note-body");
     attachEditButton(wrap, () => openEditor(node));
-    node.addDOMWidget("note_dom", "custom", wrap, {
-      canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+    const _noteWidget = node.addDOMWidget("note_dom", "custom", wrap, {
+      // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+      // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
       serialize: false,
       getMinHeight: () => 80,
     });
+    applyAdaptiveCanvasOnly(_noteWidget);
   } catch (err) {
     console.error("[Pixaroma Note] setupNote error:", err);
   }
