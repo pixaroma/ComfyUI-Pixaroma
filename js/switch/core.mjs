@@ -11,9 +11,25 @@
 
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD } from "./render.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 export const STATE_PROP = "switchState";
 export const MAX_INPUTS = 32;
+
+// The label LiteGraph / Vue shows next to an input dot.
+//  - Legacy: a zero-width space (truthy + invisible) so LiteGraph does NOT draw
+//    a native label over the one we canvas-paint ourselves. Legacy is byte-
+//    identical to before.
+//  - Nodes 2.0: the real name (custom label if set, else "input N"), because
+//    Vue renders slot.label next to the dot (InputSlot.vue) and we paint nothing
+//    there, so a blank dot looks unfinished. NOT the upstream type - that would
+//    change after the load-race once links resolve and dirty the workflow; the
+//    type is shown in the DOM list tag instead.
+export function slotDisplayLabel(node, slotIdx1) {
+  if (!isVueNodes()) return "​"; // zero-width space
+  const custom = readState(node).labels?.[slotIdx1];
+  return custom || `input ${slotIdx1}`;
+}
 
 const SLOT_NAME = (i) => `input_${i}`; // 1-based
 
@@ -108,7 +124,8 @@ export function normalizeSlots(node) {
   for (let i = 0; i < node.inputs.length; i++) {
     const nm = SLOT_NAME(i + 1);
     if (node.inputs[i].name !== nm) node.inputs[i].name = nm;
-    if (node.inputs[i].label !== "​") node.inputs[i].label = "​"; // zero-width space
+    const lbl = slotDisplayLabel(node, i + 1);
+    if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
   }
 
   if (state.visibleCount !== node.inputs.length) state.visibleCount = node.inputs.length;
@@ -172,7 +189,7 @@ export function normalizeSlots(node) {
 // while the input name (input_N) stays intact for Python kwarg routing.
 function addInputSlot(node, idx1) {
   const slot = node.addInput(SLOT_NAME(idx1), "*");
-  slot.label = "​"; // zero-width space: truthy, invisible
+  slot.label = slotDisplayLabel(node, idx1); // "​" in legacy, real name in 2.0
   return slot;
 }
 
@@ -329,7 +346,7 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
   if (node.inputs) {
     for (let i = 0; i < node.inputs.length; i++) {
       node.inputs[i].name = `input_${i + 1}`;
-      node.inputs[i].label = "​"; // zero-width space
+      node.inputs[i].label = slotDisplayLabel(node, i + 1);
     }
   }
 

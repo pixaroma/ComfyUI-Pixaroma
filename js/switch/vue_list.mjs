@@ -145,7 +145,11 @@ export function buildSwitchVueList(node) {
           if (!st.labels) st.labels = {};
           if (v) st.labels[slotIdx1] = v; else delete st.labels[slotIdx1];
           // Same state.labels the legacy canvas paint reads, so the name shows
-          // in both renderers. No re-render here (it would drop focus mid-edit).
+          // in both renderers. Also mirror onto the input dot's label so the
+          // name shows next to the dot too (Nodes 2.0 renders slot.label there).
+          const slot = node.inputs?.[slotIdx1 - 1];
+          if (slot) slot.label = v || `input ${slotIdx1}`;
+          // No list re-render here (it would drop focus mid-edit).
           node.graph?.setDirtyCanvas?.(true, true);
         };
         labelEl.addEventListener("change", commitName);
