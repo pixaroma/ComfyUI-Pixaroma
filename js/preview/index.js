@@ -1,7 +1,40 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/utils.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+
+// ---- Nodes 2.0 helpers ----
+// The Vue "WidgetLegacy" bridge repaints a custom widget's canvas only via
+// widget.triggerDraw (set by the bridge on mount) - NOT on node.setDirtyCanvas.
+// So any async update (image finished loading, toast shown, frame selected)
+// must ALSO poke triggerDraw or the canvas stays frozen on its first paint.
+// In the legacy renderer triggerDraw is undefined and setDirtyCanvas does the
+// repaint, so this is a no-op there.
+function repaint(node) {
+  if (!node) return;
+  node.setDirtyCanvas?.(true, true);
+  if (window.LiteGraph?.vueNodesMode) {
+    for (const w of node.widgets || []) {
+      if (w.name === "pixaroma_buttons" || w.name === "pixaroma_strip") {
+        w.triggerDraw?.();
+      }
+    }
+  }
+}
+
+// In Nodes 2.0, save_mode=save emits ui.images so the Media Assets panel
+// refreshes (Pattern #14). ComfyUI then renders its OWN native .image-preview
+// panel inside the node body, duplicating our custom strip widget. Hide that
+// native panel for our node only. The marker class is added to the lg-node DOM
+// from the strip widget's draw() (where we have ctx.canvas to walk up from).
+function injectPreviewCSS() {
+  if (document.getElementById("pix-preview-nodes2-css")) return;
+  const style = document.createElement("style");
+  style.id = "pix-preview-nodes2-css";
+  style.textContent =
+    ".lg-node.pix-preview-node .image-preview{display:none !important;}";
+  document.head.appendChild(style);
+}
 
 // ---- button / node sizing ----
 const BTN_H = 26;
@@ -76,7 +109,7 @@ function setActivePreview(node) {
   if (prev && prev !== node && prev._pixaromaExpanded) {
     prev._pixaromaExpanded = false;
     if (prev.properties) prev.properties.pixaromaExpanded = false;
-    prev.setDirtyCanvas?.(true, true);
+    repaint(prev);
   }
   _activePreviewNode = node;
 }
@@ -100,7 +133,7 @@ function getLayoutMode(node) {
 function setLayoutMode(node, mode) {
   node.properties = node.properties || {};
   node.properties.pixaromaLayout = mode;
-  node.setDirtyCanvas(true, true);
+  repaint(node);
 }
 
 // Shared click handler — called from both the strip widget's mouse()
@@ -128,7 +161,7 @@ function handleStripClick(node, lx, ly) {
       node.properties = node.properties || {};
       node.properties.pixaromaExpanded = false;
       if (_activePreviewNode === node) _activePreviewNode = null;
-      node.setDirtyCanvas(true, true);
+      repaint(node);
       return true;
     }
     if (ir && lx >= ir.x && lx <= ir.x + ir.w && ly >= ir.y && ly <= ir.y + ir.h) {
@@ -140,7 +173,7 @@ function handleStripClick(node, lx, ly) {
         node.properties = node.properties || {};
         node.properties.pixaromaSelected = next;
         setActivePreview(node);
-        node.setDirtyCanvas(true, true);
+        repaint(node);
       }
       return true;
     }
@@ -157,7 +190,7 @@ function handleStripClick(node, lx, ly) {
         node.properties.pixaromaSelected = s.idx;
         node.properties.pixaromaExpanded = true;
         setActivePreview(node);
-        node.setDirtyCanvas(true, true);
+        repaint(node);
         return true;
       }
     }
@@ -240,12 +273,12 @@ function paintToast(ctx, rects, text) {
 
 function showToast(node, text) {
   node._pixaromaToast = { text, until: Date.now() + TOAST_MS };
-  node.setDirtyCanvas(true, true);
+  repaint(node);
   setTimeout(() => {
     const t = node._pixaromaToast;
     if (t && t.until <= Date.now()) {
       node._pixaromaToast = null;
-      node.setDirtyCanvas(true, true);
+      repaint(node);
     }
   }, TOAST_MS + 100);
 }
@@ -594,14 +627,18 @@ function createButtonsWidget() {
       // Pattern #6) can bypass it entirely — both can leave the node narrower
       // than MIN_W with the buttons overflowing past the node frame. Draw
       // always runs, so we self-heal here. setDirtyCanvas triggers the next
-      // paint at the corrected width.
-      if (node.size[0] < MIN_W) {
-        node.size[0] = MIN_W;
-        node.setDirtyCanvas(true, true);
-      }
-      if (node.size[1] < MIN_H) {
-        node.size[1] = MIN_H;
-        node.setDirtyCanvas(true, true);
+      // paint at the corrected width. Legacy only: in Nodes 2.0 the node width
+      // is CSS-driven (min-w-(--min-node-width)) and mutating node.size fights
+      // the Vue layout, so we leave sizing to the renderer there.
+      if (!isVueNodes()) {
+        if (node.size[0] < MIN_W) {
+          node.size[0] = MIN_W;
+          node.setDirtyCanvas(true, true);
+        }
+        if (node.size[1] < MIN_H) {
+          node.size[1] = MIN_H;
+          node.setDirtyCanvas(true, true);
+        }
       }
       const active = !!(node._pixaromaFrames?.length || node.imgs?.length);
       const rects = computeButtonRects(widget_width, y);
@@ -839,18 +876,43 @@ function createStripWidget() {
     // the Vue body (applyAdaptiveCanvasOnly: true legacy / false Nodes 2.0).
     options: {},
     computeSize(width) {
-      // Constant minimum height (native PreviewImage pattern). The actual
-      // rendered height is whatever the user-resized node grants — see draw().
+      // Legacy renderer: constant minimum height (native PreviewImage pattern).
+      // The actual rendered height is whatever the user-resized node grants —
+      // see draw() (node.size[1] - y). Nodes 2.0 ignores this in favour of
+      // computeLayoutSize below.
       return [width, IMG_STRIP_MIN_H];
     },
-    draw(ctx, node, widget_width, y) {
+    // Nodes 2.0 only: declaring computeLayoutSize makes this a flex/fill widget
+    // (exactly like native PreviewImage's `computeLayoutSize(){return{minHeight:220}}`).
+    // The Vue node-layout then sets widget.computedHeight to fill the remaining
+    // node body, and passes that height as the 5th arg to draw(). Without this
+    // the bridge would size the canvas to computeSize()[1] (a constant 220) and
+    // the preview could never grow with the node.
+    computeLayoutSize() {
+      return { minHeight: IMG_STRIP_MIN_H, minWidth: 1 };
+    },
+    draw(ctx, node, widget_width, y, h) {
       this._node = node;
+      // Nodes 2.0: tag the node DOM so CSS can hide ComfyUI's native
+      // .image-preview panel (which save_mode=save's ui.images triggers,
+      // duplicating our custom strip). ctx.canvas is the bridge's <canvas>.
+      if (window.LiteGraph?.vueNodesMode) {
+        const lgNode = ctx.canvas?.closest?.(".lg-node");
+        if (lgNode && !lgNode.classList.contains("pix-preview-node")) {
+          lgNode.classList.add("pix-preview-node");
+        }
+      }
       const frames = node._pixaromaFrames || [];
       if (!frames.length) return;
-      // Strip is the LAST widget, so it owns whatever vertical space remains
-      // between its y and the node's bottom. This is what lets the user
-      // freely resize the node taller/shorter without flicker.
-      const widgetH = Math.max(IMG_STRIP_MIN_H, node.size[1] - y);
+      // Height resolution:
+      //  - Nodes 2.0: the bridge passes the real canvas height as `h` (= the
+      //    flex-distributed computedHeight). `y` is always 1 there, so the
+      //    node.size math is meaningless - use `h` directly.
+      //  - Legacy: strip is the LAST widget and owns the leftover node body, so
+      //    fill from `y` to the node bottom (lets the user resize freely).
+      const widgetH = (window.LiteGraph?.vueNodesMode && typeof h === "number" && h > 0)
+        ? h
+        : Math.max(IMG_STRIP_MIN_H, node.size[1] - y);
       const sel = node._pixaromaSelectedFrame ?? 0;
       const total = frames.length;
 
@@ -1106,6 +1168,7 @@ app.registerExtension({
     const origNodeCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
       if (origNodeCreated) origNodeCreated.apply(this, arguments);
+      injectPreviewCSS();
       // applyAdaptiveCanvasOnly: keep these out of the legacy Parameters tab
       // (canvasOnly true) while still rendering them in the Nodes 2.0 Vue body
       // (canvasOnly false). addCustomWidget returns the widget it added.
@@ -1241,14 +1304,15 @@ function hydrateFrames(node, framesMeta) {
       filename: f.filename,
       subfolder: f.subfolder || "",
       type: f.type || "temp",
-      url,
-      img: loadFrameImage(url, () => node.setDirtyCanvas(true, true)),
+      // repaint (not setDirtyCanvas) so the image actually appears in Nodes 2.0,
+      // where the bridged canvas only repaints via widget.triggerDraw.
+      img: loadFrameImage(url, () => repaint(node)),
     };
   });
   if ((node._pixaromaSelectedFrame ?? 0) >= framesMeta.length) {
     node._pixaromaSelectedFrame = 0;
   }
-  node.setDirtyCanvas(true, true);
+  repaint(node);
 }
 
 // Restore preview from node.properties (called on workflow load / Vue tab
@@ -1287,7 +1351,7 @@ window.addEventListener("keydown", (e) => {
     node.properties = node.properties || {};
     node.properties.pixaromaExpanded = false;
     _activePreviewNode = null;
-    node.setDirtyCanvas(true, true);
+    repaint(node);
     return;
   }
   if (frames.length < 2) return;
@@ -1300,7 +1364,7 @@ window.addEventListener("keydown", (e) => {
   node._pixaromaSelectedFrame = next;
   node.properties = node.properties || {};
   node.properties.pixaromaSelected = next;
-  node.setDirtyCanvas(true, true);
+  repaint(node);
 }, true);
 
 api.addEventListener("executed", ({ detail }) => {
