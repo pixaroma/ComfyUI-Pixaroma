@@ -1212,8 +1212,17 @@ function createStripDOMWidget(node) {
 
   const root = document.createElement("div");
   root.className = "pix-preview-strip-root";
+  // ComfyUI wraps this element in a host <div class="flex flex-col *:flex-1">
+  // (a flex column whose direct children get flex:1). To actually FILL the
+  // flex-allocated height (computedHeight), the element needs `flex:1 1 0` AND
+  // `min-height:0` - a flex item defaults to min-height:auto (= content height),
+  // which made it collapse to ~526px instead of the allocated ~887px. The 220px
+  // floor is guaranteed by computeLayoutSize.minHeight below, so we must NOT set
+  // height:100% / min-height:220 here (they fight the flex fill). Verified
+  // against the GraphView/WidgetDOM bundle + native ImagePreview (flex-auto +
+  // min-h-0 + absolute object-contain image).
   root.style.cssText =
-    `position:relative;width:100%;height:100%;min-height:${IMG_STRIP_MIN_H}px;box-sizing:border-box;`;
+    "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;";
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
   root.appendChild(canvas);
