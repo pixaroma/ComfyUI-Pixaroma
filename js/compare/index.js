@@ -82,21 +82,47 @@ function sliderGeo(W) {
   const trackH = 6;
   return { trackX, trackW, trackY, trackH };
 }
+
+// Cursor for the Nodes 2.0 DOM body (legacy keeps LiteGraph's own per-region
+// cursor). Without this the DOM node inherits ComfyUI's pointer cursor over the
+// WHOLE body, which wrongly implies the entire node is one big button. We point
+// only over clickable controls, show a resize cursor over the slide area, and a
+// plain arrow everywhere else.
+function cmpCursor(node, lx, ly, W, H) {
+  const p = [lx, ly];
+  if (inside(p, showRect(W))) return "pointer";
+  for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return "pointer";
+  if (node._cmpShowWhich !== 0 && inside(p, copyRect(W))) return "pointer";
+  if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
+    const g = sliderGeo(W);
+    if (lx >= g.trackX - 8 && lx <= g.trackX + g.trackW + 8 &&
+        ly >= g.trackY - 6 && ly <= g.trackY + g.trackH + 6) return "pointer";
+  }
+  // Hover-to-slide image area (Left/Right -> ↔, Up Down -> ↕)
+  if (ly >= IMG_Y && node._cmpShowWhich === 0 && (node._cmpImg1 || node._cmpImg2)) {
+    if (node._cmpMode <= 1) return "ew-resize";
+    if (node._cmpMode === 2) return "ns-resize";
+  }
+  return "default";
+}
 function inside(pos, r) {
   return (
     pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h
   );
 }
-function paintBtn(ctx, r, label, on) {
+function paintBtn(ctx, r, label, on, hovered) {
   ctx.fillStyle = on ? BRAND : "#2a2c2e";
-  ctx.strokeStyle = on ? BRAND : "#444";
+  // Hover on a non-active bordered control: border -> BRAND + text brightens,
+  // no fill change (the Pixaroma node UI convention, CLAUDE.md #13). Active
+  // buttons keep the solid BRAND fill.
+  ctx.strokeStyle = on ? BRAND : (hovered ? BRAND : "#444");
   ctx.lineWidth = 1;
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(r.x, r.y, r.w, r.h, 3);
   else ctx.rect(r.x, r.y, r.w, r.h);
   ctx.fill();
   ctx.stroke();
-  ctx.fillStyle = on ? "#fff" : "#999";
+  ctx.fillStyle = on ? "#fff" : (hovered ? "#ddd" : "#999");
   ctx.font = "9px 'Segoe UI',sans-serif";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -231,9 +257,15 @@ function paintCompare(ctx, node, W, H, mouse) {
   // ── Row 1: Show toggle + mode buttons ──
   ctx.save();
   const showLabel = node._cmpShowWhich === 1 ? "Show 1" : node._cmpShowWhich === 2 ? "Show 2" : "Show 1";
-  paintBtn(ctx, showRect(W), showLabel, node._cmpShowWhich !== 0);
-  for (let i = 0; i < 5; i++)
-    paintBtn(ctx, modeRect(W, i), MODES[i], node._cmpShowWhich === 0 && node._cmpMode === i);
+  const hov = (rect) => !!(mouse &&
+    mouse.x >= rect.x && mouse.x <= rect.x + rect.w &&
+    mouse.y >= rect.y && mouse.y <= rect.y + rect.h);
+  const sr = showRect(W);
+  paintBtn(ctx, sr, showLabel, node._cmpShowWhich !== 0, hov(sr));
+  for (let i = 0; i < 5; i++) {
+    const mr = modeRect(W, i);
+    paintBtn(ctx, mr, MODES[i], node._cmpShowWhich === 0 && node._cmpMode === i, hov(mr));
+  }
   ctx.restore();
 
   // ── Row 2: opacity slider or hint text (same height) ──
@@ -567,7 +599,7 @@ function createCompareDOMWidget(node) {
   // min-height:auto = content height, which collapses it). The MIN_H floor is
   // guaranteed by computeLayoutSize below, so do NOT set height/min-height here.
   root.style.cssText =
-    "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;";
+    "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;cursor:default;";
   const canvas = document.createElement("canvas");
   canvas.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
   root.appendChild(canvas);
@@ -630,6 +662,7 @@ function createCompareDOMWidget(node) {
   root.addEventListener("pointermove", (e) => {
     const [lx, ly] = localPos(e);
     node._cmpDomMouse = { x: lx, y: ly };
+    root.style.cursor = cmpCursor(node, lx, ly, W(), H());
     cmpMove(node, lx, ly, W(), H());
     render(); // also refreshes the Copy-button hover state
   });
