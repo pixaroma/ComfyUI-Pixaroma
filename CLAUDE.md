@@ -763,7 +763,8 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Switch WH | DOM A/B buttons (type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-size self-heal only (no painted controls). |
 | Prompt Stack | DOM rows (type `div`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` + `setNodeHeight` uses `node.setSize()` so cross-renderer Reset shrinks (was stuck tall when rows grown in the other renderer; see resize gotcha above). |
 | Text Watermark | shared text_editor panel (type `div`, fixed getMinHeight) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-width clamp only. Full panel + watermark render confirmed. |
-| Note / Text Overlay | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
+| Text Overlay | shared text_editor panel (type `div`, fixed getMinHeight) + fullscreen editor | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-width clamp only; "Open Text Editor" button is inside the DOM panel. Node body done; fullscreen editor (overlay) pending separate check. Pending user test. |
+| Note | DOM rich-text body + fullscreen editor | 🟢 likely fine (+canvasOnly) | not started |
 | Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |

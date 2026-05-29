@@ -7,6 +7,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
@@ -176,8 +177,9 @@ function setupTextOverlayNode(node) {
   }
   node._textOverlayPanelHeight = panelHeight;
 
-  node.addDOMWidget("pix_text_overlay_ui", "div", root, {
-    canvasOnly: true,
+  const _toWidget = node.addDOMWidget("pix_text_overlay_ui", "div", root, {
+    // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+    // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     serialize: false,
     getMinHeight: panelHeight,
     // Cap height at content size so manual node resize gives the slack to
@@ -187,6 +189,7 @@ function setupTextOverlayNode(node) {
     // background ends, leaving the Reset button visually outside the node.
     getMaxHeight: panelHeight,
   });
+  applyAdaptiveCanvasOnly(_toWidget);
 
   // Default size for new nodes; LiteGraph restores saved sizes via configure.
   // The compact layout plus the "Text align" + "Position on canvas" rows
