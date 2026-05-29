@@ -60,6 +60,8 @@ from .nodes.node_image_resize import NODE_CLASS_MAPPINGS as _MAPS_IMAGE_RESIZE
 from .nodes.node_image_resize import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_IMAGE_RESIZE
 from .nodes.node_text_watermark import NODE_CLASS_MAPPINGS as _MAPS_TEXT_WATERMARK
 from .nodes.node_text_watermark import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_WATERMARK
+from .nodes.node_renderer_check import NODE_CLASS_MAPPINGS as _MAPS_RENDERER_CHECK
+from .nodes.node_renderer_check import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RENDERER_CHECK
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -103,6 +105,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_TEXT_OVERLAY,
     **_MAPS_IMAGE_RESIZE,
     **_MAPS_TEXT_WATERMARK,
+    **_MAPS_RENDERER_CHECK,
 }
 
 # combine all node display name mappings
@@ -138,6 +141,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_TEXT_OVERLAY,
     **_NAMES_IMAGE_RESIZE,
     **_NAMES_TEXT_WATERMARK,
+    **_NAMES_RENDERER_CHECK,
 }
 
 # web directory for loading js files
