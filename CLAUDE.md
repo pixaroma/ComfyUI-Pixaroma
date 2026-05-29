@@ -758,7 +758,8 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Show Text | DOM textarea widget | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED 2026-05 — adaptive canvasOnly + unique widget type (`pixaroma_showtext`). Confirmed both renderers: value populates, chaining works, Copy button + multiline OK. **The two-step recipe (adaptive canvasOnly + `pixaroma_*` type) is the template for every DOM-widget node.** |
 | Prompt Reader | DOM widget + `image_upload` | 🟢 | ✅ DONE + VERIFIED both renderers 2026-05 — adaptive canvasOnly + hide the stale Nodes 2.0 `.image-preview` panel via the `:has()` CSS rule above (no thumbnail by design). |
 | Text / Resolution | DOM widgets (type `custom`, no collision) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED 2026-05 — `applyAdaptiveCanvasOnly` on each node's own widget (their hidden NATIVE widgets keep static `canvasOnly:true`, correct — want them gone in both modes). Confirmed Nodes 2.0 before/after: Text box+buttons, Resolution chips+list, Prompt Reader readout all render. Legacy unchanged by design (getter returns the same `true` legacy used statically). |
-| Note / Prompt Stack / Text Overlay / Text Watermark / Switch WH | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
+| Switch WH | DOM A/B buttons (type `custom`) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-size self-heal only (no painted controls). Pending user test. |
+| Note / Prompt Stack / Text Overlay / Text Watermark | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
 | Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |
