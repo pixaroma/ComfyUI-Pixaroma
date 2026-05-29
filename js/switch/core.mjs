@@ -164,6 +164,7 @@ export function normalizeSlots(node) {
 
   updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 // Add a single input slot. slot.label = zero-width space so LiteGraph's
@@ -247,6 +248,26 @@ export function updateOutputType(node) {
   // flags the workflow "modified" on a plain open (issue #39).
 }
 
+// Make slotIdx1 the active (routed) input. Mutex: only one row active at a
+// time. No-op for unconnected / trailing rows or when already active. Shared by
+// the legacy onMouseDown toggle (index.js) and the Nodes 2.0 DOM list click
+// (vue_list.mjs). node._pixSwRefresh re-renders the Vue list when present
+// (undefined in legacy, where setDirtyCanvas repaints the canvas instead).
+export function setActiveRow(node, slotIdx1) {
+  const inputs = node.inputs || [];
+  const slot = inputs[slotIdx1 - 1];
+  const connected = slot != null && slot.link != null;
+  const isTrailing = !connected && slotIdx1 === inputs.length;
+  if (!connected || isTrailing) return false;
+  const state = readState(node);
+  if (state.activeIndex === slotIdx1) return false; // already active - no-op
+  state.activeIndex = slotIdx1;
+  updateOutputType(node);
+  app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.();
+  return true;
+}
+
 export function handleConnect(node, slotIdx1) {
   const state = readState(node);
 
@@ -275,6 +296,7 @@ export function handleConnect(node, slotIdx1) {
 
   updateOutputType(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function handleDisconnect(node, slotIdx /* 1-based */) {
@@ -361,4 +383,5 @@ function actuallyDisconnect(node, slotIdx /* 1-based */) {
 
   // 7. Redraw.
   node.graph?.setDirtyCanvas?.(true, true);
+  node._pixSwRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }

@@ -1,11 +1,13 @@
 import { app } from "/scripts/app.js";
 import {
-  setupNode, restoreFromProperties, readState,
-  handleConnect, handleDisconnect, updateOutputType,
+  setupNode, restoreFromProperties,
+  handleConnect, handleDisconnect, setActiveRow,
   STATE_PROP,
 } from "./core.mjs";
 import { drawSwitchRows, hitToggle, hitLabel, labelScreenRect } from "./render.mjs";
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
+import { buildSwitchVueList } from "./vue_list.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 // Switch Pixaroma - dynamic N-to-1 switch with per-row toggles.
 // Rendering follows the Image Compare Pixaroma pattern: onDrawForeground
@@ -51,6 +53,10 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       _origCreated?.apply(this, arguments);
       setupNode(this);
+      // Nodes 2.0 only: build the DOM row list (one row per input). It wires
+      // itself as node._pixSwRefresh, which core.mjs calls on every slot/state
+      // change. Legacy paints the rows on the canvas instead (onDrawForeground).
+      if (isVueNodes()) buildSwitchVueList(this);
       // Defer restore so node.properties is populated from workflow JSON
       // before we read it (Vue Compat #8).
       queueMicrotask(() => restoreFromProperties(this));
@@ -136,6 +142,8 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (_origDraw) _origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      // Nodes 2.0 renders the rows via the DOM list widget, not the canvas.
+      if (isVueNodes()) return;
       drawSwitchRows(this, ctx);
     };
 
@@ -143,28 +151,18 @@ app.registerExtension({
     // pos is node-body-local [x, y], same coordinate space as our rects.
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
-      if (!this.flags?.collapsed) {
+      // Canvas hit-testing is legacy-only: in Nodes 2.0 the rows are a DOM list
+      // (clicks handled there) and these painted rects don't exist.
+      if (!this.flags?.collapsed && !isVueNodes()) {
         const inputs = this.inputs;
         if (inputs) {
           const w = this.size[0];
 
-          // Toggle hit-test takes priority over label.
+          // Toggle hit-test takes priority over label. setActiveRow handles the
+          // connected / trailing / already-active checks (mutex no-op).
           for (let i = 0; i < inputs.length; i++) {
             if (hitToggle(pos, w, i)) {
-              const slotIdx1 = i + 1;
-              const slot = inputs[i];
-              const connected = slot != null && slot.link != null;
-              const isTrailing = !connected && slotIdx1 === inputs.length;
-              if (connected && !isTrailing) {
-                const state = readState(this);
-                // Clicking the already-active toggle is a no-op (mutex:
-                // only one row can be active, so there's nothing to switch to).
-                if (state.activeIndex !== slotIdx1) {
-                  state.activeIndex = slotIdx1;
-                  updateOutputType(this);
-                  app.graph?.setDirtyCanvas?.(true, true);
-                }
-              }
+              setActiveRow(this, i + 1);
               return true; // consume the click even if no-op
             }
           }
