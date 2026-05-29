@@ -68,6 +68,20 @@ function copyRect(W) {
   const last = modeRect(W, 4);
   return { x: last.x, y: ROW2_Y, w: last.w, h: BTN_H };
 }
+// Opacity-slider track geometry, derived PURELY from the body width. The
+// hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
+// stashed during the last paint — important in Nodes 2.0 where the canvas only
+// repaints on demand (a tap with no preceding move could otherwise see a stale/
+// null geometry). Legacy repainted every frame so it never hit this, but
+// deriving it keeps both renderers correct.
+function sliderGeo(W) {
+  const r2 = hintRect(W);
+  const trackX = r2.x + SLIDER_PAD;
+  const trackW = r2.w - SLIDER_PAD - 36;
+  const trackY = r2.y + r2.h / 2 - 3;
+  const trackH = 6;
+  return { trackX, trackW, trackY, trackH };
+}
 function inside(pos, r) {
   return (
     pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h
@@ -226,11 +240,8 @@ function paintCompare(ctx, node, W, H, mouse) {
   ctx.save();
   const r2 = hintRect(W);
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
-    // Slider track
-    const trackX = r2.x + SLIDER_PAD;
-    const trackW = r2.w - SLIDER_PAD - 36;
-    const trackY = r2.y + r2.h / 2 - 3;
-    const trackH = 6;
+    // Slider track (geometry from sliderGeo(W) so paint + hit-test always agree)
+    const { trackX, trackW, trackY, trackH } = sliderGeo(W);
     const pct = node._cmpOpacity;
     const thumbX = trackX + trackW * pct;
 
@@ -276,15 +287,7 @@ function paintCompare(ctx, node, W, H, mouse) {
       r2.y + r2.h / 2,
     );
 
-    // Store geometry for hit testing
-    node._cmpSliderGeo = {
-      x: trackX,
-      y: trackY - 6,
-      w: trackW,
-      h: trackH + 12,
-    };
   } else {
-    node._cmpSliderGeo = null;
     ctx.fillStyle = "#999";
     ctx.font = "9px 'Segoe UI',sans-serif";
     ctx.textAlign = "left";
@@ -483,11 +486,13 @@ function cmpDown(node, lx, ly, W, H) {
       saveCompareState(node);
       return true;
     }
-  // Opacity slider drag start
-  if (node._cmpMode === 3 && node._cmpSliderGeo) {
-    const sg = node._cmpSliderGeo;
-    if (lx >= sg.x - 8 && lx <= sg.x + sg.w + 8 && ly >= sg.y && ly <= sg.y + sg.h) {
-      node._cmpOpacity = Math.max(0, Math.min(1, (lx - sg.x) / sg.w));
+  // Opacity slider drag start (geometry derived from W — no dependency on a
+  // prior paint having stashed it)
+  if (node._cmpMode === 3) {
+    const g = sliderGeo(W);
+    const hx = g.trackX, hw = g.trackW, hy = g.trackY - 6, hh = g.trackH + 12;
+    if (lx >= hx - 8 && lx <= hx + hw + 8 && ly >= hy && ly <= hy + hh) {
+      node._cmpOpacity = Math.max(0, Math.min(1, (lx - hx) / hw));
       node._cmpDragging = true;
       return true;
     }
@@ -496,10 +501,11 @@ function cmpDown(node, lx, ly, W, H) {
 }
 
 function cmpMove(node, lx, ly, W, H) {
-  // Slider drag (works while the pointer is down)
-  if (node._cmpDragging && node._cmpSliderGeo) {
-    const sg = node._cmpSliderGeo;
-    node._cmpOpacity = Math.max(0, Math.min(1, (lx - sg.x) / sg.w));
+  // Slider drag (works while the pointer is down; mode is always 3 while a
+  // slider drag is in progress)
+  if (node._cmpDragging && node._cmpMode === 3) {
+    const g = sliderGeo(W);
+    node._cmpOpacity = Math.max(0, Math.min(1, (lx - g.trackX) / g.trackW));
     return true;
   }
   // Hover-to-slide swipe (Left/Right/Up-Down modes) — no button required
