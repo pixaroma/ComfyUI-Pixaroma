@@ -1173,10 +1173,17 @@ function createButtonsDOMWidget(node) {
   toast.className = "pix-pv-toast";
   root.appendChild(toast);
 
+  const BTN_BAND = BTN_H + STRIP_V_PAD * 2;
   const widget = node.addDOMWidget("pixaroma_buttons", "pixaroma_preview_buttons", root, {
     serialize: false,
     hideOnZoom: false,
-    getMinHeight: () => BTN_H + STRIP_V_PAD * 2,
+    // getMinHeight === getMaxHeight => FIXED height. A DOM widget defaults to a
+    // flexible (no-max) height, so without this the buttons widget would ALSO
+    // grow to share the node's free space, leaving an empty gap below the
+    // buttons and pushing the strip/image down. Pinning it makes the strip the
+    // only flex widget, so it alone fills the enlarged node.
+    getMinHeight: () => BTN_BAND,
+    getMaxHeight: () => BTN_BAND,
   });
   applyAdaptiveCanvasOnly(widget);
 
