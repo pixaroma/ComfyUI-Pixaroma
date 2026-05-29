@@ -234,9 +234,15 @@ function updateLoadPreview(node) {
     if (src) { img.src = src; img.style.display = ""; }
     else { img.removeAttribute("src"); img.style.display = "none"; }
   }
+  // Size the image area to the image's aspect at the node width (content-sizing;
+  // see liPreviewImgH). Setting the DOM height reflows the min-content row so the
+  // node grows/shrinks to fit.
+  const wrap = node._pixLiPreviewImgWrap;
+  if (wrap) wrap.style.height = liPreviewImgH(node) + "px";
   const dims = node._pixLiPreviewDims;
   if (dims) dims.textContent = im?.naturalWidth ? `${im.naturalWidth} × ${im.naturalHeight}` : "";
   renderLoadCards(node);
+  node.setDirtyCanvas?.(true, true);
 }
 
 // The size readout is painted by onDrawForeground (legacy) / the DOM cards
@@ -439,26 +445,42 @@ function injectLoadImageNodes2CSS() {
   document.head.appendChild(s);
 }
 
-// Nodes 2.0 preview widget: a fill (auto-row) DOM widget holding the INPUT→OUTPUT
-// cards (fixed canvas at top) + our own <img> preview (fills, updated on every
-// pick) + a dims label. Mirrors the Preview Image fill recipe (flex:1 + min-h:0,
-// ResizeObserver-driven cards). Only created in Nodes 2.0.
+// Cards strip height + image-area clamp constants for the Nodes 2.0 preview.
+const LI_CARDS_H = 132;
+const LI_PREVIEW_MIN_IMG_H = 90;
+const LI_PREVIEW_MAX_IMG_H = 1200;
+
+// Compute the image-area height for the Nodes 2.0 preview: fit the selected
+// image to the node's content width at its OWN aspect (so the picture fills the
+// width with no letterbox), clamped. Deterministic (same image + node width =>
+// same height) so a reload recomputes the same value and never dirties (Vue
+// Compat #18). Falls back to a square assumption before the image dims arrive.
+function liPreviewImgH(node) {
+  const cw = Math.max(80, (node.size?.[0] || 400) - 24);
+  const im = node.imgs?.[0];
+  const aspect = im?.naturalWidth ? im.naturalHeight / im.naturalWidth : 1;
+  return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), LI_PREVIEW_MAX_IMG_H));
+}
+
+// Nodes 2.0 preview widget: a content-sized (min-content row) DOM widget holding
+// the INPUT→OUTPUT cards (fixed canvas) + our own <img> (height = image aspect
+// at node width) + a dims label. We do NOT flex-fill here: a flex:1 root
+// collapsed to 0 inside ComfyUI's nested WidgetDOM flex host (verified via the
+// liDbg console probe). Content-sizing (like the controls panel, which renders
+// fine) is robust and matches the legacy aspect-fit. Only created in Nodes 2.0.
 function createLoadImagePreviewWidget(node) {
   const root = document.createElement("div");
   root.className = "pix-li-preview-root";
-  // flex:1 1 0 + min-height:0 = fill the node's free space (defeat flex
-  // min-height:auto collapse), like Preview Image's strip. Column: cards (fixed),
-  // image (fills), dims (fixed).
   root.style.cssText =
-    "position:relative;width:100%;flex:1 1 0;min-height:0;display:flex;flex-direction:column;box-sizing:border-box;";
+    "position:relative;width:100%;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;";
 
   const cardsCv = document.createElement("canvas");
   cardsCv.className = "pix-li-cards";
-  cardsCv.style.cssText = "display:block;width:100%;height:132px;flex:0 0 auto;";
+  cardsCv.style.cssText = `display:block;width:100%;height:${LI_CARDS_H}px;`;
   root.appendChild(cardsCv);
 
   const imgWrap = document.createElement("div");
-  imgWrap.style.cssText = "position:relative;flex:1 1 0;min-height:0;width:100%;";
+  imgWrap.style.cssText = "position:relative;width:100%;height:200px;"; // height set in updateLoadPreview
   const img = document.createElement("img");
   img.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;";
   imgWrap.appendChild(img);
@@ -466,22 +488,34 @@ function createLoadImagePreviewWidget(node) {
 
   const dims = document.createElement("div");
   dims.className = "pix-li-preview-dims";
-  dims.style.cssText = "text-align:center;color:#9a9a9a;font:11px sans-serif;flex:0 0 auto;padding:2px 0 0;";
+  dims.style.cssText = "text-align:center;color:#9a9a9a;font:11px sans-serif;padding:0 0 2px;";
   root.appendChild(dims);
 
+  // Deterministic content height = cards + image area + dims + gaps. Drives the
+  // node height (min-content row). Same formula as the imgWrap height set in
+  // updateLoadPreview, so they stay in lockstep.
+  const measureH = () => LI_CARDS_H + liPreviewImgH(node) + 18 + 8;
+
   const widget = node.addDOMWidget("pixaroma_load_image_preview", "custom", root, {
-    getMinHeight: () => 132 + 90, // cards + a modest minimum image area
+    getMinHeight: measureH,
     serialize: false,
   });
-  // Sole flex/grower row (the controls panel is forced to min-content below).
-  widget.computeLayoutSize = () => ({ minHeight: 132 + 90, minWidth: 1 });
+  // NO computeLayoutSize => fixed min-content row (content-sized), like the
+  // controls panel. A grower (computeLayoutSize) collapsed to 0 here.
   applyAdaptiveCanvasOnly(widget);
 
   node._pixLiPreviewImg = img;
+  node._pixLiPreviewImgWrap = imgWrap;
   node._pixLiPreviewDims = dims;
   node._pixLiCardsCanvas = cardsCv;
 
-  const ro = new ResizeObserver(() => renderLoadCards(node));
+  // The cards canvas width tracks the node width, so its ResizeObserver is the
+  // signal for "node width changed" → re-render cards AND re-fit the image area
+  // height to the new width (onResize is unreliable for DOM widgets, Compat #13).
+  const ro = new ResizeObserver(() => {
+    renderLoadCards(node);
+    if (node._pixLiPreviewImgWrap) node._pixLiPreviewImgWrap.style.height = liPreviewImgH(node) + "px";
+  });
   ro.observe(cardsCv);
   node._pixLiPreviewRO = ro;
 
