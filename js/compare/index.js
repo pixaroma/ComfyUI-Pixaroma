@@ -612,7 +612,12 @@ function createCompareDOMWidget(node) {
   // A widget WITH computeLayoutSize gets a flexible `auto` grid row (so it
   // absorbs the node's free vertical space); without it, a fixed min-content
   // row. Compare's body IS the whole content, so it should grow.
-  widget.computeLayoutSize = () => ({ minHeight: MIN_H, minWidth: MIN_W });
+  // minWidth MUST be 1 (NOT MIN_W): a real minWidth forces the Vue layout to
+  // clamp the node width on every layout pass, overriding the SAVED width on
+  // reload (the node snaps wider in every workflow on refresh/save-open). The
+  // responsive button row (rowLayout) already adapts to any width, so a 1px
+  // floor is safe. This matches the proven Preview Image strip widget.
+  widget.computeLayoutSize = () => ({ minHeight: MIN_H, minWidth: 1 });
   applyAdaptiveCanvasOnly(widget);
 
   const render = () => {
