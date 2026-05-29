@@ -229,22 +229,29 @@ function renderLoadPreviewCanvas(node) {
 
   // --- Image canvas (bottom) ---
   const imgCv = node._pixLiImageCanvas;
-  if (imgCv && imgCv.clientWidth > 0) {
-    const cssW = imgCv.clientWidth;
-    const DIMS_H = 18;
+  if (imgCv) {
     const imgAreaH = liPreviewImgH(node);
-    const cssH = imgAreaH + DIMS_H;
-    if (imgCv.style.height !== cssH + "px") imgCv.style.height = cssH + "px";
-    const ctx = _liSizeCanvas(imgCv, cssW, cssH);
-    const im = _liCurrentImage(node);
-    if (im) {
-      const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
-      const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
-      ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round((imgAreaH - h) / 2), w, h);
-      ctx.fillStyle = "#9a9a9a";
-      ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
-      ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+    if (imgAreaH <= 0) {
+      // Compact mode: cards only, no image. Hide so it takes no space
+      // (display:none is skipped by measureContentHeight → node shrinks).
+      imgCv.style.display = "none";
+    } else if (imgCv.clientWidth > 0) {
+      imgCv.style.display = "block";
+      const cssW = imgCv.clientWidth;
+      const DIMS_H = 18;
+      const cssH = imgAreaH + DIMS_H;
+      if (imgCv.style.height !== cssH + "px") imgCv.style.height = cssH + "px";
+      const ctx = _liSizeCanvas(imgCv, cssW, cssH);
+      const im = _liCurrentImage(node);
+      if (im) {
+        const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
+        const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
+        ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round((imgAreaH - h) / 2), w, h);
+        ctx.fillStyle = "#9a9a9a";
+        ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+      }
     }
   }
 }
@@ -496,11 +503,23 @@ const LI_PREVIEW_MAX_IMG_H = 240;
 // width with no letterbox), clamped. Deterministic (same image + node width =>
 // same height) so a reload recomputes the same value and never dirties (Vue
 // Compat #18). Falls back to a square assumption before the image dims arrive.
+// Nodes 2.0 preview-size setting → the image-area height CAP (0 = "Compact",
+// cards only / no image). Read live so a settings change applies on re-render.
+function liPreviewMaxImgH() {
+  let v = "Medium";
+  try { v = app.ui?.settings?.getSettingValue("Pixaroma.LoadImage.PreviewSize") || "Medium"; } catch {}
+  if (v === "Compact") return 0;   // size cards only, no image
+  if (v === "Large") return 460;   // the full "ratio and all" preview
+  return 230;                      // Medium
+}
+
 function liPreviewImgH(node) {
+  const cap = liPreviewMaxImgH();
+  if (cap <= 0) return 0;
   const cw = Math.max(80, (node.size?.[0] || 400) - 24);
   const im = node.imgs?.[0];
   const aspect = im?.naturalWidth ? im.naturalHeight / im.naturalWidth : 1;
-  return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), LI_PREVIEW_MAX_IMG_H));
+  return Math.max(LI_PREVIEW_MIN_IMG_H, Math.min(Math.round(cw * aspect), cap));
 }
 
 
@@ -886,6 +905,27 @@ app.registerExtension({
       options: ["Small", "Large"],
       tooltip: "Thumbnail size shown in the Load Image Pixaroma file dropdown.",
       category: ["👑 Pixaroma", "Load Image"],
+    },
+    {
+      // Distinct category leaf ("Load Image preview") so it doesn't collapse
+      // into the ThumbSize row (Vue dedupes settings by leaf - Align Pattern #10).
+      id: "Pixaroma.LoadImage.PreviewSize",
+      name: "Preview size (Nodes 2.0)",
+      type: "combo",
+      defaultValue: "Medium",
+      options: ["Compact", "Medium", "Large"],
+      tooltip: "How much of the Load Image Pixaroma preview shows in the Nodes 2.0 interface. Compact: just the input/output size cards (no image). Medium: cards + a modest image. Large: cards + a big image. The Classic interface is unaffected - there you drag the node to resize the preview.",
+      category: ["👑 Pixaroma", "Load Image preview"],
+      onChange: () => {
+        // Re-render every Load Image node so the new size applies immediately.
+        try {
+          for (const n of (app.graph?._nodes || [])) {
+            if (n?.comfyClass !== "PixaromaLoadImage") continue;
+            renderLoadPreviewCanvas(n);
+            n.setDirtyCanvas?.(true, true);
+          }
+        } catch (e) { /* settings can fire before the graph exists */ }
+      },
     },
   ],
 
