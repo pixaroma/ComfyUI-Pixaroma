@@ -151,6 +151,44 @@ def _derive_icon_label(stem: str) -> str:
     return joined[0].upper() + joined[1:]
 
 
+_PIXAROMA_VERSION_CACHE = None
+
+
+def _read_pixaroma_version():
+    """Read the plugin version from pyproject.toml (cached). Mirrors the
+    startup banner's logic in __init__.py. Returns a string or 'unknown'."""
+    global _PIXAROMA_VERSION_CACHE
+    if _PIXAROMA_VERSION_CACHE is not None:
+        return _PIXAROMA_VERSION_CACHE
+    version = "unknown"
+    try:
+        import toml
+
+        toml_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
+        with open(toml_path, "r", encoding="utf-8") as f:
+            version = toml.load(f).get("project", {}).get("version", "unknown")
+    except Exception:
+        # toml not installed, or file unreadable — fall back to a manual scan
+        try:
+            toml_path = os.path.join(os.path.dirname(__file__), "pyproject.toml")
+            with open(toml_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    m = re.match(r'\s*version\s*=\s*["\']([^"\']+)["\']', line)
+                    if m:
+                        version = m.group(1)
+                        break
+        except Exception:
+            pass
+    _PIXAROMA_VERSION_CACHE = version
+    return version
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/version")
+async def pixaroma_version(request):
+    """Return the Pixaroma plugin version for the Version Check node."""
+    return web.json_response({"version": _read_pixaroma_version()})
+
+
 @PromptServer.instance.routes.get("/pixaroma/api/note/icons/list")
 async def list_note_icons(request):
     """Enumerate the note inline-icon folder.
