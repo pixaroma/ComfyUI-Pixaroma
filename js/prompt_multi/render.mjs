@@ -4,7 +4,7 @@
 // an "+ Add row" button. Each row is its own <div> with controls.
 // Click handlers and drag handlers are wired in interaction.mjs (Task 5+).
 
-import { readState } from "./core.mjs";
+import { readState, MODE_QUEUE, MODE_LIST } from "./core.mjs";
 import { attachLabelEditor, attachTextareaEditor, attachDragHandlers } from "./interaction.mjs";
 
 const CSS_ID = "pix-prompt-multi-css";
@@ -24,6 +24,25 @@ const CSS = `
   font-family: inherit;
   color: #ddd;
 }
+
+/* Mode pills (Queue Text / List Prompts) — DOM segmented toggle at the top
+   of the body (were canvas-painted; moved to DOM for Nodes 2.0). */
+.pix-pm-modebar { display: flex; gap: 4px; flex: 0 0 auto; user-select: none; }
+.pix-pm-modepill {
+  flex: 1;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  font: 11px sans-serif;
+  padding: 4px 0;
+  text-align: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pix-pm-modepill:hover { background: #f66744; border-color: #f66744; color: #fff; }
+.pix-pm-modepill.active { background: #f66744; border-color: #f66744; color: #fff; }
 
 /* Row card uses fixed dark grey background + visible grey border (NOT
    the adaptive white-overlay used for interactive surfaces). The card
@@ -291,10 +310,27 @@ export function renderRows(node, root, rowHandlers) {
   const state = readState(node);
   root.innerHTML = "";
 
-  // Queue Text / List Prompts pills are NOT in the DOM - they're canvas-
-  // painted at the slot-row Y by the onDrawForeground hook in index.js
-  // (mirrors Prompt Pack's Paragraph / Line pill placement). Hover
-  // tooltip on each pill explains its mode.
+  // Mode pills (Queue Text / List Prompts) — DOM segmented toggle at the top
+  // of the body (was canvas-painted; moved to DOM for Nodes 2.0). Rebuilt
+  // here each render because renderRows clears root.innerHTML.
+  const modebar = document.createElement("div");
+  modebar.className = "pix-pm-modebar";
+  const mkModePill = (mode, label, title) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "pix-pm-modepill" + (state.mode === mode ? " active" : "");
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener("click", () => rowHandlers.onSetMode(mode));
+    b.addEventListener("pointerdown", (e) => e.stopPropagation());
+    b.addEventListener("mousedown", (e) => e.stopPropagation());
+    return b;
+  };
+  modebar.append(
+    mkModePill(MODE_QUEUE, "Queue Text", "Queue Text: click Run and the workflow runs once per enabled prompt (N images). Wire the `text` output to a CLIP Text Encode."),
+    mkModePill(MODE_LIST, "List Prompts", "List Prompts: click Run and the workflow runs ONCE. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream to grab specific rows.")
+  );
+  root.appendChild(modebar);
 
   for (const row of state.rows) {
     const rowEl = document.createElement("div");
