@@ -752,7 +752,8 @@ ComfyUI is gradually making **Nodes 2.0** the default node renderer. It replaces
 | Prompt Pack / Prompt Multi | DOM rows + canvas pills | 🟡 partial | not started |
 | Load Image | DOM panel + `onDrawForeground` cards | 🟡 partial | not started |
 | Show Text | DOM textarea widget | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED 2026-05 — adaptive canvasOnly + unique widget type (`pixaroma_showtext`). Confirmed both renderers: value populates, chaining works, Copy button + multiline OK. **The two-step recipe (adaptive canvasOnly + `pixaroma_*` type) is the template for every DOM-widget node.** |
-| Note / Text / Prompt Stack / Prompt Reader / Resolution / Text Overlay / Text Watermark | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
+| Text / Resolution / Prompt Reader | DOM widgets (type `custom`, no collision) | 🟢 (+canvasOnly) | ✅ DONE 2026-05 — `applyAdaptiveCanvasOnly` on each node's own widget (their hidden NATIVE widgets keep static `canvasOnly:true`, correct — want them gone in both modes). Pending user toggle-test. |
+| Note / Prompt Stack / Text Overlay / Text Watermark / Switch WH | DOM widgets | 🟢 likely fine (+canvasOnly) | not started |
 | Fullscreen editors (Paint/3D/Composer/Crop/AudioReact) | button + DOM/WebGL overlay | 🟢 likely fine | not started |
 | Align / Connection FX | `drawFrontCanvas` wrap | 🔴 canvas paint | not started |
 | Node Colors / Brand | `LGraphCanvas` menu + `node.color` | ❓ verify | not started |

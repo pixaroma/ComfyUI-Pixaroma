@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
 // ComfyUI multiline widget is HIDDEN; we render our own DOM widget so the
@@ -346,14 +346,16 @@ function setupNode(node) {
   if (nativeWidget?.value) root._pixText.ta.value = nativeWidget.value;
   updateClearEnabled(root);
 
-  node.addDOMWidget("pix_text_ui", "custom", root, {
-    canvasOnly: true, // Vue Compat #15 - hide from Parameters tab
+  const _textWidget = node.addDOMWidget("pix_text_ui", "custom", root, {
+    // canvasOnly set adaptively (true in legacy → out of Parameters tab;
+    // false in Nodes 2.0 → renders in the Vue body). See CLAUDE.md Nodes 2.0.
     getValue: () => null,
     setValue: () => {},
     getMinHeight: () => WIDGET_MIN_H,
     margin: 4,
     serialize: false,
   });
+  applyAdaptiveCanvasOnly(_textWidget);
 
   wireEvents(node, root);
 

@@ -1,5 +1,5 @@
 import { app } from "/scripts/app.js";
-import { BRAND, hideJsonWidget } from "../shared/index.mjs";
+import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 function injectCSS() {
   if (document.getElementById("pixaroma-resolution-css")) return;
@@ -1261,7 +1261,8 @@ function setupResolutionNode(node) {
   // widget exactly fills the area between titlebar and node bottom.
   const WIDGET_H = NODE_H - 46; // 358 — keep in sync with the chrome estimate in NODE_H comment
   const _widget = node.addDOMWidget("resolution_ui", "custom", root, {
-    canvasOnly: true,  // hide from Parameters tab (Vue Compat #15)
+    // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+    // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     getValue: () => readState(node),
     setValue: (_v) => {},
     getMinHeight: () => WIDGET_H,
@@ -1269,6 +1270,7 @@ function setupResolutionNode(node) {
     margin: 4,
     serialize: false, // DOM widget itself does not serialize; the hidden STRING widget owns the state
   });
+  applyAdaptiveCanvasOnly(_widget);
 
   const _onClick = (e) => {
     const chip = e.target.closest(".pix-res-chip");

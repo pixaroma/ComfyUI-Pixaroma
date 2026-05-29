@@ -10,7 +10,7 @@
 // reload and Vue tab switching (CLAUDE.md Vue Compat #9, Preview Pattern #4).
 
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 const STATE_PROP = "promptReaderState";
 
@@ -683,14 +683,16 @@ function setupNode(node) {
     return total + padding + gaps;
   }
 
-  node.addDOMWidget("pixaroma_prompt_reader_ui", "custom", root, {
-    canvasOnly: true,
+  const _prWidget = node.addDOMWidget("pixaroma_prompt_reader_ui", "custom", root, {
+    // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+    // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     getValue: () => null,
     setValue: () => {},
     getMinHeight: measureHeight,
     margin: 4,
     serialize: false,
   });
+  applyAdaptiveCanvasOnly(_prWidget);
 
   // Default node size for fresh-on-canvas placements. LiteGraph's configure
   // (workflow restore) runs AFTER nodeCreated and overwrites node.size with
