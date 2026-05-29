@@ -1262,9 +1262,19 @@ function createStripDOMWidget(node) {
 
   // Click: container-local coords share the y=0 origin that render() draws with,
   // so they hit-test directly against node._pixaromaCells.
+  // Scale-correct for graph zoom: the Vue node is CSS-transform-scaled by the
+  // graph zoom, so getBoundingClientRect() returns SCREEN px while render() /
+  // draw() work in LAYOUT px (root.clientWidth/Height). Using the raw
+  // clientX-left offset makes every hit-test drift as you zoom in (same bug
+  // Compare had - the big thumbnails here just masked it). Multiply the offset
+  // by clientWidth/rect.width (= 1/zoom) on both axes.
   root.addEventListener("pointerdown", (e) => {
     const r = root.getBoundingClientRect();
-    if (handleStripClick(node, e.clientX - r.left, e.clientY - r.top)) {
+    const sx = r.width ? root.clientWidth / r.width : 1;
+    const sy = r.height ? root.clientHeight / r.height : 1;
+    const lx = (e.clientX - r.left) * sx;
+    const ly = (e.clientY - r.top) * sy;
+    if (handleStripClick(node, lx, ly)) {
       e.stopPropagation();
     }
   });
