@@ -193,12 +193,16 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
   ctx.restore();
 }
 
-// Nodes 2.0: render the INPUT→OUTPUT cards into the DOM cards canvas (the
-// legacy node-body painting is skipped by the Vue renderer). DPR-aware.
-function renderLoadCards(node) {
-  const cv = node._pixLiCardsCanvas;
-  if (!cv) return;
-  const cssW = cv.clientWidth, cssH = cv.clientHeight;
+// Nodes 2.0: render the WHOLE preview (INPUT→OUTPUT cards at top + the selected
+// image fitted below + a dims line) into ONE canvas that fills the flex-grower
+// root - the EXACT shape Preview Image's strip uses (single absolute canvas in a
+// flex:1 root), which is the only DOM-widget layout proven to fill without
+// collapsing. DPR-aware.
+function renderLoadPreviewCanvas(node) {
+  const cv = node._pixLiPreviewCanvas;
+  const root = node._pixLiPreviewRoot;
+  if (!cv || !root) return;
+  const cssW = root.clientWidth, cssH = root.clientHeight;
   if (cssW <= 0 || cssH <= 0) return;
   const dpr = window.devicePixelRatio || 1;
   const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
@@ -207,42 +211,49 @@ function renderLoadCards(node) {
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
-  const pad = 10;
-  paintCardsInto(ctx, node, pad, cssH / 2, cssW - 2 * pad);
+
+  // Cards in the top band.
+  paintCardsInto(ctx, node, 10, LI_CARDS_H / 2, cssW - 20);
+
+  // Image fitted in the remaining area (leave a dims line at the bottom).
+  const DIMS_H = 18;
+  const imgTop = LI_CARDS_H + 4;
+  const imgAreaH = Math.max(20, cssH - imgTop - DIMS_H);
+  const im = (node.imgs?.[0]?.complete && node.imgs[0].naturalWidth) ? node.imgs[0]
+           : (node._pixLiPreviewImgEl?.complete && node._pixLiPreviewImgEl.naturalWidth) ? node._pixLiPreviewImgEl
+           : null;
+  if (im) {
+    const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
+    const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
+    ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round(imgTop + (imgAreaH - h) / 2), w, h);
+    ctx.fillStyle = "#9a9a9a";
+    ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+  }
 }
 
-// Nodes 2.0: refresh our own image preview (the native .image-preview is hidden
-// because it goes stale on programmatic picks) + the cards. Reuses the already-
-// loaded node.imgs[0] (no second fetch).
+// Nodes 2.0: refresh our own preview (native .image-preview is hidden because it
+// goes stale on programmatic picks). Ensures an Image is loaded (node.imgs[0]
+// when present, else fetch the /view URL for restore), grows the node, repaints.
 function updateLoadPreview(node) {
   if (!isVueNodes()) return;
-  const img = node._pixLiPreviewImg;
   const im = node.imgs?.[0];
-  // Prefer the already-loaded node.imgs[0] (no second fetch); otherwise build the
-  // /view URL straight from the selected filename. The latter covers workflow
-  // restore in Nodes 2.0, where the native image path may feed its own internal
-  // state without populating node.imgs.
-  let src = im?.src;
-  if (!src) {
+  if (!(im?.complete && im.naturalWidth)) {
+    // node.imgs not ready (e.g. workflow restore) - load the selected file into
+    // our own Image so the canvas + cards have real dims to draw/measure.
     const fn = node._pixLiImageWidget?.value;
     if (fn) {
       const { subfolder, filename } = splitFilenameSubfolder(fn);
-      src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}&t=${Date.now()}`;
+      const src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}&t=${Date.now()}`;
+      let el = node._pixLiPreviewImgEl;
+      if (!el) { el = new Image(); node._pixLiPreviewImgEl = el; }
+      el.onload = () => { renderLoadPreviewCanvas(node); fitLoadNodeNodes2(node); };
+      if (el.src !== src) el.src = src;
     }
   }
-  if (img) {
-    if (src) { img.src = src; img.style.display = ""; }
-    else { img.removeAttribute("src"); img.style.display = "none"; }
-  }
-  // Size the image area to the image's aspect at the node width (content-sizing;
-  // see liPreviewImgH). Setting the DOM height reflows the min-content row so the
-  // node grows/shrinks to fit.
-  const wrap = node._pixLiPreviewImgWrap;
-  if (wrap) wrap.style.height = liPreviewImgH(node) + "px";
-  const dims = node._pixLiPreviewDims;
-  if (dims) dims.textContent = im?.naturalWidth ? `${im.naturalWidth} × ${im.naturalHeight}` : "";
-  renderLoadCards(node);
-  fitLoadNodeNodes2(node); // grow node.size[1] so the preview row isn't clipped to 0
+  renderLoadPreviewCanvas(node);
+  fitLoadNodeNodes2(node); // grow node.size[1] so the flex-grower preview has room
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -252,7 +263,7 @@ function updateLoadPreview(node) {
 function updateInfoBar(node) {
   const hint = node._pixLiRoot?.querySelector('[data-role="hint"]');
   if (hint) hint.style.display = node.imgs?.[0]?.naturalWidth ? "none" : "";
-  if (isVueNodes()) renderLoadCards(node);
+  if (isVueNodes()) renderLoadPreviewCanvas(node);
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -471,7 +482,7 @@ function liPreviewImgH(node) {
 // a reload recomputes the same value and won't dirty once saved (one-time dirty
 // when migrating a node saved at the old height — acceptable, like Pattern #17).
 function fitLoadNodeNodes2(node) {
-  if (!isVueNodes() || !node._pixLiPreviewImg) return;
+  if (!isVueNodes() || !node._pixLiPreviewCanvas) return;
   const SLOT_H = (window.LiteGraph?.NODE_SLOT_HEIGHT) || 20;
   const headerH = (window.LiteGraph?.NODE_TITLE_HEIGHT) || 30;
   const slotsH = (node.outputs?.length || 7) * SLOT_H;
@@ -485,74 +496,46 @@ function fitLoadNodeNodes2(node) {
   }
 }
 
-// Nodes 2.0 preview widget: a content-sized (min-content row) DOM widget holding
-// the INPUT→OUTPUT cards (fixed canvas) + our own <img> (height = image aspect
-// at node width) + a dims label. We do NOT flex-fill here: a flex:1 root
-// collapsed to 0 inside ComfyUI's nested WidgetDOM flex host (verified via the
-// liDbg console probe). Content-sizing (like the controls panel, which renders
-// fine) is robust and matches the legacy aspect-fit. Only created in Nodes 2.0.
+// Nodes 2.0 preview widget: a flex-GROWER DOM widget that is a single absolute
+// <canvas> in a `flex:1 1 0; min-height:0` root - the EXACT shape Preview
+// Image's strip uses (the only DOM-widget layout proven to fill without
+// collapsing; a display:flex root with multiple in-flow children collapsed to
+// 0x0, verified via the liDbg probe + the bundle's WidgetDOM `*:flex-1` host).
+// The cards + image + dims are all drawn into the one canvas
+// (renderLoadPreviewCanvas). fitLoadNodeNodes2 grows the node so this grower has
+// room. Only created in Nodes 2.0.
 function createLoadImagePreviewWidget(node) {
   const root = document.createElement("div");
   root.className = "pix-li-preview-root";
-  // flex:0 0 auto overrides the WidgetDOM host's `*:flex-1` (flex:1 1 0%) so the
-  // element sizes to its CONTENT instead of a 0 flex-basis (which collapsed it).
   root.style.cssText =
-    "position:relative;width:100%;flex:0 0 auto;display:flex;flex-direction:column;gap:4px;box-sizing:border-box;";
+    "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;";
 
-  const cardsCv = document.createElement("canvas");
-  cardsCv.className = "pix-li-cards";
-  cardsCv.style.cssText = `display:block;width:100%;height:${LI_CARDS_H}px;`;
-  root.appendChild(cardsCv);
+  const cv = document.createElement("canvas");
+  cv.className = "pix-li-preview-canvas";
+  cv.style.cssText = "position:absolute;inset:0;width:100%;height:100%;display:block;";
+  root.appendChild(cv);
 
-  const imgWrap = document.createElement("div");
-  imgWrap.style.cssText = "position:relative;width:100%;height:200px;"; // height set in updateLoadPreview
-  const img = document.createElement("img");
-  img.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;";
-  imgWrap.appendChild(img);
-  root.appendChild(imgWrap);
-
-  const dims = document.createElement("div");
-  dims.className = "pix-li-preview-dims";
-  dims.style.cssText = "text-align:center;color:#9a9a9a;font:11px sans-serif;padding:0 0 2px;";
-  root.appendChild(dims);
-
-  // Deterministic content height = cards + image area + dims + gaps. Drives the
-  // node height (min-content row). Same formula as the imgWrap height set in
-  // updateLoadPreview, so they stay in lockstep.
-  const measureH = () => LI_CARDS_H + liPreviewImgH(node) + 18 + 8;
-
-  // Unique type (NOT "custom", which the controls widget already uses) per the
-  // house rule — two DOM widgets sharing a type can collide in the Vue dispatch.
   const widget = node.addDOMWidget("pixaroma_load_image_preview", "pixaroma_li_preview", root, {
-    getMinHeight: measureH,
+    getMinHeight: () => LI_CARDS_H + LI_PREVIEW_MIN_IMG_H,
     serialize: false,
   });
-  // CRITICAL: addDOMWidget assigns a DEFAULT computeLayoutSize (a grower, since
-  // we pass no getMaxHeight) which collapses to 0 here. Set it to undefined so
-  // this is a fixed min-content row that renders by its DOM content height -
-  // EXACTLY what makes the controls panel render correctly. (Removing my custom
-  // computeLayoutSize wasn't enough; the default one has to be cleared too.)
+  // Flex/grower row (sole grower; the controls panel is min-content). Mirrors
+  // Preview Image's strip widget exactly.
+  widget.computeLayoutSize = () => ({ minHeight: LI_CARDS_H + LI_PREVIEW_MIN_IMG_H, minWidth: 1 });
   applyAdaptiveCanvasOnly(widget);
-  widget.computeLayoutSize = undefined;
 
-  node._pixLiPreviewImg = img;
-  node._pixLiPreviewImgWrap = imgWrap;
-  node._pixLiPreviewDims = dims;
-  node._pixLiCardsCanvas = cardsCv;
+  node._pixLiPreviewRoot = root;
+  node._pixLiPreviewCanvas = cv;
 
-  // The cards canvas width tracks the node width, so its ResizeObserver is the
-  // signal for "node width changed" → re-render cards AND re-fit the image area
-  // height to the new width (onResize is unreliable for DOM widgets, Compat #13).
-  const ro = new ResizeObserver(() => {
-    renderLoadCards(node);
-    if (node._pixLiPreviewImgWrap) node._pixLiPreviewImgWrap.style.height = liPreviewImgH(node) + "px";
-    fitLoadNodeNodes2(node);
-  });
-  ro.observe(cardsCv);
+  // The canvas width tracks the node width; its ResizeObserver is the signal for
+  // "node resized" → repaint + re-fit node height (onResize is unreliable for
+  // DOM widgets, Compat #13).
+  const ro = new ResizeObserver(() => { renderLoadPreviewCanvas(node); fitLoadNodeNodes2(node); });
+  ro.observe(cv);
   node._pixLiPreviewRO = ro;
 
   // Initial paint once laid out.
-  requestAnimationFrame(() => { renderLoadCards(node); updateLoadPreview(node); });
+  requestAnimationFrame(() => { renderLoadPreviewCanvas(node); updateLoadPreview(node); });
   return widget;
 }
 
