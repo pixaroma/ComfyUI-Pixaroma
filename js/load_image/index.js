@@ -198,18 +198,7 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
 // root - the EXACT shape Preview Image's strip uses (single absolute canvas in a
 // flex:1 root), which is the only DOM-widget layout proven to fill without
 // collapsing. DPR-aware.
-function renderLoadPreviewCanvas(node) {
-  const cv = node._pixLiPreviewCanvas;
-  if (!cv) return;
-  const cssW = cv.clientWidth;
-  if (cssW <= 0) return;
-  // Explicit total height = cards band + image area (image aspect at width) +
-  // dims line. Set the CSS height so the canvas is real content inside the
-  // controls panel (which then grows the node to include it).
-  const DIMS_H = 18;
-  const imgAreaH = liPreviewImgH(node);
-  const cssH = LI_CARDS_H + imgAreaH + DIMS_H;
-  if (cv.style.height !== cssH + "px") cv.style.height = cssH + "px";
+function _liSizeCanvas(cv, cssW, cssH) {
   const dpr = window.devicePixelRatio || 1;
   const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
   if (cv.width !== bw) cv.width = bw;
@@ -217,23 +206,46 @@ function renderLoadPreviewCanvas(node) {
   const ctx = cv.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, cssW, cssH);
+  return ctx;
+}
 
-  // Cards in the top band.
-  paintCardsInto(ctx, node, 10, LI_CARDS_H / 2, cssW - 20);
+function _liCurrentImage(node) {
+  return (node.imgs?.[0]?.complete && node.imgs[0].naturalWidth) ? node.imgs[0]
+       : (node._pixLiPreviewImgEl?.complete && node._pixLiPreviewImgEl.naturalWidth) ? node._pixLiPreviewImgEl
+       : null;
+}
 
-  // Image fitted in the image area.
-  const imgTop = LI_CARDS_H;
-  const im = (node.imgs?.[0]?.complete && node.imgs[0].naturalWidth) ? node.imgs[0]
-           : (node._pixLiPreviewImgEl?.complete && node._pixLiPreviewImgEl.naturalWidth) ? node._pixLiPreviewImgEl
-           : null;
-  if (im) {
-    const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
-    const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
-    ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round(imgTop + (imgAreaH - h) / 2), w, h);
-    ctx.fillStyle = "#9a9a9a";
-    ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
-    ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+// Draw both Nodes 2.0 canvases: the INPUT→OUTPUT cards (top, fixed band) and the
+// image + dims (bottom, height = image aspect at node width). Each lives inside
+// the controls panel root, so their explicit heights grow the node to fit.
+function renderLoadPreviewCanvas(node) {
+  // --- Cards canvas (top) ---
+  const cardsCv = node._pixLiCardsCanvas;
+  if (cardsCv && cardsCv.clientWidth > 0) {
+    const cssW = cardsCv.clientWidth;
+    const ctx = _liSizeCanvas(cardsCv, cssW, LI_CARDS_H);
+    paintCardsInto(ctx, node, 10, LI_CARDS_H / 2, cssW - 20);
+  }
+
+  // --- Image canvas (bottom) ---
+  const imgCv = node._pixLiImageCanvas;
+  if (imgCv && imgCv.clientWidth > 0) {
+    const cssW = imgCv.clientWidth;
+    const DIMS_H = 18;
+    const imgAreaH = liPreviewImgH(node);
+    const cssH = imgAreaH + DIMS_H;
+    if (imgCv.style.height !== cssH + "px") imgCv.style.height = cssH + "px";
+    const ctx = _liSizeCanvas(imgCv, cssW, cssH);
+    const im = _liCurrentImage(node);
+    if (im) {
+      const scale = Math.min((cssW - 16) / im.naturalWidth, imgAreaH / im.naturalHeight, 1);
+      const w = Math.round(im.naturalWidth * scale), h = Math.round(im.naturalHeight * scale);
+      ctx.drawImage(im, Math.round((cssW - w) / 2), Math.round((imgAreaH - h) / 2), w, h);
+      ctx.fillStyle = "#9a9a9a";
+      ctx.font = "11px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(`${im.naturalWidth} × ${im.naturalHeight}`, cssW / 2, cssH - DIMS_H / 2);
+    }
   }
 }
 
@@ -330,9 +342,12 @@ function renderUI(node) {
   const globals = renderGlobalControls(node, state, writeState, () => updateInfoBar(node));
   root.appendChild(globals);
 
-  // Nodes 2.0: keep the preview canvas as the LAST child (renderUI re-appends
-  // globals each render, which would otherwise land below the preview).
-  if (node._pixLiPreviewCanvas) root.appendChild(node._pixLiPreviewCanvas);
+  // Nodes 2.0: keep the cards canvas FIRST (above the controls) and the image
+  // canvas LAST (renderUI re-appends chips/panel/globals each render).
+  if (node._pixLiCardsCanvas && root.firstChild !== node._pixLiCardsCanvas) {
+    root.insertBefore(node._pixLiCardsCanvas, root.firstChild);
+  }
+  if (node._pixLiImageCanvas) root.appendChild(node._pixLiImageCanvas);
 
   // Refresh dims info bar (input + output dims).
   updateInfoBar(node);
@@ -485,27 +500,35 @@ function liPreviewImgH(node) {
 }
 
 
-// Nodes 2.0 preview: instead of a SECOND DOM widget (whose host collapsed to 0 on
-// this node - the 7 outputs / hidden image-upload widgets seem to break the second
-// widget's grid row, even with Preview Image's exact strip shape), append ONE
-// <canvas> as a child of the CONTROLS panel root (which renders fine and already
-// drives the node height via measureContentHeight/getMinHeight). The canvas has an
-// EXPLICIT height (cards + image area + dims) so it's content and the panel grows
-// to include it. Cards + image + dims are all drawn into it (renderLoadPreviewCanvas).
+// Nodes 2.0 preview: a second DOM widget's host collapses to 0 on this node (the
+// 7 outputs / hidden image-upload widgets break the second widget's grid row,
+// even with Preview Image's exact strip shape). So we render into TWO <canvas>
+// children of the CONTROLS panel root (which renders fine and drives node height
+// via measureContentHeight). To match Legacy: the INPUT→OUTPUT CARDS canvas goes
+// at the TOP (prepended, above the Upload button), the IMAGE canvas at the
+// BOTTOM. Both have explicit heights so the panel grows to include them.
 function createLoadImagePreviewCanvas(node) {
   const root = node._pixLiRoot;
   if (!root) return;
-  const cv = document.createElement("canvas");
-  cv.className = "pix-li-preview-canvas";
-  cv.style.cssText = "display:block;width:100%;box-sizing:border-box;";
-  root.appendChild(cv);
 
-  node._pixLiPreviewCanvas = cv;
+  // Cards canvas — at the TOP of the node body (like Legacy's top-right cards).
+  const cardsCv = document.createElement("canvas");
+  cardsCv.className = "pix-li-cards-canvas";
+  cardsCv.style.cssText = `display:block;width:100%;height:${LI_CARDS_H}px;box-sizing:border-box;`;
+  root.insertBefore(cardsCv, root.firstChild);
+  node._pixLiCardsCanvas = cardsCv;
+
+  // Image canvas — at the BOTTOM (fills, like Legacy's bottom preview).
+  const imgCv = document.createElement("canvas");
+  imgCv.className = "pix-li-preview-canvas";
+  imgCv.style.cssText = "display:block;width:100%;box-sizing:border-box;";
+  root.appendChild(imgCv);
+  node._pixLiImageCanvas = imgCv;
 
   // Width changes (node resize) → repaint at the new width (onResize unreliable
   // for DOM widgets, Compat #13).
   const ro = new ResizeObserver(() => renderLoadPreviewCanvas(node));
-  ro.observe(cv);
+  ro.observe(imgCv);
   node._pixLiPreviewRO = ro;
 
   requestAnimationFrame(() => updateLoadPreview(node));
