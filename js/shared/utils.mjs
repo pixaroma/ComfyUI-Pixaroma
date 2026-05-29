@@ -106,6 +106,14 @@ export function hideJsonWidget(widgets, widgetName) {
   if (w) {
     w.hidden = true;
     w.computeSize = () => [0, -4];
+    // Nodes 2.0: hidden + computeSize alone do NOT suppress a STRING/multiline
+    // widget in the Vue node body — it renders as a textarea showing the raw
+    // JSON at the top of the node (seen on Note). canvasOnly excludes it from
+    // the Vue body (shouldRenderAsVue = !canvasOnly) AND keeps it out of the
+    // legacy Parameters tab. This is an internal serialization widget that must
+    // stay hidden in BOTH renderers, so a static true is correct here.
+    if (!w.options) w.options = {};
+    w.options.canvasOnly = true;
     if (w.element) w.element.style.display = "none";
     requestAnimationFrame(() => {
       if (w.element) w.element.style.display = "none";
