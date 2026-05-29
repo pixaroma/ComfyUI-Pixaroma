@@ -29,27 +29,40 @@ const INIT_W = 440;
 const INIT_H = INIT_W + IMG_Y; // square preview area
 const MIN_W = BTN_X + BTN_W * 6 + BTN_GAP * 5 + 6;
 const MIN_H = IMG_Y + 100;
-// Copy button (Show 1/2 only) - same height as row 1 buttons so no
-// row-height change. Right edge is glued to the right edge of the
-// last row 1 button (Difference) so the two stack visually in the
-// same column regardless of how wide the user has resized the node.
-const COPY_W = 56;
 
-// Button rect helpers — Show toggle is first, then 4 mode buttons
-function showRect() {
-  return { x: BTN_X, y: ROW1_Y, w: BTN_W, h: BTN_H };
+// Button rect helpers — Show toggle is first, then 4 mode buttons.
+// The row layout is RESPONSIVE to the body width W so the 6 buttons + the Copy
+// button always fit. Legacy keeps the BTN_X (80px) left margin to clear the
+// canvas-painted input-slot labels (image1 / image2); in Nodes 2.0 the slots
+// are rendered by Vue ABOVE the DOM-widget canvas, so that 80px would be wasted
+// space that pushes the rightmost button off the edge — use a small margin
+// there instead. Both paintCompare and the hit-tests call rowLayout(W), and
+// both read isVueNodes(), so they always agree within a renderer.
+function rowLayout(W) {
+  const gap = BTN_GAP;
+  const leftPad = isVueNodes() ? 12 : BTN_X;
+  const rightPad = 6;
+  const n = 6; // Show toggle + 5 mode buttons
+  let bw = Math.floor((W - leftPad - rightPad - gap * (n - 1)) / n);
+  bw = Math.max(30, Math.min(BTN_W, bw));
+  return { leftPad, gap, bw };
 }
-function modeRect(i) {
-  return { x: BTN_X + (i + 1) * (BTN_W + BTN_GAP), y: ROW1_Y, w: BTN_W, h: BTN_H };
+function showRect(W) {
+  const L = rowLayout(W);
+  return { x: L.leftPad, y: ROW1_Y, w: L.bw, h: BTN_H };
 }
-function hintRect() {
-  return { x: BTN_X, y: ROW2_Y, w: BTN_W * 6 + BTN_GAP * 5, h: BTN_H };
+function modeRect(W, i) {
+  const L = rowLayout(W);
+  return { x: L.leftPad + (i + 1) * (L.bw + L.gap), y: ROW1_Y, w: L.bw, h: BTN_H };
 }
-function copyRect() {
-  // Right edge = right edge of Difference (modeRect(4)) so the
-  // button stacks under it in a clean visual column.
-  const last = modeRect(4);
-  return { x: last.x + last.w - COPY_W, y: ROW2_Y, w: COPY_W, h: BTN_H };
+function hintRect(W) {
+  const L = rowLayout(W);
+  return { x: L.leftPad, y: ROW2_Y, w: L.bw * 6 + L.gap * 5, h: BTN_H };
+}
+function copyRect(W) {
+  // Stacks directly under Difference (modeRect(4)), same width.
+  const last = modeRect(W, 4);
+  return { x: last.x, y: ROW2_Y, w: last.w, h: BTN_H };
 }
 function inside(pos, r) {
   return (
@@ -200,14 +213,14 @@ function paintCompare(ctx, node, W, H, mouse) {
   // ── Row 1: Show toggle + mode buttons ──
   ctx.save();
   const showLabel = node._cmpShowWhich === 1 ? "Show 1" : node._cmpShowWhich === 2 ? "Show 2" : "Show 1";
-  paintBtn(ctx, showRect(), showLabel, node._cmpShowWhich !== 0);
+  paintBtn(ctx, showRect(W), showLabel, node._cmpShowWhich !== 0);
   for (let i = 0; i < 5; i++)
-    paintBtn(ctx, modeRect(i), MODES[i], node._cmpShowWhich === 0 && node._cmpMode === i);
+    paintBtn(ctx, modeRect(W, i), MODES[i], node._cmpShowWhich === 0 && node._cmpMode === i);
   ctx.restore();
 
   // ── Row 2: opacity slider or hint text (same height) ──
   ctx.save();
-  const r2 = hintRect();
+  const r2 = hintRect(W);
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
     // Slider track
     const trackX = r2.x + SLIDER_PAD;
@@ -286,7 +299,7 @@ function paintCompare(ctx, node, W, H, mouse) {
   // slider keep full width. Mutually exclusive with the slider since
   // the slider only renders when _cmpShowWhich === 0.
   if (node._cmpShowWhich !== 0) {
-    const cr = copyRect();
+    const cr = copyRect(W);
     // Hover via the passed local mouse pos (legacy = graph_mouse - node.pos;
     // Nodes 2.0 = last DOM pointer pos). Both are in the same coord space
     // as the rects we draw, so the hit-test is identical.
@@ -448,19 +461,19 @@ function cmpDown(node, lx, ly, W, H) {
   const pos = [lx, ly];
   // Copy button (only visible in Show 1/2). Checked first; rects don't
   // overlap so this is just belt-and-braces.
-  if (node._cmpShowWhich !== 0 && inside(pos, copyRect())) {
+  if (node._cmpShowWhich !== 0 && inside(pos, copyRect(W))) {
     copyShownImage(node);
     return true;
   }
   // Show toggle: toggles between Show 1 and Show 2
-  if (inside(pos, showRect())) {
+  if (inside(pos, showRect(W))) {
     node._cmpShowWhich = node._cmpShowWhich === 2 ? 1 : 2;
     saveCompareState(node);
     return true;
   }
   // Mode buttons — clicking one deselects Show mode
   for (let i = 0; i < 5; i++)
-    if (inside(pos, modeRect(i))) {
+    if (inside(pos, modeRect(W, i))) {
       node._cmpMode = i;
       node._cmpShowWhich = 0;
       saveCompareState(node);
