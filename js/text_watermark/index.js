@@ -7,6 +7,7 @@
 
 import { app } from "/scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { DEFAULT_STATE, resetStateInPlace } from "./defaults.mjs";
 
@@ -112,12 +113,14 @@ function setupWatermarkNode(node) {
     return BASE_H + (wired ? HINT_H : 0);
   }
 
-  node.addDOMWidget("pix_text_watermark_ui", "div", root, {
-    canvasOnly: true,     // Vue Compat #15: keep it out of the Parameters tab
+  const _wmWidget = node.addDOMWidget("pix_text_watermark_ui", "div", root, {
+    // canvasOnly set adaptively below (CLAUDE.md Nodes 2.0): true in legacy
+    // (out of the Parameters tab), false in Nodes 2.0 (renders in Vue body).
     serialize: false,
     getMinHeight: panelHeight,
     getMaxHeight: panelHeight,
   });
+  applyAdaptiveCanvasOnly(_wmWidget);
 
   // Default size for fresh nodes; LiteGraph restores saved sizes via configure.
   // +58 = node chrome (title bar + image/text input rows) measured for this
