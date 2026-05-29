@@ -40,7 +40,7 @@ function injectCSS() {
     .pix-sw-row.active:hover { border-color:${BRAND}; }
     .pix-sw-row.trailing { cursor:default; opacity:0.5; border-style:dashed; }
     .pix-sw-row.trailing:hover { border-color:rgba(255,255,255,0.12); }
-    .pix-sw-num { color:rgba(255,255,255,0.5); font:600 10px 'Segoe UI',-apple-system,sans-serif; min-width:14px; text-align:right; }
+    .pix-sw-num { flex:none; min-width:50px; color:rgba(255,255,255,0.55); font:12px 'Segoe UI',-apple-system,sans-serif; white-space:nowrap; }
     .pix-sw-label {
       flex:1; min-width:0; color:#d8d8d8; font:12px 'Segoe UI',-apple-system,sans-serif;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -57,13 +57,6 @@ function injectCSS() {
     .pix-sw-name:hover { border-color:rgba(255,255,255,0.18); }
     .pix-sw-name:focus { border-color:${BRAND}; background:#1d1d1d; }
     .pix-sw-name::placeholder { color:#888; }
-    /* Dim wire-type tag (STRING / IMAGE / MODEL ...) so each row shows what is
-       plugged in even after it gets a custom name. */
-    .pix-sw-type {
-      flex:none; color:rgba(255,255,255,0.4); letter-spacing:0.5px; text-transform:uppercase;
-      font:600 9px 'Segoe UI',-apple-system,sans-serif;
-      white-space:nowrap; max-width:90px; overflow:hidden; text-overflow:ellipsis;
-    }
     .pix-sw-toggle {
       position:relative; width:28px; height:14px; border-radius:7px; flex:none; box-sizing:border-box;
       border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.06);
@@ -110,16 +103,14 @@ export function buildSwitchVueList(node) {
       rowEl.className =
         "pix-sw-row" + (isActive ? " active" : "") + (isTrailing ? " trailing" : "");
 
+      // Left: fixed "input N" identity (matches the dot label on the node edge).
       const numEl = document.createElement("span");
       numEl.className = "pix-sw-num";
-      numEl.textContent = String(slotIdx1);
+      numEl.textContent = `input ${slotIdx1}`;
 
       const custom = labels[slotIdx1];
       const type = connected ? getUpstreamType(node, slotIdx1) : null;
       const usefulType = type && type !== "*" ? type : null;
-      // Auto label = "<type> <slot#>" (e.g. "string 1"), matching the dot label;
-      // falls back to "input N" when the type isn't known yet.
-      const autoName = usefulType ? `${usefulType.toLowerCase()} ${slotIdx1}` : `input ${slotIdx1}`;
 
       // Connected rows get an editable name field; the trailing empty row gets
       // a plain dim "(empty)" label.
@@ -131,8 +122,9 @@ export function buildSwitchVueList(node) {
         labelEl.maxLength = 64;
         labelEl.spellcheck = false;
         labelEl.value = custom || "";
-        labelEl.placeholder = autoName;
-        labelEl.title = "Click to rename this input";
+        // Default shows the wire type (string / image); typing a name overrides it.
+        labelEl.placeholder = usefulType ? usefulType.toLowerCase() : "name";
+        labelEl.title = "Type a name to label this input (defaults to its type)";
         labelEl.addEventListener("keydown", (e) => {
           e.stopPropagation(); // keep typing instead of triggering canvas shortcuts
           if (e.key === "Enter") { e.preventDefault(); labelEl.blur(); }
@@ -160,19 +152,8 @@ export function buildSwitchVueList(node) {
       } else {
         labelEl = document.createElement("span");
         labelEl.className = "pix-sw-label";
-        labelEl.textContent = isTrailing ? "(empty)" : usefulType || `input ${slotIdx1}`;
+        labelEl.textContent = isTrailing ? "(empty)" : (usefulType ? usefulType.toLowerCase() : "");
         labelEl.title = labelEl.textContent;
-      }
-
-      // Wire-type tag - shown ONLY when the row has a custom name (then the auto
-      // "string N" label is replaced, so the tag keeps the type visible). Unnamed
-      // rows don't need it: their label already reads "string 1" / "image 3".
-      let typeEl = null;
-      if (connected && !isTrailing && custom && usefulType) {
-        typeEl = document.createElement("span");
-        typeEl.className = "pix-sw-type";
-        typeEl.textContent = usefulType;
-        typeEl.title = `Input type: ${usefulType}`;
       }
 
       const toggleEl = document.createElement("span");
@@ -181,8 +162,7 @@ export function buildSwitchVueList(node) {
       knob.className = "pix-sw-knob";
       toggleEl.appendChild(knob);
 
-      if (typeEl) rowEl.append(numEl, labelEl, typeEl, toggleEl);
-      else rowEl.append(numEl, labelEl, toggleEl);
+      rowEl.append(numEl, labelEl, toggleEl);
 
       if (connected && !isTrailing) {
         rowEl.title = "Click to route this input through (the name field renames it)";
