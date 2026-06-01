@@ -731,15 +731,23 @@ function buildPreviewNode(initialTitle, initialBody) {
 
 function openCustomColorsModal(opts) {
   injectCSS();
-  const { initialTitle, initialBody, onApply, onCancel = () => {} } = opts;
+  const { initialTitle, initialBody, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
   let titleHex = initialTitle;
   let bodyHex  = initialBody;
 
+  // Side-floating (transparent overlay) so the node stays visible beside the
+  // picker and recolors live as you drag. The overlay still captures an
+  // outside click for cancel.
   const backdrop = document.createElement("div");
   backdrop.className = "pix-nc-backdrop";
+  backdrop.style.background = "transparent";
+  backdrop.style.display = "block";
 
   const modal = document.createElement("div");
   modal.className = "pix-nc-modal";
+  modal.style.position = "fixed";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
   const titleEl = document.createElement("div");
   titleEl.className = "pix-nc-modal-title";
@@ -766,7 +774,7 @@ function openCustomColorsModal(opts) {
     initialColor: titleHex,
     swatches: TITLE_SWATCHES,
     hideReset: true,
-    onChange: (c) => { titleHex = c; preview.setTitle(c); },
+    onChange: (c) => { titleHex = c; preview.setTitle(c); onPreview(titleHex, bodyHex); },
   });
   titleCol.appendChild(titlePicker.element);
   pickers.appendChild(titleCol);
@@ -782,7 +790,7 @@ function openCustomColorsModal(opts) {
     initialColor: bodyHex,
     swatches: BODY_SWATCHES,
     hideReset: true,
-    onChange: (c) => { bodyHex = c; preview.setBody(c); },
+    onChange: (c) => { bodyHex = c; preview.setBody(c); onPreview(titleHex, bodyHex); },
   });
   bodyCol.appendChild(bodyPicker.element);
   pickers.appendChild(bodyCol);
@@ -806,6 +814,8 @@ function openCustomColorsModal(opts) {
 
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  makeDraggable(modal, titleEl);
+  placeBeside(modal, anchorRect);
 
   function close() {
     window.removeEventListener("keydown", onKey, true);
@@ -845,16 +855,24 @@ function openCustomColorsModal(opts) {
   window.addEventListener("keydown", onKey, true);
 }
 
-function pickCustom(nodes) {
+function pickCustom(nodes, anchorNode) {
   const seed = colorClipboard
     || getFavorites().find((f) => f)
     || { title: "#1d1d1d", body: "#2a2a2a" };
+  // Snapshot raw colors so Cancel can restore exactly what was there before.
+  const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor }));
   openCustomColorsModal({
     initialTitle: seed.title,
     initialBody:  seed.body,
+    anchorRect: getNodeScreenRect(anchorNode || nodes[0]),
+    onPreview: (titleHex, bodyHex) => applyColors(nodes, titleHex, bodyHex),
     onApply: (titleHex, bodyHex) => {
       applyColors(nodes, titleHex, bodyHex);
       colorClipboard = { title: titleHex, body: bodyHex };
+    },
+    onCancel: () => {
+      nodes.forEach((n, i) => { n.color = originals[i].color; n.bgcolor = originals[i].bgcolor; });
+      app.graph?.setDirtyCanvas(true, true);
     },
   });
 }
@@ -879,14 +897,19 @@ function buildGroupPreview(initial) {
 
 function openGroupColorModal(opts) {
   injectCSS();
-  const { initial, onApply, onCancel = () => {} } = opts;
+  const { initial, anchorRect = null, onPreview = () => {}, onApply, onCancel = () => {} } = opts;
   let hex = initial;
 
   const backdrop = document.createElement("div");
   backdrop.className = "pix-nc-backdrop";
+  backdrop.style.background = "transparent";
+  backdrop.style.display = "block";
 
   const modal = document.createElement("div");
   modal.className = "pix-nc-modal pix-nc-modal-single";
+  modal.style.position = "fixed";
+  modal.style.left = "-9999px";
+  modal.style.top = "0px";
 
   const titleEl = document.createElement("div");
   titleEl.className = "pix-nc-modal-title";
@@ -911,7 +934,7 @@ function openGroupColorModal(opts) {
     initialColor: hex,
     swatches: GROUP_SWATCHES,
     hideReset: true,
-    onChange: (c) => { hex = c; preview.setColor(c); },
+    onChange: (c) => { hex = c; preview.setColor(c); onPreview(c); },
   });
   col.appendChild(picker.element);
   pickers.appendChild(col);
@@ -933,6 +956,8 @@ function openGroupColorModal(opts) {
 
   backdrop.appendChild(modal);
   document.body.appendChild(backdrop);
+  makeDraggable(modal, titleEl);
+  placeBeside(modal, anchorRect);
 
   function close() {
     window.removeEventListener("keydown", onKey, true);
@@ -960,16 +985,26 @@ function openGroupColorModal(opts) {
   window.addEventListener("keydown", onKey, true);
 }
 
-function pickCustomGroup(groups) {
+function pickCustomGroup(groups, anchorGroup) {
   const fav = getFavorites().find((f) => f);
   const seed = colorClipboard
     ? pickGroupColor(colorClipboard)
     : (fav ? pickGroupColor(fav) : GROUP_DEFAULT_COLOR);
+  const originals = groups.map((g) => g.color);
   openGroupColorModal({
     initial: seed,
+    anchorRect: getGroupScreenRect(anchorGroup || groups[0]),
+    onPreview: (hex) => applyGroupColor(groups, hex),
     onApply: (hex) => {
       applyGroupColor(groups, hex);
       colorClipboard = { title: hex, body: hex };
+    },
+    onCancel: () => {
+      groups.forEach((g, i) => {
+        g.color = originals[i];
+        if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
+      });
+      app.graph?.setDirtyCanvas(true, true);
     },
   });
 }
@@ -1063,9 +1098,11 @@ function makeDraggable(modal, handle) {
     sl = r.left; st = r.top;
     try { handle.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
+    e.stopPropagation();
   });
   handle.addEventListener("pointermove", (e) => {
     if (!dragging) return;
+    e.stopPropagation();
     modal.style.left = (sl + e.clientX - sx) + "px";
     modal.style.top = (st + e.clientY - sy) + "px";
   });
@@ -1231,7 +1268,7 @@ function openNodeColorsPalette(targets, node) {
   // Tools: Pick custom… / Reset.
   const tools = document.createElement("div");
   tools.className = "pix-nc-pal-tools";
-  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets); }));
+  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets, node); }));
   tools.appendChild(palToolBtn("Reset colors", () => {
     resetColors(targets);
     applied = captureColors(node);
@@ -1328,7 +1365,7 @@ function openGroupColorsPalette(targets, group) {
 
   const tools = document.createElement("div");
   tools.className = "pix-nc-pal-tools";
-  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustomGroup(targets); }));
+  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustomGroup(targets, group); }));
   tools.appendChild(palToolBtn("Reset color", () => {
     resetGroupColor(targets);
     applied = captureGroupColor(group);

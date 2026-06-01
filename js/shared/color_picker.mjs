@@ -474,14 +474,29 @@ export function createPixaromaColorPicker(opts = {}) {
   };
   svCanvas.addEventListener("mousedown", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dragging = "sv";
     onSV(e);
   });
   hueCanvas.addEventListener("mousedown", (e) => {
     e.preventDefault();
+    e.stopPropagation();
     dragging = "hue";
     onHue(e);
   });
+  // A physical mouse also emits POINTER events for the same action. The drag
+  // is driven by the mouse events above; the duplicate pointer stream would
+  // otherwise bubble to window-level canvas handlers (Nodes 2.0 node drag,
+  // Align snap) and drag the node sitting behind the picker. Capture and
+  // swallow the pointer stream on the SV / hue canvases so it can't leak.
+  for (const cv of [svCanvas, hueCanvas]) {
+    cv.addEventListener("pointerdown", (e) => {
+      e.stopPropagation();
+      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    cv.addEventListener("pointermove", (e) => e.stopPropagation());
+    cv.addEventListener("pointerup", (e) => e.stopPropagation());
+  }
   const onWinMove = (e) => {
     if (dragging === "sv") onSV(e);
     else if (dragging === "hue") onHue(e);
