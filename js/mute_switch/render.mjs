@@ -260,7 +260,9 @@ function drawRowLabel(ctx, nodeWidth, slotIdx0, slot, text, isTrailing, upstream
 // Cached on the slot itself - invalidated when the slot's link id changes
 // (we check link id equality), so connect/disconnect/wire-replace all
 // produce a fresh lookup naturally without a separate invalidation hook.
-function getUpstreamType(node, slotIdx1) {
+// Exported so the Nodes 2.0 DOM list (vue_list.mjs) can show the same
+// wire-type placeholder the legacy canvas paints.
+export function getUpstreamType(node, slotIdx1) {
   const slot = node.inputs?.[slotIdx1 - 1];
   const linkId = slot?.link;
   if (linkId == null) return null;

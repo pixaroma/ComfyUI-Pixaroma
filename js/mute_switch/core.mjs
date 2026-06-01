@@ -13,6 +13,7 @@
 import { app } from "/scripts/app.js";
 import { ROW_H, TOP_PAD, MODE_BAR_H, OUTPUT_X_INSET } from "./render.mjs";
 import { resolveAllMutes, getUpstreamNode } from "./upstream.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 export const STATE_PROP = "muteSwitchState";
 export const ORIGINAL_MODES_PROP = "muteSwitchOriginalModes";
@@ -26,6 +27,27 @@ const SLOT_NAME = (i) => `input_${i}`; // 1-based
 const BOT_PAD = 8;
 const DEFAULT_W = 280;
 const MIN_BODY_H = MODE_BAR_H + ROW_H + BOT_PAD;
+
+// Label LiteGraph / Vue shows next to an INPUT dot.
+//  - Legacy: a zero-width space (truthy + invisible) so LiteGraph does NOT draw
+//    a native label over the row content we canvas-paint ourselves.
+//  - Nodes 2.0: a STABLE "input N". Vue renders slot.label next to the dot and
+//    we paint nothing there, so a blank dot looks unfinished. Deliberately NOT
+//    the wire type / custom name: Vue only re-reads a dot label on (re)load
+//    (shallowReactive), so those would go stale after a live rewire/rename. The
+//    live type + name live in the DOM row instead (vue_list.mjs).
+export function slotDisplayLabel(slotIdx1) {
+  return isVueNodes() ? `input ${slotIdx1}` : "​";
+}
+
+// Label for the phantom chain OUTPUT.
+//  - Nodes 2.0: "out" so chaining one Mute Switch into another stays
+//    discoverable (Vue draws the label; we paint nothing there).
+//  - Legacy: a zero-width space - the "out" caption is canvas-painted next to
+//    the dot in drawMuteSwitch, so a native label would double up.
+function outputDisplayLabel() {
+  return isVueNodes() ? "out" : "​";
+}
 
 export function defaultState() {
   return {
@@ -69,7 +91,7 @@ function clearNativeInputs(node) {
 
 function addInputSlot(node, idx1) {
   const slot = node.addInput(SLOT_NAME(idx1), "*");
-  slot.label = "​"; // zero-width space: truthy, invisible
+  slot.label = slotDisplayLabel(idx1); // "​" in legacy, "input N" in 2.0
   return slot;
 }
 
@@ -105,7 +127,8 @@ export function normalizeSlots(node) {
   for (let i = 0; i < node.inputs.length; i++) {
     const nm = SLOT_NAME(i + 1);
     if (node.inputs[i].name !== nm) node.inputs[i].name = nm;
-    if (node.inputs[i].label !== "​") node.inputs[i].label = "​";
+    const lbl = slotDisplayLabel(i + 1);
+    if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
   }
 
   // Push each input dot down by MODE_BAR_H so it aligns with our row paint.
@@ -133,10 +156,12 @@ export function normalizeSlots(node) {
     // One-time migration from the v2.0 wildcard output to the typed one.
     node.outputs[0].type = "PIXAROMA_MUTE_CHAIN";
   }
-  // Suppress the "out" label (it would otherwise overlap with the mode bar
-  // pill text).
+  // Output label: "out" in Nodes 2.0 (Vue draws it - keeps chaining
+  // discoverable), zero-width space in Legacy (the "out" caption is
+  // canvas-painted in drawMuteSwitch, so a native label would double up).
   for (const out of node.outputs) {
-    if (out.label !== "​") out.label = "​";
+    const lbl = outputDisplayLabel();
+    if (out.label !== lbl) out.label = lbl;
   }
   // Pin the dot just below the mode bar, diff-gated (Compat #18).
   if (node.outputs[0]) {
@@ -168,6 +193,7 @@ export function normalizeSlots(node) {
   }
 
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function setupNode(node) {
@@ -233,6 +259,7 @@ export function handleConnect(node, slotIdx1) {
 
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function handleDisconnect(node, slotIdx1) {
@@ -274,6 +301,7 @@ export function togglePillRow(node, slotIdx1) {
   }
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function setSelectMode(node, newMode /* "single" | "multi" */) {
@@ -307,6 +335,7 @@ export function setSelectMode(node, newMode /* "single" | "multi" */) {
   }
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 // Bulk-toggle helper for the right-click "Enable all rows" / "Disable all rows"
@@ -328,6 +357,7 @@ export function setAllRowsEnabled(node, enabled) {
   if (!changed) return;
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
@@ -336,6 +366,7 @@ export function setMuteMode(node, newMode /* "mute" | "bypass" */) {
   state.muteMode = newMode;
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 // v2: mute ONLY the directly wired upstream node (not the whole upstream
@@ -527,7 +558,8 @@ function actuallyDisconnect(node, slotIdx1) {
     for (let i = 0; i < node.inputs.length; i++) {
       const expectedName = `input_${i + 1}`;
       if (node.inputs[i].name !== expectedName) node.inputs[i].name = expectedName;
-      if (node.inputs[i].label !== "​") node.inputs[i].label = "​";
+      const lbl = slotDisplayLabel(i + 1);
+      if (node.inputs[i].label !== lbl) node.inputs[i].label = lbl;
       const y = MODE_BAR_H + TOP_PAD + i * ROW_H + ROW_H / 2;
       const cur = node.inputs[i].pos;
       if (!cur || cur[0] !== 10 || cur[1] !== y) {
@@ -560,6 +592,7 @@ function actuallyDisconnect(node, slotIdx1) {
 
   applyMuteState(node);
   node.graph?.setDirtyCanvas?.(true, true);
+  node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
 }
 
 // Called from onRemoved. Restores every node we saved an original for,
