@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
 import { BRAND } from "../shared/index.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 // =============================================================================
 // Align Pixaroma - toggleable snap & alignment guides for the node canvas.
@@ -383,23 +384,27 @@ function onWindowPointerMove(e) {
   if (!state.enabled) { resetDrag(); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
   if (e.shiftKey) { resetDrag(); return; }
-  const c = app.canvas;
-  if (!c?.last_mouse_dragging) { resetDrag(); return; }
   if (!(e.buttons & 1)) { resetDrag(); return; }
-  // Bail when LiteGraph is drawing a marquee or panning the canvas - those
-  // are not node drags and the snap math must not run. (Don't gate on
-  // isDragging: LiteGraph sets it after a 6px/150ms drag threshold, so the
-  // first ticks of a legit multi-node drag would be wrongly bailed.)
+  const c = app.canvas;
+  if (!c) { resetDrag(); return; }
+  // Marquee / canvas-pan are not node drags. (Present in both renderers; in
+  // Nodes 2.0 these may be unset, but the change-detection below still excludes
+  // them since neither moves a node.)
   if (c.dragging_rectangle != null) { resetDrag(); return; }
   if (c.dragging_canvas) { resetDrag(); return; }
-  // Also bail during the pre-threshold dead zone (the ~6px / 150ms window
-  // BEFORE LiteGraph commits to a drag mode). dragging_rectangle is still
-  // null in that window even though the user is starting a marquee, so the
-  // fallback chain below would pick a previously-selected node and leak
-  // cursor delta into its position. pointer.dragStarted flips true at the
-  // exact threshold crossing for any drag type. Use === false so undefined
-  // (older builds) falls through to existing behaviour.
-  if (c.pointer && c.pointer.dragStarted === false) { resetDrag(); return; }
+  // LEGACY-ONLY drag gates. Nodes 2.0 moves nodes WITHOUT setting
+  // last_mouse_dragging (undefined) or pointer.dragStarted (stays false) -
+  // verified via console diagnostic 2026-06-01 - so gating on them would bail
+  // EVERY Vue drag. In Vue the drag is detected purely by node.pos change below,
+  // which is the universal signal and inherently excludes marquee/pan (no node
+  // moves). The pre-threshold dead-zone protection (dragStarted) is a legacy
+  // concern only; in Vue the change-detection is the dead-zone guard (nothing
+  // moves until the drag actually commits).
+  const vue = isVueNodes();
+  if (!vue) {
+    if (!c.last_mouse_dragging) { resetDrag(); return; }
+    if (c.pointer && c.pointer.dragStarted === false) { resetDrag(); return; }
+  }
 
   // Find the dragged/resized node. The MOST reliable signal is "which node
   // did LiteGraph just modify this tick?" - found by comparing pos/size to
@@ -416,9 +421,11 @@ function onWindowPointerMove(e) {
       }
     }
   }
-  // Fallbacks for the first tick (no cache yet) or for very-slow drags
-  // where no measurable change happened this tick.
-  if (!draggedNode) {
+  // LEGACY-ONLY fallbacks for tick 0 (no cache yet) / very-slow drags. In Vue
+  // these cause marquee false-positives (a marquee sweeping over a node would
+  // pick it as "dragged"), so Vue relies on the change-detection above - snap
+  // just engages one tick (~16ms) after movement starts.
+  if (!draggedNode && !vue) {
     const sel = c.selected_nodes;
     const selKeys = sel ? Object.keys(sel) : [];
     if (selKeys.length === 1) {
@@ -435,7 +442,8 @@ function onWindowPointerMove(e) {
       draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
     }
   }
-  // Refresh the per-node cache for next tick BEFORE we possibly bail.
+  // Refresh the per-node cache for next tick. Done on EVERY tick (even the
+  // no-node ones below) so the next tick always has a fresh baseline to diff.
   if (c.graph?._nodes) {
     if (!state._prevNodeStates) state._prevNodeStates = new Map();
     state._prevNodeStates.clear();
@@ -443,7 +451,14 @@ function onWindowPointerMove(e) {
       state._prevNodeStates.set(n.id, { x: n.pos[0], y: n.pos[1], w: n.size[0], h: n.size[1] });
     }
   }
-  if (!draggedNode || draggedNode.flags?.collapsed) { resetDrag(); return; }
+  // No node moved this tick (tick-0 warm-up, a stationary pause, or a Vue
+  // marquee/pan). Clear any guides but DON'T resetDrag - that wipes the cache we
+  // just refreshed, and the next tick could then never detect movement (the
+  // bug that broke Align entirely in Nodes 2.0: every tick-0 cleared the cache).
+  if (!draggedNode || draggedNode.flags?.collapsed) {
+    if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+    return;
+  }
 
   // Multi-select detection. If 2+ uncollapsed nodes are selected AND the
   // identified draggedNode is in that selection, the drag is treated as a
