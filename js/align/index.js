@@ -380,6 +380,34 @@ function resetDrag() {
   }
 }
 
+// Apply a snap correction to a node's position (and optionally size). LEGACY:
+// synchronous index mutation (node.pos[0]=x), as it always did. NODES 2.0: the
+// on-screen position comes from a reactive layout store, NOT node._pos directly;
+// an index mutation does NOT trigger the `pos` setter that updates that store -
+// only an ARRAY REPLACEMENT (node.pos = [x,y]) does. AND the Vue drag queues its
+// own rAF that recomputes the position from the raw cursor and would overwrite
+// ours, so we queue OUR write in a rAF too: our window-bubble handler runs AFTER
+// the node element's pointermove (which queued Vue's rAF), so our rAF is later
+// in the FIFO queue and runs after Vue's, winning. Only correct when a snap is
+// actually engaged (snapActive) - otherwise leave Vue to position from the
+// cursor. Agent-verified against the compiled frontend (2026-06-01).
+function applyNodePos(node, x, y, snapActive) {
+  if (isVueNodes()) {
+    if (snapActive) requestAnimationFrame(() => { node.pos = [x, y]; });
+  } else {
+    node.pos[0] = x;
+    node.pos[1] = y;
+  }
+}
+function applyNodeRect(node, x, y, w, h, snapActive) {
+  if (isVueNodes()) {
+    if (snapActive) requestAnimationFrame(() => { node.pos = [x, y]; node.size = [w, h]; });
+  } else {
+    node.pos[0] = x; node.pos[1] = y;
+    node.size[0] = w; node.size[1] = h;
+  }
+}
+
 function onWindowPointerMove(e) {
   if (!state.enabled) { resetDrag(); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
@@ -660,11 +688,13 @@ function onWindowPointerMove(e) {
       else            fBot = fTop + visualMinH;
     }
 
-    // Convert visual top back to body top by adding titleH.
-    draggedNode.pos[0] = fLeft;
-    draggedNode.pos[1] = fTop + titleH;
-    draggedNode.size[0] = fRight - fLeft;
-    draggedNode.size[1] = fBot - (fTop + titleH);
+    // Convert visual top back to body top by adding titleH. Legacy writes every
+    // tick; Nodes 2.0 only corrects when an edge is snapped (applyNodeRect).
+    applyNodeRect(
+      draggedNode,
+      fLeft, fTop + titleH, fRight - fLeft, fBot - (fTop + titleH),
+      !!(snapLeft || snapRight || snapTop || snapBot),
+    );
 
     // Push one guide per engaged edge. fLeft/fRight/fTop/fBot are visual
     // coords; matched rects (snapXxx.rect) are also visual via nodeRect().
@@ -738,12 +768,12 @@ function onWindowPointerMove(e) {
     di.stickyMoveY = bestY ? bestY.target : null;
     const finalDx = dxGraph + (bestX ? bestX.delta : 0);
     const finalDy = dyGraph + (bestY ? bestY.delta : 0);
+    const multiSnapActive = !!(bestX || bestY);
     for (const n of allNodes) {
       if (!di.origIds.has(n.id)) continue;
       const orig = di.origPositions.get(n.id);
       if (!orig) continue;
-      n.pos[0] = orig.x + finalDx;
-      n.pos[1] = orig.y + finalDy;
+      applyNodePos(n, orig.x + finalDx, orig.y + finalDy, multiSnapActive);
     }
 
     // Guides span the moved bbox plus the rect that produced the matching
@@ -812,17 +842,18 @@ function onWindowPointerMove(e) {
   state.dragInfo.stickyMoveX = bestX ? bestX.target : null;
   state.dragInfo.stickyMoveY = bestY ? bestY.target : null;
 
-  // Set node.pos directly: snap target if found, else desired position.
-  // This OVERWRITES whatever LiteGraph set this tick, so the cursor and node
-  // never drift apart by more than snapGraph.
-  draggedNode.pos[0] = bestX ? desiredX + bestX.delta : desiredX;
-  draggedNode.pos[1] = bestY ? desiredY + bestY.delta : desiredY;
+  // Set node.pos: snap target if found, else desired position. In legacy this
+  // OVERWRITES whatever LiteGraph set this tick (so cursor and node never drift
+  // apart); in Nodes 2.0 we only correct when a snap is engaged (applyNodePos).
+  const fx = bestX ? desiredX + bestX.delta : desiredX;
+  const fy = bestY ? desiredY + bestY.delta : desiredY;
+  applyNodePos(draggedNode, fx, fy, !!(bestX || bestY));
 
-  // Build the visual rect at the FINAL (post-snap) position so the guide
-  // line spans accurately along the perp axis. Then extend over every other
-  // rect that shares the matched edge so a column/row of 3+ shows one full
-  // guide instead of a short segment.
-  const finalRect = { x: draggedNode.pos[0], y: draggedNode.pos[1] - titleH, w, h: h + titleH };
+  // Build the visual rect at the FINAL (post-snap) position so the guide line
+  // spans accurately. Use fx/fy (not draggedNode.pos, which in Nodes 2.0 is only
+  // updated by the deferred rAF). Then extend over every other rect that shares
+  // the matched edge so a column/row of 3+ shows one full guide.
+  const finalRect = { x: fx, y: fy - titleH, w, h: h + titleH };
   state.activeGuides = [];
   if (bestX && bestXRect) {
     const range = extendGuideRange(
