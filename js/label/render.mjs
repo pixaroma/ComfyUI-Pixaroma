@@ -209,6 +209,13 @@ export function injectVueLabelCSS() {
 /* 4. Pull the selection outline in from -7px so the handles hug the box. */
 .lg-node:has(.pix-lbl-vue) [data-testid="node-state-outline-overlay"],
 .lg-node:has(.pix-lbl-vue) > div.absolute.outline-none { inset: -2px !important; }
+/* 5. Hide the resize handles. The label auto-sizes to its text (_pixLblFit), so
+   manual resize is a no-op (it snaps back) - the grips are just clutter. They're
+   the only direct-child divs of the node that hold an icon <svg>; the size
+   fallback (.h-5.w-5) catches them if the markup shifts. Selecting / moving /
+   deleting / double-click-to-edit all still work (those aren't these handles). */
+.lg-node:has(.pix-lbl-vue) > div:has(> svg),
+.lg-node:has(.pix-lbl-vue) > div.h-5.w-5 { display: none !important; }
 `;
   document.head.appendChild(s);
 }
