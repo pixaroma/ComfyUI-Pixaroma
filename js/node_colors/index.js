@@ -48,14 +48,21 @@ const HUE_FOLDERS = [
     { label: "Onyx", title: "#060606", body: "#141414" },
     { label: "Charcoal", title: "#262220", body: "#36312f" },
     { label: "Red", title: "#231011", body: "#351d1d" },
+    { label: "Orange", title: "#231510", body: "#352620" },
     { label: "Amber", title: "#231a10", body: "#352a1d" },
+    { label: "Gold", title: "#232010", body: "#35301d" },
+    { label: "Lime", title: "#1a2310", body: "#28351d" },
     { label: "Green", title: "#102316", body: "#1d3525" },
     { label: "Teal", title: "#102223", body: "#1d3435" },
+    { label: "Cyan", title: "#102123", body: "#1d3235" },
     { label: "Blue", title: "#101923", body: "#1d2835" },
+    { label: "Indigo", title: "#131023", body: "#211d35" },
     { label: "Purple", title: "#1b1023", body: "#2b1d35" },
+    { label: "Pink", title: "#23101c", body: "#35202f" },
   ] },
   { label: "Red", presets: [
     { label: "Deepest", title: "#2f0a0b", body: "#521416" },
+    { label: "Moody", title: "#330b0c", body: "#5a1719" },
     { label: "Deep", title: "#360c0d", body: "#62181b" },
     { label: "Jewel", title: "#3c0b0d", body: "#6d181b" },
     { label: "Mid", title: "#491214", body: "#7f2427" },
@@ -72,6 +79,7 @@ const HUE_FOLDERS = [
   ] },
   { label: "Orange", presets: [
     { label: "Deepest", title: "#2f180a", body: "#522d14" },
+    { label: "Moody", title: "#331b0b", body: "#5a3216" },
     { label: "Deep", title: "#361d0c", body: "#623618" },
     { label: "Jewel", title: "#3c1f0b", body: "#6d3a18" },
     { label: "Mid", title: "#492812", body: "#7f4824" },
@@ -88,6 +96,7 @@ const HUE_FOLDERS = [
   ] },
   { label: "Gold", presets: [
     { label: "Deepest", title: "#2f250a", body: "#524114" },
+    { label: "Moody", title: "#332909", body: "#5a4816" },
     { label: "Deep", title: "#362b0c", body: "#624e18" },
     { label: "Jewel", title: "#3c2f0b", body: "#6d5618" },
     { label: "Mid", title: "#493b12", body: "#7f6724" },
@@ -96,8 +105,11 @@ const HUE_FOLDERS = [
     { label: "Vivid", title: "#614e1a", body: "#ad8c34" },
     { label: "Bright", title: "#735e26", body: "#dab349" },
     { label: "Muted Deep", title: "#332e1e", body: "#544c36" },
+    { label: "Slate", title: "#393423", body: "#5f543f" },
     { label: "Muted", title: "#494027", body: "#746744" },
     { label: "Muted Light", title: "#584c2d", body: "#958350" },
+    { label: "Two-tone", title: "#59491c", body: "#9d8a2f" },
+    { label: "Accent", title: "#a9912a", body: "#242424" },
   ] },
   { label: "Green", presets: [
     { label: "Deepest", title: "#0a2f13", body: "#145224" },
@@ -113,6 +125,8 @@ const HUE_FOLDERS = [
     { label: "Slate", title: "#233928", body: "#3f5f47" },
     { label: "Muted", title: "#274930", body: "#447450" },
     { label: "Muted Light", title: "#2d5838", body: "#509562" },
+    { label: "Two-tone", title: "#1c5921", body: "#2f9d4f" },
+    { label: "Accent", title: "#38a83f", body: "#242424" },
   ] },
   { label: "Teal", presets: [
     { label: "Deepest", title: "#0a2f27", body: "#145245" },
@@ -129,6 +143,7 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#274942", body: "#44746a" },
     { label: "Muted Light", title: "#2d584f", body: "#509587" },
     { label: "Two-tone", title: "#18594c", body: "#2f9d57" },
+    { label: "Accent", title: "#1f9d8a", body: "#242424" },
   ] },
   { label: "Cyan", presets: [
     { label: "Deepest", title: "#0a282f", body: "#144752" },
@@ -145,6 +160,7 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#274349", body: "#446c74" },
     { label: "Muted Light", title: "#2d5058", body: "#508a95" },
     { label: "Two-tone", title: "#184e59", body: "#2f9d80" },
+    { label: "Accent", title: "#1f9eb2", body: "#242424" },
   ] },
   { label: "Blue", presets: [
     { label: "Deepest", title: "#0a1b2f", body: "#143152" },
@@ -164,6 +180,12 @@ const HUE_FOLDERS = [
     { label: "Accent", title: "#2864a9", body: "#242424" },
   ] },
   { label: "Indigo", presets: [
+    { label: "Deepest", title: "#140e2f", body: "#281452" },
+    { label: "Moody", title: "#130e35", body: "#261454" },
+    { label: "Deep", title: "#16103a", body: "#2d1862" },
+    { label: "Jewel", title: "#181140", body: "#33196d" },
+    { label: "Mid", title: "#1d1649", body: "#3f257f" },
+    { label: "Rich", title: "#211a55", body: "#472d97" },
     { label: "Bold", title: "#221b5f", body: "#3d329f" },
     { label: "Vivid", title: "#211a61", body: "#4034ad" },
     { label: "Bright", title: "#2e2673", body: "#5749da" },
@@ -175,6 +197,10 @@ const HUE_FOLDERS = [
     { label: "Accent Dark", title: "#382bab", body: "#1f1f1f" },
   ] },
   { label: "Purple", presets: [
+    { label: "Deepest", title: "#29092f", body: "#4a1452" },
+    { label: "Moody", title: "#2c0935", body: "#50145a" },
+    { label: "Deep", title: "#310b3c", body: "#591868" },
+    { label: "Jewel", title: "#360b42", body: "#651879" },
     { label: "Mid", title: "#371249", body: "#61247f" },
     { label: "Rich", title: "#3d1551", body: "#732b97" },
     { label: "Bold", title: "#491b5f", body: "#7b329f" },
@@ -185,10 +211,13 @@ const HUE_FOLDERS = [
     { label: "Muted", title: "#3e2749", body: "#644474" },
     { label: "Muted Light", title: "#492d58", body: "#7e5095" },
     { label: "Two-tone", title: "#431859", body: "#9d2f92" },
+    { label: "Accent", title: "#8f28a9", body: "#242424" },
   ] },
   { label: "Pink", presets: [
     { label: "Deepest", title: "#2f0a21", body: "#52143b" },
+    { label: "Moody", title: "#340b24", body: "#5a1542" },
     { label: "Deep", title: "#360c27", body: "#621847" },
+    { label: "Jewel", title: "#3d0c2d", body: "#6d1852" },
     { label: "Mid", title: "#491235", body: "#7f245e" },
     { label: "Rich", title: "#51153b", body: "#972b6f" },
     { label: "Bold", title: "#5f1b46", body: "#9f3277" },
@@ -279,6 +308,26 @@ const GROUP_COLORS = [
   { label: "Light Pink",   color: "#d57bba" },
   { label: "Soft Pink",    color: "#d350ac" },
   { label: "Mid Pink",     color: "#cf2a9e" },
+  // Row 2 fill + Row 3 → 3 full rows of 15 (May 2026, Pixaroma palette).
+  { label: "Light Indigo", color: "#9b8ad5" },
+  { label: "Soft Indigo",  color: "#6a5fd3" },
+  { label: "Mid Indigo",   color: "#4a3fcf" },
+  { label: "Light Aqua",   color: "#8ad5cf" },
+  { label: "Rich Red",     color: "#b52833" },
+  { label: "Rich Orange",  color: "#b5602a" },
+  { label: "Rich Amber",   color: "#b5862a" },
+  { label: "Rich Gold",    color: "#9e8a2a" },
+  { label: "Rich Lime",    color: "#7a9e2a" },
+  { label: "Rich Green",   color: "#2f9e3f" },
+  { label: "Rich Emerald", color: "#1f9e6a" },
+  { label: "Rich Teal",    color: "#1f9285" },
+  { label: "Rich Cyan",    color: "#1f85a8" },
+  { label: "Rich Sky",     color: "#2f7fc0" },
+  { label: "Rich Blue",    color: "#2a55cf" },
+  { label: "Rich Violet",  color: "#6a3fcf" },
+  { label: "Rich Purple",  color: "#9e3fc0" },
+  { label: "Rich Magenta", color: "#c03f9e" },
+  { label: "Rich Rose",    color: "#c03f5f" },
 ];
 const GROUP_SWATCHES = GROUP_COLORS.map((c) => c.color);
 
@@ -682,8 +731,11 @@ function injectCSS() {
   transition: background 0.1s, border-color 0.1s, color 0.1s;
 }
 .pix-nc-pal-favsave:hover { background: #f66744; border-color: #f66744; color: #fff; }
-.pix-nc-pal-tools { display: flex; gap: 8px; margin-bottom: 14px; }
-.pix-nc-pal-tools .pix-nc-btn { min-width: 0; flex: 1; padding: 6px 12px; }
+/* 684 = 15*40 + 14*6: match the swatch-grid width so the buttons line up
+   under the swatches and never overflow past them. border-box keeps flex:1
+   from overshooting once padding/border are added. */
+.pix-nc-pal-tools { display: flex; gap: 8px; margin-bottom: 14px; width: 684px; max-width: 100%; }
+.pix-nc-pal-tools .pix-nc-btn { min-width: 0; flex: 1; padding: 6px 12px; box-sizing: border-box; }
   `;
   document.head.appendChild(s);
 }
