@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { hideJsonWidget, BRAND } from "../shared/index.mjs";
+import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { buildModePanel, previewResize, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 import {
   injectCSS, buildModeChips, buildFooter, buildResampleAndUpscale,
@@ -474,6 +475,14 @@ function renderUI(node) {
   node._pixIrLongestCell = null;
   root.innerHTML = "";
 
+  // Nodes 2.0: re-assert the readout cards canvas as the FIRST child (root was
+  // just wiped). Force a redraw next frame, once it has laid out. Legacy has no
+  // cards canvas - it paints the cards in the slot dead-space (onDrawForeground).
+  if (isVueNodes() && node._pixIrCardsCanvas) {
+    root.appendChild(node._pixIrCardsCanvas);
+    requestAnimationFrame(() => node._pixIrRenderCards?.(true));
+  }
+
   const info = wireInfo(node);
   const live = getInputDims(node);
 
@@ -574,6 +583,175 @@ function renderUI(node) {
   });
 }
 
+// Re-read the wired inputs and mirror the live values into the DOM readout
+// cells (the single-wire / longest-side summaries + the locked W/H fields).
+// DOM has no event for an upstream widget-value change, so this is polled:
+// from the legacy onDrawForeground loop, and from the Nodes 2.0 setInterval
+// (onDrawForeground doesn't fire there). Returns { wi, info } for the painter.
+function refreshReadout(node) {
+  const wi = wireInfo(node);
+  const info = getReadoutInfo(node, wi);
+  if (node._pixIrWireCells && info.mode === "dual") {
+    const c = node._pixIrWireCells, w = String(info.outW), h = String(info.outH);
+    if (c.wEl.textContent !== w) c.wEl.textContent = w;
+    if (c.hEl.textContent !== h) c.hEl.textContent = h;
+  }
+  if (node._pixIrLongestCell && wi.valLongest != null) {
+    const s = String(wi.valLongest);
+    if (node._pixIrLongestCell.textContent !== s) node._pixIrLongestCell.textContent = s;
+  }
+  if (node._pixIrLockedInputs) {
+    const li = node._pixIrLockedInputs;
+    if (li.wInp && wi.valW != null && li.wInp.value !== String(wi.valW)) li.wInp.value = String(wi.valW);
+    if (li.hInp && wi.valH != null && li.hInp.value !== String(wi.valH)) li.hInp.value = String(wi.valH);
+  }
+  return { wi, info };
+}
+
+// Paint the INPUT -> OUTPUT readout (two joined mini cards, or a single message
+// box) centered horizontally in width W, vertically at midY. The two-card
+// design aligns INPUT over column 2 / OUTPUT over column 3 of a 4-column grid
+// spanning W (same grid the mode chips use), joined by a center bridge.
+// SHARED by the legacy slot-dead-space paint (W = node.size[0], midY = 54) and
+// the Nodes 2.0 cards canvas (W = canvas width, midY = canvas center).
+function paintReadout(ctx, node, W, midY, info) {
+  const cx = W / 2;
+  const fam = "ui-sans-serif, system-ui, sans-serif";
+  const capFont = `8px ${fam}`;
+  const dimsFont = `bold 10px ${fam}`;
+  const ratioFont = `8px ${fam}`;
+  ctx.save();
+  ctx.textBaseline = "middle";
+
+  if (info.mode === "msg") {
+    ctx.font = `13px ${fam}`;
+    const tw = ctx.measureText(info.text).width;
+    const bw = tw + 26, bh = 28;
+    roundRectPath(ctx, cx - bw / 2, midY - bh / 2, bw, bh, 8);
+    ctx.fillStyle = "#1d1d1d"; ctx.fill();
+    ctx.textAlign = "center"; ctx.fillStyle = BRAND;
+    ctx.fillText(info.text, cx, midY);
+    ctx.restore();
+    return;
+  }
+
+  const GRID_PAD = 16, COL_GAP = 5, NECK_INSET = 3;
+  const gridW = Math.max(40, W - GRID_PAD * 2);
+  const colW = (gridW - COL_GAP * 3) / 4;
+  const cardW = colW - NECK_INSET, cardH = 90;
+  const L1 = GRID_PAD + colW + COL_GAP;          // INPUT left  (column 2 left)
+  const R1 = L1 + cardW;                          // INPUT right (inset)
+  const R2 = GRID_PAD + 3 * colW + 2 * COL_GAP;   // OUTPUT right (column 3 right)
+  const L2 = R2 - cardW;                          // OUTPUT left (inset)
+  const arrowCx = (R1 + L2) / 2;                  // bridge center
+  const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
+  const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
+  const rectMaxW = 46, rectMaxH = 30;
+
+  // Single connected outline: rounded OUTER corners on both cards, joined by a
+  // center bridge (square inner junctions), with the gap above and below the
+  // bridge left open. One fill + one 1px stroke so the border flows as one shape.
+  ctx.beginPath();
+  ctx.moveTo(L1 + R, T);
+  ctx.lineTo(R1 - R, T);
+  ctx.arcTo(R1, T, R1, T + R, R);          // INPUT top-right
+  ctx.lineTo(R1, bT);                       // down to bridge top
+  ctx.lineTo(L2, bT);                       // bridge top across
+  ctx.lineTo(L2, T + R);                    // up OUTPUT inner edge
+  ctx.arcTo(L2, T, L2 + R, T, R);          // OUTPUT top-left
+  ctx.lineTo(R2 - R, T);
+  ctx.arcTo(R2, T, R2, T + R, R);          // OUTPUT top-right
+  ctx.lineTo(R2, Bm - R);
+  ctx.arcTo(R2, Bm, R2 - R, Bm, R);        // OUTPUT bottom-right
+  ctx.lineTo(L2 + R, Bm);
+  ctx.arcTo(L2, Bm, L2, Bm - R, R);        // OUTPUT bottom-left
+  ctx.lineTo(L2, bB);                       // up to bridge bottom
+  ctx.lineTo(R1, bB);                       // bridge bottom across
+  ctx.lineTo(R1, Bm - R);                   // down INPUT inner edge
+  ctx.arcTo(R1, Bm, R1 - R, Bm, R);        // INPUT bottom-right
+  ctx.lineTo(L1 + R, Bm);
+  ctx.arcTo(L1, Bm, L1, Bm - R, R);        // INPUT bottom-left
+  ctx.lineTo(L1, T + R);
+  ctx.arcTo(L1, T, L1 + R, T, R);          // INPUT top-left
+  ctx.closePath();
+  ctx.fillStyle = "#1d1d1d"; ctx.fill();
+  ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
+
+  const drawContent = (x, label, w, h, accent) => {
+    const ccx = x + cardW / 2;
+    ctx.textAlign = "center";
+    const maxTxt = cardW - 8; // keep text inside the card (5-digit dims, etc.)
+    ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
+    ctx.fillText(label, ccx, cardY + 15, maxTxt);
+    ctx.font = dimsFont; ctx.fillStyle = BRAND;
+    ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
+    const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
+    const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 53 - rh / 2) + 0.5;
+    if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
+    ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
+    ctx.fillText(ratioLabel(w, h), ccx, cardY + 77, maxTxt);
+  };
+
+  const changed = info.inW !== info.outW || info.inH !== info.outH;
+  drawContent(L1, "INPUT", info.inW, info.inH, false);
+  drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
+
+  // Compact ">" chevron centered on the bridge, 1px to match the buttons.
+  ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(arrowCx - 2.5, midY - 4);
+  ctx.lineTo(arrowCx + 2.5, midY);
+  ctx.lineTo(arrowCx - 2.5, midY + 4);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+// Nodes 2.0 only: the readout cards can't paint in the slot dead-space (slots
+// are Vue-rendered, no canvas band), so render them into a <canvas> child of the
+// controls panel (renderUI prepends it). A ResizeObserver keeps it DPR-sized,
+// and a low-rate poll replaces the legacy onDrawForeground loop for live
+// upstream-value changes (Vue Compat #1). Change-gated so the poll is cheap.
+const CARDS_CANVAS_H = 100;
+function setupVueCards(node) {
+  const cv = document.createElement("canvas");
+  cv.className = "pix-ir-cards-canvas";
+  cv.style.cssText = `width:100%; height:${CARDS_CANVAS_H}px; display:block;`;
+  node._pixIrCardsCanvas = cv;
+
+  const render = (force) => {
+    const canvas = node._pixIrCardsCanvas;
+    if (!canvas || !canvas.isConnected) return;
+    const cssW = canvas.clientWidth, cssH = canvas.clientHeight;
+    if (!cssW || !cssH) return;
+    const { info } = refreshReadout(node);
+    const sig = info.mode === "msg"
+      ? `m:${info.text}`
+      : `d:${info.inW}x${info.inH}>${info.outW}x${info.outH}`;
+    const sizeSig = `${cssW}x${cssH}`;
+    if (!force && sig === node._pixIrLastSig && sizeSig === node._pixIrLastSize) return;
+    node._pixIrLastSig = sig;
+    node._pixIrLastSize = sizeSig;
+    const dpr = window.devicePixelRatio || 1;
+    const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+    if (canvas.width !== W) canvas.width = W;
+    if (canvas.height !== H) canvas.height = H;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cssW, cssH);
+    paintReadout(ctx, node, cssW, cssH / 2, info);
+  };
+  node._pixIrRenderCards = render;
+
+  const ro = new ResizeObserver(() => render());
+  ro.observe(cv);
+  node._pixIrCardsRO = ro;
+  node._pixIrPoll = setInterval(() => render(), 250);
+}
+
 app.registerExtension({
   name: "Pixaroma.ImageResize",
   beforeRegisterNodeDef(nodeType, nodeData) {
@@ -585,12 +763,16 @@ app.registerExtension({
       hideJsonWidget(this.widgets, HIDDEN_INPUT);
       const root = document.createElement("div");
       root.className = "pix-ir-root";
-      this.addDOMWidget("image_resize_ui", "custom", root, {
-        canvasOnly: true,
+      const w = this.addDOMWidget("image_resize_ui", "custom", root, {
         serialize: false,
         getMinHeight: () => measureContentHeight(root),
       });
+      applyAdaptiveCanvasOnly(w); // true in legacy (out of Parameters tab), false in 2.0 (render body)
       this._pixIrRoot = root;
+      // Nodes 2.0 only: build the INPUT->OUTPUT cards canvas (renderUI prepends
+      // it into the panel). Legacy paints the cards in the slot dead-space via
+      // onDrawForeground instead.
+      if (isVueNodes()) setupVueCards(this);
       // Fresh-node default size (saved workflows restore their own via configure).
       if (!this.size || this.size[0] < MIN_W) this.size = [360, 340];
       // Deferred initial render so configure() can land the saved state first
@@ -662,6 +844,12 @@ app.registerExtension({
       this._pixIrWireCells = null;
       this._pixIrLockedInputs = null;
       this._pixIrLongestCell = null;
+      // Nodes 2.0 cards-canvas teardown: stop the poll + observer so a deleted
+      // node doesn't keep re-reading wires / leak the ResizeObserver.
+      if (this._pixIrPoll) { clearInterval(this._pixIrPoll); this._pixIrPoll = null; }
+      if (this._pixIrCardsRO) { this._pixIrCardsRO.disconnect(); this._pixIrCardsRO = null; }
+      this._pixIrCardsCanvas = null;
+      this._pixIrRenderCards = null;
       closeResamplePopup(); // tear down popup + its document listeners if open
       return _origRemoved?.apply(this, arguments);
     };
@@ -682,139 +870,14 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origDraw?.apply(this, arguments);
       if (this.flags?.collapsed) return r;
+      // Nodes 2.0 paints the readout into a DOM cards canvas (+ a poll); skip the
+      // canvas paint + the min-W self-heal here (the DOM widget drives the body).
+      if (isVueNodes()) return r;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
-      // Compute wire info ONCE per repaint (readWiredInt parses upstream JSON);
-      // reuse it for the readout and the live field refreshes below.
-      const wi = wireInfo(this);
-      const info = getReadoutInfo(this, wi);
-      // Keep the single-wire summary panel's numbers live: the draw loop re-reads
-      // the wired value every repaint, so mirror the result into the cells when
-      // it changes (DOM has no event for an upstream widget value change).
-      if (this._pixIrWireCells && info.mode === "dual") {
-        const c = this._pixIrWireCells, w = String(info.outW), h = String(info.outH);
-        if (c.wEl.textContent !== w) c.wEl.textContent = w;
-        if (c.hEl.textContent !== h) c.hEl.textContent = h;
-      }
-      // Keep the longest_side summary value live (upstream wired value can change).
-      if (this._pixIrLongestCell && wi.valLongest != null) {
-        const s = String(wi.valLongest);
-        if (this._pixIrLongestCell.textContent !== s) this._pixIrLongestCell.textContent = s;
-      }
-      // Locked W/H fields (both-wired): keep the shown value in sync with the
-      // live upstream value (it can change after render).
-      if (this._pixIrLockedInputs) {
-        const li = this._pixIrLockedInputs;
-        if (li.wInp && wi.valW != null && li.wInp.value !== String(wi.valW)) li.wInp.value = String(wi.valW);
-        if (li.hInp && wi.valH != null && li.hInp.value !== String(wi.valH)) li.hInp.value = String(wi.valH);
-      }
-      const cx = this.size[0] / 2;
-      const fam = "ui-sans-serif, system-ui, sans-serif";
-      const capFont = `8px ${fam}`;
-      const dimsFont = `bold 10px ${fam}`;
-      const ratioFont = `8px ${fam}`;
-      const midY = 54; // vertical center of the 5 slot rows (TOP_PAD 4 + 5*20/2)
-      ctx.save();
-      ctx.textBaseline = "middle";
-
-      if (info.mode === "msg") {
-        ctx.font = `13px ${fam}`;
-        const tw = ctx.measureText(info.text).width;
-        const bw = tw + 26, bh = 28;
-        roundRectPath(ctx, cx - bw / 2, midY - bh / 2, bw, bh, 8);
-        ctx.fillStyle = "#1d1d1d"; ctx.fill();
-        ctx.textAlign = "center"; ctx.fillStyle = BRAND;
-        ctx.fillText(info.text, cx, midY);
-        ctx.restore();
-        return r;
-      }
-
-      // Two mini cards (INPUT -> OUTPUT) side by side with an arrow between.
-      // Tall (span the slot rows) + grow with node width to use the middle
-      // space, clamped so they never crowd the slot labels. Each card stacks
-      // label / dims / aspect rect / ratio.
-      // Two cards aligned with the mode-chip grid below (INPUT over column 2,
-      // OUTPUT over column 3 of the 4-column grid: repeat(4,1fr), 5px gap, inside
-      // the root's 8px padding) and JOINED by a center bridge with notches above
-      // and below it. GRID_PAD = root padding (8) + DOM widget body inset (~8);
-      // tweak if the cards don't sit over columns 2/3. NECK_INSET pulls the inner
-      // edges in a few px so the bridge has room for the chevron (outer edges
-      // stay on the column boundaries).
-      const GRID_PAD = 16, COL_GAP = 5, NECK_INSET = 3;
-      const gridW = Math.max(40, this.size[0] - GRID_PAD * 2);
-      const colW = (gridW - COL_GAP * 3) / 4;
-      const cardW = colW - NECK_INSET, cardH = 90;
-      const L1 = GRID_PAD + colW + COL_GAP;          // INPUT left  (column 2 left)
-      const R1 = L1 + cardW;                          // INPUT right (inset)
-      const R2 = GRID_PAD + 3 * colW + 2 * COL_GAP;   // OUTPUT right (column 3 right)
-      const L2 = R2 - cardW;                          // OUTPUT left (inset)
-      const arrowCx = (R1 + L2) / 2;                  // bridge center
-      const cardY = midY - cardH / 2, T = cardY, Bm = cardY + cardH;
-      const R = 6, bridgeH = 22, bT = midY - bridgeH / 2, bB = midY + bridgeH / 2;
-      const rectMaxW = 46, rectMaxH = 30;
-
-      // Single connected outline: rounded OUTER corners on both cards, joined by
-      // a center bridge (square inner junctions), with the gap above and below
-      // the bridge left open. One fill + one 1px stroke so the border flows as
-      // one shape (matches the 1px button borders).
-      ctx.beginPath();
-      ctx.moveTo(L1 + R, T);
-      ctx.lineTo(R1 - R, T);
-      ctx.arcTo(R1, T, R1, T + R, R);          // INPUT top-right
-      ctx.lineTo(R1, bT);                       // down to bridge top
-      ctx.lineTo(L2, bT);                       // bridge top across
-      ctx.lineTo(L2, T + R);                    // up OUTPUT inner edge
-      ctx.arcTo(L2, T, L2 + R, T, R);          // OUTPUT top-left
-      ctx.lineTo(R2 - R, T);
-      ctx.arcTo(R2, T, R2, T + R, R);          // OUTPUT top-right
-      ctx.lineTo(R2, Bm - R);
-      ctx.arcTo(R2, Bm, R2 - R, Bm, R);        // OUTPUT bottom-right
-      ctx.lineTo(L2 + R, Bm);
-      ctx.arcTo(L2, Bm, L2, Bm - R, R);        // OUTPUT bottom-left
-      ctx.lineTo(L2, bB);                       // up to bridge bottom
-      ctx.lineTo(R1, bB);                       // bridge bottom across
-      ctx.lineTo(R1, Bm - R);                   // down INPUT inner edge
-      ctx.arcTo(R1, Bm, R1 - R, Bm, R);        // INPUT bottom-right
-      ctx.lineTo(L1 + R, Bm);
-      ctx.arcTo(L1, Bm, L1, Bm - R, R);        // INPUT bottom-left
-      ctx.lineTo(L1, T + R);
-      ctx.arcTo(L1, T, L1 + R, T, R);          // INPUT top-left
-      ctx.closePath();
-      ctx.fillStyle = "#1d1d1d"; ctx.fill();
-      ctx.strokeStyle = "#444"; ctx.lineWidth = 1; ctx.stroke();
-
-      // Per-card content (caption / dims / aspect square / ratio). The square's
-      // border turns orange only when the output size actually changed.
-      const drawContent = (x, label, w, h, accent) => {
-        const ccx = x + cardW / 2;
-        ctx.textAlign = "center";
-        const maxTxt = cardW - 8; // keep text inside the card (5-digit dims, etc.)
-        ctx.font = capFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(label, ccx, cardY + 15, maxTxt);
-        ctx.font = dimsFont; ctx.fillStyle = BRAND;
-        ctx.fillText(`${w}×${h}`, ccx, cardY + 27, maxTxt);
-        const { rw, rh } = aspectRectDims(w, h, rectMaxW, rectMaxH);
-        const rx = Math.round(ccx - rw / 2) + 0.5, ry = Math.round(cardY + 53 - rh / 2) + 0.5;
-        if (accent) { ctx.fillStyle = "rgba(246,103,68,0.20)"; ctx.fillRect(rx, ry, rw, rh); }
-        ctx.strokeStyle = accent ? BRAND : "rgba(200,200,200,0.7)"; ctx.lineWidth = 1;
-        ctx.strokeRect(rx, ry, rw, rh);
-        ctx.font = ratioFont; ctx.fillStyle = "#9a9a9a";
-        ctx.fillText(ratioLabel(w, h), ccx, cardY + 77, maxTxt);
-      };
-
-      const changed = info.inW !== info.outW || info.inH !== info.outH;
-      drawContent(L1, "INPUT", info.inW, info.inH, false);
-      drawContent(L2, "OUTPUT", info.outW, info.outH, changed);
-
-      // Compact ">" chevron centered on the bridge, 1px to match the buttons.
-      ctx.strokeStyle = "#9a9a9a"; ctx.lineWidth = 1;
-      ctx.lineCap = "round"; ctx.lineJoin = "round";
-      ctx.beginPath();
-      ctx.moveTo(arrowCx - 2.5, midY - 4);
-      ctx.lineTo(arrowCx + 2.5, midY);
-      ctx.lineTo(arrowCx - 2.5, midY + 4);
-      ctx.stroke();
-
-      ctx.restore();
+      const { info } = refreshReadout(this);
+      // Paint the INPUT->OUTPUT readout in the slot dead-space, midY=54 (the
+      // vertical center of the 5 slot rows: TOP_PAD 4 + 5*20/2).
+      paintReadout(ctx, this, this.size[0], 54, info);
       return r;
     };
   },
@@ -831,6 +894,7 @@ api.addEventListener("executed", ({ detail }) => {
   if (!node.properties) node.properties = {};
   node.properties.pixIrDims = { in_w: f.in_w, in_h: f.in_h, out_w: f.out_w, out_h: f.out_h };
   node.setDirtyCanvas(true, true);
+  node._pixIrRenderCards?.(true); // Nodes 2.0: refresh the cards canvas now (no-op in legacy)
 });
 
 // ── graphToPrompt: inject state into the hidden input (subgraph-safe) ──
