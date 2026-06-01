@@ -226,21 +226,27 @@ if (typeof LGraphCanvas !== "undefined"
 
 // ── Double-click to edit, restored for Nodes 2.0 ────────────────
 // The label body is pointer-events:none (so the node can be placed/dragged), so
-// LiteGraph's onDblClick never fires for it in Nodes 2.0. The dblclick passes
-// through to the canvas (which keeps app.canvas.graph_mouse current), so listen
-// at the document level and hit-test the Label node under the cursor. Gated to
-// Nodes 2.0 - legacy still uses the onDblClick hook (avoids a redundant open).
+// LiteGraph's onDblClick never fires for it in Nodes 2.0. Listen at the document
+// level and hit-test against the label ELEMENT's on-screen rectangle (the
+// visible label), NOT the node's internal bounds - node.size can be narrower
+// than the rendered text, so a bounds hit-test would miss the overflowing part.
+// Gated to Nodes 2.0; legacy keeps the onDblClick hook.
 if (typeof window !== "undefined" && !window._pixLblDblWired) {
   window._pixLblDblWired = true;
-  document.addEventListener("dblclick", () => {
+  document.addEventListener("dblclick", (e) => {
     if (!isVueNodes()) return;
-    const c = app?.canvas;
-    const g = c?.graph;
-    const gm = c?.graph_mouse;
-    if (!g || !gm || typeof g.getNodeOnPos !== "function") return;
-    const node = g.getNodeOnPos(gm[0], gm[1], g._nodes);
-    if (node && (node.comfyClass === "PixaromaLabel" || node.type === "PixaromaLabel")) {
-      openLabelEditor(node);
+    const g = app?.canvas?.graph;
+    if (!g) return;
+    const x = e.clientX, y = e.clientY;
+    for (const n of (g._nodes || [])) {
+      if (n.comfyClass !== "PixaromaLabel" && n.type !== "PixaromaLabel") continue;
+      const el = n._pixLblVueEl;
+      if (!el || !el.isConnected) continue;
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        openLabelEditor(n);
+        break;
+      }
     }
   }, true);
 }

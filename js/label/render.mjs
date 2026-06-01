@@ -139,6 +139,11 @@ export function injectVueLabelCSS() {
 .pix-lbl-vue {
     display: inline-block; box-sizing: border-box; white-space: pre;
     user-select: none;
+    /* ComfyUI's widget host is a flex column; without these the element gets
+       STRETCHED to the node's (too-narrow) width, so the background pill ends at
+       the node edge while the text overflows past it. align-self + flex:none
+       make it size to the TEXT, so the pill always wraps the full text. */
+    align-self: flex-start; flex: 0 0 auto;
     /* pointer-events:none is CRITICAL: Label is a title-less node, so its whole
        body is this element. If it captured the mouse, the place-on-canvas click
        (and node dragging) would land on it instead of the node, and the node
