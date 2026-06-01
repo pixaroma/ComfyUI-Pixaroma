@@ -6,6 +6,7 @@ import {
   handleConnect, handleDisconnect,
   togglePillRow, setSelectMode, setMuteMode,
   setAllRowsEnabled, restoreAllOnRemove,
+  computeNodeHeight,
 } from "./core.mjs";
 import {
   drawMuteSwitch, hideTooltip,
@@ -87,9 +88,12 @@ app.registerExtension({
 
       // Self-heal min width / height (Vue Compat #13 + Preview Image #11).
       // MIN_W = 260 leaves clear horizontal headroom between the right-side
-      // pill and the phantom output dot at the right edge.
+      // pill and the phantom output dot at the right edge. MIN_H tracks the
+      // ACTUAL row count (mode bar + N rows + pad) so the node can never be
+      // dragged shorter than its content - which let the bottom rows + their
+      // toggles spill below the frame.
       const MIN_W = 260;
-      const MIN_H = 80;
+      const MIN_H = computeNodeHeight(this.inputs?.length || 1);
       let changed = false;
       if (this.size[0] < MIN_W) { this.size[0] = MIN_W; changed = true; }
       if (this.size[1] < MIN_H) { this.size[1] = MIN_H; changed = true; }
@@ -154,7 +158,7 @@ app.registerExtension({
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes()) {
         const MIN_W = 260;
-        const MIN_H = 80;
+        const MIN_H = computeNodeHeight(this.inputs?.length || 1);
         if (this.size[0] < MIN_W) this.size[0] = MIN_W;
         if (this.size[1] < MIN_H) this.size[1] = MIN_H;
       }

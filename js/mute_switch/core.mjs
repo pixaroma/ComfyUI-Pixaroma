@@ -95,7 +95,7 @@ function addInputSlot(node, idx1) {
   return slot;
 }
 
-function computeNodeHeight(slotCount) {
+export function computeNodeHeight(slotCount) {
   return MODE_BAR_H + TOP_PAD + slotCount * ROW_H + BOT_PAD;
 }
 
