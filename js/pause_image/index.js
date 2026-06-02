@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { getState, setGate, STATE_PROP } from "./state.mjs";
 import {
   buildPauseWidget, renderPause, showFrame, frameViewUrl, NODE_MIN_W, NODE_MIN_H,
@@ -205,6 +206,25 @@ function setupNode(node) {
   // false in Nodes 2.0 (so the Vue node body renders it).
   applyAdaptiveCanvasOnly(widget);
 
+  // Nodes 2.0 only: a manual resize can drag the node SHORTER than its content
+  // (getMinHeight isn't enforced on a manual drag there), which spills the
+  // buttons/preview below the node frame. The root has overflow:hidden so it
+  // never visibly spills; this observer also re-grows the node to fit whenever
+  // the content gets clipped, so it can't be left broken. Gated on
+  // !isGraphLoading so it never resizes on a workflow load (dirty-on-load).
+  // Classic uses the onResize clamp + getMinHeight instead and doesn't spill.
+  if (isVueNodes()) {
+    const ro = new ResizeObserver(() => {
+      if (isGraphLoading()) return;
+      const over = root.scrollHeight - root.clientHeight;
+      if (over > 1 && typeof node.setSize === "function") {
+        node.setSize([node.size[0], node.size[1] + over]);
+      }
+    });
+    ro.observe(root);
+    node._pixPauseRO = ro;
+  }
+
   // Fresh-node default size. configure() runs AFTER onNodeCreated and restores
   // the saved size for saved workflows, so this only affects fresh drops.
   if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 400;
@@ -254,6 +274,7 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       clearTimeout(this._pixPauseFlashTimer);
+      this._pixPauseRO?.disconnect();
       this._pixPauseEls = null;
       return _removed?.apply(this, arguments);
     };

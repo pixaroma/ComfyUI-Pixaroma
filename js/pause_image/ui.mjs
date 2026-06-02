@@ -22,7 +22,8 @@ function injectCSS() {
   s.id = "pix-pause-css";
   s.textContent = `
     .pix-pi-root { display:flex; flex-direction:column; flex:1 1 0; min-height:0;
-      box-sizing:border-box; padding:6px; gap:6px; font:12px sans-serif; color:#ddd; }
+      box-sizing:border-box; padding:6px; gap:6px; font:12px sans-serif; color:#ddd;
+      overflow:hidden; }
     .pix-pi-toggle { display:flex; background:rgba(0,0,0,0.25); border-radius:6px; padding:2px; gap:2px; flex:0 0 auto; }
     .pix-pi-seg { flex:1 1 0; text-align:center; padding:4px 0; border-radius:5px; cursor:pointer;
       color:rgba(255,255,255,0.6); user-select:none; border:1px solid transparent; }
