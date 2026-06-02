@@ -198,19 +198,95 @@ function addAncestors(output, keep) {
   }
 }
 
+// Apply one gate's effective mode to the prompt `out`. Extracted so the hook
+// can process CONTINUE gates before PAUSE/PASS ones (see the sort below).
+function applyGateMode(out, id, entry, mode) {
+  entry.inputs = entry.inputs || {};
+  if (mode === "pause") {
+    // Stop the run at the gate: delete every node downstream of it so the gate
+    // (an OUTPUT_NODE) becomes the run's endpoint for this branch. Intermediate
+    // non-output nodes (e.g. an upscaler) then have no consumer and ComfyUI
+    // auto-skips them. Parallel branches with their own outputs are untouched.
+    const consumers = buildConsumers(out);
+    const downstream = collectDownstream(consumers, id);
+    for (const d of downstream) delete out[d];
+    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pause" });
+  } else if (mode === "continue") {
+    // Skip the upstream ENTIRELY and run only the rest from the snapshot.
+    // Detaching the gate's own image link is not enough on its own: any OTHER
+    // node that consumed the gate's upstream (e.g. a Save Image wired directly
+    // off VAE Decode, in parallel with the gate) is still an output and would
+    // pull the whole model -> sampler -> decode chain again. So keep ONLY the
+    // gate, its downstream branch, and that branch's own side dependencies
+    // (e.g. the upscaler's model / vae loaders), and delete everything else.
+    // The gate reloads the snapshot.
+
+    // Capture the gate's own image SOURCE (origin node + slot) before detaching
+    // it - needed for the diamond reroute below.
+    const gateSrc = Array.isArray(entry.inputs.image)
+      ? [String(entry.inputs.image[0]), entry.inputs.image[1]]
+      : null;
+
+    delete entry.inputs.image;
+    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "continue" });
+
+    const consumers = buildConsumers(out);
+    const downstream = collectDownstream(consumers, id);  // strings
+
+    // Diamond reroute: a node AFTER the gate (e.g. an Image Compare's "before"
+    // input) might also read the gate's EXACT original-image source (the
+    // pre-gate image, e.g. VAE Decode). Left alone, that one link pulls the
+    // whole upstream back alive on Continue. Since the gate's snapshot IS that
+    // same image, reroute those downstream links to the gate's own output so
+    // nothing after the gate reaches back before it - the upstream then drops
+    // out of `keep` and is skipped. Only an EXACT (origin, slot) match is
+    // rerouted, so a different pre-gate image is never silently swapped.
+    if (gateSrc) {
+      for (const dId of downstream) {
+        const dInputs = out[dId]?.inputs;
+        if (!dInputs) continue;
+        for (const k in dInputs) {
+          const v = dInputs[k];
+          if (Array.isArray(v) && String(v[0]) === gateSrc[0] && v[1] === gateSrc[1]) {
+            dInputs[k] = [String(id), 0];  // read the gate's snapshot output
+          }
+        }
+      }
+    }
+
+    const keep = new Set(downstream);
+    keep.add(String(id));    // the gate itself
+    addAncestors(out, keep); // + downstream's remaining side deps
+    for (const nid of Object.keys(out)) {
+      if (!keep.has(String(nid))) delete out[nid];
+    }
+  } else {
+    // Pass: no prune, whole workflow runs.
+    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pass" });
+  }
+}
+
+// Process order: a CONTINUE gate prunes the prompt down to its own downstream
+// branch, which removes any gate that sits UPSTREAM of it. So continue must run
+// BEFORE pause/pass - otherwise an upstream gate still on Pause would delete the
+// continued gate's branch first and the run would stop at the wrong gate (the
+// chained-Pause bug: Continue on a later gate did nothing because an earlier
+// gate pruned it away).
+const MODE_RANK = { continue: 0, pause: 1, pass: 2 };
+
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   const out = result?.output;
   if (out) {
+    // Gather every Pause Image entry + its effective mode first.
     let index = null;
-    let consumers = null;
+    const gates = [];
     for (const id in out) {
       const entry = out[id];
       if (!entry || entry.class_type !== CLASS) continue;
       if (!index) index = buildNodeIndex();
       const node = findNode(index, id);
-
       // Effective mode: a one-shot button override (Continue/Regenerate) wins,
       // otherwise the persistent toggle (Pause default, or Pass).
       let mode = node?._pixPauseSubmitMode;
@@ -218,72 +294,12 @@ app.graphToPrompt = async function (...args) {
         const gate = node?.properties?.[STATE_PROP]?.gate;
         mode = gate === "pass" ? "pass" : "pause";
       }
-
-      entry.inputs = entry.inputs || {};
-      if (mode === "pause") {
-        // Stop the run at the gate: delete every node downstream of it so the
-        // gate (an OUTPUT_NODE) becomes the run's endpoint for this branch.
-        // The intermediate non-output nodes (e.g. an upscaler) then have no
-        // consumer and ComfyUI auto-skips them. Parallel branches with their
-        // own output nodes are untouched.
-        if (!consumers) consumers = buildConsumers(out);
-        const downstream = collectDownstream(consumers, id);
-        for (const d of downstream) delete out[d];
-        entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pause" });
-      } else if (mode === "continue") {
-        // Skip the upstream ENTIRELY and run only the rest from the snapshot.
-        // Detaching the gate's own image link is not enough on its own: any
-        // OTHER node that consumed the gate's upstream (e.g. a Save Image wired
-        // directly off VAE Decode, in parallel with the gate) is still an
-        // output and would pull the whole model -> sampler -> decode chain
-        // again. So keep ONLY the gate, its downstream branch, and that
-        // branch's own side dependencies (e.g. the upscaler's model / vae
-        // loaders), and delete everything else. The gate reloads the snapshot.
-
-        // Capture the gate's own image SOURCE (origin node + slot) before
-        // detaching it - needed for the diamond reroute below.
-        const gateSrc = Array.isArray(entry.inputs.image)
-          ? [String(entry.inputs.image[0]), entry.inputs.image[1]]
-          : null;
-
-        delete entry.inputs.image;
-        entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "continue" });
-
-        const consumers2 = buildConsumers(out);
-        const downstream = collectDownstream(consumers2, id);  // strings
-
-        // Diamond reroute: a node AFTER the gate (e.g. an Image Compare's
-        // "before" input) might also read the gate's EXACT original-image
-        // source (the pre-gate image, e.g. VAE Decode). Left alone, that one
-        // link pulls the whole upstream back alive on Continue. Since the
-        // gate's snapshot IS that same image, reroute those downstream links to
-        // the gate's own output so nothing after the gate reaches back before
-        // it - the upstream then drops out of `keep` and is skipped. Only an
-        // EXACT (origin, slot) match is rerouted, so a different pre-gate image
-        // is never silently swapped.
-        if (gateSrc) {
-          for (const dId of downstream) {
-            const dInputs = out[dId]?.inputs;
-            if (!dInputs) continue;
-            for (const k in dInputs) {
-              const v = dInputs[k];
-              if (Array.isArray(v) && String(v[0]) === gateSrc[0] && v[1] === gateSrc[1]) {
-                dInputs[k] = [String(id), 0];  // read the gate's snapshot output
-              }
-            }
-          }
-        }
-
-        const keep = new Set(downstream);
-        keep.add(String(id));    // the gate itself
-        addAncestors(out, keep); // + downstream's remaining side deps
-        for (const nid of Object.keys(out)) {
-          if (!keep.has(String(nid))) delete out[nid];
-        }
-      } else {
-        // Pass: no prune, whole workflow runs.
-        entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pass" });
-      }
+      gates.push({ id, entry, mode });
+    }
+    gates.sort((a, b) => MODE_RANK[a.mode] - MODE_RANK[b.mode]);
+    for (const g of gates) {
+      if (!out[g.id]) continue;  // already pruned away by an earlier continue gate
+      applyGateMode(out, g.id, g.entry, g.mode);
     }
   }
   return result;
