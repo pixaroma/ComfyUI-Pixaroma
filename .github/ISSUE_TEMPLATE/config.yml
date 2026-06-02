@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: "📌 Node looks blank or broken after updating? Read this first"
+    url: https://github.com/pixaroma/ComfyUI-Pixaroma/issues/59
+    about: "Almost always a browser cache. The fix takes 30 seconds, and most 'broken node' reports turn out to be this. Please check here before filing."
