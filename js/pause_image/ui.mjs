@@ -124,11 +124,11 @@ export function renderPause(node) {
   if (node._pixPauseBusy) {
     els.status.textContent = node._pixPauseBusy;
   } else if (!paused) {
-    els.status.textContent = "Passing through — whole workflow runs";
+    els.status.textContent = "Passing through: whole workflow runs";
   } else if (s.hasSnapshot) {
-    els.status.textContent = "Paused — ready. Continue to run the rest.";
+    els.status.textContent = "Paused and ready. Continue to run the rest.";
   } else {
-    els.status.textContent = "Paused — press Run to preview";
+    els.status.textContent = "Paused. Press Run to preview.";
   }
 }
 
@@ -158,7 +158,7 @@ export function showFrame(node, frame) {
   img.onerror = () => {
     img.style.display = "none";
     empty.style.display = "flex";
-    empty.textContent = "Preview expired — press Run to pause again";
+    empty.textContent = "Preview expired. Press Run to pause again.";
     dims.textContent = "";
     const s = getState(node);
     s.hasSnapshot = false;
