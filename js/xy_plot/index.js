@@ -6,7 +6,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
@@ -213,6 +213,21 @@ app.registerExtension({
 
         node._pixXyRenderOnly();
         node.setDirtyCanvas(true, true);
+
+        // One-shot legacy fit: a node whose size was grown for a tall grid in
+        // the Nodes 2.0 renderer carries that height into legacy, leaving a big
+        // empty area below the content. If there's no grid showing and the node
+        // is far taller than its content, shrink it to fit (legacy only; Nodes
+        // 2.0 manages its own body height). Deferred so the DOM is laid out.
+        requestAnimationFrame(() => {
+          if (isVueNodes() || node._pixXyLastGrid || !node._pixXyRoot) return;
+          const want = Math.max(MIN_H, measureContentHeight(node._pixXyRoot) + CHROME);
+          if (node.size[1] > want + 120) {
+            node.size[1] = want;
+            node.setSize?.([node.size[0], want]);
+            node.setDirtyCanvas(true, true);
+          }
+        });
       });
     };
 

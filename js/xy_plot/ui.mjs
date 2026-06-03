@@ -96,7 +96,7 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 /* grid preview + buttons */
 .pix-xy-gridmount{display:flex;flex-direction:column;gap:8px;}
 .pix-xy-gridbox{border:1px solid rgba(255,255,255,.12);border-radius:6px;background:#161616;min-height:60px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
-.pix-xy-gridimg{max-width:100%;display:block;}
+.pix-xy-gridimg{max-width:100%;max-height:360px;display:block;}
 .pix-xy-gridhint{color:#777;font-size:12px;padding:14px;text-align:center;}
 .pix-xy-savebar{display:flex;gap:6px;}
 .pix-xy-sb{flex:1;text-align:center;font-size:11px;color:#e0e0e0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 4px;cursor:pointer;user-select:none;}
