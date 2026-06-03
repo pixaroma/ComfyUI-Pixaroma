@@ -55,7 +55,7 @@ export function attachFieldEditor(node, taEl, ruleId, which) {
       requestAnimationFrame(() => {
         node._pixFrRefreshPreview?.();
         node._pixFrRefreshReset?.();
-        node._pixFrGrow?.();
+        node._pixFrRefit?.();
         pending = false;
       });
     }
@@ -141,12 +141,24 @@ export function pixConfirm({ title, message, okText = "OK", cancelText = "Cancel
 // inside a textarea selects text normally). Mirrors Prompt Stack.
 const _drag = { id: null };
 
+// Remove every drag/drop-target class across ALL rows in the node (root-scoped,
+// not parentElement-scoped) so an abandoned drag - dropped on a non-row area, or
+// ended after the rows were rebuilt - can't leave a stale orange drop-target
+// line behind.
+function clearDragClasses(root) {
+  if (!root) return;
+  root.querySelectorAll(".pix-fr-row").forEach((s) => {
+    s.classList.remove("is-drop-target-above", "is-drop-target-below", "is-dragging");
+  });
+}
+
 export function attachDragHandlers(node, rowEl, rowId, onDrop) {
   rowEl.addEventListener("dragstart", (e) => {
     if (!e.target.closest || !e.target.closest(".pix-fr-handle")) {
       e.preventDefault();
       return;
     }
+    clearDragClasses(node._pixFrRoot); // clear any leftover from a prior drag
     _drag.id = rowId;
     rowEl.classList.add("is-dragging");
     try { e.dataTransfer.effectAllowed = "move"; } catch (_) {}
@@ -172,20 +184,14 @@ export function attachDragHandlers(node, rowEl, rowId, onDrop) {
     if (!_drag.id || _drag.id === rowId) return;
     e.preventDefault();
     const above = rowEl.classList.contains("is-drop-target-above");
-    rowEl.classList.remove("is-drop-target-above");
-    rowEl.classList.remove("is-drop-target-below");
-    onDrop(_drag.id, rowId, above);
+    const fromId = _drag.id;
     _drag.id = null;
+    clearDragClasses(node._pixFrRoot);
+    onDrop(fromId, rowId, above);
   });
 
   rowEl.addEventListener("dragend", () => {
-    rowEl.classList.remove("is-dragging");
     _drag.id = null;
-    const siblings = rowEl.parentElement?.querySelectorAll(".pix-fr-row") || [];
-    siblings.forEach((s) => {
-      s.classList.remove("is-drop-target-above");
-      s.classList.remove("is-drop-target-below");
-      s.classList.remove("is-dragging");
-    });
+    clearDragClasses(node._pixFrRoot);
   });
 }

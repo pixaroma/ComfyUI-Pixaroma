@@ -20,8 +20,13 @@
 // are ASCII-only in the JS preview but Unicode-aware in Python, so e.g. \w+ on
 // accented/Greek/CJK text previews NARROWER than it actually runs; a replacement
 // ending in a stray backslash (Python errors, JS keeps it); inline flags at
-// pattern start like (?s)/(?m) (use scoped (?s:...) instead); and \10-style
-// 2-digit refs / \0 in the replacement.
+// pattern start like (?s)/(?m) (use scoped (?s:...) instead); \10-style 2-digit
+// refs / \0 in the replacement; and a handful of INVALID replacement templates
+// that Python rejects (so it skips the rule + warns) while the JS preview
+// silently turns them into wrong literal text without a warning - an unknown
+// escape like \q, a numeric backref past the group count, or an unterminated
+// \g<name. In all of these the on-node preview can be slightly off; the Python
+// run is authoritative.
 
 export const STATE_PROP = "findReplaceState";
 export const PREVIEW_PROP = "findReplacePreview";
@@ -29,7 +34,12 @@ export const PREVIEW_PROP = "findReplacePreview";
 let _idCounter = 0;
 function nextId() {
   _idCounter += 1;
-  return `fr${Date.now().toString(36)}_${_idCounter}`;
+  // Date + per-session counter + a small random suffix so ids stay unique even
+  // across page reloads (the counter resets to 0 each session, and ids are the
+  // delete/reorder key). Math.random is fine here (this is regular browser JS,
+  // not a Workflow script).
+  const rnd = Math.floor(Math.random() * 1e6).toString(36);
+  return `fr${Date.now().toString(36)}_${_idCounter}_${rnd}`;
 }
 
 export function freshRule(overrides = {}) {
@@ -241,6 +251,53 @@ function makeRegexU(pattern, flags) {
   }
 }
 
+// An unbounded quantifier at position j: * or + or {n,} (open-ended).
+// {n} and {n,m} are bounded -> safe.
+function unboundedQuantAt(src, j) {
+  const c = src[j];
+  if (c === "*" || c === "+") return true;
+  return /^\{\d*,\}/.test(src.slice(j));
+}
+
+// Heuristic guard against catastrophic-backtracking ("ReDoS") patterns. A
+// NESTED unbounded quantifier - an unbounded-quantified group whose body also
+// contains an unbounded quantifier, e.g. (a+)+ (a*)* (.*)* (\w+)+ - can take
+// exponential time on a non-matching input. This preview recomputes on EVERY
+// keystroke (and the SAME pattern runs server-side per Run, with no timeout), so
+// such a pattern freezes the tab / wedges the worker. A native regex can't be
+// time-limited, so we refuse the obvious nested-quantifier shapes and skip the
+// rule with a warning instead. MIRRORED 1:1 in
+// nodes/node_find_replace.py::_is_catastrophic_regex so the preview matches the
+// run. Heuristic, NOT complete: it catches the common accidental shapes, not
+// every possible ReDoS. Low false-positive rate - a nested unbounded quantifier
+// is always redundant ((a+)+ == a+), so legitimate patterns don't use it.
+function isCatastrophicRegex(src) {
+  const stack = []; // one {inner} per open group; inner = body has unbounded quant
+  let escaped = false;
+  let inClass = false;
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    if (escaped) { escaped = false; continue; }
+    if (c === "\\") { escaped = true; continue; }
+    if (inClass) { if (c === "]") inClass = false; continue; }
+    if (c === "[") { inClass = true; continue; }
+    if (c === "(") { stack.push({ inner: false }); continue; }
+    if (c === ")") {
+      const grp = stack.pop() || { inner: false };
+      const quant = unboundedQuantAt(src, i + 1);
+      if (quant && grp.inner) return true; // nested unbounded quantifier
+      // a quantified group is itself an unbounded token for its PARENT group
+      if (quant && stack.length) stack[stack.length - 1].inner = true;
+      continue;
+    }
+    if (unboundedQuantAt(src, i)) {
+      if (stack.length) stack[stack.length - 1].inner = true;
+      continue;
+    }
+  }
+  return false;
+}
+
 // Returns { output, warnings:[string] }.
 export function applyRulesJS(text, state) {
   const rules = Array.isArray(state.rules) ? state.rules : [];
@@ -254,11 +311,17 @@ export function applyRulesJS(text, state) {
 
   rules.forEach((rule, idx) => {
     if (!rule || rule.enabled === false) return;
-    const find = rule.find || "";
+    // Coerce non-string find/replace to "" (matches readState + the Python
+    // engine), so a malformed rule can't throw here regardless of the caller.
+    const find = typeof rule.find === "string" ? rule.find : "";
     if (!find) return;
-    const repl = rule.replace || "";
+    const repl = typeof rule.replace === "string" ? rule.replace : "";
     try {
       if (rx) {
+        if (isCatastrophicRegex(find)) {
+          warnings.push(`Rule ${idx + 1}: pattern may be catastrophically slow (nested quantifier) - simplify it`);
+          return; // skip this rule (same as Python) so the preview can't freeze
+        }
         const re = makeRegexU(pyPatternToJs(find), baseFlags);
         out = out.replace(re, pyTemplateToJs(repl));
       } else {

@@ -89,6 +89,73 @@ class PixaromaFindReplace:
             return {}
 
 
+def _unbounded_quant_at(src, j):
+    """True if an unbounded quantifier (* + or {n,}) starts at index j."""
+    if j >= len(src):
+        return False
+    c = src[j]
+    if c == "*" or c == "+":
+        return True
+    return re.match(r"\{\d*,\}", src[j:]) is not None
+
+
+def _is_catastrophic_regex(src):
+    """Heuristic ReDoS guard - MIRROR of js/find_replace/core.mjs::isCatastrophicRegex.
+
+    Flags a NESTED unbounded quantifier (an unbounded-quantified group whose body
+    also contains an unbounded quantifier, e.g. (a+)+ (a*)* (.*)* (\\w+)+ ), which
+    can backtrack exponentially. This runs server-side on every Run with NO
+    timeout, so such a pattern would wedge the worker; we skip the rule + warn
+    instead. Heuristic, not complete; low false-positive rate (a nested unbounded
+    quantifier is always redundant, so real patterns don't use it). Must stay in
+    lockstep with the JS version so the on-node preview matches the run.
+    """
+    stack = []  # one dict per open group; "inner" = body has an unbounded quant
+    escaped = False
+    in_class = False
+    i = 0
+    n = len(src)
+    while i < n:
+        c = src[i]
+        if escaped:
+            escaped = False
+            i += 1
+            continue
+        if c == "\\":
+            escaped = True
+            i += 1
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+            i += 1
+            continue
+        if c == "[":
+            in_class = True
+            i += 1
+            continue
+        if c == "(":
+            stack.append({"inner": False})
+            i += 1
+            continue
+        if c == ")":
+            grp = stack.pop() if stack else {"inner": False}
+            quant = _unbounded_quant_at(src, i + 1)
+            if quant and grp["inner"]:
+                return True
+            if quant and stack:
+                stack[-1]["inner"] = True
+            i += 1
+            continue
+        if _unbounded_quant_at(src, i):
+            if stack:
+                stack[-1]["inner"] = True
+            i += 1
+            continue
+        i += 1
+    return False
+
+
 def _apply_rules(text, state):
     """Apply the enabled rules in order. Returns (result, warnings)."""
     rules = state.get("rules", [])
@@ -105,13 +172,27 @@ def _apply_rules(text, state):
                 continue
             if not rule.get("enabled", True):
                 continue
-            find = rule.get("find", "") or ""
+            # Coerce non-string find/replace to "" (mirrors the JS readState
+            # coercion) so a malformed/hand-edited state with a numeric or list
+            # find/replace can't crash apply() with a TypeError/AttributeError -
+            # the only exception caught below is re.error.
+            find = rule.get("find", "")
+            if not isinstance(find, str):
+                find = ""
             if not find:
                 continue
-            repl = rule.get("replace", "") or ""
+            repl = rule.get("replace", "")
+            if not isinstance(repl, str):
+                repl = ""
             flags = 0 if case_sensitive else re.IGNORECASE
             try:
                 if use_regex:
+                    if _is_catastrophic_regex(find):
+                        warnings.append(
+                            "Rule %d: pattern may be catastrophically slow "
+                            "(nested quantifier) - simplify it" % (idx + 1)
+                        )
+                        continue
                     out = re.sub(find, repl, out, flags=flags)
                 else:
                     pattern = re.escape(find)

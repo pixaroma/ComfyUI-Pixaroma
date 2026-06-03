@@ -9,6 +9,7 @@ import {
   reorderRules,
   resetToDefault,
   setPreviewInput,
+  STATE_PROP,
 } from "./core.mjs";
 import {
   injectCSS,
@@ -19,7 +20,7 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm, autoGrowAllFields } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes, closeHelpPopup } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -41,6 +42,7 @@ const CHROME = 60;
 function setNodeHeight(node, h) {
   node.size[1] = h;
   node.setSize?.([node.size[0], h]);
+  node._pixFrAutoH = h; // remember the height WE set, to tell auto-fit from a manual resize
 }
 
 // Grow the node so the fixed parts (toggles + rules + actions) plus a minimum
@@ -48,18 +50,30 @@ function setNodeHeight(node, h) {
 // execute) - never on the load path. The squish FLOOR is handled purely in CSS
 // now (the root's natural min-content height; see render.mjs), so there is no
 // ResizeObserver / root.style.minHeight machinery to fight the layout or Align.
-function ensureMinHeight(node) {
+// Re-fit the node height to its content. TWO-WAY: grows to fit, and shrinks
+// back to content when the user has NOT manually enlarged the node beyond the
+// last auto height (so someone who dragged it taller for a big preview keeps
+// their size, but clearing a multi-line field or deleting rows reclaims the
+// space instead of leaving dead area - the Nodes 2.0 "grows but never shrinks"
+// wart). Floors at DEFAULT_H. ONLY call from user-action handlers (add / delete
+// / edit / drop) - never on the load path, or it would rewrite node.size and
+// false-dirty the workflow (Vue Compat #18). Always includes CHROME so the
+// frame contains the widget in Nodes 2.0.
+function refitNode(node) {
   const root = node._pixFrRoot;
   if (!root) return;
-  // Grow-only: never shrink below the user's current size (preview absorbs
-  // freed space). Always include CHROME so the node frame contains the widget
-  // in Nodes 2.0. setSize fires only when the height actually changes (e.g.
-  // adding a rule), which also forces Nodes 2.0 to re-lay-out and grow.
-  const target = Math.max(node.size[1], measureMinHeight(root) + CHROME);
-  if (target !== node.size[1]) setNodeHeight(node, target);
+  const want = Math.max(measureMinHeight(root) + CHROME, DEFAULT_H);
+  const cur = node.size[1];
+  const autoH = node._pixFrAutoH;
+  const userEnlarged = autoH != null && cur > autoH + 4;
+  let target = cur;
+  if (want > cur) target = want;                       // always grow to fit
+  else if (!userEnlarged && want < cur) target = want; // shrink to content if not user-enlarged
+  if (target !== cur) setNodeHeight(node, target);
 }
 
-// Reset the node to a comfortable default height (used on Reset).
+// Force the node back to a comfortable default height (used on Reset only -
+// deliberately discards any manual enlargement).
 function fitToDefault(node) {
   const root = node._pixFrRoot;
   if (!root) return;
@@ -70,7 +84,7 @@ function makeHandlers(node, root) {
   const rerender = () => {
     renderAll(node, root, handlers);
     requestAnimationFrame(() => {
-      ensureMinHeight(node);
+      refitNode(node);
       node.setDirtyCanvas(true, true);
     });
   };
@@ -128,6 +142,14 @@ app.registerExtension({
       queueMicrotask(() => {
         injectCSS();
         restoreFromProperties(node);
+        // Own a PRIVATE deep copy of the state so a pasted/cloned node can't
+        // share the original's rules array by reference (then editing the copy
+        // would mutate the original). The clone is byte-identical, so this does
+        // NOT dirty a loaded workflow.
+        const _st = node.properties?.[STATE_PROP];
+        if (_st) {
+          try { node.properties[STATE_PROP] = JSON.parse(JSON.stringify(_st)); } catch (_e) {}
+        }
 
         const root = buildRoot();
         const { handlers, rerender } = makeHandlers(node, root);
@@ -138,7 +160,7 @@ app.registerExtension({
         node._pixFrRenderOnly = () => renderAll(node, root, handlers);
         node._pixFrRefreshPreview = () => renderPreview(node, root);
         node._pixFrRefreshReset = () => refreshResetState(node, root);
-        node._pixFrGrow = () => { ensureMinHeight(node); node.setDirtyCanvas(true, true); };
+        node._pixFrRefit = () => { refitNode(node); node.setDirtyCanvas(true, true); };
 
         const widget = node.addDOMWidget("findreplace", "pixaroma_find_replace", root, {
           serialize: false,
@@ -251,6 +273,9 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      // Close any open Help panel so its document-level Esc listener can't leak
+      // when the node is deleted while the panel is open (no-op if none open).
+      closeHelpPopup();
       this._pixFrFloorOff?.();
       this._pixFrFloorOff = null;
       this._pixFrFieldRO?.disconnect();
@@ -260,7 +285,7 @@ app.registerExtension({
       this._pixFrRenderOnly = null;
       this._pixFrRefreshPreview = null;
       this._pixFrRefreshReset = null;
-      this._pixFrGrow = null;
+      this._pixFrRefit = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
@@ -276,20 +301,26 @@ app.registerExtension({
 // no-op). Resolve via a recursive index over every nested subgraph instead
 // (mirrors js/text_overlay/index.js and js/resolution/index.js).
 function buildPixFrNodeIndex() {
-  const index = new Map(); // String(node.id) -> node
-  const visit = (graph) => {
+  // Key by the COMPOSITE path id ("5:12" for a node inside subgraph-node 5) so
+  // two subgraphs that each contain an FR node with the same inner id ("5:12"
+  // vs "7:12") don't collide on the bare tail "12" (the old String(n.id) key
+  // overwrote one with the other, injecting the wrong rules). The prompt key
+  // from graphToPrompt for a nested node IS this composite form.
+  const index = new Map(); // composite id ("5:12") OR bare id -> node
+  const visit = (graph, prefix) => {
     if (!graph) return;
     const nodes = graph._nodes || graph.nodes || [];
     for (const n of nodes) {
       if (!n) continue;
+      const fullId = prefix + String(n.id);
       if (n.comfyClass === "PixaromaFindReplace" || n.type === "PixaromaFindReplace") {
-        index.set(String(n.id), n);
+        index.set(fullId, n);
       }
       const inner = n.subgraph || n.graph || n._graph;
-      if (inner && inner !== graph) visit(inner);
+      if (inner && inner !== graph) visit(inner, fullId + ":");
     }
   };
-  visit(app.graph);
+  visit(app.graph, "");
   return index;
 }
 

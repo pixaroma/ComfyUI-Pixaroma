@@ -32,6 +32,13 @@
 //   createHelpButton(helpDef, opts?)  -> HTMLButtonElement (opens the popup)
 //   openHelpPopup(helpDef)            -> opens the popup directly
 //   injectHelpCSS()                   -> inject styles once (called lazily)
+//
+// Teardown: a consumer SHOULD call closeHelpPopup() in its node's onRemoved so
+// deleting the node closes any open panel. As a universal safety net this module
+// also auto-closes the panel on any workflow load/switch/undo (it wraps
+// app.loadGraphData once, the first time a panel is opened).
+
+import { app } from "/scripts/app.js";
 
 const CSS_ID = "pix-help-css";
 const QUESTION_ICON = "/pixaroma/assets/icons/note/question.svg";
@@ -166,7 +173,9 @@ function buildSection(section) {
   if (Array.isArray(section.defs) && section.defs.length) {
     const dl = document.createElement("dl");
     dl.className = "pix-help-defs";
-    for (const [term, desc] of section.defs) {
+    for (const entry of section.defs) {
+      // Tolerate a malformed entry (a bare string instead of [term, desc]).
+      const [term, desc] = Array.isArray(entry) ? entry : [entry, ""];
       const dt = document.createElement("dt");
       dt.innerHTML = fmt(term);
       const dd = document.createElement("dd");
@@ -194,7 +203,8 @@ function buildSection(section) {
     const tbody = document.createElement("tbody");
     for (const row of section.table.rows) {
       const tr = document.createElement("tr");
-      for (const cell of row) {
+      const cells = Array.isArray(row) ? row : [row]; // tolerate a non-array row
+      for (const cell of cells) {
         const td = document.createElement("td");
         td.innerHTML = fmt(cell);
         tr.appendChild(td);
@@ -214,8 +224,27 @@ export function closeHelpPopup() {
   if (_openCleanup) _openCleanup();
 }
 
+// Universal safety net: close any open help panel when the workflow changes
+// (open / switch tab / undo all funnel through app.loadGraphData), so a panel
+// left open while its node is torn down can't leak its document-level Esc
+// listener and swallow Escape app-wide. Wrapped once, lazily, the first time a
+// panel opens. Idempotent; composes with other loadGraphData wrappers.
+let _graphHookInstalled = false;
+function ensureGraphCloseHook() {
+  if (_graphHookInstalled) return;
+  if (!app || typeof app.loadGraphData !== "function") return;
+  _graphHookInstalled = true;
+  const orig = app.loadGraphData.bind(app);
+  app.loadGraphData = function (...args) {
+    closeHelpPopup();
+    return orig(...args);
+  };
+}
+
 export function openHelpPopup(helpDef) {
+  helpDef = helpDef || {};
   injectHelpCSS();
+  ensureGraphCloseHook();
   closeHelpPopup(); // only one at a time
 
   const backdrop = document.createElement("div");
@@ -254,7 +283,12 @@ export function openHelpPopup(helpDef) {
     body.appendChild(tag);
   }
   for (const section of helpDef.sections || []) {
-    body.appendChild(buildSection(section));
+    // A malformed section (authored by a node) must not kill the whole panel.
+    try {
+      body.appendChild(buildSection(section));
+    } catch (e) {
+      console.warn("Pixaroma help: skipped a malformed section", e);
+    }
   }
   if (helpDef.footer) {
     const tip = document.createElement("div");
