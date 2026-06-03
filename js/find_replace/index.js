@@ -144,6 +144,13 @@ app.registerExtension({
           getMinHeight: () => measureMinHeight(root),
         });
         applyAdaptiveCanvasOnly(widget);
+        // Nodes 2.0 sizes the widget through the CSS grid via computeLayoutSize
+        // and IGNORES the legacy getMinHeight above - so without this the node
+        // could be dragged smaller than its content and the body overflowed
+        // below the frame. Give it the same fixed-parts + min-preview floor (and
+        // it grows as rules are added). minWidth:1 so the saved node WIDTH still
+        // round-trips on reload (CLAUDE.md Compare gotcha 2).
+        widget.computeLayoutSize = () => ({ minHeight: measureMinHeight(root), minWidth: 1 });
 
         node._pixFrRenderOnly();
 
