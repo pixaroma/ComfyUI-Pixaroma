@@ -611,5 +611,3 @@ export function renderBody(node, root, handlers) {
 
   if (handlers.growth) handlers.growth();
 }
-
-export { closePopup };

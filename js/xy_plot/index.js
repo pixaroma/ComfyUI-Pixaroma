@@ -62,14 +62,6 @@ function buildViewUrl(f) {
   return `/view?${params.toString()}`;
 }
 
-function toast(summary, detail, severity = "warn") {
-  const tm = app.extensionManager?.toast;
-  if (tm && typeof tm.add === "function") {
-    try { tm.add({ severity, summary, detail, life: 4000 }); return; } catch (_e) {}
-  }
-  console.warn(`[Pixaroma.XYPlot] ${summary}: ${detail}`);
-}
-
 function pixConfirmSimple(message, onOpen) {
   return new Promise((resolve) => {
     const back = document.createElement("div");
