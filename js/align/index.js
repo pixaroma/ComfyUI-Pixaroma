@@ -402,6 +402,15 @@ function onWindowPointerDown(e) {
   for (const n of c.graph._nodes) sizes.set(n.id, [n.size[0], n.size[1]]);
   state._gestureSizes = sizes;
   state._vueResizing = false;
+  // If the pointer grabbed a RESIZE HANDLE, the element under it shows a
+  // `*-resize` cursor. Latch the resize flag immediately so the move guard bails
+  // from tick 0 - on the very first pointermove the node's size hasn't changed
+  // yet, so the size-diff check alone would let the selected node creep one tick
+  // before latching (the "moves just a little while I resize another" residual).
+  try {
+    const cur = e.target && window.getComputedStyle(e.target).cursor;
+    if (cur && cur.indexOf("resize") !== -1) state._vueResizing = true;
+  } catch (_e) {}
 }
 
 // Apply a snap correction to a node's position (and optionally size). LEGACY:
