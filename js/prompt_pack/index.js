@@ -13,7 +13,7 @@ import {
 import { injectCSS, buildRoot, applyState, updateCounter } from "./render.mjs";
 import { wireEvents, showNoPromptsToast } from "./interaction.mjs";
 import { isQueueLoopActive, beginQueueLoop, endQueueLoop } from "../shared/queue_drivers.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor, measureRootContent } from "../shared/index.mjs";
 
 const BRAND = "#f66744";
 
@@ -82,6 +82,9 @@ app.registerExtension({
           getMinHeight: () => WIDGET_MIN_H,
         });
         applyAdaptiveCanvasOnly(_ppWidget);
+        // Floor the node at its content height while a resize handle is dragged
+        // (Nodes 2.0) so the bottom button row can't be squished out of frame.
+        node._pixPpFloorOff = installResizeFloor(root, measureRootContent);
 
         wireEvents(node, root);
 
@@ -129,6 +132,8 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      this._pixPpFloorOff?.();
+      this._pixPpFloorOff = null;
       this._pixPpRoot = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };

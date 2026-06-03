@@ -15,6 +15,7 @@ import {
   MODE_LIST,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
+import { installResizeFloor } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
@@ -200,6 +201,9 @@ app.registerExtension({
           getMinHeight: () => measureContentHeight(root),
         });
         applyAdaptiveCanvasOnly(_pmWidget);
+        // Floor the node at its content height while a resize handle is dragged
+        // (Nodes 2.0) so the bottom button row can't be squished out of frame.
+        node._pixPmFloorOff = installResizeFloor(root, measureContentHeight);
 
         node._pixPmGrow = () => {
           growNodeToContent(node);
@@ -247,6 +251,8 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      this._pixPmFloorOff?.();
+      this._pixPmFloorOff = null;
       this._pixPmRoot = null;
       this._pixPmRerender = null;
       this._pixPmRenderOnly = null;

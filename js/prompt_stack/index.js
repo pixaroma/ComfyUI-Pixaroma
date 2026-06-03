@@ -10,7 +10,7 @@ import {
   resetToDefault,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor } from "../shared/index.mjs";
 import { pixConfirm } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
@@ -214,6 +214,9 @@ app.registerExtension({
           getMinHeight: () => measureContentHeight(root),
         });
         applyAdaptiveCanvasOnly(_psWidget);
+        // Floor the node at its content height while a resize handle is dragged
+        // (Nodes 2.0) so the bottom button row can't be squished out of frame.
+        node._pixPsFloorOff = installResizeFloor(root, measureContentHeight);
 
         // Expose a tiny grow helper so interaction handlers (textarea
         // autogrow) can ask the node to expand without doing a full rerender.
@@ -267,6 +270,8 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      this._pixPsFloorOff?.();
+      this._pixPsFloorOff = null;
       this._pixPsRoot = null;
       this._pixPsRerender = null;
       this._pixPsRenderOnly = null;

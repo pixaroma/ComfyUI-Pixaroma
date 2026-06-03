@@ -19,7 +19,7 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, installResizeFloor } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -154,6 +154,9 @@ app.registerExtension({
         widget.computeLayoutSize = () => ({ minHeight: measureMinHeight(root), minWidth: 1 });
 
         node._pixFrRenderOnly();
+        // Floor the node at its content height WHILE a resize handle is dragged
+        // (Nodes 2.0 only) so the buttons/preview can't be squished out of frame.
+        node._pixFrFloorOff = installResizeFloor(root, measureMinHeight);
 
         // Open at a comfortable default size on FRESH placement only. onConfigure
         // sets _pixFrConfigured for a loaded workflow (it runs before this
@@ -224,6 +227,8 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      this._pixFrFloorOff?.();
+      this._pixFrFloorOff = null;
       this._pixFrRoot = null;
       this._pixFrRerender = null;
       this._pixFrRenderOnly = null;
