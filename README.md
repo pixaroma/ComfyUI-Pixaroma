@@ -248,6 +248,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **June 3, 2026 · v1.3.73**
+- **Sharper previews when you zoom in.** The image in **Preview Image** and **Load Image** now stays crisp when you zoom into a node, instead of going blurry or pixelated (the same fix Image Compare got last update).
+- **Preview Image always shows the latest result.** Fixed a case where running the workflow again could leave the old image on the node instead of updating to the new one.
+
 ### **June 2, 2026 · v1.3.72**
 - **NEW: Pause Image Pixaroma.** Drop it into your workflow to pause and preview the image before running the slow part (like an upscale or a second pass). Press Run and it stops there and shows you the image; the rest of the workflow waits. Happy with it? Hit **Continue** and only the steps after it run - the heavy generation is skipped, so it's fast and you upscale the exact image you saw. Not happy? Hit **Regenerate** for a new one, or change something upstream and run again. Flip the toggle to **Pass** to run everything in one go. You can **Copy**, **Save to disk**, **Save to output**, or **Open** the previewed image right from the node.
 - **Image Compare: sharper preview + save buttons.** The compared image now stays crisp when you zoom into the node. Added **Save to disk** and **Save to output** buttons (next to Copy) that save whichever image you're currently showing.
