@@ -49,7 +49,7 @@ export function injectCSS() {
 .pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
 .pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
 .pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
-.pix-xy-field{flex:1;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:4px 6px;min-width:0;}
+.pix-xy-field{flex:1;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:4px 6px;min-width:0;cursor:text;}
 .pix-xy-field:focus-within{border-color:${BRAND};}
 .pix-xy-field .pix-xy-flbl{font-size:9px;color:${BRAND};text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:1px;}
 .pix-xy-field input{width:100%;background:transparent;border:none;outline:none;color:#e0e0e0;font-size:13px;padding:0;}
@@ -143,6 +143,12 @@ function labeledField(label, value, oninput) {
   inp.value = value == null ? "" : String(value);
   inp.addEventListener("input", () => oninput(inp.value));
   wrap.appendChild(inp);
+  // The whole box looks clickable - so clicking the label or the padding
+  // (anywhere but the input itself) focuses the input. preventDefault keeps
+  // it from stealing/Collapsing a text selection inside the input.
+  wrap.addEventListener("mousedown", (e) => {
+    if (e.target !== inp) { e.preventDefault(); inp.focus(); }
+  });
   return wrap;
 }
 

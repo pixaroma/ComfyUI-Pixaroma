@@ -50,27 +50,48 @@ _LABEL_FG = (235, 235, 235)
 _AXIS_FG = (246, 103, 68)    # brand orange for the axis names
 
 _FONT_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "fonts")
+_FONT_CACHE = {}
 
 
 def _load_font(size):
     """Load a clean sans-serif label font from the bundled fonts, with
-    graceful fallbacks. Variable fonts load at their default instance."""
+    graceful fallbacks. Variable fonts load at their default instance.
+    Cached by size (labels reuse a handful of sizes per grid)."""
     size = max(8, int(size))
+    if size in _FONT_CACHE:
+        return _FONT_CACHE[size]
+    font = None
     try:
         for name in ("Inter-Variable.ttf", "Roboto-Variable.ttf", "Montserrat-Variable.ttf"):
             p = os.path.join(_FONT_DIR, name)
             if os.path.exists(p):
-                return ImageFont.truetype(p, size)
-        if os.path.isdir(_FONT_DIR):
+                font = ImageFont.truetype(p, size)
+                break
+        if font is None and os.path.isdir(_FONT_DIR):
             for f in sorted(os.listdir(_FONT_DIR)):
                 if f.lower().endswith((".ttf", ".otf")):
-                    return ImageFont.truetype(os.path.join(_FONT_DIR, f), size)
+                    font = ImageFont.truetype(os.path.join(_FONT_DIR, f), size)
+                    break
     except Exception:
-        pass
-    try:
-        return ImageFont.load_default(size)   # PIL >= 10
-    except Exception:
-        return ImageFont.load_default()
+        font = None
+    if font is None:
+        try:
+            font = ImageFont.load_default(size)   # PIL >= 10
+        except Exception:
+            font = ImageFont.load_default()
+    _FONT_CACHE[size] = font
+    return font
+
+
+def _fit_font(draw, text, base_size, max_w, min_size=10):
+    """Return a font sized so `text` fits within `max_w` px - shrinking from
+    `base_size` down to `min_size` rather than truncating, so axis labels stay
+    fully readable (sampler / checkpoint names can be long)."""
+    f = _load_font(base_size)
+    w = _measure(draw, text, f)[0]
+    if w <= max_w or w <= 0:
+        return f
+    return _load_font(max(min_size, int(base_size * max_w / w)))
 
 
 def _tensor_to_pil(frame):
@@ -155,7 +176,6 @@ def _assemble_grid(sess):
     scratch = Image.new("RGB", (4, 4))
     sdraw = ImageDraw.Draw(scratch)
     font = _load_font(font_size)
-    afont = _load_font(max(11, round(font_size * 0.8)))
 
     x_labels = sess.get("x_labels") or [""] * cols
     y_labels = sess.get("y_labels") or [""] * rows
@@ -164,12 +184,17 @@ def _assemble_grid(sess):
 
     if draw_labels:
         col_label_h = font_size + 2 * pad
-        # Row-label strip width: widest Y label, capped at ~28% of a cell.
-        row_w_cap = max(60, round(cell_w * 0.28))
+        # Row-label strip: wide enough to show the full Y label (sampler /
+        # checkpoint names can be long). Shrink-to-fit handles anything that
+        # still overflows, so we never chop a name down to "dpm…".
+        row_w_cap = max(160, round(cell_w * 0.5))
         widest = 0
         for lab in y_labels:
             widest = max(widest, _measure(sdraw, str(lab), font)[0])
-        row_label_w = min(row_w_cap, max(48, widest + 2 * pad))
+        # also keep room for the corner axis-name lines
+        for nm in (("↓ " + y_name), ("→ " + x_name)):
+            widest = max(widest, _measure(sdraw, nm, _load_font(max(11, round(font_size * 0.8))))[0])
+        row_label_w = max(60, min(row_w_cap, widest + 2 * pad))
     else:
         col_label_h = 0
         row_label_w = 0
@@ -204,34 +229,37 @@ def _assemble_grid(sess):
                 draw.rectangle([x, y, x + cell_w - 1, y + cell_h - 1], fill=_CELL_BG)
 
     if draw_labels:
-        # Column labels (X values) centered above each column.
+        # Column labels (X values) centered above each column - shrink to fit
+        # the cell width, never truncate.
         for ci in range(cols):
-            lab = _truncate(draw, str(x_labels[ci]) if ci < len(x_labels) else "", font, cell_w)
+            lab = str(x_labels[ci]) if ci < len(x_labels) else ""
             if not lab:
                 continue
+            lf = _fit_font(draw, lab, font_size, cell_w - 6)
             cx, _ = cell_xy(ci, 0)
-            tw, th = _measure(draw, lab, font)
-            draw.text((cx + (cell_w - tw) / 2, (col_label_h - th) / 2), lab, font=font, fill=_LABEL_FG)
-        # Row labels (Y values) centered in the left strip beside each row.
+            tw, th = _measure(draw, lab, lf)
+            draw.text((cx + (cell_w - tw) / 2, (col_label_h - th) / 2), lab, font=lf, fill=_LABEL_FG)
+        # Row labels (Y values) centered in the left strip - shrink to fit the
+        # (wide) strip, never truncate, so the full name is always readable.
         for ri in range(rows):
-            lab = _truncate(draw, str(y_labels[ri]) if ri < len(y_labels) else "", font, row_label_w - 2 * pad)
+            lab = str(y_labels[ri]) if ri < len(y_labels) else ""
             if not lab:
                 continue
+            lf = _fit_font(draw, lab, font_size, row_label_w - 2 * pad)
             _, cy = cell_xy(0, ri)
-            tw, th = _measure(draw, lab, font)
-            draw.text(((row_label_w - tw) / 2, cy + (cell_h - th) / 2), lab, font=font, fill=_LABEL_FG)
+            tw, th = _measure(draw, lab, lf)
+            draw.text((max(2, (row_label_w - tw) / 2), cy + (cell_h - th) / 2), lab, font=lf, fill=_LABEL_FG)
         # Axis names in the top-left corner: "↓ y_name" over "→ x_name".
         corner_lines = []
         if y_name:
             corner_lines.append("↓ " + y_name)
         if x_name:
             corner_lines.append("→ " + x_name)
-        if corner_lines and (row_label_w > 0 or col_label_h > 0):
-            ty = 2
-            for line in corner_lines:
-                line = _truncate(draw, line, afont, max(row_label_w, 80) - 4)
-                draw.text((4, ty), line, font=afont, fill=_AXIS_FG)
-                ty += _measure(draw, line, afont)[1] + 1
+        ty = 3
+        for line in corner_lines:
+            lf = _fit_font(draw, line, max(11, round(font_size * 0.8)), max(row_label_w, 80) - 6)
+            draw.text((4, ty), line, font=lf, fill=_AXIS_FG)
+            ty += _measure(draw, line, lf)[1] + 2
 
     # Cap the long side so a big grid can't explode memory / the preview.
     long_side = max(grid_w, grid_h)
