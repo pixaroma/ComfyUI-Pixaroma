@@ -109,6 +109,11 @@ export function classifyWidget(w) {
   if (name.startsWith("$$")) return null;                 // internal (canvas preview, etc.)
   const t = w.type;
   if (typeof t === "string" && t.startsWith("pixaroma_")) return null;
+  // Skip hidden / internal serialized-state widgets (e.g. Note's note_json,
+  // Label's label_json) - they're hidden via hideJsonWidget (w.hidden = true)
+  // and hold a JSON blob, not a parameter anyone would sweep.
+  if (w.hidden || t === "hidden") return null;
+  if (w.options && w.options.canvasOnly === true) return null;
   const cur = previewValue(w);
   if (t === "number") {
     const opts = w.options || {};
