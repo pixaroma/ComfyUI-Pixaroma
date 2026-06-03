@@ -16,15 +16,15 @@ import {
   renderAll,
   renderPreview,
   refreshResetState,
-  measureContentHeight,
+  measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
-const DEFAULT_H = 240;
+const DEFAULT_H = 300;
 const MIN_W = 340;
-const MIN_H = 170;
+const MIN_H = 200;
 
 // Commit a node height through setSize() so it sticks in BOTH renderers
 // (a bare node.size[1] = h can be reverted by Nodes 2.0's reactive layout
@@ -35,25 +35,29 @@ function setNodeHeight(node, h) {
   node.setSize?.([node.size[0], h]);
 }
 
-function growNodeToContent(node) {
+// Grow the node so the fixed parts (toggles + rules + actions) plus a minimum
+// preview always fit. Grows only - the preview flexes to fill any extra
+// height, so freed space (e.g. a textarea shrinking) goes to the preview, not
+// to a dead gap.
+function ensureMinHeight(node) {
   const root = node._pixFrRoot;
   if (!root) return;
-  const desired = measureContentHeight(root) + 50; // ~title + body padding
-  if (desired > node.size[1]) setNodeHeight(node, desired);
+  const min = measureMinHeight(root);
+  if (node.size[1] < min) setNodeHeight(node, min);
 }
 
-function fitNodeToContent(node) {
+// Reset the node to a comfortable default height (used on Reset).
+function fitToDefault(node) {
   const root = node._pixFrRoot;
   if (!root) return;
-  const desired = Math.max(DEFAULT_H, measureContentHeight(root) + 50);
-  setNodeHeight(node, desired);
+  setNodeHeight(node, Math.max(measureMinHeight(root), DEFAULT_H));
 }
 
 function makeHandlers(node, root) {
   const rerender = () => {
     renderAll(node, root, handlers);
     requestAnimationFrame(() => {
-      growNodeToContent(node);
+      ensureMinHeight(node);
       node.setDirtyCanvas(true, true);
     });
   };
@@ -77,10 +81,6 @@ function makeHandlers(node, root) {
       }
       deleteRule(node, id);
       rerender();
-      requestAnimationFrame(() => {
-        fitNodeToContent(node);
-        node.setDirtyCanvas(true, true);
-      });
     },
     onReset: async () => {
       const ok = await pixConfirm({
@@ -93,7 +93,7 @@ function makeHandlers(node, root) {
       resetToDefault(node);
       rerender();
       requestAnimationFrame(() => {
-        fitNodeToContent(node);
+        fitToDefault(node);
         node.setDirtyCanvas(true, true);
       });
     },
@@ -135,11 +135,11 @@ app.registerExtension({
         node._pixFrRenderOnly = () => renderAll(node, root, handlers);
         node._pixFrRefreshPreview = () => renderPreview(node, root);
         node._pixFrRefreshReset = () => refreshResetState(node, root);
-        node._pixFrGrow = () => { growNodeToContent(node); node.setDirtyCanvas(true, true); };
+        node._pixFrGrow = () => { ensureMinHeight(node); node.setDirtyCanvas(true, true); };
 
         const widget = node.addDOMWidget("findreplace", "pixaroma_find_replace", root, {
           serialize: false,
-          getMinHeight: () => measureContentHeight(root),
+          getMinHeight: () => measureMinHeight(root),
         });
         applyAdaptiveCanvasOnly(widget);
 
@@ -171,7 +171,7 @@ app.registerExtension({
           setPreviewInput(this, data.input, !!data.truncated);
           if (this._pixFrRefreshPreview) this._pixFrRefreshPreview();
           requestAnimationFrame(() => {
-            growNodeToContent(this);
+            ensureMinHeight(this);
             this.setDirtyCanvas(true, true);
           });
         }

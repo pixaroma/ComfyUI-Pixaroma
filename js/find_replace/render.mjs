@@ -24,10 +24,15 @@ const CSS = `
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
+  /* Fill the DOM-widget area so the preview can grow with the node
+     (Show Text fill pattern). The toggles/rows/actions keep natural
+     height (flex:0 0 auto); only the preview flexes to fill the rest. */
+  height: 100%;
+  min-height: 0;
 }
 
 /* ---- global toggle pills ---- */
-.pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; }
+.pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; flex: 0 0 auto; }
 .pix-fr-tog {
   font-size: 10.5px;
   padding: 4px 10px;
@@ -61,6 +66,7 @@ const CSS = `
   border: 1px solid #2e2e2e;
   position: relative;
   transition: opacity 0.12s ease;
+  flex: 0 0 auto;
 }
 .pix-fr-row.is-disabled { opacity: 0.45; }
 .pix-fr-row.is-dragging { opacity: 0.4; }
@@ -145,7 +151,7 @@ const CSS = `
 .pix-fr-delete:disabled { color: #444; cursor: not-allowed; background: transparent; }
 
 /* ---- action row ---- */
-.pix-fr-actions { display: flex; gap: 6px; align-self: flex-start; user-select: none; }
+.pix-fr-actions { display: flex; gap: 6px; align-self: flex-start; user-select: none; flex: 0 0 auto; }
 .pix-fr-add, .pix-fr-reset {
   box-sizing: border-box;
   min-width: 92px;
@@ -175,12 +181,20 @@ const CSS = `
   color: rgba(255,255,255,0.3);
 }
 
-/* ---- live preview ---- */
-.pix-fr-preview { border-top: 1px solid #3a3a3a; padding-top: 8px; }
+/* ---- live preview (fills the remaining node height) ---- */
+.pix-fr-preview {
+  border-top: 1px solid #3a3a3a;
+  padding-top: 8px;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .pix-fr-prev-head {
   display: flex; justify-content: space-between; align-items: center;
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px;
   color: #7fd18f; font-weight: 700; margin-bottom: 5px;
+  flex: 0 0 auto;
 }
 .pix-fr-prev-note { color: #666; font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 9.5px; }
 .pix-fr-prev-body {
@@ -191,7 +205,8 @@ const CSS = `
   font: 11px monospace;
   color: #cfcfcf;
   line-height: 1.5;
-  max-height: 150px;
+  flex: 1 1 0;
+  min-height: 60px;
   overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-word;
@@ -241,23 +256,31 @@ export function buildRoot() {
   return root;
 }
 
-// Sum of each visible child's offsetHeight (NOT root.scrollHeight, which
-// ComfyUI stretches - feedback loop). Mirrors Prompt Stack.
-export function measureContentHeight(root) {
-  if (!root) return 160;
+// Minimum preview block height (head + a few lines of body). The preview
+// flexes to fill any extra node height beyond this floor.
+const PREVIEW_MIN = 100;
+
+// The node's minimum height = the FIXED parts (toggles + rule rows + actions,
+// measured live) + a minimum preview block. NOT the full preview, so the user
+// can drag the node taller and the preview fills the new space (no dead gap).
+// Sums children offsetHeight (NOT root.scrollHeight, which ComfyUI stretches -
+// feedback loop), substituting PREVIEW_MIN for the flexible preview child.
+export function measureMinHeight(root) {
+  if (!root) return 180;
   let h = 0;
   let count = 0;
   for (const child of root.children) {
     if (child.offsetParent === null) continue;
-    h += child.offsetHeight;
     count += 1;
+    if (child.classList.contains("pix-fr-preview")) h += PREVIEW_MIN;
+    else h += child.offsetHeight;
   }
   const cs = getComputedStyle(root);
   const gap = parseFloat(cs.rowGap || cs.gap) || 0;
   if (count > 1) h += gap * (count - 1);
   h += parseFloat(cs.paddingTop) || 0;
   h += parseFloat(cs.paddingBottom) || 0;
-  return Math.max(160, h);
+  return Math.max(180, h);
 }
 
 const TOGGLE_DEFS = [
