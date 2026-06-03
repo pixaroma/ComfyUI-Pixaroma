@@ -63,7 +63,12 @@ js/
 │   ├── index.mjs       # Barrel re-export
 │   ├── utils.mjs       # BRAND, installFocusTrap, hideJsonWidget, downloadDataURL
 │   ├── preview.mjs     # createNodePreview, showNodePreview, restoreNodePreview
-│   └── label_css.mjs   # injectLabelCSS() for label editor
+│   ├── label_css.mjs   # injectLabelCSS() for label editor
+│   └── help.mjs        # createHelpButton(helpDef) / openHelpPopup() - the
+│                       #  reusable node Help panel (a ? button using the
+│                       #  bundled question.svg + a themed popup). See the
+│                       #  "Node Help Panel" convention (#16) for the schema +
+│                       #  how to add it to any node.
 │
 ├── brand/              # Brand defaults (single global extension)
 │   └── index.js        # Pixaroma.BrandDefaults extension. Hooks
@@ -1108,6 +1113,13 @@ These conventions were locked in during the May-2026 visual consistency pass acr
     - **Hover tooltips on controls (JS):** every interactive control gets a native `title` attribute with a one-line "what this does", like Text Overlay's buttons (`b.title = ...` in `js/framework/text_editor.mjs`). For DOM controls (chips, inputs, buttons inside a DOM widget) the native `title` is enough and renders as the dark OS tooltip. For CANVAS-painted controls use the custom tooltip helper (convention #8 - `title` only works on DOM elements).
     Reference implementation for BOTH surfaces is the Image Resize node: `nodes/node_image_resize.py` (DESCRIPTION + input `tooltip`s + `OUTPUT_TOOLTIPS`) and `js/image_resize/ui.mjs` (the `title` on mode chips via the `MODE_CHIPS` `title` field, snap chips, resample dropdown + arrows, upscaling toggle). Most existing nodes have input `tooltip`s but NONE had `OUTPUT_TOOLTIPS` and few have control `title`s - they need a sweep. Fill both surfaces from the start on any new node.
 
+16. **Node Help panel - the rich in-node `?` help (shared `js/shared/help.mjs`). Add it to EVERY new node, and to existing nodes when you edit them.** ComfyUI's own Info tab is plain-text and cramped (Vue Compat #14), so this is the richer teaching surface that lives ON the node. It is a small `?` button (the bundled `assets/icons/note/question.svg`, served at `/pixaroma/assets/icons/note/question.svg` and used as a CSS mask so it tints grey -> BRAND orange on hover) that opens a themed, scrollable popup explaining the node. Reference implementation: Find and Replace (`js/find_replace/render.mjs` - the `FR_HELP` content object + the `.pix-fr-toprow` placement). This complements convention #15 (still fill the Python `DESCRIPTION` / input `tooltip`s / `OUTPUT_TOOLTIPS` for ComfyUI's own Info tab); the Help panel does not replace them.
+    - **Public API** (exported from the shared barrel `js/shared/index.mjs`): `createHelpButton(helpDef, opts?)` returns the `?` `<button>` already wired to open the popup (`opts.title` overrides the hover tooltip); `openHelpPopup(helpDef)` opens it directly (e.g. from a right-click menu item); `closeHelpPopup()`; `injectHelpCSS()` (called lazily by the other two, so you never need to call it yourself).
+    - **`helpDef` schema:** `{ title, tagline?, sections: [...], footer? }`. Each section is `{ heading, body?, bullets?: string[], defs?: [[term, desc], ...], table?: { headers: string[], rows: string[][] } }` and its blocks render in the order listed (a section can mix several). Any string (tagline / body / bullet / def term+desc / table cell / footer) may contain inline `` `code` `` (backticks) which renders as a monospace chip. ALL text is HTML-escaped first, so author in plain prose. In `body`, a blank line starts a new paragraph; a single `\n` is preserved (`white-space: pre-wrap`).
+    - **How to wire it into a node:** `import { createHelpButton } from "../shared/index.mjs";`, author a `XXX_HELP` const next to the node's render code, then `someRow.appendChild(createHelpButton(XXX_HELP))`. For a DOM-widget node the button goes in the node body; the popup is a `document.body` overlay so it is renderer-agnostic (works in BOTH legacy and Nodes 2.0) and the button renders in the Vue body because it lives in the DOM widget. For a PAINTED node with no DOM spot, call `openHelpPopup(XXX_HELP)` from a right-click "Help" menu item instead (not yet built; add a `getNodeMenuOptions` item per the Node Colors pattern if needed).
+    - **PLACEMENT GOTCHA (do not regress):** put the `?` as its OWN flex item in a NON-wrapping top row beside the controls, with `align-self: flex-start`. Do NOT drop it into a `flex-wrap: wrap` control row with `margin-left: auto` - when the node narrows, the wrapping row pushes the `?` onto its own line below the controls (the bug fixed on Find and Replace). The fix shape: `.pix-fr-toprow { display:flex; align-items:flex-start }` containing `.pix-fr-toggles { flex:1 1 auto; flex-wrap:wrap }` (controls wrap among themselves) + the `?` button (`flex:none`, pinned right).
+    - **Popup behavior:** dark card, BRAND accents, `min(680px, 92vw)` wide, max-height `82vh`, scrollable; closes on the `✕` / `Esc` / click-outside (with the mousedown-on-backdrop guard so a text drag-select that releases on the backdrop does NOT dismiss it - Text Overlay #12). All CSS is `.pix-help-*`, injected once. Only one popup open at a time. NO em dashes in help content (house rule - use colons/hyphens/parentheses).
+
 ### Transparent Background Save-to-Disk
 Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" checkbox next to their BG color picker. It only affects **Save to Disk** — the workflow "Save" path is untouched so existing workflows stay compatible (Python nodes still output RGB tensors).
 
@@ -1740,6 +1752,7 @@ Files are named by concern. Match the task to the file:
 | Task | Read this file |
 |------|---------------|
 | Add a new dropdown / popup (any node) | Copy `openImageDropdown` in `js/load_image/ui.mjs` as the template. See Load Image Pixaroma Pattern #14 — wheel handler MUST gate on `!popup.contains(e.target)` or scrolling inside the popup closes it. |
+| Add / change a node's Help panel (the `?` button + popup) | `js/shared/help.mjs`: `createHelpButton(helpDef)` returns the `?` button (bundled question.svg mask), `openHelpPopup(helpDef)` opens it. Author a `XXX_HELP` object (title / tagline / sections of body \| bullets \| defs \| table, inline `` `code` `` chips) next to the node's render code and `appendChild` the button into the node body. Reference: Find and Replace (`js/find_replace/render.mjs` `FR_HELP` + the `.pix-fr-toprow` placement so the `?` doesn't wrap below on a narrow node). Full schema + gotchas in node UI convention #16. |
 | Fix brush/drawing | `js/paint/tools.mjs` |
 | Fix layer add/delete | `js/paint/canvas.mjs` or `js/composer/layers.mjs` |
 | Fix undo/redo | `js/<editor>/history.mjs` |
