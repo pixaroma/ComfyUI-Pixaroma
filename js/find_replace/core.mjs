@@ -125,11 +125,17 @@ export function getPreviewInput(node) {
   return p;
 }
 
+const PREVIEW_CAP = 4000;
 export function setPreviewInput(node, input, truncated) {
   node.properties = node.properties || {};
+  // Self-protecting cap (Python already caps at 4000, but never trust the
+  // caller): the sample is serialized into the workflow JSON, so bound it here
+  // too so a future uncapped caller can't bloat the saved file.
+  const s = String(input == null ? "" : input);
+  const over = s.length > PREVIEW_CAP;
   node.properties[PREVIEW_PROP] = {
-    input: String(input == null ? "" : input),
-    truncated: !!truncated,
+    input: over ? s.slice(0, PREVIEW_CAP) : s,
+    truncated: !!truncated || over,
   };
 }
 
@@ -149,6 +155,51 @@ export function tidy(s) {
   return s.trim();
 }
 
+// Translate a Python re.sub() replacement template into a JS String.replace
+// replacement string, so the preview matches the authoritative Python run.
+// Handles: \1..\99 and \g<name>/\g<number> backreferences, the \n \t \r \f \v
+// and \\ character escapes (Python processes these in the replacement; JS does
+// NOT), and a literal $ (special in JS, literal in Python -> escaped to $$).
+function pyTemplateToJs(repl) {
+  let out = "";
+  for (let i = 0; i < repl.length; i++) {
+    const ch = repl[i];
+    if (ch === "$") { out += "$$"; continue; }      // literal $ (Python keeps it)
+    if (ch !== "\\") { out += ch; continue; }
+    const nx = repl[i + 1];
+    if (nx === undefined) { out += "\\"; break; }    // trailing backslash -> literal
+    if (nx === "\\") { out += "\\"; i++; continue; } // \\ -> one literal backslash
+    if (nx >= "1" && nx <= "9") {                    // \1..\99 group reference
+      let num = nx; i++;
+      if (repl[i + 1] >= "0" && repl[i + 1] <= "9") { num += repl[i + 1]; i++; }
+      out += "$" + num;
+      continue;
+    }
+    if (nx === "g") {                                // \g<name> or \g<number>
+      const m = /^\\g<([^>]+)>/.exec(repl.slice(i));
+      if (m) {
+        const ref = m[1];
+        out += /^\d+$/.test(ref) ? "$" + ref : "$<" + ref + ">";
+        i += m[0].length - 1;
+        continue;
+      }
+      out += "g"; i++; continue;                     // malformed \g -> best effort
+    }
+    const map = { n: "\n", t: "\t", r: "\r", f: "\f", v: "\v" };
+    if (nx in map) { out += map[nx]; i++; continue; }
+    out += nx; i++;                                   // unknown escape -> literal char
+  }
+  return out;
+}
+
+// Python's \b/\w are Unicode-aware for str patterns; JS's \b is ASCII-only.
+// For whole-word literal matching we build explicit Unicode-aware boundary
+// assertions so accented / non-Latin words match the same as the Python run.
+const _WORD = "\\p{L}\\p{N}_";
+function isWordChar(c) {
+  return /[\p{L}\p{N}_]/u.test(c || "");
+}
+
 // Returns { output, warnings:[string] }.
 export function applyRulesJS(text, state) {
   const rules = Array.isArray(state.rules) ? state.rules : [];
@@ -158,7 +209,7 @@ export function applyRulesJS(text, state) {
   const td = state.tidy !== false;
   const warnings = [];
   let out = String(text == null ? "" : text);
-  const flags = "g" + (cs ? "" : "i");
+  const baseFlags = "g" + (cs ? "" : "i");
 
   rules.forEach((rule, idx) => {
     if (!rule || rule.enabled === false) return;
@@ -167,17 +218,24 @@ export function applyRulesJS(text, state) {
     const repl = rule.replace || "";
     try {
       if (rx) {
-        const re = new RegExp(find, flags);
-        // \1..\9 (Python backref syntax the user types) -> $1..$9 for JS.
-        const jsRepl = repl.replace(/\$/g, "$$$$").replace(/\\(\d)/g, "$$$1");
-        out = out.replace(re, jsRepl);
+        const re = new RegExp(find, baseFlags);
+        out = out.replace(re, pyTemplateToJs(repl));
       } else {
         let pat = escapeRegex(find);
-        if (ww) pat = "\\b" + pat + "\\b";
+        let flags = baseFlags;
+        if (ww) {
+          // Mirror Python's \bTERM\b: the assertion on each side depends on
+          // whether the edge char is itself a word char, so it matches Python
+          // for any TERM (incl. punctuation edges), with Unicode word chars.
+          const lead = isWordChar(find[0]) ? `(?<![${_WORD}])` : `(?<=[${_WORD}])`;
+          const tail = isWordChar(find[find.length - 1]) ? `(?![${_WORD}])` : `(?=[${_WORD}])`;
+          pat = lead + pat + tail;
+          flags += "u";
+        }
         const re = new RegExp(pat, flags);
-        // Literal replacement: escape $ so $1 etc. are not interpreted.
-        const litRepl = repl.replace(/\$/g, "$$$$");
-        out = out.replace(re, litRepl);
+        // Literal replacement: insert repl verbatim (only $ is special in JS;
+        // backslash is literal, matching Python's backslash-doubled safe_repl).
+        out = out.replace(re, repl.replace(/\$/g, "$$$$"));
       }
     } catch (_e) {
       warnings.push(`Rule ${idx + 1}: invalid regex`);

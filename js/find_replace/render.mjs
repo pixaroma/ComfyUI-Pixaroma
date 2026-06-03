@@ -66,8 +66,10 @@ const CSS = `
   gap: 6px;
   padding: 6px;
   border-radius: 4px;
-  background: #232323;
-  border: 1px solid #2e2e2e;
+  /* Semi-transparent overlay (NOT opaque dark) so rows adapt to a user-
+     recolored node body instead of showing as grey patches (UI convention #1). */
+  background: rgba(0,0,0,0.18);
+  border: 1px solid rgba(255,255,255,0.08);
   position: relative;
   transition: opacity 0.12s ease;
   flex: 0 0 auto;

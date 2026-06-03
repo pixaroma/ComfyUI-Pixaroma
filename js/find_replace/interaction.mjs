@@ -42,17 +42,19 @@ export function attachFieldEditor(node, taEl, ruleId, which) {
   taEl.addEventListener("input", (e) => {
     e.stopImmediatePropagation();
     autoGrow(taEl);
-    // Commit immediately so the live preview reflects the keystroke, then
-    // refresh the preview, the node height, and the Reset button state.
+    // Commit the keystroke to state synchronously so the next read is current.
     if (which === "find") setFind(node, ruleId, taEl.value);
     else setReplace(node, ruleId, taEl.value);
     taEl.dataset.committed = taEl.value;
     if (which === "replace") taEl.classList.toggle("is-delete", !taEl.value);
-    node._pixFrRefreshPreview?.();
-    node._pixFrRefreshReset?.();
+    // Coalesce the (relatively heavy) preview recompute + Reset state + node
+    // grow into ONE rAF per frame, so holding a key down doesn't recompute the
+    // word-diff on every keystroke.
     if (!pending) {
       pending = true;
       requestAnimationFrame(() => {
+        node._pixFrRefreshPreview?.();
+        node._pixFrRefreshReset?.();
         node._pixFrGrow?.();
         pending = false;
       });

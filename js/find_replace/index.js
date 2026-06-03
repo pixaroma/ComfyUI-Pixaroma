@@ -264,19 +264,52 @@ app.registerExtension({
 });
 
 // graphToPrompt hook - inject the rules state (WITHOUT the preview) into the
-// hidden FindReplaceState input at submit time. Pattern #9, subgraph-safe via
-// tail-id matching.
+// hidden FindReplaceState input at submit time. Pattern #9.
+//
+// Subgraph-safe: ComfyUI flattens subgraph-contained nodes into the API prompt
+// with composite IDs ("5:12"), and app.graph.getNodeById only exposes top-level
+// nodes - so a plain parseInt(tail) + getNodeById silently missed any Find and
+// Replace placed inside a subgraph (rules never injected -> node became a near
+// no-op). Resolve via a recursive index over every nested subgraph instead
+// (mirrors js/text_overlay/index.js and js/resolution/index.js).
+function buildPixFrNodeIndex() {
+  const index = new Map(); // String(node.id) -> node
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === "PixaromaFindReplace" || n.type === "PixaromaFindReplace") {
+        index.set(String(n.id), n);
+      }
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+
+function findPixFrNode(index, promptId) {
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
 const _origGraphToPrompt = app.graphToPrompt;
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt.apply(this, args);
   try {
     const prompt = result?.output;
     if (prompt && typeof prompt === "object") {
+      let index = null;
       for (const key of Object.keys(prompt)) {
         const entry = prompt[key];
         if (!entry || entry.class_type !== "PixaromaFindReplace") continue;
-        const nodeId = parseInt(String(key).split(":").pop(), 10);
-        const node = app.graph?.getNodeById?.(nodeId);
+        if (!index) index = buildPixFrNodeIndex();
+        const node = findPixFrNode(index, key);
         if (!node) continue;
         const state = node.properties?.findReplaceState;
         if (!state || !Array.isArray(state.rules)) continue;

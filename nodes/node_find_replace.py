@@ -133,7 +133,9 @@ def _apply_rules(text, state):
 def _tidy(s):
     """Conservative cleanup. Mirrors tidy() in js/find_replace/core.mjs.
 
-    Never touches newlines - only spaces/tabs and comma spacing.
+    Collapses runs of spaces/tabs and fixes comma spacing. Interior newlines
+    are preserved (never collapsed); the final strip() trims leading/trailing
+    whitespace - including newlines - from the whole string.
     """
     # Collapse runs of spaces/tabs to a single space.
     s = re.sub(r"[ \t]+", " ", s)
