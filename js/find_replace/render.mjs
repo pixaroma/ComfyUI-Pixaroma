@@ -111,9 +111,15 @@ const CSS = `
 
 /* find -> replace fields */
 .pix-fr-field {
-  flex: 1;
+  flex: 1 1 0;
+  /* align-self:flex-start + height (not min-height) keeps the textarea sized to
+     its CONTENT (one line until you type more), so it never stretches to fill a
+     tall row when the node is large (e.g. after deleting a rule) or shows a
+     scrollbar when the node is squished. autoGrow overrides height for
+     multi-line content, capped by max-height. */
+  align-self: flex-start;
   min-width: 0;
-  min-height: 30px;
+  height: 30px;
   max-height: 120px;
   resize: none;
   background: #1d1d1d;

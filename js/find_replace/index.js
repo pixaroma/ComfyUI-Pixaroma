@@ -77,20 +77,10 @@ function makeHandlers(node, root) {
     onToggleGlobal: (key) => { setToggle(node, key); rerender(); },
     onToggleRule: (id) => { toggleRuleEnabled(node, id); rerender(); },
     onAdd: () => { addRule(node); rerender(); },
-    onDelete: async (id) => {
-      const state = readState(node);
-      const row = state.rules.find((r) => r.id === id);
-      const hasContent = row && ((row.find && row.find.trim()) || (row.replace && row.replace.trim()));
-      if (hasContent) {
-        const label = (row.find && row.find.trim()) || `Rule ${state.rules.indexOf(row) + 1}`;
-        const ok = await pixConfirm({
-          title: "Delete rule?",
-          message: `Delete the rule "${label}"?`,
-          okText: "Delete",
-          cancelText: "Cancel",
-        });
-        if (!ok) return;
-      }
+    // Instant delete - no confirm (one rule is cheap to recreate, and the live
+    // preview shows the effect). The delete button is disabled at 1 rule, so a
+    // delete always leaves at least one. Reset (wipes everything) still confirms.
+    onDelete: (id) => {
       deleteRule(node, id);
       rerender();
     },
