@@ -197,9 +197,15 @@ function selectChoice(node, axisKey, choice, rerender) {
   axis.step = choice.w.step || 1;
   axis.options = choice.w.type === "combo" ? (choice.w.options || []) : [];
   if (changed) {
-    // Reset entry to a sensible default for the new widget type.
+    // Reset entry to a sensible default for the new widget type. Mutate the
+    // EXISTING raw object IN PLACE - do NOT replace it with a fresh literal, or
+    // any value-field handler that captured the old raw by reference would
+    // write a stale snapshot and clobber the other axis (the same aliasing bug
+    // that readState's backfillAxis was built to prevent).
     axis.mode = choice.w.type === "number" ? "range" : (choice.w.type === "text" ? "fulllist" : null);
-    axis.raw = { start: "", end: "", steps: "", listText: "", checked: [], srFind: "", srReplace: "" };
+    const r = axis.raw || (axis.raw = {});
+    r.start = ""; r.end = ""; r.steps = ""; r.listText = "";
+    r.checked = []; r.srFind = ""; r.srReplace = "";
   }
   writeState(node, state);
   rerender();

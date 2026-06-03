@@ -167,13 +167,21 @@ export function buildGridPreview(node, mount) {
   };
   setEnabled(false);
 
+  let gridReq = 0;   // bumped per setGrid so a stale preload can't swap a stale grid
+
   return {
     setGrid(url) {
       // Preload the new grid, then swap the VISIBLE img only once it's ready.
       // This keeps the old grid (same size) on screen during a theme re-skin so
       // the <img> never collapses -> the node doesn't shrink-then-grow -> no
       // flicker and the bottom buttons never poke out of the frame.
+      // A request token guards against two rapid setGrid calls (e.g. theme
+      // spam): only the LATEST preload is allowed to swap, and only if the
+      // node/img is still alive.
+      const token = (gridReq += 1);
       const show = () => {
+        if (token !== gridReq) return;          // a newer setGrid superseded this
+        if (!img.isConnected) return;            // node/img torn down meanwhile
         img.src = url;
         img.style.display = "block";
         hint.style.display = "none";

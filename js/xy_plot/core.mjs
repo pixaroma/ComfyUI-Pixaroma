@@ -184,9 +184,24 @@ export function lookupWidgetMeta(node, axis) {
 
 // ── Value parsing ──────────────────────────────────────────────────────────
 
+// Hard cap on how many values a single axis can produce, so a typo like
+// "1-100000 [99999]" or "0-1 (+0.0000001)" can't allocate a giant array or
+// freeze the browser. A comparison grid is only useful for a handful of cells.
+export const MAX_AXIS_VALUES = 100;
+
+// Trim float drift to the step's decimal precision. Handles scientific-notation
+// steps (e.g. 1e-7) which `String(step).split(".")` would mis-read as 0 decimals
+// (collapsing every value to 0).
 export function roundToStep(v, step) {
-  if (!step || step <= 0) return v;
-  const decimals = (String(step).split(".")[1] || "").length;
+  if (!step || step <= 0 || !isFinite(v)) return v;
+  let decimals;
+  const s = String(step);
+  if (s.indexOf("e") >= 0 || s.indexOf("E") >= 0) {
+    // scientific notation: derive decimals from the exponent
+    decimals = Math.max(0, Math.ceil(-Math.log10(Math.abs(step))));
+  } else {
+    decimals = (s.split(".")[1] || "").length;
+  }
   return Number(v.toFixed(Math.min(decimals, 8)));
 }
 
@@ -201,26 +216,35 @@ export function parseNumberList(text, step) {
     if (mStep) {
       const a = parseFloat(mStep[1]); const b = parseFloat(mStep[2]); let st = parseFloat(mStep[3]);
       if (!isFinite(a) || !isFinite(b)) continue;
-      if (st === 0) { out.push(roundToStep(a, step)); continue; }
+      if (st === 0 || !isFinite(st)) { out.push(roundToStep(a, step)); continue; }
       if ((b - a) * st < 0) st = -st;
-      for (let v = a; st > 0 ? v <= b + 1e-9 : v >= b - 1e-9; v += st) out.push(roundToStep(v, step));
+      // Iterate by integer index (count = how many steps fit), NOT by repeated
+      // `v += st`: accumulation drift would drop or duplicate the endpoint, and
+      // a tiny step (e.g. +0.0000001) would loop millions of times. Capped.
+      const count = Math.min(MAX_AXIS_VALUES - 1, Math.max(0, Math.floor((b - a) / st + 1e-9)));
+      for (let i = 0; i <= count && out.length < MAX_AXIS_VALUES; i++) {
+        out.push(roundToStep(a + i * st, step));
+      }
     } else if (mCount) {
-      const a = parseFloat(mCount[1]); const b = parseFloat(mCount[2]); const n = parseInt(mCount[3], 10);
+      const a = parseFloat(mCount[1]); const b = parseFloat(mCount[2]); let n = parseInt(mCount[3], 10);
       if (!isFinite(a)) continue;
       if (!isFinite(b) || n <= 1) { out.push(roundToStep(a, step)); continue; }
-      for (let i = 0; i < n; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step));
+      n = Math.min(n, MAX_AXIS_VALUES);
+      for (let i = 0; i < n && out.length < MAX_AXIS_VALUES; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step));
     } else {
       const v = parseFloat(s);
-      if (isFinite(v)) out.push(roundToStep(v, step));
+      if (isFinite(v) && out.length < MAX_AXIS_VALUES) out.push(roundToStep(v, step));
     }
+    if (out.length >= MAX_AXIS_VALUES) break;
   }
   return out;
 }
 
 export function rangeToList(start, end, steps, step) {
-  const a = parseFloat(start); const b = parseFloat(end); const n = parseInt(steps, 10);
+  const a = parseFloat(start); const b = parseFloat(end); let n = parseInt(steps, 10);
   if (!isFinite(a)) return [];
   if (!isFinite(b) || !isFinite(n) || n <= 1) return [roundToStep(a, step)];
+  n = Math.min(n, MAX_AXIS_VALUES);
   const out = [];
   for (let i = 0; i < n; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step));
   return out;
@@ -262,6 +286,7 @@ export function computeCounts(state) {
   const ys = axisReady(state.y) ? resolveAxisValues(state.y) : [];
   const cols = xs.length || (ys.length ? 1 : 0);
   const rows = ys.length || (xs.length ? 1 : 0);
-  const total = (cols || 1) * (rows || 1);
-  return { cols, rows, total, hasPlot: xs.length > 0 || ys.length > 0 };
+  const hasPlot = xs.length > 0 || ys.length > 0;
+  const total = hasPlot ? (cols || 1) * (rows || 1) : 0;
+  return { cols, rows, total, hasPlot };
 }

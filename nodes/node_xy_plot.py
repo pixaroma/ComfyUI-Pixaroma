@@ -21,6 +21,7 @@ individual cell) to disk/output.
 """
 import json
 import os
+import threading
 
 import folder_paths
 import numpy as np
@@ -28,6 +29,16 @@ import torch
 from PIL import Image, ImageDraw, ImageFont
 
 from ._save_helpers import _json_safe
+
+# Guards the module-level session state below. The node executes on ComfyUI's
+# worker thread while the save / restyle routes run on the aiohttp thread, so a
+# theme-restyle or save during a live plot can otherwise read `cells` mid-write
+# (e.g. `next(iter(cells.values()))` raising "dict changed size during iteration").
+_LOCK = threading.RLock()
+
+# Hard cap on grid dimensions so a malformed/oversized state can't allocate a
+# giant canvas before the long-side downscale kicks in. Mirrors the JS cap.
+_MAX_DIM = 100
 
 # ── Server-side accumulator ────────────────────────────────────────────────
 # Keyed by sessionId -> {
@@ -100,8 +111,12 @@ def _fit_font(draw, text, base_size, max_w, min_size=10):
 
 
 def _tensor_to_pil(frame):
-    """HxWxC float [0,1] tensor -> RGB PIL.Image."""
-    arr = (frame.cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+    """HxWxC float [0,1] tensor -> RGB PIL.Image.
+
+    .detach() guards against autograd if ever called outside ComfyUI's no_grad
+    executor; .contiguous() is required because a batch slice (image[i]) is
+    often non-contiguous and .numpy() would fail/garble on it."""
+    arr = (frame.detach().cpu().contiguous().numpy() * 255.0).clip(0, 255).astype(np.uint8)
     pil = Image.fromarray(arr)
     if pil.mode != "RGB":
         pil = pil.convert("RGB")
@@ -109,10 +124,13 @@ def _tensor_to_pil(frame):
 
 
 def _pil_to_tensor(pil):
-    """RGB PIL.Image -> 1xHxWx3 float [0,1] tensor."""
+    """RGB PIL.Image -> 1xHxWx3 float [0,1] tensor.
+
+    np.array (not np.asarray) so the buffer is writable - torch.from_numpy on a
+    read-only PIL buffer can error or corrupt on later in-place ops."""
     if pil.mode != "RGB":
         pil = pil.convert("RGB")
-    arr = np.asarray(pil).astype(np.float32) / 255.0
+    arr = np.array(pil, dtype=np.float32) / 255.0
     return torch.from_numpy(arr)[None, ...]
 
 
@@ -143,7 +161,16 @@ def _truncate(draw, text, font, max_w):
 def _evict_sessions():
     while len(_SESSION_ORDER) > _MAX_SESSIONS:
         old = _SESSION_ORDER.pop(0)
-        _SESSIONS.pop(old, None)
+        sess = _SESSIONS.pop(old, None)
+        # Delete the evicted plot's grid PNG from temp/ so old grids don't pile
+        # up (temp is otherwise only cleared on ComfyUI restart).
+        if sess and sess.get("grid_name"):
+            try:
+                p = os.path.join(folder_paths.get_temp_directory(), sess["grid_name"])
+                if os.path.isfile(p):
+                    os.remove(p)
+            except Exception:
+                pass
 
 
 def _touch_session(session_id):
@@ -163,18 +190,20 @@ def restyle_session(session_id, theme):
     re-running the workflow (the cells are still cached). Returns the grid's
     temp filename, or None if the session has been evicted. Used by the
     /pixaroma/api/xy_plot/restyle route for instant theme switching."""
-    sess = _SESSIONS.get(session_id)
-    if not sess:
-        return None
-    sess["theme"] = theme if theme in _THEMES else "dark"
-    grid_pil = _assemble_grid(sess)
+    with _LOCK:
+        sess = _SESSIONS.get(session_id)
+        if not sess:
+            return None
+        sess["theme"] = theme if theme in _THEMES else "dark"
+        grid_pil = _assemble_grid(sess)   # reads cells; under lock so execute can't mutate mid-read
+        grid_name = sess["grid_name"]
     temp_dir = folder_paths.get_temp_directory()
     os.makedirs(temp_dir, exist_ok=True)
     try:
-        grid_pil.save(os.path.join(temp_dir, sess["grid_name"]), "PNG")
+        grid_pil.save(os.path.join(temp_dir, grid_name), "PNG")   # I/O outside the lock
     except Exception:
         return None
-    return sess["grid_name"]
+    return grid_name
 
 
 def _assemble_grid(sess):
@@ -354,62 +383,75 @@ class PixaromaXYPlot:
         try:
             xi = int(state.get("xi", 0))
             yi = int(state.get("yi", 0))
-            cols = max(1, int(state.get("cols", 1)))
-            rows = max(1, int(state.get("rows", 1)))
-        except (ValueError, TypeError):
+            cols = max(1, min(_MAX_DIM, int(state.get("cols", 1))))
+            rows = max(1, min(_MAX_DIM, int(state.get("rows", 1))))
+        except (ValueError, TypeError) as e:
+            print("[Pixaroma] XY Plot: malformed cursor in XYPlotState: %s" % e)
             return {"ui": {}, "result": (image,)}
 
-        # Reset / create the session on the FIRST cell of a fresh plot.
-        if (xi == 0 and yi == 0) or session_id not in _SESSIONS:
-            grid_name = "pixaroma_xy_grid_%s.png" % "".join(
-                c for c in str(session_id) if c.isalnum() or c in "_-"
-            )[:80]
-            _SESSIONS[session_id] = {
-                "cells": {},
-                "cols": cols, "rows": rows,
-                "x_labels": state.get("xLabels") or [],
-                "y_labels": state.get("yLabels") or [],
-                "x_name": state.get("xName") or "",
-                "y_name": state.get("yName") or "",
-                "draw_labels": bool(state.get("drawLabels", True)),
-                "theme": state.get("theme") or "dark",
-                "grid_name": grid_name,
-                "prefix": state.get("prefix") or filename_prefix,
-            }
-        sess = _SESSIONS[session_id]
-        _touch_session(session_id)
+        # Accumulate + (re)assemble under the lock so a concurrent restyle/save
+        # on the aiohttp thread can't read `cells` mid-write.
+        with _LOCK:
+            # Create the session on its FIRST cell. The JS driver makes a fresh
+            # sessionId per plot, so a genuinely new plot always lands here; we
+            # do NOT wipe an existing session when a (0,0) cell re-arrives (a
+            # retry/re-execute), which would discard the cells gathered so far.
+            if session_id not in _SESSIONS:
+                grid_name = "pixaroma_xy_grid_%s.png" % "".join(
+                    c for c in str(session_id) if c.isalnum() or c in "_-"
+                )[:80]
+                _SESSIONS[session_id] = {
+                    "cells": {},
+                    "cols": cols, "rows": rows,
+                    "x_labels": state.get("xLabels") or [],
+                    "y_labels": state.get("yLabels") or [],
+                    "x_name": state.get("xName") or "",
+                    "y_name": state.get("yName") or "",
+                    "draw_labels": bool(state.get("drawLabels", True)),
+                    "theme": state.get("theme") or "dark",
+                    "grid_name": grid_name,
+                    "prefix": state.get("prefix") or filename_prefix,
+                }
+            sess = _SESSIONS[session_id]
+            _touch_session(session_id)
 
-        # Keep label arrays / dims fresh (JS sends the full arrays every cell).
-        sess["cols"], sess["rows"] = cols, rows
-        if state.get("xLabels"):
-            sess["x_labels"] = state["xLabels"]
-        if state.get("yLabels"):
-            sess["y_labels"] = state["yLabels"]
-        sess["x_name"] = state.get("xName") or sess.get("x_name", "")
-        sess["y_name"] = state.get("yName") or sess.get("y_name", "")
-        sess["draw_labels"] = bool(state.get("drawLabels", sess.get("draw_labels", True)))
-        sess["theme"] = state.get("theme") or sess.get("theme", "dark")
+            # Keep label arrays / dims fresh (JS sends the full arrays every cell).
+            sess["cols"], sess["rows"] = cols, rows
+            if state.get("xLabels"):
+                sess["x_labels"] = state["xLabels"]
+            if state.get("yLabels"):
+                sess["y_labels"] = state["yLabels"]
+            sess["x_name"] = state.get("xName") or sess.get("x_name", "")
+            sess["y_name"] = state.get("yName") or sess.get("y_name", "")
+            sess["draw_labels"] = bool(state.get("drawLabels", sess.get("draw_labels", True)))
+            sess["theme"] = state.get("theme") or sess.get("theme", "dark")
 
-        # Store this cell (first frame of the batch).
-        try:
-            sess["cells"][(xi, yi)] = _tensor_to_pil(image[0])
-        except Exception as e:
-            print("[Pixaroma] XY Plot: failed to store cell (%d,%d): %s" % (xi, yi, e))
+            # Store this cell (first frame of the batch). Skip out-of-range cells
+            # so a bad cursor can't accumulate cells that never render / leak.
+            if 0 <= xi < cols and 0 <= yi < rows:
+                try:
+                    sess["cells"][(xi, yi)] = _tensor_to_pil(image[0])
+                except Exception as e:
+                    print("[Pixaroma] XY Plot: failed to store cell (%d,%d): %s" % (xi, yi, e))
+            else:
+                print("[Pixaroma] XY Plot: cell (%d,%d) outside %dx%d grid - skipped" % (xi, yi, cols, rows))
 
-        # Re-assemble the grid-so-far and write it to temp/ for the preview.
-        grid_pil = _assemble_grid(sess)
+            grid_pil = _assemble_grid(sess)
+            grid_name = sess["grid_name"]
+
+        # Write the grid PNG to temp/ for the preview (I/O outside the lock).
         temp_dir = folder_paths.get_temp_directory()
         os.makedirs(temp_dir, exist_ok=True)
         try:
-            grid_pil.save(os.path.join(temp_dir, sess["grid_name"]), "PNG")
+            grid_pil.save(os.path.join(temp_dir, grid_name), "PNG")
         except Exception as e:
             print("[Pixaroma] XY Plot: failed to write grid PNG: %s" % e)
 
         frame = {
-            "filename": sess["grid_name"],
+            "filename": grid_name,
             "subfolder": "",
             "type": "temp",
-            "_xy": _json_safe({"sessionId": session_id, "xi": xi, "yi": yi,
+            "_xy": _json_safe({"sessionId": str(session_id), "xi": xi, "yi": yi,
                                "cols": cols, "rows": rows}),
         }
         return {

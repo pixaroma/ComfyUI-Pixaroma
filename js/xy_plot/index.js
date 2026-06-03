@@ -7,7 +7,7 @@ import {
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopup } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
-import { isQueueLoopActive, runQueueLoop } from "../shared/queue_drivers.mjs";
+import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
 // MIN_W is set so the 3 natural-width toggles (Lock seed / Draw labels / Save
@@ -30,17 +30,21 @@ function isSeedAxis(axis) {
   return axis && (axis.widgetName === "seed" || axis.widgetName === "noise_seed");
 }
 
-function captureSeedValue(node) {
+// Capture EACH seed/noise_seed widget's current value, keyed by node id. The
+// lock then pins every sampler to its OWN seed across all cells - it keeps each
+// constant (so only the swept variable changes), WITHOUT homogenizing two
+// different samplers to one shared seed (which the old single-value capture did).
+function captureSeedMap(node) {
+  const map = {};
   const graph = node?.graph || app.graph;
-  const nodes = graph?._nodes || graph?.nodes || [];
-  for (const n of nodes) {
+  for (const n of (graph?._nodes || graph?.nodes || [])) {
     for (const w of (n.widgets || [])) {
       if (w && (w.name === "seed" || w.name === "noise_seed") && typeof w.value === "number") {
-        return Math.floor(w.value);
+        map[String(n.id)] = Math.floor(w.value);
       }
     }
   }
-  return 0;
+  return map;
 }
 
 function imageWired(node) {
@@ -66,7 +70,7 @@ function toast(summary, detail, severity = "warn") {
   console.warn(`[Pixaroma.XYPlot] ${summary}: ${detail}`);
 }
 
-function pixConfirmSimple(message) {
+function pixConfirmSimple(message, onOpen) {
   return new Promise((resolve) => {
     const back = document.createElement("div");
     back.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;";
@@ -93,6 +97,9 @@ function pixConfirmSimple(message) {
     back.addEventListener("mousedown", (e) => { if (e.target === back) done(false); });
     row.appendChild(cancel); row.appendChild(ok);
     box.appendChild(row); back.appendChild(box); document.body.appendChild(back);
+    // Let the caller force-dismiss (e.g. node deleted while dialog is open) so
+    // the keydown listener can't leak.
+    if (onOpen) { try { onOpen(() => done(false)); } catch (_e) {} }
   });
 }
 
@@ -101,6 +108,7 @@ function pixConfirmSimple(message) {
 // Grow-only: used while editing controls, so a manual resize-bigger sticks.
 function growNode(node, root) {
   requestAnimationFrame(() => {
+    if (!node._pixXyRoot) return;   // node removed between schedule and run
     const desired = measureContentHeight(root) + CHROME;
     if (desired > node.size[1]) {
       node.size[1] = desired;
@@ -116,6 +124,7 @@ function growNode(node, root) {
 // can't trip the dirty-on-load tracker (Vue Compat #18).
 function fitNode(node, root) {
   requestAnimationFrame(() => {
+    if (!node._pixXyRoot) return;   // node removed between schedule and run
     // Use ComfyUI's own computeSize() for the height target - it accounts for
     // the title bar + slots + the widget's getMinHeight, so it matches what the
     // layout actually wants. (A hand-rolled measureContentHeight + fixed chrome
@@ -229,11 +238,16 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       try { closePopup(); } catch (_e) {}
+      try { this._pixXyCancelConfirm?.(); } catch (_e) {}
       this._pixXyRoot = null;
       this._pixXyRerender = null;
       this._pixXyRenderOnly = null;
       this._pixXyGrid = null;
       this._pixXyRun = null;
+      this._pixXyRunning = false;
+      this._pixXyFit = null;
+      this._pixXyLastGrid = null;
+      this._pixXyGridDims = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
   },
@@ -241,10 +255,24 @@ app.registerExtension({
 
 // ── value injection hook (Pattern #9) ────────────────────────────────────────
 
+// Find a node's entry in the serialized prompt. Top-level nodes are keyed by
+// their plain id; nodes inside a subgraph are keyed "<subgraphId>:<nodeId>", so
+// fall back to matching on the tail id (otherwise targets in a subgraph never
+// get injected and every cell comes out identical).
+function findPromptEntry(out, nodeId) {
+  const want = String(nodeId);
+  const direct = out[want];
+  if (direct) return direct;
+  for (const k of Object.keys(out)) {
+    if (String(k).split(":").pop() === want) return out[k];
+  }
+  return null;
+}
+
 function injectAxis(out, axis, value) {
   if (!axis || axis.nodeId == null || !axis.widgetName) return;
   if (value === undefined || value === null) return;
-  const te = out[String(axis.nodeId)];
+  const te = findPromptEntry(out, axis.nodeId);
   if (!te || !te.inputs) return;
   const cur = te.inputs[axis.widgetName];
   if (axis.widgetType === "text" && axis.mode === "sr") {
@@ -257,7 +285,10 @@ function injectAxis(out, axis, value) {
         console.warn(`[Pixaroma.XYPlot] Find & replace: "${find}" not found in the target's text - cells won't differ. Check you picked the right node (the picker shows each setting's current value).`);
       }
       te.inputs[axis.widgetName] = cur.split(find).join(String(value));
-    } else if (typeof cur !== "object") {
+    } else if (typeof cur === "object" && cur !== null) {
+      // The target's text is wired from another node - find & replace can't run.
+      console.warn("[Pixaroma.XYPlot] Find & replace target is a wired input; the text comes from another node so it can't be replaced. Pick a node whose text is typed in directly.");
+    } else {
       te.inputs[axis.widgetName] = String(value);
     }
     return;
@@ -267,14 +298,19 @@ function injectAxis(out, axis, value) {
   te.inputs[axis.widgetName] = value;
 }
 
-function applySeedLock(out, seedValue) {
-  if (seedValue == null) return;
+// Pin every seed/noise_seed to the value captured for THAT node (keeps each
+// sampler's seed constant across cells without forcing them all equal).
+function applySeedLock(out, seedMap) {
+  if (!seedMap) return;
   for (const k of Object.keys(out)) {
     const e = out[k];
     if (!e || !e.inputs) continue;
+    const tail = String(k).split(":").pop();
+    const v = (seedMap[tail] != null) ? seedMap[tail] : seedMap[k];
+    if (v == null) continue;
     for (const sname of ["seed", "noise_seed"]) {
       if (sname in e.inputs && typeof e.inputs[sname] !== "object") {
-        e.inputs[sname] = seedValue;
+        e.inputs[sname] = v;
       }
     }
   }
@@ -308,7 +344,7 @@ app.graphToPrompt = async function (...args) {
         entry.inputs.XYPlotState = JSON.stringify(payload);
         injectAxis(out, state.x, run.xValue);
         injectAxis(out, state.y, run.yValue);
-        if (run.lockSeed) applySeedLock(out, run.lockSeedValue);
+        if (run.lockSeed) applySeedLock(out, run.seedMap);
       }
     }
   } catch (err) {
@@ -330,7 +366,14 @@ function findFirstXyNode() {
     if (!n) return false;
     const isClass = n.comfyClass === NODE || n.type === NODE;
     if (!isClass || !isXyActive(n)) return false;
-    return computeCounts(readState(n)).hasPlot;
+    // Must actually participate in THIS run: have a plot configured, have its
+    // image input wired (no image = nothing to plot), and not feed only an
+    // inactive Switch branch. An orphaned/unwired XY node must fall through to
+    // a normal run, NOT hijack or block it (mirrors Prompt Multi/Pack).
+    if (!imageWired(n)) return false;
+    if (!computeCounts(readState(n)).hasPlot) return false;
+    if (feedsOnlyInactiveSwitch(n)) return false;
+    return true;
   };
   const top = graph._nodes || graph.nodes || [];
   for (const n of top) if (consider(n)) return n;
@@ -350,59 +393,67 @@ app.queuePrompt = async function (...args) {
   if (isQueueLoopActive()) return _origQueuePrompt.apply(app, args);
 
   const node = findFirstXyNode();
-  if (!node) return _origQueuePrompt.apply(app, args);   // no plot → normal run
+  if (!node) return _origQueuePrompt.apply(app, args);   // no participating plot → normal run
 
-  if (!imageWired(node)) {
-    toast("XY Plot", "Wire your workflow's image into the XY Plot node before running a plot.");
-    return;
-  }
+  // Re-entrancy guard: a second Run while the >25 confirm is open (or mid-loop)
+  // must not start a parallel plot. The shared lock only covers the loop itself;
+  // this covers the await-confirm window too.
+  if (node._pixXyRunning) return;
+  node._pixXyRunning = true;
+  try {
+    const state = readState(node);
+    const xValues = axisReady(state.x) ? resolveAxisValues(state.x) : [];
+    const yValues = axisReady(state.y) ? resolveAxisValues(state.y) : [];
+    const xs = xValues.length ? xValues : [undefined];
+    const ys = yValues.length ? yValues : [undefined];
+    const cols = xs.length, rows = ys.length, total = cols * rows;
 
-  const state = readState(node);
-  const xValues = axisReady(state.x) ? resolveAxisValues(state.x) : [];
-  const yValues = axisReady(state.y) ? resolveAxisValues(state.y) : [];
-  const xs = xValues.length ? xValues : [undefined];
-  const ys = yValues.length ? yValues : [undefined];
-  const cols = xs.length, rows = ys.length, total = cols * rows;
+    if (total > 25) {
+      const ok = await pixConfirmSimple(
+        `This will run your workflow <b>${total}</b> times (${cols} × ${rows}). That can take a while. Continue?`,
+        (cancel) => { node._pixXyCancelConfirm = cancel; },
+      );
+      node._pixXyCancelConfirm = null;
+      if (!ok) return;
+    }
 
-  if (total > 25) {
-    const ok = await pixConfirmSimple(`This will run your workflow <b>${total}</b> times (${cols} × ${rows}). That can take a while. Continue?`);
-    if (!ok) return;
-  }
+    const seedTargeted = isSeedAxis(state.x) || isSeedAxis(state.y);
+    const lockSeed = state.lockSeed !== false && !seedTargeted;
+    const seedMap = lockSeed ? captureSeedMap(node) : null;
 
-  const seedTargeted = isSeedAxis(state.x) || isSeedAxis(state.y);
-  const lockSeed = state.lockSeed !== false && !seedTargeted;
-  const lockSeedValue = lockSeed ? captureSeedValue(node) : null;
+    const sessionId = "xy_" + Date.now() + "_" + (_sessionCounter++);
+    const xLabels = xValues.map(String);
+    const yLabels = yValues.map(String);
+    const xName = (axisReady(state.x) && state.x.widgetName) || "";
+    const yName = (axisReady(state.y) && state.y.widgetName) || "";
 
-  const sessionId = "xy_" + Date.now() + "_" + (_sessionCounter++);
-  const xLabels = xValues.map(String);
-  const yLabels = yValues.map(String);
-  const xName = (axisReady(state.x) && state.x.widgetName) || "";
-  const yName = (axisReady(state.y) && state.y.widgetName) || "";
-
-  return runQueueLoop(async () => {
-    let last;
-    try {
-      for (let yi = 0; yi < rows; yi++) {
-        for (let xi = 0; xi < cols; xi++) {
-          node._pixXyRun = {
-            sessionId, xi, yi, cols, rows,
-            xValue: xs[xi], yValue: ys[yi],
-            xLabels, yLabels, xName, yName,
-            lockSeed, lockSeedValue,
-          };
-          try {
-            const a = args.slice(); a[1] = 1;   // batchCount=1, keep number + queueNodeIds
-            last = await _origQueuePrompt.apply(app, a);
-          } catch (err) {
-            console.error("Pixaroma.XYPlot: cell enqueue failed", err);
+    return await runQueueLoop(async () => {
+      let last;
+      try {
+        for (let yi = 0; yi < rows; yi++) {
+          for (let xi = 0; xi < cols; xi++) {
+            node._pixXyRun = {
+              sessionId, xi, yi, cols, rows,
+              xValue: xs[xi], yValue: ys[yi],
+              xLabels, yLabels, xName, yName,
+              lockSeed, seedMap,
+            };
+            try {
+              const a = args.slice(); a[1] = 1;   // batchCount=1, keep number + queueNodeIds
+              last = await _origQueuePrompt.apply(app, a);
+            } catch (err) {
+              console.error("Pixaroma.XYPlot: cell enqueue failed", err);
+            }
           }
         }
+      } finally {
+        node._pixXyRun = null;   // never leak the cursor into a later normal run
       }
-    } finally {
-      node._pixXyRun = null;   // never leak the cursor into a later normal run
-    }
-    return last;
-  });
+      return last;
+    });
+  } finally {
+    node._pixXyRunning = false;
+  }
 };
 
 // ── grid delivery (executed event) ────────────────────────────────────────────

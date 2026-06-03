@@ -961,15 +961,17 @@ async def api_xy_plot_save(request):
     except Exception:
         return web.json_response({"error": "invalid JSON"}, status=400)
 
-    grid_filename = data.get("grid_filename") or ""
+    grid_filename = data.get("grid_filename")
+    if not isinstance(grid_filename, str) or not grid_filename:
+        return web.json_response({"error": "missing grid_filename"}, status=400)
     session_id = data.get("session_id")
-    save_cells = bool(data.get("save_cells"))
+    save_cells = data.get("save_cells") is True
     workflow = data.get("workflow")
     prompt = data.get("prompt")
     prefix = _safe_prefix(data.get("filename_prefix", "xy_plot")) or "xy_plot"
 
     temp_dir = folder_paths.get_temp_directory()
-    safe_name = os.path.basename(str(grid_filename))
+    safe_name = os.path.basename(grid_filename)
     grid_path = os.path.join(temp_dir, safe_name)
     if not safe_name or not os.path.isfile(grid_path) or not _is_path_under(grid_path, temp_dir):
         return web.json_response({"error": "grid image not found - re-run the plot, then Save"}, status=400)
@@ -991,20 +993,25 @@ async def api_xy_plot_save(request):
         return web.json_response({"error": f"save failed: {e}"}, status=500)
 
     saved_cells = 0
-    if save_cells and session_id:
+    # Only attempt cells when explicitly requested AND the session id is a valid,
+    # bounded token (it keys an in-memory dict; reject oversized/odd input).
+    valid_sid = isinstance(session_id, str) and bool(_SAFE_ID_RE.match(session_id)) and len(session_id) <= _MAX_ID_LEN
+    if save_cells and valid_sid:
         try:
             from .nodes.node_xy_plot import get_session
             sess = get_session(session_id)
             if sess and isinstance(sess.get("cells"), dict):
                 cells_folder = os.path.join(full_folder, f"{name}_cells")
-                os.makedirs(cells_folder, exist_ok=True)
-                for (xi, yi), cell in sess["cells"].items():
-                    cell_name = f"{name}_x{xi}_y{yi}.png"
-                    try:
-                        cell.convert("RGB").save(os.path.join(cells_folder, cell_name), "PNG")
-                        saved_cells += 1
-                    except Exception:
-                        pass
+                # Defense-in-depth: never write the cells subfolder outside output/.
+                if _is_path_under(cells_folder, output_dir) or _is_path_under(os.path.dirname(cells_folder), output_dir):
+                    os.makedirs(cells_folder, exist_ok=True)
+                    for (xi, yi), cell in list(sess["cells"].items()):
+                        cell_name = f"{name}_x{xi}_y{yi}.png"
+                        try:
+                            cell.convert("RGB").save(os.path.join(cells_folder, cell_name), "PNG")
+                            saved_cells += 1
+                        except Exception:
+                            pass
         except Exception as e:
             print(f"[Pixaroma] XY Plot: save cells failed: {e}")
 
@@ -1031,8 +1038,10 @@ async def api_xy_plot_restyle(request):
         return web.json_response({"error": "invalid JSON"}, status=400)
     session_id = data.get("session_id")
     theme = data.get("theme") or "dark"
-    if not session_id:
-        return web.json_response({"error": "no session"}, status=400)
+    if not isinstance(session_id, str) or not _SAFE_ID_RE.match(session_id) or len(session_id) > _MAX_ID_LEN:
+        return web.json_response({"error": "invalid session id"}, status=400)
+    if theme not in ("dark", "light", "mono"):
+        return web.json_response({"error": "invalid theme"}, status=400)
     try:
         from .nodes.node_xy_plot import restyle_session
         name = restyle_session(session_id, theme)
