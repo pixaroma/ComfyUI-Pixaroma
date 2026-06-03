@@ -941,6 +941,81 @@ async def api_preview_prepare(request):
     })
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/xy_plot/save")
+async def api_xy_plot_save(request):
+    """Save an XY Plot grid (already written to temp/ during the plot) to
+    output/ with embedded workflow metadata. Optionally also write each
+    individual cell into a <name>_cells/ subfolder.
+
+    Request JSON: {
+        grid_filename:   temp PNG filename of the assembled grid (required),
+        session_id:      plot session id (only needed for save_cells),
+        filename_prefix: output stem (default "xy_plot"),
+        save_cells:      bool - also write each cell image,
+        workflow/prompt: optional metadata to embed in the grid PNG,
+    }
+    Response JSON: { status, filename, subfolder, saved_cells } or { error }.
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    grid_filename = data.get("grid_filename") or ""
+    session_id = data.get("session_id")
+    save_cells = bool(data.get("save_cells"))
+    workflow = data.get("workflow")
+    prompt = data.get("prompt")
+    prefix = _safe_prefix(data.get("filename_prefix", "xy_plot")) or "xy_plot"
+
+    temp_dir = folder_paths.get_temp_directory()
+    safe_name = os.path.basename(str(grid_filename))
+    grid_path = os.path.join(temp_dir, safe_name)
+    if not safe_name or not os.path.isfile(grid_path) or not _is_path_under(grid_path, temp_dir):
+        return web.json_response({"error": "grid image not found - re-run the plot, then Save"}, status=400)
+    try:
+        grid_pil = Image.open(grid_path).convert("RGB")
+    except Exception as e:
+        return web.json_response({"error": f"could not read grid: {e}"}, status=500)
+
+    try:
+        output_dir = folder_paths.get_output_directory()
+        full_folder, name, counter, subfolder, _ = folder_paths.get_save_image_path(
+            prefix, output_dir, grid_pil.width, grid_pil.height
+        )
+        os.makedirs(full_folder, exist_ok=True)
+        fname = f"{name}_{counter:05}_.png"
+        pnginfo = _build_pnginfo(prompt=prompt, workflow=workflow)
+        grid_pil.save(os.path.join(full_folder, fname), "PNG", pnginfo=pnginfo)
+    except Exception as e:
+        return web.json_response({"error": f"save failed: {e}"}, status=500)
+
+    saved_cells = 0
+    if save_cells and session_id:
+        try:
+            from .nodes.node_xy_plot import get_session
+            sess = get_session(session_id)
+            if sess and isinstance(sess.get("cells"), dict):
+                cells_folder = os.path.join(full_folder, f"{name}_cells")
+                os.makedirs(cells_folder, exist_ok=True)
+                for (xi, yi), cell in sess["cells"].items():
+                    cell_name = f"{name}_x{xi}_y{yi}.png"
+                    try:
+                        cell.convert("RGB").save(os.path.join(cells_folder, cell_name), "PNG")
+                        saved_cells += 1
+                    except Exception:
+                        pass
+        except Exception as e:
+            print(f"[Pixaroma] XY Plot: save cells failed: {e}")
+
+    return web.json_response({
+        "status": "success",
+        "filename": fname,
+        "subfolder": subfolder,
+        "saved_cells": saved_cells,
+    })
+
+
 def _is_path_under(child: str, *parents: str) -> bool:
     """Return True iff `child` is inside ANY of the given parent directories.
 

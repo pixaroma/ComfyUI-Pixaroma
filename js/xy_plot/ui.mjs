@@ -1,0 +1,453 @@
+// XY Plot Pixaroma - node-body DOM: axis cards, target dropdown, adaptive
+// value entry, counter, option toggles. All CSS is `.pix-xy-*` scoped.
+//
+// Render model (mirrors Load Image Pattern #5): picker/mode changes do a full
+// rebuild (handlers.rerender), but typing into value fields only updates state
+// + refreshes the counter/preview in place (no rebuild) so input focus is kept.
+
+import {
+  readState, writeState,
+  enumerateTargets, lookupWidgetMeta,
+  resolveAxisValues, computeCounts, axisReady,
+} from "./core.mjs";
+
+const BRAND = "#f66744";
+
+let _cssInjected = false;
+export function injectCSS() {
+  if (_cssInjected) return;
+  _cssInjected = true;
+  const css = `
+.pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 9px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
+.pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
+.pix-xy-axis-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
+.pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
+.pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
+.pix-xy-row{display:flex;align-items:center;gap:7px;}
+/* custom dropdown (value + ▼ + ◀▶), Pixaroma convention - never native <select> */
+.pix-xy-combo{flex:1;display:flex;align-items:center;gap:8px;min-width:0;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 9px;font-size:12.5px;cursor:pointer;}
+.pix-xy-combo:hover{border-color:${BRAND};}
+.pix-xy-combo .pix-xy-val{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pix-xy-combo .pix-xy-val .pix-xy-node{color:${BRAND};font-weight:600;}
+.pix-xy-combo .pix-xy-val.placeholder{color:#777;}
+.pix-xy-combo .pix-xy-car{color:#9a9a9a;font-size:10px;flex:0 0 auto;}
+.pix-xy-nav{width:22px;height:30px;flex:0 0 auto;display:grid;place-items:center;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;color:${BRAND};font-size:11px;cursor:pointer;}
+.pix-xy-nav:hover{border-color:${BRAND};}
+.pix-xy-nav.disabled{opacity:.35;cursor:default;}
+/* popup */
+.pix-xy-popup{position:fixed;z-index:99999;background:#1d1d1d;border:1px solid rgba(255,255,255,.18);border-radius:7px;box-shadow:0 10px 30px rgba(0,0,0,.6);max-height:340px;overflow:auto;padding:5px;min-width:220px;}
+.pix-xy-pop-section{font-size:10px;color:${BRAND};font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:7px 8px 3px;}
+.pix-xy-pop-item{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:4px;font-size:12.5px;cursor:pointer;}
+.pix-xy-pop-item:hover{background:#2a2a2a;}
+.pix-xy-pop-item.sel{background:rgba(246,103,68,.18);}
+.pix-xy-pop-item .pix-xy-wname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pix-xy-pop-item .pix-xy-wtype{font-size:10px;color:#888;flex:0 0 auto;}
+.pix-xy-empty{padding:10px;color:#888;font-size:12px;text-align:center;}
+/* value area */
+.pix-xy-valuearea{margin-top:9px;}
+.pix-xy-seg{display:inline-flex;background:rgba(0,0,0,.3);border-radius:6px;padding:2px;gap:2px;margin-bottom:8px;}
+.pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
+.pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
+.pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
+.pix-xy-field{flex:1;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:4px 6px;min-width:0;}
+.pix-xy-field:focus-within{border-color:${BRAND};}
+.pix-xy-field .pix-xy-flbl{font-size:9px;color:${BRAND};text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:1px;}
+.pix-xy-field input{width:100%;background:transparent;border:none;outline:none;color:#e0e0e0;font-size:13px;padding:0;}
+.pix-xy-input{width:100%;box-sizing:border-box;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 8px;color:#e0e0e0;font:12px monospace;outline:none;}
+.pix-xy-input:focus{border-color:${BRAND};}
+textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
+.pix-xy-preview{font-size:11.5px;color:#9a9a9a;background:rgba(0,0,0,.25);border-radius:5px;padding:6px 8px;margin-top:6px;word-break:break-word;}
+.pix-xy-preview b{color:#8fd19e;font-weight:600;}
+.pix-xy-check{max-height:140px;overflow:auto;border:1px solid rgba(255,255,255,.14);border-radius:5px;background:#1d1d1d;}
+.pix-xy-check .pix-xy-item{display:flex;align-items:center;gap:8px;padding:5px 9px;font-size:12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.05);}
+.pix-xy-check .pix-xy-item:last-child{border-bottom:none;}
+.pix-xy-check .pix-xy-item:hover{background:#262626;}
+.pix-xy-box{width:14px;height:14px;flex:0 0 auto;border-radius:3px;border:1.5px solid rgba(255,255,255,.25);display:grid;place-items:center;font-size:10px;color:#fff;}
+.pix-xy-box.ck{background:${BRAND};border-color:${BRAND};}
+.pix-xy-count{font-size:11px;color:#9a9a9a;margin-top:5px;}
+/* counter chip + options */
+.pix-xy-counter{text-align:center;font-size:13px;font-weight:600;color:#fff;background:${BRAND};border-radius:6px;padding:7px;}
+.pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
+.pix-xy-opts{display:flex;gap:7px;flex-wrap:wrap;}
+.pix-xy-toggle{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#cfcfcf;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:5px 9px;cursor:pointer;user-select:none;}
+.pix-xy-toggle:hover{border-color:${BRAND};}
+.pix-xy-pill{width:30px;height:16px;flex:0 0 auto;border-radius:8px;background:#444;position:relative;transition:.15s;}
+.pix-xy-pill.on{background:${BRAND};}
+.pix-xy-pill .pix-xy-knob{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s;}
+.pix-xy-pill.on .pix-xy-knob{left:16px;}
+/* grid preview + buttons */
+.pix-xy-gridmount{display:flex;flex-direction:column;gap:8px;}
+.pix-xy-gridbox{border:1px solid rgba(255,255,255,.12);border-radius:6px;background:#161616;min-height:60px;display:flex;align-items:center;justify-content:center;overflow:hidden;}
+.pix-xy-gridimg{max-width:100%;display:block;}
+.pix-xy-gridhint{color:#777;font-size:12px;padding:14px;text-align:center;}
+.pix-xy-savebar{display:flex;gap:6px;}
+.pix-xy-sb{flex:1;text-align:center;font-size:11px;color:#e0e0e0;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 4px;cursor:pointer;user-select:none;}
+.pix-xy-sb:hover{background:${BRAND};border-color:${BRAND};color:#fff;}
+.pix-xy-sb.disabled{opacity:.4;cursor:default;}
+.pix-xy-sb.disabled:hover{background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.14);color:#e0e0e0;}
+`;
+  const tag = document.createElement("style");
+  tag.id = "pix-xy-css";
+  tag.textContent = css;
+  document.head.appendChild(tag);
+}
+
+export function measureContentHeight(root) {
+  if (!root) return 120;
+  let h = 0;
+  const kids = root.children;
+  for (let i = 0; i < kids.length; i++) {
+    const c = kids[i];
+    if (c && c.offsetHeight) h += c.offsetHeight;
+  }
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap || "0") || 0;
+  h += gap * Math.max(0, kids.length - 1);
+  h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  return h < 20 ? 280 : h;
+}
+
+export function buildRoot() {
+  const root = document.createElement("div");
+  root.className = "pix-xy-root";
+  root.innerHTML = `
+    <div class="pix-xy-axis" data-axis="x"></div>
+    <div class="pix-xy-axis" data-axis="y"></div>
+    <div class="pix-xy-counter-wrap"></div>
+    <div class="pix-xy-opts"></div>
+    <div class="pix-xy-gridmount"></div>`;
+  return root;
+}
+
+// ── small DOM helpers ──────────────────────────────────────────────────────
+
+function el(tag, cls, txt) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (txt != null) e.textContent = txt;
+  return e;
+}
+
+// Keydown isolation so ComfyUI / LiteGraph don't grab Arrow / Enter / Z etc.
+function isolate(input) {
+  input.addEventListener("keydown", (e) => e.stopImmediatePropagation());
+  input.addEventListener("pointerdown", (e) => e.stopPropagation());
+  return input;
+}
+
+function labeledField(label, value, oninput) {
+  const wrap = el("div", "pix-xy-field");
+  wrap.appendChild(el("span", "pix-xy-flbl", label));
+  const inp = isolate(el("input"));
+  inp.type = "text";
+  inp.value = value == null ? "" : String(value);
+  inp.addEventListener("input", () => oninput(inp.value));
+  wrap.appendChild(inp);
+  return wrap;
+}
+
+// ── target dropdown ─────────────────────────────────────────────────────────
+
+let _openPopup = null;
+function closePopup() {
+  if (_openPopup) { try { _openPopup._cleanup(); } catch (_e) {} _openPopup.remove(); _openPopup = null; }
+}
+
+function flatChoices(node) {
+  const out = [];
+  for (const t of enumerateTargets(node)) {
+    for (const w of t.widgets) out.push({ nodeId: t.nodeId, title: t.title, w });
+  }
+  return out;
+}
+
+function selectChoice(node, axisKey, choice, rerender) {
+  const state = readState(node);
+  const axis = state[axisKey];
+  const changed = axis.nodeId !== choice.nodeId || axis.widgetName !== choice.w.name;
+  axis.nodeId = choice.nodeId;
+  axis.widgetName = choice.w.name;
+  axis.widgetType = choice.w.type;
+  axis.step = choice.w.step || 1;
+  axis.options = choice.w.type === "combo" ? (choice.w.options || []) : [];
+  if (changed) {
+    // Reset entry to a sensible default for the new widget type.
+    axis.mode = choice.w.type === "number" ? "range" : (choice.w.type === "text" ? "fulllist" : null);
+    axis.raw = { start: "", end: "", steps: "", listText: "", checked: [], srFind: "", srReplace: "" };
+  }
+  writeState(node, state);
+  rerender();
+}
+
+function openPicker(node, axisKey, anchorEl, rerender) {
+  closePopup();
+  const state = readState(node);
+  const axis = state[axisKey];
+  const targets = enumerateTargets(node);
+  const popup = el("div", "pix-xy-popup");
+  if (!targets.length) {
+    popup.appendChild(el("div", "pix-xy-empty", "No other nodes with adjustable settings found. Add a node (e.g. KSampler) and wire your workflow first."));
+  } else {
+    for (const t of targets) {
+      popup.appendChild(el("div", "pix-xy-pop-section", t.title));
+      for (const w of t.widgets) {
+        const item = el("div", "pix-xy-pop-item");
+        if (axis.nodeId === t.nodeId && axis.widgetName === w.name) item.classList.add("sel");
+        item.appendChild(el("span", "pix-xy-wname", w.name));
+        item.appendChild(el("span", "pix-xy-wtype", w.type));
+        item.addEventListener("click", () => {
+          selectChoice(node, axisKey, { nodeId: t.nodeId, title: t.title, w }, rerender);
+          closePopup();
+        });
+        popup.appendChild(item);
+      }
+    }
+  }
+  document.body.appendChild(popup);
+  // position under the anchor, clamped to viewport
+  const r = anchorEl.getBoundingClientRect();
+  popup.style.left = Math.min(r.left, window.innerWidth - popup.offsetWidth - 8) + "px";
+  let top = r.bottom + 4;
+  if (top + popup.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - popup.offsetHeight - 4);
+  popup.style.top = top + "px";
+
+  const onDown = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
+  const onKey = (e) => { if (e.key === "Escape") closePopup(); };
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("wheel", onWheel, true);
+    document.addEventListener("keydown", onKey, true);
+  }, 0);
+  popup._cleanup = () => {
+    document.removeEventListener("mousedown", onDown, true);
+    document.removeEventListener("pointerdown", onDown, true);
+    document.removeEventListener("wheel", onWheel, true);
+    document.removeEventListener("keydown", onKey, true);
+  };
+  _openPopup = popup;
+}
+
+function renderPicker(node, axisKey, mountRow, rerender) {
+  const state = readState(node);
+  const axis = state[axisKey];
+  const choices = flatChoices(node);
+  const curIdx = choices.findIndex((c) => c.nodeId === axis.nodeId && c.w.name === axis.widgetName);
+
+  const combo = el("div", "pix-xy-combo");
+  const val = el("span", "pix-xy-val");
+  if (axis.nodeId != null && axis.widgetName) {
+    const title = choices[curIdx]?.title || ("Node " + axis.nodeId);
+    val.innerHTML = `<span class="pix-xy-node">${escapeHtml(title)}</span> · ${escapeHtml(axis.widgetName)}`;
+  } else {
+    val.classList.add("placeholder");
+    val.textContent = "Pick a setting…";
+  }
+  combo.appendChild(val);
+  combo.appendChild(el("span", "pix-xy-car", "▼"));
+  combo.addEventListener("click", () => openPicker(node, axisKey, combo, rerender));
+
+  const prev = el("div", "pix-xy-nav", "◀");
+  const next = el("div", "pix-xy-nav", "▶");
+  if (choices.length < 2) { prev.classList.add("disabled"); next.classList.add("disabled"); }
+  const step = (dir) => {
+    if (!choices.length) return;
+    let i = curIdx < 0 ? (dir > 0 ? 0 : choices.length - 1) : (curIdx + dir + choices.length) % choices.length;
+    selectChoice(node, axisKey, choices[i], rerender);
+  };
+  prev.addEventListener("click", () => step(-1));
+  next.addEventListener("click", () => step(1));
+
+  mountRow.appendChild(prev);
+  mountRow.appendChild(combo);
+  mountRow.appendChild(next);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+// ── value entry (adaptive) ───────────────────────────────────────────────────
+
+function previewText(axis) {
+  const vals = resolveAxisValues(axis);
+  if (!vals.length) return null;
+  const shown = vals.slice(0, 8).map((v) => String(v));
+  const more = vals.length > 8 ? ` … (+${vals.length - 8})` : "";
+  return { count: vals.length, text: shown.join(", ") + more };
+}
+
+function buildPreview(axis) {
+  const p = previewText(axis);
+  const box = el("div", "pix-xy-preview");
+  if (!p) { box.innerHTML = `<span style="color:#777">enter values…</span>`; return box; }
+  box.innerHTML = `→ <b>${escapeHtml(p.text)}</b> &nbsp;·&nbsp; ${p.count} value${p.count === 1 ? "" : "s"}`;
+  return box;
+}
+
+function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
+  mount.innerHTML = "";
+  const state = readState(node);
+  const axis = state[axisKey];
+  if (!axis.widgetType) {
+    mount.appendChild(el("div", "pix-xy-preview", "Pick a setting above to choose its values."));
+    return;
+  }
+  const save = () => writeState(node, state);
+  const refreshPreview = () => {
+    const old = mount.querySelector(".pix-xy-preview");
+    const fresh = buildPreview(axis);
+    if (old) old.replaceWith(fresh); else mount.appendChild(fresh);
+    refreshCounter();
+  };
+
+  if (axis.widgetType === "number") {
+    const seg = el("div", "pix-xy-seg");
+    const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
+    (axis.mode === "list" ? sList : sRange).classList.add("on");
+    sRange.addEventListener("click", () => { axis.mode = "range"; save(); rerender(); });
+    sList.addEventListener("click", () => { axis.mode = "list"; save(); rerender(); });
+    seg.appendChild(sRange); seg.appendChild(sList);
+    mount.appendChild(seg);
+
+    if (axis.mode === "list") {
+      const inp = isolate(el("input", "pix-xy-input"));
+      inp.type = "text";
+      inp.placeholder = "e.g.  4, 6, 8, 10   (or  4-10 (+2)  /  4-10 [4] )";
+      inp.value = axis.raw.listText || "";
+      inp.addEventListener("input", () => { axis.raw.listText = inp.value; save(); refreshPreview(); });
+      mount.appendChild(inp);
+    } else {
+      const rangeRow = el("div", "pix-xy-range");
+      rangeRow.appendChild(labeledField("Start", axis.raw.start, (v) => { axis.raw.start = v; save(); refreshPreview(); }));
+      rangeRow.appendChild(labeledField("End", axis.raw.end, (v) => { axis.raw.end = v; save(); refreshPreview(); }));
+      rangeRow.appendChild(labeledField("Steps", axis.raw.steps, (v) => { axis.raw.steps = v; save(); refreshPreview(); }));
+      mount.appendChild(rangeRow);
+    }
+    mount.appendChild(buildPreview(axis));
+
+  } else if (axis.widgetType === "combo") {
+    const meta = lookupWidgetMeta(node, axis);
+    const options = (meta && meta.options && meta.options.length) ? meta.options : (axis.options || []);
+    axis.options = options;
+    const checkedSet = new Set(axis.raw.checked || []);
+    const list = el("div", "pix-xy-check");
+    const countEl = el("div", "pix-xy-count");
+    const updateCount = () => { countEl.textContent = `${checkedSet.size} selected`; };
+    if (!options.length) {
+      list.appendChild(el("div", "pix-xy-empty", "This dropdown has no options to list."));
+    }
+    for (const opt of options) {
+      const item = el("div", "pix-xy-item");
+      const box = el("div", "pix-xy-box");
+      if (checkedSet.has(opt)) { box.classList.add("ck"); box.textContent = "✓"; }
+      item.appendChild(box);
+      item.appendChild(el("span", null, opt));
+      item.addEventListener("click", () => {
+        if (checkedSet.has(opt)) { checkedSet.delete(opt); box.classList.remove("ck"); box.textContent = ""; }
+        else { checkedSet.add(opt); box.classList.add("ck"); box.textContent = "✓"; }
+        // preserve displayed order
+        axis.raw.checked = options.filter((o) => checkedSet.has(o));
+        save(); updateCount(); refreshCounter();
+      });
+      list.appendChild(item);
+    }
+    mount.appendChild(list);
+    updateCount();
+    mount.appendChild(countEl);
+
+  } else if (axis.widgetType === "text") {
+    const seg = el("div", "pix-xy-seg");
+    const sFull = el("span", null, "Full list"); const sSr = el("span", null, "Find & replace");
+    (axis.mode === "sr" ? sSr : sFull).classList.add("on");
+    sFull.addEventListener("click", () => { axis.mode = "fulllist"; save(); rerender(); });
+    sSr.addEventListener("click", () => { axis.mode = "sr"; save(); rerender(); });
+    seg.appendChild(sFull); seg.appendChild(sSr);
+    mount.appendChild(seg);
+
+    if (axis.mode === "sr") {
+      const find = isolate(el("input", "pix-xy-input"));
+      find.type = "text"; find.placeholder = "Find (text already in the prompt), e.g.  an apple";
+      find.value = axis.raw.srFind || "";
+      find.style.marginBottom = "6px";
+      find.addEventListener("input", () => { axis.raw.srFind = find.value; save(); refreshPreview(); });
+      mount.appendChild(find);
+      const rep = isolate(el("textarea", "pix-xy-input"));
+      rep.placeholder = "Replace with (one per line):\na watermelon\na gun";
+      rep.value = axis.raw.srReplace || "";
+      rep.addEventListener("input", () => { axis.raw.srReplace = rep.value; save(); refreshPreview(); });
+      mount.appendChild(rep);
+    } else {
+      const ta = isolate(el("textarea", "pix-xy-input"));
+      ta.placeholder = "One full value per line";
+      ta.value = axis.raw.listText || "";
+      ta.addEventListener("input", () => { axis.raw.listText = ta.value; save(); refreshPreview(); });
+      mount.appendChild(ta);
+    }
+    mount.appendChild(buildPreview(axis));
+  }
+}
+
+// ── options toggles ──────────────────────────────────────────────────────────
+
+function buildToggle(label, on, onToggle) {
+  const t = el("div", "pix-xy-toggle");
+  const pill = el("div", "pix-xy-pill" + (on ? " on" : ""));
+  pill.appendChild(el("div", "pix-xy-knob"));
+  t.appendChild(pill);
+  t.appendChild(el("span", null, label));
+  t.addEventListener("click", () => {
+    const nowOn = !pill.classList.contains("on");
+    pill.classList.toggle("on", nowOn);
+    onToggle(nowOn);
+  });
+  return t;
+}
+
+// ── top-level render ─────────────────────────────────────────────────────────
+
+// handlers: { rerender(): full rebuild, growth(): re-measure node height }
+export function renderBody(node, root, handlers) {
+  const state = readState(node);
+
+  const refreshCounter = () => {
+    const wrap = root.querySelector(".pix-xy-counter-wrap");
+    if (!wrap) return;
+    const { cols, rows, total, hasPlot } = computeCounts(readState(node));
+    wrap.innerHTML = "";
+    const chip = el("div", "pix-xy-counter" + (hasPlot ? "" : " muted"));
+    chip.textContent = hasPlot
+      ? `→ ${total} image${total === 1 ? "" : "s"}  (${cols || 1} × ${rows || 1})`
+      : "Pick X and/or Y values to plot";
+    wrap.appendChild(chip);
+  };
+
+  for (const axisKey of ["x", "y"]) {
+    const card = root.querySelector(`.pix-xy-axis[data-axis="${axisKey}"]`);
+    card.innerHTML = "";
+    const head = el("div", "pix-xy-axis-head");
+    head.appendChild(el("span", "pix-xy-badge", axisKey.toUpperCase()));
+    head.appendChild(document.createTextNode(axisKey === "x" ? "across" : "down"));
+    head.appendChild(el("span", "pix-xy-axis-dir", axisKey === "x" ? "➡ columns" : "⬇ rows"));
+    card.appendChild(head);
+    const pickRow = el("div", "pix-xy-row");
+    card.appendChild(pickRow);
+    renderPicker(node, axisKey, pickRow, handlers.rerender);
+    const valueArea = el("div", "pix-xy-valuearea");
+    card.appendChild(valueArea);
+    renderValueArea(node, axisKey, valueArea, refreshCounter, handlers.rerender);
+  }
+
+  refreshCounter();
+
+  const opts = root.querySelector(".pix-xy-opts");
+  opts.innerHTML = "";
+  opts.appendChild(buildToggle("Lock seed", state.lockSeed !== false, (v) => { const s = readState(node); s.lockSeed = v; writeState(node, s); }));
+  opts.appendChild(buildToggle("Draw labels", state.drawLabels !== false, (v) => { const s = readState(node); s.drawLabels = v; writeState(node, s); }));
+  opts.appendChild(buildToggle("Save cells", state.saveCells === true, (v) => { const s = readState(node); s.saveCells = v; writeState(node, s); }));
+
+  if (handlers.growth) handlers.growth();
+}
+
+export { closePopup };
