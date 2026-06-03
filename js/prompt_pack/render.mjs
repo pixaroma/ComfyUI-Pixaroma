@@ -29,7 +29,11 @@ export function injectCSS() {
       gap: 6px;
       padding: 6px;
       width: 100%;
-      height: 100%;
+      /* NO height:100% - it collapses to 0 under the Nodes 2.0 resize-floor
+         measurement and lets the bottom button row spill outside the node when
+         squished. The .pix-pp-tawrap min-height:100px gives the root a real
+         natural floor instead. The host wrapper still flex:1-fills the body in
+         Nodes 2.0, and legacy sizes the element, so the textarea still fills. */
       box-sizing: border-box;
       color: #e0e0e0;
       font: 12px sans-serif;

@@ -24,14 +24,15 @@ const CSS = `
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
-  /* Fill the DOM-widget area so the preview can grow with the node
-     (Show Text fill pattern). The toggles/rows/actions keep natural
-     height (flex:0 0 auto); only the preview flexes to fill the rest.
-     min-height is set in JS to the content height (applyRootMinHeight):
-     the Nodes 2.0 resize floor is a live measurement of the COLLAPSED
-     node, so without a real min-height the root collapses below its
-     content and the user can drag the node small enough to overflow. */
-  height: 100%;
+  /* NO height:100% and NO min-height here - deliberate (the Prompt Reader
+     pattern). In Nodes 2.0 the host wrapper gives this root flex:1, so it
+     still fills the node body and the preview grows with the node; in
+     legacy ComfyUI sizes the widget element. Crucially the root's natural
+     flex min-content height (the fixed rows + the preview's real
+     min-height) is what the Nodes 2.0 resize floor measures (it collapses
+     the node to --node-height:0 and reads the content height), so the node
+     can't be dragged small enough to overflow - no JS needed. A height:100%
+     here would collapse to 0 under that measurement and break the floor. */
 }
 
 /* ---- global toggle pills ---- */
@@ -195,7 +196,10 @@ const CSS = `
   border-top: 1px solid #3a3a3a;
   padding-top: 8px;
   flex: 1 1 0;
-  min-height: 0;
+  /* A REAL min-height (not 0): this is the flex area, so its min-height is
+     what stops the root collapsing below its content under the Nodes 2.0
+     resize floor measurement. It still grows to fill extra node height. */
+  min-height: 100px;
   display: flex;
   flex-direction: column;
 }
@@ -289,7 +293,10 @@ export function measureMinHeight(root) {
   if (count > 1) h += gap * (count - 1);
   h += parseFloat(cs.paddingTop) || 0;
   h += parseFloat(cs.paddingBottom) || 0;
-  return Math.max(180, h);
+  // Round to a 4px grid so sub-pixel/font jitter can't creep node.size bigger
+  // on every workflow switch (getMinHeight/computeLayoutSize feed Nodes 2.0
+  // grow-to-content, which is grow-only and accumulates - Vue Compat #18).
+  return Math.max(180, Math.round(h / 4) * 4);
 }
 
 const TOGGLE_DEFS = [

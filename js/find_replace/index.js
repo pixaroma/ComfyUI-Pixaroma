@@ -19,8 +19,7 @@ import {
   measureMinHeight,
 } from "./render.mjs";
 import { pixConfirm } from "./interaction.mjs";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
-import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 const DEFAULT_W = 380;
 const DEFAULT_H = 320;
@@ -45,23 +44,10 @@ function setNodeHeight(node, h) {
 }
 
 // Grow the node so the fixed parts (toggles + rules + actions) plus a minimum
-// preview always fit. Grows only - the preview flexes to fill any extra
-// height, so freed space (e.g. a textarea shrinking) goes to the preview, not
-// to a dead gap.
-// Pin a hard CSS min-height on the widget root = the content floor. This is the
-// thing the Nodes 2.0 resize honors as a drag floor: it measures the node's
-// COLLAPSED height (temporarily sets --node-height:0) and clamps the drag to it.
-// A flex root with no min-height collapses below its content, so the measured
-// floor is too small and the user can drag the node small enough to overflow.
-// Setting min-height to the real content height makes that measurement = the
-// true floor. Re-applied on every content change. A style change (not node.size)
-// so it never dirties the saved workflow; legacy ignores it (uses getMinHeight).
-function applyRootMinHeight(node) {
-  const root = node._pixFrRoot;
-  if (!root) return;
-  root.style.minHeight = measureMinHeight(root) + "px";
-}
-
+// preview always fit. Grows only, and ONLY on user actions (add/delete/reset/
+// execute) - never on the load path. The squish FLOOR is handled purely in CSS
+// now (the root's natural min-content height; see render.mjs), so there is no
+// ResizeObserver / root.style.minHeight machinery to fight the layout or Align.
 function ensureMinHeight(node) {
   const root = node._pixFrRoot;
   if (!root) return;
@@ -80,38 +66,10 @@ function fitToDefault(node) {
   setNodeHeight(node, Math.max(measureMinHeight(root) + CHROME, DEFAULT_H));
 }
 
-// Nodes 2.0 does NOT honor computeLayoutSize.minHeight as a hard floor: when the
-// user drags the node smaller the grid cell (items-stretch) just shrinks to the
-// node body height and the content overflows below the frame (verified: cell H
-// 173 while computeLayoutSize.minHeight was 264). So watch the widget root and,
-// whenever it gets shorter than the content needs, grow the node back up - a
-// reactive min-height clamp. ResizeObserver is the reliable resize signal in
-// Nodes 2.0 (Vue Compat #13). Legacy enforces the floor via getMinHeight, so
-// this only acts in Nodes 2.0. Gated on !isGraphLoading() so it never resizes
-// (and dirties) a workflow during load.
-function installMinHeightGuard(node, root) {
-  try {
-    const ro = new ResizeObserver(() => {
-      if (!root.isConnected || !isVueNodes() || isGraphLoading()) return;
-      const need = measureMinHeight(root);
-      const have = root.clientHeight;
-      if (have > 0 && have < need - 1) {
-        setNodeHeight(node, node.size[1] + (need - have));
-        node.setDirtyCanvas(true, true);
-      }
-    });
-    ro.observe(root);
-    return ro;
-  } catch (_e) {
-    return null;
-  }
-}
-
 function makeHandlers(node, root) {
   const rerender = () => {
     renderAll(node, root, handlers);
     requestAnimationFrame(() => {
-      applyRootMinHeight(node);
       ensureMinHeight(node);
       node.setDirtyCanvas(true, true);
     });
@@ -180,7 +138,7 @@ app.registerExtension({
         node._pixFrRenderOnly = () => renderAll(node, root, handlers);
         node._pixFrRefreshPreview = () => renderPreview(node, root);
         node._pixFrRefreshReset = () => refreshResetState(node, root);
-        node._pixFrGrow = () => { applyRootMinHeight(node); ensureMinHeight(node); node.setDirtyCanvas(true, true); };
+        node._pixFrGrow = () => { ensureMinHeight(node); node.setDirtyCanvas(true, true); };
 
         const widget = node.addDOMWidget("findreplace", "pixaroma_find_replace", root, {
           serialize: false,
@@ -196,33 +154,33 @@ app.registerExtension({
         widget.computeLayoutSize = () => ({ minHeight: measureMinHeight(root), minWidth: 1 });
 
         node._pixFrRenderOnly();
-        requestAnimationFrame(() => applyRootMinHeight(node));
 
-        // Open at a comfortable default size on fresh placement. Route through
-        // setSize so the height actually sticks in Nodes 2.0 (a bare
-        // node.size[1] write is reverted there). configure() runs before this
-        // microtask for loaded workflows, so a saved (>= default) size wins and
-        // setSize is skipped.
-        const w = Math.max(node.size[0], DEFAULT_W);
-        const h = Math.max(node.size[1], DEFAULT_H);
-        if (w !== node.size[0] || h !== node.size[1]) {
-          node.size[0] = w;
-          node.size[1] = h;
-          node.setSize?.([w, h]);
+        // Open at a comfortable default size on FRESH placement only. onConfigure
+        // sets _pixFrConfigured for a loaded workflow (it runs before this
+        // microtask), so a saved size - even one the user shrank below DEFAULT -
+        // is kept as-is and does NOT jump back to default on a workflow switch.
+        if (!node._pixFrConfigured) {
+          const w = Math.max(node.size[0], DEFAULT_W);
+          const h = Math.max(node.size[1], DEFAULT_H);
+          if (w !== node.size[0] || h !== node.size[1]) {
+            node.size[0] = w;
+            node.size[1] = h;
+            node.setSize?.([w, h]);
+          }
         }
-
-        node._pixFrRO = installMinHeightGuard(node, root);
         node.setDirtyCanvas(true, true);
       });
     };
 
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
+      // Mark this node as loaded-from-a-workflow so the onNodeCreated microtask
+      // keeps the saved size instead of forcing DEFAULT_H. DOM-only render, no
+      // size write - the load path must not touch node.size (Vue Compat #18).
+      this._pixFrConfigured = true;
       const r = origConfigure ? origConfigure.apply(this, arguments) : undefined;
       restoreFromProperties(this);
       if (this._pixFrRenderOnly) this._pixFrRenderOnly();
-      const self = this;
-      if (self._pixFrRoot) requestAnimationFrame(() => applyRootMinHeight(self));
       return r;
     };
 
@@ -238,7 +196,6 @@ app.registerExtension({
           setPreviewInput(this, data.input, !!data.truncated);
           if (this._pixFrRefreshPreview) this._pixFrRefreshPreview();
           requestAnimationFrame(() => {
-            applyRootMinHeight(this);
             ensureMinHeight(this);
             this.setDirtyCanvas(true, true);
           });
@@ -267,8 +224,6 @@ app.registerExtension({
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
-      this._pixFrRO?.disconnect();
-      this._pixFrRO = null;
       this._pixFrRoot = null;
       this._pixFrRerender = null;
       this._pixFrRenderOnly = null;
