@@ -149,6 +149,19 @@ export function enumerateTargets(xyNode) {
   return out;
 }
 
+// Live one-line preview of the CURRENT value of the widget an axis points at,
+// so the node body can show "now: watermark, text" and a wrong-node pick (two
+// same-titled CLIP Text Encode nodes) is obvious without opening the picker.
+export function currentValuePreview(node, axis) {
+  if (!axis || axis.nodeId == null || !axis.widgetName) return "";
+  const graph = node?.graph || app.graph;
+  const target = graph?.getNodeById?.(axis.nodeId);
+  const w = target?.widgets?.find((x) => x && x.name === axis.widgetName);
+  if (!w || w.value == null) return "";
+  const v = String(w.value).replace(/\s+/g, " ").trim();
+  return v.length > 48 ? v.slice(0, 48) + "…" : v;
+}
+
 // Look up a fresh classification for an axis's currently-picked widget (so the
 // editor can rebuild combo option lists, number steps, etc. after reload).
 export function lookupWidgetMeta(node, axis) {

@@ -7,7 +7,7 @@
 
 import {
   readState, writeState,
-  enumerateTargets, lookupWidgetMeta,
+  enumerateTargets, lookupWidgetMeta, currentValuePreview,
   resolveAxisValues, computeCounts, axisReady,
 } from "./core.mjs";
 
@@ -24,6 +24,7 @@ export function injectCSS() {
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
 .pix-xy-row{display:flex;align-items:center;gap:7px;}
+.pix-xy-curhint{font-size:10.5px;color:#8a8a8a;font-style:italic;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* custom dropdown (value + ▼ + ◀▶), Pixaroma convention - never native <select> */
 .pix-xy-combo{flex:1;display:flex;align-items:center;gap:8px;min-width:0;background:#1d1d1d;border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:6px 9px;font-size:12.5px;cursor:pointer;}
 .pix-xy-combo:hover{border-color:${BRAND};}
@@ -489,6 +490,14 @@ export function renderBody(node, root, handlers) {
     const pickRow = el("div", "pix-xy-row");
     card.appendChild(pickRow);
     renderPicker(node, axisKey, pickRow, handlers.rerender);
+    // "now: <value>" line so the user sees which setting this axis really
+    // points at (e.g. the negative 'watermark, text' vs the positive prompt).
+    const curp = currentValuePreview(node, state[axisKey]);
+    if (curp) {
+      const hint = el("div", "pix-xy-curhint", "now: " + curp);
+      hint.title = "Current value of the setting this axis points at. If it's not the one you meant, re-pick above.";
+      card.appendChild(hint);
+    }
     const valueArea = el("div", "pix-xy-valuearea");
     card.appendChild(valueArea);
     renderValueArea(node, axisKey, valueArea, refreshCounter, handlers.rerender);
