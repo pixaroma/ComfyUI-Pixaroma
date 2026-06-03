@@ -51,6 +51,9 @@ Audio-reactive image-to-video. **No extra models needed**, just an image and an 
 ![AudioReact Node](workflows/AudioReact%20Workflow.jpg?v=2)
 ![AudioReact Editor](workflows/AudioReact%20Workflow%20v2.jpg?v=2)
 
+### 📊 XY Plot Pixaroma
+Compare settings side by side without setting anything up. Drop it at the end of your workflow and wire your final image in, just like a preview node. Then pick what changes **across** (columns) and **down** (rows) from a dropdown of the nodes already in your graph - no extra wiring. The value box adapts to your pick: a number gives a Start/End/Steps range, a dropdown (sampler, model, scheduler) gives a checklist, and your prompt gives find-and-replace. Hit Run once and every combination fills a labeled grid right in the node, with **Dark/Light/Mono** grid themes and **Save/Copy/Open** buttons. The seed stays **locked** across the grid so the only thing changing is the thing you're testing.
+
 ### ✂️ Image Crop
 No more guessing crop sizes with numbers! Visually draw your crop box, or set width, height, position and a center/edge alignment right on the node - math expressions like `1024+512` work too. Standard presets (1:1, 16:9, 9:16…) keep social and video aspects locked. Wire **any IMAGE** output into the node (Load Image, VAE Decode, anything) and run the workflow once - the editor and mini-preview will show the live source. Or paste an image straight from the clipboard with **Ctrl+V**.
 
@@ -248,7 +251,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
-### **June 3, 2026 · v1.3.73**
+### **June 3, 2026 · v1.3.73–1.3.74**
+- **NEW: XY Plot Pixaroma.** Compare settings side by side without setting anything up. Drop it at the end of your workflow and wire your image in like a preview node, then pick what changes **across** (columns) and **down** (rows) from a dropdown of the nodes already in your graph - no rewiring. The value box adapts to what you pick: a number gives a Start/End/Steps range, a dropdown (sampler, model, scheduler) gives a checklist, and your prompt gives find-and-replace. Hit Run once and every combination fills a labeled grid right in the node, with Dark/Light/Mono grid themes and Save/Copy/Open buttons. The seed stays locked across the grid so the only thing changing is the thing you're testing.
 - **Sharper previews when you zoom in.** The image in **Preview Image** and **Load Image** now stays crisp when you zoom into a node, instead of going blurry or pixelated (the same fix Image Compare got last update).
 - **Preview Image always shows the latest result.** Fixed a case where running the workflow again could leave the old image on the node instead of updating to the new one.
 
