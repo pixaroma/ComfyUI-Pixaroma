@@ -237,6 +237,12 @@ function injectAxis(out, axis, value) {
   if (axis.widgetType === "text" && axis.mode === "sr") {
     const find = axis.raw?.srFind || "";
     if (typeof cur === "string" && find) {
+      if (!cur.includes(find)) {
+        // The find-text isn't in the target's value - nothing gets replaced,
+        // so every cell would look identical. Most common cause: the wrong
+        // same-named node was picked (e.g. the negative CLIP Text Encode).
+        console.warn(`[Pixaroma.XYPlot] Find & replace: "${find}" not found in the target's text - cells won't differ. Check you picked the right node (the picker shows each setting's current value).`);
+      }
       te.inputs[axis.widgetName] = cur.split(find).join(String(value));
     } else if (typeof cur !== "object") {
       te.inputs[axis.widgetName] = String(value);

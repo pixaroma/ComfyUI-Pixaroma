@@ -61,8 +61,16 @@ async function doCopy(node) {
 function doOpen(node) {
   const last = node._pixXyLastGrid;
   if (!last || !last.url) { toast("XY Plot", "No grid to open yet.", "warn"); return; }
-  const w = window.open(last.url, "_blank", "noopener");
-  if (!w) toast("XY Plot", "Popup blocked - allow popups to open the grid.", "warn");
+  // Use an <a target="_blank"> click rather than window.open(...,"noopener"):
+  // Chrome returns null from window.open when "noopener" is set even on
+  // success, which made the old code falsely report "popup blocked".
+  const a = el("a");
+  a.href = last.url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
 }
 
 async function doSaveDisk(node) {

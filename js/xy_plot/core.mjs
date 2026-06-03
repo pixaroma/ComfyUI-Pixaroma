@@ -90,6 +90,16 @@ export function restoreFromProperties(node) {
 
 // ── Target enumeration ─────────────────────────────────────────────────────
 
+// A short, one-line preview of a widget's current value - lets the picker
+// disambiguate two same-titled nodes (e.g. positive vs negative CLIP Text
+// Encode, both "CLIP Text Encode (Prompt) · text").
+function previewValue(w) {
+  let v = w?.value;
+  if (v == null) return "";
+  v = String(v).replace(/\s+/g, " ").trim();
+  return v.length > 46 ? v.slice(0, 46) + "…" : v;
+}
+
 // Classify a LiteGraph widget into a plottable kind, or null if it can't be
 // swept (button / toggle / image / internal / our own widgets).
 export function classifyWidget(w) {
@@ -98,6 +108,7 @@ export function classifyWidget(w) {
   if (name.startsWith("$$")) return null;                 // internal (canvas preview, etc.)
   const t = w.type;
   if (typeof t === "string" && t.startsWith("pixaroma_")) return null;
+  const cur = previewValue(w);
   if (t === "number") {
     const opts = w.options || {};
     let step = opts.step;
@@ -106,15 +117,15 @@ export function classifyWidget(w) {
     }
     // ComfyUI multiplies the displayed step by 10 internally for some builds;
     // we only need a precision hint, so the raw step is fine.
-    return { name, type: "number", step, min: opts.min, max: opts.max };
+    return { name, type: "number", step, min: opts.min, max: opts.max, cur };
   }
   if (t === "combo") {
     let vals = w.options?.values;
     if (typeof vals === "function") { try { vals = vals(); } catch (_e) { vals = []; } }
-    return { name, type: "combo", options: Array.isArray(vals) ? vals.map(String) : [] };
+    return { name, type: "combo", options: Array.isArray(vals) ? vals.map(String) : [], cur };
   }
   if (t === "text" || t === "customtext" || t === "string") {
-    return { name, type: "text" };
+    return { name, type: "text", cur };
   }
   return null;
 }

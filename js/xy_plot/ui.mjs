@@ -37,11 +37,13 @@ export function injectCSS() {
 /* popup */
 .pix-xy-popup{position:fixed;z-index:99999;background:#1d1d1d;border:1px solid rgba(255,255,255,.18);border-radius:7px;box-shadow:0 10px 30px rgba(0,0,0,.6);max-height:340px;overflow:auto;padding:5px;min-width:220px;}
 .pix-xy-pop-section{font-size:10px;color:${BRAND};font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:7px 8px 3px;}
-.pix-xy-pop-item{display:flex;align-items:center;gap:8px;padding:6px 9px;border-radius:4px;font-size:12.5px;cursor:pointer;}
+.pix-xy-pop-item{display:flex;flex-direction:column;gap:1px;padding:6px 9px;border-radius:4px;font-size:12.5px;cursor:pointer;}
 .pix-xy-pop-item:hover{background:#2a2a2a;}
 .pix-xy-pop-item.sel{background:rgba(246,103,68,.18);}
+.pix-xy-pop-item-top{display:flex;align-items:center;gap:8px;}
 .pix-xy-pop-item .pix-xy-wname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .pix-xy-pop-item .pix-xy-wtype{font-size:10px;color:#888;flex:0 0 auto;}
+.pix-xy-pop-prev{font-size:10px;color:#8a8a8a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;}
 .pix-xy-empty{padding:10px;color:#888;font-size:12px;text-align:center;}
 /* value area */
 .pix-xy-valuearea{margin-top:9px;}
@@ -211,14 +213,19 @@ function openPicker(node, axisKey, anchorEl, rerender) {
       for (const w of t.widgets) {
         const item = el("div", "pix-xy-pop-item");
         if (axis.nodeId === t.nodeId && axis.widgetName === w.name) item.classList.add("sel");
-        item.appendChild(el("span", "pix-xy-wname", w.name));
-        item.appendChild(el("span", "pix-xy-wtype", w.type));
+        const top = el("div", "pix-xy-pop-item-top");
+        top.appendChild(el("span", "pix-xy-wname", w.name));
+        top.appendChild(el("span", "pix-xy-wtype", w.type));
+        item.appendChild(top);
+        // A preview of the current value disambiguates identically-named nodes
+        // (e.g. the positive vs negative CLIP Text Encode).
+        if (w.cur) item.appendChild(el("div", "pix-xy-pop-prev", "= " + w.cur));
         item.addEventListener("click", () => {
           selectChoice(node, axisKey, { nodeId: t.nodeId, title: t.title, w }, rerender);
           closePopup();
         });
         popup.appendChild(item);
-        items.push({ el: item, hay: (t.title + " " + w.name).toLowerCase() });
+        items.push({ el: item, hay: (t.title + " " + w.name + " " + (w.cur || "")).toLowerCase() });
       }
       rows.push({ sec, items });
     }
