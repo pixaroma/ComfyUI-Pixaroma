@@ -10,8 +10,10 @@ import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
-const DEFAULT_W = 430, DEFAULT_H = 560;   // wide enough that the 3 toggles fit one row
-const MIN_W = 340, MIN_H = 360;
+// MIN_W is set so the 3 natural-width toggles (Lock seed / Draw labels / Save
+// cells) always fit on one row without stretching or wrapping.
+const DEFAULT_W = 440, DEFAULT_H = 560;
+const MIN_W = 420, MIN_H = 360;
 const CHROME = 40;   // title bar + margin above the DOM body
 
 let _sessionCounter = 0;

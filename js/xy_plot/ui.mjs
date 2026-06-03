@@ -80,13 +80,13 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 /* counter chip + options */
 .pix-xy-counter{text-align:center;font-size:13px;font-weight:600;color:#fff;background:${BRAND};border-radius:6px;padding:7px;}
 .pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
-.pix-xy-opts{display:flex;gap:7px;flex-wrap:nowrap;}
+.pix-xy-opts{display:flex;gap:8px;flex-wrap:nowrap;justify-content:center;}
 .pix-xy-opts2{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
 .pix-xy-themewrap{display:flex;align-items:center;gap:7px;}
 .pix-xy-themelbl{font-size:11.5px;color:#9a9a9a;}
 .pix-xy-themeseg{margin-bottom:0;}
 .pix-xy-themeseg span{padding:4px 10px;}
-.pix-xy-toggle{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:7px;font-size:11.5px;color:#cfcfcf;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:5px 6px;cursor:pointer;user-select:none;white-space:nowrap;}
+.pix-xy-toggle{display:flex;align-items:center;gap:7px;font-size:11.5px;color:#cfcfcf;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:5px 11px;cursor:pointer;user-select:none;white-space:nowrap;}
 .pix-xy-toggle:hover{border-color:${BRAND};}
 .pix-xy-pill{width:30px;height:16px;flex:0 0 auto;border-radius:8px;background:#444;position:relative;transition:.15s;}
 .pix-xy-pill.on{background:${BRAND};}
