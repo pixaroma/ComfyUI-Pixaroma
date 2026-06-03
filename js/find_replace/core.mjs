@@ -65,6 +65,15 @@ export function readState(node) {
   if (typeof s.wholeWord !== "boolean") s.wholeWord = false;
   if (typeof s.regex !== "boolean") s.regex = false;
   if (typeof s.tidy !== "boolean") s.tidy = true;
+  // Drop any non-object row (a corrupted/hand-edited workflow could carry a
+  // null/string entry) - mirrors the Python `isinstance(rule, dict)` guard so a
+  // malformed state can't throw out of readState, which feeds every render, the
+  // mutators, AND the graphToPrompt hook. The .some() check means a clean state
+  // is never rewritten (no churn, no dirty-on-load); only a malformed one is.
+  if (s.rules.some((row) => !row || typeof row !== "object")) {
+    s.rules = s.rules.filter((row) => row && typeof row === "object");
+  }
+  if (s.rules.length === 0) return defaultState();
   for (const row of s.rules) {
     if (typeof row.id !== "string" || !row.id) row.id = nextId();
     if (typeof row.enabled !== "boolean") row.enabled = true;

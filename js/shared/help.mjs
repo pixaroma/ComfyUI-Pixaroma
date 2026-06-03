@@ -282,8 +282,11 @@ export function openHelpPopup(helpDef) {
     tag.innerHTML = fmt(helpDef.tagline);
     body.appendChild(tag);
   }
-  for (const section of helpDef.sections || []) {
-    // A malformed section (authored by a node) must not kill the whole panel.
+  // Array-guard the loop itself (a non-iterable `sections` would throw OUTSIDE
+  // the per-section try/catch); then each section builds in its own try/catch so
+  // one malformed section can't kill the whole panel.
+  const sections = Array.isArray(helpDef.sections) ? helpDef.sections : [];
+  for (const section of sections) {
     try {
       body.appendChild(buildSection(section));
     } catch (e) {
