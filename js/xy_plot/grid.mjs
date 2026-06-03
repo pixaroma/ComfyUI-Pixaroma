@@ -137,10 +137,14 @@ export function buildGridPreview(node, mount) {
   const img = el("img", "pix-xy-gridimg");
   img.style.display = "none";
   // Once the grid bitmap actually loads, fit the node to it (grow OR shrink)
-  // so a smaller plot tightens the node back up. Repaint either way.
+  // so a smaller plot tightens the node back up. Repaint twice (this frame +
+  // next) so the node FRAME catches up to the new content height immediately -
+  // otherwise a theme re-skin leaves the buttons poking out until the next
+  // mouse move triggers a redraw.
   img.addEventListener("load", () => {
     try { node._pixXyFit?.(); } catch (_e) {}
     try { node.setDirtyCanvas?.(true, true); } catch (_e) {}
+    requestAnimationFrame(() => { try { node.setDirtyCanvas?.(true, true); } catch (_e) {} });
   });
   box.appendChild(hint);
   box.appendChild(img);
