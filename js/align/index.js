@@ -199,6 +199,9 @@ let _hookInstalled = false;
 function installPointerHook() {
   if (_hookInstalled) return;
   window.addEventListener("pointermove", onWindowPointerMove, false);
+  // Capture-phase pointerdown so it runs BEFORE the Vue node's resize handler -
+  // snapshots all node sizes as the gesture-start baseline (resize guard below).
+  window.addEventListener("pointerdown", onWindowPointerDown, true);
   // Reset drag state on every release. Without this, a release-then-click
   // sequence with no intervening pointermove leaves stale dragInfo (with
   // its old lockType) attached to the next drag, breaking classification.
@@ -375,10 +378,30 @@ function resetDrag() {
   state.dragInfo = null;
   state._prevNodeStates = null;
   state._vueResizing = false;
+  state._gestureSizes = null;
   if (state.activeGuides.length) {
     state.activeGuides = [];
     app.canvas?.setDirty?.(true, true);
   }
+}
+
+// Capture every node's size at the START of a pointer gesture (capture phase, so
+// this runs BEFORE the Vue node's own pointerdown that begins a resize). The Vue
+// resize guard in onWindowPointerMove then compares against THIS baseline rather
+// than the previous tick: a resize is detected the instant any node's size
+// differs from its gesture-start size, and the difference persists for the whole
+// drag (even after the node clamps at its min and stops changing) - so the guard
+// latches reliably from tick 1 and the selected node is never moved while another
+// node is being resized. (Pattern #16 hardening, 2026-06.)
+function onWindowPointerDown(e) {
+  if (!state.enabled) return;
+  if (e.button !== 0) return; // primary button only
+  const c = app.canvas;
+  if (!c?.graph?._nodes) return;
+  const sizes = new Map();
+  for (const n of c.graph._nodes) sizes.set(n.id, [n.size[0], n.size[1]]);
+  state._gestureSizes = sizes;
+  state._vueResizing = false;
 }
 
 // Apply a snap correction to a node's position (and optionally size). LEGACY:
@@ -456,10 +479,22 @@ function onWindowPointerMove(e) {
     // "resize one node and the selected one moves too" + "node jumps when I
     // resize it" bugs). Detect it once and stay out of the way for the rest of
     // the gesture; resetDrag clears the flag on release / next non-drag move.
-    if (!state._vueResizing && state._prevNodeStates) {
+    // Compare against the GESTURE-START sizes (captured on pointerdown), not the
+    // previous tick: the difference persists for the whole drag, so the latch is
+    // reliable even on tick 1 and even after the resized node clamps at its min
+    // (where a per-tick diff would read "no change" and let the selected node
+    // move). Fall back to the per-tick cache if no gesture baseline (e.g. a drag
+    // already in progress when Align was toggled on).
+    if (!state._vueResizing) {
+      const base = state._gestureSizes;
       for (const n of (c.graph?._nodes || [])) {
-        const p = state._prevNodeStates.get(n.id);
-        if (p && (p.w !== n.size[0] || p.h !== n.size[1])) { state._vueResizing = true; break; }
+        if (base) {
+          const g = base.get(n.id);
+          if (g && (g[0] !== n.size[0] || g[1] !== n.size[1])) { state._vueResizing = true; break; }
+        } else if (state._prevNodeStates) {
+          const p = state._prevNodeStates.get(n.id);
+          if (p && (p.w !== n.size[0] || p.h !== n.size[1])) { state._vueResizing = true; break; }
+        }
       }
     }
     if (state._vueResizing) {
