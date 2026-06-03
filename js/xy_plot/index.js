@@ -116,8 +116,19 @@ function growNode(node, root) {
 // can't trip the dirty-on-load tracker (Vue Compat #18).
 function fitNode(node, root) {
   requestAnimationFrame(() => {
-    const desired = Math.max(MIN_H, measureContentHeight(root) + CHROME);
-    if (Math.abs(desired - node.size[1]) > 1) {
+    // Use ComfyUI's own computeSize() for the height target - it accounts for
+    // the title bar + slots + the widget's getMinHeight, so it matches what the
+    // layout actually wants. (A hand-rolled measureContentHeight + fixed chrome
+    // undershot by ~14px, which made this and the layout ping-pong = flicker.)
+    let desired;
+    try {
+      const cs = node.computeSize ? node.computeSize() : null;
+      desired = (cs && cs[1]) ? cs[1] : (measureContentHeight(root) + CHROME);
+    } catch (_e) {
+      desired = measureContentHeight(root) + CHROME;
+    }
+    desired = Math.max(MIN_H, Math.round(desired));
+    if (Math.abs(desired - node.size[1]) > 3) {
       node.size[1] = desired;
       node.setSize?.([node.size[0], desired]);
     }

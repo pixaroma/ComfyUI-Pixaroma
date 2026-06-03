@@ -136,13 +136,16 @@ export function buildGridPreview(node, mount) {
   const hint = el("div", "pix-xy-gridhint", "The labeled grid appears here after you hit Run.");
   const img = el("img", "pix-xy-gridimg");
   img.style.display = "none";
-  // Once the grid bitmap actually loads, fit the node to it (grow OR shrink)
-  // so a smaller plot tightens the node back up. Repaint twice (this frame +
-  // next) so the node FRAME catches up to the new content height immediately -
-  // otherwise a theme re-skin leaves the buttons poking out until the next
-  // mouse move triggers a redraw.
+  // On load, only RE-FIT the node when the grid's pixel dimensions actually
+  // changed (a new plot shape). A theme re-skin is the exact same size, so
+  // re-fitting there just made fitNode and ComfyUI's own layout fight over a
+  // few px forever (the flicker). Always repaint, twice, so the frame settles.
   img.addEventListener("load", () => {
-    try { node._pixXyFit?.(); } catch (_e) {}
+    const dims = (img.naturalWidth || 0) + "x" + (img.naturalHeight || 0);
+    if (dims !== node._pixXyGridDims) {
+      node._pixXyGridDims = dims;
+      try { node._pixXyFit?.(); } catch (_e) {}
+    }
     try { node.setDirtyCanvas?.(true, true); } catch (_e) {}
     requestAnimationFrame(() => { try { node.setDirtyCanvas?.(true, true); } catch (_e) {} });
   });
@@ -186,6 +189,7 @@ export function buildGridPreview(node, mount) {
       img.style.display = "none";
       hint.style.display = "";
       setEnabled(false);
+      node._pixXyGridDims = null;   // so the next grid re-fits the node
     },
   };
 }
