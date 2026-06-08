@@ -200,7 +200,9 @@ app.registerExtension({
 
         const widget = node.addDOMWidget("xyplot", "pixaroma_xy_plot", root, {
           serialize: false,
-          getMinHeight: () => measureContentHeight(root) + 4,
+          // Coarse-round to a 4px grid so sub-pixel/font measurement jitter can't
+          // creep node.size between save and reload (dirty-on-load, Vue Compat #18).
+          getMinHeight: () => Math.round((measureContentHeight(root) + 4) / 4) * 4,
         });
         applyAdaptiveCanvasOnly(widget);
 

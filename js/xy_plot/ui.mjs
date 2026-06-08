@@ -276,7 +276,7 @@ function openPicker(node, axisKey, anchorEl, rerender) {
   document.body.appendChild(popup);
   // position under the anchor, clamped to viewport
   const r = anchorEl.getBoundingClientRect();
-  popup.style.left = Math.min(r.left, window.innerWidth - popup.offsetWidth - 8) + "px";
+  popup.style.left = Math.max(8, Math.min(r.left, window.innerWidth - popup.offsetWidth - 8)) + "px";
   let top = r.bottom + 4;
   if (top + popup.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - popup.offsetHeight - 4);
   popup.style.top = top + "px";
@@ -285,6 +285,11 @@ function openPicker(node, axisKey, anchorEl, rerender) {
   const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
   const onKey = (e) => { if (e.key === "Escape") closePopup(); };
   setTimeout(() => {
+    // If another picker opened in the same tick, closePopup() already ran THIS
+    // popup's _cleanup and _openPopup now points at the newer one - bail so we
+    // don't attach orphaned, never-removed global listeners (a real leak that
+    // also makes the newer popup dismiss on the next outside click).
+    if (_openPopup !== popup) return;
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("wheel", onWheel, true);
