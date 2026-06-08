@@ -28,7 +28,7 @@ export function injectCSS() {
   const css = `
 .pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
-.pix-xy-axis-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
+.pix-xy-axis-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
 .pix-xy-axis-reset{margin-left:auto;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:#9a9a9a;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 8px;cursor:pointer;user-select:none;}
@@ -82,9 +82,9 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 /* counter chip + options */
 .pix-xy-counter{text-align:center;font-size:13px;font-weight:600;color:#fff;background:${BRAND};border-radius:6px;padding:7px;}
 .pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
-.pix-xy-opts{display:flex;gap:8px;flex-wrap:nowrap;justify-content:center;}
+.pix-xy-opts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
 .pix-xy-opts2{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
-.pix-xy-themewrap{display:flex;align-items:center;gap:7px;}
+.pix-xy-themewrap{display:flex;align-items:center;flex-wrap:wrap;gap:7px;}
 .pix-xy-themelbl{font-size:11.5px;color:#9a9a9a;}
 .pix-xy-themeseg{margin-bottom:0;}
 .pix-xy-themeseg span{padding:4px 10px;}
@@ -584,7 +584,7 @@ export function renderBody(node, root, handlers) {
     if (handlers.resetAxis && state[axisKey] && state[axisKey].widgetType) {
       const axReset = el("div", "pix-xy-axis-reset");
       axReset.appendChild(el("span", "pix-xy-axis-reset-ic", "↺"));
-      axReset.appendChild(el("span", null, "Reset"));
+      axReset.appendChild(el("span", null, "Reset " + axisKey.toUpperCase()));
       axReset.title = `Reset the ${axisKey.toUpperCase()} axis only - clears its setting and values. The other axis and your toggles stay.`;
       axReset.addEventListener("click", () => handlers.resetAxis(axisKey));
       head.appendChild(axReset);
@@ -621,8 +621,8 @@ export function renderBody(node, root, handlers) {
   if (handlers.reset) {
     const reset = el("div", "pix-xy-resetbtn");
     reset.appendChild(el("span", null, "↺"));
-    reset.appendChild(el("span", null, "Reset"));
-    reset.title = "Clear both axes and selections, back to a fresh node.";
+    reset.appendChild(el("span", null, "Reset XY"));
+    reset.title = "Clear BOTH axes, all selections, and the toggles - back to a fresh node.";
     reset.addEventListener("click", () => handlers.reset());
     opts2.appendChild(reset);
   }

@@ -244,10 +244,17 @@ app.registerExtension({
 
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      // Min-size clamp is LEGACY ONLY. In Nodes 2.0 the rendered node size lives
+      // in the Vue layout store, not node.size; clamping node.size here desyncs
+      // them (drag smaller -> switch workflow -> it jumps back bigger) and the
+      // clamp doesn't even constrain the rendered width. The body rows flex-wrap
+      // so narrow widths reflow cleanly instead of spilling buttons out the side.
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origResize) return origResize.apply(this, arguments);
     };
 
@@ -255,6 +262,7 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;   // size clamp is legacy-only (see onResize)
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
