@@ -113,6 +113,8 @@ export function injectCSS() {
 /* value area */
 .pix-xy-valuearea{margin-top:9px;}
 .pix-xy-seg{display:inline-flex;background:rgba(0,0,0,.3);border-radius:6px;padding:2px;gap:2px;margin-bottom:8px;}
+.pix-xy-moderow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.pix-xy-moderow .pix-xy-seg{margin-bottom:0;}
 .pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
 .pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
 .pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
@@ -402,16 +404,16 @@ function escapeHtml(s) {
 
 // ── value entry (adaptive) ───────────────────────────────────────────────────
 
-function previewText(axis, snap) {
-  const vals = resolveAxisValues(axis, snap);
+function previewText(axis) {
+  const vals = resolveAxisValues(axis);
   if (!vals.length) return null;
   const shown = vals.slice(0, 8).map((v) => String(v));
   const more = vals.length > 8 ? ` … (+${vals.length - 8})` : "";
   return { count: vals.length, text: shown.join(", ") + more };
 }
 
-function buildPreview(axis, snap) {
-  const p = previewText(axis, snap);
+function buildPreview(axis) {
+  const p = previewText(axis);
   const box = el("div", "pix-xy-preview");
   if (!p) { box.innerHTML = `<span style="color:#777">enter values…</span>`; return box; }
   box.innerHTML = `→ <b>${escapeHtml(p.text)}</b> &nbsp;·&nbsp; ${p.count} value${p.count === 1 ? "" : "s"}`;
@@ -427,10 +429,9 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     return;
   }
   const save = () => writeState(node, state);
-  const snap = state.snapToStep !== false;
   const refreshPreview = () => {
     const old = mount.querySelector(".pix-xy-preview");
-    const fresh = buildPreview(axis, snap);
+    const fresh = buildPreview(axis);
     if (old) old.replaceWith(fresh); else mount.appendChild(fresh);
     refreshCounter();
   };
@@ -448,7 +449,18 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
     sRange.addEventListener("click", () => { axis.mode = "range"; save(); rerender(); });
     sList.addEventListener("click", () => { axis.mode = "list"; save(); rerender(); });
     seg.appendChild(sRange); seg.appendChild(sList);
-    mount.appendChild(seg);
+    const modeRow = el("div", "pix-xy-moderow");
+    modeRow.appendChild(seg);
+    // Per-axis Snap toggle - lives in the free space next to Range/List so it
+    // adds no node height, and only shows when snapping has an effect (the field's
+    // step is coarser than its precision, e.g. width/height snap to /16).
+    const snapUnit = Math.pow(10, -(axis.precision != null ? axis.precision : 0));
+    if (axis.realStep && axis.realStep > snapUnit + 1e-9) {
+      const snapT = buildToggle("Snap", axis.snap !== false, (v) => { axis.snap = v; save(); refreshPreview(); });
+      snapT.title = "Round values to this setting's real step (e.g. width to multiples of 16). Off = exact.";
+      modeRow.appendChild(snapT);
+    }
+    mount.appendChild(modeRow);
 
     if (axis.mode === "list") {
       const inp = isolate(el("input", "pix-xy-input"));
@@ -464,7 +476,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
       rangeRow.appendChild(labeledField("Steps", axis.raw.steps, (v) => { axis.raw.steps = v; save(); refreshPreview(); }));
       mount.appendChild(rangeRow);
     }
-    mount.appendChild(buildPreview(axis, snap));
+    mount.appendChild(buildPreview(axis));
 
   } else if (axis.widgetType === "combo") {
     const meta = lookupWidgetMeta(node, axis);
@@ -538,7 +550,7 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
       ta.addEventListener("input", () => { axis.raw.listText = ta.value; save(); refreshPreview(); });
       mount.appendChild(ta);
     }
-    mount.appendChild(buildPreview(axis, snap));
+    mount.appendChild(buildPreview(axis));
   }
 }
 
@@ -681,9 +693,6 @@ export function renderBody(node, root, handlers) {
   opts.appendChild(buildToggle("Lock seed", state.lockSeed !== false, (v) => { const s = readState(node); s.lockSeed = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Draw labels", state.drawLabels !== false, (v) => { const s = readState(node); s.drawLabels = v; writeState(node, s); }));
   opts.appendChild(buildToggle("Save cells", state.saveCells === true, (v) => { const s = readState(node); s.saveCells = v; writeState(node, s); }));
-  const snapToggle = buildToggle("Snap to step", state.snapToStep !== false, (v) => { const s = readState(node); s.snapToStep = v; writeState(node, s); handlers.rerender(); });
-  snapToggle.title = "Round number values (like width/height) to the setting's real step - e.g. width to multiples of 16. Off = exact values.";
-  opts.appendChild(snapToggle);
 
   // Second row: grid theme picker on the left, Reset on the right.
   const opts2 = root.querySelector(".pix-xy-opts2");

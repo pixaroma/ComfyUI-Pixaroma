@@ -22,6 +22,7 @@ function emptyAxis() {
     step: 1,
     precision: null,         // number: decimals the field allows (0=int, 1=cfg, 2=denoise)
     realStep: null,          // number: the field's true increment (step2), for snap-to-step
+    snap: true,              // number: round values to realStep (per-axis Snap toggle)
     options: [],             // combo: the widget's option list (cached at pick)
     raw: { start: "", end: "", steps: "", listText: "", checked: [], srFind: "", srReplace: "" },
   };
@@ -35,7 +36,6 @@ export function defaultState() {
     lockSeed: true,
     drawLabels: true,
     saveCells: false,
-    snapToStep: true,       // round number values to the field's real step (e.g. width -> /16)
     theme: "dark",          // grid color theme: "dark" | "light" | "mono"
   };
 }
@@ -309,17 +309,17 @@ function snapToGrid(v, realStep, precision) {
 }
 
 // Resolve an axis to its ordered list of cell values (numbers or strings).
-// `snap` (the Snap-to-step toggle) rounds number values to the field's real step.
-// For text "sr" mode the values are the replacement strings; the actual text
-// substitution happens at inject time against the target's current value.
-export function resolveAxisValues(axis, snap = false) {
+// Number values are snapped to the field's real step when the axis's Snap toggle
+// is on (axis.snap, default true). For text "sr" mode the values are the
+// replacement strings; substitution happens at inject time against the target.
+export function resolveAxisValues(axis) {
   if (!axis || !axis.widgetType) return [];
   const raw = axis.raw || {};
   if (axis.widgetType === "number") {
     let vals = (axis.mode === "list")
       ? parseNumberList(raw.listText, axis.step, axis.precision)
       : rangeToList(raw.start, raw.end, raw.steps, axis.step, axis.precision);
-    if (snap && axis.realStep) vals = vals.map((v) => snapToGrid(v, axis.realStep, axis.precision));
+    if (axis.snap !== false && axis.realStep) vals = vals.map((v) => snapToGrid(v, axis.realStep, axis.precision));
     return vals;
   }
   if (axis.widgetType === "combo") {
