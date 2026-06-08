@@ -11,8 +11,60 @@ import {
   enumerateTargets, lookupWidgetMeta, currentValuePreview,
   resolveAxisValues, computeCounts, axisReady,
 } from "./core.mjs";
+import { createHelpButton } from "../shared/index.mjs";
 
 const BRAND = "#f66744";
+
+// Node Help panel content (the ? button -> themed popup; node UI convention #16).
+// The popup is a document.body overlay, so it works in BOTH renderers.
+const XY_HELP = {
+  title: "XY Plot Pixaroma",
+  tagline: "Compare settings side by side in one labeled grid - no extra wiring.",
+  sections: [
+    {
+      heading: "What it does",
+      body: "Drop this at the end of your workflow and wire your final image into it, like a Preview node. Pick what changes ACROSS (X = columns) and DOWN (Y = rows), press Run once, and every combination fills a labeled grid right here on the node.",
+    },
+    {
+      heading: "How to use",
+      bullets: [
+        "Wire your workflow's final image into the `image` input.",
+        "In the X card, pick a setting to vary across the columns. Do the same in the Y card for the rows (you can use just one axis if you like).",
+        "Enter the values you want to try in the value box.",
+        "Press Run once. The grid builds as each run finishes.",
+      ],
+    },
+    {
+      heading: "The value box adapts to what you pick",
+      defs: [
+        ["Number", "A `Range` (Start / End / Steps) or a `List` of values."],
+        ["Dropdown", "A checklist - tick the samplers / models / schedulers you want to compare."],
+        ["Prompt text", "`Full list` (one full prompt per line) or `Find & replace` (swap a word for each value)."],
+      ],
+    },
+    {
+      heading: "Entering numbers",
+      bullets: [
+        "List: values separated by commas, e.g. `5, 6, 7.1, 10`. Decimals are kept exactly.",
+        "Range: set Start, End and Steps (how many). 5 to 15 in 3 steps gives 5, 10, 15.",
+        "Shorthand inside a list also works: `4-10 (+2)` steps by 2, and `4-10 [4]` gives 4 evenly spaced values.",
+      ],
+    },
+    {
+      heading: "Buttons and options",
+      defs: [
+        ["Lock seed", "Keeps the seed the same for every square so the only thing changing is what you're testing. Turns off on its own if you're plotting the seed."],
+        ["Draw labels", "Show the value labels and axis names on the grid."],
+        ["Save cells", "Also save each square on its own, not just the whole grid."],
+        ["Grid: Dark / Light / Mono", "The grid background and label style. Switching re-skins the grid you already have, instantly."],
+        ["Reset X / Reset Y", "Clear just that one axis."],
+        ["Reset XY", "Clear both axes and all selections, back to a fresh node."],
+        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output, copy it, or open it in a new tab."],
+      ],
+    },
+  ],
+  footer: "Tip: start small (a few values each way). The node asks you to confirm before running more than 25 squares, since each square is a full workflow run.",
+};
 
 function xyToast(detail, severity = "info") {
   const tm = app.extensionManager?.toast;
@@ -27,6 +79,7 @@ export function injectCSS() {
   if (document.getElementById("pix-xy-css")) return;
   const css = `
 .pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
+.pix-xy-helprow{display:flex;justify-content:flex-end;align-items:center;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
 .pix-xy-axis-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
@@ -132,6 +185,7 @@ export function buildRoot() {
   const root = document.createElement("div");
   root.className = "pix-xy-root";
   root.innerHTML = `
+    <div class="pix-xy-helprow"></div>
     <div class="pix-xy-axis" data-axis="x"></div>
     <div class="pix-xy-axis" data-axis="y"></div>
     <div class="pix-xy-counter-wrap"></div>
@@ -559,6 +613,11 @@ function buildThemeControl(node, state) {
 // handlers: { rerender(): full rebuild, growth(): re-measure node height }
 export function renderBody(node, root, handlers) {
   const state = readState(node);
+
+  // Mount the Help (?) button once. renderBody runs on every rerender but never
+  // clears the help row, so guard against appending duplicate buttons.
+  const helpRow = root.querySelector(".pix-xy-helprow");
+  if (helpRow && !helpRow.children.length) helpRow.appendChild(createHelpButton(XY_HELP));
 
   const refreshCounter = () => {
     const wrap = root.querySelector(".pix-xy-counter-wrap");

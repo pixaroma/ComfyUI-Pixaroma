@@ -6,7 +6,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes, closeHelpPopup } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
@@ -270,6 +270,7 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       try { closePopupIfOwner(this); } catch (_e) {}   // only close OUR popup, not another node's
+      try { closeHelpPopup(); } catch (_e) {}          // close the Help panel if it's open
       try { this._pixXyCancelConfirm?.(); } catch (_e) {}
       this._pixXyRoot = null;
       this._pixXyRerender = null;
