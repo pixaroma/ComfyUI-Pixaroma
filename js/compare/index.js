@@ -54,36 +54,65 @@ function modeRect(W, i) {
   const L = rowLayout(W);
   return { x: L.leftPad + (i + 1) * (L.bw + L.gap), y: ROW1_Y, w: L.bw, h: BTN_H };
 }
-function hintRect(W) {
+// ── Image-size labels (image1 / image2 resolution) ───────────
+// Shown flanking row 2: image1's size pinned to the LEFT edge, image2's to the
+// RIGHT edge, in EVERY mode. The mode content (hint / slider / util buttons)
+// lives in the MIDDLE zone (row2Mid) between them, shrinking to make room.
+// Labelled "1:" / "2:" so it's always clear which input is which (on the legacy
+// node the left of row 2 sits next to the image2 dot, so position alone would be
+// ambiguous). When the two sizes differ they turn BRAND orange — a quick
+// "you're comparing different resolutions" cue. Size = loaded naturalWidth/Height.
+const SIZE_FONT = "9px 'Segoe UI',sans-serif";
+const SIZE_RESERVE = 72; // px reserved on each flank for a size label
+const SIZE_GAP = 6;      // gap between a size label and the middle content
+function sizeLabelText(img, n) {
+  return img ? `${n}: ${img.naturalWidth}×${img.naturalHeight}` : "";
+}
+function sizesDiffer(node) {
+  const a = node?._cmpImg1, b = node?._cmpImg2;
+  if (!a || !b) return false;
+  return a.naturalWidth !== b.naturalWidth || a.naturalHeight !== b.naturalHeight;
+}
+// Full row-2 span (matches row 1's right edge) — the old hintRect.
+function row2Full(W) {
   const L = rowLayout(W);
   return { x: L.leftPad, y: ROW2_Y, w: L.bw * 6 + L.gap * 5, h: BTN_H };
 }
+// MIDDLE zone of row 2: the full span minus a reserved flank for each size label
+// that's currently showing. Pure function of (node images, W) so paint and
+// hit-test always agree without stashing geometry during a paint.
+function row2Mid(node, W) {
+  const full = row2Full(W);
+  const resL = node?._cmpImg1 ? SIZE_RESERVE + SIZE_GAP : 0;
+  const resR = node?._cmpImg2 ? SIZE_RESERVE + SIZE_GAP : 0;
+  const x = full.x + resL;
+  const w = Math.max(40, full.w - resL - resR);
+  return { x, y: ROW2_Y, w, h: BTN_H };
+}
 // In Show 1 / Show 2 the three utility buttons (Save -> output, Disk -> file
-// dialog, Copy -> clipboard) fill the FULL width of row 2 - each spans two of
-// row 1's six columns, so they align to the grid with no dead gap. They act on
-// the CURRENTLY SHOWN image. Hidden in comparison modes, where row 2 is the
-// mode hint / opacity slider.
-function utilBtnRects(W) {
-  const L = rowLayout(W);
-  const rightEdge = L.leftPad + L.bw * 6 + L.gap * 5; // matches row 1's right edge
-  const bw = Math.floor((rightEdge - L.leftPad - L.gap * 2) / 3);
-  return [0, 1, 2].map((i) => ({ x: L.leftPad + i * (bw + L.gap), y: ROW2_Y, w: bw, h: BTN_H }));
+// dialog, Copy -> clipboard) fill the MIDDLE zone (between the size flanks).
+// They act on the CURRENTLY SHOWN image. Hidden in comparison modes, where the
+// middle is the mode hint / opacity slider instead.
+function utilBtnRects(node, W) {
+  const mid = row2Mid(node, W);
+  const bw = Math.floor((mid.w - BTN_GAP * 2) / 3);
+  return [0, 1, 2].map((i) => ({ x: mid.x + i * (bw + BTN_GAP), y: ROW2_Y, w: bw, h: BTN_H }));
 }
 // Left -> right: Save to disk · Save to output · Copy image.
-function diskRect(W) { return utilBtnRects(W)[0]; }
-function saveRect(W) { return utilBtnRects(W)[1]; }
-function copyRect(W) { return utilBtnRects(W)[2]; }
-// Opacity-slider track geometry, derived PURELY from the body width. The
-// hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
-// stashed during the last paint — important in Nodes 2.0 where the canvas only
-// repaints on demand (a tap with no preceding move could otherwise see a stale/
-// null geometry). Legacy repainted every frame so it never hit this, but
-// deriving it keeps both renderers correct.
-function sliderGeo(W) {
-  const r2 = hintRect(W);
-  const trackX = r2.x + SLIDER_PAD;
-  const trackW = r2.w - SLIDER_PAD - 36;
-  const trackY = r2.y + r2.h / 2 - 3;
+function diskRect(node, W) { return utilBtnRects(node, W)[0]; }
+function saveRect(node, W) { return utilBtnRects(node, W)[1]; }
+function copyRect(node, W) { return utilBtnRects(node, W)[2]; }
+// Opacity-slider track geometry, derived from the MIDDLE zone so the size labels
+// on the flanks always have room. The hit-test (cmpDown/cmpMove) computes this
+// on demand instead of reading a value stashed during the last paint — important
+// in Nodes 2.0 where the canvas only repaints on demand (a tap with no preceding
+// move could otherwise see a stale/null geometry). Legacy repainted every frame
+// so it never hit this, but deriving it keeps both renderers correct.
+function sliderGeo(node, W) {
+  const mid = row2Mid(node, W);
+  const trackX = mid.x + SLIDER_PAD;
+  const trackW = Math.max(20, mid.w - SLIDER_PAD - 36);
+  const trackY = mid.y + mid.h / 2 - 3;
   const trackH = 6;
   return { trackX, trackW, trackY, trackH };
 }
@@ -98,9 +127,9 @@ function cmpCursor(node, lx, ly, W, H) {
   if (inside(p, showRect(W))) return "pointer";
   for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return "pointer";
   if (node._cmpShowWhich !== 0 &&
-      (inside(p, saveRect(W)) || inside(p, diskRect(W)) || inside(p, copyRect(W)))) return "pointer";
+      (inside(p, saveRect(node, W)) || inside(p, diskRect(node, W)) || inside(p, copyRect(node, W)))) return "pointer";
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     if (lx >= g.trackX - 8 && lx <= g.trackX + g.trackW + 8 &&
         ly >= g.trackY - 6 && ly <= g.trackY + g.trackH + 6) return "pointer";
   }
@@ -151,10 +180,53 @@ function paintUtilBtn(ctx, r, label, hover, flash) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = flash ? "#fff" : (hover ? "#ddd" : "#999");
-  ctx.font = "9px 'Segoe UI',sans-serif";
+  // Auto-fit the label: row 2's middle zone is narrower now (size labels flank
+  // it), so shrink the font (down to 7px) until the full label fits. This is the
+  // "make the buttons smaller" behaviour — labels stay complete, just compact.
+  let fs = 9;
+  ctx.font = `${fs}px 'Segoe UI',sans-serif`;
+  while (fs > 7 && ctx.measureText(label).width > r.w - 8) {
+    fs -= 0.5;
+    ctx.font = `${fs}px 'Segoe UI',sans-serif`;
+  }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
+  ctx.restore();
+}
+
+// Draw the image-size labels on the flanks of row 2 (see SIZE_* above). Called
+// in every mode from paintCompare; clipped to its flank so an extreme dimension
+// can't run into the middle content. Orange when the two sizes differ.
+function drawSizeLabels(ctx, node, W) {
+  const t1 = sizeLabelText(node._cmpImg1, 1);
+  const t2 = sizeLabelText(node._cmpImg2, 2);
+  if (!t1 && !t2) return;
+  const full = row2Full(W);
+  const yMid = ROW2_Y + BTN_H / 2;
+  ctx.save();
+  ctx.font = SIZE_FONT;
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = sizesDiffer(node) ? BRAND : "#bdbdbd";
+  if (t1) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(full.x, ROW2_Y, SIZE_RESERVE, BTN_H);
+    ctx.clip();
+    ctx.textAlign = "left";
+    ctx.fillText(t1, full.x, yMid);
+    ctx.restore();
+  }
+  if (t2) {
+    const rightEdge = full.x + full.w;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rightEdge - SIZE_RESERVE, ROW2_Y, SIZE_RESERVE, BTN_H);
+    ctx.clip();
+    ctx.textAlign = "right";
+    ctx.fillText(t2, rightEdge, yMid);
+    ctx.restore();
+  }
   ctx.restore();
 }
 
@@ -404,10 +476,10 @@ function paintCompare(ctx, node, W, H, mouse) {
 
   // ── Row 2: opacity slider or hint text (same height) ──
   ctx.save();
-  const r2 = hintRect(W);
+  const mid = row2Mid(node, W);
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
-    // Slider track (geometry from sliderGeo(W) so paint + hit-test always agree)
-    const { trackX, trackW, trackY, trackH } = sliderGeo(W);
+    // Slider track (geometry from sliderGeo so paint + hit-test always agree)
+    const { trackX, trackW, trackY, trackH } = sliderGeo(node, W);
     const pct = node._cmpOpacity;
     const thumbX = trackX + trackW * pct;
 
@@ -416,7 +488,7 @@ function paintCompare(ctx, node, W, H, mouse) {
     ctx.fillStyle = "#999";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("Opacity", r2.x, r2.y + r2.h / 2);
+    ctx.fillText("Opacity", mid.x, mid.y + mid.h / 2);
 
     // Track bg
     ctx.fillStyle = "#2a2c2e";
@@ -436,11 +508,11 @@ function paintCompare(ctx, node, W, H, mouse) {
     // Thumb
     ctx.fillStyle = BRAND;
     ctx.beginPath();
-    ctx.arc(thumbX, r2.y + r2.h / 2, 6, 0, Math.PI * 2);
+    ctx.arc(thumbX, mid.y + mid.h / 2, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(thumbX, r2.y + r2.h / 2, 2.5, 0, Math.PI * 2);
+    ctx.arc(thumbX, mid.y + mid.h / 2, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     // Value
@@ -450,31 +522,40 @@ function paintCompare(ctx, node, W, H, mouse) {
     ctx.fillText(
       `${Math.round(pct * 100)}%`,
       trackX + trackW + 6,
-      r2.y + r2.h / 2,
+      mid.y + mid.h / 2,
     );
 
   } else if (node._cmpShowWhich === 0) {
-    // Compare mode: row 2 shows the mode hint. (In Show 1 / Show 2 the
-    // Save/Disk/Copy buttons fill row 2 instead, so no hint is drawn there.)
+    // Compare mode: the mode hint, CENTERED in the middle zone between the size
+    // flanks. Clipped to the middle so a long hint can't run into the sizes.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(mid.x, ROW2_Y, mid.w, BTN_H);
+    ctx.clip();
     ctx.fillStyle = "#999";
     ctx.font = "9px 'Segoe UI',sans-serif";
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(MODE_HINTS[node._cmpMode] || "", r2.x, r2.y + r2.h / 2);
+    ctx.fillText(MODE_HINTS[node._cmpMode] || "", mid.x + mid.w / 2, mid.y + mid.h / 2);
+    ctx.restore();
   }
   ctx.restore();
 
+  // Size labels flank row 2 in EVERY mode — image1 size on the left, image2 on
+  // the right. Painted last so they sit cleanly in the reserved flanks.
+  drawSizeLabels(ctx, node, W);
+
   // ── Utility buttons (Show 1 / Show 2 only): Save · Disk · Copy ──
-  // Fill the full width of row 2 (utilBtnRects), each spanning two of row 1's
-  // columns. They act on the CURRENTLY SHOWN image (Save N -> output, Disk N ->
-  // file dialog, Copy N -> clipboard). Same height as row 1 so the node never
-  // changes height when toggling Show 1/2. Hidden in comparison modes, where
-  // row 2 is the mode hint / opacity slider instead.
+  // Fill the MIDDLE zone of row 2 (between the size flanks). They act on the
+  // CURRENTLY SHOWN image (Save N -> output, Disk N -> file dialog, Copy N ->
+  // clipboard). Same height as row 1 so the node never changes height when
+  // toggling Show 1/2. Hidden in comparison modes, where the middle zone is the
+  // mode hint / opacity slider instead.
   if (node._cmpShowWhich !== 0) {
     const which = node._cmpShowWhich;
     const fk = node._cmpFlashKey;
     const ft = node._cmpFlashText;
-    const dR = diskRect(W), sR = saveRect(W), cR = copyRect(W);
+    const dR = diskRect(node, W), sR = saveRect(node, W), cR = copyRect(node, W);
     paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save to disk ${which}`, hov(dR), fk === "disk");
     paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save to output ${which}`, hov(sR), fk === "save");
     paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy image ${which}`, hov(cR), fk === "copy");
@@ -613,9 +694,9 @@ function cmpDown(node, lx, ly, W, H) {
   // Save / Disk / Copy (only visible in Show 1/2). Checked first; their rects
   // don't overlap the toggle/mode buttons so this is just belt-and-braces.
   if (node._cmpShowWhich !== 0) {
-    if (inside(pos, diskRect(W))) { saveShownToDisk(node); return true; }
-    if (inside(pos, saveRect(W))) { saveShownToOutput(node); return true; }
-    if (inside(pos, copyRect(W))) { copyShownImage(node); return true; }
+    if (inside(pos, diskRect(node, W))) { saveShownToDisk(node); return true; }
+    if (inside(pos, saveRect(node, W))) { saveShownToOutput(node); return true; }
+    if (inside(pos, copyRect(node, W))) { copyShownImage(node); return true; }
   }
   // Show toggle: toggles between Show 1 and Show 2
   if (inside(pos, showRect(W))) {
@@ -634,7 +715,7 @@ function cmpDown(node, lx, ly, W, H) {
   // Opacity slider drag start (geometry derived from W — no dependency on a
   // prior paint having stashed it)
   if (node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     const hx = g.trackX, hw = g.trackW, hy = g.trackY - 6, hh = g.trackH + 12;
     if (lx >= hx - 8 && lx <= hx + hw + 8 && ly >= hy && ly <= hy + hh) {
       node._cmpOpacity = Math.max(0, Math.min(1, (lx - hx) / hw));
@@ -649,7 +730,7 @@ function cmpMove(node, lx, ly, W, H) {
   // Slider drag (works while the pointer is down; mode is always 3 while a
   // slider drag is in progress)
   if (node._cmpDragging && node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     node._cmpOpacity = Math.max(0, Math.min(1, (lx - g.trackX) / g.trackW));
     return true;
   }
