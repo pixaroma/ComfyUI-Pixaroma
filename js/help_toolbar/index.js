@@ -23,7 +23,7 @@ const CMD_ID = "Pixaroma.ShowHelp";
 const ICON_CLASS = "pix-help-toolbar-icon";
 const CSS_ID = "pix-help-toolbar-css";
 const BRAND = "#f66744";
-const QUESTION_ICON = "/pixaroma/assets/icons/note/question.svg";
+const QUESTION_ICON = "/pixaroma/assets/icons/note/question-mark.svg";
 
 // command.icon renders as the class on an <i>, so we draw the orange circle + ?
 // purely in CSS: a filled BRAND circle with the SAME question.svg glyph (white)
