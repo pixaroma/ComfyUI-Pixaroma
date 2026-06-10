@@ -20,7 +20,13 @@ import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 // MIN_W stays 290 so existing saved nodes are NOT force-resized on load (which
 // would false-dirty the workflow, Vue Compat #18); on a node narrower than the
 // row needs, the bottom bar flex-wraps the trailing items onto a second line.
+// The Nodes 2.0 (Vue) node BODY is meaningfully narrower than legacy for the
+// SAME node.size[0] (grid gutter + padding), so the row wraps the ? underneath
+// at the legacy default. DEFAULT_W_VUE gives a fresh Vue node the extra width it
+// needs so the ? sits after the switch there too. Per-renderer keeps legacy
+// compact (the renderer is fixed per page load, so only one applies per node).
 const DEFAULT_W = 410;
+const DEFAULT_W_VUE = 470;
 const DEFAULT_H = 158;
 const MIN_W = 290;
 const MIN_H = 158;
@@ -540,7 +546,7 @@ function setupNode(node) {
   // clobber it. The `< MIN` guard means: fresh LiteGraph defaults (which
   // are below our MIN) get bumped up to DEFAULT; saved-workflow sizes
   // that already meet MIN are left alone.
-  if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+  if (node.size[0] < MIN_W) node.size[0] = isVueNodes() ? DEFAULT_W_VUE : DEFAULT_W;
   if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
   // Initial lock-state check deferred until node.inputs is populated by
   // configure() (Vue Compat #8 - configure runs after nodeCreated). Also
