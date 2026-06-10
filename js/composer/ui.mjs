@@ -4,6 +4,7 @@ import {
   createPanel,
   createButton,
   createSliderRow,
+  createPillGrid,
   createDivider,
   createCanvasSettings,
   createLayerPanel,
@@ -718,10 +719,13 @@ export class PixaromaUI {
   </div>
 </div>
 <div class="pxf-help-section">
-  <h4>Eraser</h4>
+  <h4>Eraser / Restore</h4>
   <div class="pxf-help-grid">
     <b>E</b><span>Toggle eraser on / off</span>
     <b>V</b><span>Return to select mode</span>
+    <b>X</b><span>Swap Erase / Restore</span>
+    <b>Hold Alt</b><span>Temporarily use the opposite brush</span>
+    <b>Restore</b><span>Paints erased pixels back (orange cursor)</span>
     <b>Enable Eraser</b><span>Select a layer first, then click the button</span>
     <b>Reset Mask</b><span>Restore the layer's original pixels</span>
   </div>
@@ -1372,7 +1376,7 @@ export class PixaromaUI {
     layout.rightSidebar.insertBefore(core._layerPanel.el, layout.sidebarFooter);
 
     // --- 2. Eraser Panel ---
-    const eraserPanel = createPanel("Eraser", {
+    const eraserPanel = createPanel("Eraser / Restore", {
       collapsible: true,
       collapsed: false,
     });
@@ -1397,6 +1401,27 @@ export class PixaromaUI {
     core.btnEraserToggle.style.width = "100%";
     core.btnEraserToggle.style.marginBottom = "8px";
     eraserPanel.content.appendChild(core.btnEraserToggle);
+
+    // Erase | Restore segmented toggle. The mask is non-destructive, so
+    // Restore simply paints erased pixels back. X swaps; held Alt temp-flips.
+    core.eraserModePills = createPillGrid(
+      [
+        { label: "Erase", value: "erase" },
+        { label: "Restore", value: "restore" },
+      ],
+      2,
+      (v) => {
+        core.eraserSubMode = v;
+        core._refreshEraserPreview();
+      },
+      { activeValue: "erase" },
+    );
+    core.eraserModePills.pills[0].title =
+      "Brush removes pixels - X swaps, hold Alt for the opposite";
+    core.eraserModePills.pills[1].title =
+      "Brush paints erased pixels back - X swaps, hold Alt for the opposite";
+    core.eraserModePills.el.style.marginBottom = "8px";
+    eraserPanel.content.appendChild(core.eraserModePills.el);
 
     // Brush Size
     const sizeRow = createSliderRow("Size", 1, 200, core.brushSize, null, {
