@@ -30,6 +30,10 @@ export class PixaromaEditor {
     this.activeMode = null;
     this.brushSize = 25;
     this.brushHardness = 0.5;
+    // Eraser sub-mode: "erase" removes pixels, "restore" paints erased pixels
+    // back. Per-session tool state - resets to "erase" on every editor open.
+    this.eraserSubMode = "erase";
+    this._eraserAltHeld = false; // held Alt temporarily flips the sub-mode
     this.handleSize = 12;
     this.isMouseDown = false;
     this.startX = 0;
