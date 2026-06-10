@@ -271,6 +271,22 @@ function paintUtilBtn(ctx, r, label, hover, flash) {
   ctx.restore();
 }
 
+// Draw text vertically centered on `yMid` by its ACTUAL glyph box. Canvas
+// textBaseline:"middle" centers the EM box instead, which makes digit-only text
+// (the size labels) sit slightly HIGH — the em box reserves descender space the
+// digits don't use. Centering the visible glyphs lines the sizes up with the
+// buttons. Falls back to "middle" if the metrics aren't available.
+function fillTextVCenter(ctx, text, x, yMid) {
+  const m = ctx.measureText(text);
+  if (m && m.actualBoundingBoxAscent != null && m.actualBoundingBoxDescent != null) {
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, x, yMid + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  } else {
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, yMid);
+  }
+}
+
 // A small filled BRAND-orange circle with a white number — the image1 / image2
 // marker. Always orange (it's an identity badge, not a state badge); the SIZE
 // text next to it carries the match/mismatch colour.
@@ -310,8 +326,7 @@ function drawSizeLabels(ctx, node, W) {
     ctx.font = SIZE_FONT;
     ctx.fillStyle = sizeCol;
     ctx.textAlign = "left";
-    ctx.textBaseline = "middle";
-    ctx.fillText(dimsText(node._cmpImg1), cx + BADGE_R + 5, yMid);
+    fillTextVCenter(ctx, dimsText(node._cmpImg1), cx + BADGE_R + 5, yMid);
     ctx.restore();
   }
   if (has2) {
@@ -324,8 +339,7 @@ function drawSizeLabels(ctx, node, W) {
     ctx.font = SIZE_FONT;
     ctx.fillStyle = sizeCol;
     ctx.textAlign = "right";
-    ctx.textBaseline = "middle";
-    ctx.fillText(dimsText(node._cmpImg2), cx - BADGE_R - 5, yMid);
+    fillTextVCenter(ctx, dimsText(node._cmpImg2), cx - BADGE_R - 5, yMid);
     ctx.restore();
   }
 }
