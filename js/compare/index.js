@@ -178,9 +178,13 @@ let _cmpTipEl = null, _cmpTipTimer = null, _cmpTipText = null, _cmpTipX = 0, _cm
 function cmpTipDiv() {
   if (_cmpTipEl) return _cmpTipEl;
   const d = document.createElement("div");
+  // No max-width: with white-space:nowrap the box must grow to fit the full
+  // one-line text, or a long tooltip overflows the white background and the tail
+  // ("…right" -> "rig") renders as black text on the dark node. cmpPositionTip
+  // clamps it to the viewport so a wide box can't run off-screen.
   d.style.cssText =
     "position:fixed;z-index:99999;pointer-events:none;display:none;white-space:nowrap;" +
-    "max-width:340px;background:#ffffff;color:#000000;border:1px solid #767676;" +
+    "background:#ffffff;color:#000000;border:1px solid #767676;" +
     "border-radius:0;padding:3px 7px;font:12px 'Segoe UI',sans-serif;" +
     "box-shadow:0 2px 4px rgba(0,0,0,0.15);";
   document.body.appendChild(d);
