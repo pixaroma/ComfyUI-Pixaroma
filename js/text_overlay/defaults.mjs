@@ -17,6 +17,7 @@ export const DEFAULT_STATE = {
   weight: 400,
   italic: false,
   align: "center",
+  direction: "horizontal",
   fontSize: 64,
   lineHeight: 1.2,
   letterSpacing: 0,

@@ -10,6 +10,7 @@ import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 const DEFAULT_TEXT_STATE = {
   text: "Your text", font: "Roboto", weight: 400, italic: false,
   fontSize: 96, lineHeight: 1.2, letterSpacing: 0, align: "center",
+  direction: "horizontal",
   color: "#FFFFFF", bgColor: null,
 };
 
