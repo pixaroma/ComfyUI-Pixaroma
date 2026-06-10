@@ -6,11 +6,11 @@ import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 const MODES = ["Left Right", "Right Left", "Up Down", "Overlay", "Difference"];
 const SLIDER_PAD = 50; // "Opacity" label width
 const MODE_HINTS = [
-  "↔  Hover image to slide left / right",
-  "↔  Hover image to slide right / left",
-  "↕  Hover image to slide up / down",
+  "↔  Hover to slide left / right",
+  "↔  Hover to slide right / left",
+  "↕  Hover to slide up / down",
   "",
-  "Shows pixel differences between images",
+  "Shows pixel differences",
 ];
 // Layout constants
 const BTN_GAP = 3;
@@ -62,11 +62,13 @@ function modeRect(W, i) {
 // node the left of row 2 sits next to the image2 dot, so position alone would be
 // ambiguous). When the two sizes differ they turn BRAND orange — a quick
 // "you're comparing different resolutions" cue. Size = loaded naturalWidth/Height.
-const SIZE_FONT = "9px 'Segoe UI',sans-serif";
-const SIZE_RESERVE = 72; // px reserved on each flank for a size label
+const SIZE_FONT = "12px 'Segoe UI',sans-serif"; // bigger size text (was 9px)
+const BADGE_R = 8;                              // orange number-badge radius
+const BADGE_FONT = "10px 'Segoe UI',sans-serif";
+const SIZE_RESERVE = 86; // px reserved on each flank (badge + bigger dims)
 const SIZE_GAP = 6;      // gap between a size label and the middle content
-function sizeLabelText(img, n) {
-  return img ? `${n}: ${img.naturalWidth}×${img.naturalHeight}` : "";
+function dimsText(img) {
+  return img ? `${img.naturalWidth}×${img.naturalHeight}` : "";
 }
 function sizesDiffer(node) {
   const a = node?._cmpImg1, b = node?._cmpImg2;
@@ -195,39 +197,63 @@ function paintUtilBtn(ctx, r, label, hover, flash) {
   ctx.restore();
 }
 
-// Draw the image-size labels on the flanks of row 2 (see SIZE_* above). Called
-// in every mode from paintCompare; clipped to its flank so an extreme dimension
-// can't run into the middle content. Orange when the two sizes differ.
-function drawSizeLabels(ctx, node, W) {
-  const t1 = sizeLabelText(node._cmpImg1, 1);
-  const t2 = sizeLabelText(node._cmpImg2, 2);
-  if (!t1 && !t2) return;
-  const full = row2Full(W);
-  const yMid = ROW2_Y + BTN_H / 2;
+// A small filled BRAND-orange circle with a white number — the image1 / image2
+// marker. Always orange (it's an identity badge, not a state badge); the SIZE
+// text next to it carries the match/mismatch colour.
+function drawSizeBadge(ctx, cx, cy, n) {
   ctx.save();
-  ctx.font = SIZE_FONT;
+  ctx.fillStyle = BRAND;
+  ctx.beginPath();
+  ctx.arc(cx, cy, BADGE_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = BADGE_FONT;
+  ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillStyle = sizesDiffer(node) ? BRAND : "#bdbdbd";
-  if (t1) {
+  ctx.fillText(String(n), cx, cy + 0.5);
+  ctx.restore();
+}
+
+// Draw the image-size labels on the flanks of row 2: an orange number badge on
+// the OUTER corner + the WxH dimensions. image1 left, image2 right. The
+// dimensions turn orange when the two differ, gray when they match (the badge
+// stays orange either way). Each flank is clipped so a huge dimension can't run
+// into the middle content. Called in every mode from paintCompare.
+function drawSizeLabels(ctx, node, W) {
+  const has1 = !!node._cmpImg1, has2 = !!node._cmpImg2;
+  if (!has1 && !has2) return;
+  const full = row2Full(W);
+  const rightEdge = full.x + full.w;
+  const yMid = ROW2_Y + BTN_H / 2;
+  const sizeCol = sizesDiffer(node) ? BRAND : "#cfcfcf";
+  if (has1) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(full.x, ROW2_Y, SIZE_RESERVE, BTN_H);
     ctx.clip();
+    const cx = full.x + BADGE_R;
+    drawSizeBadge(ctx, cx, yMid, 1);
+    ctx.font = SIZE_FONT;
+    ctx.fillStyle = sizeCol;
     ctx.textAlign = "left";
-    ctx.fillText(t1, full.x, yMid);
+    ctx.textBaseline = "middle";
+    ctx.fillText(dimsText(node._cmpImg1), cx + BADGE_R + 5, yMid);
     ctx.restore();
   }
-  if (t2) {
-    const rightEdge = full.x + full.w;
+  if (has2) {
     ctx.save();
     ctx.beginPath();
     ctx.rect(rightEdge - SIZE_RESERVE, ROW2_Y, SIZE_RESERVE, BTN_H);
     ctx.clip();
+    const cx = rightEdge - BADGE_R;
+    drawSizeBadge(ctx, cx, yMid, 2);
+    ctx.font = SIZE_FONT;
+    ctx.fillStyle = sizeCol;
     ctx.textAlign = "right";
-    ctx.fillText(t2, rightEdge, yMid);
+    ctx.textBaseline = "middle";
+    ctx.fillText(dimsText(node._cmpImg2), cx - BADGE_R - 5, yMid);
     ctx.restore();
   }
-  ctx.restore();
 }
 
 // Setting ID and option list
@@ -527,16 +553,23 @@ function paintCompare(ctx, node, W, H, mouse) {
 
   } else if (node._cmpShowWhich === 0) {
     // Compare mode: the mode hint, CENTERED in the middle zone between the size
-    // flanks. Clipped to the middle so a long hint can't run into the sizes.
+    // flanks. Auto-shrinks (down to 7.5px) + clipped so a long hint can't run
+    // into the sizes now that the flanks are wider.
+    const hint = MODE_HINTS[node._cmpMode] || "";
     ctx.save();
     ctx.beginPath();
     ctx.rect(mid.x, ROW2_Y, mid.w, BTN_H);
     ctx.clip();
+    let hfs = 9;
+    ctx.font = `${hfs}px 'Segoe UI',sans-serif`;
+    while (hfs > 7.5 && ctx.measureText(hint).width > mid.w - 6) {
+      hfs -= 0.5;
+      ctx.font = `${hfs}px 'Segoe UI',sans-serif`;
+    }
     ctx.fillStyle = "#999";
-    ctx.font = "9px 'Segoe UI',sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(MODE_HINTS[node._cmpMode] || "", mid.x + mid.w / 2, mid.y + mid.h / 2);
+    ctx.fillText(hint, mid.x + mid.w / 2, mid.y + mid.h / 2);
     ctx.restore();
   }
   ctx.restore();
@@ -556,9 +589,9 @@ function paintCompare(ctx, node, W, H, mouse) {
     const fk = node._cmpFlashKey;
     const ft = node._cmpFlashText;
     const dR = diskRect(node, W), sR = saveRect(node, W), cR = copyRect(node, W);
-    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save to disk ${which}`, hov(dR), fk === "disk");
-    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save to output ${which}`, hov(sR), fk === "save");
-    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy image ${which}`, hov(cR), fk === "copy");
+    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Disk ${which}`, hov(dR), fk === "disk");
+    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Output ${which}`, hov(sR), fk === "save");
+    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy ${which}`, hov(cR), fk === "copy");
   }
 
   // ── Image area ──
