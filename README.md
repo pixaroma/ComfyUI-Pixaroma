@@ -265,6 +265,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
 
+### **June 10, 2026 · v1.3.84**
+- **Text Pixaroma no longer removes curly braces.** Curly braces { } were quietly being stripped out of your text when you ran the workflow, which broke JSON prompts and anything else that needs braces. They now stay exactly as you typed them.
+- **NEW: a Dynamic prompts switch on the Text node.** That brace-stripping was actually a "pick one at random" feature in disguise - so it's now an opt-in switch, off by default. Turn it on and {red|blue|green} picks one option at random each run (you can nest them, and notes after // or inside /* */ get removed); leave it off and every brace stays put.
+- **NEW: a Help button on the Text node.** Click the ? next to the Dynamic prompts switch for a panel that explains the text box, the buttons, and the switch - with a simple table showing what your text looks like with the switch on versus off.
+
 ### **June 9, 2026 · v1.3.82-1.3.83**
 - **Load Image Pixaroma keeps a steady size.** Loading images of different shapes (square, tall, wide) no longer makes the node resize itself and shove your other nodes around - it stays put and fits the image inside, like the standard Load Image. In the new node interface the preview now fills the node properly instead of leaving an empty gap below it.
 - **Finished the GitLab move.** The bundled sample workflow's buttons now point to GitLab too - they were the last spot still linking to the old GitHub home. The nodes themselves are unchanged.
