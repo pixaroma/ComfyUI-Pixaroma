@@ -1,0 +1,25 @@
+# Auto-publish ComfyUI-Pixaroma to the Comfy Registry (registry.comfy.org).
+# This mirrors the old GitHub Action: it runs the same comfy-cli commands.
+#
+# It runs when:
+#   - pyproject.toml changes on the main branch (i.e. you bumped the version), or
+#   - you trigger it by hand from GitLab: Build > Pipelines > "Run pipeline".
+#
+# REQUIRED: add your registry API key as a CI/CD variable named
+# REGISTRY_ACCESS_TOKEN (Settings > CI/CD > Variables, Masked).
+
+stages:
+  - publish
+
+publish-to-comfy-registry:
+  stage: publish
+  image: python:3.12
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+    - if: '$CI_COMMIT_BRANCH == "main"'
+      changes:
+        - pyproject.toml
+  script:
+    - pip install comfy-cli
+    - comfy --skip-prompt --no-enable-telemetry env
+    - comfy node publish --token "$REGISTRY_ACCESS_TOKEN"

@@ -1,5 +1,6 @@
 import { app } from "/scripts/app.js";
-import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
+import { BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes, installResizeFloor } from "../shared/index.mjs";
+import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
 // ComfyUI multiline widget is HIDDEN; we render our own DOM widget so the
@@ -14,9 +15,21 @@ import { BRAND, applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 // Default = minimum, so fresh-on-canvas drops are compact and the user
 // grows the node only when they need more typing room. Matches the
 // approach used by Show Text Pixaroma. Values verified by sizer overlay.
-const DEFAULT_W = 290;
+// DEFAULT_W = 412: a FRESH node opens wide enough for the whole bottom row
+// (Copy all / Replace / Clear / Dynamic prompts / ? help) on ONE line. 412 was
+// MEASURED in-ComfyUI with the sizer snippet (Nodes 2.0, the tighter renderer):
+// node width 400 wrapped the ?, 410 fit, so 412 is a small margin.
+// MIN_W = 412 is the LEGACY resize floor (legacy can't be dragged narrower than
+// where the ? fits). In NODES 2.0 the node.size min-clamp is GATED OFF (see the
+// gated onResize/onDrawForeground below + the CLAUDE.md "Nodes 2.0 manual-resize
+// MINIMUM" rule): clamping node.size there desyncs the Vue layout store (drag
+// smaller -> node.size silently snaps back to 412 -> the node JUMPS bigger on a
+// workflow switch + can false-dirty). So in Nodes 2.0 the user CAN drag the node
+// narrower; the bottom bar flex-wraps the trailing items gracefully and
+// installResizeFloor keeps the row from spilling out the bottom of the frame.
+const DEFAULT_W = 412;
 const DEFAULT_H = 158;
-const MIN_W = 290;
+const MIN_W = 412;
 const MIN_H = 158;
 const WIDGET_MIN_H = 120;
 
@@ -63,6 +76,11 @@ function injectCSS() {
       align-items: center;
       flex: 0 0 auto;
       gap: 4px;
+      /* Wrap the Dynamic prompts switch onto a second line when the node is
+         too narrow to fit the whole row (e.g. an existing 290-wide node).
+         row-gap keeps a little space between the wrapped lines. */
+      flex-wrap: wrap;
+      row-gap: 4px;
       padding: 0 2px;
       /* Stop text selection bleeding from the textarea into the button
          labels when the user drag-selects to the edge of the field. */
@@ -71,7 +89,7 @@ function injectCSS() {
     .pix-text-actbtn {
       /* box-sizing border-box so min-width is total including padding */
       box-sizing: border-box;
-      min-width: 86px;
+      min-width: 72px;
       user-select: none;
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.15);
@@ -123,9 +141,117 @@ function injectCSS() {
       flex: 0 0 auto;
       user-select: none;
     }
+    /* Dynamic prompts switch - a STICKY on/off state, styled distinctly from
+       the click-and-done action buttons so it doesn't read as a 4th button.
+       OFF = adaptive semi-transparent white (subtle on any node color);
+       ON = solid BRAND orange. Hover on OFF lifts the border to BRAND (no fill)
+       per the Pixaroma bordered-control convention. */
+    .pix-text-switch {
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex: 0 0 auto;
+      user-select: none;
+      white-space: nowrap;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      color: rgba(255, 255, 255, 0.7);
+      cursor: pointer;
+      font: 11px sans-serif;
+      padding: 4px 9px;
+      transition: background 0.1s, color 0.1s, border-color 0.1s;
+    }
+    .pix-text-switch:hover {
+      border-color: ${BRAND};
+      color: rgba(255, 255, 255, 0.92);
+    }
+    .pix-text-switch-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(255, 255, 255, 0.55);
+      background: transparent;
+      flex: 0 0 auto;
+      box-sizing: border-box;
+    }
+    .pix-text-switch.is-on {
+      background: ${BRAND};
+      border-color: ${BRAND};
+      color: #fff;
+    }
+    .pix-text-switch.is-on .pix-text-switch-dot {
+      background: #fff;
+      border-color: #fff;
+    }
+    .pix-text-switch[disabled] {
+      opacity: 0.4;
+      cursor: default;
+    }
+    .pix-text-switch[disabled]:hover {
+      border-color: rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.7);
+    }
   `;
   document.head.appendChild(style);
 }
+
+// In-node Help (?) panel content. Plain prose + inline `code` chips (the help
+// renderer escapes HTML, so write code/syntax inside backticks). See
+// js/shared/help.mjs for the schema.
+const TEXT_HELP = {
+  title: "Text Pixaroma",
+  tagline: "A multi-line text box with a single text output. Type once, wire it into as many nodes as you like.",
+  sections: [
+    {
+      heading: "The text box",
+      body:
+        "Type any text or prompt here and it comes out the `text` output. The box grows with the node - drag the bottom-right corner to make it bigger. Press `Ctrl+Enter` to run the workflow without leaving the box.\n\n" +
+        "Tip: to RECEIVE text from another node instead of typing, use Show Text Pixaroma - this node is for typing.",
+    },
+    {
+      heading: "Buttons",
+      defs: [
+        ["Copy all", "Copy everything in the box to your clipboard."],
+        ["Replace", "Paste over the whole box with text from your clipboard. An image or empty clipboard is ignored, so you can't wipe your text by accident."],
+        ["Clear", "Empty the box instantly."],
+      ],
+    },
+    {
+      heading: "Dynamic prompts switch",
+      body:
+        "Off by default. It decides whether curly braces are treated as a random-pick instruction.\n\n" +
+        "Leave it OFF for normal text and JSON: everything you type is sent exactly as-is, every `{` and `}` kept.\n\n" +
+        "Turn it ON to use wildcards:",
+      bullets: [
+        "`{red|blue|green}` picks one option at random every time you run.",
+        "Nest them freely, e.g. `a {big|small} {cat|dog}`.",
+        "Use `\\{` and `\\}` when you want a real brace while the switch is on.",
+        "Comments are removed when on: `//` to the end of a line, and `/* ... */` blocks.",
+      ],
+    },
+    {
+      heading: "What the switch does to your text",
+      table: {
+        headers: ["You type", "Switch ON", "Switch OFF"],
+        rows: [
+          ["a photo of a {cat|dog}", "a photo of a cat (or dog)", "a photo of a {cat|dog}"],
+          ['{ \"style\": \"noir\" }', '\"style\": \"noir\"', '{ \"style\": \"noir\" }'],
+          ["see http://site.com", "see http:", "see http://site.com"],
+        ],
+      },
+    },
+    {
+      heading: "Editing JSON? Keep it OFF",
+      body:
+        "With the switch ON, every `{` and `}` is eaten and anything after `//` (like a URL) is stripped - that is the wildcard feature working as designed, not a bug. So for JSON prompts, or any text where braces matter, leave the switch OFF (its default).",
+    },
+  ],
+};
+
+// Help is shown by the selection-toolbar Help button (js/help_toolbar).
+registerNodeHelp("PixaromaText", TEXT_HELP);
 
 function toast(severity, msg) {
   const t = app?.extensionManager?.toast;
@@ -207,7 +333,20 @@ function buildRoot() {
   clearBtn.textContent = "Clear";
   clearBtn.title = "Empty the textarea instantly (no confirm)";
 
-  bottombar.append(copyBtn, replaceBtn, clearBtn);
+  // Dynamic prompts switch - sits right after Clear, styled as a sticky on/off
+  // switch (not a 4th action button). State lives on node.properties (default
+  // OFF); the graphToPrompt hook resolves {a|b} only when it is ON.
+  const dynSwitch = document.createElement("button");
+  dynSwitch.type = "button";
+  dynSwitch.className = "pix-text-switch";
+  dynSwitch.title = "Dynamic prompts: {a|b} picks one at random each run. Turn OFF to keep literal { } braces (e.g. for JSON).";
+  const dynDot = document.createElement("span");
+  dynDot.className = "pix-text-switch-dot";
+  const dynLabel = document.createElement("span");
+  dynLabel.textContent = "Dynamic prompts";
+  dynSwitch.append(dynDot, dynLabel);
+
+  bottombar.append(copyBtn, replaceBtn, clearBtn, dynSwitch);
 
   // Hint shown when the text input is wired (hidden by default).
   const lockHint = document.createElement("div");
@@ -216,7 +355,7 @@ function buildRoot() {
   lockHint.style.display = "none";
 
   root.append(tawrap, lockHint, bottombar);
-  root._pixText = { ta, copyBtn, replaceBtn, clearBtn, lockHint };
+  root._pixText = { ta, copyBtn, replaceBtn, clearBtn, dynSwitch, lockHint };
   return root;
 }
 
@@ -229,10 +368,31 @@ function isTextInputWired(node) {
   return false;
 }
 
+// --- Dynamic prompts switch state (persisted on node.properties) -----------
+
+const DYN_PROP = "pixTextDynamicPrompts";
+
+function isDynamicOn(node) {
+  return !!node.properties?.[DYN_PROP];
+}
+
+function setDynamic(node, on) {
+  node.properties = node.properties || {};
+  node.properties[DYN_PROP] = !!on;
+}
+
+// Reflect the saved switch state onto the DOM switch (orange dot + .is-on).
+function applyDynamicSwitch(node) {
+  const root = node._pixTextRoot;
+  const els = root && root._pixText;
+  if (!els || !els.dynSwitch) return;
+  els.dynSwitch.classList.toggle("is-on", isDynamicOn(node));
+}
+
 function refreshTextLock(node) {
   const root = node._pixTextRoot;
   if (!root || !root._pixText) return;
-  const { ta, lockHint, copyBtn, replaceBtn, clearBtn } = root._pixText;
+  const { ta, lockHint, copyBtn, replaceBtn, clearBtn, dynSwitch } = root._pixText;
   const wired = isTextInputWired(node);
   if (wired) {
     ta.readOnly = true;
@@ -242,11 +402,15 @@ function refreshTextLock(node) {
     // still want to copy whatever they typed before wiring).
     replaceBtn.disabled = true;
     clearBtn.disabled = true;
+    // The switch only affects TYPED text; when the input is wired the typed
+    // text is ignored, so the switch is moot - dim it for clarity.
+    if (dynSwitch) dynSwitch.disabled = true;
   } else {
     ta.readOnly = false;
     ta.classList.remove("pix-text-locked");
     lockHint.style.display = "none";
     replaceBtn.disabled = false;
+    if (dynSwitch) dynSwitch.disabled = false;
     updateClearEnabled(root);
   }
 }
@@ -319,7 +483,14 @@ function wireEvents(node, root) {
     updateClearEnabled(root);
   });
 
-  for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn]) {
+  els.dynSwitch.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (els.dynSwitch.disabled) return;
+    setDynamic(node, !isDynamicOn(node));
+    applyDynamicSwitch(node);
+  });
+
+  for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn, els.dynSwitch]) {
     b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
     b.addEventListener("mousedown", (ev) => ev.stopPropagation());
   }
@@ -329,6 +500,27 @@ function updateClearEnabled(root) {
   const els = root._pixText;
   if (!els) return;
   els.clearBtn.disabled = !(els.ta.value && els.ta.value.length > 0);
+}
+
+// Minimum content height for the Nodes 2.0 resize floor: the textarea at its CSS
+// minimum (.pix-text-tawrap min-height 60) + the bottom bar's CURRENT height
+// (which already accounts for flex-wrap) + the wired-hint when shown + the root
+// gaps + vertical padding. Uses the textarea MIN (not its grown height) so the
+// floor lets the node shrink down to where content just fits, then no further.
+function measureTextFloor(root) {
+  if (!root) return 0;
+  const TAWRAP_MIN = 60; // keep in sync with .pix-text-tawrap min-height
+  const bar = root.querySelector(".pix-text-bottombar");
+  const hint = root.querySelector(".pix-text-lockhint");
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+  const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  let h = TAWRAP_MIN;
+  let count = 1;
+  if (bar) { h += bar.offsetHeight; count += 1; }
+  if (hint && hint.offsetParent !== null) { h += hint.offsetHeight; count += 1; }
+  if (count > 1) h += gap * (count - 1);
+  return h + padV;
 }
 
 function setupNode(node) {
@@ -357,6 +549,13 @@ function setupNode(node) {
   });
   applyAdaptiveCanvasOnly(_textWidget);
 
+  // Nodes 2.0 height floor: while a resize handle is dragged, pin the widget's
+  // min-height to its content height so the button row can't be dragged out of
+  // the bottom of the frame. The legacy onResize/onDrawForeground size-clamp is
+  // gated OFF in Nodes 2.0 (it desyncs the Vue layout store), so this is what
+  // floors the height there. Uninstalled in onRemoved.
+  node._pixTextFloorOff = installResizeFloor(root, measureTextFloor);
+
   wireEvents(node, root);
 
   // Apply default size with a MIN guard rather than unconditional set.
@@ -369,8 +568,13 @@ function setupNode(node) {
   if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
   if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
   // Initial lock-state check deferred until node.inputs is populated by
-  // configure() (Vue Compat #8 - configure runs after nodeCreated).
-  queueMicrotask(() => refreshTextLock(node));
+  // configure() (Vue Compat #8 - configure runs after nodeCreated). Also
+  // reflect the saved Dynamic prompts switch state here AND in onConfigure
+  // (belt-and-braces - whichever runs after configure restores properties).
+  queueMicrotask(() => {
+    refreshTextLock(node);
+    applyDynamicSwitch(node);
+  });
   node.setDirtyCanvas(true, true);
 }
 
@@ -395,6 +599,7 @@ app.registerExtension({
           updateClearEnabled(root);
         }
         refreshTextLock(this);
+        applyDynamicSwitch(this);
       });
       return r;
     };
@@ -409,34 +614,45 @@ app.registerExtension({
       return r;
     };
 
-    // Clamp manual resize so the bottom button row never overflows past
-    // the node frame. Mutate BOTH the parameter AND this.size defensively
-    // (some LiteGraph forks treat the param as the new size).
+    // Clamp manual resize so the bottom button row never overflows past the node
+    // frame. LEGACY ONLY. In Nodes 2.0 the RENDERED size lives in the Vue layout
+    // store, not node.size; clamping node.size here desyncs the two - the user
+    // drags smaller, Vue keeps the smaller render, but node.size snaps back to
+    // MIN, so the node JUMPS bigger on a workflow switch and can false-dirty the
+    // workflow (CLAUDE.md "Nodes 2.0 manual-resize MINIMUM"). Nodes 2.0 instead
+    // floors the height via installResizeFloor and wraps the width via flex-wrap.
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origOnResize) return origOnResize.apply(this, arguments);
     };
 
-    // Self-heal min size on every paint (Preview Image Pattern #11).
-    // Catches resize paths that bypass onResize - Vue Compat #13 notes
-    // some DOM-widget resizes never fire onResize, and Align Pixaroma
-    // (Align Pattern #6) writes node.size directly via cursor delta.
-    // Without this safety net the buttons can spill past the node frame
-    // after grow-then-shrink.
+    // Self-heal min size on every paint (Preview Image Pattern #11). Catches
+    // resize paths that bypass onResize (Vue Compat #13) + Align's direct
+    // node.size writes (Align Pattern #6). LEGACY ONLY for the same desync
+    // reason as onResize above.
     const origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
 
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      // Close any open Help panel so its document-level Esc listener can't
+      // leak when the node is deleted while the panel is open.
+      closeHelpPopup();
+      // Detach the Nodes 2.0 resize-floor window listeners.
+      this._pixTextFloorOff?.();
+      this._pixTextFloorOff = null;
       this._pixTextRoot = null;
       this._pixTextNative = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
@@ -459,3 +675,61 @@ app.registerExtension({
     setupNode(node);
   },
 });
+
+// --- graphToPrompt hook: resolve {a|b} dynamic prompts at submit time -------
+// ComfyUI's native `dynamicPrompts: True` was removed from node_text.py (it ate
+// JSON braces on EVERY Text Pixaroma). Instead we resolve here, ONLY for nodes
+// whose Dynamic prompts switch is ON. Runs per submit, so each queue gets a
+// fresh random pick - matching the old native behavior and its caching (a
+// different resolved value = a re-run). Subgraph-safe lookup mirrors
+// js/find_replace/index.js (a node inside a subgraph gets a composite "5:12" id).
+function buildPixTextNodeIndex() {
+  const index = new Map(); // composite id ("5:12") OR bare id -> node
+  const visit = (graph, prefix) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      const fullId = prefix + String(n.id);
+      if (n.comfyClass === "PixaromaText" || n.type === "PixaromaText") {
+        index.set(fullId, n);
+      }
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner, fullId + ":");
+    }
+  };
+  visit(app.graph, "");
+  return index;
+}
+
+function findPixTextNode(index, promptId) {
+  const sId = String(promptId);
+  if (index.has(sId)) return index.get(sId);
+  const tail = sId.includes(":") ? sId.slice(sId.lastIndexOf(":") + 1) : null;
+  if (tail && index.has(tail)) return index.get(tail);
+  return null;
+}
+
+const _origTextGraphToPrompt = app.graphToPrompt;
+app.graphToPrompt = async function (...args) {
+  const result = await _origTextGraphToPrompt.apply(this, args);
+  try {
+    const prompt = result?.output;
+    if (prompt && typeof prompt === "object") {
+      let index = null;
+      for (const key of Object.keys(prompt)) {
+        const entry = prompt[key];
+        if (!entry || entry.class_type !== "PixaromaText") continue;
+        if (!index) index = buildPixTextNodeIndex();
+        const node = findPixTextNode(index, key);
+        if (!node || !isDynamicOn(node)) continue; // switch OFF -> text stays literal
+        const v = entry.inputs?.text;
+        if (typeof v !== "string") continue; // wired input or missing -> nothing to resolve
+        entry.inputs.text = resolveDynamicPrompt(v);
+      }
+    }
+  } catch (err) {
+    console.error("Pixaroma.Text: dynamic-prompt graphToPrompt hook failed", err);
+  }
+  return result;
+};

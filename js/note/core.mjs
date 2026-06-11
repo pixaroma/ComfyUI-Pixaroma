@@ -1002,7 +1002,7 @@ export class NoteEditor {
         For the list of HTML tags / styles / classes allowed in Code
         view, click <b>? Code</b> in the footer.<br>
         Designed by <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">Pixaroma</a>
-        &middot; <a href="https://github.com/pixaroma/ComfyUI-Pixaroma" target="_blank" rel="noopener noreferrer">GitHub</a>
+        &middot; <a href="https://gitlab.com/pixaroma/comfyui-pixaroma" target="_blank" rel="noopener noreferrer">GitLab</a>
       </div>
     `;
     const close = h.querySelector(".pix-note-help-close");
@@ -1127,7 +1127,7 @@ export class NoteEditor {
       </div>
       <div class="pix-note-help-footer">
         Designed by <a href="https://www.youtube.com/@pixaroma" target="_blank" rel="noopener noreferrer">Pixaroma</a>
-        &middot; <a href="https://github.com/pixaroma/ComfyUI-Pixaroma" target="_blank" rel="noopener noreferrer">GitHub</a>
+        &middot; <a href="https://gitlab.com/pixaroma/comfyui-pixaroma" target="_blank" rel="noopener noreferrer">GitLab</a>
       </div>
     `;
     const close = h.querySelector(".pix-note-help-close");

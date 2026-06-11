@@ -10,6 +10,7 @@ import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 const DEFAULT_TEXT_STATE = {
   text: "Your text", font: "Roboto", weight: 400, italic: false,
   fontSize: 96, lineHeight: 1.2, letterSpacing: 0, align: "center",
+  direction: "horizontal",
   color: "#FFFFFF", bgColor: null,
 };
 
@@ -30,6 +31,10 @@ export class PixaromaEditor {
     this.activeMode = null;
     this.brushSize = 25;
     this.brushHardness = 0.5;
+    // Eraser sub-mode: "erase" removes pixels, "restore" paints erased pixels
+    // back. Per-session tool state - resets to "erase" on every editor open.
+    this.eraserSubMode = "erase";
+    this._eraserAltHeld = false; // held Alt temporarily flips the sub-mode
     this.handleSize = 12;
     this.isMouseDown = false;
     this.startX = 0;
@@ -158,6 +163,8 @@ export class PixaromaEditor {
         }
       }
     }
+    // Keep the Erase | Restore pills lit only while the eraser tool is on.
+    this._syncEraserPillsEnabled();
     this.verifySelection();
     this.draw();
   }

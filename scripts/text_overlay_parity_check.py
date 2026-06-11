@@ -96,6 +96,24 @@ REFERENCE_CASES = [
          "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 2, "align": "left",
          "color": "#00ff88", "opacity": 1.0, "x": 80, "y": 90, "rotation": 0}
     ]),
+    ("11_vertical_single.png", (256, 512), "#1a2a4a", [
+        {"text": "Vertical", "font": "Inter", "weight": 700, "italic": False,
+         "fontSize": 48, "lineHeight": 1.2, "letterSpacing": 0, "align": "left",
+         "color": "#FFFFFF", "opacity": 1.0, "direction": "vertical",
+         "x": 100, "y": 40, "rotation": 0}
+    ]),
+    ("12_vertical_columns_pill.png", (320, 512), "#2a1a3a", [
+        {"text": "Like\nThis", "font": "Roboto", "weight": 700, "italic": False,
+         "fontSize": 44, "lineHeight": 1.2, "letterSpacing": 8, "align": "center",
+         "color": "#FFFFFF", "opacity": 1.0, "bgColor": "#f66744", "direction": "vertical",
+         "x": 60, "y": 40, "rotation": 0}
+    ]),
+    ("13_vertical_uneven_center.png", (320, 512), "#1a3a2a", [
+        {"text": "Long\nA\nMid", "font": "Inter", "weight": 400, "italic": False,
+         "fontSize": 40, "lineHeight": 1.3, "letterSpacing": 6, "align": "center",
+         "color": "#FFFFFF", "opacity": 1.0, "direction": "vertical",
+         "x": 60, "y": 30, "rotation": 0}
+    ]),
 ]
 
 

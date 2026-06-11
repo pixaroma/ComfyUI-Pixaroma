@@ -135,6 +135,51 @@ def _round_rect(draw, x, y, w, h, r, fill):
     draw.rounded_rectangle((x, y, x + w, y + h), radius=r, fill=fill)
 
 
+def _render_vertical_layer(pil_font, lines, char_step, col_gap, align,
+                           ascender, descender, fill_color, bg_color,
+                           pad_x, pad_y, bg_radius):
+    """Vertical (top-to-bottom, upright) text. Columns = lines, left-to-right.
+    Returns (layer_img, bbox_w, bbox_h). Mirror of
+    js/framework/text_render.mjs::renderVerticalToCanvas. Docs section 5b."""
+    cols = []
+    for line in lines:
+        chars = list(line)
+        col_w = 0.0
+        for ch in chars:
+            col_w = max(col_w, pil_font.getlength(ch))
+        cols.append((chars, col_w))
+    max_chars = max((len(c[0]) for c in cols), default=0)
+    content_h = ascender + descender + max(0, max_chars - 1) * char_step
+    total_col_w = sum(c[1] for c in cols) + max(0, len(cols) - 1) * col_gap
+    bbox_w = max(1, int(round(total_col_w + 2 * pad_x)))
+    bbox_h = max(1, int(round(content_h + 2 * pad_y)))
+
+    layer_img = Image.new("RGBA", (bbox_w, bbox_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(layer_img)
+    if bg_color:
+        bg_rgba = _hex_to_rgb(bg_color) + (255,)
+        r = min(bg_radius, bbox_w // 2, bbox_h // 2)
+        _round_rect(draw, 0, 0, bbox_w - 1, bbox_h - 1, r, bg_rgba)
+
+    col_origin_x = pad_x
+    for chars, col_w in cols:
+        col_content_h = ascender + descender + max(0, len(chars) - 1) * char_step
+        if align == "center":
+            v_off = (content_h - col_content_h) / 2.0
+        elif align == "right":
+            v_off = content_h - col_content_h
+        else:
+            v_off = 0
+        for i, ch in enumerate(chars):
+            gw = pil_font.getlength(ch)
+            cx = col_origin_x + (col_w - gw) / 2.0
+            ly = pad_y + v_off + ascender + i * char_step
+            draw.text((cx, ly), ch, font=pil_font, fill=fill_color, anchor="ls")
+        col_origin_x += col_w + col_gap
+
+    return layer_img, bbox_w, bbox_h
+
+
 # ────────────────────────────────────────────────────────────────────────────
 # Hardcoded bg-pill defaults (user can't tune; spec §3, §4)
 # ────────────────────────────────────────────────────────────────────────────
@@ -174,6 +219,17 @@ def compute_text_bbox(layer):
     except TypeError:
         ascender, descender = pil_font.getmetrics()
     glyph_h = ascender + descender
+    if layer.get("direction", "horizontal") == "vertical":
+        # Mirror _render_vertical_layer's bbox math (ss=1 here). char_step =
+        # line_height_px; col_gap = letter_spacing.
+        cols = [list(ln) for ln in lines]
+        col_widths = [max((pil_font.getlength(ch) for ch in c), default=0) for c in cols]
+        max_chars = max((len(c) for c in cols), default=0)
+        content_h = glyph_h + max(0, max_chars - 1) * line_height_px
+        total_col_w = sum(col_widths) + max(0, len(cols) - 1) * letter_spacing
+        bbox_w = max(1, int(round(total_col_w + 2 * pad_x)))
+        bbox_h = max(1, int(round(content_h + 2 * pad_y)))
+        return (bbox_w, bbox_h)
     bbox_w = max(1, int(round(max_line_w + 2 * pad_x)))
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
     return (bbox_w, bbox_h)
@@ -254,7 +310,17 @@ def render_text_layer(base_img, layer):
     bbox_h = max(1, int(round(glyph_h + max(0, len(lines) - 1) * line_height_px + 2 * pad_y)))
 
     fill_color = _hex_to_rgb(color_hex) + (255,)
-    if synthesized_italic:
+    direction = layer.get("direction", "horizontal")
+    if direction == "vertical":
+        # Vertical skips synthesized italic (upright stacking). char_step =
+        # line_height_px (already round(font_size_eff*line_height_mult));
+        # col_gap = letter_spacing_eff. Docs section 5b.
+        layer_img, bbox_w, bbox_h = _render_vertical_layer(
+            pil_font, lines, line_height_px, letter_spacing_eff, align,
+            ascender, descender, fill_color, bg_color, pad_x, pad_y,
+            _BG_RADIUS * ss,
+        )
+    elif synthesized_italic:
         # Italic: pill stays axis-aligned; ONLY the text is skewed. The skew
         # shifts the bottom of glyphs LEFT by m*bbox_h, so widen the canvas by
         # that overhang (slant) and shift the text RIGHT by it (AFFINE c =

@@ -11,6 +11,7 @@ import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { TextOverlayEditor } from "./core.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { loadFontForLayer, canvasFontString } from "../framework/fonts.mjs";
+import { measureTextDims } from "../framework/text_render.mjs";
 import { DEFAULT_STATE, resetStateInPlace } from "./defaults.mjs";
 import "./interaction.mjs"; // side-effect: registers prototype methods
 
@@ -169,7 +170,8 @@ function setupTextOverlayNode(node) {
   // restored consistently from the saved graph. BASE_H is the panel's content
   // height with the hint hidden; if the panel layout changes (add/remove a
   // row), update BASE_H to match (the only maintenance cost of this approach).
-  const BASE_H = 412;   // content height, text input NOT wired
+  const BASE_H = 464;   // content height, text input NOT wired
+                        // (was 412; +52 for the Text Direction caption + chip row)
   const HINT_H = 18;    // extra height when the text input IS wired (lock hint)
   function panelHeight() {
     const wired = node.inputs?.find((i) => i.name === "text")?.link != null;
@@ -489,6 +491,8 @@ function getUpstreamImage(node) {
 
 // Measure the rendered bbox of the state's text using the same canvas-text
 // math as the live editor (and the Python renderer). Returns { w, h }.
+// Direction-aware via the shared measureTextDims (framework/text_render.mjs),
+// so vertical mode aligns/auto-centers with its real tall-narrow bbox.
 let _measureCanvas = null;
 async function measureTextBbox(state) {
   const variant = await loadFontForLayer(state.font || "Roboto", state.weight || 400, !!state.italic);
@@ -500,24 +504,7 @@ async function measureTextBbox(state) {
   }
   const ctx = _measureCanvas.getContext("2d");
   ctx.font = fontStr;
-  const lines = String(state.text ?? "").split("\n");
-  const letterSpacing = state.letterSpacing || 0;
-  const lineWidths = lines.map((ln) => {
-    if (letterSpacing === 0) return ctx.measureText(ln).width;
-    let w = 0; for (const c of ln) w += ctx.measureText(c).width;
-    return w + Math.max(0, ln.length - 1) * letterSpacing;
-  });
-  const maxLineW = Math.max(0, ...lineWidths);
-  const m = ctx.measureText("Mg");
-  const ascender = m.actualBoundingBoxAscent || (state.fontSize || 96) * 0.78;
-  const descender = m.actualBoundingBoxDescent || (state.fontSize || 96) * 0.22;
-  const lineHeightPx = Math.round((state.fontSize || 96) * (state.lineHeight || 1.2));
-  const padX = state.bgColor ? 16 : 0;
-  const padY = state.bgColor ? 10 : 0;
-  return {
-    w: Math.ceil(maxLineW + 2 * padX),
-    h: Math.ceil(ascender + descender + Math.max(0, lines.length - 1) * lineHeightPx + 2 * padY),
-  };
+  return measureTextDims(ctx, state);
 }
 
 // ── "Position on canvas" from the node body ──────────────────────────────

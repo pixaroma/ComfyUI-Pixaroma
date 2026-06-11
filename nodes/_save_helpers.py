@@ -99,35 +99,66 @@ def _expand_date_tokens(s):
 
 # ---- prefix sanitization ----
 
-# Characters allowed verbatim in a segment. '%' is permitted so native
-# ComfyUI tokens like %year% survive and reach folder_paths.get_save_image_path
-# for final expansion. Anything else is replaced with '_' (sanitization,
-# not rejection), so wiring an upstream filename like "Bunny Cubes - Copy.png"
-# just works instead of failing the save.
-_DISALLOWED_CHAR_RE = re.compile(r"[^A-Za-z0-9_\-%]")
+# DENYLIST, not allowlist (June-2026 Korean filename_prefix report): only the
+# characters Windows forbids in file/folder names (< > : " | ? *) plus ASCII
+# control chars are replaced with '_'. Everything else - non-Latin scripts
+# (Korean, Japanese, ...), accented letters, spaces, dots - passes through
+# verbatim, matching native ComfyUI SaveImage (which does no character
+# filtering at all; folder_paths.get_save_image_path only enforces that the
+# final path stays inside output/). The old [^A-Za-z0-9_\-%] allowlist
+# dissolved an all-Korean prefix to nothing -> "Preview" fallback in the
+# output root. Sanitization, not rejection: wiring an upstream filename like
+# "Bunny Cubes - Copy.png" just works instead of failing the save.
+# '/' (separator) and '\\' (normalized to '/') are handled before splitting;
+# '%' stays legal so native tokens like %year% survive for final expansion.
+# scripts/save_prefix_check.py locks this behavior - keep it green.
+_DISALLOWED_CHAR_RE = re.compile(r'[<>:"|?*\x00-\x1f\x7f]')
 _MULTI_UNDERSCORE_RE = re.compile(r"_+")
 _PREFIX_MAX_LEN = 256       # input cap (reject obvious garbage early)
 _PREFIX_OUTPUT_MAX = 100    # output cap so pasted paragraphs / multi-line
                             # text don't blow past Windows MAX_PATH
 
+# Names Windows reserves for devices - a folder/file with one of these names
+# (bare or with any extension, any case) can't be created normally and would
+# hard-error the save mid-run. Suffixed with '_' instead.
+_WIN_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{i}" for i in range(1, 10)}
+    | {f"LPT{i}" for i in range(1, 10)}
+)
+
 
 def _sanitize_segment(seg):
-    """Replace disallowed chars with '_', collapse repeats, strip edges.
+    """Neutralize Windows-illegal chars to '_', tidy edges, guard reserved names.
 
     Caller must reject '..' before calling. Returns "" if nothing usable
-    survives (e.g. segment was all dots / whitespace).
+    survives (e.g. segment was all dots / whitespace / illegal chars).
+    Trailing dots/spaces are stripped because Windows itself silently strips
+    them at create time - stripping here keeps the reported path identical
+    to what actually lands on disk.
     """
     cleaned = _DISALLOWED_CHAR_RE.sub("_", seg)
     cleaned = _MULTI_UNDERSCORE_RE.sub("_", cleaned)
-    return cleaned.strip("_")
+    # Loop until stable: edge whitespace, edge underscores, and trailing
+    # dots/spaces can shadow each other (e.g. "test._" needs two passes).
+    prev = None
+    while prev != cleaned:
+        prev = cleaned
+        cleaned = cleaned.strip().strip("_").rstrip(". ")
+    if cleaned and cleaned.split(".", 1)[0].upper() in _WIN_RESERVED_NAMES:
+        cleaned += "_"
+    return cleaned
 
 
 def _safe_prefix(s):
     """Return sanitized prefix string, or None if input is unrecoverable.
 
-    Pipeline: expand %date:FMT% tokens, then per segment replace any
-    char outside [A-Za-z0-9_\\-%] with '_', collapse repeated '_', strip
-    leading/trailing '_'. Path segments are separated by '/'.
+    Pipeline: expand %date:FMT% tokens, then per segment replace only
+    Windows-illegal chars (< > : " | ? * and control chars) with '_',
+    collapse repeated '_', strip edge whitespace/underscores/trailing
+    dots, and suffix Windows-reserved device names (CON, NUL, ...) with
+    '_'. Everything else - non-Latin scripts, accents, spaces - passes
+    through verbatim, like native SaveImage. Segments separated by '/'.
 
     Empty segments (e.g. trailing slashes, doubled slashes) are silently
     dropped — so 'teasda......////' becomes 'teasda' rather than failing.

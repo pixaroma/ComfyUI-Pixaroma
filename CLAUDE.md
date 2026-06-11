@@ -3,7 +3,15 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Project Overview
-ComfyUI-Pixaroma is a custom node plugin for ComfyUI that adds interactive visual editors (3D Builder, Paint Studio, Image Composer, Image Crop, Note Pixaroma - a rich-text annotation node, Preview Image Pixaroma - an in-node image previewer with Save Disk / Save Output / Copy / Open buttons, Notify Pixaroma - a terminal node that plays a sound from `assets/sounds/` when reached, useful as a workflow-completion alert when working in another window, Load Image Pixaroma - a drop-in replacement for native LoadImage with inline resize controls and 7 outputs IMAGE/MASK/WIDTH/HEIGHT/FILENAME/ORIGINAL_WIDTH/ORIGINAL_HEIGHT, Prompt Multi Pixaroma - hold a list of prompt variants on one node with two run modes via a pill toggle: Queue Text (one workflow run per enabled row) or List Prompts (one run, the whole list goes out a `prompts` output for downstream Prompt From List nodes to pick from), Prompt From List Pixaroma - tiny picker node that grabs one prompt from a Prompt Multi `prompts` list by 1-based index, drop several to fan one library out to different scenes, Prompt Pack Pixaroma - paste a block of prompts and queue one workflow run per prompt with a pill toggle to pick Paragraph (blank-line splits) or Line (newline splits) and a counter pill in the corner showing total / active, Text Overlay Pixaroma - simple single-text overlay on a required upstream image. The node body has full editing controls (text, font, weight, italic, alignment, size, line-height, letter-spacing, position X/Y, opacity, rotation, text color, bg pill color); clicking "Open Text Editor" launches a fullscreen WYSIWYG editor with drag-to-move, drag-corner-resize, rotation handle, snap guides, and a 6-icon align-to-canvas toolbar. Both surfaces edit the SAME state object so they stay in lockstep. Text Watermark Pixaroma - a no-editor sibling of Text Overlay for stamping a text watermark onto an image or batch: position via a 9-point anchor + a margin inset (so it lands in the same spot regardless of image size), and size as fixed pixels OR a percentage of each image's width (consistent across mixed-size batches); reuses Text Overlay's render engine and the shared text-properties panel in watermarkMode, with no fullscreen editor, Mute Switch Pixaroma - dynamic N-row canvas-painted control node that toggles whole branches of a workflow on/off by writing `node.mode = 2` (mute) or `4` (bypass) on the directly-wired upstream node. Pills at top: Single (radio - exactly one ON) vs Multi (any combination), and Mute vs Bypass mode. Cascades through inner Mute Switches via a phantom `out` output of custom type `PIXAROMA_MUTE_CHAIN` so an outer switch can disable a group of inner switches and everything they control), XY Plot Pixaroma - a single drop-in node (wire your final image into its `image` input, like a Preview node) that re-runs the workflow over every X×Y value combination and assembles the results into a labeled comparison grid. Pick what to vary on X (columns) and Y (rows) from a dropdown of the graph's nodes + their widgets (no wiring); the value-entry UI adapts to the picked widget type (number → range/list, combo → checklist, text → full-list or find-&-replace). It is the THIRD queue-driver (after Prompt Multi/Pack): patches `app.queuePrompt` to loop N×M runs (shared `queue_drivers.mjs` lock) and `app.graphToPrompt` to inject each cell's value into the target node's widget (overriding a wired input) + a per-node seed lock; Python accumulates cells server-side keyed by a sessionId and renders the labeled grid PNG (PIL) which JS shows as an `<img>` with Dark/Light/Mono themes + Save/Copy/Open) directly inside ComfyUI workflows. Find and Replace Pixaroma - a drop-in node you wire into a text wire (between an LLM/Show Text and whatever uses the prompt) that applies a stacked list of find->replace rules (per-rule on/off pill, drag to reorder, empty replace = delete) with global Case/Whole-word/Regex/Tidy toggles and a live before/after preview right on the node; the rules + last-run sample are saved into the workflow so a shared example shows the preview on open. It also includes Align Pixaroma, a toggleable canvas-wide smart-snap and alignment-guide system (no nodes added; patches `LGraphCanvas` so any node drag/resize snaps to nearby edges and centers with orange guide lines). It has zero core dependencies — PIL and PyTorch come from ComfyUI's environment. All nodes share the `👑 Pixaroma` menu category.
+ComfyUI-Pixaroma is a custom-node plugin for ComfyUI: ~40 nodes plus canvas-wide tools, all under the `👑 Pixaroma` menu, with zero core dependencies (PIL + PyTorch come from ComfyUI's environment). The families:
+- **Fullscreen editors:** 3D Builder, Paint Studio, Image Composer, Image Crop, AudioReact.
+- **Prompt tools:** Prompt Multi / Pack / Stack / From List, Find and Replace, Show Text, Text, Prompt Reader.
+- **Image I/O & resize:** Load Image, Preview Image, Save Mp4, Image Resize, Remove Background.
+- **Layout & utility:** Resolution, Switch / Switch WH / Switch Source, Mute Switch, XY Plot, Number, WH, Notify, Version Check.
+- **Annotation & overlay:** Note, Text Overlay, Text Watermark, Label, Compare.
+- **Canvas-wide features (no node added):** Align, Node Colors, Brand defaults, Connection FX, Run Button FX.
+
+Each node's behavior + invariants live in its own "Patterns (do not regress)" section below; the directory map and the Token-Saving table point you to the exact file per task.
 
 ## Development Setup
 No build step. Install by placing this folder in `ComfyUI/custom_nodes/`. ComfyUI auto-imports `__init__.py` on startup.
@@ -47,577 +55,41 @@ The frontend is organized into **directory-per-editor** modules under `js/`. Eac
 **File extension convention:** Only `index.js` files (entry points that call `app.registerExtension`) use the `.js` extension. All other module files use `.mjs`. This is because ComfyUI auto-loads every `*.js` file as a separate extension — using `.mjs` for non-entry modules prevents them from being loaded twice.
 
 ```
-js/
-├── framework/          # Shared UI toolkit (all editors depend on this)
-│   ├── index.mjs       # Barrel re-export (import from here)
-│   ├── theme.mjs       # CSS injection, brand colors, _uiIcon helper
-│   ├── layout.mjs      # createEditorLayout() — fullscreen overlay shell
-│   ├── components.mjs  # Buttons, panels, sliders, inputs, tool grids, zoom, transform
-│   ├── layers.mjs      # Photoshop-style layer panel with drag reorder
-│   ├── canvas.mjs      # Canvas settings, frame overlay, toolbar + drag-drop
-│   ├── fonts.mjs       # Font registry + FontFace loader (Text Overlay + future Composer text layers)
-│   ├── text_render.mjs # Pure renderTextLayer(ctx, layer) - canvas API mirror of nodes/_text_render_helpers.py
-│   └── text_editor.mjs # Per-layer text properties panel (right sidebar UI, reusable)
-│
-├── shared/             # Shared utilities (constants, node preview, helpers)
-│   ├── index.mjs       # Barrel re-export
-│   ├── utils.mjs       # BRAND, installFocusTrap, hideJsonWidget, downloadDataURL
-│   ├── preview.mjs     # createNodePreview, showNodePreview, restoreNodePreview
-│   ├── label_css.mjs   # injectLabelCSS() for label editor
-│   └── help.mjs        # createHelpButton(helpDef) / openHelpPopup() - the
-│                       #  reusable node Help panel (a ? button using the
-│                       #  bundled question.svg + a themed popup). See the
-│                       #  "Node Help Panel" convention (#16) for the schema +
-│                       #  how to add it to any node.
-│
-├── brand/              # Brand defaults (single global extension)
-│   └── index.js        # Pixaroma.BrandDefaults extension. Hooks
-│                       #  beforeRegisterNodeDef for ANY node whose Python
-│                       #  CATEGORY starts with "👑 Pixaroma" and applies the
-│                       #  dark title bar (#1d1d1d) + body (#2a2a2a) defaults.
-│                       #  Guarded with `if (!this.color)` / `!this.bgcolor`
-│                       #  so saved workflow colors and right-click → Colors
-│                       #  picks both win. ANY new Pixaroma node automatically
-│                       #  inherits the brand colors via the category prefix —
-│                       #  do NOT re-add per-node color guards.
-│
-├── node_colors/        # Right-click "Pixaroma colors" tools (single
-│   └── index.js        #  global extension, ~900 lines). Wraps
-│                       #  LGraphCanvas.prototype.getNodeMenuOptions (nodes)
-│                       #  AND LGraphGroup.prototype.getMenuOptions (groups)
-│                       #  to append color tools to ANY node/group right-
-│                       #  click menu. Submenu via LiteGraph.ContextMenu
-│                       #  callback pattern. May 2026 v4: the node
-│                       #  presets are the user's 127 hand-curated
-│                       #  finals (HUE_FOLDERS), organized as a leading
-│                       #  "Dark" folder (Default #1d1d1d/#2a2a2a =
-│                       #  brand default, Onyx, Charcoal, + 6 dark
-│                       #  low-sat color tints) then ONE FOLDER PER
-│                       #  HUE: Red, Orange, Gold, Green, Teal, Cyan,
-│                       #  Blue, Indigo, Purple, Pink.
-│                       #  Each folder holds that hue's title+body
-│                       #  shades ordered dark -> light: Deepest /
-│                       #  Moody / Deep / Jewel / Mid / Rich / Bold /
-│                       #  Vivid / Bright, then the muted variants
-│                       #  (Muted Deep / Slate / Muted / Muted Light),
-│                       #  then specials (Two-tone = colored title
-│                       #  with an analogous-hue body; Accent /
-│                       #  Accent Dark = colored title on a neutral
-│                       #  gray body #242424 / #1f1f1f). title ->
-│                       #  node.color, body -> node.bgcolor. The OLD
-│                       #  Plain/Pixa/Neutrals theme grouping (HUES /
-│                       #  PRESETS / BOLD_PRESETS / STANDALONES) was
-│                       #  REPLACED by this hue-folder set. To add or
-│                       #  remove a shade, edit the relevant hue's
-│                       #  `presets` array in js/node_colors/index.js.
-│                       #  --- May 2026 v3: copy/paste + 4 favorites +
-│                       #  groups. Top-level labels are Node/Group-qualified:
-│                       #  NODE menu top-level: "👑 Pixaroma Node Colors"
-│                       #  submenu + "👑 Copy Node Colors" + "👑 Paste Node
-│                       #  Colors" (shown only once something is copied) +
-│                       #  "👑 Reset Node Colors". The submenu LEADS with
-│                       #  the filled Favorites, then "Save these colors
-│                       #  to ▸" (4 slots) + "Pick custom...", then the
-│                       #  presets tucked into 11 subfolders (Dark +
-│                       #  Red ... Pink) so favorites/save are
-│                       #  reachable without scanning every swatch.
-│                       #  Favorites are 4 fixed slots persisted as ONE
-│                       #  compact JSON value via an UNREGISTERED settings
-│                       #  id "Pixaroma.NodeColors.Favorites" (no panel
-│                       #  clutter; unregistered ids DO persist - backend
-│                       #  is a plain JSON merge, verified May 2026). An
-│                       #  in-memory write-through cache (_favoritesCache)
-│                       #  is authoritative so rapid saves can't race the
-│                       #  async setter. The OLD single Favorite (the two
-│                       #  FavoriteTitle/Body "color" settings) was REMOVED
-│                       #  from the panel; a non-default legacy value
-│                       #  migrates into Favorite 1 (eagerly persisted).
-│                       #  "Pick custom..." opens the side-by-side
-│                       #  two-color modal (createPixaromaColorPicker
-│                       #  twice, NOT openPixaromaColorPickerModal) seeded
-│                       #  from the clipboard / first favorite; Apply feeds
-│                       #  the clipboard, NOT a favorite slot.
-│                       #  GROUP menu: TOP-LEVEL of the canvas right-click
-│                       #  menu (like nodes, NOT under "Edit Group"). Wraps
-│                       #  LGraphCanvas.prototype.getCanvasMenuOptions and
-│                       #  gates on a group under the cursor via
-│                       #  this.graph_mouse + graph.getGroupOnPos
-│                       #  (getCanvasMenuOptions takes NO event arg, so the
-│                       #  position comes from graph_mouse; processContextMenu
-│                       #  appends "Edit Group" right after, so our items land
-│                       #  just above it; node right-clicks use
-│                       #  getNodeMenuOptions so there's no double-add).
-│                       #  "👑 Pixaroma Group Colors ▸" (favorites + Save this
-│                       #  color to ▸ + Pick custom (single-color modal) + the
-│                       #  hand-picked GROUP_COLORS list, no subfolders) +
-│                       #  "👑 Copy Group Color" + "👑 Paste Group Color" +
-│                       #  "👑 Reset Group Color". A group has ONE fill
-│                       #  color (group.color), serialized in workflow
-│                       #  groups[]. Its ~25% transparency is LiteGraph's
-│                       #  hardcoded render (0.25 fill / 1.0 stroke ×
-│                       #  editor_alpha) and is left untouched.
-│                       #  CROSS-TYPE: the clipboard + the 4 favorites are
-│                       #  SHARED between nodes and groups; pickGroupColor()
-│                       #  maps a node {title,body} pair to a group's single
-│                       #  color by picking the more saturated of the two
-│                       #  (Plain→body, Pixa→title, neutral→either). Saving
-│                       #  a group color into a favorite stores a flat
-│                       #  title==body pair. Group multi-select filters
-│                       #  canvas.selectedItems by the group's class (there
-│                       #  is no selected_groups map). Colors are written
-│                       #  onto each node's .color/.bgcolor (or group.color)
-│                       #  so they serialize into the workflow JSON and
-│                       #  travel to recipients without this plugin. The
-│                       #  Dark preset reuses brand/index.js's hex values.
-│                       #  Custom modal CSS is `pix-nc-*` prefixed, injected
-│                       #  once via injectCSS() guarded by `#pix-nc-css` ID;
-│                       #  the single-color group variant adds
-│                       #  .pix-nc-modal-single + a .pix-nc-grouppreview that
-│                       #  shows the fill at 0.25 alpha. Click-outside-to-
-│                       #  cancel uses the mousedown-on-backdrop guard so an
-│                       #  SV-plane drag that releases off the modal does not
-│                       #  discard the pick (same pattern Text Overlay #12
-│                       #  documents). Multi-select aware: 2+ nodes (or
-│                       #  groups) selected + the right-clicked one among
-│                       #  them → applies to all; labels show "(N nodes)" /
-│                       #  "(N groups)".
-│
-├── connection_fx/      # Connection FX (single file, ~210 lines)
-│   └── index.js        # Frontend-only patch (no Python node). One
-│                       #  boolean setting `Pixaroma.Connection.FX`
-│                       #  under category ["👑 Pixaroma", "Connections"],
-│                       #  default OFF. When ON: (a) wraps
-│                       #  LGraphCanvas.prototype.drawFrontCanvas to
-│                       #  paint a pulsing BRAND #f66744 dot + halo at
-│                       #  every type-compatible target slot within
-│                       #  ~110 graph-units of the cursor while a wire
-│                       #  is being dragged - alpha scales with both
-│                       #  proximity and a sin(t*5) pulse, halo radius
-│                       #  too. Calls setDirty(true,true) per frame so
-│                       #  the pulse keeps animating during the drag.
-│                       #  Detects the drag via canvas.connecting_links
-│                       #  (newer API) with fallback to connecting_node
-│                       #  + connecting_output (older API). Wildcard
-│                       #  "*" types match everything. (b) wraps
-│                       #  LGraphNode.prototype.connect (which fires
-│                       #  once per successful connection, regardless of
-│                       #  per-node onConnectionsChange overrides like
-│                       #  the Switch Pixaroma configuring-gate) and
-│                       #  spawns 10 yellow position:fixed sparkle divs
-│                       #  in a circle at the target slot's screen
-│                       #  position. Slot graph -> screen conversion
-│                       #  uses (pos + ds.offset) * ds.scale + canvas
-│                       #  bounding rect offset. Hooks WRAP, never
-│                       #  replace; gated on `enabled` boolean so the
-│                       #  toggling cost is zero when off. CSS class
-│                       #  `pix-conn-fx-sparkle` injected once via
-│                       #  injectCSS() guarded by #pix-conn-fx-css ID.
-│
-├── run_button_fx/      # Run Button FX (single file, ~290 lines)
-│   └── index.js        # Frontend-only patch (no Python node). One ComfyUI
-│                       #  setting `Pixaroma.RunButton.FX` (combo) under
-│                       #  category ["👑 Pixaroma", "Run Button"] with
-│                       #  options: None / Pixaroma Orange / Flash /
-│                       #  Ignition / Thor / Sparkle / Rocket /
-│                       #  Shockwave.
-│                       #  Default OFF (None) - zero work when disabled.
-│                       #  Run button found by text-content match
-│                       #  (textContent === "Run" && has SVG) so it stays
-│                       #  reliable across dock/undock - the button is the
-│                       #  same DOM node when Vue just moves it, a new node
-│                       #  when Vue recreates it. MutationObserver on
-│                       #  document.body subtree re-finds the button only
-│                       #  when the cached reference falls out of DOM (early
-│                       #  return when document.body.contains(currentButton)),
-│                       #  batched via requestAnimationFrame so the high
-│                       #  mutation rate of Vue's reactivity layer is cheap.
-│                       #  FX implementation patterns: CONTINUOUS effects
-│                       #  (Pixaroma Orange / Pulse / Aurora) are CSS-class
-│                       #  toggles on the button itself with !important to
-│                       #  override Vue's built-in button styles. PER-CLICK
-│                       #  effects (Ignition / Lightning / Rocket) are
-│                       #  position:fixed overlay divs absolute-positioned
-│                       #  via button.getBoundingClientRect() into
-│                       #  document.body, so they can extend OUTSIDE the
-│                       #  button frame (flame to the left, arc beyond
-│                       #  border, rocket flame below) without fighting
-│                       #  the button's overflow:hidden. Each overlay
-│                       #  removes itself via setTimeout after its CSS
-│                       #  animation completes. CONTINUOUS particle
-│                       #  emission (Sparkle) uses setInterval spawning
-│                       #  body-level overlay divs at random x within the
-│                       #  button rect - interval cleared via the
-│                       #  cleanupCurrent closure when FX changes.
-│                       #  Each attachX(button) returns a cleanup fn;
-│                       #  applyFx() calls cleanupCurrent() before swapping
-│                       #  FX. Rocket shake uses the
-│                       #  classList.remove + void offsetWidth + add
-│                       #  trick to force CSS animation restart on each
-│                       #  click. All overlay class names are
-│                       #  `pix-rb-fx-*` (sparkle, flame, arc,
-│                       #  rocketflame) and button-applied class names
-│                       #  are `pix-rb-orange / -pulse / -aurora /
-│                       #  -rocket-shake`. CSS injected once via
-│                       #  injectCSS() guarded by #pix-rb-fx-css ID.
-│                       #  Zero perf cost when FX === "None" because
-│                       #  the observer is never started.
-│
-├── paint/              # Paint Studio (PaintStudio class, mixin pattern)
-│   ├── index.js        # Entry: ComfyUI extension registration
-│   ├── core.mjs        # Class shell: constructor, open/close, UI building
-│   ├── canvas.mjs      # Canvas init, layer CRUD (add/delete/merge/flatten)
-│   ├── render.mjs      # Layer rendering with transforms, grid
-│   ├── transform.mjs   # Transform handles, hit-test, zoom/pan
-│   ├── events.mjs      # Mouse/keyboard event binding & routing
-│   ├── tools.mjs       # Brush, pencil, eraser, smudge, fill, pick, shape
-│   ├── history.mjs     # Undo/redo snapshots
-│   ├── ui.mjs          # Color picker, tool options, layer panel sync
-│   ├── engine.mjs      # BrushEngine class, color conversion utils
-│   └── api.mjs         # PaintAPI backend calls
-│
-├── 3d/                 # 3D Builder (Pixaroma3DEditor class, mixin pattern)
-│   ├── index.js        # Entry: ComfyUI extension registration
-│   ├── core.mjs        # Class shell, UI building, Three.js lazy loading
-│   ├── engine.mjs      # Three.js scene/renderer/camera init, animation
-│   ├── objects.mjs     # Object CRUD, selection, geometry, materials, layer thumbs
-│   ├── shapes.mjs      # Shape registry: id → { icon, label, build, params, defaults, live }
-│   ├── shape_params.mjs # Per-object Shape panel (right sidebar) + geometry rebuild
-│   ├── composites.mjs  # Multi-mesh Groups (tree, house, flower, …) registry + builders
-│   ├── picker.mjs      # "Add 3D Object" modal picker (categorised grid)
-│   ├── importer.mjs    # GLB/OBJ lazy loaders + wrapImportPivot + _addImportedGroup
-│   ├── interaction.mjs # Tools, camera views, keyboard, undo/redo
-│   ├── persistence.mjs # Save/restore scene JSON, background image
-│   └── api.mjs         # ThreeDAPI backend calls
-│
-├── composer/           # Image Composer (PixaromaEditor class, mixin pattern)
-│   ├── index.js        # Entry: ComfyUI extension registration
-│   ├── core.mjs        # Class shell, state management
-│   ├── eraser.mjs      # Eraser mode, mask creation/loading
-│   ├── interaction.mjs # Events, alignment, keyboard, transforms
-│   ├── render.mjs      # Rendering, history/undo
-│   ├── ui.mjs          # Sidebar panel builder
-│   ├── layers.mjs      # Layer helper module
-│   └── api.mjs         # PixaromaAPI backend calls
-│
-├── crop/               # Image Crop (CropEditor class, mixin pattern)
-│   ├── index.js        # Entry: ComfyUI extension registration
-│   ├── core.mjs        # Class shell, UI building
-│   ├── interaction.mjs # Mouse/keyboard, crop handle dragging
-│   └── render.mjs      # Canvas rendering, aspect ratio logic, save
-│
-├── label/              # Label Editor (function-based, not a class)
-│   ├── index.js        # Entry: ComfyUI extension registration
-│   ├── core.mjs        # LabelEditor class, UI building
-│   └── render.mjs      # Canvas text rendering, typography helpers
-│
-├── note/               # Note Pixaroma (NoteEditor class, mixin pattern)
-│   ├── index.js        # Entry: node lifecycle, DEFAULT_CFG, parseCfg, onConfigure/onResize
-│   ├── core.mjs        # Class shell: open/close, save, undo history, Ctrl+Z neutering,
-│   │                   #  code/preview view toggle, _applyEditAreaBg, _normalizeEditArea
-│   ├── toolbar.mjs     # _buildToolbar: bold/italic/headings/colour pickers/link/code/HR/
-│   │                   #  Button Design/YT/Discord entries, undo/redo, view toggle, SWATCHES,
-│   │                   #  _promptLinkUrl + _promptCodeBlock themed modals
-│   ├── blocks.mjs      # Button Design rich dialog (icon picker, live preview, toggles),
-│   │                   #  YouTube + Discord generic block dialogs, validateUrl helper,
-│   │                   #  renderButtonHTML, insertAtSavedRange, saveRange/restoreRange
-│   ├── render.mjs      # createNoteDOMWidget, renderContent, attachEditButton,
-│   │                   #  attachCanvasClickDelegation, injectCopyButtons (for <pre>)
-│   ├── sanitize.mjs    # Allowlist-based HTML sanitizer (tags, attrs, classes, styles, href)
-│   └── css.mjs         # injectCSS — all note styles (overlay, editarea, pills, toggles)
-│
-├── resolution/         # Resolution Pixaroma (single file, ~640 lines)
-│   └── index.js        # 3x3 ratio chip grid + 8-row size list + Custom mode
-│                       #  (W/H inputs, swap, snap chips, aspect preview).
-│                       #  State on node.properties + graphToPrompt hook.
-│
-├── align/              # Align Pixaroma: toggleable smart-snap + alignment
-│   └── index.js        #  guides for the node canvas (~640 lines, single
-│                       #  file). Frontend-only patch, no Python node.
-│                       #  Hooks: window-level pointermove for snap math
-│                       #  (NOT LGraphCanvas.processMouseMove, which Vue
-│                       #  does not invoke), drawFrontCanvas wrap for guide
-│                       #  rendering (NOT onDrawForeground, unreliable in
-│                       #  Vue per Compat #1). Drag-origin + cursor-delta
-│                       #  model: state.dragInfo captures cursorX/Y + each
-│                       #  selected node's pos at drag start; per-tick
-│                       #  desired = orig + cursorDelta; snap is a lateral
-│                       #  correction. Visual node bounds include the title
-│                       #  bar (LiteGraph.NODE_TITLE_HEIGHT) so snap edges
-│                       #  match what the user sees. Change-detection cache
-│                       #  identifies the dragged node (more reliable than
-│                       #  selected_nodes, which a resize-handle click does
-│                       #  not update). Hysteresis stickyG = snapGraph * 1.5
-│                       #  to prevent wiggle. Multi-select is a rigid bbox
-│                       #  move; resize uses per-edge tracking with sticky
-│                       #  "moving" flags. Settings: Pixaroma.Align.Enabled
-│                       #  + .SnapDistance under DISTINCT leaf categories
-│                       #  (Vue UI dedupes by leaf name). Toolbar button
-│                       #  mounted via app.menu.settingsGroup.element.before
-│                       #  (rgthree pattern). Default OFF, zero cost when
-│                       #  disabled. Shift bypasses snap (Alt is taken by
-│                       #  ComfyUI for "duplicate during drag").
-│
-├── compare/            # Compare Viewer (single file, 413 lines)
-│   └── index.js        # Full compare widget (LiteGraph node drawing)
-│
-├── xy_plot/            # XY Plot Pixaroma - re-run the workflow over every
-│   │                   #  X×Y value combo -> labeled comparison grid. THIRD
-│   │                   #  queue-driver (after Prompt Multi/Pack); built for
-│   │                   #  both renderers from the start. See "XY Plot Pixaroma
-│   │                   #  Patterns" for the invariants.
-│   ├── index.js        # Entry: lifecycle (DOM widget + applyAdaptiveCanvasOnly,
-│   │                   #  no dirty-on-load), the app.queuePrompt N×M driver loop
-│   │                   #  (shared queue_drivers.mjs lock + feedsOnlyInactiveSwitch
-│   │                   #  + imageWired gate so a non-participating node falls
-│   │                   #  through to a normal run), the app.graphToPrompt hook
-│   │                   #  (injectAxis writes each cell's value into the TARGET
-│   │                   #  node's inputs[widget] - findPromptEntry matches subgraph
-│   │                   #  keys by tail id - OVERRIDING a wired input; applySeedLock
-│   │                   #  pins each seed by EXACT prompt key via captureSeedMap),
-│   │                   #  the executed listener (caches exec prompt/workflow for
-│   │                   #  Save + shows the grid PNG), growNode/fitNode + a legacy
-│   │                   #  one-shot shrink for over-tall cross-renderer carryover,
-│   │                   #  re-entrancy guard (_pixXyRunning) + cancelable confirm.
-│   ├── core.mjs        # State on node.properties.xyPlotState; enumerateTargets +
-│   │                   #  classifyWidget (skips $$/pixaroma_*/hidden/canvasOnly);
-│   │                   #  value parsing: parseNumberList/rangeToList (MAX_AXIS_VALUES
-│   │                   #  cap + drift-free integer-index range), roundToStep (sci-
-│   │                   #  notation safe), resolveAxisValues (combo filtered vs live
-│   │                   #  options), computeCounts.
-│   ├── ui.mjs          # .pix-xy-* CSS + node body: axis cards, custom node+widget
-│   │                   #  dropdown (value previews disambiguate same-titled nodes),
-│   │                   #  adaptive value entry, counter, Lock seed/Draw labels/Save
-│   │                   #  cells toggles, Dark/Light/Mono theme picker (instant
-│   │                   #  re-skin via /restyle), Reset. closePopupIfOwner.
-│   └── grid.mjs        # In-node grid <img> (preload-before-swap, max-height 360
-│                       #  cap) + Save Disk/Output/Copy/Open (exec-time metadata).
-│
-├── find_replace/       # Find and Replace Pixaroma - intercept a STRING in the
-│   │                   #  wire (between an LLM/Show Text and whatever uses the
-│   │                   #  prompt) and apply a stacked list of find->replace
-│   │                   #  rules, with a live before/after preview on the node.
-│   │                   #  Mirrors the Prompt Stack architecture (DOM rows +
-│   │                   #  node.properties state + graphToPrompt Pattern #9 +
-│   │                   #  pixConfirm + dirty-on-load guards). Built for BOTH
-│   │                   #  renderers.
-│   ├── index.js        # Entry: lifecycle, sizing (setNodeHeight/grow/fit),
-│   │                   #  makeHandlers, the app.graphToPrompt hook injecting the
-│   │                   #  rules state (MINUS the preview) into hidden
-│   │                   #  FindReplaceState, onExecuted caching the run's input
-│   │                   #  text for the preview.
-│   ├── core.mjs        # State node.properties.findReplaceState
-│   │                   #  {caseSensitive,wholeWord,regex,tidy,rules[{id,enabled,
-│   │                   #  find,replace}]} + mutators; applyRulesJS + tidy (1:1
-│   │                   #  mirror of nodes/node_find_replace.py::_apply_rules,
-│   │                   #  Python authoritative); LCS word-diff for the before/
-│   │                   #  after highlight; preview persistence in a SEPARATE
-│   │                   #  node.properties.findReplacePreview (capped, NOT
-│   │                   #  injected into the prompt).
-│   ├── render.mjs      # .pix-fr-* CSS + DOM: 4 global toggle pills (Case /
-│   │                   #  Whole word / Regex / Tidy; Whole word greys out while
-│   │                   #  Regex is on), rule rows (handle / ON-OFF / find ->
-│   │                   #  replace auto-grow textareas / delete), action row
-│   │                   #  (+ Add rule / Reset), live before/after preview box.
-│   │                   #  renderPreview recomputes from the cached input + the
-│   │                   #  current rules so it updates as you edit (no re-run).
-│   └── interaction.mjs # find/replace textarea editors (auto-grow + live preview
-│                       #  refresh), drag-reorder (handle is the drag source),
-│                       #  pix-fr- themed pixConfirm.
-│
-├── preview/            # Preview Image Pixaroma (single file, ~570 lines)
-│   └── index.js        # Four orange buttons in one row — Save Disk / Save
-│                       #  Output / Copy / Open — plus a custom strip widget
-│                       #  rendering all batch frames with click-to-select
-│                       #  (orange BRAND border + "i / N" badge). All buttons
-│                       #  act on the SELECTED frame. Listens to
-│                       #  api.addEventListener("executed", ...) for
-│                       #  pixaroma_preview_frames (custom UI key — Save Mp4
-│                       #  pattern, NOT ui.images, so LiteGraph doesn't render
-│                       #  its native strip underneath). saveToOutput posts to
-│                       #  /pixaroma/api/preview/save; saveToDisk posts to
-│                       #  /pixaroma/api/preview/prepare and uses the route's
-│                       #  suggested_filename (auto-counter peek) for the Save
-│                       #  dialog, then writes via window.showSaveFilePicker
-│                       #  with <a download> fallback. copyToClipboard writes
-│                       #  the selected frame's PNG via navigator.clipboard
-│                       #  .write([new ClipboardItem({"image/png": blob})]) —
-│                       #  one-click replacement for ComfyUI's right-click
-│                       #  Copy (Clipspace) which only copies to ComfyUI's
-│                       #  internal clipspace, not the OS clipboard.
-│                       #  openInNewTab opens the selected frame's URL in a
-│                       #  new browser tab (window.open(..., "_blank",
-│                       #  "noopener")) for full-screen viewing or comparing
-│                       #  multiple images side-by-side.
-│
-├── notify/             # Notify Pixaroma (single file, ~65 lines)
-│   └── index.js        # Terminal node that plays a sound from
-│                       #  assets/sounds/ when reached. Listens to
-│                       #  api.addEventListener("executed", ...) for
-│                       #  pixaroma_notify (custom UI key, Save Mp4
-│                       #  pattern). Settings master toggle
-│                       #  Pixaroma.Notify.Enabled. Native ▶ Preview
-│                       #  button bypasses both master and per-node
-│                       #  toggles (manual override - the user is
-│                       #  actively asking to hear the sound now,
-│                       #  toggles only gate automatic notifications).
-│                       #  Sounds served by existing /pixaroma/assets/
-│                       #  <subdir>/<filename> route, no new backend.
-│                       #  Python returns float("nan") from IS_CHANGED
-│                       #  so notification fires on every Run, even
-│                       #  when upstream is fully cached.
-│
-├── text_overlay/       # Text Overlay Pixaroma — single-text overlay
-│   ├── index.js        # Entry: registration, mounts shared text_editor.mjs panel
-│   │                   #  on the node body, app.graphToPrompt hook (Pattern #9),
-│   │                   #  state migration (v1 multi-layer → v2 defaults).
-│   ├── core.mjs        # TextOverlayEditor class — lifecycle, save (just sets
-│   │                   #  dirty canvas, no thumbnail), undo stack, zoom, canvas
-│   │                   #  settings panel (dims + Fit W/H), alignment-to-canvas
-│   │                   #  toolbar, mounts the SAME text_editor.mjs panel in the
-│   │                   #  right sidebar that's on the node body.
-│   └── interaction.mjs # Canvas mouse + keyboard: drag bbox to move, corner
-│                       #  handles scale fontSize, rotation handle (Shift = 15°
-│                       #  snap), Arrow keys nudge, Delete clears text. Single
-│                       #  text — no multi-layer hit test, no Alt-duplicate.
-│
-├── text_watermark/     # Text Watermark Pixaroma — anchored, margin-based watermark
-│   ├── index.js        # Entry: mounts the shared text_editor.mjs panel in
-│   │                   #  watermarkMode on the node body (NO fullscreen editor),
-│   │                   #  app.graphToPrompt hook (Pattern #9), wired-text lock,
-│   │                   #  FIXED getMinHeight (BASE_H 412, Vue Compat #18),
-│   │                   #  onRemoved panel teardown. Chains app.graphToPrompt
-│   │                   #  alongside Text Overlay's hook (verified to compose).
-│   └── defaults.mjs    # DEFAULT_STATE (anchor "bottom-right", marginX/Y 20,
-│                       #  sizeMode "px") + resetStateInPlace; MUST match the
-│                       #  Python per-field fallbacks (Pattern #3). No core/
-│                       #  interaction files — the node reuses Text Overlay's
-│                       #  render engine; placement (anchor + margin + px/%-width)
-│                       #  is computed in Python (nodes/node_text_watermark.py).
-│
-├── audio_studio/       # AudioReact Pixaroma — fullscreen editor for audio-reactive effects
-│   ├── index.js        # Entry: button widget on the node, app.graphToPrompt hook
-│   │                   #  (Pattern #9), nodeCreated lifecycle. DEFAULT_CFG mirrors
-│   │                   #  Params() defaults in nodes/_audio_react_engine.py.
-│   ├── core.mjs        # AudioStudioEditor class — open/close/save/discard,
-│   │                   #  Vue-compat Ctrl+Z neutering, undo/redo stack, source
-│   │                   #  resolution + drag-drop, header/sidebar building.
-│   ├── transport.mjs   # Mixin — transport bar UI (play/scrub/sparkline/frame
-│   │                   #  stepper), Web Audio playback synced to playhead.
-│   ├── audio_analysis.mjs # Decode (Web Audio API), inline Cooley-Tukey real
-│   │                   #  FFT (no deps), 4-band envelope/onset packed for
-│   │                   #  RGBA32F upload, encodeWav() for upload conversion.
-│   ├── render.mjs      # Mixin — WebGL2 pipeline init + 2-pass render
-│   │                   #  (motion → intermediate FBO → overlay → screen).
-│   ├── shaders.mjs     # 8 motion shader fragments + combined-overlay shader,
-│   │                   #  compileProgram() with WeakMap cache.
-│   ├── ui.mjs          # Mixin — tabbed sidebar (Motion / Overlays / Audio /
-│   │                   #  Output), control factories, helpers.
-│   └── api.mjs         # Backend wrappers — uploadSource (multipart POST),
-│                       #  getUpstreamImageUrl (Vue links Map/object dual access),
-│                       #  getInlineSourceUrl.
-│
-├── showtext/           # Show Text Pixaroma (single file, ~85 lines)
-│   └── index.js        # Read-only DOM <textarea> via addDOMWidget for native
-│                       #  text selection / copy + scrollbar. Free resize (min
-│                       #  200x120, default 280x200). STRING output named
-│                       #  "text" so it chains downstream. Widget value
-│                       #  serialized so last-shown text restores on workflow
-│                       #  load. No onDrawForeground (Vue Compat #1).
-│
-├── reference/          # Reference node (single file, 140 lines)
-│   └── index.js
-│
-├── switch/             # Switch Pixaroma - dynamic N-to-1 typed router
-│   ├── index.js        # Entry: app.registerExtension; patches onNodeCreated,
-│   │                   #  onRemoved, onConfigure, onConnectionsChange,
-│   │                   #  onDrawForeground, onMouseDown. Configure replay gate
-│   │                   #  via _pixSwitchConfiguring try/finally (Vue Compat #17).
-│   │                   #  app.graphToPrompt hook injects state.activeIndex into
-│   │                   #  the hidden SwitchState input at submission (Pattern #9).
-│   ├── core.mjs        # Slot management. State: node.properties.switchState =
-│   │                   #  { activeIndex, labels, visibleCount }. normalizeSlots
-│   │                   #  is idempotent: trims to (connected + 1 trailing),
-│   │                   #  renames input_1..N, maintains the trailing-empty
-│   │                   #  invariant. handleDisconnect defers via setTimeout(0)
-│   │                   #  so a wire-replace (drop a new wire onto a wired slot,
-│   │                   #  LG fires disconnect-then-connect) can be cancelled
-│   │                   #  by handleConnect via the _pendingDisconnects Map.
-│   │                   #  getUpstreamType traces a slot's link to the upstream
-│   │                   #  output type for both updateOutputType and the row's
-│   │                   #  default-label placeholder. Auto-recovery of
-│   │                   #  activeIndex only fires when out of range, NEVER on
-│   │                   #  link presence (links not yet set during
-│   │                   #  restoreFromProperties on workflow load).
-│   ├── render.mjs      # onDrawForeground paint. rowCenterY math matches LG
-│   │                   #  NODE_SLOT_HEIGHT so labels and toggles sit at the
-│   │                   #  same Y as native input dots (Vue Compat #16, mirrors
-│   │                   #  Image Compare). drawToggle pill is BRAND #f66744 when
-│   │                   #  active, dim grey when off. drawLabel falls through
-│   │                   #  hasUserText > "(empty)" for trailing > upstream type
-│   │                   #  name (filtered against the "*" wildcard) > "Label..."
-│   │                   #  grey. labelScreenRect converts body-local to viewport
-│   │                   #  pixels for editor.mjs.
-│   └── editor.mjs      # Inline DOM <input> overlay for label edit-in-place.
-│                       #  Module singleton activeEditor. Font / padding / border
-│                       #  scale by app.canvas.ds.scale at open time so the input
-│                       #  matches canvas-painted text at any zoom. setTimeout(0)
-│                       #  defers focus + blur listener install so the opening
-│                       #  mousedown propagation doesn't ghost-blur the input.
-│                       #  Window-capture keydown with stopImmediatePropagation
-│                       #  blocks Ctrl+Z escape. Commit deletes labels[slotIdx]
-│                       #  on empty value so a cleared label reverts to the
-│                       #  type-name placeholder.
-│
-├── load_image/         # Load Image Pixaroma (5 files, ~1700 lines).
-    │                   #  Uses the Image Resize design language, applied
-    │                   #  scoped to .pix-li-root so Image Resize is untouched:
-    │                   #  4-col mode chips incl. Pad, painted INPUT->OUTPUT
-    │                   #  cards in the output-slot dead space, centered snap
-    │                   #  footer, resample picker with prev/next arrows,
-    │                   #  "Upscaling: On/Off" toggle button, full mode-panel
-    │                   #  polish (see Load Image Pixaroma Pattern #15).
-    ├── index.js        # Entry: extension registration, lifecycle,
-    │                   #  app.graphToPrompt hook (subgraph-safe injection of
-    │                   #  loadImagePixState into hidden LoadImagePixState
-    │                   #  Python input). Owns renderUI which rebuilds chips +
-    │                   #  mode panel + global controls. onDrawForeground paints
-    │                   #  the INPUT->OUTPUT cards (Pattern #15). updateInfoBar
-    │                   #  now just toggles the upload hint + setDirtyCanvas
-    │                   #  (the old DOM dims bar was removed in favour of the
-    │                   #  painted cards). MIN_W (360) self-healed in onResize +
-    │                   #  onDrawForeground (Pixaroma UI convention #7).
-    ├── ui.mjs          # All CSS via injectCSS() (base .pix-li-* + the
-    │                   #  .pix-li-root scoped Image Resize restyle); buildRoot
-    │                   #  constructs upload btn + hint + file row (no dims bar).
-    │                   #  hideNativeImageCombo hides EVERY auto-created widget —
-    │                   #  image_upload: True creates two (image combo + upload
-    │                   #  button), see Load Image Pixaroma Pattern #1. renderChips
-    │                   #  (4-col, Pad), renderGlobalControls (snap footer +
-    │                   #  resample picker arrows + upscale toggle),
-    │                   #  openImageDropdown (collapsible subfolders: loose files
-    │                   #  pinned at top, subfolders collapsed by default, the
-    │                   #  current image's folder auto-expands + scrolls into
-    │                   #  view), openResamplePopup.
-    ├── panel_polish.mjs # applyInlineLabel / applyWHLayout / applyCoverControls —
-    │                   #  the three per-mode panel post-processors adapted from
-    │                   #  Image Resize, rewritten to the .pix-li-* class family
-    │                   #  the scoped CSS targets (inline-labeled inputs, the
-    │                   #  two-column Fit/Crop layout, the Fill/Crop toggle + 3x3
-    │                   #  crop-anchor grid). Wired into renderUI.
-    ├── resize_modes.mjs # Re-exports previewResize, formatMP, buildModePanel
-    │                   #  from the shared js/shared/resize_panel.mjs (which now
-    │                   #  drives all 8 modes incl. Pad). makeNumericInput
-    │                   #  (text-type input + custom +/- spinners + Arrow stepping
-    │                   #  + stopImmediatePropagation) lives in the shared module.
-    │                   #  RATIO_PRESETS matches Resolution Pixaroma's 9 + 21:9
-    │                   #  and 5:4 + Custom (12 total).
-    └── api.mjs         # uploadImageToInput (multipart POST to /upload/image),
-                        #  pickAndUploadFile (hidden <input type="file">),
-                        #  pasteFromClipboard (Ctrl+V handler), and
-                        #  updateNativePreview (manual node.imgs = [Image]
-                        #  refresh because setting widget.value programmatically
-                        #  doesn't fire ComfyUI's image_upload setter — see
-                        #  Load Image Pixaroma Pattern #3).
+js/   (only index.js entry points use .js; every other module is .mjs so ComfyUI does not double-load it)
+
+framework/   Shared UI toolkit - EVERY editor depends on this, so edit with care:
+  index.mjs (barrel, import from here) | theme.mjs (CSS + BRAND #f66744 + _uiIcon) | layout.mjs (createEditorLayout fullscreen shell) | components.mjs (buttons/sliders/inputs/zoom/transform) | layers.mjs (layer panel) | canvas.mjs (canvas settings/toolbar/drag-drop) | fonts.mjs (font registry + custom drop-in fonts) | text_render.mjs (canvas mirror of nodes/_text_render_helpers.py) | text_editor.mjs (shared text-props panel: default / composerMode / watermarkMode) | bg_removal_dropdown.mjs (shared AI Remove-BG picker)
+
+shared/   Shared utilities + Nodes 2.0 helpers:
+  utils.mjs (BRAND, hideJsonWidget, installFocusTrap) | preview.mjs (ResizeObserver mini-previews) | help.mjs (in-node "?" Help panel, convention #16) | color_picker.mjs (Pixaroma Color Picker: compact + live-preview) | nodes2.mjs (applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint) | graph_undo_guard.mjs (blocks Ctrl+Z escape, Vue Compat #6) | graph_loading.mjs (isGraphLoading, Vue Compat #19) | queue_drivers.mjs (shared lock for queue-driver nodes) | resize_floor.mjs + resize_panel.mjs (Nodes 2.0 resize floor + shared resize-mode panel / makeNumericInput) | index.mjs, label_css.mjs
+
+Canvas-wide features (patch the canvas, add NO node):
+  brand/index.js         Brand dark defaults for ANY node whose CATEGORY starts "👑 Pixaroma" (do NOT re-add per-node color guards)
+  node_colors/index.js   Right-click Node/Group color palette popup (favorites, copy/paste); presets in HUE_FOLDERS (see Vue Compat #20)
+  connection_fx/index.js Pixaroma.Connection.FX - wire-drag magnets + connect sparkles
+  run_button_fx/index.js Pixaroma.RunButton.FX - Run-button visual effects
+  align/index.js         Pixaroma.Align.* - smart-snap + alignment guides
+
+Fullscreen editors (class + mixin pattern, see "Mixin Pattern" below; core.mjs = shell, sibling .mjs add prototype methods, index.js wires it):
+  paint/        PaintStudio: core canvas render transform events tools history ui engine api
+  3d/           Pixaroma3DEditor (Three.js vendored, see Offline-first): core engine objects shapes shape_params composites picker importer interaction persistence api
+  composer/     PixaromaEditor (+ FX-grade + text layers): core eraser crop placeholder render ui layers fx_engine api
+  crop/         CropEditor: core interaction render panel alignments
+  note/         NoteEditor (rich-text): core toolbar blocks render sanitize css codeview icons
+  audio_studio/ AudioStudioEditor (WebGL): core transport audio_analysis render shaders ui api
+  label/        Title-less DOM label + fullscreen editor: core render
+
+Switch family (per-renderer split; Nodes 2.0 = DOM row list, Vue Compat #16/#17):
+  switch/ (N-to-1 router: core render editor vue_list) | mute_switch/ (toggle branches via PIXAROMA_MUTE_CHAIN: core render editor upstream vue_list) | switch_source/ (A/B banks: core editor) | switch_wh/ (fixed A/B W-H)
+
+Prompt + text nodes:
+  prompt_stack/ prompt_multi/ prompt_pack/ (each: core render interaction) | find_replace/ (core render interaction) | text/ showtext/ prompt_reader/
+
+Image I/O + resize (load_image + image_resize paint INPUT->OUTPUT cards in onDrawForeground):
+  load_image/ (ui panel_polish resize_modes api) | image_resize/ (ui) | preview/ | save_mp4/ | pause_image/ (state ui)
+
+Overlay / annotation / utility:
+  text_overlay/ (core interaction defaults) + text_watermark/ (defaults) share framework/text_editor.mjs + nodes/_text_render_helpers.py | compare/ | resolution/ | xy_plot/ (core ui grid - 3rd queue-driver -> grid PNG) | reference/ | notify/ | number/ | wh/ | version_check/ (Nodes 2.0 diagnostic node)
 ```
 
 ### Mixin Pattern (how editor classes are split)
@@ -891,6 +363,8 @@ Load Image was the SECOND painted node migrated (`js/load_image/index.js`) and i
 
 6. **The cards painter is ONE shared function (`paintCardsInto(ctx, node, leftPad, midY, pairW)`)** used by BOTH legacy `onDrawForeground` (painting in the left dead-space beside the output dots) AND the Nodes 2.0 cards canvas. `onDrawForeground` early-returns `if (isVueNodes())`.
 
+7. **Stable preview size + full Nodes 2.0 fill (issue #1, 2026-06-09).** Load Image used to resize the node to the loaded image's ASPECT (`fitPreview` set `previewH = innerW * imageAspect`), so a tall portrait BALLOONED the node and overlapped neighbours (real user report). Fix: LEGACY `fitPreview` now PRESERVES the current preview area (loading a different-shaped image never resizes the node; a manual drag-taller sticks; only a mode/controls-height change shifts it). NODES 2.0: the preview canvas is a flex grower (`flex:1 1 0; min-height:LI_PREVIEW_FILL_MIN`) inside the controls panel, and the controls panel is made the node's SOLE grower widget (`widget.computeLayoutSize = () => ({minHeight: measureContentHeight(), minWidth:1})`); `measureContentHeight` counts the canvas at its MIN (not its grown offsetHeight) so the node can still shrink, and `renderLoadPreviewCanvas` reads the canvas's flex-resolved `clientHeight`. FULL FILL (FIXED 2026-06-09 via a live height-chain probe + the frontend source `dialogService-*.js`): a widget gets a stretchy `auto` grid row when it has a `computeLayoutSize` fn (`hasLayoutSize`), and `lg-node-widgets` gets `flex:1` whenever its `gridTemplateRows` includes `auto` — so our controls panel (with `computeLayoutSize`) DID correctly get the grower flag. The gap's REAL cause was NOT the 7 outputs (red herring): on `image_upload` nodes the Vue node ALSO renders a native image-preview CONTAINER — an EMPTY `flex:1` div immediately AFTER the widget grid — and being a SECOND `flex:1` sibling of the node content it SPLIT the free height with our widget area (each got ~half), leaving a big gap below our preview. FIX in `injectLoadImageNodes2CSS`: collapse that container with `.lg-node:has(.pix-li-root) .lg-node-widgets + div.flex-1{display:none !important}` so our widget area is the SOLE grower and fills the node exactly like native Load Image (we draw our own preview, so hiding the native container loses nothing). Verified in BOTH renderers + multiple aspect ratios. **Do NOT remove that CSS rule** or the gap returns. The `.image-preview{display:none}` rule alone is NOT enough (it hides the IMAGE but the flex:1 CONTAINER keeps hogging height).
+
 **Generalised rule for any painted node with MANY outputs / hidden widgets:** don't trust a second DOM widget to size correctly — prefer rendering into canvas children of the one DOM widget that's already proven to render. And remember the asymmetry: Vue grows the node to content automatically, but you must `setSize` (gated on `!isGraphLoading`) to shrink it.
 
 ### Single full-body painted node (Compare) — the simplest painted case, ONE DOM canvas
@@ -938,45 +412,7 @@ Label was the LAST node migrated and the trickiest, because it is **title-less, 
 
 **Version Check renderer toggle now reloads the page** (`js/version_check/index.js`): clicking the "Node UI" row persists `Comfy.VueNodes.Enabled` then `location.reload()`s, because per-renderer-widget nodes (chosen once at `onNodeCreated`) misbehave until a refresh after a live switch. So A/B testing a migration is now seamless (click → auto-reload into the other renderer).
 
-**Per-node migration status** (update as we go; all NOT STARTED at kickoff 2026-05):
-
-| Node | Render approach today | 2.0 risk | Status |
-|---|---|---|---|
-| Switch Source | DOM control strip + native A/B + output labels | 🟡 (slot align n/a) | ✅ DONE + VERIFIED both renderers 2026-05-29 — `applyAdaptiveCanvasOnly` on the control strip (it had a static `canvasOnly:true` and vanished in 2.0); native A/B input + output labels render in both; canvas click-to-rename gated to legacy. Inline Vue rename fields were built then REMOVED at the user's request (too tall) - Nodes 2.0 shows wire-type output labels, rename is legacy-only. `resizeToRows` now uses `node.setSize`. |
-| Switch | `onDrawForeground` slot-aligned toggles + labels | 🔴 hard (slot align) | ✅ DONE + VERIFIED both renderers 2026-05-29 — per-renderer split: legacy untouched (canvas paint + onMouseDown, both early-return in 2.0); Nodes 2.0 = DOM row list `js/switch/vue_list.mjs` (one row per input below the dots: `[input N (fixed, matches the dot)] [editable field: placeholder = wire type, value = custom name that overrides it] [mutex toggle]`, click row to activate / click field to rename). Vue input DOTS show a stable `input N` (a type/name dot can't live-refresh - shallowReactive, see the dot-label VERIFIED note above). Shared `setActiveRow()` in core.mjs; `node._pixSwRefresh` re-renders the list on slot/state change. Toggle-on-dot-row + type/name-on-dot are IMPOSSIBLE/stale in 2.0 - the body list is the answer. Establishes the Switch-family Vue pattern Mute Switch reuses. |
-| Mute Switch | `onDrawForeground` pills | 🔴 hard (slot align) | ✅ DONE + VERIFIED both renderers 2026-06-01 — per-renderer split (mirrors Switch): legacy untouched (canvas paint + onMouseDown, both early-return when `isVueNodes()`); Nodes 2.0 = ONE DOM widget `js/mute_switch/vue_list.mjs` — a mode bar of two segmented toggles (Single\|Multi + Mute\|Bypass) on top, then one row per input below the dots: `input N` + editable name field (placeholder = wire type, writes `state.rows[i].label`) + an ON/OFF toggle that is the ONLY click target (runs the existing `togglePillRow`, so Single-mode "exactly one ON" still holds; the rest of the row is not clickable — user's choice). `node._pixMsRefresh?.()` wired into every state mutator in core.mjs re-renders the list. Input dots show a stable `input N`, the phantom output dot is labelled `out` (both 2.0-only via the new `slotDisplayLabel`/`outputDisplayLabel` helpers; `"​"` in legacy). `applyAdaptiveCanvasOnly` + namespaced type `pixaroma_mute_switch_list` + getMinHeight==getMaxHeight. Engine (cascade / originalModes / self-heal sweep / "Enable·Disable all rows" right-click menu / phantom `PIXAROMA_MUTE_CHAIN` output) is renderer-agnostic and unchanged. **LEGACY resize fix (UI convention #7):** MIN_H must be DYNAMIC `computeNodeHeight(rowCount)` in BOTH onResize + onDrawForeground (a fixed MIN_H let the node be dragged shorter than its rows → bottom rows spilled out the frame); mode pills made responsive (`modePillWidth`) + an onResize width clamp added (LG draws the frame at the dragged size BEFORE onDrawForeground, so a width clamp there alone left a 1-frame overflow during the drag). **The Switch family is now FULLY migrated; only Mute Switch slot-alignment was the last hard painted node.** |
-| Preview Image | custom canvas widgets + painted buttons | 🔴 high (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — **per-renderer widget split** (`if (isVueNodes())` in onNodeCreated): LEGACY keeps the two `addCustomWidget` canvas widgets (buttons + strip) UNCHANGED (they fill via draw()'s `node.size[1]-y`); NODES 2.0 uses a DOM-flex buttons row (`createButtonsDOMWidget`) + a DOM strip (`createStripDOMWidget`) that reuses the canvas widget's `draw()`/`mouse()` via a throwaway `createStripWidget()` logic object rendered into its own `<canvas>` (ResizeObserver-sized, no bridge). Native preview suppressed via `node.hideOutputImages=true` (keeps ui.images for Assets refresh). See the dedicated "Preview Image / painted-node Nodes 2.0 fill" section below for the full hard-won recipe (canvas-bridge growth loop, DOM-widget flex-fill, grid auto-vs-min-content rows). Hover on the legacy canvas controls (toggle/×) is the only Nodes 2.0 cosmetic loss; buttons hover works (real DOM). |
-| Compare | full canvas node draw (`onDrawForeground` body + mouse hooks) | 🔴 high | ✅ DONE + VERIFIED both renderers 2026-05 (incl. zoom-coord, size round-trip, cursor, hover — see "Single full-body painted node" Gotchas) — **per-renderer split** (`if (isVueNodes())` in onNodeCreated). The ENTIRE body is one painted surface (Show/mode buttons + opacity slider/hint + Copy button + the image-compare area), so unlike Preview (buttons row + strip) it migrates as ONE DOM `<canvas>` widget (type `pixaroma_compare`, flex `1 1 0` + `min-height:0`, ResizeObserver-sized, DPR-scaled) that reuses the SAME `paintCompare(ctx,node,W,H,mouse)` + `cmpDown/Move/Up/Wheel/Leave(node,lx,ly,W,H)` logic. LEGACY keeps the original `onDrawForeground` + mouse hooks UNCHANGED (they just delegate to the same helpers with `this.size`); each hook early-returns to the original when `isVueNodes()`. DOM `pointerdown/move/up/leave/wheel` feed the hit-tests with canvas-local coords; hover-to-slide swipe works because pointermove fires on hover; Copy-button hover uses the last DOM pointer pos (legacy uses `graph_mouse`); wheel only `preventDefault`s when it consumes (Overlay opacity) so graph zoom still works otherwise; slider drag uses `setPointerCapture`. `cmpRepaint(node)` = `setDirtyCanvas` (legacy) + `node._cmpDomRender?.()` (2.0, our own canvas isn't bridged so setDirtyCanvas alone never repaints it). Native preview suppressed via `node.hideOutputImages=true` + the existing `onExecuted`-no-orig override (node.imgs never populated). ResizeObserver released in `onRemoved`. See "Single full-body painted node" note below. |
-| Reference (dev example) | DOM widget (`addDOMWidget`, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE — pending user test 2026-05 — NOT a painted node (the status table mislabeled it). `nodes/node_ref.py`'s `PixaromaReferenceNode` is a developer example ("test dom HTML object") and was already a DOM-widget node; it only had a static `canvasOnly:true` (→ vanished in 2.0). Fix = `applyAdaptiveCanvasOnly(widget)` (the standard DOM-node recipe). `Pixaroma_VueReferenceNode` is a separate dev example already written against the native Nodes 2.0 `comfy_api.latest.io` schema API — needs nothing. |
-| Prompt Pack | DOM body + (was) canvas mode pills | 🟡→🟢 | ✅ DONE + VERIFIED both renderers 2026-05 — converted Paragraph/Line pills from canvas (`onDrawForeground` paint + `onMouseDown` hit-test + floating tooltip) to a DOM segmented toggle (`.pix-pp-modebar`/`.pix-pp-modepill`) at the top of the body; wired in interaction.mjs; active-state in applyState; deleted all canvas-pill code; `applyAdaptiveCanvasOnly`; heights bumped (pill bar now in body); pills use native `title` tooltips. **Template for Prompt Multi.** Pending user test. |
-| Prompt Multi | DOM rows + (was) canvas mode pills | 🟡→🟢 | ✅ DONE + VERIFIED both renderers 2026-05 — same conversion as Prompt Pack: Queue Text/List Prompts pills moved from canvas to a DOM segmented toggle built INSIDE `renderRows` (it does `innerHTML=""`, so the modebar is rebuilt each render), wired via the existing `onSetMode` handler, active-class from `state.mode`; deleted all canvas-pill code; `applyAdaptiveCanvasOnly`; grow/fit use `setNodeHeight`(`setSize`) for the cross-renderer resize fix; `CHROME_ALLOWANCE` 68→40 (pills now in body). Confirmed Queue Text + List Prompts (with Prompt From List downstream). |
-| Load Image | DOM panel + `onDrawForeground` cards | 🟡 partial | ✅ DONE + VERIFIED both renderers 2026-05 — LEGACY untouched (DOM controls panel + `onDrawForeground` cards in the left dead-space + native bottom preview + `fitPreview`). NODES 2.0: `applyAdaptiveCanvasOnly` on the controls panel; the INPUT→OUTPUT cards (shared `paintCardsInto`) + the image preview are drawn into TWO `<canvas>` children of the controls panel root (cards prepended at top, image appended at bottom) — NOT a second DOM widget (that collapsed to 0 on this node). Native `.image-preview` hidden via `.lg-node:has(.pix-li-root)` and replaced by our own image (updates on every pick). Preview height capped (~240, `LI_PREVIEW_MAX_IMG_H`) so the auto-growing node stays compact. See the "Load Image / painted-node-with-many-outputs" section below. Input-slot stripping (Pattern #17) + image-picker patterns (#1-8) unchanged. (A Compact/Medium/Large preview-size setting was built then reverted at the user's request — the fixed compact size is the shipped state.) |
-| Show Text | DOM textarea widget | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED 2026-05 — adaptive canvasOnly + unique widget type (`pixaroma_showtext`). Confirmed both renderers: value populates, chaining works, Copy button + multiline OK. **The two-step recipe (adaptive canvasOnly + `pixaroma_*` type) is the template for every DOM-widget node.** |
-| Prompt Reader | DOM widget + `image_upload` | 🟢 | ✅ DONE + VERIFIED both renderers 2026-05 — adaptive canvasOnly + hide the stale Nodes 2.0 `.image-preview` panel via the `:has()` CSS rule above (no thumbnail by design). |
-| Text / Resolution | DOM widgets (type `custom`, no collision) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED 2026-05 — `applyAdaptiveCanvasOnly` on each node's own widget (their hidden NATIVE widgets keep static `canvasOnly:true`, correct — want them gone in both modes). Confirmed Nodes 2.0 before/after: Text box+buttons, Resolution chips+list, Prompt Reader readout all render. Legacy unchanged by design (getter returns the same `true` legacy used statically). |
-| Switch WH | DOM A/B buttons (type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-size self-heal only (no painted controls). |
-| Prompt Stack | DOM rows (type `div`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` + `setNodeHeight` uses `node.setSize()` so cross-renderer Reset shrinks (was stuck tall when rows grown in the other renderer; see resize gotcha above). |
-| Text Watermark | shared text_editor panel (type `div`, fixed getMinHeight) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; `onDrawForeground` is min-width clamp only. Full panel + watermark render confirmed. |
-| Text Overlay | shared text_editor panel (type `div`, fixed getMinHeight) + fullscreen editor | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; node body panel renders AND the fullscreen editor opens + works under Nodes 2.0 (first editor confirmed in 2.0 — see editor note below). |
-| Note | DOM rich-text body (type `custom`) + fullscreen editor + hidden `note_json` STRING | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on the body widget + `hideJsonWidget` now sets `canvasOnly` so the raw `note_json` JSON no longer shows at the top in Nodes 2.0. Editor + rendered content confirmed. |
-| Image Crop | native button + 2 DOM widgets (panel + mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` on BOTH widgets; "Open Crop" native button; node body + fullscreen crop editor + placeholder state + width/height outputs all confirmed. |
-| Paint | native button + 1 DOM widget (mini-preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; "Open Paint" native button; node body + full Paint Studio editor (brushes/layers/AI bg removal/transforms) + image+w/h outputs all confirmed. |
-| 3D Builder | native button + 1 DOM widget (SceneWidget preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; "Open 3D Builder" native button; node body + full WebGL 3D editor (shapes/transform/camera/materials) + image+w/h outputs all confirmed. |
-| Image Composer | native button + 1 DOM widget (ComposerWidget preview, type `custom`) | 🟢 (+canvasOnly) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly`; "Open Image Composer" native button; node body + full compositor (layers/transform/eraser/crop/AI bg/FX/text) + image+w/h outputs all confirmed. |
-| Save Mp4 | native widgets + 1 DOM `<video>` widget (type `video_preview`) | 🟢 (+canvasOnly +image-preview hide) | ✅ DONE + VERIFIED both renderers 2026-05 — `applyAdaptiveCanvasOnly` so the `<video>` renders; hid the broken native `.image-preview` (mp4≠image from `ui.images`) via `.lg-node:has(.pix-mp4-root)`. `<video>` plays the result, no broken box. |
-| AudioReact | native button + WebGL overlay (NO DOM widget, NO canvasOnly; Pattern #9 hidden input) | 🟢 | ✅ DONE + VERIFIED both renderers 2026-05 — NO CODE CHANGE NEEDED. Node body is just a native `addWidget("button","Open AudioReact")` which renders in Vue; state is a Pattern #9 hidden input (no STRING widget to leak); editor is a renderer-agnostic WebGL overlay. Verify only. |
-| Image Resize | DOM panel + `onDrawForeground` cards | 🟡 painted | ✅ DONE + VERIFIED both renderers 2026-06-01 — was MISSED in the original table (painted-node-with-cards class, same as Load Image). Legacy untouched (DOM controls panel + `onDrawForeground` INPUT→OUTPUT size cards in the slot dead-space). Nodes 2.0: `applyAdaptiveCanvasOnly` on the controls panel (it had a static `canvasOnly:true` → vanished); the readout paint extracted into shared module fns `refreshReadout` (live DOM-cell updates) + `paintReadout` (the two-card / message painter, parameterized by width + midY) so BOTH renderers draw identical pixels; `setupVueCards` renders the cards into a `<canvas>` child of the controls panel (`renderUI` re-prepends it each render, fixed 100px), ResizeObserver-sized + DPR-correct, with a 250ms CHANGE-GATED poll replacing the lost `onDrawForeground` loop for live upstream-value changes (Vue Compat #1); teardown (clearInterval + RO.disconnect) in `onRemoved`. graphToPrompt injection + executed-dims handler + auto-swap + all dirty-on-load guards unchanged. Trade-off (same as Load Image): the cards cost ~100px of body height in 2.0 (no slot dead-space to paint in). |
-| Label | full-body `onDrawForeground` paint (transparent node) | 🔴 painted | ✅ DONE + VERIFIED both renderers 2026-06-01 — the LAST node migrated, and the hardest (title-less, whole-body, tightly-self-sized). Per-renderer split: legacy untouched (`onDrawForeground` paints the label, gated to early-return in 2.0). Nodes 2.0: a crisp-HTML DOM widget (`applyLabelToDom` mirrors `renderLabelToCanvas` cfg→CSS) rendered into a `pix-lbl-vue` div; the fullscreen editor is renderer-agnostic (untouched). See the dedicated "Title-less / tightly-self-sized DOM node (Label)" section below for the FULL recipe — it solves problems no other node hit: a title-less node's body is the DOM widget, so it must be `pointer-events:none` on the ENTIRE widget subtree (else the place/drag click is eaten and the node sticks to the cursor); double-click-to-edit is restored via a document-level dblclick + element-rect hit-test (LG `onDblClick` never fires for a pointer-events:none body) plus a right-click "Edit Label" menu; and hugging the box to the label means overriding a whole stack of Vue node chrome (225px min-width, the widget grid's 80+125px column floors + gutter, body `pt-1 pb-3 gap-1`, the `min-h = size[1]+NODE_TITLE_HEIGHT` floor, the -7px selection outline) + writing `node.size` DIRECTLY (setSize re-clamps width to 225) + hiding the now-useless resize handles. **With Label done, EVERY Pixaroma node is migrated to Nodes 2.0. The two non-node canvas features (Align, Connection FX) and Node Colors/Brand were then completed too (2026-06-01) — the Nodes 2.0 migration is FULLY COMPLETE.** |
-| Native utility nodes (Notify, Number, WH, Prompt From List, Remove Background, Version Check) | native widgets only | 🟢 safe | n/a — no custom canvas/DOM body, so the Vue renderer handles them automatically. Verified none use `addDOMWidget`/`addCustomWidget`/`onDrawForeground`/`canvasOnly`. Version Check is the diagnostic node, built with the recipe. |
-| Align | window pointermove + `drawFrontCanvas` wrap | 🔴 canvas paint | ✅ DONE + VERIFIED 2026-06-01 — snap math + orange guide lines work in Nodes 2.0 (drawFrontCanvas fires in both renderers — this is what proved drawFrontCanvas survives, which Connection FX then relied on). |
-| Connection FX | `drawFrontCanvas` wrap + DOM overlays | 🔴 canvas paint | ✅ DONE + VERIFIED 2026-06-01 — see "Connection FX Nodes 2.0" note below. Sparkles already worked (DOM SVG). The approach **magnets + particle flow were rebuilt as DOM overlays** for Nodes 2.0 because the front-canvas ctx space doesn't match the Vue DOM slot positions AND the canvas doesn't redraw continuously during a wire drag; legacy keeps the canvas painter (early-returns in 2.0). |
-| Node Colors / Brand | `LGraphCanvas` menu + `node.color` + swatch-palette popup | ❓→✅ | ✅ DONE + VERIFIED 2026-06-01 — see "Node Colors Nodes 2.0" note below. `node.color`/`bgcolor` render AND live-update; groups still canvas-painted; the menu monkey-patches still fire via the legacy-compat layer; the old 3-level nested submenu was replaced by a **DOM swatch-palette popup used in BOTH renderers**. |
-| Run Button FX | DOM toolbar (no node) | 🟢 safe | n/a |
-
-**Reference sources (re-check; they evolve):**
-- `Comfy-Org/ComfyUI_frontend`: `src/lib/litegraph/src/LGraphCanvas.ts` (`drawNode` vueNodesMode early-return ~L5614), `src/renderer/extensions/vueNodes/widgets/components/WidgetLegacy.vue` (canvas-widget bridge), `WidgetDOM.vue` (DOM bridge), `widgets/registry/widgetRegistry.ts` (`shouldRenderAsVue` + type table), `composables/useProcessedWidgets.ts` (dispatch), `composables/useVueFeatureFlags.ts` (the flag).
-- KJNodes: `web/js/nodeswap.js` + `setgetnodes.js` (`LiteGraph.vueNodesMode` dual-branch), `image_transform.js` (`addDOMWidget` + onDrawForeground-as-polling, breaks in 2.0).
-- Docs (when published): `docs.comfy.org/interface/nodes-2`, `docs.comfy.org/custom-nodes/v3_migration`.
+**Nodes 2.0 migration: COMPLETE (2026-06-01).** Every node (~30) AND every canvas feature (Align, Connection FX, Node Colors / Brand) works in BOTH renderers, verified each way. Reusable recipes are in the sections above: DOM-widget nodes use `applyAdaptiveCanvasOnly` + a `pixaroma_*` widget type; painted nodes follow the Preview Image / Load Image / Compare / Label recipes; the Switch family uses a per-renderer split (legacy canvas paint + a Nodes-2.0 DOM row list). Per-node specifics live in each node's Pattern section. **New nodes MUST be built for both renderers from the start** (migration playbook above). The painted nodes that needed special handling (and carry detailed recipes): Preview Image, Load Image, Image Resize, Compare, Label, and the Switch family. To re-verify a Nodes-2.0 fact, read the live `ComfyUI_frontend` source: `LGraphCanvas.ts` (drawNode vueNodesMode early-return), `WidgetLegacy.vue` / `WidgetDOM.vue` (widget bridges), `widgetRegistry.ts` (shouldRenderAsVue), `useProcessedWidgets.ts` (dispatch).
 
 ### Node Colors Nodes 2.0 (the swatch-palette popup) — recipe + gotchas
 
@@ -1073,7 +509,7 @@ These conventions were locked in during the May-2026 visual consistency pass acr
 
 4. **Hide native `multiline: True` widget + build custom DOM widget for full styling control.** ComfyUI's native `STRING` widget with `multiline: True` cannot be styled cleanly from outside (its DOM is owned by the framework and may change between versions). For nodes where the textarea interior must match the rest of the Pixaroma suite (currently Text Pixaroma), the pattern is: keep `multiline: True` in `INPUT_TYPES` (so the workflow JSON serialises the value correctly), then in `onNodeCreated` find the native widget, hide it via the standard `hideJsonWidget`-style recipe (`hidden = true; computeSize = () => [0, -4]; element.style.display = "none"; inputEl.style.display = "none"; options.canvasOnly = true`), and add a custom DOM widget with your own `<textarea>` that mirrors values back to the hidden widget on every `input` event. Cache the native widget reference on the node (e.g. `node._pixTextNative`) so the mirror is easy. On `onConfigure` restore, copy the native widget's restored value back into the DOM textarea via a `queueMicrotask` so the configure-then-display ordering doesn't flash defaults. Reference: `js/text/index.js`.
 
-5. **Default size = minimum size pattern for utility / display nodes.** For nodes where the user's most common need is a compact widget on the canvas (Show Text Pixaroma, Switch Pixaroma, Switch WH Pixaroma, Text Pixaroma, Number nodes, etc), set `DEFAULT_W` and `DEFAULT_H` to the SAME values as `MIN_W` / `MIN_H`. Fresh-on-canvas drop = the smallest comfortable size; user resizes outward when they need more room. Avoid the older anti-pattern of "default is bigger than min", because (a) every user spends two seconds resizing every fresh node down, and (b) when `default > min`, dragging the corner inward visibly grows the node before clamping, which feels like a bug. Use the sizer console snippet (see Token-Saving Rules #6) to find the right numbers empirically rather than guessing. Current values: Show Text 210×118, Text 290×158, Switch WH 210×140.
+5. **Default size = minimum size pattern for utility / display nodes.** For nodes where the user's most common need is a compact widget on the canvas (Show Text Pixaroma, Switch Pixaroma, Switch WH Pixaroma, Text Pixaroma, Number nodes, etc), set `DEFAULT_W` and `DEFAULT_H` to the SAME values as `MIN_W` / `MIN_H`. Fresh-on-canvas drop = the smallest comfortable size; user resizes outward when they need more room. Avoid the older anti-pattern of "default is bigger than min", because (a) every user spends two seconds resizing every fresh node down, and (b) when `default > min`, dragging the corner inward visibly grows the node before clamping, which feels like a bug. Use the sizer console snippet (see Token-Saving Rules #6) to find the right numbers empirically rather than guessing. Current values: Show Text 210×118, Text 412×158 (width raised from 290 so the bottom button row + the ? help fit on one line in both renderers - see Text Pixaroma Patterns #4), Switch WH 210×140.
 
 6. **`WIDGET_MIN_H` vs `MIN_H` - two different mins for two different things.** ComfyUI's natural layout floor for a node is roughly `addDOMWidget`'s `getMinHeight` return value + slot rows. If you want the resize handle to clamp the WHOLE NODE at a specific min (e.g. `MIN_H = 118`) but the DOM widget itself can be visually small (e.g. `WIDGET_MIN_H = 80` for a textarea that should be allowed to shrink to label-strip height), the two values must be different. Otherwise the natural floor becomes `MIN_H + slot_rows` and the user can't actually reach `MIN_H`. Pattern: declare both constants, pass `WIDGET_MIN_H` to `getMinHeight`, enforce `MIN_H` in `onResize` and `onDrawForeground`. Reference: `js/showtext/index.js`.
 
@@ -1138,6 +574,8 @@ Paint, Composer, and 3D Builder each have a "Transparent BG (Save to Disk)" chec
 4. **Background color has FOUR sync points** — (a) editor draw `_drawImpl` in `render.mjs` reads `this._bgColor || "#1e1e1e"` to fillRect every frame, (b) saveBtn in `interaction.mjs` writes `bg_color: this._bgColor || "#1e1e1e"` into `finalMeta` so it persists in `project_json`, (c) `attemptRestore` in `render.mjs` must read `meta.bg_color` and assign back to `this._bgColor` (and update `this._bgColorInput.value` if the picker exists), (d) Python's dynamic-compose path in `node_composition.py` reads `meta.get("bg_color")` and uses `_hex_to_rgba(...)` to fill the canvas BEFORE iterating layers. The mini-preview client recomposite in `js/composer/index.js` `compositeAll()` ALSO needs to read `meta.bg_color` and `ctx.fillRect` before drawing layers — without this, the workflow output and mini preview both flip from the user's chosen colour to black on every Run when there are placeholders/rembg/masks (RGBA→RGB conversion in `_save_preview_png` makes transparent pixels black). Older saves missing `bg_color` should fall back to `#1e1e1e` (the editor's default) for backward compat.
 
 5. **Post-run client recomposite (`rebuildPreview`) only adds value when there are placeholder layers** — for the no-placeholder case, Python's fast path loads the saved `composite_path` PNG (which has the user's bg color baked into pixels via line 760-762 of saveBtn), and that's exactly what `restoreNodePreview` already shows. Calling `rebuildPreview` after run in this case re-renders client-side, which can drift from the saved view (different scaling rounding, missing styles, etc.). The `onExecuted` and `executing(null)` handlers in `js/composer/index.js` gate on `node._pixaromaHasPlaceholders?.()` to skip the rebuild for the fast path. The polling rebuild (upstream LoadImage swap before run) is unaffected — it only matters when placeholders exist anyway.
+
+6. **Eraser Restore mode rides the SAME mask canvas - never fork a second mask.** The Erase | Restore pill (plus X swap and Alt-hold temp flip) all funnel through `eraserIsRestore()` in `js/composer/eraser.mjs`; restore strokes draw on `layer.eraserMaskCanvas_internal` with `globalCompositeOperation = "destination-out"`. Because the mask file format and the render path are untouched, save/restore/undo/Python need zero changes - any future "restore" feature that introduces a second canvas or a separate upload loses all of that for free. `drawEraserLine` early-returns on restore-with-no-mask so a no-op stroke can't create or dirty a mask; only ERASE strokes set `hasMask_internal`. The brush cursor color IS the mode indicator (white ring = erase, BRAND orange ring = restore, branched on the EFFECTIVE mode so Alt-hold recolors live) - keep `drawEraserPreview`, the pill state (`core.eraserModePills`), and the keyboard paths in sync via `_refreshEraserPreview()`. `_eraserAltHeld` is synced from `e.altKey` on every eraser mousemove AND cleared in `_composerBlur` (Alt+Tab safety); the X/Alt keydown handlers only run while `activeMode === "eraser"`.
 
 ### Composer FX Layer Patterns (do not regress)
 
@@ -1403,7 +841,7 @@ These patterns were hard-won during the May-2026 batch + save-mode upgrade. Seve
 
 7. **Save-to-Disk filename auto-increment via per-node session offset (`_pixaromaDiskOffset`).** `folder_paths.get_save_image_path` only sees files in ComfyUI's `output/`, not the user's chosen disk location. So every Save-to-Disk click would suggest the same filename. Fix: track a per-node click counter (`node._pixaromaDiskOffset`), bump after each successful save, apply via `bumpFilenameCounter("img_00002_.png", offset)` to the server-suggested name. Reset to 0 on each `executed` event (new run = fresh counter base from output/). NOT persisted across workflow saves — accepted trade-off since disk save locations are user-chosen anyway.
 
-8. **`_safe_prefix(s)` sanitizer — relative-import shared helper module + dual contract (None vs fallback string).** Lives in `nodes/_save_helpers.py`. Returns the sanitized prefix, or `None` if input is unrecoverable. Caller decides: backend node uses `_safe_prefix(s) or "Preview"` (don't crash workflow); server route uses `if not prefix: return 400` (surface error to JS toast). **Sanitizes, does not reject.** Any char outside `[A-Za-z0-9_\-%]` in a segment is replaced with `_`, then repeated `_` collapsed and edge `_` stripped. So an upstream filename wired into `filename_prefix` (e.g. `Bunny WithCubes - Copy.png`) becomes `Bunny_WithCubes_-_Copy_png` and saves successfully instead of erroring. Path segments are separated by `/`; `\\` normalized to `/` (Windows convenience). Returns `None` only for: non-string, empty input, length > 256, leading `/`, any segment that is literally `..` (path traversal), any segment that sanitizes to empty. **`%` is permitted in segments** so two layers of token expansion both work: (a) **VHS-style `%date:FMT%`** is expanded BEFORE sanitization by `_expand_date_tokens` (Java-style codes `yyyy yy MM dd HH mm ss`, two-pass sentinel swap to avoid `yyyy`/`yy` collision, bad format strings leave the token literal so the user can spot the typo); (b) **native ComfyUI tokens** `%year% %month% %day% %hour% %minute% %second% %width% %height%` survive sanitization as literal `%`-delimited segments and are expanded later by `folder_paths.get_save_image_path.compute_vars`. Net result: `%date:yyyy-MM-dd%/images/fish_` and `%year%-%month%-%day%/img` both work. Path traversal is impossible: explicit `..` segment rejection, ComfyUI does its own `os.path.commonpath` check after its expansion, and Java date codes can only emit digits. `nodes/_save_helpers.py` is imported via `from .nodes._save_helpers import _build_pnginfo, _safe_prefix` (relative import, package-aware) — NEVER `from nodes._save_helpers` because that collides with ComfyUI's top-level `nodes.py`. The `nodes/` directory is an implicit namespace package (no `__init__.py`) and that's fine.
+8. **`_safe_prefix(s)` sanitizer — relative-import shared helper module + fallback contract (None means "use the default prefix").** Lives in `nodes/_save_helpers.py`. Returns the sanitized prefix, or `None` if input is unrecoverable. Every caller falls back so a save never crashes: `node_preview.py` + both preview routes use `_safe_prefix(s) or "Preview"`, the XY Plot save route uses `or "xy_plot"`. **Sanitizes, does not reject — and it is a DENYLIST, not an allowlist (flipped June 2026 after the Korean `filename_prefix` report).** Per segment, ONLY Windows-illegal chars (`< > : " | ? *` plus control chars) are replaced with `_` (repeated `_` collapsed; edge whitespace, edge `_`, and trailing dots/spaces stripped — Windows itself silently strips trailing dots/spaces at create time, so stripping keeps the reported path identical to what lands on disk); Windows reserved device names (CON, PRN, AUX, NUL, COM1-9, LPT1-9 — bare or with any extension, any case) get a `_` suffix so the OS can't hard-error mid-run. EVERYTHING else passes through verbatim — non-Latin scripts (`프로젝트/테스트/이미지` saves like native), accented letters, spaces, dots — matching native SaveImage, which does no character filtering at all (its only guard is folder_paths' "stay inside output/" commonpath check, which still runs after ours on every save path). The old `[^A-Za-z0-9_\-%]` allowlist dissolved an all-Korean prefix to nothing → silent "Preview" fallback in the output root, and mangled mixed ones (`te 스 st` → `te_st`). An upstream filename wired into `filename_prefix` (e.g. `Bunny WithCubes - Copy.png`) now stays verbatim. Path segments are separated by `/`; `\\` normalized to `/` (Windows convenience). Returns `None` only for: non-string, empty input, length > 256, leading `/`, any segment that is literally `..` (path traversal), or nothing usable left (e.g. `???`). **`scripts/save_prefix_check.py` locks all of this (31 cases, prints `PREFIX PASS`) — re-run it after ANY change to the sanitizer.** **`%` is permitted in segments** so two layers of token expansion both work: (a) **VHS-style `%date:FMT%`** is expanded BEFORE sanitization by `_expand_date_tokens` (Java-style codes `yyyy yy MM dd HH mm ss`, two-pass sentinel swap to avoid `yyyy`/`yy` collision, bad format strings leave the token literal so the user can spot the typo); (b) **native ComfyUI tokens** `%year% %month% %day% %hour% %minute% %second% %width% %height%` survive sanitization as literal `%`-delimited segments and are expanded later by `folder_paths.get_save_image_path.compute_vars`. Net result: `%date:yyyy-MM-dd%/images/fish_` and `%year%-%month%-%day%/img` both work. Path traversal is impossible: explicit `..` segment rejection, ComfyUI does its own `os.path.commonpath` check after its expansion, and Java date codes can only emit digits. `nodes/_save_helpers.py` is imported via `from .nodes._save_helpers import _build_pnginfo, _safe_prefix` (relative import, package-aware) — NEVER `from nodes._save_helpers` because that collides with ComfyUI's top-level `nodes.py`. The `nodes/` directory is an implicit namespace package (no `__init__.py`) and that's fine.
 
 9. **Tracking the "active" preview node for global keybindings (`_activePreviewNode`).** Module-scope `let _activePreviewNode = null`. Set on click that enters expanded mode; clear on X close, Esc, OR `nodeType.prototype.onRemoved` (so deleted nodes don't dangle a reference and prevent GC of their loaded images). Window-level `keydown` listener routes ←/→/Esc to whichever node is active, with `INPUT/TEXTAREA/contentEditable` exclusion so the user can still type. Use capture-phase (`true` 3rd arg to `addEventListener`) so we preempt ComfyUI's canvas-pan keybindings. Same pattern can be reused for any other node that needs document-level keyboard control while focused.
 
@@ -1558,6 +996,10 @@ These were hardened over four agent-review waves + live testing (June 2026). Re-
 
 8. **`readState` identity stability + in-place resets.** `readState`/`backfillAxis` mutate the axis objects in place (never replace `s.x`/`s.y`/`raw` with fresh objects) and `selectChoice` resets `axis.raw` IN PLACE — because value-field handlers capture `axis.raw` by reference; swapping the object reintroduces the "editing one axis clobbers the other" bug. The picker popup is a module singleton; `closePopupIfOwner(node)` (not bare `closePopup`) is called from `onRemoved` so deleting one node doesn't close another's open picker.
 
+9. **Number-axis rounding uses the widget's declared `precision`, NOT the `step` (June 2026; refined after integer ranges came out fractional).** ComfyUI tags every number widget with `precision` = decimals allowed (0 = integer width/height/steps/seed/batch_size, 1 = cfg, 2 = denoise) AND carries the REAL increment in `step2` (width 16, cfg 0.1), while the plain `step` option is ×10-inflated (width 160, cfg 1.0) and unreliable. `classifyWidget` captures `precision`; `roundToStep(v, step, precision)` rounds to `precision` when present. History (two passes): the FIRST fix derived decimals from `max(stepDecimals, valueDecimals)` to stop floats truncating (`cfg 5,6,7.1` -> `5,6,7`; `denoise 0.05,0.1` -> `0.1,0.1`; `cfg 0-1 x4` -> `0,0,1,1`), but that then made INTEGER ranges fractional (`width 512-1024 in 4 steps` -> `512, 682.66666667, 853.33333333, 1024`, because an interpolated value's own decimal count is 8). Switching to `precision` fixes BOTH: width/height/steps/seed stay whole, cfg keeps 1 decimal, denoise 2, and `cfg 1-2 x4` tidies to `1, 1.3, 1.7, 2`. Fallback (precision missing - old saved axis / non-ComfyUI widget) is the `max(stepDecimals, valueDecimals)` cap-8 logic. `axis.precision` is set in `selectChoice` and self-healed each render in `renderValueArea` (so a reloaded pre-fix axis still rounds right). `step2` (the real increment, captured as `axis.realStep`) drives a PER-AXIS **Snap** toggle (`axis.snap`, default ON): `resolveAxisValues(axis)` reads `axis.snap` and snaps each number value to the nearest multiple of `realStep`, then re-rounds to precision - so width/height land on clean multiples (512-1024 x4 -> 512, 688, 848, 1024) while cfg/steps/denoise are no-ops (their step equals the precision unit). PLACEMENT: the Snap toggle renders INSIDE the number axis's value area, in the free space beside the Range/List segment (a `.pix-xy-moderow`), so it adds NO node height; and it shows ONLY when snapping would actually change values (`realStep > 10^-precision`, i.e. width/height), not for cfg/steps. (A single global toggle in the options row was tried first but wrapped to a 4th line and added height - user-rejected; per-axis-in-the-value-area is the placement.) Snapping never changes the value COUNT (no dedupe), so `computeCounts`/`axisReady` stay consistent with the driver. The injection path (`index.js` `injectAxis`), Python (`node_xy_plot.py`), and the grid labels all consume the resolved list untouched, so `roundToStep` is the SINGLE precision authority for number axes. (Verified with a throwaway Node harness asserting int/float/range/fallback cases.)
+
+10. **Per-axis reset (`resetAxis` in core.mjs) clears ONE axis in place; the global Reset still wipes everything.** `resetAxis(node, axisKey)` blanks just `state[axisKey]`, mutating the existing axis object IN PLACE (Pattern #8's aliasing rule), leaving the other axis + toggles + theme + any shown grid intact. It's exposed through the node's `handlers.resetAxis` (so node-fitting stays in `index.js`, like `handlers.reset`) and rendered as a small `↺ Reset` in each axis header, shown only once a setting is picked (nothing to reset on an empty axis). It calls `fitNode` (grow OR shrink) so the node tightens after a tall value area collapses - a user action, so it can't trip dirty-on-load (#18). Must be threaded into BOTH the live `makeHandlers` object AND the `_pixXyRenderOnly` handler object, or the button is inert right after a workflow load.
+
 ### Image-picker node patterns (do not regress)
 
 Any Pixaroma node that picks an image from `input/` via ComfyUI's `image_upload: True` widget is an "image-picker node". Current members: **Load Image Pixaroma** (`js/load_image/`, `nodes/node_load_image.py`) and **Prompt Reader Pixaroma** (`js/prompt_reader/`, `nodes/node_prompt_reader.py`). The two share an upload-button + hidden-native-combo + custom-dropdown + (now) prev/next arrows surface. If you add a third such node (e.g. a future "Load Mask Pixaroma"), follow every rule below or you will regress hard-won fixes.
@@ -1658,7 +1100,22 @@ These patterns were hard-won during the May-2026 implementation and post-review 
 
 14. **Walker MUST extract Prompt Multi Pixaroma's active prompt from the hidden state JSON.** Same family of bug as Pattern #13: Prompt Multi has no wired text output either. The JS `app.queuePrompt` patch in `js/prompt_multi/index.js` enqueues ONE workflow per enabled row, with each workflow's hidden `PromptMultiState` input baked at submit time as `{"version":1,"activePrompt":"<the row's text>"}`. So each saved PNG carries the exact prompt that produced THAT image (not all rows - just the one). Recovery is therefore a direct read, NOT a reconstruction from rows: `_walk_for_text` dispatches on `class_type == "PixaromaPromptMulti"` right after the Prompt Stack branch and calls `_pix_prompt_multi_extract(inputs)`, which parses `inputs.PromptMultiState` and returns `state["activePrompt"]` (stripped, None if empty). Do NOT mistakenly try to read `rows` here - the JS hook deliberately strips them and ships only `activePrompt` to keep the embedded workflow small and unambiguous. Bug class this prevents: user generates 3 images via Prompt Multi (red / blue / green), drops the blue PNG back on Prompt Reader, gets "no positive prompt found" when in fact the blue prompt is sitting right there in the hidden state.
 
-### Text Overlay Pixaroma Patterns (do not regress)
+### Text Pixaroma Patterns (do not regress)
+
+The Text Pixaroma node (`js/text/index.js` + `js/text/dynamic_prompts.mjs` + `nodes/node_text.py`) is a multi-line text box that hides ComfyUI's native `multiline` widget and renders a custom DOM textarea (mirrored back to the hidden native widget for serialisation - see node UI convention #4). Bottom bar: Copy all / Replace / Clear action buttons + a Dynamic prompts SWITCH; a `?` Help button floats in the text box corner.
+
+1. **Dynamic prompts are an OPT-IN per-node switch (default OFF) - NOT ComfyUI's native `dynamicPrompts: True`.** The native flag was REMOVED from `nodes/node_text.py` (commit 2026-06-10). It ran on EVERY Text Pixaroma and stripped ALL curly braces at queue time (ComfyUI's frontend resolves `{a|b}` wildcards during `graphToPrompt`, eating the braces), which silently destroyed JSON prompts - reported as a "Find and Replace removes my braces" bug, but the braces were already gone UPSTREAM, before Find and Replace ever saw the text (Text Pixaroma -> Find and Replace flow). Empirically: input `cat {dog}m, [test]{}{{t}}` came out `cat dogm, [test]t` (every `{`/`}` deleted, `[test]` kept) - exactly ComfyUI's nested `{...|...}` resolver. The native flag was a ~3-week-old regression (added 2026-05-22, `feat(text): enable dynamic prompts`). Do NOT re-add `dynamicPrompts: True` to the `text` input - it can't be toggled per-instance (it's a per-node-TYPE frontend flag) and forces brace-eating on everyone.
+
+2. **When the switch is ON, resolution happens in `js/text/dynamic_prompts.mjs::resolveDynamicPrompt`, applied in an `app.graphToPrompt` hook (bottom of `js/text/index.js`) ONLY for nodes whose switch is on.** The resolver mirrors the documented contract: `{a|b|c}` random pick (uniform), nesting `{a|{b|c}}` (loops the innermost `\{[^{}]*\}` until stable), `\{` `\}` escapes (protected with private-use placeholders built via `String.fromCharCode(0xE000/0xE001)` so the source stays pure ASCII - do NOT paste literal private-use chars, they get stripped to empty strings on write), and `//` + `/* */` comment stripping. A pipe-less `{x}` -> `x` and `{}` -> empty (matches native, so ON reproduces the pre-removal behavior exactly). The hook resolves `entry.inputs.text` per submit (fresh random each Run, matching native caching: a different resolved value = a re-run), gated `typeof v === "string"` (skips a WIRED text input). Subgraph-safe node lookup mirrors `js/find_replace/index.js` (composite `5:12` ids). The resolver is unit-verified (162 cases incl. the user's exact case + escaping + comments + 50 random draws each landing on a valid option) - if you change the resolver, re-verify with a node test against `dynamic_prompts.mjs`.
+
+3. **Switch state lives on `node.properties.pixTextDynamicPrompts` (boolean, default OFF via `isDynamicOn` returning false when the key is absent).** Written ONLY on user click (`setDynamic`); `applyDynamicSwitch` (visual) and `isDynamicOn` (hook) only READ it - so an existing saved workflow gets NO new property on load and is never false-dirtied (Vue Compat #18). Reflected onto the DOM switch in BOTH `setupNode`'s microtask AND `onConfigure`'s microtask (belt-and-braces, whichever runs after `configure()` restores properties - Vue Compat #8). Default OFF means existing workflows now treat braces literally (un-regresses JSON); `{a|b}` users opt in once and it persists.
+
+4. **Sizing: `DEFAULT_W = 412` (fresh-node width so the bottom row + `?` fit on one line), `MIN_W = 412` BUT the `node.size` min-clamp is GATED LEGACY-ONLY; `WIDGET_MIN_H = 120`; bottom bar `flex-wrap`; `installResizeFloor` for the Nodes 2.0 height floor.** `onResize` and `onDrawForeground` clamp `node.size` to MIN_W/MIN_H ONLY when `!isVueNodes()`. THIS IS MANDATORY (a review caught an earlier ungated version): in Nodes 2.0 the rendered size lives in the Vue layout store, NOT `node.size`, so clamping there desyncs them - the user drags smaller, Vue keeps the smaller render, but `node.size` snaps back to 412, so the node JUMPS bigger on a workflow switch + can false-dirty (the CLAUDE.md "Nodes 2.0 manual-resize MINIMUM" rule). Consequences by renderer: **LEGACY** floors at 412 (can't drag narrower; an existing legacy node saved <412 auto-widens to 412 on load = a one-time "save changes?", Vue Compat #18, accepted). **NODES 2.0** has NO `node.size` floor - the user CAN drag the node narrower and it PERSISTS (no jump); the bottom bar `flex-wrap`s the trailing items (the `?` drops to a second line gracefully) and `installResizeFloor(root, measureTextFloor)` pins a during-drag min-height so the button row can't spill out the bottom of the frame (uninstalled in `onRemoved`). `measureTextFloor` uses the textarea's CSS MIN (60px), NOT its grown height, so the floor lets the node shrink to where content just fits and no further. A fresh Nodes 2.0 node still opens at 412 (the synchronous setup write at `if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W`), but an EXISTING Nodes 2.0 node keeps its saved width (may wrap the `?` if it was saved narrow - widen once to fix). 412 was MEASURED with the sizer snippet (Token-Saving Rules #6) on Nodes 2.0 (the tighter renderer: 400 wrapped, 410 fit). History/lesson: an earlier per-renderer `DEFAULT_W` vs `DEFAULT_W_VUE` split (branched on `isVueNodes()` while it was NOT imported - a latent crash for fresh nodes) was WRONG and removed; the original "Nodes 2.0 wraps the `?`" report was a STALE-CACHE render before a hard refresh, and once the real CSS loaded ~410 fit in BOTH renderers. ALWAYS hard-refresh + re-measure before "fixing" a Nodes 2.0 layout gap. The switch is disabled+dimmed when the text input is wired (it only affects TYPED text, which is ignored when wired).
+
+6. **Dynamic prompts resolve in the FRONTEND only (`app.graphToPrompt` hook) - a pure API / headless / cron run does NOT resolve `{a|b}`.** Because the switch state lives in JS (`node.properties`) and the `{a|b}` resolution happens in the `app.graphToPrompt` hook (so the SAVED workflow keeps the raw template and only the submitted prompt is resolved), a workflow submitted WITHOUT the browser - the ComfyUI `/prompt` REST API directly, a headless/automation script, some batch runners - will send the literal `{a|b}` template to Python, which passes it through unchanged. This is NOT a regression: ComfyUI's native `dynamicPrompts: True` (the thing we removed) ALSO only ran in the frontend's graphToPrompt, so it had the exact same blind spot. Accepted as-is; documented here so it isn't re-investigated as a bug. (If true headless dynamic-prompt resolution is ever needed, it would require a Python-side resolver gated on a hidden switch-state input injected via Pattern #9 + `IS_CHANGED` returning nan for fresh randomness - deliberately not built.)
+
+5. **The `?` Help button is the LAST item in the bottom bar, right after the Dynamic prompts switch** (`.pix-text-help { margin-left:3px; flex:0 0 auto }`; the base `.pix-help-btn` is a 16px mask icon, `align-self:center`). It was originally floated in the top-right corner of the textarea, but the user moved it into the button row (2026-06-10) - so it flex-wraps with the switch on a narrow node rather than living in a non-wrapping top row (a deliberate deviation from node UI convention #16's "own top row" guidance). `createHelpButton(TEXT_HELP)` + `closeHelpPopup()` in `onRemoved`.
+
 
 These patterns came from the v2 simplification (single text, no effects, mirrored panel). Re-read before touching `js/text_overlay/`, `js/framework/text_render.mjs`, `js/framework/text_editor.mjs`, or `nodes/_text_render_helpers.py`.
 
@@ -1701,6 +1158,8 @@ These patterns came from the v2 simplification (single text, no effects, mirrore
 19. **Two DISTINCT align controls; the line-align chips do NOT move the text — `align` (text-align within block) vs canvas position are separate.** GitHub issue #39: users clicked the left/center/right chips expecting the whole text to jump to the canvas edge; those chips only set `state.align`, which positions multi-line text lines relative to each other inside the bbox (`text_render.mjs::lineOriginX`) and is INVISIBLE for single-line text. Made worse because the chips reused the same `align-left/center-h/right.svg` icons as the editor's canvas-align toolbar. The fix (in the SHARED `js/framework/text_editor.mjs` panel, so it lands on the node body AND the editor sidebar): caption the chip row "Text align (within block)" and add a separate "Position on canvas (whole text)" row of 6 buttons (H trio + V trio) that snaps the whole block to a canvas edge / center. The row only renders when the owner passes an `onAlignCanvas(mode)` callback. The node body (`index.js::setupTextOverlayNode`) passes it → `alignOnCanvasFromBody`; the editor sidebar does NOT (it has its own top toolbar `_buildAlignmentBar`, so the row would be redundant there). `applyAlignMode` mirrors `core.mjs::alignToCanvas` formulas EXACTLY (no clamping) so node-body and editor produce identical positions — keep them in lockstep.
 
 20. **`_alignPending` round-trip mirrors `_autoCenterPending` (Pattern #16) for node-body canvas positioning when image dims aren't known yet.** When the user clicks a "Position on canvas" button on the node body, `alignOnCanvasFromBody` resolves the upstream image dims (upstream `imgs[0]`, else the stashed base-image PNG from Pattern #17, loaded + cached on `node._textOverlayBaseImageEl`) and applies the position INSTANTLY. If dims are unknown (generative chain never run), it records `state._alignPending = mode` (and clears `_autoCenterPending` — an explicit choice wins over default centering) + toasts "Position will apply on the next run". Resolution happens in two places, same as auto-center: (a) the `graphToPrompt` hook resolves `_alignPending` pre-submit when upstream IS available; (b) Python `node_text_overlay.py::build` resolves it from the real `image.shape` (an `if align_mode … elif state.get("_autoCenterPending")` block, align taking priority) and ships the x/y back via the SAME `pixaroma_text_overlay_autocentered` ui key; the `executed` handler in `index.js` persists x/y and clears BOTH pending flags. Keep the 6 mode branches in the Python block in sync with `applyAlignMode` in `index.js`.
+
+21. **Vertical direction is a renderer branch gated by `state.direction` ("horizontal" default), mirrored in JS + Python + the math doc §5b.** `renderVerticalToCanvas` (`js/framework/text_render.mjs`) and `_render_vertical_layer` (`nodes/_text_render_helpers.py`) must stay in lockstep; `compute_text_bbox` has the matching vertical bbox branch (auto-center). In vertical mode Line Height = per-character vertical step (`charStep = round(fontSize*lineHeight)`), Letter Spacing = column gap, the align chips remap to top/middle/bottom of shorter columns, columns advance LEFT-to-RIGHT, and synthesized italic is skipped (upright). The field is ADDITIVE + optional — do NOT bump the Text Overlay schema `version` (would trip `ensureValidState` and wipe saved text); both engines read `direction ?? "horizontal"` so old graphs are byte-identical (no dirty-on-load). After ANY vertical-math change: update `docs/text-overlay-render.md` §5b, BOTH engines, then `python scripts/text_overlay_parity_check.py --regenerate` (cases 11-13; goldens are gitignored, regenerated locally). The Horizontal | Vertical toggle lives in the shared `js/framework/text_editor.mjs` panel (`ui.dirChips`, `.pix-to-dir-*` CSS), so Text Overlay + Composer text layers + Text Watermark all get it from the one renderer + panel. **ALL JS bbox measurement goes through the shared `measureTextDims(ctx, state)` in `text_render.mjs`** (caller sets `ctx.font`, helper does direction-aware w/h) - `js/text_overlay/index.js::measureTextBbox` (Position-on-canvas buttons + auto-center) and `core.mjs::_textBbox` (editor align toolbar, drag bbox, Fit W/H) both call it; do NOT re-inline horizontal-only math there (the original vertical bug: right/bottom align flung vertical text off-canvas because the measure said wide-short while the render was narrow-tall). Watermark's Python `_stamp` gates its synthesized-italic slant compensation on `direction != "vertical"` (vertical renders upright, no slant). Adding a row to the shared panel? Bump BOTH legacy `BASE_H` constants (`js/text_overlay/index.js` + `js/text_watermark/index.js`, currently 464) or the legacy panel clips (Pattern #8's maintenance cost).
 
 ### Offline-first: Vendored Three.js
 The 3D Builder used to `import("https://esm.sh/three@0.170.0/…")` at runtime, which
@@ -1787,6 +1246,7 @@ Files are named by concern. Match the task to the file:
 | Change Prompt Multi Pixaroma rows / queue-loop behavior / mode toggle / size / outputs | `js/prompt_multi/` (index.js for queuePrompt patch + extension wiring + graphToPrompt hook + DEFAULT sizing; core.mjs for state schema + MODE_QUEUE / MODE_LIST constants + setMode; render.mjs for DOM including the mode pill bar + hint text; interaction.mjs for events). Python in `nodes/node_prompt_multi.py`. State on `node.properties.promptMultiState` (`{version:2, mode:"queue"|"list", rows:[{id,enabled,label,text}], activeIndex}`) + `app.graphToPrompt` hook injecting `{version, mode, activePrompt, rowTexts}` into hidden `PromptMultiState` (rowTexts is the ENABLED non-empty rows only, in display order — so a downstream From List index 1 maps to the first enabled row). `app.queuePrompt` patch in index.js — on every Run, finds the first Prompt Multi node via `findFirstPromptMultiNode` (top-level pass first then subgraph recurse), CHECKS `pmNode.properties.promptMultiState.mode`: if `MODE_LIST` falls through to a single `_origQueuePrompt` call (no loop); else loops via `enabledRowsWithIndex` writing `state.activeIndex` (ABSOLUTE index, NOT enabled-filtered) before each `_origQueuePrompt(num, 1)`. 0 enabled non-empty → toast + bail without calling original (covers both all-OFF and all-empty cases). **Two outputs (text + prompts) ALWAYS visible** — do NOT try to dynamically swap slots based on mode (Prompt Multi Pattern #10 explains why the rename-and-remove approach is fundamentally broken). Mode pill at top of node body is two `.pix-pm-modepill` segments inside `.pix-pm-modebar`, orange when active; click the inactive one to switch. Labels `Queue Text` and `List Prompts` directly name the output to wire (Prompt Multi Pattern #11). Hint text under the pills repeats which output to wire. CSS prefix `.pix-pm-*` keeps it isolated from Prompt Stack's `.pix-ps-*`. Visual UX of rows mirrors Prompt Stack (drag handle, ON/OFF pill, label, textarea, ✕ delete with `pixConfirm`). Default fresh-node: 2 empty rows both ON in Queue mode, size `DEFAULT_W = 420` / `DEFAULT_H = 290` with `CHROME_ALLOWANCE = 70` in grow/fit calculations so the action button row stays inside the frame. PIXAROMA_PROMPT_LIST custom wire type is duplicated as a constant in both `nodes/node_prompt_multi.py` and `nodes/node_prompt_from_list.py` (deliberate to avoid a cross-file import chain — keep in sync). |
 | Add / change Prompt From List Pixaroma | `nodes/node_prompt_from_list.py` (single Python file, ~80 lines, no JS at all — uses ComfyUI's native widget rendering deliberately to stay tiny). Input: `prompts` (PIXAROMA_PROMPT_LIST). Widget: `index` (INT, 1-based, default 1, max 9999). Output: `text` (STRING). Out-of-range returns `""` instead of raising (workflow with mistyped index still runs). `isinstance(prompts, list)` guard required for defensive type safety. Prompt Reader walker chases this node via `_pix_prompt_from_list_resolve` in `nodes/_prompt_reader_helpers.py` — reads the `index` widget from the saved prompt JSON, follows the `prompts` input link to its upstream node, confirms it's a `PixaromaPromptMulti`, and returns `rowTexts[index-1]` from the upstream's hidden state. If you ever add a NEW list-source node (not Multi), extend `_pix_prompt_from_list_resolve` with a class_type branch. |
 | Change Prompt Pack Pixaroma textarea / pill / counter / queue-loop / output | `js/prompt_pack/` (index.js for queuePrompt patch + extension wiring + graphToPrompt hook + DEFAULT sizing; core.mjs for state schema + MODE_PARAGRAPH / MODE_LINE constants + `parsePrompts(text, mode)`; render.mjs for DOM including the mode pill bar + textarea + counter pill; interaction.mjs for events). Python in `nodes/node_prompt_pack.py`. State on `node.properties.promptPackState` (`{version:1, mode:"paragraph"|"line", text:"...", activePrompt:""}`) + `app.graphToPrompt` hook injecting `{version, activePrompt}` into hidden `PromptPackState` (Pattern #9). `app.queuePrompt` patch in index.js finds the first Prompt Pack node, parses text via `parsePrompts`, loops one `_origQueuePrompt(num, 1)` per non-empty prompt (mutates `activePrompt` before each call so graphToPrompt captures the right one), bails with toast when 0 prompts. Per-iteration enqueue errors logged + skipped (don't abort). Single `text` STRING output to match Prompt Multi / Prompt Stack / Show Text. Counter pill in the textarea's bottom-right corner shows `N prompts` idle / `i / N` (orange) during run / `0 prompts` (grey) empty. CSS prefix `.pix-pp-*` keeps it isolated from Prompt Stack's `.pix-ps-*` and Prompt Multi's `.pix-pm-*`. DOM widget MUST have `canvasOnly: true` (Vue Compat #15) or pill + textarea also render in the right-sidebar Parameters tab. Prompt Reader walker chases this node via `_pix_prompt_pack_extract` in `nodes/_prompt_reader_helpers.py` - mirrors Prompt Multi extract since both ship `{activePrompt}` in their hidden state. |
+| Change Text Pixaroma (textarea / buttons / Dynamic prompts switch / Help) | `js/text/index.js` (DOM textarea + Copy all/Replace/Clear buttons + the Dynamic prompts switch + `?` Help + the `app.graphToPrompt` resolver hook) + `js/text/dynamic_prompts.mjs` (the `{a|b}` resolver, mirror of the documented contract) + `nodes/node_text.py` (trivial passthrough; native `dynamicPrompts` is deliberately OFF). State `node.properties.pixTextDynamicPrompts` (default OFF). See "Text Pixaroma Patterns (do not regress)" - do NOT re-add ComfyUI's native `dynamicPrompts: True` (it ate JSON braces on every node); dynamic prompts are an opt-in switch resolved only when ON. |
 | Change Find and Replace Pixaroma (rules / toggles / preview / replace logic) | `js/find_replace/` (index.js entry + lifecycle + `app.graphToPrompt` injection + `onExecuted` preview capture + sizing; core.mjs state + `applyRulesJS`/`tidy`/`diffTokens` word-diff + preview persistence; render.mjs `.pix-fr-*` CSS/DOM toggles+rows+actions+preview; interaction.mjs find/replace textarea editors + drag-reorder + `pixConfirm`). Python in `nodes/node_find_replace.py` (`_apply_rules` + `_tidy`). State `node.properties.findReplaceState` `{caseSensitive,wholeWord,regex,tidy,rules[{id,enabled,find,replace}]}` injected into hidden `FindReplaceState` (Pattern #9); the live-preview input is persisted SEPARATELY in `node.properties.findReplacePreview` (capped ~4 KB, NOT injected). **The replace logic is mirrored JS↔Python and MUST stay in lockstep - Python is authoritative**; literal mode is exact, regex backref syntax differs (`\1` Python / `$1` JS, JS converts best-effort). `text` input is `forceInput` (wire-only); `OUTPUT_NODE=True` so it always runs and can return the `ui` preview payload while still passing its STRING output downstream. Rules apply top-to-bottom in displayed order (drag the handle to reorder); empty `find` skips the rule, empty `replace` deletes the found text. Mirrors Prompt Stack's DOM-row architecture + dirty-on-load guards (render-only on load, grow only on user actions). |
 | Add backend route | `server_routes.py` |
 | Add a new Python node | `nodes/node_<name>.py` |
@@ -1814,7 +1274,7 @@ Files are named by concern. Match the task to the file:
 | Paint AI Background Removal panel | `js/paint/core.mjs` `_buildBgRemovalPanel` + `_removeBgFromActiveLayer` (button gated on `ly.sourceKind === "image"`, set by the `onAddImage` handler and serialized as `source_kind` in the layer project JSON). Dropdown built by the shared `js/framework/bg_removal_dropdown.mjs` helper (1.3.34) so Paint and Composer render identical model pickers (BiRefNet variants on top, rembg below). Reuses the `/pixaroma/remove_bg` backend route via `PaintAPI.removeBg`. |
 | Change AI Remove Background dropdown (Composer + Paint, 1.3.34+) | `js/framework/bg_removal_dropdown.mjs`. Exports `fetchBgRemovalInfo()` (GET /pixaroma/remove_bg_info) and `buildBgRemovalDropdown({ container, info, value, onChange })` (renders `<select>` with `<optgroup label="Pixaroma BiRefNet">` on top and `<optgroup label="rembg">` below; inline `<a href=...>Download {filename}</a>` under the select when the currently selected BiRefNet variant is not installed). Default-picks via `pickDefaultModel(info)`: first installed BiRefNet variant in priority order standard -> HR -> matting, else rembg `auto`. Variant catalog and inventory come from the backend (`BIREFNET_VARIANTS` in `nodes/_bg_removal_helpers.py`) so adding a new variant requires editing that file only. |
 | Preview Image Pixaroma — change button or strip / grid layout / geometry / colors | `js/preview/index.js` constants at the top (`BTN_H`, `BTN_GAP`, `MIN_W`, `MIN_H`, `DEFAULT_W`, `DEFAULT_H`, `IMG_STRIP_GAP`, `IMG_STRIP_V_PAD`, `IMG_STRIP_BORDER_W`, `BADGE_*`, `LAYOUT_TOGGLE_*`, `COLOR_ACTIVE_*` / `COLOR_DISABLED_*`). Button rects computed in `computeButtonRects`, painted in `paintBtn`. Strip (single horizontal row) rects via `layoutImgStrip`; Grid (2D wrap, **iterate-and-maximise area**, exact match for native PreviewImage's `calculateImageGrid` in `dialogService-*.js`) via `layoutImgGrid`. Algorithm: for each candidate `cols` in `1..N`, compute `rows = ceil(N/cols)`, `slotW = innerW/cols`, `slotH = innerH/rows`, CONTAIN scale `min(slotW/imgW, slotH/imgH, 1)`, cellW/H = imgW/H × scale, area = cellW × cellH × N; pick the cols that maximises area. Cells are SCALED IMAGE DIMENSIONS (not `innerW/cols × innerH/rows`), so cells exactly fit images with NO per-cell letterbox; the whole grid is then centered inside `innerW × innerH`. Any unused space sits at the edges of the grid, never between cells. Uses `frames[0]` natural dimensions (assumes batch is uniform); when first image hasn't loaded, falls back to `1×N` strip and reflows on the next draw once `naturalWidth/Height` are populated. Layout selection in `createStripWidget().draw` reads `getLayoutMode(node)` which checks `node.properties.pixaromaLayout` ('grid' / 'strip') with fallback to setting `Pixaroma.Preview.DefaultLayout`. Per-node toggle icon painted via `paintLayoutToggle` (top-right, hover-aware, glyph shows the OPPOSITE mode = what you'll switch to on click). Buttons + strip live as `addCustomWidget`s (so they reserve vertical space, draw immediately on node-add, and Vue-compat works). Don't switch back to `onDrawForeground` (Vue Compat #1) and don't return `ui.images` from the Python node (LiteGraph would render its native strip underneath the custom one — use the `pixaroma_preview_frames` custom UI key instead, Save Mp4 pattern). |
-| Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → PNG, two modes: temp/ for preview, output/ for save with embedded metadata via shared `nodes/_save_helpers._build_pnginfo`) + `server_routes.py` helpers `_embed_workflow_metadata` (thin wrapper), `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Both routes validate `filename_prefix` via shared `nodes/_save_helpers._safe_prefix` (allows `subfolder/prefix` with `[A-Za-z0-9_-]` segments, no `..`). Prepare route returns JSON `{image_b64, suggested_filename}` — `suggested_filename` peeks `folder_paths.get_save_image_path` to pre-fill the Save-to-Disk picker with the next free counter. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk` read the SELECTED frame from `node._pixaromaFrames[node._pixaromaSelectedFrame]`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in `nodes/_save_helpers._build_pnginfo` only (single source of truth). |
+| Preview Image Pixaroma — change save flow / routes | Backend: `nodes/node_preview.py` (tensor → PNG, two modes: temp/ for preview, output/ for save with embedded metadata via shared `nodes/_save_helpers._build_pnginfo`) + `server_routes.py` helpers `_embed_workflow_metadata` (thin wrapper), `/pixaroma/api/preview/save`, `/pixaroma/api/preview/prepare`. Both routes validate `filename_prefix` via shared `nodes/_save_helpers._safe_prefix` (denylist: neutralizes only Windows-illegal chars, keeps Unicode/spaces like native SaveImage, rejects `..`; locked by `scripts/save_prefix_check.py`). Prepare route returns JSON `{image_b64, suggested_filename}` — `suggested_filename` peeks `folder_paths.get_save_image_path` to pre-fill the Save-to-Disk picker with the next free counter. Frontend: `js/preview/index.js` `saveToOutput` / `saveToDisk` read the SELECTED frame from `node._pixaromaFrames[node._pixaromaSelectedFrame]`. Both POST a dataURL + the workflow/prompt from `app.graphToPrompt()`. Metadata embedding lives in `nodes/_save_helpers._build_pnginfo` only (single source of truth). |
 | Preview Image Pixaroma — add / change save_mode behavior or hidden inputs | `nodes/node_preview.py`. `INPUT_TYPES` declares `save_mode` as a required combo (`preview` / `save`, default `preview`) and `prompt: PROMPT, extra_pnginfo: EXTRA_PNGINFO` as hidden inputs. In `save` mode the node iterates the entire batch, calls `folder_paths.get_save_image_path`, and saves each frame to `output/{subfolder}/{name}_{counter+i:05}_.png` with embedded metadata — drop-in for native SaveImage. In `preview` mode it writes UUID-named PNGs to `temp/` (auto-cleared on ComfyUI restart). Either mode returns `ui.pixaroma_preview_frames` (custom key). |
 | Notify Pixaroma — add or swap a sound | Drop a `.mp3` (or `.wav`/`.ogg`) into `assets/sounds/`, restart ComfyUI. `_list_sounds()` in `nodes/node_notify.py` auto-enumerates the folder at every `INPUT_TYPES()` call. No code changes needed. To remove a sound, delete its file. |
 | Notify Pixaroma — change widgets / Python contract | `nodes/node_notify.py` (single file, ~80 lines). `INPUT_TYPES` declares `any` (AnyType wire), `enabled` (BOOLEAN), `sound` (combo from `_list_sounds()`), `volume` (INT 0-100), `label` (STRING). `IS_CHANGED` returns `float("nan")` so the node always re-executes (notification fires on every Run, even when upstream is fully cached). `notify()` returns `{"ui": {"pixaroma_notify": [{sound, volume, label}]}}` when enabled, else `{"ui": {}}`. AnyType class overrides `__ne__` to bypass ComfyUI's strict type matching. Per-node `enabled=false` is symmetric silent on Python and JS (no print, no event). |
@@ -1869,21 +1329,16 @@ Defaults should reflect the node's CONTENT, not a generic minimum. A text-heavy 
 ## Important Note
 After major changes, please update this file (@CLUADE.me). Keep this file up-to-date with the project's status.
 
-## Git Workflow (Ioan branch)
+## Git Workflow
 
-The user works on the `Ioan` branch. Two commit destinations:
+Home is now **GitLab** (`gitlab.com/pixaroma/comfyui-pixaroma`); the GitHub remote is suspended, so "push" means GitLab. The user develops on a working branch (historically `Ioan`, integrated to `main` for releases). Confirm the current branch with `git branch --show-current` rather than assuming.
 
-1. **Local commits** — after any non-trivial working change, create a local commit on `Ioan` as a checkpoint. This is the **default** — no confirmation needed, just do it. The user relies on these to roll back if something breaks (`git stash`, `git reset --hard HEAD~1`, or `git checkout <sha>`).
+1. **Local commits (default, no confirmation needed):** after any working change, make a small local checkpoint commit. The user relies on these to roll back (`git stash`, `git reset --hard HEAD~1`, `git checkout <sha>`).
+2. **Push (only when the user explicitly asks)** ("push to gitlab", "push it", "release it"). Never push proactively.
 
-2. **Push to Ioan on GitHub** — only when the user **explicitly** says "push to Ioan", "push to github", "commit to Ioan github", or similar. Never push proactively.
+**Pattern:** edit → verify it works → `git add -A && git commit -m "scope: description"` (local). Keep commits small and focused. Never amend a pushed commit; amend local-only WIP freely. If work breaks, roll back to the previous checkpoint.
 
-**Pattern:**
-- Make the edit → verify it parses / works → `git add -A && git commit -m "scope: description"` LOCAL
-- Keep commits small and focused: one coherent change per commit
-- Never amend a pushed commit; only amend local-only commits if still WIP
-- If work breaks something, the user can roll back to the previous local checkpoint
-
-**Do not** push to origin unless asked. **Do** commit locally after every working change.
+**Release** is an explicit user trigger ("release it" / "publish new version"): bump the `pyproject.toml` version, merge the working branch to `main`, push to GitLab → CI publishes to the Comfy Registry. Add a README changelog entry (one entry per day, plain language).
 
 ## Publishing
-CI/CD auto-publishes to the ComfyUI registry when `pyproject.toml` is pushed to `main`. Do not modify `pyproject.toml`, `LICENSE`, or `.clauderules` or `.github/workflows/publish.yml`.
+The plugin auto-publishes to the ComfyUI Registry via **GitLab CI** (`.gitlab-ci.yml` + the `REGISTRY_ACCESS_TOKEN` CI variable) when a version bump lands on GitLab `main`. (The legacy `.github/workflows/publish.yml` is inactive; GitHub is suspended.) During normal work do NOT modify `pyproject.toml`, `LICENSE`, `.clauderules`, `.gitlab-ci.yml`, or `.github/workflows/publish.yml`. The ONE exception is an explicit release, where bumping the `pyproject.toml` version is exactly how a release is cut.

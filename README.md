@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://raw.githubusercontent.com/pixaroma/ComfyUI-Pixaroma/main/assets/pixaroma_logo.svg" width="120" alt="Pixaroma Logo">
+  <img src="assets/pixaroma_logo.svg" width="120" alt="Pixaroma Logo">
   <h1>ComfyUI Pixaroma</h1>
   <p align="center">
     <strong>Useful ComfyUI nodes for everyday workflows.</strong><br />
@@ -7,13 +7,22 @@
   </p>
 
   <p align="center">
-    <a href="https://github.com/pixaroma/ComfyUI-Pixaroma/blob/main/LICENSE"><img src="https://img.shields.io/github/license/pixaroma/ComfyUI-Pixaroma?style=flat-square&color=blue" alt="License"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License"></a>
     <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/discord-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord"></a>
     <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/youtube-red?style=flat-square&logo=youtube" alt="YouTube"></a>
+  </p>
+  <p align="center">
+    <a href="#-getting-started">📥 Install</a> &nbsp;·&nbsp;
+    <a href="#-creative-suite">🎨 Nodes</a> &nbsp;·&nbsp;
+    <a href="#-learning-resources">📺 Tutorials</a> &nbsp;·&nbsp;
+    <a href="#-changelog">🛠 Changelog</a> &nbsp;·&nbsp;
+    <a href="https://discord.gg/gggpkVgBf3">💬 Discord</a>
   </p>
 </div>
 
 ---
+
+> 💬 **Need help, have an idea, or found a bug?** Hop into the [Pixaroma Discord](https://discord.gg/gggpkVgBf3) and post in the **#pixaroma-nodes** channel.
 
 ## 🎨 Creative Suite
 
@@ -183,8 +192,10 @@ If you use [ComfyUI Easy Install](https://github.com/Tavris1/ComfyUI-Easy-Instal
 #### **Method C: Manual Installation**
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/pixaroma/ComfyUI-Pixaroma.git
+git clone https://gitlab.com/pixaroma/comfyui-pixaroma.git
 ```
+
+> **⚠️ Node looks blank or broken right after updating?** This is almost always your browser cache, not a bug. Hard-refresh with **Ctrl + Shift + R** (Windows / Linux) or **Cmd + Shift + R** (Mac). If a node is still broken after that, see [Read this first](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues/2).
 
 ### 2. Optional: AI Background Removal
 AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** editor's AI Background Removal button, and the **Paint Pixaroma** editor's AI Background Removal button.
@@ -253,6 +264,31 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ## 🛠 Changelog
 
 > 💡 **After updating Pixaroma:** hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (or **Cmd+Shift+R** on Mac). The browser keeps old node visuals cached, and without a hard refresh you may still see the previous version of a node even though the update installed correctly.
+
+### **June 10, 2026 · v1.3.84-1.3.87**
+- **NEW: write text vertically (top to bottom).** Text Overlay, the Image Composer text layers, and Text Watermark now have a Horizontal / Vertical switch. Vertical stacks each character going down and starts a fresh column every time you press Enter - great for Japanese-style writing or tall stylish captions. The alignment and "position on canvas" buttons understand the tall narrow shape, so the text lands in the corner or center you actually clicked.
+- **NEW: a Restore brush for the Image Composer eraser.** The eraser now has an Erase / Restore switch. Flip it to Restore and brush back over an area you erased to bring the original picture back, with the same soft or hard edge. Hold Alt while painting to flip the brush just for a moment, or press X to swap. The brush ring turns orange in Restore mode so you always know which way it works, and the two buttons stay dimmed until you actually turn the eraser on.
+- **Preview Image: save names in any language now work.** If you typed a folder or file name using Korean, Japanese, accented letters, or spaces in the filename box, those characters were being stripped out - and a name made up entirely of non-English letters was ignored completely, dropping the image into the default output folder. Now the name is kept exactly as you typed it and the image saves to the folder you asked for, just like the standard Save Image node. This also applies to the Save to Disk and Save to Output buttons and the XY Plot save.
+- **Text Pixaroma no longer removes curly braces.** Curly braces { } were quietly being stripped out of your text when you ran the workflow, which broke JSON prompts and anything else that needs braces. They now stay exactly as you typed them.
+- **NEW: a Dynamic prompts switch on the Text node.** That brace-stripping was actually a "pick one at random" feature in disguise - so it's now an opt-in switch, off by default. Turn it on and {red|blue|green} picks one option at random each run (you can nest them, and notes after // or inside /* */ get removed); leave it off and every brace stays put.
+- **NEW: see both image sizes on Image Compare.** The node now shows the resolution of each connected image with a little numbered badge, and the two sizes turn orange when they do not match - so you can tell at a glance whether you are comparing like with like. Every button on the node also has a hover tooltip now.
+- **NEW: a Help button on every node.** Select any Pixaroma node and an orange **?** appears in the toolbar just above it (next to the info button). Click it for a plain-English panel that explains what the node does, its buttons, and its outputs. This is now the home for node help, so the small in-node ? buttons have been removed to free up space on the nodes.
+
+### **June 9, 2026 · v1.3.82-1.3.83**
+- **Load Image Pixaroma keeps a steady size.** Loading images of different shapes (square, tall, wide) no longer makes the node resize itself and shove your other nodes around - it stays put and fits the image inside, like the standard Load Image. In the new node interface the preview now fills the node properly instead of leaving an empty gap below it.
+- **Finished the GitLab move.** The bundled sample workflow's buttons now point to GitLab too - they were the last spot still linking to the old GitHub home. The nodes themselves are unchanged.
+- **Quicker fix for "a node looks broken after updating".** The README now flags up front that this is almost always a browser cache, with the 30-second hard-refresh fix, so it is faster to sort out.
+
+### **June 8, 2026 · v1.3.79-1.3.81**
+- **XY Plot: whole-number settings stay whole.** Width, height and steps now come out as round numbers - a range from 512 to 1024 gives proper values instead of odd decimals (no more 682.66).
+- **XY Plot: new Snap toggle for sizes.** Each number axis gets a Snap toggle (next to Range/List) that rounds width/height to clean step multiples, so a range gives tidy sizes like 512, 688, 848, 1024. It's on by default; switch it off for exact values.
+- **XY Plot: added a Help button.** Click the **?** at the top of the node (next to Reset X) for a panel that explains what the node does, how to use it, how the value box works, and what every option means - the same kind of in-node help that Find and Replace has.
+- **XY Plot: decimal values stick now.** Typing a value like 7.1 (or 0.05) for a setting such as cfg or denoise now keeps the decimal instead of rounding it off to a whole number. Works for both the comma list and the Start/End/Steps range.
+- **XY Plot: reset each axis on its own.** Each axis now has its own button (Reset X and Reset Y) so you can clear just one without touching the other. The button at the bottom (Reset XY) still clears everything at once.
+- **XY Plot: buttons no longer spill out when the node is narrow.** In the new node interface, making the node smaller now lets the Lock seed / Draw labels / Save cells row wrap to fit inside the node instead of hanging off the edges.
+
+### **June 7, 2026 · v1.3.78**
+- **Project moved to GitLab.** The repository and the in-app and README links (the Help footers and the background-removal help link) now point to the new home at gitlab.com/pixaroma/comfyui-pixaroma. The nodes themselves are unchanged.
 
 ### **June 3, 2026 · v1.3.73–1.3.77**
 - **NEW: a Help button on Find and Replace.** Click the **?** in the top corner of the node to open a clear panel that explains what the node does, how to use it, what each switch means, and a regex cheat-sheet with worked examples - so you can learn it without leaving ComfyUI. (This is the first node to get it; more will follow.)
@@ -326,6 +362,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **May 21, 2026 · v1.3.51-1.3.52**
 - **NEW: Image Resize Pixaroma.** Resize an image (and its mask) anywhere in your workflow with one compact node. Choose **Off**, **Max megapixels**, **Longest side**, **Scale by**, **Fit inside**, **Crop to fill**, **Match aspect ratio**, or **Pad** - which adds a border for outpainting and marks the new area as the mask to fill. **Crop to fill** lets you pick which part of the image to keep (the top, a corner, the center…) and whether to scale-and-crop or cut a piece at its original size. A live **Input → Output** preview shows the exact result and lights up only when the size actually changes. Wire a **width or height** in (for example from Resolution Pixaroma): connect just one to scale while keeping the shape, or both for an exact size - the node adapts on its own.
 - **Image Resize: wire in a single "longest side" value.** Connect one number and the node scales the longer edge of your image to that size, keeping the shape, so you no longer have to decide between width and height. It also gained a matching **longest side** output. Wired sizes now follow the **Upscaling** toggle, and a value of 0 simply passes the image through untouched.
+
+---
+
+**Home:** ComfyUI-Pixaroma is developed on [GitLab](https://gitlab.com/pixaroma/comfyui-pixaroma). That is the place for the latest code and to report issues. Any copy hosted elsewhere (such as a GitHub mirror) is a backup.
+
+ComfyUI-Pixaroma is an independent, community-made extension. It is not affiliated with, endorsed by, or sponsored by Comfy Org or the ComfyUI project. Product names, logos, and trademarks are the property of their respective owners.
 - **Press Ctrl+Enter to run while typing.** Text, Prompt Pack, Prompt Multi, and Prompt Stack fields no longer swallow the Run shortcut.
 - **Every node now explains itself.** Hover any control for a quick tip, and the side Info panel describes what each input and output does.
 - **Nodes remember their settings on reload.** Switch, Image Resize, and Crop no longer reset their choices when you reopen a workflow or switch tabs.
@@ -452,7 +494,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 > [!NOTE]
 > This suite was developed with significant AI assistance. While thoroughly tested, we welcome bug reports and feedback from the community!
 
-💡 **Have an idea for a new node or improvement?** Post it in [Discussions](https://github.com/pixaroma/ComfyUI-Pixaroma/discussions).  
-🐞 **Found a bug or something broken?** Open an [Issue](https://github.com/pixaroma/ComfyUI-Pixaroma/issues).  
+💡 **Have an idea for a new node or improvement?** Share it in our [Discord community](https://discord.gg/gggpkVgBf3).  
+🐞 **Found a bug or something broken?** Open an [Issue](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues).  
 💬 **[Join our Discord Community](https://discord.gg/gggpkVgBf3)**  
-⚖️ **Licensed under [MIT](https://github.com/pixaroma/ComfyUI-Pixaroma/blob/main/LICENSE)**
+⚖️ **Licensed under [MIT](LICENSE)**

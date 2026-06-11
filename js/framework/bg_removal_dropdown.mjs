@@ -140,7 +140,7 @@ export function buildBgRemovalDropdown({ container, info, value, onChange }) {
   // One canonical doc page covering BOTH BiRefNet downloads and rembg
   // install steps, so the user lands somewhere maintained instead of
   // bouncing to whichever upstream repo we happened to link.
-  const HELP_DOCS_URL = "https://github.com/pixaroma/ComfyUI-Pixaroma#2-optional-ai-background-removal";
+  const HELP_DOCS_URL = "https://gitlab.com/pixaroma/comfyui-pixaroma#2-optional-ai-background-removal";
 
   function refreshHelpRow() {
     const id = select.value;

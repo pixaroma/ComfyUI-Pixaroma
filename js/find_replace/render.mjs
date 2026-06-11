@@ -12,7 +12,7 @@ import {
   getPreviewInput,
 } from "./core.mjs";
 import { attachFieldEditor, attachDragHandlers } from "./interaction.mjs";
-import { createHelpButton } from "../shared/index.mjs";
+import { registerNodeHelp } from "../shared/index.mjs";
 
 const CSS_ID = "pix-find-replace-css";
 
@@ -36,8 +36,7 @@ const CSS = `
      here would collapse to 0 under that measurement and break the floor. */
 }
 
-/* ---- top row: toggle pills (wrap among themselves) + the Help ? button
-   pinned at the right so it never drops to its own line when the node narrows. */
+/* ---- top row: the toggle pills (wrap among themselves on a narrow node). */
 .pix-fr-toprow { display: flex; align-items: flex-start; gap: 6px; flex: 0 0 auto; }
 .pix-fr-toggles { display: flex; gap: 6px; flex-wrap: wrap; flex: 1 1 auto; min-width: 0; }
 .pix-fr-tog {
@@ -377,12 +376,15 @@ const FR_HELP = {
     "Backreferences use `\\1`, `\\2` (Python style), not `$1`. The node always runs the real Python regex, even for advanced patterns the on-node preview can't show perfectly.",
 };
 
+// Help is shown by the selection-toolbar Help button (js/help_toolbar).
+registerNodeHelp("PixaromaFindReplace", FR_HELP);
+
 // renderAll: clears root and rebuilds the whole body.
 export function renderAll(node, root, handlers) {
   const state = readState(node);
   root.innerHTML = "";
 
-  // -- top row: toggles + Help button --
+  // -- top row: toggles --
   const toprow = document.createElement("div");
   toprow.className = "pix-fr-toprow";
   const toggles = document.createElement("div");
@@ -397,12 +399,6 @@ export function renderAll(node, root, handlers) {
     toggles.appendChild(pill);
   }
   toprow.appendChild(toggles);
-  // Help (?) button - its own flex item pinned at the right, top-aligned so it
-  // stays next to the first pill row even when the pills wrap on a narrow node.
-  const help = createHelpButton(FR_HELP);
-  help.style.alignSelf = "flex-start";
-  help.style.marginTop = "5px";
-  toprow.appendChild(help);
   root.appendChild(toprow);
 
   // -- rule rows --

@@ -11,8 +11,63 @@ import {
   enumerateTargets, lookupWidgetMeta, currentValuePreview,
   resolveAxisValues, computeCounts, axisReady,
 } from "./core.mjs";
+import { registerNodeHelp } from "../shared/index.mjs";
 
 const BRAND = "#f66744";
+
+// Node Help panel content (the ? button -> themed popup; node UI convention #16).
+// The popup is a document.body overlay, so it works in BOTH renderers.
+const XY_HELP = {
+  title: "XY Plot Pixaroma",
+  tagline: "Compare settings side by side in one labeled grid - no extra wiring.",
+  sections: [
+    {
+      heading: "What it does",
+      body: "Drop this at the end of your workflow and wire your final image into it, like a Preview node. Pick what changes ACROSS (X = columns) and DOWN (Y = rows), press Run once, and every combination fills a labeled grid right here on the node.",
+    },
+    {
+      heading: "How to use",
+      bullets: [
+        "Wire your workflow's final image into the `image` input.",
+        "In the X card, pick a setting to vary across the columns. Do the same in the Y card for the rows (you can use just one axis if you like).",
+        "Enter the values you want to try in the value box.",
+        "Press Run once. The grid builds as each run finishes.",
+      ],
+    },
+    {
+      heading: "The value box adapts to what you pick",
+      defs: [
+        ["Number", "A `Range` (Start / End / Steps) or a `List` of values."],
+        ["Dropdown", "A checklist - tick the samplers / models / schedulers you want to compare."],
+        ["Prompt text", "`Full list` (one full prompt per line) or `Find & replace` (swap a word for each value)."],
+      ],
+    },
+    {
+      heading: "Entering numbers",
+      bullets: [
+        "List: values separated by commas, e.g. `5, 6, 7.1, 10`. Decimals are kept exactly.",
+        "Range: set Start, End and Steps (how many). 5 to 15 in 3 steps gives 5, 10, 15.",
+        "Shorthand inside a list also works: `4-10 (+2)` steps by 2, and `4-10 [4]` gives 4 evenly spaced values.",
+      ],
+    },
+    {
+      heading: "Buttons and options",
+      defs: [
+        ["Lock seed", "Keeps the seed the same for every square so the only thing changing is what you're testing. Turns off on its own if you're plotting the seed."],
+        ["Draw labels", "Show the value labels and axis names on the grid."],
+        ["Save cells", "Also save each square on its own, not just the whole grid."],
+        ["Grid: Dark / Light / Mono", "The grid background and label style. Switching re-skins the grid you already have, instantly."],
+        ["Reset X / Reset Y", "Clear just that one axis."],
+        ["Reset XY", "Clear both axes and all selections, back to a fresh node."],
+        ["Save Disk / Save Output / Copy / Open", "Act on the finished grid: save it to your computer or to ComfyUI's output, copy it, or open it in a new tab."],
+      ],
+    },
+  ],
+  footer: "Tip: start small (a few values each way). The node asks you to confirm before running more than 25 squares, since each square is a full workflow run.",
+};
+
+// Help is shown by the selection-toolbar Help button (js/help_toolbar).
+registerNodeHelp("PixaromaXYPlot", XY_HELP);
 
 function xyToast(detail, severity = "info") {
   const tm = app.extensionManager?.toast;
@@ -28,9 +83,13 @@ export function injectCSS() {
   const css = `
 .pix-xy-root{display:flex;flex-direction:column;gap:9px;padding:8px 9px 16px;font-family:'Segoe UI',system-ui,sans-serif;color:#e0e0e0;box-sizing:border-box;}
 .pix-xy-axis{border:1px solid rgba(255,255,255,.14);border-radius:7px;padding:9px 10px 10px;background:rgba(0,0,0,.18);}
-.pix-xy-axis-head{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
+.pix-xy-axis-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:12px;font-weight:600;margin-bottom:8px;}
 .pix-xy-badge{background:${BRAND};color:#fff;border-radius:4px;width:18px;height:18px;display:grid;place-items:center;font-size:11px;font-weight:700;flex:0 0 auto;}
 .pix-xy-axis-dir{color:#9a9a9a;font-weight:500;font-size:11px;}
+.pix-xy-head-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
+.pix-xy-axis-reset{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:500;color:#9a9a9a;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:5px;padding:3px 8px;cursor:pointer;user-select:none;}
+.pix-xy-axis-reset:hover{border-color:${BRAND};color:#fff;}
+.pix-xy-axis-reset .pix-xy-axis-reset-ic{font-size:12px;line-height:1;}
 .pix-xy-row{display:flex;align-items:center;gap:7px;}
 .pix-xy-curhint{font-size:10.5px;color:#8a8a8a;font-style:italic;margin:5px 2px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 /* custom dropdown (value + ▼ + ◀▶), Pixaroma convention - never native <select> */
@@ -57,6 +116,8 @@ export function injectCSS() {
 /* value area */
 .pix-xy-valuearea{margin-top:9px;}
 .pix-xy-seg{display:inline-flex;background:rgba(0,0,0,.3);border-radius:6px;padding:2px;gap:2px;margin-bottom:8px;}
+.pix-xy-moderow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;}
+.pix-xy-moderow .pix-xy-seg{margin-bottom:0;}
 .pix-xy-seg span{font-size:11.5px;padding:4px 11px;border-radius:4px;color:#9a9a9a;cursor:pointer;user-select:none;}
 .pix-xy-seg span.on{background:${BRAND};color:#fff;font-weight:600;}
 .pix-xy-range{display:flex;gap:7px;margin-bottom:7px;}
@@ -79,9 +140,9 @@ textarea.pix-xy-input{resize:vertical;min-height:46px;white-space:pre;}
 /* counter chip + options */
 .pix-xy-counter{text-align:center;font-size:13px;font-weight:600;color:#fff;background:${BRAND};border-radius:6px;padding:7px;}
 .pix-xy-counter.muted{background:rgba(255,255,255,.06);color:#9a9a9a;font-weight:500;}
-.pix-xy-opts{display:flex;gap:8px;flex-wrap:nowrap;justify-content:center;}
+.pix-xy-opts{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;}
 .pix-xy-opts2{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
-.pix-xy-themewrap{display:flex;align-items:center;gap:7px;}
+.pix-xy-themewrap{display:flex;align-items:center;flex-wrap:wrap;gap:7px;}
 .pix-xy-themelbl{font-size:11.5px;color:#9a9a9a;}
 .pix-xy-themeseg{margin-bottom:0;}
 .pix-xy-themeseg span{padding:4px 10px;}
@@ -200,6 +261,8 @@ function selectChoice(node, axisKey, choice, rerender) {
   axis.widgetName = choice.w.name;
   axis.widgetType = choice.w.type;
   axis.step = choice.w.step || 1;
+  axis.precision = (typeof choice.w.precision === "number") ? choice.w.precision : null;
+  axis.realStep = (typeof choice.w.realStep === "number") ? choice.w.realStep : null;
   axis.options = choice.w.type === "combo" ? (choice.w.options || []) : [];
   if (changed) {
     // Reset entry to a sensible default for the new widget type. Mutate the
@@ -273,7 +336,7 @@ function openPicker(node, axisKey, anchorEl, rerender) {
   document.body.appendChild(popup);
   // position under the anchor, clamped to viewport
   const r = anchorEl.getBoundingClientRect();
-  popup.style.left = Math.min(r.left, window.innerWidth - popup.offsetWidth - 8) + "px";
+  popup.style.left = Math.max(8, Math.min(r.left, window.innerWidth - popup.offsetWidth - 8)) + "px";
   let top = r.bottom + 4;
   if (top + popup.offsetHeight > window.innerHeight - 8) top = Math.max(8, r.top - popup.offsetHeight - 4);
   popup.style.top = top + "px";
@@ -282,6 +345,11 @@ function openPicker(node, axisKey, anchorEl, rerender) {
   const onWheel = (e) => { if (!popup.contains(e.target)) closePopup(); };
   const onKey = (e) => { if (e.key === "Escape") closePopup(); };
   setTimeout(() => {
+    // If another picker opened in the same tick, closePopup() already ran THIS
+    // popup's _cleanup and _openPopup now points at the newer one - bail so we
+    // don't attach orphaned, never-removed global listeners (a real leak that
+    // also makes the newer popup dismiss on the next outside click).
+    if (_openPopup !== popup) return;
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("wheel", onWheel, true);
@@ -372,13 +440,30 @@ function renderValueArea(node, axisKey, mount, refreshCounter, rerender) {
   };
 
   if (axis.widgetType === "number") {
+    // Keep precision synced with the live widget (0 = integer width/height/steps,
+    // 1 = cfg, 2 = denoise) so a reloaded axis rounds correctly even if it was
+    // saved before precision was tracked.
+    const nmeta = lookupWidgetMeta(node, axis);
+    if (nmeta && typeof nmeta.precision === "number") axis.precision = nmeta.precision;
+    if (nmeta && typeof nmeta.realStep === "number") axis.realStep = nmeta.realStep;
     const seg = el("div", "pix-xy-seg");
     const sRange = el("span", null, "Range"); const sList = el("span", null, "List");
     (axis.mode === "list" ? sList : sRange).classList.add("on");
     sRange.addEventListener("click", () => { axis.mode = "range"; save(); rerender(); });
     sList.addEventListener("click", () => { axis.mode = "list"; save(); rerender(); });
     seg.appendChild(sRange); seg.appendChild(sList);
-    mount.appendChild(seg);
+    const modeRow = el("div", "pix-xy-moderow");
+    modeRow.appendChild(seg);
+    // Per-axis Snap toggle - lives in the free space next to Range/List so it
+    // adds no node height, and only shows when snapping has an effect (the field's
+    // step is coarser than its precision, e.g. width/height snap to /16).
+    const snapUnit = Math.pow(10, -(axis.precision != null ? axis.precision : 0));
+    if (axis.realStep && axis.realStep > snapUnit + 1e-9) {
+      const snapT = buildToggle("Snap", axis.snap !== false, (v) => { axis.snap = v; save(); refreshPreview(); });
+      snapT.title = "Round values to this setting's real step (e.g. width to multiples of 16). Off = exact.";
+      modeRow.appendChild(snapT);
+    }
+    mount.appendChild(modeRow);
 
     if (axis.mode === "list") {
       const inp = isolate(el("input", "pix-xy-input"));
@@ -571,6 +656,20 @@ export function renderBody(node, root, handlers) {
     head.appendChild(el("span", "pix-xy-badge", axisKey.toUpperCase()));
     head.appendChild(document.createTextNode(axisKey === "x" ? "across" : "down"));
     head.appendChild(el("span", "pix-xy-axis-dir", axisKey === "x" ? "➡ columns" : "⬇ rows"));
+    // Right-aligned header cluster: each axis shows its own Reset once a setting
+    // is picked. (Node help moved to the selection-toolbar Help button.)
+    const headRight = el("div", "pix-xy-head-right");
+    // Per-axis reset (clears just this axis; the other axis + toggles stay).
+    // Only shown once a setting is picked - nothing to reset on an empty axis.
+    if (handlers.resetAxis && state[axisKey] && state[axisKey].widgetType) {
+      const axReset = el("div", "pix-xy-axis-reset");
+      axReset.appendChild(el("span", "pix-xy-axis-reset-ic", "↺"));
+      axReset.appendChild(el("span", null, "Reset " + axisKey.toUpperCase()));
+      axReset.title = `Reset the ${axisKey.toUpperCase()} axis only - clears its setting and values. The other axis and your toggles stay.`;
+      axReset.addEventListener("click", () => handlers.resetAxis(axisKey));
+      headRight.appendChild(axReset);
+    }
+    if (headRight.children.length) head.appendChild(headRight);
     card.appendChild(head);
     const pickRow = el("div", "pix-xy-row");
     card.appendChild(pickRow);
@@ -603,8 +702,8 @@ export function renderBody(node, root, handlers) {
   if (handlers.reset) {
     const reset = el("div", "pix-xy-resetbtn");
     reset.appendChild(el("span", null, "↺"));
-    reset.appendChild(el("span", null, "Reset"));
-    reset.title = "Clear both axes and selections, back to a fresh node.";
+    reset.appendChild(el("span", null, "Reset XY"));
+    reset.title = "Clear BOTH axes, all selections, and the toggles - back to a fresh node.";
     reset.addEventListener("click", () => handlers.reset());
     opts2.appendChild(reset);
   }

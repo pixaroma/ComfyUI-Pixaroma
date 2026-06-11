@@ -1,16 +1,49 @@
 import { app } from "/scripts/app.js";
-import { BRAND } from "../shared/index.mjs";
+import { BRAND, registerNodeHelp } from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+
+// Help shown by the selection-toolbar Help button (js/help_toolbar) when an
+// Image Compare node is selected. Registered at module load.
+const COMPARE_HELP = {
+  title: "Image Compare Pixaroma",
+  tagline: "See the difference between two images at a glance.",
+  sections: [
+    {
+      heading: "Setup",
+      body: "Wire any two IMAGE outputs into `image1` and `image2` (before / after upscaling, original / inpainted, two checkpoints, ...) and run the workflow once. Each image's size is shown on the node with a `1` / `2` badge - the sizes turn orange when the two differ.",
+    },
+    {
+      heading: "View modes",
+      defs: [
+        ["Show 1 / Show 2", "View one image full-size. Click to switch between the two."],
+        ["Left Right / Right Left", "Side-by-side split - hover the image to wipe across. Right Left swaps which side each image is on."],
+        ["Up Down", "Top / bottom split - hover to wipe up and down."],
+        ["Overlay", "Stack both images and drag the slider to fade between them."],
+        ["Difference", "Highlight only the pixels that differ between the two."],
+      ],
+    },
+    {
+      heading: "Save buttons (in Show 1 / Show 2)",
+      defs: [
+        ["Save D", "Save the shown image to disk - opens a dialog so you pick where."],
+        ["Save O", "Save the shown image to the ComfyUI output folder."],
+        ["Copy", "Copy the shown image to the clipboard."],
+      ],
+    },
+  ],
+  footer: "Set the default view mode in Settings -> Pixaroma -> Image Compare.",
+};
+registerNodeHelp("PixaromaCompare", COMPARE_HELP);
 // Buttons: Show 1 | Left Right | Up Down | Overlay | Difference
 // "Show 1" toggles: Show 1 → Show 2 → back to compare (deselects)
 const MODES = ["Left Right", "Right Left", "Up Down", "Overlay", "Difference"];
 const SLIDER_PAD = 50; // "Opacity" label width
 const MODE_HINTS = [
-  "↔  Hover image to slide left / right",
-  "↔  Hover image to slide right / left",
-  "↕  Hover image to slide up / down",
+  "↔  Hover to slide left / right",
+  "↔  Hover to slide right / left",
+  "↕  Hover to slide up / down",
   "",
-  "Shows pixel differences between images",
+  "Shows pixel differences",
 ];
 // Layout constants
 const BTN_GAP = 3;
@@ -54,36 +87,67 @@ function modeRect(W, i) {
   const L = rowLayout(W);
   return { x: L.leftPad + (i + 1) * (L.bw + L.gap), y: ROW1_Y, w: L.bw, h: BTN_H };
 }
-function hintRect(W) {
+// ── Image-size labels (image1 / image2 resolution) ───────────
+// Shown flanking row 2: image1's size pinned to the LEFT edge, image2's to the
+// RIGHT edge, in EVERY mode. The mode content (hint / slider / util buttons)
+// lives in the MIDDLE zone (row2Mid) between them, shrinking to make room.
+// Labelled "1:" / "2:" so it's always clear which input is which (on the legacy
+// node the left of row 2 sits next to the image2 dot, so position alone would be
+// ambiguous). When the two sizes differ they turn BRAND orange — a quick
+// "you're comparing different resolutions" cue. Size = loaded naturalWidth/Height.
+const SIZE_FONT = "12px 'Segoe UI',sans-serif"; // bigger size text (was 9px)
+const BADGE_R = 8;                              // orange number-badge radius
+const BADGE_FONT = "10px 'Segoe UI',sans-serif";
+const SIZE_RESERVE = 86; // px reserved on each flank (badge + bigger dims)
+const SIZE_GAP = 6;      // gap between a size label and the middle content
+function dimsText(img) {
+  return img ? `${img.naturalWidth}×${img.naturalHeight}` : "";
+}
+function sizesDiffer(node) {
+  const a = node?._cmpImg1, b = node?._cmpImg2;
+  if (!a || !b) return false;
+  return a.naturalWidth !== b.naturalWidth || a.naturalHeight !== b.naturalHeight;
+}
+// Full row-2 span (matches row 1's right edge) — the old hintRect.
+function row2Full(W) {
   const L = rowLayout(W);
   return { x: L.leftPad, y: ROW2_Y, w: L.bw * 6 + L.gap * 5, h: BTN_H };
 }
+// MIDDLE zone of row 2: the full span minus a reserved flank for each size label
+// that's currently showing. Pure function of (node images, W) so paint and
+// hit-test always agree without stashing geometry during a paint.
+function row2Mid(node, W) {
+  const full = row2Full(W);
+  const resL = node?._cmpImg1 ? SIZE_RESERVE + SIZE_GAP : 0;
+  const resR = node?._cmpImg2 ? SIZE_RESERVE + SIZE_GAP : 0;
+  const x = full.x + resL;
+  const w = Math.max(40, full.w - resL - resR);
+  return { x, y: ROW2_Y, w, h: BTN_H };
+}
 // In Show 1 / Show 2 the three utility buttons (Save -> output, Disk -> file
-// dialog, Copy -> clipboard) fill the FULL width of row 2 - each spans two of
-// row 1's six columns, so they align to the grid with no dead gap. They act on
-// the CURRENTLY SHOWN image. Hidden in comparison modes, where row 2 is the
-// mode hint / opacity slider.
-function utilBtnRects(W) {
-  const L = rowLayout(W);
-  const rightEdge = L.leftPad + L.bw * 6 + L.gap * 5; // matches row 1's right edge
-  const bw = Math.floor((rightEdge - L.leftPad - L.gap * 2) / 3);
-  return [0, 1, 2].map((i) => ({ x: L.leftPad + i * (bw + L.gap), y: ROW2_Y, w: bw, h: BTN_H }));
+// dialog, Copy -> clipboard) fill the MIDDLE zone (between the size flanks).
+// They act on the CURRENTLY SHOWN image. Hidden in comparison modes, where the
+// middle is the mode hint / opacity slider instead.
+function utilBtnRects(node, W) {
+  const mid = row2Mid(node, W);
+  const bw = Math.floor((mid.w - BTN_GAP * 2) / 3);
+  return [0, 1, 2].map((i) => ({ x: mid.x + i * (bw + BTN_GAP), y: ROW2_Y, w: bw, h: BTN_H }));
 }
 // Left -> right: Save to disk · Save to output · Copy image.
-function diskRect(W) { return utilBtnRects(W)[0]; }
-function saveRect(W) { return utilBtnRects(W)[1]; }
-function copyRect(W) { return utilBtnRects(W)[2]; }
-// Opacity-slider track geometry, derived PURELY from the body width. The
-// hit-test (cmpDown/cmpMove) computes this on demand instead of reading a value
-// stashed during the last paint — important in Nodes 2.0 where the canvas only
-// repaints on demand (a tap with no preceding move could otherwise see a stale/
-// null geometry). Legacy repainted every frame so it never hit this, but
-// deriving it keeps both renderers correct.
-function sliderGeo(W) {
-  const r2 = hintRect(W);
-  const trackX = r2.x + SLIDER_PAD;
-  const trackW = r2.w - SLIDER_PAD - 36;
-  const trackY = r2.y + r2.h / 2 - 3;
+function diskRect(node, W) { return utilBtnRects(node, W)[0]; }
+function saveRect(node, W) { return utilBtnRects(node, W)[1]; }
+function copyRect(node, W) { return utilBtnRects(node, W)[2]; }
+// Opacity-slider track geometry, derived from the MIDDLE zone so the size labels
+// on the flanks always have room. The hit-test (cmpDown/cmpMove) computes this
+// on demand instead of reading a value stashed during the last paint — important
+// in Nodes 2.0 where the canvas only repaints on demand (a tap with no preceding
+// move could otherwise see a stale/null geometry). Legacy repainted every frame
+// so it never hit this, but deriving it keeps both renderers correct.
+function sliderGeo(node, W) {
+  const mid = row2Mid(node, W);
+  const trackX = mid.x + SLIDER_PAD;
+  const trackW = Math.max(20, mid.w - SLIDER_PAD - 36);
+  const trackY = mid.y + mid.h / 2 - 3;
   const trackH = 6;
   return { trackX, trackW, trackY, trackH };
 }
@@ -98,9 +162,9 @@ function cmpCursor(node, lx, ly, W, H) {
   if (inside(p, showRect(W))) return "pointer";
   for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return "pointer";
   if (node._cmpShowWhich !== 0 &&
-      (inside(p, saveRect(W)) || inside(p, diskRect(W)) || inside(p, copyRect(W)))) return "pointer";
+      (inside(p, saveRect(node, W)) || inside(p, diskRect(node, W)) || inside(p, copyRect(node, W)))) return "pointer";
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     if (lx >= g.trackX - 8 && lx <= g.trackX + g.trackW + 8 &&
         ly >= g.trackY - 6 && ly <= g.trackY + g.trackH + 6) return "pointer";
   }
@@ -116,6 +180,80 @@ function inside(pos, r) {
     pos[0] >= r.x && pos[0] <= r.x + r.w && pos[1] >= r.y && pos[1] <= r.y + r.h
   );
 }
+
+// ── Canvas tooltips (CLAUDE.md convention #8) ────────────────
+// The buttons are painted on a canvas, so they can't use the native `title`
+// attribute. We show a single shared <div> styled to match the Windows native
+// tooltip (same look as the DOM-button tooltips elsewhere in Pixaroma), driven
+// by the move handlers in BOTH renderers (each has clientX/clientY) and hidden
+// on leave. A ~450ms delay + hide-on-new-control mimics the native behaviour.
+const MODE_TIPS = [
+  "Split view. Hover the image to wipe between the two, left to right.",
+  "Split view with the sides swapped. Hover to wipe right to left.",
+  "Split view. Hover the image to wipe top to bottom.",
+  "Overlay the two images. Drag the slider to fade between them.",
+  "Show only the pixels that differ between the two images.",
+];
+function cmpTooltipFor(node, lx, ly, W) {
+  const p = [lx, ly];
+  if (inside(p, showRect(W)))
+    return "Show one image full-size. Click to switch between image 1 and 2.";
+  for (let i = 0; i < 5; i++) if (inside(p, modeRect(W, i))) return MODE_TIPS[i];
+  if (node._cmpShowWhich !== 0) {
+    const n = node._cmpShowWhich;
+    if (inside(p, diskRect(node, W))) return `Save image ${n} to your disk (choose where).`;
+    if (inside(p, saveRect(node, W))) return `Save image ${n} to the ComfyUI output folder.`;
+    if (inside(p, copyRect(node, W))) return `Copy image ${n} to the clipboard.`;
+  }
+  return "";
+}
+let _cmpTipEl = null, _cmpTipTimer = null, _cmpTipText = null, _cmpTipX = 0, _cmpTipY = 0;
+function cmpTipDiv() {
+  if (_cmpTipEl) return _cmpTipEl;
+  const d = document.createElement("div");
+  // No max-width: with white-space:nowrap the box must grow to fit the full
+  // one-line text, or a long tooltip overflows the white background and the tail
+  // ("…right" -> "rig") renders as black text on the dark node. cmpPositionTip
+  // clamps it to the viewport so a wide box can't run off-screen.
+  d.style.cssText =
+    "position:fixed;z-index:99999;pointer-events:none;display:none;white-space:nowrap;" +
+    "background:#ffffff;color:#000000;border:1px solid #767676;" +
+    "border-radius:0;padding:3px 7px;font:12px 'Segoe UI',sans-serif;" +
+    "box-shadow:0 2px 4px rgba(0,0,0,0.15);";
+  document.body.appendChild(d);
+  _cmpTipEl = d;
+  return d;
+}
+function cmpPositionTip(x, y) {
+  const d = _cmpTipEl;
+  if (!d || d.style.display !== "block") return;
+  let nx = x + 14, ny = y + 18;
+  const r = d.getBoundingClientRect();
+  if (nx + r.width > window.innerWidth - 4) nx = window.innerWidth - r.width - 4;
+  if (ny + r.height > window.innerHeight - 4) ny = y - r.height - 8;
+  d.style.left = `${Math.max(4, nx)}px`;
+  d.style.top = `${Math.max(4, ny)}px`;
+}
+function cmpShowTooltip(text, x, y) {
+  if (!text) { cmpHideTooltip(); return; }
+  _cmpTipX = x; _cmpTipY = y;
+  if (text === _cmpTipText) return; // same control — leave the (pending/shown) tip as-is
+  _cmpTipText = text;
+  clearTimeout(_cmpTipTimer);
+  if (_cmpTipEl) _cmpTipEl.style.display = "none"; // hide the previous control's tip immediately
+  _cmpTipTimer = setTimeout(() => {
+    const d = cmpTipDiv();
+    d.textContent = text;
+    d.style.display = "block";
+    cmpPositionTip(_cmpTipX, _cmpTipY);
+  }, 450);
+}
+function cmpHideTooltip() {
+  clearTimeout(_cmpTipTimer);
+  _cmpTipText = null;
+  if (_cmpTipEl) _cmpTipEl.style.display = "none";
+}
+
 function paintBtn(ctx, r, label, on, hovered) {
   ctx.fillStyle = on ? BRAND : "#2a2c2e";
   // Hover on a non-active bordered control: border -> BRAND + text brightens,
@@ -151,11 +289,92 @@ function paintUtilBtn(ctx, r, label, hover, flash) {
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = flash ? "#fff" : (hover ? "#ddd" : "#999");
-  ctx.font = "9px 'Segoe UI',sans-serif";
+  // Auto-fit the label: row 2's middle zone is narrower now (size labels flank
+  // it), so shrink the font (down to 7px) until the full label fits. This is the
+  // "make the buttons smaller" behaviour — labels stay complete, just compact.
+  let fs = 9;
+  ctx.font = `${fs}px 'Segoe UI',sans-serif`;
+  while (fs > 7 && ctx.measureText(label).width > r.w - 8) {
+    fs -= 0.5;
+    ctx.font = `${fs}px 'Segoe UI',sans-serif`;
+  }
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2);
   ctx.restore();
+}
+
+// Draw text vertically centered on `yMid` by its ACTUAL glyph box. Canvas
+// textBaseline:"middle" centers the EM box instead, which makes digit-only text
+// (the size labels) sit slightly HIGH — the em box reserves descender space the
+// digits don't use. Centering the visible glyphs lines the sizes up with the
+// buttons. Falls back to "middle" if the metrics aren't available.
+function fillTextVCenter(ctx, text, x, yMid) {
+  const m = ctx.measureText(text);
+  if (m && m.actualBoundingBoxAscent != null && m.actualBoundingBoxDescent != null) {
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, x, yMid + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  } else {
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, yMid);
+  }
+}
+
+// A small filled BRAND-orange circle with a white number — the image1 / image2
+// marker. Always orange (it's an identity badge, not a state badge); the SIZE
+// text next to it carries the match/mismatch colour.
+function drawSizeBadge(ctx, cx, cy, n) {
+  ctx.save();
+  ctx.fillStyle = BRAND;
+  ctx.beginPath();
+  ctx.arc(cx, cy, BADGE_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#fff";
+  ctx.font = BADGE_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(n), cx, cy + 0.5);
+  ctx.restore();
+}
+
+// Draw the image-size labels on the flanks of row 2: an orange number badge on
+// the OUTER corner + the WxH dimensions. image1 left, image2 right. The
+// dimensions turn orange when the two differ, gray when they match (the badge
+// stays orange either way). Each flank is clipped so a huge dimension can't run
+// into the middle content. Called in every mode from paintCompare.
+function drawSizeLabels(ctx, node, W) {
+  const has1 = !!node._cmpImg1, has2 = !!node._cmpImg2;
+  if (!has1 && !has2) return;
+  const full = row2Full(W);
+  const rightEdge = full.x + full.w;
+  const yMid = ROW2_Y + BTN_H / 2;
+  const sizeCol = sizesDiffer(node) ? BRAND : "#cfcfcf";
+  if (has1) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(full.x, ROW2_Y, SIZE_RESERVE, BTN_H);
+    ctx.clip();
+    const cx = full.x + BADGE_R;
+    drawSizeBadge(ctx, cx, yMid, 1);
+    ctx.font = SIZE_FONT;
+    ctx.fillStyle = sizeCol;
+    ctx.textAlign = "left";
+    fillTextVCenter(ctx, dimsText(node._cmpImg1), cx + BADGE_R + 5, yMid);
+    ctx.restore();
+  }
+  if (has2) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rightEdge - SIZE_RESERVE, ROW2_Y, SIZE_RESERVE, BTN_H);
+    ctx.clip();
+    const cx = rightEdge - BADGE_R;
+    drawSizeBadge(ctx, cx, yMid, 2);
+    ctx.font = SIZE_FONT;
+    ctx.fillStyle = sizeCol;
+    ctx.textAlign = "right";
+    fillTextVCenter(ctx, dimsText(node._cmpImg2), cx - BADGE_R - 5, yMid);
+    ctx.restore();
+  }
 }
 
 // Setting ID and option list
@@ -404,10 +623,10 @@ function paintCompare(ctx, node, W, H, mouse) {
 
   // ── Row 2: opacity slider or hint text (same height) ──
   ctx.save();
-  const r2 = hintRect(W);
+  const mid = row2Mid(node, W);
   if (node._cmpShowWhich === 0 && node._cmpMode === 3) {
-    // Slider track (geometry from sliderGeo(W) so paint + hit-test always agree)
-    const { trackX, trackW, trackY, trackH } = sliderGeo(W);
+    // Slider track (geometry from sliderGeo so paint + hit-test always agree)
+    const { trackX, trackW, trackY, trackH } = sliderGeo(node, W);
     const pct = node._cmpOpacity;
     const thumbX = trackX + trackW * pct;
 
@@ -416,7 +635,7 @@ function paintCompare(ctx, node, W, H, mouse) {
     ctx.fillStyle = "#999";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("Opacity", r2.x, r2.y + r2.h / 2);
+    ctx.fillText("Opacity", mid.x, mid.y + mid.h / 2);
 
     // Track bg
     ctx.fillStyle = "#2a2c2e";
@@ -436,11 +655,11 @@ function paintCompare(ctx, node, W, H, mouse) {
     // Thumb
     ctx.fillStyle = BRAND;
     ctx.beginPath();
-    ctx.arc(thumbX, r2.y + r2.h / 2, 6, 0, Math.PI * 2);
+    ctx.arc(thumbX, mid.y + mid.h / 2, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.beginPath();
-    ctx.arc(thumbX, r2.y + r2.h / 2, 2.5, 0, Math.PI * 2);
+    ctx.arc(thumbX, mid.y + mid.h / 2, 2.5, 0, Math.PI * 2);
     ctx.fill();
 
     // Value
@@ -450,34 +669,50 @@ function paintCompare(ctx, node, W, H, mouse) {
     ctx.fillText(
       `${Math.round(pct * 100)}%`,
       trackX + trackW + 6,
-      r2.y + r2.h / 2,
+      mid.y + mid.h / 2,
     );
 
   } else if (node._cmpShowWhich === 0) {
-    // Compare mode: row 2 shows the mode hint. (In Show 1 / Show 2 the
-    // Save/Disk/Copy buttons fill row 2 instead, so no hint is drawn there.)
+    // Compare mode: the mode hint, CENTERED in the middle zone between the size
+    // flanks. Auto-shrinks (down to 7.5px) + clipped so a long hint can't run
+    // into the sizes now that the flanks are wider.
+    const hint = MODE_HINTS[node._cmpMode] || "";
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(mid.x, ROW2_Y, mid.w, BTN_H);
+    ctx.clip();
+    let hfs = 9;
+    ctx.font = `${hfs}px 'Segoe UI',sans-serif`;
+    while (hfs > 7.5 && ctx.measureText(hint).width > mid.w - 6) {
+      hfs -= 0.5;
+      ctx.font = `${hfs}px 'Segoe UI',sans-serif`;
+    }
     ctx.fillStyle = "#999";
-    ctx.font = "9px 'Segoe UI',sans-serif";
-    ctx.textAlign = "left";
+    ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(MODE_HINTS[node._cmpMode] || "", r2.x, r2.y + r2.h / 2);
+    ctx.fillText(hint, mid.x + mid.w / 2, mid.y + mid.h / 2);
+    ctx.restore();
   }
   ctx.restore();
 
+  // Size labels flank row 2 in EVERY mode — image1 size on the left, image2 on
+  // the right. Painted last so they sit cleanly in the reserved flanks.
+  drawSizeLabels(ctx, node, W);
+
   // ── Utility buttons (Show 1 / Show 2 only): Save · Disk · Copy ──
-  // Fill the full width of row 2 (utilBtnRects), each spanning two of row 1's
-  // columns. They act on the CURRENTLY SHOWN image (Save N -> output, Disk N ->
-  // file dialog, Copy N -> clipboard). Same height as row 1 so the node never
-  // changes height when toggling Show 1/2. Hidden in comparison modes, where
-  // row 2 is the mode hint / opacity slider instead.
+  // Fill the MIDDLE zone of row 2 (between the size flanks). They act on the
+  // CURRENTLY SHOWN image (Save N -> output, Disk N -> file dialog, Copy N ->
+  // clipboard). Same height as row 1 so the node never changes height when
+  // toggling Show 1/2. Hidden in comparison modes, where the middle zone is the
+  // mode hint / opacity slider instead.
   if (node._cmpShowWhich !== 0) {
     const which = node._cmpShowWhich;
     const fk = node._cmpFlashKey;
     const ft = node._cmpFlashText;
-    const dR = diskRect(W), sR = saveRect(W), cR = copyRect(W);
-    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save to disk ${which}`, hov(dR), fk === "disk");
-    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save to output ${which}`, hov(sR), fk === "save");
-    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy image ${which}`, hov(cR), fk === "copy");
+    const dR = diskRect(node, W), sR = saveRect(node, W), cR = copyRect(node, W);
+    paintUtilBtn(ctx, dR, fk === "disk" ? ft : `Save D${which}`, hov(dR), fk === "disk");
+    paintUtilBtn(ctx, sR, fk === "save" ? ft : `Save O${which}`, hov(sR), fk === "save");
+    paintUtilBtn(ctx, cR, fk === "copy" ? ft : `Copy ${which}`, hov(cR), fk === "copy");
   }
 
   // ── Image area ──
@@ -613,9 +848,9 @@ function cmpDown(node, lx, ly, W, H) {
   // Save / Disk / Copy (only visible in Show 1/2). Checked first; their rects
   // don't overlap the toggle/mode buttons so this is just belt-and-braces.
   if (node._cmpShowWhich !== 0) {
-    if (inside(pos, diskRect(W))) { saveShownToDisk(node); return true; }
-    if (inside(pos, saveRect(W))) { saveShownToOutput(node); return true; }
-    if (inside(pos, copyRect(W))) { copyShownImage(node); return true; }
+    if (inside(pos, diskRect(node, W))) { saveShownToDisk(node); return true; }
+    if (inside(pos, saveRect(node, W))) { saveShownToOutput(node); return true; }
+    if (inside(pos, copyRect(node, W))) { copyShownImage(node); return true; }
   }
   // Show toggle: toggles between Show 1 and Show 2
   if (inside(pos, showRect(W))) {
@@ -634,7 +869,7 @@ function cmpDown(node, lx, ly, W, H) {
   // Opacity slider drag start (geometry derived from W — no dependency on a
   // prior paint having stashed it)
   if (node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     const hx = g.trackX, hw = g.trackW, hy = g.trackY - 6, hh = g.trackH + 12;
     if (lx >= hx - 8 && lx <= hx + hw + 8 && ly >= hy && ly <= hy + hh) {
       node._cmpOpacity = Math.max(0, Math.min(1, (lx - hx) / hw));
@@ -649,7 +884,7 @@ function cmpMove(node, lx, ly, W, H) {
   // Slider drag (works while the pointer is down; mode is always 3 while a
   // slider drag is in progress)
   if (node._cmpDragging && node._cmpMode === 3) {
-    const g = sliderGeo(W);
+    const g = sliderGeo(node, W);
     node._cmpOpacity = Math.max(0, Math.min(1, (lx - g.trackX) / g.trackW));
     return true;
   }
@@ -748,6 +983,14 @@ function createCompareDOMWidget(node) {
     if (longCss * s > BACKING_CAP) s = BACKING_CAP / longCss;
     return s;
   };
+  // In Nodes 2.0 the title + input slots are drawn by Vue ABOVE this canvas, so
+  // the canvas's top padding (the ROW1_Y space the buttons need under the title
+  // bar in the legacy renderer) is just wasted gap below the slots. Shift the
+  // whole drawing up by TOP_TRIM and pass a TOP_TRIM-taller logical height so the
+  // image still fills to the bottom. localPos() + H() add TOP_TRIM back so the
+  // hit-tests + hover stay aligned with what's painted. Legacy is untouched (this
+  // code path only runs in Nodes 2.0).
+  const TOP_TRIM = 8;
   const render = () => {
     const cssW = root.clientWidth;
     const cssH = root.clientHeight;
@@ -760,9 +1003,10 @@ function createCompareDOMWidget(node) {
     const ctx = canvas.getContext("2d");
     ctx.setTransform(s, 0, 0, s, 0, 0);
     ctx.clearRect(0, 0, cssW, cssH);
+    ctx.translate(0, -TOP_TRIM);
     node._cmpDomW = cssW;
     node._cmpDomH = cssH;
-    paintCompare(ctx, node, cssW, cssH, node._cmpDomMouse || null);
+    paintCompare(ctx, node, cssW, cssH + TOP_TRIM, node._cmpDomMouse || null);
   };
   node._cmpDomRender = render;
 
@@ -790,12 +1034,15 @@ function createCompareDOMWidget(node) {
     // down (e.g. clicking Overlay selects Difference; the Copy button is missed).
     const sx = r.width ? root.clientWidth / r.width : 1;
     const sy = r.height ? root.clientHeight / r.height : 1;
-    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
+    // +TOP_TRIM: the drawing is shifted up by TOP_TRIM, so a screen-space y maps
+    // to a logical y that's TOP_TRIM larger.
+    return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy + TOP_TRIM];
   };
   const W = () => node._cmpDomW || root.clientWidth;
-  const H = () => node._cmpDomH || root.clientHeight;
+  const H = () => (node._cmpDomH || root.clientHeight) + TOP_TRIM;
 
   root.addEventListener("pointerdown", (e) => {
+    cmpHideTooltip();
     const [lx, ly] = localPos(e);
     if (cmpDown(node, lx, ly, W(), H())) {
       e.stopPropagation();
@@ -811,6 +1058,7 @@ function createCompareDOMWidget(node) {
     node._cmpDomMouse = { x: lx, y: ly };
     root.style.cursor = cmpCursor(node, lx, ly, W(), H());
     cmpMove(node, lx, ly, W(), H());
+    cmpShowTooltip(cmpTooltipFor(node, lx, ly, W()), e.clientX, e.clientY);
     render(); // also refreshes the Copy-button hover state
   });
   root.addEventListener("pointerup", (e) => {
@@ -820,6 +1068,7 @@ function createCompareDOMWidget(node) {
   });
   root.addEventListener("pointerleave", () => {
     node._cmpDomMouse = null;
+    cmpHideTooltip();
     cmpLeave(node);
     render();
   });
@@ -963,6 +1212,7 @@ app.registerExtension({
     const _origDown = nodeType.prototype.onMouseDown;
     nodeType.prototype.onMouseDown = function (e, pos) {
       if (isVueNodes()) return _origDown ? _origDown.call(this, e, pos) : undefined;
+      cmpHideTooltip();
       if (cmpDown(this, pos[0], pos[1], this.size[0], this.size[1])) {
         app.graph.setDirtyCanvas(true, true);
         return true;
@@ -976,6 +1226,7 @@ app.registerExtension({
       if (cmpMove(this, pos[0], pos[1], this.size[0], this.size[1])) {
         app.graph.setDirtyCanvas(true, true);
       }
+      cmpShowTooltip(cmpTooltipFor(this, pos[0], pos[1], this.size[0]), e?.clientX ?? 0, e?.clientY ?? 0);
       if (_origMove) return _origMove.call(this, e, pos);
     };
 
@@ -999,6 +1250,7 @@ app.registerExtension({
     const _origLeave = nodeType.prototype.onMouseLeave;
     nodeType.prototype.onMouseLeave = function (e) {
       if (isVueNodes()) return _origLeave ? _origLeave.call(this, e) : undefined;
+      cmpHideTooltip();
       cmpLeave(this);
       app.graph.setDirtyCanvas(true, true);
       if (_origLeave) return _origLeave.call(this, e);
@@ -1020,6 +1272,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       try { this._cmpDomRO?.disconnect(); } catch {}
       try { cancelAnimationFrame(this._cmpZoomRaf); } catch {}
+      cmpHideTooltip();
       this._cmpDomRO = null;
       this._cmpDomRender = null;
       return _origRemoved ? _origRemoved.apply(this, arguments) : undefined;

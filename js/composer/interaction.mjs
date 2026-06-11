@@ -226,6 +226,26 @@ PixaromaEditor.prototype.attachEvents = function () {
       e.preventDefault();
       this.setMode(null);
     }
+    // X swaps Erase <-> Restore while the eraser tool is active.
+    if (e.code === "KeyX" && !e.ctrlKey && !e.metaKey) {
+      if (this.activeMode === "eraser") {
+        e.preventDefault();
+        this.eraserSubMode =
+          this.eraserSubMode === "erase" ? "restore" : "erase";
+        if (this.eraserModePills)
+          this.eraserModePills.setActive(this.eraserSubMode);
+        this._refreshEraserPreview();
+      }
+    }
+    // Holding Alt temporarily flips the brush (erase <-> restore). The
+    // preventDefault stops the browser's menu-bar focus on a bare Alt tap.
+    if (e.key === "Alt" && this.activeMode === "eraser") {
+      e.preventDefault();
+      if (!this._eraserAltHeld) {
+        this._eraserAltHeld = true;
+        this._refreshEraserPreview();
+      }
+    }
     const key = e.key.toLowerCase();
     if (e.ctrlKey && key === "z") {
       e.preventDefault();
@@ -257,6 +277,12 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (e.code === "Space") {
       this.spacePressed = false;
       this.workspace.classList.remove("panning");
+    }
+    if (e.key === "Alt" && this._eraserAltHeld) {
+      this._eraserAltHeld = false;
+      // Only repaint when the eraser is live (Alt can be released after
+      // exiting eraser mode - clearing the flag is all that's needed then).
+      if (this.activeMode === "eraser") this._refreshEraserPreview();
     }
   };
   window.addEventListener("keydown", this._composerKeyDown, { capture: true });
@@ -971,6 +997,20 @@ PixaromaEditor.prototype.attachEvents = function () {
     if (this.activeMode === "eraser") {
       if (this.selectedLayerIds.size === 1) {
         this.setupEraserOnSelection();
+        // Restore with nothing erased is a no-op - tell the user why. Skip the
+        // hint when savedMaskPath_internal is set: a workflow-restored mask
+        // loads async (prepareLayerMask), so for a moment hasMask is false
+        // even though a mask exists - "nothing erased" would be a lie there.
+        const al = this.getActiveLayer();
+        if (
+          this.eraserIsRestore() &&
+          al &&
+          !al.hasMask_internal &&
+          !al.savedMaskPath_internal &&
+          this._layout
+        ) {
+          this._layout.setStatus("Nothing erased on this layer yet", "warn");
+        }
         this.ui.updateActiveLayerUI();
       } else {
         this.isMouseDown = false;
@@ -1037,6 +1077,10 @@ PixaromaEditor.prototype.attachEvents = function () {
       const coords = this.getCanvasCoordinates(e);
 
       if (this.activeMode === "eraser") {
+        // Mouse events carry the live Alt state - keeps the temp-flip honest
+        // even if a keydown/keyup was swallowed by another handler.
+        if (this._eraserAltHeld !== e.altKey) this._eraserAltHeld = e.altKey;
+        this._lastEraserCoords = coords;
         if (this.isMouseDown && this.selectedLayerIds.size === 1) {
           const canvasRect = this.canvas.getBoundingClientRect();
           const isOverCanvas =
@@ -1106,6 +1150,7 @@ PixaromaEditor.prototype.attachEvents = function () {
 
   this._composerBlur = () => {
     this.spacePressed = false;
+    this._eraserAltHeld = false; // Alt+Tab leaves keyup unseen - don't stick
     if (this.isPanning) {
       this.isPanning = false;
       this.workspace.classList.remove("panning");

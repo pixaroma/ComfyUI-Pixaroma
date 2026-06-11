@@ -124,8 +124,14 @@ class PixaromaTextWatermark:
         # genuine italic renders upright metrics with no overhang, so adding the
         # slant would over-inset right/center anchors. Gate on the same
         # synthesized-italic decision the renderer makes.
+        # Vertical direction renders upright (the renderer skips the synthesized
+        # lean entirely), so no slant compensation there.
         eff_w = bbox_w
-        if bool(state.get("italic", False)) and self._is_synthesized_italic(state):
+        if (
+            state.get("direction", "horizontal") != "vertical"
+            and bool(state.get("italic", False))
+            and self._is_synthesized_italic(state)
+        ):
             slant = int(math.ceil(math.tan(math.radians(12)) * bbox_h))
             # + a small size-relative cushion for italic ink that overhangs the
             # advance width (the bbox measurement misses it).

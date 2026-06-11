@@ -1,12 +1,12 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import {
-  readState, restoreFromProperties, resetState,
+  readState, restoreFromProperties, resetState, resetAxis as resetAxisCore,
   resolveAxisValues, axisReady, computeCounts,
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderBody, measureContentHeight, closePopupIfOwner } from "./ui.mjs";
 import { buildGridPreview } from "./grid.mjs";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes, closeHelpPopup } from "../shared/index.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 
 const NODE = "PixaromaXYPlot";
@@ -156,6 +156,15 @@ function makeHandlers(node, root) {
       handlers.rerender();
       fitNode(node, root);
     },
+    // Clear ONE axis (the per-axis ↺ button); the other axis + toggles + any
+    // shown grid stay. Fit (not just grow) so the node tightens back up after a
+    // tall value area collapses. User action only, so fitNode can't trip the
+    // dirty-on-load tracker (Vue Compat #18).
+    resetAxis: (axisKey) => {
+      resetAxisCore(node, axisKey);
+      handlers.rerender();
+      fitNode(node, root);
+    },
   };
   return handlers;
 }
@@ -187,11 +196,13 @@ app.registerExtension({
         node._pixXyFit = () => fitNode(node, root);   // called from grid.mjs on <img> load
         // DOM-only render (no auto-grow) for the load path so the saved size
         // is trusted and the workflow isn't falsely flagged modified (#18).
-        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null, reset: handlers.reset });
+        node._pixXyRenderOnly = () => renderBody(node, root, { rerender: handlers.rerender, growth: null, reset: handlers.reset, resetAxis: handlers.resetAxis });
 
         const widget = node.addDOMWidget("xyplot", "pixaroma_xy_plot", root, {
           serialize: false,
-          getMinHeight: () => measureContentHeight(root) + 4,
+          // Coarse-round to a 4px grid so sub-pixel/font measurement jitter can't
+          // creep node.size between save and reload (dirty-on-load, Vue Compat #18).
+          getMinHeight: () => Math.round((measureContentHeight(root) + 4) / 4) * 4,
         });
         applyAdaptiveCanvasOnly(widget);
 
@@ -233,10 +244,17 @@ app.registerExtension({
 
     const origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (size[0] < MIN_W) size[0] = MIN_W;
-      if (size[1] < MIN_H) size[1] = MIN_H;
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      // Min-size clamp is LEGACY ONLY. In Nodes 2.0 the rendered node size lives
+      // in the Vue layout store, not node.size; clamping node.size here desyncs
+      // them (drag smaller -> switch workflow -> it jumps back bigger) and the
+      // clamp doesn't even constrain the rendered width. The body rows flex-wrap
+      // so narrow widths reflow cleanly instead of spilling buttons out the side.
+      if (!isVueNodes()) {
+        if (size[0] < MIN_W) size[0] = MIN_W;
+        if (size[1] < MIN_H) size[1] = MIN_H;
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
+      }
       if (origResize) return origResize.apply(this, arguments);
     };
 
@@ -244,6 +262,7 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       if (origDraw) origDraw.call(this, ctx);
       if (this.flags?.collapsed) return;
+      if (isVueNodes()) return;   // size clamp is legacy-only (see onResize)
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
@@ -251,6 +270,7 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       try { closePopupIfOwner(this); } catch (_e) {}   // only close OUR popup, not another node's
+      try { closeHelpPopup(); } catch (_e) {}          // close the Help panel if it's open
       try { this._pixXyCancelConfirm?.(); } catch (_e) {}
       this._pixXyRoot = null;
       this._pixXyRerender = null;

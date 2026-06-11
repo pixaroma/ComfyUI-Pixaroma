@@ -8,7 +8,7 @@
 import { createEditorLayout } from "../framework/layout.mjs";
 import { createTextEditorPanel } from "../framework/text_editor.mjs";
 import { resetStateInPlace } from "./defaults.mjs";
-import { renderTextLayer } from "../framework/text_render.mjs";
+import { renderTextLayer, measureTextDims } from "../framework/text_render.mjs";
 import { getFontCatalog, resolveFontVariant, loadFontForLayer } from "../framework/fonts.mjs";
 import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 
@@ -621,19 +621,10 @@ export class TextOverlayEditor {
     }
     const fam = `Pix-${fontId}${italic ? "-Italic" : ""}`;
     ctx.font = `${italic ? "italic " : ""}${weight} ${state.fontSize}px "${fam}"`;
-    const lines = String(state.text ?? "").split("\n");
-    const widths = lines.map((ln) => ctx.measureText(ln).width + Math.max(0, ln.length - 1) * (state.letterSpacing || 0));
-    const lineHeightPx = Math.round(state.fontSize * (state.lineHeight || 1.2));
-    const m = ctx.measureText("Mg");
-    const asc = m.actualBoundingBoxAscent || state.fontSize * 0.78;
-    const desc = m.actualBoundingBoxDescent || state.fontSize * 0.22;
-    let w = Math.max(0, ...widths);
-    let h = (asc + desc) + Math.max(0, lines.length - 1) * lineHeightPx;
-    if (state.bgColor) {
-      w += 2 * 16; // BG_PAD_X
-      h += 2 * 10; // BG_PAD_Y
-    }
-    return { x: state.x, y: state.y, w: Math.max(20, w), h: Math.max(20, h) };
+    // Shared direction-aware measure (framework/text_render.mjs) so vertical
+    // mode aligns / hit-tests / Fit W-H against its real tall-narrow bbox.
+    const dims = measureTextDims(ctx, state);
+    return { x: state.x, y: state.y, w: Math.max(20, dims.w), h: Math.max(20, dims.h) };
   }
 
   // ── Zoom ──

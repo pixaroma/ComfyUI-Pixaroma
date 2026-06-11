@@ -85,6 +85,42 @@ Python:
 4. Rotate: `layer_img.rotate(-rotation, expand=True, resample=BICUBIC)` (compensate paste origin for `expand=True` growth)
 5. `base_img.alpha_composite(layer_img, dest=(paste_x, paste_y))`
 
+## 5b. Vertical Direction
+
+When `layer.direction == "vertical"` (default `"horizontal"`), the §2-§4 horizontal path is replaced by:
+
+- `lines = text.split("\n")` — each line is a COLUMN, placed left-to-right (line 0 leftmost).
+- Characters stack top-to-bottom, upright, iterated by code point.
+- `charStep = round(fontSize * lineHeight)` is the vertical advance per character (Line Height remaps to character spacing).
+- `colGap = letterSpacing` is the horizontal gap between columns (Letter Spacing remaps to column gap; it does NOT feed per-character measurement here).
+- `ascender`, `descender` are the `"Mg"` ink metric, same as horizontal.
+- Per column j: `colWidth_j = max(0, glyphWidth(each char))`, `numChars_j = count`.
+
+```
+maxChars  = max(numChars_j)
+contentH  = ascender + descender + max(0, maxChars - 1) * charStep
+totalColW = sum(colWidth_j) + max(0, numCols - 1) * colGap
+bbox_width  = max(1, ceil(totalColW + 2*padX))
+bbox_height = max(1, ceil(contentH  + 2*padY))
+```
+
+Draw (bg pill fills the whole bbox first, exactly as §3):
+```
+colOriginX = padX
+for column j:
+    colContentH = ascender + descender + max(0, numChars_j - 1) * charStep
+    vOffset = align=="center" ? (contentH - colContentH)/2
+            : align=="right"  ? (contentH - colContentH)
+            : 0                                   # align=="left" -> top
+    for i, ch in column:
+        cx = colOriginX + (colWidth_j - glyphWidth(ch))/2   # center in column
+        ly = padY + vOffset + ascender + i*charStep         # shared baseline grid
+        drawChar(ch, cx, ly)
+    colOriginX += colWidth_j + colGap
+```
+
+Align chips keep the left/center/right icons; their EFFECT becomes top/middle/bottom of shorter columns. Position (x/y), rotation, opacity, and the bg pill act on the finished bitmap unchanged.
+
 ## 6. Color Format
 
 All `color` and `bgColor` fields are 6-char hex strings (`"#RRGGBB"`). `bgColor` is `null` (or empty string) when no pill.
@@ -98,3 +134,4 @@ All `color` and `bgColor` fields are 6-char hex strings (`"#RRGGBB"`). `bgColor`
 - Synthesized italic skew differs slightly between canvas (matrix transform) and PIL (Image transform). Acceptable.
 - Sub-pixel positioning rounded to nearest integer pixel in both renderers.
 - Variable font interpolation: browser's variable-font rasterizer and PIL's `set_variation_by_axes` use different interpolation paths.
+- Vertical direction skips synthesized italic (characters render upright, no shear). Real-italic font files still render their italic glyphs upright-stacked.

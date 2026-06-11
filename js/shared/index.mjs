@@ -40,4 +40,6 @@ export {
   openHelpPopup,
   closeHelpPopup,
   injectHelpCSS,
+  registerNodeHelp,
+  getNodeHelp,
 } from "./help.mjs";

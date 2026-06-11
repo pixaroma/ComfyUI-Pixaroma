@@ -20,6 +20,9 @@ function emptyAxis() {
     widgetType: null,        // "number" | "combo" | "text" | null
     mode: null,              // number: "range"|"list"; text: "fulllist"|"sr"
     step: 1,
+    precision: null,         // number: decimals the field allows (0=int, 1=cfg, 2=denoise)
+    realStep: null,          // number: the field's true increment (step2), for snap-to-step
+    snap: true,              // number: round values to realStep (per-axis Snap toggle)
     options: [],             // combo: the widget's option list (cached at pick)
     raw: { start: "", end: "", steps: "", listText: "", checked: [], srFind: "", srReplace: "" },
   };
@@ -84,6 +87,27 @@ export function resetState(node) {
   return s;
 }
 
+// Clear a SINGLE axis back to empty IN PLACE (preserving the object identity that
+// editor handlers captured by reference - same aliasing rule as backfillAxis /
+// selectChoice). The OTHER axis + the toggles/theme are left untouched. Backs the
+// per-axis ↺ reset button.
+export function resetAxis(node, axisKey) {
+  const state = readState(node);
+  const axis = state[axisKey];
+  if (!axis) return state;
+  axis.nodeId = null;
+  axis.widgetName = null;
+  axis.widgetType = null;
+  axis.mode = null;
+  axis.step = 1;
+  axis.options = [];
+  const r = axis.raw || (axis.raw = {});
+  r.start = ""; r.end = ""; r.steps = ""; r.listText = "";
+  r.checked = []; r.srFind = ""; r.srReplace = "";
+  writeState(node, state);
+  return state;
+}
+
 export function restoreFromProperties(node) {
   // Idempotent: readState creates+stores a default when absent.
   readState(node);
@@ -121,9 +145,16 @@ export function classifyWidget(w) {
     if (typeof step !== "number" || step <= 0) {
       step = Number.isInteger(w.value) ? 1 : 0.01;
     }
-    // ComfyUI multiplies the displayed step by 10 internally for some builds;
-    // we only need a precision hint, so the raw step is fine.
-    return { name, type: "number", step, min: opts.min, max: opts.max, cur };
+    // ComfyUI declares how many decimals a number field allows via `precision`
+    // (0 = integer like width/height/steps/seed, 1 = cfg, 2 = denoise). That is
+    // the AUTHORITATIVE rounding source - the `step` option is ×10-inflated and
+    // unreliable. roundToStep() rounds to `precision` when present (integer fields
+    // stay whole; 7.1 keeps its decimal) and only falls back to step/value decimals
+    // when precision is missing (old saved axis / non-ComfyUI widget).
+    const precision = (typeof opts.precision === "number") ? opts.precision : null;
+    // step2 is the REAL increment (width 16, cfg 0.1); used by the Snap-to-step toggle.
+    const realStep = (typeof opts.step2 === "number" && opts.step2 > 0) ? opts.step2 : null;
+    return { name, type: "number", step, precision, realStep, min: opts.min, max: opts.max, cur };
   }
   if (t === "combo") {
     let vals = w.options?.values;
@@ -194,24 +225,39 @@ export function lookupWidgetMeta(node, axis) {
 // freeze the browser. A comparison grid is only useful for a handful of cells.
 export const MAX_AXIS_VALUES = 100;
 
-// Trim float drift to the step's decimal precision. Handles scientific-notation
-// steps (e.g. 1e-7) which `String(step).split(".")` would mis-read as 0 decimals
-// (collapsing every value to 0).
-export function roundToStep(v, step) {
-  if (!step || step <= 0 || !isFinite(v)) return v;
-  let decimals;
-  const s = String(step);
-  if (s.indexOf("e") >= 0 || s.indexOf("E") >= 0) {
-    // scientific notation: derive decimals from the exponent
-    decimals = Math.max(0, Math.ceil(-Math.log10(Math.abs(step))));
-  } else {
-    decimals = (s.split(".")[1] || "").length;
+// Count a number's decimal places, handling scientific notation (e.g. 1e-7 -> 7,
+// 1.5e-3 -> 4) which a naive String().split(".") mis-reads as 0 decimals.
+function decimalsOf(n) {
+  if (!isFinite(n)) return 0;
+  const s = String(n);
+  const e = s.search(/[eE]/);
+  if (e >= 0) {
+    const mantDec = (s.slice(0, e).split(".")[1] || "").length;
+    const exp = parseInt(s.slice(e + 1), 10) || 0;
+    return Math.max(0, mantDec - exp);
   }
-  return Number(v.toFixed(Math.min(decimals, 8)));
+  return (s.split(".")[1] || "").length;
+}
+
+// Round a value to the right number of decimals. `precision` (from the widget:
+// 0 = integer width/height/steps/seed, 1 = cfg, 2 = denoise) is authoritative and
+// is used when present - so integer fields stay WHOLE (e.g. a 512->1024 range no
+// longer yields 682.66666667) while cfg keeps 1 decimal and denoise 2. When
+// precision is unknown, fall back to preserving the value's own decimals (capped
+// at 8 to trim float-accumulation drift, which lives ~15-17 places down).
+// Scientific-notation safe via decimalsOf().
+export function roundToStep(v, step, precision) {
+  if (!isFinite(v)) return v;
+  if (typeof precision === "number" && precision >= 0) {
+    return Number(v.toFixed(Math.min(precision, 8)));
+  }
+  const stepDec = (typeof step === "number" && step > 0) ? decimalsOf(step) : 0;
+  const dec = Math.min(8, Math.max(stepDec, decimalsOf(v)));
+  return Number(v.toFixed(dec));
 }
 
 // Comma list, each item a number or an A1111 range:  a-b (+s)  |  a-b [n]
-export function parseNumberList(text, step) {
+export function parseNumberList(text, step, precision) {
   const out = [];
   for (const part of String(text || "").split(",")) {
     const s = part.trim();
@@ -221,49 +267,60 @@ export function parseNumberList(text, step) {
     if (mStep) {
       const a = parseFloat(mStep[1]); const b = parseFloat(mStep[2]); let st = parseFloat(mStep[3]);
       if (!isFinite(a) || !isFinite(b)) continue;
-      if (st === 0 || !isFinite(st)) { out.push(roundToStep(a, step)); continue; }
+      if (st === 0 || !isFinite(st)) { out.push(roundToStep(a, step, precision)); continue; }
       if ((b - a) * st < 0) st = -st;
       // Iterate by integer index (count = how many steps fit), NOT by repeated
       // `v += st`: accumulation drift would drop or duplicate the endpoint, and
       // a tiny step (e.g. +0.0000001) would loop millions of times. Capped.
       const count = Math.min(MAX_AXIS_VALUES - 1, Math.max(0, Math.floor((b - a) / st + 1e-9)));
       for (let i = 0; i <= count && out.length < MAX_AXIS_VALUES; i++) {
-        out.push(roundToStep(a + i * st, step));
+        out.push(roundToStep(a + i * st, step, precision));
       }
     } else if (mCount) {
       const a = parseFloat(mCount[1]); const b = parseFloat(mCount[2]); let n = parseInt(mCount[3], 10);
       if (!isFinite(a)) continue;
-      if (!isFinite(b) || n <= 1) { out.push(roundToStep(a, step)); continue; }
+      if (!isFinite(b) || n <= 1) { out.push(roundToStep(a, step, precision)); continue; }
       n = Math.min(n, MAX_AXIS_VALUES);
-      for (let i = 0; i < n && out.length < MAX_AXIS_VALUES; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step));
+      for (let i = 0; i < n && out.length < MAX_AXIS_VALUES; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step, precision));
     } else {
       const v = parseFloat(s);
-      if (isFinite(v) && out.length < MAX_AXIS_VALUES) out.push(roundToStep(v, step));
+      if (isFinite(v) && out.length < MAX_AXIS_VALUES) out.push(roundToStep(v, step, precision));
     }
     if (out.length >= MAX_AXIS_VALUES) break;
   }
   return out;
 }
 
-export function rangeToList(start, end, steps, step) {
+export function rangeToList(start, end, steps, step, precision) {
   const a = parseFloat(start); const b = parseFloat(end); let n = parseInt(steps, 10);
   if (!isFinite(a)) return [];
-  if (!isFinite(b) || !isFinite(n) || n <= 1) return [roundToStep(a, step)];
+  if (!isFinite(b) || !isFinite(n) || n <= 1) return [roundToStep(a, step, precision)];
   n = Math.min(n, MAX_AXIS_VALUES);
   const out = [];
-  for (let i = 0; i < n; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step));
+  for (let i = 0; i < n; i++) out.push(roundToStep(a + (b - a) * i / (n - 1), step, precision));
   return out;
 }
 
+// Snap a number to the nearest multiple of the field's real step (e.g. width to
+// multiples of 16), then clean any float artifact to the field's precision.
+function snapToGrid(v, realStep, precision) {
+  if (!realStep || realStep <= 0 || !isFinite(v)) return v;
+  return roundToStep(Math.round(v / realStep) * realStep, realStep, precision);
+}
+
 // Resolve an axis to its ordered list of cell values (numbers or strings).
-// For text "sr" mode the values are the replacement strings; the actual text
-// substitution happens at inject time against the target's current value.
+// Number values are snapped to the field's real step when the axis's Snap toggle
+// is on (axis.snap, default true). For text "sr" mode the values are the
+// replacement strings; substitution happens at inject time against the target.
 export function resolveAxisValues(axis) {
   if (!axis || !axis.widgetType) return [];
   const raw = axis.raw || {};
   if (axis.widgetType === "number") {
-    if (axis.mode === "list") return parseNumberList(raw.listText, axis.step);
-    return rangeToList(raw.start, raw.end, raw.steps, axis.step);
+    let vals = (axis.mode === "list")
+      ? parseNumberList(raw.listText, axis.step, axis.precision)
+      : rangeToList(raw.start, raw.end, raw.steps, axis.step, axis.precision);
+    if (axis.snap !== false && axis.realStep) vals = vals.map((v) => snapToGrid(v, axis.realStep, axis.precision));
+    return vals;
   }
   if (axis.widgetType === "combo") {
     const checked = Array.isArray(raw.checked) ? raw.checked.slice() : [];
