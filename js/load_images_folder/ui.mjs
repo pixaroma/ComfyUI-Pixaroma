@@ -30,6 +30,12 @@ export function injectCSS() {
 .pix-lif-pick.empty { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.16); color:#9a9a9a; }
 .pix-lif-msg { font-size:11px; color:#e0a33e; line-height:1.4; }
 .pix-lif-msg:empty { display:none; }
+.pix-lif-resize-slot { display:flex; flex-direction:column; gap:6px; }
+.pix-lif-resize-slot:empty { display:none; }
+.pix-lif-resizebtn { display:flex; align-items:center; gap:8px; width:100%; background:#141414; border:1px solid #3a3a3a; border-radius:5px; padding:6px 8px; font-size:11px; color:#cfcfcf; cursor:pointer; box-sizing:border-box; }
+.pix-lif-resizebtn:hover { border-color:#f66744; }
+.pix-lif-resizebtn .lbl { color:#f66744; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
+.pix-lif-resizebtn .val { margin-left:auto; color:#ddd; }
 
 /* mini dropdown menu (sort, resize mode) */
 .pix-lif-menu { position:fixed; z-index:99999; background:#191919; border:1px solid #3a3a3a; border-radius:6px; box-shadow:0 8px 24px rgba(0,0,0,0.5); overflow:hidden; min-width:150px; }

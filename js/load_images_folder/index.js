@@ -17,10 +17,29 @@ import {
   writeState,
 } from "./state.mjs";
 import { listFolder } from "./api.mjs";
-import { injectCSS, buildRoot, openPickGallery, openBrowsePopup } from "./ui.mjs";
+import {
+  injectCSS,
+  buildRoot,
+  openPickGallery,
+  openBrowsePopup,
+  openMiniMenu,
+} from "./ui.mjs";
+import { buildModePanel, injectResizePanelCSS } from "../shared/resize_panel.mjs";
 
 const MIN_W = 280;
 const DEFAULT_W = 300;
+
+// Resize modes — values match the shared engine (_resize_helpers / buildModePanel).
+const RESIZE_MODES = [
+  { value: "off", label: "Off", hint: "full size" },
+  { value: "max_mp", label: "Max megapixels", hint: "cap pixels" },
+  { value: "longest_side", label: "Longest side", hint: "cap long edge" },
+  { value: "scale_factor", label: "Scale by", hint: "× factor" },
+  { value: "fit_inside", label: "Fit inside", hint: "W×H box" },
+  { value: "cover", label: "Crop to fill", hint: "W×H exact" },
+  { value: "match_ratio", label: "Match aspect ratio", hint: "crop / pad" },
+  { value: "pad", label: "Pad", hint: "add borders" },
+];
 
 // ── node body height (sum visible children; NOT scrollHeight) ─────────────────
 function measureContentHeight(root) {
@@ -111,6 +130,49 @@ async function setFolder(node, folder) {
   await refreshListing(node);
 }
 
+// ── resize control (mode dropdown + the shared per-mode panel) ────────────────
+function renderResize(node) {
+  const ui = node._pixLifUI;
+  if (!ui) return;
+  injectResizePanelCSS();
+  const state = readState(node);
+  const slot = ui.resizeSlot;
+  slot.innerHTML = "";
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "pix-lif-resizebtn";
+  const label = RESIZE_MODES.find((m) => m.value === state.mode)?.label || "Off";
+  btn.innerHTML = `<span class="lbl">Resize</span><span class="val">${label} ▾</span>`;
+  btn.title = "Resize each image as it loads (same options as Load Image)";
+  btn.addEventListener("click", () => {
+    openMiniMenu(btn, RESIZE_MODES, readState(node).mode, (val) => {
+      const st = readState(node);
+      st.mode = val;
+      writeState(node, st);
+      renderResize(node);
+      node.setDirtyCanvas?.(true, true);
+    });
+  });
+  slot.appendChild(btn);
+
+  if (state.mode !== "off") {
+    // The shared builders re-read node.properties[stateKey] on each edit and
+    // only override the resize key, so folder/selected are preserved.
+    const panel = buildModePanel(
+      state.mode,
+      node,
+      readState(node),
+      writeState,
+      () => node.setDirtyCanvas?.(true, true),
+      "loadImagesFolderState",
+      { oneLine: true }
+    );
+    if (panel) slot.appendChild(panel);
+  }
+  node.setDirtyCanvas?.(true, true);
+}
+
 // ── per-node setup ───────────────────────────────────────────────────────────
 function setupNode(node) {
   injectCSS();
@@ -173,6 +235,9 @@ function setupNode(node) {
   try {
     node._pixLifFloorOff = installResizeFloor(ui.root, measureContentHeight);
   } catch {}
+
+  // resize control (reads current state; fresh node = "Off")
+  renderResize(node);
 
   // default width only (configure() restores saved size for loaded nodes)
   if (!node.size || node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
@@ -245,7 +310,10 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function () {
       const r = origConfigure?.apply(this, arguments);
       stripInputs(this);
-      queueMicrotask(() => refreshListing(this));
+      queueMicrotask(() => {
+        renderResize(this);
+        refreshListing(this);
+      });
       return r;
     };
 
