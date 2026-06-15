@@ -107,7 +107,7 @@ function positionBelow(popup, anchorEl, width) {
   });
 }
 
-function attachClosePopup(popup, onClose) {
+function attachClosePopup(popup, onClose, ignoreSelector) {
   const close = () => {
     if (popup._pixClosed) return;
     popup._pixClosed = true;
@@ -118,9 +118,13 @@ function attachClosePopup(popup, onClose) {
     popup.remove();
     onClose?.();
   };
-  // gate on !contains so scrolling/clicking INSIDE the popup never closes it
-  const onDown = (e) => { if (!popup.contains(e.target)) close(); };
-  const onWheel = (e) => { if (!popup.contains(e.target)) close(); };
+  // gate on !contains so scrolling/clicking INSIDE the popup never closes it.
+  // ignoreSelector lets a popup treat a spawned sub-popup (e.g. the sort menu)
+  // as "inside" so interacting with it doesn't close the parent.
+  const inside = (t) =>
+    popup.contains(t) || (ignoreSelector && t.closest && t.closest(ignoreSelector));
+  const onDown = (e) => { if (!inside(e.target)) close(); };
+  const onWheel = (e) => { if (!inside(e.target)) close(); };
   const onKey = (e) => { if (e.key === "Escape") close(); };
   popup._pixClose = close;
   setTimeout(() => {
@@ -155,7 +159,7 @@ export function buildRoot() {
   root.innerHTML =
     `<div class="pix-lif-folderrow">` +
     `<input class="pix-lif-folder" type="text" spellcheck="false" placeholder="Folder path — type, paste, or Browse">` +
-    `<button class="pix-lif-browse" type="button" title="Browse for a folder on your computer">${FOLDER_SVG} Browse</button>` +
+    `<button class="pix-lif-browse" type="button" title="Browse for a folder on your computer">${FOLDER_SVG}<span class="pix-lif-browse-lbl">Browse</span></button>` +
     `</div>` +
     `<button class="pix-lif-pick empty" type="button" title="Choose which images to load">Pick images · 0 / 0</button>` +
     `<div class="pix-lif-msg"></div>` +
@@ -164,6 +168,7 @@ export function buildRoot() {
     root,
     folderInput: root.querySelector(".pix-lif-folder"),
     browseBtn: root.querySelector(".pix-lif-browse"),
+    browseLbl: root.querySelector(".pix-lif-browse-lbl"),
     pickBtn: root.querySelector(".pix-lif-pick"),
     msgEl: root.querySelector(".pix-lif-msg"),
     resizeSlot: root.querySelector(".pix-lif-resize-slot"),
@@ -306,7 +311,11 @@ export function openPickGallery(node, anchorEl, ctx) {
   });
   gal.querySelector('[data-act="done"]').addEventListener("click", () => gal._pixClose?.());
 
-  attachClosePopup(gal);
+  attachClosePopup(
+    gal,
+    () => document.querySelectorAll(".pix-lif-menu").forEach((m) => m._pixClose?.()),
+    ".pix-lif-menu"
+  );
   positionBelow(gal, anchorEl, Math.min(560, window.innerWidth - 16));
   renderGrid();
 }

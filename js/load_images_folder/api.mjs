@@ -22,7 +22,7 @@ export function thumbURL(folder, rel, mtime) {
   );
 }
 
-// Browse the server filesystem for the in-app folder picker (Milestone 2).
+// Browse the server filesystem for the in-app folder picker (fallback).
 // Returns {ok, path, parent, dirs:[{name, path, images}], message?}.
 export async function browseFolder(path) {
   try {
@@ -31,5 +31,18 @@ export async function browseFolder(path) {
     return await r.json();
   } catch (e) {
     return { ok: false, message: String(e), dirs: [] };
+  }
+}
+
+// Pop the native OS folder dialog on the ComfyUI host. Returns {ok:true, path},
+// {ok:false, cancelled} (user closed it), or {ok:false, unavailable} (non-Windows
+// / remote) so the caller can fall back to the in-app browser.
+export async function pickNativeFolder(startPath) {
+  try {
+    const url = `/pixaroma/api/load_images_folder/pick_native?path=${encodeURIComponent(startPath || "")}`;
+    const r = await fetch(url);
+    return await r.json();
+  } catch (e) {
+    return { ok: false, message: String(e) };
   }
 }

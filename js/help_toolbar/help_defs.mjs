@@ -426,6 +426,8 @@ const HELP = {
         defs: [
           ["image", "Each selected image, one per item, after any resize."],
           ["mask", "Each image's mask from its alpha channel (blank if it has none)."],
+          ["width", "Each image's width in pixels (after any resize). Wire into an empty latent so it matches the image's size."],
+          ["height", "Each image's height in pixels (after any resize)."],
           ["filename", "Each image's filename without the extension, for naming saved results."],
           ["index", "The 1-based position of each image within your selection (1, 2, 3 ...)."],
           ["total", "How many images were selected (the same number for every item)."],

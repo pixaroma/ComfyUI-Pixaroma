@@ -1265,3 +1265,70 @@ async def api_lif_browse(request):
         return web.json_response({"ok": True, "path": real, "parent": parent, "dirs": dirs})
     except Exception as e:
         return web.json_response({"ok": False, "message": str(e), "dirs": []})
+
+
+# Native OS folder picker (Windows). The ComfyUI server runs on the user's own
+# machine for local installs, so it can pop a real folder dialog and return the
+# chosen path - no image copying, exactly like a desktop app. Uses PowerShell +
+# WinForms so there are NO extra Python deps (the embedded Python lacks tkinter).
+# Other OSes / remote setups return unavailable so the frontend falls back to the
+# in-app browser.
+import threading as _threading
+
+_LIF_DIALOG_LOCK = _threading.Lock()
+
+
+def _lif_native_folder_dialog(start_path=""):
+    if os.name != "nt":
+        return ""
+    if not _LIF_DIALOG_LOCK.acquire(blocking=False):
+        return ""  # a dialog is already open
+    try:
+        import subprocess
+        safe_start = (start_path or "").replace("'", "''")
+        set_start = f"$d.SelectedPath = '{safe_start}';" if safe_start else ""
+        ps = (
+            "Add-Type -AssemblyName System.Windows.Forms;"
+            "$d = New-Object System.Windows.Forms.FolderBrowserDialog;"
+            "$d.Description = 'Choose a folder of images';"
+            "$d.ShowNewFolderButton = $false;"
+            + set_start
+            + "$o = New-Object System.Windows.Forms.Form -Property @{TopMost=$true; ShowInTaskbar=$false};"
+            "if ($d.ShowDialog($o) -eq [System.Windows.Forms.DialogResult]::OK) "
+            "{ [Console]::Out.Write($d.SelectedPath) }"
+        )
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-STA", "-Command", ps],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            creationflags=0x08000000,  # CREATE_NO_WINDOW (no console flash)
+        )
+        return (out.stdout or "").strip()
+    except Exception as e:
+        print(f"[PixaromaLoadImagesFolder] native folder dialog failed: {e}")
+        return ""
+    finally:
+        try:
+            _LIF_DIALOG_LOCK.release()
+        except Exception:
+            pass
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/pick_native")
+async def api_lif_pick_native(request):
+    """Pop the native OS folder dialog on the ComfyUI host; return the chosen path.
+    {ok:true, path} on pick; {ok:false, cancelled} on cancel; {ok:false,
+    unavailable} when no native dialog is possible (non-Windows)."""
+    if os.name != "nt":
+        return web.json_response({"ok": False, "unavailable": True})
+    start = request.query.get("path", "")
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        path = await loop.run_in_executor(None, _lif_native_folder_dialog, start)
+        if path and os.path.isdir(path):
+            return web.json_response({"ok": True, "path": path})
+        return web.json_response({"ok": False, "cancelled": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "message": str(e)})

@@ -84,11 +84,11 @@ def _load_one(path, state, dtype):
     else:
         mask_pil = Image.new("L", rgb.size, 0)
 
-    rgb_r, mask_r, _w, _h = _resize_frame(rgb, mask_pil, state, orig_w, orig_h)
+    rgb_r, mask_r, fw, fh = _resize_frame(rgb, mask_pil, state, orig_w, orig_h)
 
     t = torch.from_numpy(np.array(rgb_r).astype(np.float32) / 255.0)[None,].to(dtype=dtype)
     m = torch.from_numpy(np.array(mask_r).astype(np.float32) / 255.0).unsqueeze(0).to(dtype=dtype)
-    return t, m
+    return t, m, int(fw), int(fh)
 
 
 def node_pillow_open(path):
@@ -108,8 +108,9 @@ class PixaromaLoadImagesFolder:
         "first N, or hand-pick specific images in a thumbnail gallery. Same resize "
         "options as Load Image Pixaroma (max megapixels, longest side, scale by, "
         "fit inside, crop to fill, match aspect ratio). Outputs are a list: image, "
-        "mask, filename, index, total. Wire filename into a Save node so each "
-        "result keeps its original name. Hit Run once and leave the batch count at 1."
+        "mask, width, height, filename, index, total. Wire filename into a Save node "
+        "so each result keeps its original name, and width/height into an empty latent "
+        "so it matches each image's size. Hit Run once and leave the batch count at 1."
     )
 
     @classmethod
@@ -125,12 +126,14 @@ class PixaromaLoadImagesFolder:
         }
 
     CATEGORY = "👑 Pixaroma"
-    RETURN_TYPES = ("IMAGE", "MASK", "STRING", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "filename", "index", "total")
-    OUTPUT_IS_LIST = (True, True, True, True, True)
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "width", "height", "filename", "index", "total")
+    OUTPUT_IS_LIST = (True, True, True, True, True, True, True)
     OUTPUT_TOOLTIPS = (
         "Each selected image, one per list item (after any resize).",
         "Each image's mask from its alpha channel (blank if it has none).",
+        "Each image's width in pixels (after any resize) - wire into an empty latent so it matches.",
+        "Each image's height in pixels (after any resize).",
         "Each image's filename without the extension - wire into Save so results keep their original names.",
         "1-based position of each image within your selection (1, 2, 3 ...).",
         "How many images were selected (the same number for every item).",
@@ -159,7 +162,7 @@ class PixaromaLoadImagesFolder:
         except Exception:
             dtype = torch.float32
 
-        images, masks, names, indices = [], [], [], []
+        images, masks, widths, heights, names, indices = [], [], [], [], [], []
         count = 0
         for rel in selected:
             path = os.path.join(folder, rel)
@@ -167,12 +170,14 @@ class PixaromaLoadImagesFolder:
                 print(f"[PixaromaLoadImagesFolder] missing, skipped: {rel}")
                 continue
             try:
-                t, m = _load_one(path, state, dtype)
+                t, m, fw, fh = _load_one(path, state, dtype)
             except Exception as e:
                 print(f"[PixaromaLoadImagesFolder] failed to load {rel}: {e}")
                 continue
             images.append(t)
             masks.append(m)
+            widths.append(fw)
+            heights.append(fh)
             names.append(os.path.splitext(os.path.basename(rel))[0])
             count += 1
             indices.append(count)
@@ -184,7 +189,7 @@ class PixaromaLoadImagesFolder:
             )
 
         totals = [count] * len(images)
-        return (images, masks, names, indices, totals)
+        return (images, masks, widths, heights, names, indices, totals)
 
     @classmethod
     def IS_CHANGED(cls, LoadImagesFolderState: str = ""):

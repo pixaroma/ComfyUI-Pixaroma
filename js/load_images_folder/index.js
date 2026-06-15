@@ -16,7 +16,7 @@ import {
   readState,
   writeState,
 } from "./state.mjs";
-import { listFolder } from "./api.mjs";
+import { listFolder, pickNativeFolder } from "./api.mjs";
 import {
   injectCSS,
   buildRoot,
@@ -216,9 +216,30 @@ function setupNode(node) {
   ui.folderInput.addEventListener("change", () =>
     setFolder(node, ui.folderInput.value.trim())
   );
-  ui.browseBtn.addEventListener("click", () => {
+  ui.browseBtn.addEventListener("click", async () => {
+    const start = readState(node).folder || "";
+    // Try the native OS folder dialog first (real dialog, real path, no copying).
+    // Fall back to the in-app browser when it isn't available (non-Windows /
+    // remote / error). A cancel just does nothing.
+    const lbl = ui.browseLbl;
+    const prev = lbl ? lbl.textContent : "";
+    ui.browseBtn.disabled = true;
+    if (lbl) lbl.textContent = "Opening…";
+    let res;
+    try {
+      res = await pickNativeFolder(start);
+    } catch {
+      res = { ok: false };
+    }
+    ui.browseBtn.disabled = false;
+    if (lbl) lbl.textContent = prev || "Browse";
+    if (res && res.ok && res.path) {
+      await setFolder(node, res.path);
+      return;
+    }
+    if (res && res.cancelled) return; // user closed the native dialog
     openBrowsePopup(node, ui.browseBtn, {
-      startPath: readState(node).folder,
+      startPath: start,
       onPick: (folder) => setFolder(node, folder),
     });
   });
