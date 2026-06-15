@@ -26,15 +26,13 @@ class PixaromaUncrop:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Slot order is image, mask, crop_info so they line up under Image Crop
+        # Pixaroma's image/mask/crop_info outputs (wires run straight across).
+        # ComfyUI always draws required inputs before optional ones, so to keep
+        # that order with mask staying optional, crop_info is optional too - it
+        # degrades to a clean passthrough if left unwired (handled in uncrop()).
         return {
             "required": {
-                "crop_info": (PIXAROMA_CROP_INFO, {
-                    "tooltip": (
-                        "Wire the 'crop_info' output of Image Crop Pixaroma here. "
-                        "It carries the original image and where the crop came "
-                        "from, so the edited crop can be placed back exactly."
-                    ),
-                }),
                 "image": ("IMAGE", {
                     "tooltip": (
                         "The edited crop to paste back (after upscaling, "
@@ -49,6 +47,14 @@ class PixaromaUncrop:
                         "Optional. Limits the paste to part of the crop region "
                         "(white = paste the edited crop, black = keep the "
                         "original). Resized to the crop region automatically."
+                    ),
+                }),
+                "crop_info": (PIXAROMA_CROP_INFO, {
+                    "tooltip": (
+                        "Wire the 'crop_info' output of Image Crop Pixaroma here. "
+                        "It carries the original image and where the crop came "
+                        "from, so the edited crop can be placed back exactly. "
+                        "If left unwired, the edited image just passes through."
                     ),
                 }),
                 "feather": ("INT", {
@@ -125,7 +131,7 @@ class PixaromaUncrop:
         a = a.to(torch.float32)
         return self._feather_alpha(a.clamp(0.0, 1.0), feather)
 
-    def uncrop(self, crop_info, image, mask=None, feather=0):
+    def uncrop(self, image, crop_info=None, mask=None, feather=0):
         # Defensive: bad crop_info -> pass the edited image straight through so a
         # mis-wire never crashes the whole workflow.
         if not isinstance(crop_info, dict) or not isinstance(crop_info.get("image"), torch.Tensor):
