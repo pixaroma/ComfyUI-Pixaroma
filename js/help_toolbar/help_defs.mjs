@@ -144,15 +144,15 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "The other half of the crop, fix, then put it back workflow. After you crop a region with Image Crop Pixaroma and edit it (upscale, inpaint, face-fix, color work, anything), this node drops the edited piece back onto the full original image at the exact same place, leaving everything else untouched.\n\nIt knows where to paste from the `crop_info` wire, and it automatically resizes the edited crop to fit the original region (so upscaling the crop first is fine).",
+        body: "The other half of the crop, fix, then put it back workflow. After you crop a region with Image Crop Pixaroma and edit it (upscale, inpaint, face-fix, color work, anything), this node drops the edited piece back onto the full original image at the exact same place, leaving everything else untouched.\n\nIt knows where to paste from the `crop_info` wire, and it automatically resizes the edited crop to fit the original region (so upscaling the crop first is fine). Transparency travels through too: the `mask` output is the whole image's mask, not just the cropped rectangle.",
       },
       {
         heading: "How to use",
         bullets: [
           "Wire the `crop_info` output of Image Crop Pixaroma into this node's `crop_info`.",
           "Wire your edited crop into `image`.",
+          "To keep transparency, wire Image Crop's `mask` straight across into `mask` (it lines up under image). The mask comes back out full-frame.",
           "Optionally raise `feather` for a soft, seamless edge where the crop meets the original.",
-          "Optionally wire a `mask` to paste only part of the crop (white = paste, black = keep original).",
           "Run the workflow to get the recombined full image.",
         ],
       },
@@ -160,7 +160,7 @@ const HELP = {
         heading: "Outputs",
         defs: [
           ["image", "The original image with the edited crop pasted back in place."],
-          ["mask", "A full-size mask marking where the paste landed (including any feather falloff)."],
+          ["mask", "The full-frame mask: the original mask with the crop region updated. Use it to keep transparency (e.g. into Join Image with Alpha)."],
           ["crop_info", "The same crop_info passed straight through, so you can forward it on without re-routing the wire from Image Crop."],
         ],
       },

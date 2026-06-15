@@ -205,7 +205,10 @@ class PixaromaCrop:
             try:
                 img_t, out_w, out_h = self._crop_tensor(upstream, meta)
                 mask_t = self._crop_mask(upstream_mask, meta, out_w, out_h)
-                crop_info = self._make_crop_info(upstream, meta)
+                # Carry the FULL upstream mask (if any) so Uncrop's mask output
+                # is full-frame, not just the crop rectangle.
+                full_mask = upstream_mask if isinstance(upstream_mask, torch.Tensor) else None
+                crop_info = self._make_crop_info(upstream, meta, full_mask)
             except Exception as e:
                 print(f"[PixaromaCrop] upstream crop error: {e}")
                 img_t, mask_t, out_w, out_h, crop_info = self._load_disk_composite(meta, empty_image, upstream_mask)
@@ -294,10 +297,12 @@ class PixaromaCrop:
         x0, y0, x1, y1 = rect
         return m[:, y0:y1, x0:x1].contiguous()
 
-    def _make_crop_info(self, original, meta):
+    def _make_crop_info(self, original, meta, full_mask=None):
         """Bundle what Image Uncrop Pixaroma needs to paste an edited crop back:
-        the FULL original image plus the crop's top-left (x, y) and size (w, h),
-        computed from the saved rect on the original's own dimensions."""
+        the FULL original image and (optionally) the FULL original mask, plus the
+        crop's top-left (x, y) and size (w, h) computed from the saved rect on
+        the original's own dimensions. Carrying the full mask lets Uncrop output
+        a full-frame mask instead of just the crop rectangle."""
         if not isinstance(original, torch.Tensor) or original.dim() != 4:
             return None
         H, W = int(original.shape[1]), int(original.shape[2])
@@ -307,18 +312,35 @@ class PixaromaCrop:
         else:
             x0, y0, x1, y1 = rect
             cw, ch = x1 - x0, y1 - y0
-        return {"image": original, "x": x0, "y": y0, "w": cw, "h": ch,
+        info = {"image": original, "x": x0, "y": y0, "w": cw, "h": ch,
                 "orig_w": W, "orig_h": H}
+        if isinstance(full_mask, torch.Tensor):
+            info["mask"] = full_mask
+        return info
 
-    def _identity_crop_info(self, image_t):
+    def _identity_crop_info(self, image_t, full_mask=None):
         """Crop info for an already-cropped image (editor composite or the empty
         fallback) where the full original isn't available: paste-back becomes a
         whole-image replace at (0, 0)."""
         if not isinstance(image_t, torch.Tensor) or image_t.dim() != 4:
             return None
         H, W = int(image_t.shape[1]), int(image_t.shape[2])
-        return {"image": image_t, "x": 0, "y": 0, "w": W, "h": H,
+        info = {"image": image_t, "x": 0, "y": 0, "w": W, "h": H,
                 "orig_w": W, "orig_h": H}
+        if isinstance(full_mask, torch.Tensor):
+            info["mask"] = full_mask
+        return info
+
+    def _full_mask_from_pil(self, pil):
+        """The FULL (uncropped) mask from a loaded file's alpha channel
+        (mask = 1 - alpha), or None when the file has no transparency."""
+        try:
+            if "A" in pil.getbands():
+                alpha = np.array(pil.convert("RGBA").split()[-1]).astype(np.float32) / 255.0
+                return torch.from_numpy(1.0 - alpha)[None,]
+        except Exception:
+            pass
+        return None
 
     def _load_disk_composite(self, meta, empty_image, upstream_mask=None):
         """Load a saved image from input/pixaroma/. Two paths:
@@ -351,7 +373,8 @@ class PixaromaCrop:
         arr = np.ones((doc_h, doc_w, 3), dtype=np.float32)
         blank = torch.from_numpy(arr)[None,]
         mask_t = self._crop_mask(upstream_mask, meta, doc_w, doc_h)
-        return (blank, mask_t, doc_w, doc_h, self._identity_crop_info(blank))
+        full_mask = upstream_mask if isinstance(upstream_mask, torch.Tensor) else None
+        return (blank, mask_t, doc_w, doc_h, self._identity_crop_info(blank, full_mask))
 
     def _derive_disk_mask(self, pil, meta, upstream_mask, out_w, out_h, already_cropped):
         """Work out the MASK for a disk-loaded image. Priority:
@@ -404,7 +427,8 @@ class PixaromaCrop:
             mask_t = self._derive_disk_mask(pil, meta or {}, upstream_mask, ow, oh, already_cropped)
             # Composite is already cropped on the JS side, so the full original
             # isn't available here → identity crop info (paste = whole replace).
-            return (t, mask_t, ow, oh, self._identity_crop_info(t))
+            # Its mask doubles as the "full" mask for that identity.
+            return (t, mask_t, ow, oh, self._identity_crop_info(t, mask_t))
         except Exception as e:
             print(f"[PixaromaCrop] Load error: {e}")
             return (empty_image, self._default_mask(1024, 1024), 1024, 1024,
@@ -428,7 +452,9 @@ class PixaromaCrop:
             # file's own alpha) is cropped with the same rect.
             mask_t = self._derive_disk_mask(pil, meta, upstream_mask, ow, oh, already_cropped=False)
             # FULL source available → real crop info so paste-back lands right.
-            return (img_t, mask_t, ow, oh, self._make_crop_info(tensor, meta))
+            # Carry the FULL mask (wired, else the file's own alpha) full-frame.
+            full_mask = upstream_mask if isinstance(upstream_mask, torch.Tensor) else self._full_mask_from_pil(pil)
+            return (img_t, mask_t, ow, oh, self._make_crop_info(tensor, meta, full_mask))
         except Exception as e:
             print(f"[PixaromaCrop] src load error: {e}")
             return (empty_image, self._default_mask(doc_w, doc_h), doc_w, doc_h,
