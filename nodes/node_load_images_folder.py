@@ -135,8 +135,8 @@ class PixaromaLoadImagesFolder:
         "Each image's width in pixels (after any resize) - wire into an empty latent so it matches.",
         "Each image's height in pixels (after any resize).",
         "Each image's filename without the extension - wire into Save so results keep their original names.",
-        "1-based position of each image within your selection (1, 2, 3 ...).",
-        "How many images were selected (the same number for every item).",
+        "1-based position of each image in this batch (1, 2, 3 ...).",
+        "How many images are in this batch - i.e. how many loaded (same for every item).",
     )
     FUNCTION = "load"
 
@@ -162,10 +162,20 @@ class PixaromaLoadImagesFolder:
         except Exception:
             dtype = torch.float32
 
+        real_folder = os.path.realpath(folder)
         images, masks, widths, heights, names, indices = [], [], [], [], [], []
         count = 0
         for rel in selected:
-            path = os.path.join(folder, rel)
+            # Keep every selected file INSIDE the chosen folder. `selected` comes
+            # from the (frontend-supplied) hidden state, so a crafted "../../x"
+            # must not let the loader open files outside the folder.
+            path = os.path.realpath(os.path.join(folder, rel))
+            try:
+                if os.path.commonpath([path, real_folder]) != real_folder:
+                    print(f"[PixaromaLoadImagesFolder] outside folder, skipped: {rel}")
+                    continue
+            except ValueError:
+                continue  # different drive on Windows
             if not os.path.isfile(path):
                 print(f"[PixaromaLoadImagesFolder] missing, skipped: {rel}")
                 continue

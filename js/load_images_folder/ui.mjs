@@ -128,6 +128,7 @@ function attachClosePopup(popup, onClose, ignoreSelector) {
   const onKey = (e) => { if (e.key === "Escape") close(); };
   popup._pixClose = close;
   setTimeout(() => {
+    if (popup._pixClosed) return; // closed before the listeners were even added
     document.addEventListener("mousedown", onDown, true);
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("wheel", onWheel, true);
@@ -254,7 +255,7 @@ export function openPickGallery(node, anchorEl, ctx) {
       const cell = document.createElement("div");
       cell.className = "pix-lif-thumb" + (selSet.has(f.file) ? " sel" : "");
       cell.innerHTML =
-        `<img loading="lazy" src="${thumbURL(state.folder, f.file, f.mtime)}">` +
+        `<img loading="lazy" src="${thumbURL(state.folder, f.file, f.mtime)}" onerror="this.style.display='none'">` +
         `<div class="veil"></div><div class="chk">✓</div>` +
         `<div class="nm">${escapeHtml(f.name)}</div>`;
       cell.addEventListener("click", () => {
@@ -304,6 +305,7 @@ export function openPickGallery(node, anchorEl, ctx) {
     subfEl.classList.toggle("on", state.recursive);
     grid.innerHTML = `<div class="pix-lif-gal-empty">Loading…</div>`;
     await ctx.refreshListing(node);
+    if (gal._pixClosed) return; // gallery was closed during the fetch
     state = readState(node);
     selSet.clear();
     (state.selected || []).forEach((f) => selSet.add(f));
@@ -311,9 +313,13 @@ export function openPickGallery(node, anchorEl, ctx) {
   });
   gal.querySelector('[data-act="done"]').addEventListener("click", () => gal._pixClose?.());
 
+  node._pixLifGallery = gal;
   attachClosePopup(
     gal,
-    () => document.querySelectorAll(".pix-lif-menu").forEach((m) => m._pixClose?.()),
+    () => {
+      document.querySelectorAll(".pix-lif-menu").forEach((m) => m._pixClose?.());
+      if (node._pixLifGallery === gal) node._pixLifGallery = null;
+    },
     ".pix-lif-menu"
   );
   positionBelow(gal, anchorEl, Math.min(560, window.innerWidth - 16));
@@ -338,16 +344,21 @@ export function openBrowsePopup(node, anchorEl, ctx) {
 
   const crumb = pop.querySelector(".pix-lif-bp-crumb");
   const list = pop.querySelector(".pix-lif-bp-list");
+  const useBtn = pop.querySelector('[data-act="use"]');
   let cur = ctx.startPath || "";
 
   async function nav(path) {
     list.innerHTML = `<div class="pix-lif-bp-empty">Loading…</div>`;
     const res = await browseFolder(path);
+    if (pop._pixClosed) return; // popup was closed during the fetch
     if (!res.ok) {
       list.innerHTML = `<div class="pix-lif-bp-empty">${escapeHtml(res.message || "Could not open this folder.")}</div>`;
       return;
     }
     cur = res.path || "";
+    // The This-PC / drive-list root has no usable path; dim "Use this folder".
+    useBtn.style.opacity = cur ? "" : "0.4";
+    useBtn.style.pointerEvents = cur ? "" : "none";
     crumb.innerHTML = cur ? `Location: <b style="color:#ddd">${escapeHtml(cur)}</b>` : "This PC";
     list.innerHTML = "";
     if (res.parent !== null && res.parent !== undefined) {
@@ -379,7 +390,10 @@ export function openBrowsePopup(node, anchorEl, ctx) {
     pop._pixClose?.();
   });
 
-  attachClosePopup(pop);
+  node._pixLifBrowsePop = pop;
+  attachClosePopup(pop, () => {
+    if (node._pixLifBrowsePop === pop) node._pixLifBrowsePop = null;
+  });
   positionBelow(pop, anchorEl, Math.min(440, window.innerWidth - 16));
   nav(cur);
 }

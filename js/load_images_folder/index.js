@@ -69,7 +69,10 @@ function refit(node) {
     if (!node._pixLifUI || isGraphLoading()) return;
     const sz = node.computeSize?.();
     if (sz && Math.abs(node.size[1] - sz[1]) > 1) {
-      node.size[1] = sz[1];
+      // setSize() is the official resize path; it sticks in both renderers
+      // (a bare node.size[1] write can be reverted across a renderer switch).
+      if (node.setSize) node.setSize([node.size[0], sz[1]]);
+      else node.size[1] = sz[1];
       node.setDirtyCanvas?.(true, true);
     }
   });
@@ -125,7 +128,11 @@ async function refreshListing(node, userAction = false) {
     renderUI(node);
     return;
   }
+  const myReq = (node._pixLifListReq = (node._pixLifListReq || 0) + 1);
   const res = await listFolder(state.folder, state.recursive);
+  // a newer refresh superseded this one (e.g. paste + blur), or the node was
+  // removed while the fetch was in flight - drop this stale response.
+  if (node._pixLifListReq !== myReq || !node._pixLifUI) return;
   if (res && res.ok) {
     node._pixLifFiles = res.files || [];
     node._pixLifListError = node._pixLifFiles.length
@@ -222,8 +229,10 @@ function setupNode(node) {
   const widget = node.addDOMWidget("pixaroma_lif_ui", "custom", ui.root, {
     getValue: () => null,
     setValue: () => {},
-    getMinHeight: () => measureContentHeight(ui.root),
-    getMaxHeight: () => measureContentHeight(ui.root),
+    // Coarse-round and NO getMaxHeight: a live getMaxHeight tied to a DOM
+    // measurement can creep node.size on load (Vue Compat #18). getMinHeight
+    // floors the node; refit() fits the exact height on user actions.
+    getMinHeight: () => Math.round(measureContentHeight(ui.root) / 4) * 4,
     serialize: false,
   });
   applyAdaptiveCanvasOnly(widget);
@@ -326,7 +335,9 @@ function collectNodes(graph, out) {
   const nodes = graph._nodes || graph.nodes || [];
   for (const n of nodes) {
     if (n?.comfyClass === COMFY_CLASS) out.push(n);
-    if (n?.subgraph) collectNodes(n.subgraph, out);
+    // subgraph nodes expose their inner graph under different names by version
+    const inner = n?.subgraph || n?.graph || n?._graph;
+    if (inner && inner !== graph) collectNodes(inner, out);
   }
 }
 function matchNode(nodes, promptId) {
@@ -399,6 +410,14 @@ app.registerExtension({
       return r;
     };
 
+    // Belt-and-braces with onDrawForeground (convention #7): onResize stops the
+    // drag at MIN_W so the frame is never drawn narrower than the content.
+    const origResize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function () {
+      if (!isVueNodes() && this.size[0] < MIN_W) this.size[0] = MIN_W;
+      return origResize?.apply(this, arguments);
+    };
+
     nodeType.prototype.onConnectInput = function () {
       return false;
     };
@@ -408,9 +427,11 @@ app.registerExtension({
       try {
         this._pixLifFloorOff?.();
       } catch {}
-      document
-        .querySelectorAll(".pix-lif-gallery,.pix-lif-browse-pop,.pix-lif-menu")
-        .forEach((p) => p._pixClose?.());
+      // Close only THIS node's popups - deleting one node must not close another
+      // node's open gallery. Menus are transient, so a global sweep is fine.
+      this._pixLifGallery?._pixClose?.();
+      this._pixLifBrowsePop?._pixClose?.();
+      document.querySelectorAll(".pix-lif-menu").forEach((p) => p._pixClose?.());
       return origRemoved?.apply(this, arguments);
     };
   },

@@ -1184,6 +1184,17 @@ async def api_lif_list(request):
     return web.json_response({"ok": True, "folder": real, "files": files})
 
 
+def _lif_make_thumb(full):
+    """Decode + downscale one image to a small JPEG. Blocking - run off the loop."""
+    from PIL import ImageOps
+    im = Image.open(full)
+    im = ImageOps.exif_transpose(im).convert("RGB")
+    im.thumbnail((192, 192))
+    buf = io.BytesIO()
+    im.save(buf, format="JPEG", quality=80)
+    return buf.getvalue()
+
+
 @PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/thumb")
 async def api_lif_thumb(request):
     """Serve a small JPEG thumbnail for one image. ?path=<folder>&file=<rel>"""
@@ -1199,14 +1210,13 @@ async def api_lif_thumb(request):
     ):
         return web.Response(status=403)
     try:
-        from PIL import ImageOps
-        im = Image.open(full)
-        im = ImageOps.exif_transpose(im).convert("RGB")
-        im.thumbnail((192, 192))
-        buf = io.BytesIO()
-        im.save(buf, format="JPEG", quality=80)
+        import asyncio
+        loop = asyncio.get_running_loop()
+        # PIL decode/resize/encode can be slow for big images - keep it off the
+        # aiohttp event loop so other ComfyUI requests don't stall.
+        body = await loop.run_in_executor(None, _lif_make_thumb, full)
         return web.Response(
-            body=buf.getvalue(),
+            body=body,
             content_type="image/jpeg",
             headers={"Cache-Control": "no-cache"},
         )
@@ -1324,12 +1334,15 @@ def _lif_dialog_windows(start_path):
 
 def _lif_dialog_macos(start_path):
     import subprocess
+    import re
     script = 'POSIX path of (choose folder with prompt "Choose a folder of images")'
-    if start_path and os.path.isdir(start_path):
-        safe = start_path.replace('"', '\\"')
+    # Only seed the start location when it's a real dir whose path has no chars
+    # that could break out of the AppleScript string literal (?path= is supplied
+    # by the caller, so treat it as untrusted).
+    if start_path and os.path.isdir(start_path) and re.match(r'^[^"\\\x00-\x1f]+$', start_path):
         script = (
             'POSIX path of (choose folder with prompt "Choose a folder of images" '
-            f'default location POSIX file "{safe}")'
+            f'default location POSIX file "{start_path}")'
         )
     try:
         out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
