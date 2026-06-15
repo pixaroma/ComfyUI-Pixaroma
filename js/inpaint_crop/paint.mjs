@@ -49,7 +49,7 @@ proto._bindMouse = function (cvs) {
     window.addEventListener("mouseup", winUp);
   });
   cvs.addEventListener("mousemove", (e) => { if (!this._painting) this._drawCursor(this._displayPos(e)); });
-  cvs.addEventListener("mouseleave", () => { if (!this._painting) { this.el.curCtx?.clearRect(0, 0, this.el.cursor.width, this.el.cursor.height); this._lastCursorPos = null; } });
+  cvs.addEventListener("mouseleave", () => { if (!this._painting) { this.el.curCtx?.clearRect(0, 0, this._dispW || this.el.cursor.width, this._dispH || this.el.cursor.height); this._lastCursorPos = null; } });
   cvs.addEventListener("wheel", (e) => {
     e.preventDefault();
     const d = e.deltaY < 0 ? 4 : -4;
@@ -110,6 +110,7 @@ proto._endStroke = function () {
     this._sctx.clearRect(0, 0, this.imgW, this.imgH);
     this._strokeHasContent = false;
   }
+  this._rescanBBox();
   this._recomputeRegion();
   this._draw();
 };
@@ -135,8 +136,12 @@ proto._stampDab = function (sx, sy) {
   const g = ctx.createRadialGradient(sx, sy, Math.max(0, r - 1.2), sx, sy, r);
   g.addColorStop(0, "rgba(255,255,255,1)");
   g.addColorStop(1, "rgba(255,255,255,0)");
+  // "lighten" = max-blend, so overlapping stamps in one stroke can't stack alpha
+  // (no slow-stroke darkening); the soft edge is the blur-on-bake at stroke end.
+  ctx.globalCompositeOperation = "lighten";
   ctx.fillStyle = g;
   ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
   this._strokeHasContent = true;
 };
 
@@ -144,7 +149,7 @@ proto._stampLine = function (x0, y0, x1, y1) {
   const r = Math.max(0.5, (this.brushSize / 2) / (this._scale || 1));
   const dx = x1 - x0, dy = y1 - y0;
   const dist = Math.hypot(dx, dy);
-  const step = Math.max(1, r * 0.25);
+  const step = Math.max(1, r * 0.12);  // tight enough to avoid gaps on fast, zoomed-out strokes
   const n = Math.ceil(dist / step);
   for (let i = 0; i <= n; i++) {
     const t = n === 0 ? 0 : i / n;
@@ -157,7 +162,7 @@ proto._drawCursor = function (p) {
   const ctx = this.el.curCtx;
   if (!ctx) return;
   this._lastCursorPos = p;
-  ctx.clearRect(0, 0, this.el.cursor.width, this.el.cursor.height);
+  ctx.clearRect(0, 0, this._dispW || this.el.cursor.width, this._dispH || this.el.cursor.height);
   const r = this.brushSize / 2;
   const erase = this._effectiveTool() === "erase";
   ctx.lineWidth = 1.5;
@@ -206,6 +211,7 @@ proto._loadMaskFromURL = function (url) {
     this._mctx.putImageData(id, 0, 0);
     this._undo = []; this._redo = [];
     this.layout?.setUndoState({ canUndo: false, canRedo: false });
+    this._rescanBBox();
     this._recomputeRegion();
     this._draw();
   };
@@ -236,7 +242,7 @@ proto._doUndo = function () {
   if (!this._mask || !this._undo.length) return;
   this._redo.push(this._mctx.getImageData(0, 0, this.imgW, this.imgH));
   this._mctx.putImageData(this._undo.pop(), 0, 0);
-  this._recomputeRegion(); this._draw();
+  this._rescanBBox(); this._recomputeRegion(); this._draw();
   this.layout?.setUndoState({ canUndo: this._undo.length > 0, canRedo: this._redo.length > 0 });
 };
 
@@ -244,7 +250,7 @@ proto._doRedo = function () {
   if (!this._mask || !this._redo.length) return;
   this._undo.push(this._mctx.getImageData(0, 0, this.imgW, this.imgH));
   this._mctx.putImageData(this._redo.pop(), 0, 0);
-  this._recomputeRegion(); this._draw();
+  this._rescanBBox(); this._recomputeRegion(); this._draw();
   this.layout?.setUndoState({ canUndo: this._undo.length > 0, canRedo: this._redo.length > 0 });
 };
 

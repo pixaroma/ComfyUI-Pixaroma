@@ -295,17 +295,19 @@ def apply_inpaint_crop(image, mask, p):
     rx, ry, rw, rh = region["rx"], region["ry"], region["rw"], region["rh"]
     out_w, out_h = region["out_w"], region["out_h"]
 
-    # crop + resize the image (all batch frames, same rect)
+    # crop + resize the image (all batch frames, same rect). Keep the result on
+    # the input's device/dtype (the resize routes through PIL on the CPU).
     crop = image[:, ry:ry + rh, rx:rx + rw, :].contiguous()
-    cropped_image = resize_image_tensor(crop, out_w, out_h, p["resample"])
+    cropped_image = resize_image_tensor(crop, out_w, out_h, p["resample"]).to(image.device, image.dtype)
 
-    # crop + resize the mask, then soften the edge for conditioning
+    # resize the mask with NEAREST (bilinear would add its own gradient halo);
+    # the mask_blur Gaussian is the ONLY intended softening of the conditioning.
     mreg = softm[ry:ry + rh, rx:rx + rw]
-    mout = resize_mask_np(mreg, out_w, out_h, "bilinear")
+    mout = resize_mask_np(mreg, out_w, out_h, "nearest")
     mout = gaussian_blur_np(mout, p["mask_blur"])
-    out_mask = torch.from_numpy(np.clip(mout, 0, 1)[None, ...].astype(np.float32))
+    out_mask = torch.from_numpy(np.clip(mout, 0, 1)[None, ...].astype(np.float32)).to(image.device)
 
-    full_mask = torch.from_numpy(softm[None, ...].astype(np.float32))
+    full_mask = torch.from_numpy(softm[None, ...].astype(np.float32)).to(image.device, image.dtype)
     crop_info = {
         "image": image, "mask": full_mask,
         "x": rx, "y": ry, "w": rw, "h": rh,
@@ -362,8 +364,8 @@ def _blur_alpha(alpha, blend):
         t = np.clip(0.5 + signed / (2.0 * k), 0.0, 1.0)
         soft = t * t * (3.0 - 2.0 * t)
         return torch.from_numpy(soft.astype(np.float32))
-    # fallback (no scipy): gaussian tuned so the visible feather ~= k px
-    return torch.from_numpy(gaussian_blur_np(a_np, max(1, int(k / 2.5))).astype(np.float32))
+    # fallback (no scipy): gaussian tuned so the visible feather ~= k px each side
+    return torch.from_numpy(gaussian_blur_np(a_np, max(1, int(k / 1.7))).astype(np.float32))
 
 
 def _color_match(patch, ref, region_mask, strength):
@@ -409,10 +411,13 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
         a = torch.ones((ch, cw), dtype=torch.float32)
     else:  # mask-aware: prefer the wired mask, else the painted mask from crop_info
         if isinstance(mask, torch.Tensor):
-            a = torch.from_numpy(resize_mask_np(mask_to_np(mask, ch, cw), cw, ch, "bilinear"))
+            # mask_to_np already resizes to (ch,cw) with NEAREST - keep it crisp;
+            # the seam softening is _blur_alpha's job (a bilinear resize here would
+            # smear a second gradient on top of the feather = a visible halo).
+            a = torch.from_numpy(np.ascontiguousarray(mask_to_np(mask, ch, cw), dtype=np.float32))
         elif isinstance(crop_info.get("mask"), torch.Tensor):
             fm = mask_to_np(crop_info["mask"], H, W)[y:y + ch, x:x + cw]
-            a = torch.from_numpy(resize_mask_np(fm, cw, ch, "bilinear"))
+            a = torch.from_numpy(np.ascontiguousarray(fm, dtype=np.float32))
         else:
             a = torch.ones((ch, cw), dtype=torch.float32)
     # whole_crop: fade the rectangle boundary. mask: soften the mask's OWN edge.
@@ -436,10 +441,12 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     patch = patch.to(out.device, out.dtype)
 
     if color_match and color_match != "off":
-        region0 = out[0, y:y + ch, x:x + cw, :3].detach().cpu()
-        p0 = patch[0, :, :, :3].detach().cpu()
-        matched = _color_match(p0, region0, a.cpu(), color_match)
-        patch[0, :, :, :3] = matched.to(patch.device, patch.dtype)
+        ac = a.cpu()
+        for b in range(B):  # match EVERY frame, not just frame 0 (video / batch)
+            region_b = out[b, y:y + ch, x:x + cw, :3].detach().cpu()
+            p_b = patch[b, :, :, :3].detach().cpu()
+            matched = _color_match(p_b, region_b, ac, color_match)
+            patch[b, :, :, :3] = matched.to(patch.device, patch.dtype)
 
     av = a[None, ..., None].to(out.device, out.dtype)
     region = out[:, y:y + ch, x:x + cw, :]

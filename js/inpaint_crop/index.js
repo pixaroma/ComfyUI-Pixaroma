@@ -137,7 +137,9 @@ app.registerExtension({
   async nodeCreated(node) {
     if (node.comfyClass !== "PixaromaInpaintCrop") return;
     node.imgs = null;
-    node.size = [330, 500];  // fits the knobs + open button + preview on a fresh drop
+    // Fresh-drop default size only; never on the load path (configure restores
+    // the saved size, so writing it during load would dirty the workflow).
+    if (!isGraphLoading()) node.size = [330, 500];
 
     if (!(node.inputs || []).some((i) => i.name === "image")) node.addInput("image", "IMAGE");
     if (!(node.inputs || []).some((i) => i.name === "mask")) node.addInput("mask", "MASK");
@@ -203,7 +205,7 @@ app.registerExtension({
       try {
         const r = await api.fetchApi("/pixaroma/api/inpaint/upload_src", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ project_id: "inpaint_paste_" + Date.now(), image: dataURL }),
+          body: JSON.stringify({ project_id: "inpaint_paste_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9), image: dataURL }),
         });
         const d = await r.json();
         const srcPath = d.path || "";
@@ -272,6 +274,7 @@ app.registerExtension({
     const origRemoved = node.onRemoved;
     node.onRemoved = () => {
       try { if (node._pixInpaintEditor?.el?.overlay?.isConnected) node._pixInpaintEditor._close(); } catch (e) {}
+      try { parts?.resizeObserver?.disconnect(); } catch (e) {}
       origRemoved?.call(node);
       try { api.removeEventListener("executed", onExec); } catch {}
     };

@@ -134,6 +134,11 @@ class PixaromaInpaintCrop:
                 full = cls._resolve_pixaroma_path(mp)
                 if full:
                     parts.append(str(os.path.getmtime(full)))
+            sp = meta.get("src_path", "")
+            if sp:
+                fs = cls._resolve_pixaroma_path(sp)
+                if fs:
+                    parts.append(str(os.path.getmtime(fs)))
         except Exception:
             parts.append(str(state))
         return "|".join(parts)

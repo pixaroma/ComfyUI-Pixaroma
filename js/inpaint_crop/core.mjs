@@ -76,7 +76,7 @@ export class InpaintCropEditor {
     let data = {};
     try { data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {}; } catch (e) {}
 
-    this.projectId = data.project_id || "inpaint_" + Date.now();
+    this.projectId = data.project_id || "inpaint_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
     this._srcPath = data.src_path || "";
     this._maskPath = data.mask_path || "";
     this.params = { ...(params || {}) };

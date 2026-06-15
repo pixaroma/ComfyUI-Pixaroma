@@ -77,10 +77,14 @@ class PixaromaInpaintStitch:
 
     def run(self, image, crop_info=None, mask=None, blend=16,
             blend_mode="mask", color_match="off"):
-        # No crop_info -> nothing to paste back; pass the image through as both
-        # the result and the "original" so downstream wiring still works.
-        if not isinstance(crop_info, dict) or not isinstance(crop_info.get("image"), torch.Tensor):
-            print("[PixaromaInpaintStitch] no crop_info wired - passing image through")
+        # No valid crop_info -> nothing to paste back; pass the image through as
+        # both the result and the "original" so downstream wiring still works.
+        # Require the geometry keys too, so a malformed dict doesn't silently
+        # paste at (0,0) full-size instead of erroring visibly.
+        if (not isinstance(crop_info, dict)
+                or not isinstance(crop_info.get("image"), torch.Tensor)
+                or any(k not in crop_info for k in ("x", "y", "w", "h"))):
+            print("[PixaromaInpaintStitch] no valid crop_info wired - passing image through")
             return (image, image)
 
         try:

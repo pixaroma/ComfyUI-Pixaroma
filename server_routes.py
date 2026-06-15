@@ -306,7 +306,12 @@ def _decode_image(b64_data: str) -> Image.Image | None:
     try:
         _, b64_raw = b64_data.split(",", 1)
         image_data = base64.b64decode(b64_raw)
-        return Image.open(io.BytesIO(image_data))
+        img = Image.open(io.BytesIO(image_data))
+        # Reject absurd dimensions before convert() allocates memory
+        # (decompression-bomb guard; no legitimate source exceeds this).
+        if img.width > 16384 or img.height > 16384:
+            return None
+        return img
     except Exception:
         return None
 
@@ -543,7 +548,10 @@ async def upload_inpaint_source(request):
     if file_path is None:
         return web.json_response({"error": "Invalid project id"}, status=400)
 
-    img.convert("RGB").save(file_path, "PNG")
+    try:
+        img.convert("RGB").save(file_path, "PNG")
+    except Exception as e:
+        return web.json_response({"error": f"Failed to process image: {e}"}, status=400)
     relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
     return web.json_response({"status": "success", "path": relative_path})
 
@@ -564,7 +572,10 @@ async def save_inpaint_mask(request):
         return web.json_response({"error": "Invalid project id"}, status=400)
 
     # Painted mask: white = inpaint here. Store as 8-bit grayscale.
-    img.convert("L").save(file_path, "PNG")
+    try:
+        img.convert("L").save(file_path, "PNG")
+    except Exception as e:
+        return web.json_response({"error": f"Failed to process mask: {e}"}, status=400)
     relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
     return web.json_response({"status": "success", "path": relative_path})
 

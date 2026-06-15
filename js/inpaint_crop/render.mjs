@@ -16,6 +16,7 @@ proto._loadImageFromURL = function (url, onDone) {
     this.imgH = img.naturalHeight;
     this._ensureMaskCanvas();
     this._fitCanvas();
+    this._rescanBBox();
     this._recomputeRegion();
     this._draw();
     this._setStatus(`Loaded: ${this.imgW}×${this.imgH}`);
@@ -36,6 +37,7 @@ proto._loadImageFromDataURL = function (dataURL) {
     this._mask = null;
     this._ensureMaskCanvas();
     this._fitCanvas();
+    this._rescanBBox();
     this._recomputeRegion();
     this._draw();
     this._setStatus(`Loaded: ${this.imgW}×${this.imgH}`);
@@ -53,23 +55,31 @@ proto._fitCanvas = function () {
   let dw, dh;
   if (maxW / maxH > asp) { dh = maxH; dw = dh * asp; } else { dw = maxW; dh = dw / asp; }
   this._scale = dw / this.imgW;
+  this._dispW = Math.round(dw); this._dispH = Math.round(dh);
+  // backing store at devicePixelRatio so the painting canvas stays crisp on
+  // high-DPI screens; all drawing is in logical px (the ctx is scaled by dpr).
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
   for (const c of [this.el.canvas, this.el.cursor]) {
-    c.width = Math.round(dw); c.height = Math.round(dh);
+    c.width = Math.round(this._dispW * dpr); c.height = Math.round(this._dispH * dpr);
+    c.style.width = this._dispW + "px"; c.style.height = this._dispH + "px";
   }
+  this.el.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  this.el.curCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   this.el.canvas.style.cursor = "none";
 };
 
 proto._draw = function () {
   if (!this.img) return;
-  const ctx = this.el.ctx, cvs = this.el.canvas, s = this._scale;
-  ctx.clearRect(0, 0, cvs.width, cvs.height);
-  ctx.drawImage(this.img, 0, 0, cvs.width, cvs.height);
+  const ctx = this.el.ctx, s = this._scale;
+  const W = this._dispW || this.el.canvas.width, H = this._dispH || this.el.canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(this.img, 0, 0, W, H);
 
   // red mask overlay (tint the mask alpha)
   if (this.maskVisible && this._mask) {
     if (!this._tint) this._tint = document.createElement("canvas");
     const t = this._tint;
-    if (t.width !== cvs.width || t.height !== cvs.height) { t.width = cvs.width; t.height = cvs.height; }
+    if (t.width !== W || t.height !== H) { t.width = W; t.height = H; }
     const tc = t.getContext("2d");
     tc.clearRect(0, 0, t.width, t.height);
     tc.drawImage(this._effectiveMaskCanvas(), 0, 0, t.width, t.height);
@@ -115,18 +125,24 @@ proto._draw = function () {
 };
 
 // ── geometry preview ──────────────────────────────────────────────────────
+// Scan the mask for its painted bounding box. This is the expensive part
+// (full-image getImageData + per-pixel scan), so it only runs when the mask
+// actually changes (stroke end / clear / invert / undo / load), NOT on every
+// context-slider tick.
+proto._rescanBBox = function () {
+  if (!this.img || !this._mask) { this._bbox = null; return; }
+  const id = this._mctx.getImageData(0, 0, this.imgW, this.imgH);
+  this._bbox = maskBBoxFromImageData(id.data, this.imgW, this.imgH);
+};
+
+// Compute the crop region from the CACHED bbox + current knobs. Cheap, so it is
+// safe to call on every context-slider tick without re-scanning the mask.
 proto._recomputeRegion = function () {
   if (!this.img) { this._region = null; this._bbox = null; return; }
-  let bbox = null;
-  if (this._mask) {
-    const id = this._mctx.getImageData(0, 0, this.imgW, this.imgH);
-    bbox = maskBBoxFromImageData(id.data, this.imgW, this.imgH);
-  }
-  this._bbox = bbox;
   const grow = this.params.mask_grow != null ? this.params.mask_grow : 0;
-  const grown = growBBox(bbox, grow, this.imgW, this.imgH);
+  const grown = growBBox(this._bbox, grow, this.imgW, this.imgH);
   this._region = computeRegion(grown, this.imgW, this.imgH, this.params);
-  this._updateInfo(bbox);
+  this._updateInfo(this._bbox);
 };
 
 proto._updateInfo = function (bbox) {
