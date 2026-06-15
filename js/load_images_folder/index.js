@@ -89,7 +89,9 @@ function renderUI(node) {
 }
 
 // ── (re)list the chosen folder + reconcile selection ─────────────────────────
-async function refreshListing(node) {
+// userAction = the call came from a real user gesture (folder change / subfolder
+// toggle), as opposed to a workflow-load path (onNodeCreated / onConfigure).
+async function refreshListing(node, userAction = false) {
   const state = readState(node);
   if (!state.folder) {
     node._pixLifFiles = [];
@@ -107,14 +109,16 @@ async function refreshListing(node) {
     node._pixLifFiles = [];
     node._pixLifListError = (res && res.message) || "Folder not found.";
   }
-  // Drop selections that no longer exist on disk. Persist that ONLY on user
-  // actions (never while a workflow is loading) so opening a saved workflow
-  // can't dirty it (Vue Compat #18). Python tolerates missing files at run.
+  // Drop selections that no longer exist on disk, but PERSIST that only on a
+  // genuine user action. The load path must never write serialized state
+  // (Vue Compat #18) - and isGraphLoading() alone is unreliable here because
+  // the await above usually outlasts its 300ms trailing window. Python tolerates
+  // missing files at run time (skips them), so not persisting on load is safe.
   const present = new Set((node._pixLifFiles || []).map((f) => f.file));
   const st = readState(node);
   const before = (st.selected || []).length;
   const kept = (st.selected || []).filter((f) => present.has(f));
-  if (kept.length !== before && !isGraphLoading()) {
+  if (kept.length !== before && userAction && !isGraphLoading()) {
     st.selected = kept;
     writeState(node, st);
   }
@@ -127,7 +131,7 @@ async function setFolder(node, folder) {
   st.folder = folder;
   if (changed) st.selected = []; // new folder → drop stale selection
   writeState(node, st);
-  await refreshListing(node);
+  await refreshListing(node, true);
 }
 
 // ── resize control (mode dropdown + the shared per-mode panel) ────────────────
@@ -202,7 +206,8 @@ function setupNode(node) {
 
   // events
   ui.folderInput.addEventListener("keydown", (e) => {
-    e.stopPropagation();
+    // capture-phase canvas shortcuts need stopImmediate, not just stop
+    e.stopImmediatePropagation();
     if (e.key === "Enter") {
       e.preventDefault();
       ui.folderInput.blur();
@@ -228,8 +233,11 @@ function setupNode(node) {
       renderUI(node);
       return;
     }
-    if (!node._pixLifFiles) await refreshListing(node);
-    openPickGallery(node, ui.pickBtn, { onChange: renderUI, refreshListing });
+    if (!node._pixLifFiles) await refreshListing(node, true);
+    openPickGallery(node, ui.pickBtn, {
+      onChange: renderUI,
+      refreshListing: (n) => refreshListing(n, true),
+    });
   });
 
   try {

@@ -218,8 +218,16 @@ export function openPickGallery(node, anchorEl, ctx) {
   }
   function commit() {
     const sorted = sortFiles(node._pixLifFiles || [], state.sort, state.sort_dir);
-    state.selected = sorted.map((f) => f.file).filter((f) => selSet.has(f));
-    writeState(node, state);
+    const selected = sorted.map((f) => f.file).filter((f) => selSet.has(f));
+    // re-read fresh state so a concurrent body edit (resize/folder) isn't
+    // clobbered; only write the keys the gallery owns.
+    const fresh = readState(node);
+    fresh.selected = selected;
+    fresh.sort = state.sort;
+    fresh.sort_dir = state.sort_dir;
+    fresh.recursive = state.recursive;
+    writeState(node, fresh);
+    state.selected = selected; // keep local snapshot in sync
     updateCounts();
     ctx.onChange?.(node);
   }
@@ -274,7 +282,7 @@ export function openPickGallery(node, anchorEl, ctx) {
     renderGrid();
     commit();
   });
-  firstInput.addEventListener("keydown", (e) => e.stopPropagation());
+  firstInput.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   sortBtn.addEventListener("click", () => {
     openMiniMenu(sortBtn, SORTS, `${state.sort}|${state.sort_dir}`, (val) => {
       const [s, d] = val.split("|");
