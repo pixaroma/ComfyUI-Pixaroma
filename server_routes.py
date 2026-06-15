@@ -1212,3 +1212,56 @@ async def api_lif_thumb(request):
         )
     except Exception:
         return web.Response(status=404)
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/browse")
+async def api_lif_browse(request):
+    """Navigate the server filesystem for the in-app folder picker.
+    ?path=<dir>  (empty = list drives on Windows / '/' on POSIX).
+    Returns {ok, path, parent, dirs:[{name, path, images}]}; images = -1 means
+    'not counted' (skipped for folders with many sub-folders, to stay fast)."""
+    path = request.query.get("path", "")
+    try:
+        if not path:
+            dirs = []
+            if os.name == "nt":
+                import string
+                for letter in string.ascii_uppercase:
+                    d = f"{letter}:\\"
+                    if os.path.isdir(d):
+                        dirs.append({"name": d, "path": d, "images": -1})
+            else:
+                dirs.append({"name": "/", "path": "/", "images": -1})
+            return web.json_response({"ok": True, "path": "", "parent": None, "dirs": dirs})
+
+        if not os.path.isdir(path):
+            return web.json_response({"ok": False, "message": "Folder not found.", "dirs": []})
+        real = os.path.realpath(path)
+        parent = os.path.dirname(real)
+        if parent == real:  # already at a drive / filesystem root
+            parent = ""
+
+        subdirs = []
+        try:
+            for n in sorted(os.listdir(real), key=str.lower):
+                full = os.path.join(real, n)
+                if os.path.isdir(full):
+                    subdirs.append((n, full))
+        except OSError as e:
+            return web.json_response({"ok": False, "message": f"Could not read folder: {e}", "dirs": []})
+
+        # Only tally per-folder image counts when cheap (few sub-folders), so
+        # browsing into e.g. C:\Windows doesn't stat hundreds of directories.
+        do_count = len(subdirs) <= 60
+        dirs = []
+        for n, full in subdirs:
+            cnt = -1
+            if do_count:
+                try:
+                    cnt = sum(1 for fn in os.listdir(full) if _lif_is_image(fn))
+                except OSError:
+                    cnt = -1
+            dirs.append({"name": n, "path": full, "images": cnt})
+        return web.json_response({"ok": True, "path": real, "parent": parent, "dirs": dirs})
+    except Exception as e:
+        return web.json_response({"ok": False, "message": str(e), "dirs": []})

@@ -404,6 +404,37 @@ const HELP = {
     footer: "Replaces Get Image Size + Image Scale chains in most workflows.",
   },
 
+  "PixaromaLoadImagesFolder": {
+    title: "Load Images from Folder Pixaroma",
+    tagline: "Load many images from any folder and run your workflow on each one, one at a time.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Point it at a folder of images and pick which ones to process. When you Run, it feeds the selected images through your workflow one at a time and gives you a finished result for each. It is a drop-in for Load Image when you want to batch a whole folder: swap it in, wire it the same way, and one Run handles every image. Images can be different sizes.\n\nIt has the same resize options as Load Image Pixaroma (`Max megapixels`, `Longest side`, `Scale by`, `Fit inside`, `Crop to fill`, `Match aspect ratio`), applied to each image as it loads. Resize is `Off` by default.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Set the folder: type or paste a path into the folder box, or click `Browse` to navigate your drives and folders and pick one.",
+          "Click `Pick images` to open the gallery. Use `Select all`, `First` with a number, or click individual thumbnails to choose exactly what you want.",
+          "Wire `image` into your workflow (upscale, restyle, etc.) and `filename` into a Save node so each result keeps its original name.",
+          "Hit Run once and leave the batch count at 1. The node processes every selected image by itself.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "Each selected image, one per item, after any resize."],
+          ["mask", "Each image's mask from its alpha channel (blank if it has none)."],
+          ["filename", "Each image's filename without the extension, for naming saved results."],
+          ["index", "The 1-based position of each image within your selection (1, 2, 3 ...)."],
+          ["total", "How many images were selected (the same number for every item)."],
+        ],
+      },
+    ],
+    footer: "Pick 5 images and you get 5 results from one Run. No need to match any batch number.",
+  },
+
   "PixaromaPreview": {
     title: "Preview Image Pixaroma",
     tagline: "Inline image preview with Save, Copy, and Open buttons - batch-aware, with a Strip or Grid layout.",
