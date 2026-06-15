@@ -277,6 +277,14 @@ app.registerExtension({
       node.addInput("image", "IMAGE");
     }
 
+    // ── MASK input socket (optional) ────────────────────────────────────
+    // Lets the node crop transparency alongside the image. Guard-add (like the
+    // image input) so it shows on fresh nodes AND on workflows saved before this
+    // input existed. Sits right after the image input.
+    if (!(node.inputs || []).some((inp) => inp.name === "mask")) {
+      node.addInput("mask", "MASK");
+    }
+
     // ── Shared preview system ──
     const parts = createNodePreview(
       "Image Crop",

@@ -118,6 +118,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Wire an upstream IMAGE, drag a file onto the node, or paste with `Ctrl+V`.",
+          "To keep transparency, also wire a MASK into the `mask` input (for example Load Image's MASK output) - it gets cut with the exact same box.",
           "Adjust the crop rectangle using the panel fields or click `Open Crop Editor` for the fullscreen editor with handles.",
           "Choose a preset ratio (1:1, 16:9, 9:16, and more) or leave it on `Free`.",
           "Run the workflow to output the cropped result.",
@@ -127,6 +128,7 @@ const HELP = {
         heading: "Outputs",
         defs: [
           ["image", "The cropped image."],
+          ["mask", "The cropped mask, cut with the same box as the image. Wire a MASK in (such as Load Image's MASK) to carry transparency through the crop; otherwise it is a fully-opaque mask sized to the crop."],
           ["width", "Width of the cropped area in pixels."],
           ["height", "Height of the cropped area in pixels."],
         ],
