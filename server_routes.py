@@ -1387,11 +1387,11 @@ def _lif_dialog_linux(start_path):
 
 
 def _lif_native_folder_dialog(start_path=""):
-    """Open the native OS folder picker; return the chosen path or "" (cancel /
-    unavailable). Runs in a thread (caller uses run_in_executor); only one at a
-    time via the module lock."""
+    """Open the native OS folder picker; return the chosen path, "" (cancelled),
+    or None (busy - a dialog is already open). Runs in a thread (caller uses
+    run_in_executor); only one at a time via the module lock."""
     if not _LIF_DIALOG_LOCK.acquire(blocking=False):
-        return ""  # a dialog is already open
+        return None  # a dialog is already open elsewhere -> caller falls back
     try:
         import sys
         if sys.platform == "win32":
@@ -1421,6 +1421,8 @@ async def api_lif_pick_native(request):
         import asyncio
         loop = asyncio.get_running_loop()
         path = await loop.run_in_executor(None, _lif_native_folder_dialog, start)
+        if path is None:
+            return web.json_response({"ok": False, "busy": True})
         if path and os.path.isdir(path):
             return web.json_response({"ok": True, "path": path})
         return web.json_response({"ok": False, "cancelled": True})

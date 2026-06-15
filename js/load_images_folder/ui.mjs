@@ -32,7 +32,7 @@ export function injectCSS() {
 .pix-lif-msg:empty { display:none; }
 .pix-lif-resize-slot { display:flex; flex-direction:column; gap:6px; }
 .pix-lif-resize-slot:empty { display:none; }
-.pix-lif-resizebtn { display:flex; align-items:center; gap:8px; width:100%; background:#141414; border:1px solid #3a3a3a; border-radius:5px; padding:6px 8px; font-size:11px; color:#cfcfcf; cursor:pointer; box-sizing:border-box; }
+.pix-lif-resizebtn { display:flex; align-items:center; gap:8px; width:100%; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.16); border-radius:5px; padding:6px 8px; font-size:11px; color:#cfcfcf; cursor:pointer; box-sizing:border-box; }
 .pix-lif-resizebtn:hover { border-color:#f66744; }
 .pix-lif-resizebtn .lbl { color:#f66744; font-size:10px; text-transform:uppercase; letter-spacing:.04em; }
 .pix-lif-resizebtn .val { margin-left:auto; color:#ddd; }
@@ -159,7 +159,7 @@ export function buildRoot() {
   root.className = "pix-lif-root";
   root.innerHTML =
     `<div class="pix-lif-folderrow">` +
-    `<input class="pix-lif-folder" type="text" spellcheck="false" placeholder="Folder path — type, paste, or Browse">` +
+    `<input class="pix-lif-folder" type="text" spellcheck="false" placeholder="Folder path - type, paste, or Browse">` +
     `<button class="pix-lif-browse" type="button" title="Browse for a folder on your computer">${FOLDER_SVG}<span class="pix-lif-browse-lbl">Browse</span></button>` +
     `</div>` +
     `<button class="pix-lif-pick empty" type="button" title="Choose which images to load">Pick images · 0 / 0</button>` +
@@ -191,17 +191,17 @@ export function openPickGallery(node, anchorEl, ctx) {
   gal.className = "pix-lif-gallery";
   gal.innerHTML =
     `<div class="pix-lif-gal-head">` +
-    `<div class="pix-lif-tbtn" data-act="all">Select all</div>` +
-    `<div class="pix-lif-tbtn" data-act="none">None</div>` +
-    `<div class="pix-lif-firstwrap"><div class="pix-lif-tbtn" data-act="first">First</div>` +
-    `<input class="pix-lif-firstn" type="number" min="1" value="5"></div>` +
+    `<div class="pix-lif-tbtn" data-act="all" title="Select every image in this folder">Select all</div>` +
+    `<div class="pix-lif-tbtn" data-act="none" title="Deselect all">None</div>` +
+    `<div class="pix-lif-firstwrap"><div class="pix-lif-tbtn" data-act="first" title="Select the first N images (in sort order)">First</div>` +
+    `<input class="pix-lif-firstn" type="number" min="1" value="5" title="How many images First selects"></div>` +
     `<div class="pix-lif-count"><b class="pix-lif-cn">0</b> / <span class="pix-lif-ct">0</span> selected</div>` +
     `</div>` +
     `<div class="pix-lif-gal-body"><div class="pix-lif-grid"></div></div>` +
     `<div class="pix-lif-gal-foot">` +
-    `<div class="pix-lif-subf"><span class="box"></span> Include subfolders</div>` +
-    `<div class="pix-lif-tbtn" data-act="sort">Sort: Name ↑</div>` +
-    `<div class="pix-lif-done" data-act="done">Done</div>` +
+    `<div class="pix-lif-subf" title="Also include images inside sub-folders"><span class="box"></span> Include subfolders</div>` +
+    `<div class="pix-lif-tbtn" data-act="sort" title="Change the sort order">Sort: Name ↑</div>` +
+    `<div class="pix-lif-done" data-act="done" title="Apply this selection and close">Done</div>` +
     `</div>`;
   document.body.appendChild(gal);
 
@@ -337,8 +337,8 @@ export function openBrowsePopup(node, anchorEl, ctx) {
     `<div class="pix-lif-bp-crumb"></div>` +
     `<div class="pix-lif-bp-list"></div>` +
     `<div class="pix-lif-bp-foot">` +
-    `<div class="pix-lif-tbtn" data-act="cancel">Cancel</div>` +
-    `<div class="pix-lif-done" data-act="use">Use this folder</div>` +
+    `<div class="pix-lif-tbtn" data-act="cancel" title="Close without changing the folder">Cancel</div>` +
+    `<div class="pix-lif-done" data-act="use" title="Use the folder shown above">Use this folder</div>` +
     `</div>`;
   document.body.appendChild(pop);
 
@@ -371,7 +371,7 @@ export function openBrowsePopup(node, anchorEl, ctx) {
     if (!res.dirs.length) {
       const e = document.createElement("div");
       e.className = "pix-lif-bp-empty";
-      e.textContent = cur ? "No sub-folders — use this folder." : "No drives found.";
+      e.textContent = cur ? "No sub-folders here. Use this folder." : "No drives found.";
       list.appendChild(e);
     }
     for (const d of res.dirs) {

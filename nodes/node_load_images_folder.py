@@ -219,6 +219,8 @@ class PixaromaLoadImagesFolder:
         opts = {k: state[k] for k in state if k != "selected"}
         parts = [json.dumps(opts, sort_keys=True)]
         for rel in state.get("selected", []) or []:
+            if not isinstance(rel, str) or not rel:
+                continue  # malformed entry - skip (mirrors load())
             p = os.path.join(folder, rel)
             try:
                 parts.append(f"{rel}:{os.stat(p).st_mtime_ns}")
