@@ -336,16 +336,17 @@ def _feather_alpha(alpha, feather):
 
 
 def _blur_alpha(alpha, blend):
-    """Soften a MASK's OWN edge by `blend` px (in-place Gaussian) so the masked
-    paste fades smoothly into the surroundings (mask-aware blend). Distinct from
-    _feather_alpha, which fades the rectangle boundary (whole-crop mode).
+    """Soften a MASK's edge by `blend` px so the masked paste fades smoothly into
+    the surroundings (mask-aware blend). Distinct from _feather_alpha, which fades
+    the rectangle boundary (whole-crop mode).
 
-    The 0.5 contour stays ON the mask edge - NO outward dilation - so a larger
-    blend gives a wider, MORE GRADUAL transition centred on the seam, not a wider
-    full-strength halo. (The earlier dilate-then-blur pushed the paste outward by
-    ~half the blend, so big blend values made the seam look WORSE - the opposite
-    of what the slider should do. Coverage/grow is the crop node's mask_grow job;
-    the stitch only softens.)
+    OUTWARD-only feather: alpha is 1.0 everywhere INSIDE the mask and AT its edge,
+    ramping to 0 over `blend` px OUTSIDE. So the new content fully covers the
+    masked area (the old content can NEVER show through at the new object's own
+    edge) and only the transition into the surroundings is softened. A centred
+    feather made the masked edge itself semi-transparent, which read as a soft
+    ghost/halo of the old content. Coverage/grow is the crop node's mask_grow
+    job; this only softens the outer seam.
     """
     k = int(blend)
     if k <= 0:
@@ -355,17 +356,20 @@ def _blur_alpha(alpha, blend):
         mb = a_np > 0.5
         if not mb.any() or mb.all():
             return torch.from_numpy(a_np.astype(np.float32))
-        # signed distance to the mask edge (+ inside, - outside), in px, then a
-        # smoothstep ramp of total width ~2k centred ON the edge. interior stays
-        # exactly 1, exterior exactly 0; only the seam softens. Predictable: the
-        # feather reaches k px to each side of the edge.
+        # signed distance to the mask edge (+ inside, - outside, in px). Map so
+        # signed >= 0 -> 1.0 (inside + edge fully opaque) and signed in [-k,0]
+        # ramps 1 -> 0 with smoothstep shoulders. distance_transform_edt only
+        # considers in-array pixels, so a mask running off the crop edge stays
+        # opaque there (no false feather along the rectangle border).
         signed = (_ndimage.distance_transform_edt(mb)
                   - _ndimage.distance_transform_edt(~mb))
-        t = np.clip(0.5 + signed / (2.0 * k), 0.0, 1.0)
+        t = np.clip(signed / float(k) + 1.0, 0.0, 1.0)
         soft = t * t * (3.0 - 2.0 * t)
         return torch.from_numpy(soft.astype(np.float32))
-    # fallback (no scipy): gaussian tuned so the visible feather ~= k px each side
-    return torch.from_numpy(gaussian_blur_np(a_np, max(1, int(k / 1.7))).astype(np.float32))
+    # fallback (no scipy): grow the mask by k (keep it fully opaque inside) then
+    # gaussian-blur so the falloff is outward, approximating the EDT feather.
+    grown = _dilate(a_np > 0.5, k).astype(np.float32)
+    return torch.from_numpy(gaussian_blur_np(grown, max(1, int(k / 1.7))).astype(np.float32))
 
 
 def _color_match(patch, ref, region_mask, strength):
@@ -401,7 +405,7 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     ch = int(max(1, min(int(crop_info.get("h", H)), H - y)))
 
     patch = image
-    if patch.dim() != 4:
+    if not isinstance(patch, torch.Tensor) or patch.dim() != 4:
         patch = base.new_zeros((1, ch, cw, base.shape[3]))
     if int(patch.shape[1]) != ch or int(patch.shape[2]) != cw:
         patch = resize_image_tensor(patch, cw, ch, "lanczos").to(base.device, base.dtype)
@@ -436,6 +440,8 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
             B = patch.shape[0]
         else:
             n = min(B, patch.shape[0])
+            print(f"[PixaromaInpaintStitch] batch mismatch: original {B} vs inpainted "
+                  f"{patch.shape[0]} - using {n} frames")
             out, patch = out[:n], patch[:n]
             B = n
     patch = patch.to(out.device, out.dtype)

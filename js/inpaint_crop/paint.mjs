@@ -38,6 +38,9 @@ proto._bindMouse = function (cvs) {
     if (winMove) window.removeEventListener("mousemove", winMove), (winMove = null);
     if (winUp) window.removeEventListener("mouseup", winUp), (winUp = null);
   };
+  // expose so a close mid-stroke (editor torn down before mouseup) detaches the
+  // window listeners instead of leaking them for the page lifetime.
+  this._detachStroke = detach;
   cvs.addEventListener("mousedown", (e) => {
     if (!this.img || e.button !== 0) return;
     e.preventDefault();
@@ -49,7 +52,7 @@ proto._bindMouse = function (cvs) {
     window.addEventListener("mouseup", winUp);
   });
   cvs.addEventListener("mousemove", (e) => { if (!this._painting) this._drawCursor(this._displayPos(e)); });
-  cvs.addEventListener("mouseleave", () => { if (!this._painting) { this.el.curCtx?.clearRect(0, 0, this._dispW || this.el.cursor.width, this._dispH || this.el.cursor.height); this._lastCursorPos = null; } });
+  cvs.addEventListener("mouseleave", () => { if (!this._painting && this._dispW) { this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH); this._lastCursorPos = null; } });
   cvs.addEventListener("wheel", (e) => {
     e.preventDefault();
     const d = e.deltaY < 0 ? 4 : -4;
@@ -160,9 +163,9 @@ proto._stampLine = function (x0, y0, x1, y1) {
 // ── cursor ring ────────────────────────────────────────────────────────────
 proto._drawCursor = function (p) {
   const ctx = this.el.curCtx;
-  if (!ctx) return;
+  if (!ctx || !this._dispW) return;   // canvas not fitted yet (no image loaded)
   this._lastCursorPos = p;
-  ctx.clearRect(0, 0, this._dispW || this.el.cursor.width, this._dispH || this.el.cursor.height);
+  ctx.clearRect(0, 0, this._dispW, this._dispH);
   const r = this.brushSize / 2;
   const erase = this._effectiveTool() === "erase";
   ctx.lineWidth = 1.5;
@@ -225,7 +228,9 @@ proto._exportMaskDataURL = function () {
   out.width = this.imgW; out.height = this.imgH;
   const o = out.getContext("2d");
   o.fillStyle = "#000"; o.fillRect(0, 0, this.imgW, this.imgH);
-  if (this._mask) o.drawImage(this._mask, 0, 0);
+  // include any in-progress stroke so Ctrl+S mid-drag saves what's on screen
+  const m = (this._effectiveMaskCanvas && this._effectiveMaskCanvas()) || this._mask;
+  if (m) o.drawImage(m, 0, 0);
   return out.toDataURL("image/png");
 };
 
@@ -315,6 +320,7 @@ proto._stopBrushHold = function () {
 
 proto._unbindKeys = function () {
   this._stopBrushHold();
+  this._detachStroke?.();   // detach any live stroke window-listeners (close mid-drag)
   if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });
   if (this._keyUpHandler) window.removeEventListener("keyup", this._keyUpHandler, { capture: true });
 };

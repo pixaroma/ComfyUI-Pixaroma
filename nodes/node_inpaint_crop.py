@@ -128,7 +128,7 @@ class PixaromaInpaintCrop:
         try:
             sj = state.get("state_json", "{}") if isinstance(state, dict) else str(state)
             meta = json.loads(sj) if sj else {}
-            parts.append(str(meta))
+            parts.append(json.dumps(meta, sort_keys=True))  # deterministic regardless of key order
             mp = meta.get("mask_path", "")
             if mp:
                 full = cls._resolve_pixaroma_path(mp)

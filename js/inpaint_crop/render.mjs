@@ -69,26 +69,30 @@ proto._fitCanvas = function () {
 };
 
 proto._draw = function () {
-  if (!this.img) return;
+  if (!this.img || !this._dispW) return;  // _fitCanvas sets _dispW before any draw
   const ctx = this.el.ctx, s = this._scale;
-  const W = this._dispW || this.el.canvas.width, H = this._dispH || this.el.canvas.height;
+  const W = this._dispW, H = this._dispH;
   ctx.clearRect(0, 0, W, H);
   ctx.drawImage(this.img, 0, 0, W, H);
 
-  // red mask overlay (tint the mask alpha)
+  // red mask overlay (tint the mask alpha) - tint canvas is DPR-backed so the
+  // overlay stays as crisp as the image on high-DPI screens.
   if (this.maskVisible && this._mask) {
     if (!this._tint) this._tint = document.createElement("canvas");
     const t = this._tint;
-    if (t.width !== W || t.height !== H) { t.width = W; t.height = H; }
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    const tw = Math.round(W * dpr), th = Math.round(H * dpr);
+    if (t.width !== tw || t.height !== th) { t.width = tw; t.height = th; }
     const tc = t.getContext("2d");
-    tc.clearRect(0, 0, t.width, t.height);
-    tc.drawImage(this._effectiveMaskCanvas(), 0, 0, t.width, t.height);
+    tc.setTransform(1, 0, 0, 1, 0, 0);
+    tc.clearRect(0, 0, tw, th);
+    tc.drawImage(this._effectiveMaskCanvas(), 0, 0, tw, th);
     tc.globalCompositeOperation = "source-in";
     tc.fillStyle = "#f6303a";
-    tc.fillRect(0, 0, t.width, t.height);
+    tc.fillRect(0, 0, tw, th);
     tc.globalCompositeOperation = "source-over";
     ctx.globalAlpha = this.maskOpacity;
-    ctx.drawImage(t, 0, 0);
+    ctx.drawImage(t, 0, 0, W, H);  // backing-res tint at logical size = crisp
     ctx.globalAlpha = 1;
   }
 

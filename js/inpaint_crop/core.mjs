@@ -47,6 +47,8 @@ export class InpaintCropEditor {
     this.imgH = 0;
     this.projectId = null;
     this._scale = 1;
+    this._dispW = 0;   // logical display size, set by _fitCanvas before any draw
+    this._dispH = 0;
     this._srcPath = "";
     this._maskPath = "";
     this._pendingSrcDataURL = null;
@@ -80,7 +82,6 @@ export class InpaintCropEditor {
     this._srcPath = data.src_path || "";
     this._maskPath = data.mask_path || "";
     this.params = { ...(params || {}) };
-    if (this.params.context_px != null) this.brushContextPx = this.params.context_px;
     this._fromUpstream = !!upstreamUrl;
 
     this._buildUI();
