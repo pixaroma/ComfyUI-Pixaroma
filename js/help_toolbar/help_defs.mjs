@@ -167,6 +167,73 @@ const HELP = {
     ],
   },
 
+  "PixaromaInpaintCrop": {
+    title: "Inpaint Crop Pixaroma",
+    tagline: "The easy way to set up an inpaint - paint a mask, get a model-ready crop automatically.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Open the fullscreen editor and paint a red mask over the part of the image you want to fix. The node finds the box around your mask, adds a context margin so the model can see the surroundings, and crops a clean, model-friendly piece (sized to a multiple of 8 and scaled toward your target, so even a small masked area gets enough resolution to look sharp).\n\nWire the cropped `image` and `mask` into your inpaint model (KSampler, Flux, edit models), then send `crop_info` into Inpaint Stitch Pixaroma to drop the result back in place. The orange box in the editor shows exactly what will be cropped as you paint.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire an image in, or drag-drop / paste one onto the node body.",
+          "Click `Open mask editor` and paint over the area to change. Use Brush / Erase, the size slider (or `[` `]` and the mouse wheel), Clear and Invert.",
+          "Set the context margin in the editor, or tune `size mode`, `target`, `context px`, `mask grow` and `mask blur` on the node.",
+          "Click `Save`, then wire `image` and `mask` into your inpaint model.",
+          "Send `crop_info` to Inpaint Stitch Pixaroma.",
+        ],
+      },
+      {
+        heading: "Settings",
+        defs: [
+          ["size mode", "Keep shape scales the long side to the target with no stretching (best quality). Force size outputs a square. Free keeps the natural size."],
+          ["context px", "How much surrounding area to include around your mask."],
+          ["mask grow / blur", "Expand the mask before cropping, and soften its edge for a smoother result."],
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The cropped region, sized for the model."],
+          ["mask", "The matching cropped mask. Wire it into SetLatentNoiseMask or your inpaint conditioning."],
+          ["crop_info", "Carries the original and where the crop came from. Wire it into Inpaint Stitch Pixaroma."],
+          ["width / height", "The crop size in pixels, handy for an empty latent or edit models."],
+        ],
+      },
+    ],
+    footer: "The `crop_info` wire is the same type Image Crop uses, so the two are interchangeable.",
+  },
+
+  "PixaromaInpaintStitch": {
+    title: "Inpaint Stitch Pixaroma",
+    tagline: "Paste your inpainted crop back onto the original, blended so the seam disappears.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "The other half of the inpaint workflow. After Inpaint Crop Pixaroma cropped a region and you ran your model on it, this node resizes the result back and blends it into the original at the exact spot. By default only the painted area changes, so everything else stays pixel-perfect.\n\n`blend` feathers the seam, and `color match` nudges the new pixels toward the original colors so the seam vanishes even on flat skies or walls. It also hands back the untouched `original` so you can compare before and after.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire the `crop_info` output of Inpaint Crop Pixaroma into `crop_info`.",
+          "Wire your inpainted crop (after the model) into `image`. It is resized back automatically.",
+          "Raise `blend` for a softer seam. Turn on `color match` if the new area looks slightly off-color.",
+          "Run the workflow to get the finished full image.",
+          "Wire `image` and `original` into Image Compare Pixaroma for an instant before / after.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The original image with the inpainted crop blended back in place."],
+          ["original", "The full original uncropped image, for a before / after compare."],
+        ],
+      },
+    ],
+  },
+
   "PixaromaAudioStudio": {
     title: "AudioReact Pixaroma",
     tagline: "Turn a still image into an audio-reactive video - motion and effects that move with the beat.",

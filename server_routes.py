@@ -525,6 +525,51 @@ async def upload_crop_source(request):
 
 
 # ────────────────────────────────────────────────────────────
+# Inpaint Crop Pixaroma — source + painted-mask upload
+# ────────────────────────────────────────────────────────────
+
+@PromptServer.instance.routes.post("/pixaroma/api/inpaint/upload_src")
+async def upload_inpaint_source(request):
+    data = await request.json()
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(data.get("image", ""))
+    if img is None:
+        return web.json_response({"error": "Invalid image data"}, status=400)
+
+    filename = f"inpaint_src_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    img.convert("RGB").save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "path": relative_path})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/inpaint/save_mask")
+async def save_inpaint_mask(request):
+    data = await request.json()
+    raw_id = data.get("project_id", "")
+    project_id = _sanitize_id(raw_id, str(uuid.uuid4()).replace("-", ""))
+
+    img = _decode_image(data.get("mask", ""))
+    if img is None:
+        return web.json_response({"error": "Invalid mask data"}, status=400)
+
+    filename = f"inpaint_mask_{project_id}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return web.json_response({"error": "Invalid project id"}, status=400)
+
+    # Painted mask: white = inpaint here. Store as 8-bit grayscale.
+    img.convert("L").save(file_path, "PNG")
+    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
+    return web.json_response({"status": "success", "path": relative_path})
+
+
+# ────────────────────────────────────────────────────────────
 # AudioReact Pixaroma — inline image / audio upload
 # ────────────────────────────────────────────────────────────
 
