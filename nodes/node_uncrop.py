@@ -138,16 +138,24 @@ class PixaromaUncrop:
 
     def _passthrough_mask(self, mask, image):
         """When there's nothing to paste (no crop_info), forward the WIRED mask
-        unchanged so transparency survives. Falls back to a fully-opaque mask
-        sized to the image only when no mask is wired."""
+        unchanged so transparency survives. Falls back to all-zeros (every pixel
+        opaque, ComfyUI convention) sized to the image only when no mask is
+        wired. Returned on the image's device so the two outputs pair up."""
+        dev = image.device if isinstance(image, torch.Tensor) else "cpu"
         if isinstance(mask, torch.Tensor):
-            if mask.dim() == 2:
-                return mask[None, ...].to(torch.float32)
-            if mask.dim() == 3:
-                return mask.to(torch.float32)
+            m = mask
+            if m.dim() == 4:  # squeeze a singleton channel dim ([B,1,H,W] / [B,H,W,1])
+                if m.shape[1] == 1:
+                    m = m[:, 0]
+                elif m.shape[-1] == 1:
+                    m = m[..., 0]
+            if m.dim() == 2:
+                m = m[None, ...]
+            if m.dim() == 3:
+                return m.to(dev, torch.float32)
         h = int(image.shape[1]) if isinstance(image, torch.Tensor) and image.dim() == 4 else 1
         w = int(image.shape[2]) if isinstance(image, torch.Tensor) and image.dim() == 4 else 1
-        return torch.zeros((1, h, w), dtype=torch.float32)
+        return torch.zeros((1, h, w), dtype=torch.float32, device=dev)
 
     def uncrop(self, image, crop_info=None, mask=None, feather=0):
         # No crop_info wired -> nothing to paste back, so pass the image AND the
@@ -155,7 +163,9 @@ class PixaromaUncrop:
         # lost - this is the "Load Image -> Uncrop directly" case).
         if not isinstance(crop_info, dict) or not isinstance(crop_info.get("image"), torch.Tensor):
             print("[PixaromaUncrop] no crop_info wired - passing image + mask through")
-            return (image, self._passthrough_mask(mask, image), crop_info)
+            # Don't forward a non-dict garbage value down the typed wire.
+            ci_out = crop_info if isinstance(crop_info, dict) else None
+            return (image, self._passthrough_mask(mask, image), ci_out)
 
         base = crop_info["image"]
         if base.dim() != 4:
@@ -226,6 +236,11 @@ class PixaromaUncrop:
         base_mask = crop_info.get("mask")
         if isinstance(base_mask, torch.Tensor):
             bm = base_mask
+            if bm.dim() == 4:  # squeeze a singleton channel dim ([B,1,H,W] / [B,H,W,1])
+                if bm.shape[1] == 1:
+                    bm = bm[:, 0]
+                elif bm.shape[-1] == 1:
+                    bm = bm[..., 0]
             if bm.dim() == 2:
                 bm = bm[None, ...]
             if bm.dim() == 3 and int(bm.shape[-2]) == H and int(bm.shape[-1]) == W:
@@ -238,12 +253,19 @@ class PixaromaUncrop:
         out_mask = bm.clone()
         if isinstance(mask, torch.Tensor):
             region_mask = self._build_alpha(mask, cw, ch, 0).detach().to("cpu", torch.float32)
-            sa = seam.detach().to("cpu", torch.float32)  # same feathered seam
+            sa = seam.detach().to("cpu", torch.float32)  # feathered rectangle seam (region blend)
             cur = out_mask[:, y:y + ch, x:x + cw]
             out_mask[:, y:y + ch, x:x + cw] = region_mask[None, ...] * sa + cur * (1.0 - sa)
 
+        out_mask = out_mask.clamp(0.0, 1.0)
+        # Pair the mask with the IMAGE output: same device, and same batch (the
+        # image batch may have grown to match a multi-frame edited crop).
+        out_mask = out_mask.to(out.device)
+        if out_mask.shape[0] == 1 and out.shape[0] > 1:
+            out_mask = out_mask.repeat(out.shape[0], 1, 1, 1)
+
         # Pass crop_info straight through so it can be forwarded downstream.
-        return (out.clamp(0.0, 1.0), out_mask.clamp(0.0, 1.0), crop_info)
+        return (out.clamp(0.0, 1.0), out_mask, crop_info)
 
 
 NODE_CLASS_MAPPINGS = {
