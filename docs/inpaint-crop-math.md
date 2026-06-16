@@ -21,6 +21,8 @@ The mask the MODEL sees. `softm` (the `fill_holes`-cleaned + `mask_grow`-dilated
 
 `fill_holes` closes only SMALL enclosed specks/gaps (a hole up to ~0.5% of the image: `max(256, 0.005*H*W)` px) — NEVER a large subject-shaped hole. Otherwise a cut-out / background mask (white around a subject) would have its subject hole filled by scipy's `binary_fill_holes` and the whole mask would collapse to solid (so the crop bbox becomes the whole image and the model repaints everything). The no-scipy fallback (a 9px PIL close) is already naturally limited to small holes.
 
+If `invert_mask` is on, `raw` is flipped (`1 - raw`) right after `mask_to_np`, before fill-holes/grow — so the bbox, the conditioning out-mask, AND `crop_info["mask"]` (the stitch blend) all target the OPPOSITE area. It is a no-op when no mask is connected (`mask is None`). It is a mask-processing knob, NOT a geometry param, so it lives in `DEFAULTS` but not in `geometry.mjs`'s `GEO_DEFAULTS` (the editor's live preview does not reflect it - node-only).
+
 `apply_inpaint_crop` first coerces an RGBA input to RGB (premultiply over black: `rgb * alpha`), so `crop_info["image"]` is always 3-channel. A 4-channel cut-out (e.g. Remove Background Pixaroma's `image`) would otherwise make Inpaint Stitch's paste throw on a 3-vs-4 channel mismatch, and the stitch node's `except` silently passes the result through as the "original". Premultiplying over black makes the cut-out read as the subject on black (matching the editor/preview), not the leftover background still under the alpha.
 
 ## 3. Seam feather (`_blur_alpha`) — the paste-back blend

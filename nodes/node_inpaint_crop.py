@@ -57,6 +57,8 @@ class PixaromaInpaintCrop:
         "finds the box around your mask, adds a context margin, and crops a "
         "model-friendly piece (sized to a multiple of 8, scaled toward your "
         "target so even a small masked area gets enough resolution).\n\n"
+        "Turn on invert_mask to flip the mask and inpaint the OPPOSITE area (e.g. a "
+        "cut-out's background instead of its subject), no Invert Mask node needed.\n\n"
         "Wire the cropped image and mask into your inpaint model (KSampler, Flux, "
         "edit models), then send the crop_info wire into Inpaint Stitch Pixaroma "
         "to paste the result back onto the original at the exact spot.\n\n"
@@ -97,6 +99,15 @@ class PixaromaInpaintCrop:
                 "mask_blur": ("INT", {
                     "default": 4, "min": 0, "max": 256, "step": 1,
                     "tooltip": "Soften the output mask edge by this many pixels for a smoother inpaint.",
+                }),
+                "invert_mask": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": (
+                        "Flip the mask so the inpaint targets the OPPOSITE area "
+                        "(swap subject and background). Works on a wired mask or a "
+                        "painted one - a built-in alternative to an Invert Mask node. "
+                        "No effect if no mask is connected."
+                    ),
                 }),
                 "softness": ("INT", {
                     "default": 16, "min": 0, "max": 150, "step": 1,
@@ -218,7 +229,7 @@ class PixaromaInpaintCrop:
         return merge_params(p)
 
     def run(self, size_mode="keep shape (long side)", target=1024, multiple=8,
-            context_px=24, mask_grow=4, mask_blur=4, softness=16, **kwargs):
+            context_px=24, mask_grow=4, mask_blur=4, softness=16, invert_mask=False, **kwargs):
         upstream = kwargs.get("image")
         upstream_mask = kwargs.get("mask")
         state = kwargs.get("InpaintCropWidget")
@@ -261,6 +272,7 @@ class PixaromaInpaintCrop:
         # Inpaint Stitch as the seam-feather width.
         sb = max(0, min(150, int(softness)))
         params["blend"] = sb
+        params["invert_mask"] = bool(invert_mask)   # flip the mask before cropping
         try:
             img_t, mask_t, crop_info, ow, oh = apply_inpaint_crop(image, mask, params)
         except Exception as e:

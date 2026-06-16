@@ -192,6 +192,7 @@ const HELP = {
           ["size mode", "Keep shape scales the long side to the target with no stretching (best quality). Force size outputs a square. Free keeps the natural size."],
           ["context px", "How much surrounding area to include around your mask."],
           ["mask grow / blur", "Expand the mask before cropping, and soften the mask the model sees."],
+          ["invert mask", "Flip the mask so the inpaint hits the OPPOSITE area (swap subject and background). Works on a wired or painted mask - no separate Invert Mask node needed."],
         ],
       },
       {

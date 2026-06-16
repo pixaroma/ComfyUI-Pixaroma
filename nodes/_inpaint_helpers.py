@@ -51,6 +51,7 @@ DEFAULTS = {
     "mask_grow": 4,             # dilate the mask before measuring the bbox
     "mask_blur": 4,             # soften the OUTPUT mask edge (conditioning), px
     "blend": 16,                # seam feather px (stitch); also grows the crop context
+    "invert_mask": False,       # flip the mask (1 - mask) before cropping
     "fill_holes": True,
     "min_size": 256,
     "max_size": 2048,
@@ -88,6 +89,7 @@ def merge_params(p):
     out["context_pct"] = float(out["context_pct"])
     out["fill_holes"] = bool(out["fill_holes"])
     out["allow_upscale"] = bool(out["allow_upscale"])
+    out["invert_mask"] = bool(out["invert_mask"])
     out["multiple"] = max(1, out["multiple"])
     out["min_size"] = max(8, out["min_size"])
     out["max_size"] = max(out["min_size"], out["max_size"])
@@ -366,6 +368,8 @@ def apply_inpaint_crop(image, mask, p):
     B, H, W = int(image.shape[0]), int(image.shape[1]), int(image.shape[2])
 
     raw = mask_to_np(mask, H, W)
+    if p["invert_mask"] and mask is not None:
+        raw = 1.0 - raw                       # flip which area is inpainted (Invert toggle)
     proc = preprocess_mask(raw, p)            # binary core (fill-holes + grow) for the bbox
     bbox = mask_bbox(proc > 0.5)
     # Keep the brush's painted soft edge: the filled+grown core is opaque, the
