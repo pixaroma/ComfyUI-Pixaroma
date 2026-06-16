@@ -229,6 +229,7 @@ proto._save = async function () {
     const extra = {
       context_px: this.params.context_px,
       mask_grow: this.params.mask_grow,
+      mask_blur: this.params.mask_blur,
       softness: this.params.blend,
       size_mode: this.params.size_mode,
       target: this.params.target,

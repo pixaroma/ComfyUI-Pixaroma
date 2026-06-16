@@ -26,6 +26,7 @@ function readParams(node) {
     multiple: parseInt(g("multiple")) || 8,
     context_px: g("context_px") != null ? parseInt(g("context_px")) : 24,
     mask_grow: g("mask_grow") != null ? parseInt(g("mask_grow")) : 4,
+    mask_blur: g("mask_blur") != null ? parseInt(g("mask_blur")) : 4,
     blend: g("softness") != null ? parseInt(g("softness")) : 16,
   };
 }
@@ -54,6 +55,7 @@ function writeBackWidgets(node, extra) {
   if (!extra) return;
   if (extra.context_px != null) setNodeWidget(node, "context_px", extra.context_px);
   if (extra.mask_grow != null) setNodeWidget(node, "mask_grow", extra.mask_grow);
+  if (extra.mask_blur != null) setNodeWidget(node, "mask_blur", extra.mask_blur);
   if (extra.softness != null) setNodeWidget(node, "softness", extra.softness);
   if (extra.target != null) setNodeWidget(node, "target", extra.target);
   if (extra.multiple != null) setNodeWidget(node, "multiple", extra.multiple);

@@ -210,11 +210,6 @@ export class InpaintCropEditor {
       this.brushSize = parseInt(this.el.sizeSlider.numInput.value) || this.brushSize;
     });
     secBrush.content.append(this.el.sizeSlider.el);
-    const resetBrush = createButton("Reset to default", {
-      variant: "standard", iconSrc: UI + "reset.svg", onClick: () => this._resetBrush(),
-    });
-    resetBrush.style.marginTop = "6px";
-    secBrush.content.appendChild(resetBrush);
     sidebar.appendChild(secBrush.el);
 
     // Seam (the stitch blend; live preview on the canvas)
@@ -297,6 +292,13 @@ export class InpaintCropEditor {
     secCrop.content.append(this._sizeModeGrid.el, this.el.targetSlider.el, this._multipleGrid.el);
     sidebar.appendChild(secCrop.el);
 
+    // Reset all settings to default
+    const resetAll = createButton("Reset all to default", {
+      variant: "standard", iconSrc: UI + "reset.svg", onClick: () => this._resetAll(),
+    });
+    resetAll.style.marginTop = "10px";
+    sidebar.appendChild(resetAll);
+
     // Load Image
     const fileInput = document.createElement("input");
     fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.style.display = "none";
@@ -323,9 +325,28 @@ export class InpaintCropEditor {
 
   _setTool(v) { this.tool = v; }
 
-  _resetBrush() {
+  _resetAll() {
     this.brushSize = DEFAULT_BRUSH_SIZE;
+    this.maskOpacity = 0.5;
+    this.params.blend = 16;
+    this.params.mask_grow = 4;
+    this.params.mask_blur = 4;
+    this.params.blend_mode = "mask";
+    this.params.context_px = 24;
+    this.params.size_mode = "keep";
+    this.params.target = 1024;
+    this.params.multiple = 8;
     this.el.sizeSlider?.setValue(this.brushSize);
+    this.el.opacitySlider?.setValue(50);
+    this.el.blendSlider?.setValue(16);
+    this.el.growSlider?.setValue(4);
+    this.el.ctxSlider?.setValue(24);
+    this.el.targetSlider?.setValue(1024);
+    this._blendModeGrid?.setActive?.("mask");
+    this._sizeModeGrid?.setActive?.("keep");
+    this._multipleGrid?.setActive?.(8);
+    this._recomputeRegion();
+    this._draw();
     if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
   }
 
