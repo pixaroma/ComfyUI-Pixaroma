@@ -46,15 +46,24 @@ export function computeRegion(bbox, W, H, params) {
     let s = long > 0 ? p.target / long : 1;
     if (!p.allow_upscale) s = Math.min(s, 1);
     let ow = rw * s, oh = rh * s;
-    const big = Math.max(ow, oh);
-    if (big > p.max_size) { const k = p.max_size / big; ow *= k; oh *= k; }
+    // min_size bump FIRST, then the max_size clamp LAST as the hard ceiling - so an
+    // extreme-aspect mask can't have its long side scaled past max_size (OOM).
     const small = Math.min(ow, oh);
     if (small < p.min_size) { const k = p.min_size / small; ow *= k; oh *= k; }
+    const big = Math.max(ow, oh);
+    if (big > p.max_size) { const k = p.max_size / big; ow *= k; oh *= k; }
     out_w = roundMult(ow, mult); out_h = roundMult(oh, mult);
   }
 
   let rw_i = Math.max(1, Math.min(Math.round(rw), W));
   let rh_i = Math.max(1, Math.min(Math.round(rh), H));
+  if (mode === "force") {
+    // keep the SOURCE aspect == output aspect after the image-bound clamp, or an
+    // oblong image stretches (mirror of compute_region's force re-impose).
+    const aspect = out_w / out_h;
+    if (rw_i > rh_i * aspect) rw_i = Math.max(1, Math.round(rh_i * aspect));
+    else rh_i = Math.max(1, Math.round(rw_i / aspect));
+  }
   const rx = clampi(cx - rw_i / 2, 0, W - rw_i);
   const ry = clampi(cy - rh_i / 2, 0, H - rh_i);
   out_w = Math.max(mult, Math.round(out_w));

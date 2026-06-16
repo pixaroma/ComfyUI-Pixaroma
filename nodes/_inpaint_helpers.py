@@ -233,13 +233,18 @@ def compute_region(bbox, W, H, p):
             s = min(s, 1.0)
         ow = rw * s
         oh = rh * s
-        big = max(ow, oh)
-        if big > p["max_size"]:
-            k = p["max_size"] / big
-            ow *= k; oh *= k
+        # min_size bump FIRST (scale both up so the short side reaches min_size)...
         small = min(ow, oh)
         if small < p["min_size"]:
             k = p["min_size"] / small
+            ow *= k; oh *= k
+        # ...then the max_size clamp LAST, as the HARD ceiling. For an extreme-aspect
+        # (thin-line) mask the min_size bump can scale the long side far past
+        # max_size; clamping after caps it (the short side may then end up < min_size,
+        # which is acceptable and far better than an out-of-memory tensor).
+        big = max(ow, oh)
+        if big > p["max_size"]:
+            k = p["max_size"] / big
             ow *= k; oh *= k
         out_w = _round_mult(ow, mult)
         out_h = _round_mult(oh, mult)
@@ -249,6 +254,16 @@ def compute_region(bbox, W, H, p):
     rh_i = min(int(round(rh)), H)
     rw_i = max(1, rw_i)
     rh_i = max(1, rh_i)
+    if mode == "force":
+        # the crop is resized to out_w x out_h, so the SOURCE rect must keep that
+        # aspect or an oblong image gets stretched. The image-bound clamp above can
+        # break it (one axis clipped, the other not) - shrink the over-long axis back
+        # to the target aspect (the largest aspect-correct rect that fits the bounds).
+        aspect = out_w / float(out_h)
+        if rw_i > rh_i * aspect:
+            rw_i = max(1, int(round(rh_i * aspect)))
+        else:
+            rh_i = max(1, int(round(rw_i / aspect)))
     rx = _clampi(cx - rw_i / 2.0, 0, W - rw_i)
     ry = _clampi(cy - rh_i / 2.0, 0, H - rh_i)
 

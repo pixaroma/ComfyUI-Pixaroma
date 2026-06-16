@@ -8,10 +8,10 @@ Mirrored 1:1 by `js/inpaint_crop/geometry.mjs::computeRegion`. From the painted 
 
 1. Context expand: `rw = bw + 2*context_px + bw*context_pct/100` (same for height).
 2. Size mode:
-   - `keep`: scale the long side to `target` (respecting `allow_upscale`, `min_size`, `max_size`), round each side to `multiple`.
-   - `force`: grow the region to the target square's aspect (no stretch), output `target x target` rounded to `multiple`.
+   - `keep`: scale the long side to `target` (respecting `allow_upscale`). Then apply `min_size` FIRST (bump both sides up so the short side reaches `min_size`), then `max_size` LAST as a hard ceiling. Order matters: for an extreme-aspect (thin-line) mask the `min_size` bump can scale the long side far past `max_size`, so clamping after caps it (the short side may then end up below `min_size` - acceptable, and far better than an out-of-memory tensor). Round each side to `multiple`.
+   - `force`: grow the region to the target's aspect (no stretch), output `target_w x target_h` rounded to `multiple`.
    - `free`: natural size rounded to `multiple`, capped at `max_size`.
-3. Place + clamp the source rectangle inside the image.
+3. Place + clamp the source rectangle inside the image. In `force` mode, after the image-bound clamp the source rect's aspect is re-imposed to match `out_w/out_h` (shrink the over-long axis to the largest aspect-correct rect that fits) - the independent W/H clamp can otherwise break the aspect on an oblong image, and the resize to `out_w x out_h` would then stretch.
 
 Only accepted drift: sub-pixel rect placement (Python banker's rounding vs JS round-half-up = +/-1 px on `rx`/`ry`).
 
