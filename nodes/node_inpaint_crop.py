@@ -7,7 +7,7 @@ from PIL import Image
 import folder_paths
 from .node_ref import any_type, FlexibleOptionalInputType
 from ._inpaint_helpers import (
-    apply_inpaint_crop, merge_params, PIXAROMA_CROP_INFO, DEFAULTS,
+    apply_inpaint_crop, merge_params, resolve_inpaint_mask, PIXAROMA_CROP_INFO, DEFAULTS,
 )
 
 
@@ -36,9 +36,10 @@ class _InpaintOptionalInputs(FlexibleOptionalInputType):
         })
         self["mask"] = ("MASK", {
             "tooltip": (
-                "Optional starting mask. Wire a MASK here to pre-fill the area to "
-                "inpaint; it loads into the editor so you can keep painting on top. "
-                "If you never paint, this wired mask is used as-is."
+                "Optional mask of the area to inpaint (e.g. a transparent PNG's "
+                "alpha, or any MASK output). It is used as-is whenever you have not "
+                "painted a mask in the editor - so clearing the editor falls back to "
+                "this wired mask. A mask painted in the editor takes priority."
             ),
         })
 
@@ -247,10 +248,11 @@ class PixaromaInpaintCrop:
         if not isinstance(image, torch.Tensor):
             return self._empty()
 
-        # ── mask: the painted mask on disk is authoritative, else the wired mask
-        mask = self._load_disk_mask(meta.get("mask_path", ""))
-        if mask is None and isinstance(upstream_mask, torch.Tensor):
-            mask = upstream_mask
+        # ── mask: a PAINTED editor mask wins; a cleared/empty one (mask_path set
+        # but the saved file is all-black) falls back to the wired mask, so clearing
+        # the editor uses the wired mask as-is. resolve_inpaint_mask owns the rule.
+        disk_mask = self._load_disk_mask(meta.get("mask_path", ""))
+        mask = resolve_inpaint_mask(disk_mask, upstream_mask)
 
         params = self._params(size_mode, target, multiple, context_px, mask_grow, mask_blur)
         try:

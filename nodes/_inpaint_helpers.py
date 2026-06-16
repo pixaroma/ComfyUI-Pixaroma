@@ -182,6 +182,25 @@ def mask_bbox(m_bool):
     return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
 
 
+def resolve_inpaint_mask(disk_mask, upstream_mask):
+    """Choose which mask the crop uses: the editor-painted mask saved on disk, or
+    the wired upstream MASK input.
+
+    The editor mask wins ONLY when it actually has painted pixels. Clearing the
+    editor (or saving without painting) writes an all-black mask file while
+    mask_path stays set, so a naive "disk mask wins whenever present" lets that
+    empty mask silently override a wired mask - the crop then sees no painted area
+    and falls back to the whole image (the reported bug). So an empty/absent editor
+    mask falls back to the wired mask. This is what makes the `mask` input tooltip
+    true: clear it or never paint, and the wired mask is used as-is. Returns the
+    chosen mask tensor, or None when neither has content."""
+    if isinstance(disk_mask, torch.Tensor) and float(disk_mask.detach().max()) > 1e-6:
+        return disk_mask
+    if isinstance(upstream_mask, torch.Tensor):
+        return upstream_mask
+    return disk_mask
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # THE GEOMETRY (mirror of js/inpaint_crop/geometry.mjs)
 
