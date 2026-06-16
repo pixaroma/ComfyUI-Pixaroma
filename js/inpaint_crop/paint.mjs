@@ -212,7 +212,10 @@ proto._loadMaskFromURL = function (url) {
     // bail if a newer open/load superseded this, OR the user already started working
     // (painting / has undo history / a painted bbox) - don't clobber fresh strokes.
     if (token !== this._loadToken) return;
-    if (this._painting || this._undo?.length || this._bbox) return;
+    if (this._painting || this._undo?.length || this._bbox) {
+      this._setStatus("Kept your new strokes - the saved mask wasn't reloaded.");
+      return;
+    }
     this._ensureMaskCanvas();
     const tmp = document.createElement("canvas");
     tmp.width = this.imgW; tmp.height = this.imgH;
@@ -334,9 +337,58 @@ proto._stopBrushHold = function () {
   if (this._holdRaf) { cancelAnimationFrame(this._holdRaf); this._holdRaf = null; }
 };
 
+// ── paste / drag-drop a source image INTO the open editor ──────────────────
+// Loads the dropped/pasted image as the new source (same as the Load Image
+// button: _loadImageFromDataURL + onLoadImage to disconnect the upstream wire).
+// All three listen at window-capture, gated on the overlay being live, and
+// preventDefault + stop so ComfyUI doesn't spawn its own Load Image node behind us.
+proto._bindDropPaste = function () {
+  const alive = () => !!this.el.overlay?.isConnected;
+  const loadFile = (file) => {
+    if (!file || !file.type?.startsWith("image/")) return false;
+    const reader = new FileReader();
+    reader.onload = (ev) => { this._loadImageFromDataURL(ev.target.result); this.onLoadImage?.(); };
+    reader.readAsDataURL(file);
+    return true;
+  };
+  this._pasteHandler = (e) => {
+    if (!alive()) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    const it = Array.from(e.clipboardData?.items || []).find((x) => x.type?.startsWith("image/"));
+    if (!it) return;
+    const blob = it.getAsFile();
+    if (!blob) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    loadFile(blob);
+  };
+  this._dragOverHandler = (e) => {
+    if (!alive()) return;
+    if (e.dataTransfer?.types?.includes("Files")) { e.preventDefault(); e.stopImmediatePropagation(); }
+  };
+  this._dropHandler = (e) => {
+    if (!alive()) return;
+    const file = e.dataTransfer?.files?.[0];
+    if (!file || !file.type?.startsWith("image/")) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    loadFile(file);
+  };
+  window.addEventListener("paste", this._pasteHandler, true);
+  window.addEventListener("dragover", this._dragOverHandler, true);
+  window.addEventListener("drop", this._dropHandler, true);
+};
+
+proto._unbindDropPaste = function () {
+  if (this._pasteHandler) window.removeEventListener("paste", this._pasteHandler, true);
+  if (this._dragOverHandler) window.removeEventListener("dragover", this._dragOverHandler, true);
+  if (this._dropHandler) window.removeEventListener("drop", this._dropHandler, true);
+  this._pasteHandler = this._dragOverHandler = this._dropHandler = null;
+};
+
 proto._unbindKeys = function () {
   this._stopBrushHold();
   this._detachStroke?.();   // detach any live stroke window-listeners (close mid-drag)
+  this._unbindDropPaste();
   if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });
   if (this._keyUpHandler) window.removeEventListener("keyup", this._keyUpHandler, { capture: true });
 };

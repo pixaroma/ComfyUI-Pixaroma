@@ -123,9 +123,10 @@ export class InpaintCropEditor {
         }
       });
     } else {
-      this._setStatus("No source loaded. Wire an IMAGE input and run the workflow once, or click Load Image.");
+      this._setStatus("No source loaded. Wire an IMAGE input and run the workflow once, or click Load Image — or just paste / drag an image in here.");
     }
     this._bindKeys();
+    this._bindDropPaste();   // paste / drag-drop an image straight into the editor
   }
 
   _close() { this.layout?.unmount(); }
@@ -141,17 +142,35 @@ export class InpaintCropEditor {
       onClose: () => this._close(),
       onUndo: () => this._doUndo(),
       onRedo: () => this._doRedo(),
+      helpTitle: "Inpaint Crop — Guide",
       helpContent: `
-        <b>Paint the mask:</b> drag on the image to mark the area to fix<br>
-        <b>Brush / Erase:</b> pick a tool, or press <kbd>B</kbd> / <kbd>E</kbd><br>
+        <b style="color:#f66744;">WHAT THIS DOES</b><br>
+        Paint over the part of the image you want the model to redo. The node finds
+        the box around your paint, adds a margin, and crops a clean piece to inpaint.
+        The orange box is exactly what gets sent to the model.<br><br>
+
+        <b style="color:#f66744;">PAINTING</b><br>
+        <b>Brush / Erase:</b> pick a tool or press <kbd>B</kbd> / <kbd>E</kbd> (hold <kbd>X</kbd> to flip briefly)<br>
         <b>Brush size:</b> <kbd>[</kbd> / <kbd>]</kbd> or the mouse wheel<br>
-        <b>Toggle erase:</b> hold <kbd>X</kbd><br>
         <b>Show / hide mask:</b> <kbd>H</kbd><br>
-        <b>Invert / Clear:</b> buttons in the sidebar<br>
-        <b>Undo / Redo:</b> <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd><br>
-        The orange box is the crop that goes to the model. Adjust the context
-        margin in the sidebar (or on the node) to include more surroundings.<br>
-        <b>Save:</b> <kbd>Ctrl+S</kbd> · <b>Close:</b> <kbd>Escape</kbd>`,
+        <b>Invert / Clear:</b> buttons in the sidebar (Invert = swap painted &harr; unpainted)<br>
+        <b>Load a different image:</b> the Load Image button, or just <b>paste</b> / <b>drag</b> an image straight in here<br><br>
+
+        <b style="color:#f66744;">CROP SIZE</b> (sidebar + node)<br>
+        <b>Keep shape:</b> scales your area so its long side hits Target, no stretching (best quality)<br>
+        <b>Force square:</b> always a Target&times;Target square<br>
+        <b>Free:</b> natural size, just rounded to the Multiple<br>
+        <b>Context margin:</b> how much of the surroundings to include around your paint<br><br>
+
+        <b style="color:#f66744;">SEAM — HOW IT BLENDS BACK</b><br>
+        <b>Softness:</b> how far the paste fades into the original at the edge (the live orange tint previews it)<br>
+        <b>Mask grow:</b> expands the painted area a little before cropping<br>
+        <b>Blend mode — Mask:</b> only the area you painted is replaced, the rest of the crop keeps the original (the normal inpaint)<br>
+        <b>Blend mode — Whole crop:</b> the <i>entire</i> box is replaced with the model's version — use when the model also relit / changed the surroundings, or for an img2img pass<br><br>
+
+        <b style="color:#f66744;">KEYS</b><br>
+        <b>Undo / Redo:</b> <kbd>Ctrl+Z</kbd> / <kbd>Ctrl+Shift+Z</kbd> &middot;
+        <b>Save:</b> <kbd>Ctrl+S</kbd> &middot; <b>Close:</b> <kbd>Escape</kbd>`,
     });
     this.layout = layout;
     layout.onSaveToDisk = () => { this._diskSavePending = true; this._save(); };

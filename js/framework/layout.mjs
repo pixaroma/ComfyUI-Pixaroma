@@ -47,6 +47,7 @@ export function createEditorLayout(config) {
     onZoomOut,
     onZoomFit,
     helpContent = "",
+    helpTitle = "",   // optional; defaults to "<editorName> — Shortcuts" (back-compat)
   } = config;
 
   // ── Overlay ──
@@ -186,7 +187,7 @@ export function createEditorLayout(config) {
   if (helpContent) {
     helpPanel.innerHTML = `
       <div class="pxf-help-header">
-        <h3>${editorName} — Shortcuts</h3>
+        <h3>${helpTitle || `${editorName} — Shortcuts`}</h3>
         <button class="pxf-btn-sm" style="flex-shrink:0;">✕</button>
       </div>
       <div class="pxf-help-content">${helpContent}</div>
