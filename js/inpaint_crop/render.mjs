@@ -2,7 +2,7 @@
 // Inpaint Crop Pixaroma — canvas render + region preview + save
 // ============================================================
 import { InpaintCropEditor, BRAND, InpaintAPI } from "./core.mjs";
-import { computeRegion, maskBBoxFromImageData, growBBox } from "./geometry.mjs";
+import { computeRegion, maskBBoxFromImageData, growBBox, seamAlphaFromAlpha } from "./geometry.mjs";
 
 const proto = InpaintCropEditor.prototype;
 
@@ -68,9 +68,12 @@ proto._fitCanvas = function () {
   this.el.canvas.style.cursor = "none";
 };
 
-// Feathered seam alpha at display resolution: an outward blur of the mask over
-// (blend * scale) px, with the interior forced opaque - the canvas mirror of the
-// Python no-scipy _blur_alpha fallback. Approximate preview (F2), not pixel-exact.
+// Feathered seam alpha at display resolution: the outward signed-distance smoothstep
+// of the mask over (blend * scale) px - the canvas mirror of the Python _blur_alpha
+// SCIPY path, so the editor preview MATCHES the stitched seam (preview == result).
+// Computed on a downscaled buffer (the seam is soft, so a chamfer DT + upscale is
+// invisible) to stay fast on every _draw - brush strokes + softness drags. _draw is
+// NOT called on idle mouse-move (the cursor draws separately), so no cache is needed.
 proto._seamAlphaCanvas = function () {
   const dpr = Math.max(1, window.devicePixelRatio || 1);   // DPR-backed for HiDPI crispness
   const W = Math.round(this._dispW * dpr), H = Math.round(this._dispH * dpr);
@@ -81,12 +84,32 @@ proto._seamAlphaCanvas = function () {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, W, H);
   const src = this._effectiveMaskCanvas();
+  if (!src) return c;
   const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
-  if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }
-  ctx.filter = `blur(${(blendDisp / 1.7).toFixed(1)}px)`;
-  ctx.drawImage(src, 0, 0, W, H);          // outward falloff
-  ctx.filter = "none";
-  ctx.drawImage(src, 0, 0, W, H);          // interior -> opaque
+  if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }   // crisp seam
+
+  // draw the mask into a small buffer, distance-transform its alpha, write the
+  // feathered alpha back, then upscale to the display-res seam canvas.
+  const CAP = 480;
+  const sc = Math.min(1, CAP / Math.max(W, H));
+  const bw = Math.max(1, Math.round(W * sc)), bh = Math.max(1, Math.round(H * sc));
+  const kBuf = blendDisp * (bw / W);          // feather width in buffer px
+  const b = this._seamBuf || (this._seamBuf = document.createElement("canvas"));
+  if (b.width !== bw || b.height !== bh) { b.width = bw; b.height = bh; }
+  const bctx = b.getContext("2d");
+  bctx.setTransform(1, 0, 0, 1, 0, 0);
+  bctx.clearRect(0, 0, bw, bh);
+  bctx.drawImage(src, 0, 0, bw, bh);
+  const id = bctx.getImageData(0, 0, bw, bh);
+  const alpha = seamAlphaFromAlpha(id.data, bw, bh, kBuf);
+  const dpx = id.data;
+  for (let i = 0, p = 0; i < alpha.length; i++, p += 4) {
+    dpx[p] = 255; dpx[p + 1] = 255; dpx[p + 2] = 255;
+    dpx[p + 3] = Math.round(alpha[i] * 255);
+  }
+  bctx.putImageData(id, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(b, 0, 0, bw, bh, 0, 0, W, H);   // upscale the soft alpha
   return c;
 };
 
@@ -98,8 +121,8 @@ proto._draw = function () {
   ctx.drawImage(this.img, 0, 0, W, H);
 
   // seam preview: tint the FEATHERED seam alpha (Softness) in the chosen color,
-  // clipped to the crop region. DPR-backed (crisp on HiDPI). Approximate (mirrors
-  // the Python no-scipy fallback).
+  // clipped to the crop region. DPR-backed (crisp on HiDPI). Mirrors the Python
+  // _blur_alpha SCIPY smoothstep, so the tint matches the stitched seam.
   if (this.maskVisible && this._mask) {
     if (!this._tint) this._tint = document.createElement("canvas");
     const t = this._tint;

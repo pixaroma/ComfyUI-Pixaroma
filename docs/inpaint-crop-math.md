@@ -36,9 +36,9 @@ A feather wider than the context margin used to leave a nonzero alpha at the cro
 
 `whole_crop` blend mode uses `_feather_alpha` instead (distance-to-rectangle fade of the whole crop).
 
-## 4. Editor live preview (approximate — F2)
+## 4. Editor live preview (matches the scipy result)
 
-`js/inpaint_crop/render.mjs::_seamAlphaCanvas` mirrors the **no-scipy fallback** of section 3 in canvas: blur the mask by `(blend * displayScale)/1.7`, then draw the crisp mask on top (interior opaque). The tint is filled via `source-in` in the chosen preview color and clipped to the crop region (so it can't spill past the box). It is APPROXIMATE versus the exact scipy run-time path — it shows the seam's softness and width truthfully; exact pixels differ. Do not chase pixel-exactness here. The preview color is display-only (never written into the mask, state, or crop_info).
+`js/inpaint_crop/render.mjs::_seamAlphaCanvas` mirrors the **scipy smoothstep** of section 3 (not the old no-scipy gaussian): it draws the mask into a downscaled buffer, runs `geometry.mjs::seamAlphaFromAlpha` (a 2-pass `(1, √2)` chamfer distance transform of the OUTSIDE distance, then `alpha = inside ? 1 : smoothstep(clip(1 - d_out/k))`), writes the feathered alpha back, and upscales to the display-res seam canvas. So the editor preview MATCHES the stitched result — a moderate softness no longer looks tighter in the editor than the real seam. The chamfer DT approximates the node's exact Euclidean EDT within a few % (invisible on a soft seam). Downscaled (long side capped at 480px) and computed only on `_draw` (strokes / slider drags, never idle mouse-move), so it stays fast without caching. The tint is filled via `source-in` in the chosen preview color and clipped to the crop region (so it can't spill past the box). The preview color is display-only (never written into the mask, state, or crop_info).
 
 ## 5. The settings flow
 

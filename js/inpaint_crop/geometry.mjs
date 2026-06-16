@@ -102,3 +102,60 @@ export function growBBox(bbox, px, W, H) {
     Math.min(W, bbox[2] + px), Math.min(H, bbox[3] + px),
   ];
 }
+
+// Outward seam-feather alpha - the canvas mirror of Python `_blur_alpha`'s scipy
+// path (nodes/_inpaint_helpers.py). Reads the ALPHA channel of an RGBA `data`
+// buffer (w x h) as the mask, returns a Float32Array alpha: 1.0 INSIDE the mask
+// (and at its edge), ramping to 0 over `k` px OUTSIDE via the same smoothstep the
+// node uses. Pure + DOM-free for unit testing.
+//
+// The node uses an exact Euclidean signed-distance transform; here we use a fast
+// 2-pass (1, sqrt2) chamfer transform of the OUTSIDE distance (inside is just 1).
+// The chamfer approximates Euclidean within a few %, which is invisible on a soft
+// seam preview. This is the "preview == result" parity: a moderate softness no
+// longer looks tighter in the editor than the real stitched seam.
+export function seamAlphaFromAlpha(data, w, h, k) {
+  const n = w * h;
+  const INF = 1e9;
+  const d = new Float32Array(n);
+  for (let i = 0, p = 3; i < n; i++, p += 4) d[i] = data[p] > 127 ? 0 : INF;
+  const d1 = 1, d2 = Math.SQRT2;
+  // forward pass: top-left -> bottom-right (already-visited neighbours)
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      let v = d[i];
+      if (v === 0) continue;
+      if (x > 0) v = Math.min(v, d[i - 1] + d1);
+      if (y > 0) {
+        v = Math.min(v, d[i - w] + d1);
+        if (x > 0) v = Math.min(v, d[i - w - 1] + d2);
+        if (x < w - 1) v = Math.min(v, d[i - w + 1] + d2);
+      }
+      d[i] = v;
+    }
+  }
+  // backward pass: bottom-right -> top-left
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      let v = d[i];
+      if (v === 0) continue;
+      if (x < w - 1) v = Math.min(v, d[i + 1] + d1);
+      if (y < h - 1) {
+        v = Math.min(v, d[i + w] + d1);
+        if (x < w - 1) v = Math.min(v, d[i + w + 1] + d2);
+        if (x > 0) v = Math.min(v, d[i + w - 1] + d2);
+      }
+      d[i] = v;
+    }
+  }
+  const out = new Float32Array(n);
+  const kk = Math.max(1e-3, k);
+  for (let i = 0; i < n; i++) {
+    if (d[i] === 0) { out[i] = 1; continue; }      // inside the mask + its edge
+    const t = Math.max(0, Math.min(1, 1 - d[i] / kk));
+    out[i] = t * t * (3 - 2 * t);                  // smoothstep, same as the node
+  }
+  return out;
+}
