@@ -173,14 +173,14 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Open the fullscreen editor and paint a red mask over the part of the image you want to fix. The node finds the box around your mask, adds a context margin so the model can see the surroundings, and crops a clean, model-friendly piece (sized to a multiple of 8 and scaled toward your target, so even a small masked area gets enough resolution to look sharp).\n\nWire the cropped `image` and `mask` into your inpaint model (KSampler, Flux, edit models), then send `crop_info` into Inpaint Stitch Pixaroma to drop the result back in place. The orange box in the editor shows exactly what will be cropped as you paint.",
+        body: "Open the fullscreen editor and paint a mask over the part of the image you want to fix. The node finds the box around your mask, adds a context margin so the model can see the surroundings, and crops a clean, model-friendly piece (sized to a multiple of 8 and scaled toward your target, so even a small masked area gets enough resolution to look sharp).\n\nWire the cropped `image` and `mask` into your inpaint model (KSampler, Flux, edit models), then send `crop_info` into Inpaint Stitch Pixaroma to drop the result back in place. The orange box in the editor shows exactly what will be cropped as you paint. You also set how the seam blends here, with the `Softness` slider, and watch it preview live in a tint color you can switch (red, green, blue, yellow, orange) so it stays visible on any subject.",
       },
       {
         heading: "How to use",
         bullets: [
           "Wire an image in, or drag-drop / paste one onto the node body.",
           "Click `Open mask editor` and paint over the area to change. Use Brush / Erase, the size slider (or `[` `]` and the mouse wheel), Clear and Invert.",
-          "Set the context margin in the editor, or tune `size mode`, `target`, `context px`, `mask grow` and `mask blur` on the node.",
+          "In the editor, drag `Softness` to set how soft the seam blends - the preview shows it live. Mask grow, blend mode, color match, crop size and context all live in the editor too.",
           "Click `Save`, then wire `image` and `mask` into your inpaint model.",
           "Send `crop_info` to Inpaint Stitch Pixaroma.",
         ],
@@ -188,9 +188,10 @@ const HELP = {
       {
         heading: "Settings",
         defs: [
+          ["softness", "How far the seam feathers when the crop is pasted back. The editor previews it live; it travels to Inpaint Stitch automatically."],
           ["size mode", "Keep shape scales the long side to the target with no stretching (best quality). Force size outputs a square. Free keeps the natural size."],
           ["context px", "How much surrounding area to include around your mask."],
-          ["mask grow / blur", "Expand the mask before cropping, and soften its edge for a smoother result."],
+          ["mask grow / blur", "Expand the mask before cropping, and soften the mask the model sees."],
         ],
       },
       {
@@ -212,14 +213,14 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "The other half of the inpaint workflow. After Inpaint Crop Pixaroma cropped a region and you ran your model on it, this node resizes the result back and blends it into the original at the exact spot. By default only the painted area changes, so everything else stays pixel-perfect.\n\n`blend` feathers the seam, and `color match` nudges the new pixels toward the original colors so the seam vanishes even on flat skies or walls. It also hands back the untouched `original` so you can compare before and after.",
+        body: "The other half of the inpaint workflow. After Inpaint Crop Pixaroma cropped a region and you ran your model on it, this node resizes the result back and blends it into the original at the exact spot. By default only the painted area changes, so everything else stays pixel-perfect.\n\nThere is nothing to set here: the seam blend, blend mode and color match are all chosen in the Inpaint Crop Pixaroma editor and travel down the `crop_info` wire. It also hands back the untouched `original` so you can compare before and after.",
       },
       {
         heading: "How to use",
         bullets: [
           "Wire the `crop_info` output of Inpaint Crop Pixaroma into `crop_info`.",
           "Wire your inpainted crop (after the model) into `image`. It is resized back automatically.",
-          "Raise `blend` for a softer seam. Turn on `color match` if the new area looks slightly off-color.",
+          "Set the seam softness, blend mode and color match in the Inpaint Crop editor - this node has no knobs.",
           "Run the workflow to get the finished full image.",
           "Wire `image` and `original` into Image Compare Pixaroma for an instant before / after.",
         ],
