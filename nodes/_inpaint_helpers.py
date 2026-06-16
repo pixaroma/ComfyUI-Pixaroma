@@ -353,6 +353,16 @@ def apply_inpaint_crop(image, mask, p):
     mask so stitch can paste back + produce a full-frame result.
     """
     p = merge_params(p)
+    # Coerce the input to RGB. Remove Background Pixaroma (and any cut-out) hands us a
+    # 4-channel RGBA image; left as-is it rides into crop_info["image"] and makes
+    # Inpaint Stitch throw on the 3-vs-4 channel paste (its except then silently passes
+    # the result through as the "original"). Premultiply RGBA over black so a cut-out
+    # reads as the subject on black (matching the editor/preview), not the leftover
+    # background still sitting under the alpha.
+    if image.shape[-1] == 4:
+        image = (image[..., :3] * image[..., 3:4]).contiguous()
+    elif image.shape[-1] > 4:
+        image = image[..., :3].contiguous()
     B, H, W = int(image.shape[0]), int(image.shape[1]), int(image.shape[2])
 
     raw = mask_to_np(mask, H, W)
@@ -475,6 +485,13 @@ def stitch_back(crop_info, image, mask, blend, blend_mode, color_match):
     """Paste the inpainted `image` back onto crop_info['image'] at the recorded
     region, blended seamlessly. Returns (result[B,H,W,3], original[B,H,W,3])."""
     base = crop_info["image"]
+    # defensive RGB coercion: a crop_info from an RGBA source (a hand-built dict, or an
+    # Image Crop fed an RGBA image) would mismatch the RGB patch on the paste below.
+    # Inpaint Crop already coerces its input, so this only catches other sources.
+    if isinstance(base, torch.Tensor) and base.dim() == 4 and base.shape[-1] == 4:
+        base = (base[..., :3] * base[..., 3:4]).contiguous()
+    elif isinstance(base, torch.Tensor) and base.dim() == 4 and base.shape[-1] > 4:
+        base = base[..., :3].contiguous()
     H, W = int(base.shape[1]), int(base.shape[2])
     x = _clampi(crop_info.get("x", 0), 0, W - 1)
     y = _clampi(crop_info.get("y", 0), 0, H - 1)
