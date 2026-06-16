@@ -221,7 +221,21 @@ export class InpaintCropEditor {
       this._recomputeRegion();
       this._draw();
     });
-    secSeam.content.append(this.el.blendSlider.el, this.el.growSlider.el);
+    this._blendModeGrid = createPillGrid(
+      [{ label: "Mask", value: "mask" }, { label: "Whole crop", value: "whole_crop" }],
+      2, (v) => { this.params.blend_mode = v; this._draw(); },
+      { activeValue: this.params.blend_mode || "mask" },
+    );
+    this._colorMatchGrid = createPillGrid(
+      [{ label: "Off", value: "off" }, { label: "Subtle", value: "subtle" }, { label: "Strong", value: "strong" }],
+      3, (v) => { this.params.color_match = v; },
+      { activeValue: this.params.color_match || "off" },
+    );
+    const cmHint = document.createElement("div");
+    cmHint.style.cssText = "font-size:11px;color:#888;margin-top:4px;";
+    cmHint.textContent = "Color match applies on the next run (no live preview).";
+    secSeam.content.append(this.el.blendSlider.el, this.el.growSlider.el,
+      this._blendModeGrid.el, this._colorMatchGrid.el, cmHint);
     sidebar.appendChild(secSeam.el);
 
     // View
@@ -244,6 +258,25 @@ export class InpaintCropEditor {
     });
     secCtx.content.appendChild(this.el.ctxSlider.el);
     sidebar.appendChild(secCtx.el);
+
+    // Crop size (mirrors the node knobs; live preview)
+    const secCrop = createPanel("Crop size");
+    this._sizeModeGrid = createPillGrid(
+      [{ label: "Keep shape", value: "keep" }, { label: "Force square", value: "force" }, { label: "Free", value: "free" }],
+      3, (v) => { this.params.size_mode = v; this._recomputeRegion(); this._draw(); },
+      { activeValue: this.params.size_mode || "keep" },
+    );
+    this.el.targetSlider = createSliderRow("Target", 64, 8192, this.params.target ?? 1024, () => {
+      this.params.target = parseInt(this.el.targetSlider.numInput.value) || 1024;
+      this._recomputeRegion(); this._draw();
+    });
+    this._multipleGrid = createPillGrid(
+      [{ label: "8", value: 8 }, { label: "16", value: 16 }, { label: "32", value: 32 }, { label: "64", value: 64 }],
+      4, (v) => { this.params.multiple = v; this._recomputeRegion(); this._draw(); },
+      { activeValue: this.params.multiple || 8 },
+    );
+    secCrop.content.append(this._sizeModeGrid.el, this.el.targetSlider.el, this._multipleGrid.el);
+    sidebar.appendChild(secCrop.el);
 
     // Load Image
     const fileInput = document.createElement("input");
