@@ -41,7 +41,33 @@ proto._bindMouse = function (cvs) {
   // expose so a close mid-stroke (editor torn down before mouseup) detaches the
   // window listeners instead of leaking them for the page lifetime.
   this._detachStroke = detach;
+
+  let panMove = null, panUp = null;
+  const detachPan = () => {
+    if (panMove) window.removeEventListener("mousemove", panMove), (panMove = null);
+    if (panUp) window.removeEventListener("mouseup", panUp), (panUp = null);
+  };
+  this._detachPan = detachPan;
+
   cvs.addEventListener("mousedown", (e) => {
+    // PAN the zoomed view: middle button, or Space held + left button.
+    if (e.button === 1 || (e.button === 0 && this._spaceHeld)) {
+      e.preventDefault();
+      const x0 = e.clientX, y0 = e.clientY, px0 = this._panX, py0 = this._panY;
+      this._panning = true;
+      cvs.style.cursor = "grabbing";
+      detachPan();
+      panMove = (ev) => {
+        this._panX = px0 + (ev.clientX - x0);
+        this._panY = py0 + (ev.clientY - y0);
+        this._clampPan();
+        this._requestRedraw();
+      };
+      panUp = () => { this._panning = false; detachPan(); cvs.style.cursor = this._spaceHeld ? "grab" : "none"; };
+      window.addEventListener("mousemove", panMove);
+      window.addEventListener("mouseup", panUp);
+      return;
+    }
     if (!this.img || e.button !== 0) return;
     e.preventDefault();
     this._beginStroke(e);
@@ -51,14 +77,13 @@ proto._bindMouse = function (cvs) {
     window.addEventListener("mousemove", winMove);
     window.addEventListener("mouseup", winUp);
   });
-  cvs.addEventListener("mousemove", (e) => { if (!this._painting) this._drawCursor(this._displayPos(e)); });
+  cvs.addEventListener("mousemove", (e) => { if (!this._painting && !this._panning) this._drawCursor(this._displayPos(e)); });
   cvs.addEventListener("mouseleave", () => { if (!this._painting && this._dispW) { this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH); this._lastCursorPos = null; } });
+  // wheel = zoom toward the cursor (brush size moved to [ / ] + the Size slider)
   cvs.addEventListener("wheel", (e) => {
     e.preventDefault();
-    const d = e.deltaY < 0 ? 4 : -4;
-    this.brushSize = Math.max(2, Math.min(300, this.brushSize + d));
-    this.el.sizeSlider?.setValue(this.brushSize);
-    this._drawCursor(this._displayPos(e));
+    const p = this._displayPos(e);
+    this._applyZoom(e.deltaY < 0 ? 1.15 : 1 / 1.15, p.x, p.y);
   }, { passive: false });
 };
 
@@ -81,7 +106,7 @@ proto._beginStroke = function (e) {
 proto._strokeMove = function (e) {
   const p = this._displayPos(e);
   const s = this._scale || 1;
-  const sx = p.x / s, sy = p.y / s;
+  const sx = (p.x - this._panX) / s, sy = (p.y - this._panY) / s;   // pan/zoom -> source px
   if (this._lastPt) this._stampLine(this._lastPt.x, this._lastPt.y, sx, sy);
   else this._stampDab(sx, sy);
   this._lastPt = { x: sx, y: sy };
@@ -291,6 +316,11 @@ proto._bindKeys = function () {
     if (ctrl && key === "z" && !e.shiftKey) { e.preventDefault(); this._doUndo(); return; }
     if (ctrl && (key === "y" || (key === "z" && e.shiftKey))) { e.preventDefault(); this._doRedo(); return; }
     if (ctrl) return;
+    if (e.code === "Space") {   // hold Space to pan the zoomed view (drag)
+      e.preventDefault();
+      if (!this._spaceHeld) { this._spaceHeld = true; if (this.el.canvas) this.el.canvas.style.cursor = "grab"; }
+      return;
+    }
     if (key === "b") { e.preventDefault(); this._setTool("add"); this._toolGrid?.setActive?.("add"); return; }
     if (key === "e") { e.preventDefault(); this._setTool("erase"); this._toolGrid?.setActive?.("erase"); return; }
     if (key === "h") { e.preventDefault(); this._toggleMaskVisible(); return; }
@@ -307,6 +337,7 @@ proto._bindKeys = function () {
     const k = e.key.toLowerCase();
     if (k === "x") this._xHeld = false;
     if (k === "[" || k === "]") this._stopBrushHold();
+    if (e.code === "Space") { this._spaceHeld = false; if (this.el.canvas && !this._panning) this.el.canvas.style.cursor = "none"; }
   };
   window.addEventListener("keydown", this._keyHandler, { capture: true });
   window.addEventListener("keyup", this._keyUpHandler, { capture: true });
@@ -390,6 +421,7 @@ proto._unbindKeys = function () {
   this._stopBrushHold();
   if (this._drawRaf) { cancelAnimationFrame(this._drawRaf); this._drawRaf = null; }
   this._detachStroke?.();   // detach any live stroke window-listeners (close mid-drag)
+  this._detachPan?.();      // detach any live pan window-listeners
   this._unbindDropPaste();
   if (this._keyHandler) window.removeEventListener("keydown", this._keyHandler, { capture: true });
   if (this._keyUpHandler) window.removeEventListener("keyup", this._keyUpHandler, { capture: true });

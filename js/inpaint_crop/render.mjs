@@ -58,7 +58,9 @@ proto._fitCanvas = function () {
   const asp = this.imgW / this.imgH;
   let dw, dh;
   if (maxW / maxH > asp) { dh = maxH; dw = dh * asp; } else { dw = maxW; dh = dw / asp; }
-  this._scale = dw / this.imgW;
+  this._baseScale = dw / this.imgW;
+  this._zoom = 1; this._panX = 0; this._panY = 0;   // (re)fit resets the view
+  this._scale = this._baseScale;
   this._dispW = Math.round(dw); this._dispH = Math.round(dh);
   // backing store at devicePixelRatio so the painting canvas stays crisp on
   // high-DPI screens; all drawing is in logical px (the ctx is scaled by dpr).
@@ -70,6 +72,29 @@ proto._fitCanvas = function () {
   this.el.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   this.el.curCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
   this.el.canvas.style.cursor = "none";
+};
+
+// keep the image covering the viewport (no empty gaps); at zoom 1 this forces pan 0
+proto._clampPan = function () {
+  const iw = this.imgW * this._scale, ih = this.imgH * this._scale;
+  const minX = Math.min(0, this._dispW - iw), minY = Math.min(0, this._dispH - ih);
+  this._panX = Math.min(0, Math.max(minX, this._panX));
+  this._panY = Math.min(0, Math.max(minY, this._panY));
+};
+
+// zoom by `factor` keeping the source point under (ancX,ancY display px) fixed
+proto._applyZoom = function (factor, ancX, ancY) {
+  const nz = Math.max(1, Math.min(8, this._zoom * factor));
+  if (nz === this._zoom) return;
+  const sx = (ancX - this._panX) / this._scale;   // source point under the cursor
+  const sy = (ancY - this._panY) / this._scale;
+  this._zoom = nz;
+  this._scale = this._baseScale * nz;
+  this._panX = ancX - sx * this._scale;
+  this._panY = ancY - sy * this._scale;
+  this._clampPan();
+  this._draw();
+  if (this._lastCursorPos) this._drawCursor(this._lastCursorPos);
 };
 
 // Feathered seam alpha at display resolution: the outward signed-distance smoothstep
@@ -94,7 +119,9 @@ proto._seamAlphaCanvas = function () {
   // _feather_alpha) - an inward linear ramp from the region edges - NOT the mask
   // edge. Show that instead of the mask feather so the preview matches the result.
   if (this.params.blend_mode === "whole_crop" && this._region) {
-    const blendD = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
+    // _baseScale (NOT _scale): the seam canvas is fit-res then drawn at the zoomed
+    // view rect, which applies the zoom - using _scale would double-count it.
+    const blendD = Math.max(0, (this.params.blend ?? 16) * (this._baseScale || 1) * dpr);
     const CAP = 480;
     const sc = Math.min(1, CAP / Math.max(W, H));
     const bw = Math.max(1, Math.round(W * sc)), bh = Math.max(1, Math.round(H * sc));
@@ -126,7 +153,8 @@ proto._seamAlphaCanvas = function () {
     return c;
   }
 
-  const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._scale || 1) * dpr);
+  // _baseScale (NOT _scale): fit-res seam canvas, zoom applied later at the view draw.
+  const blendDisp = Math.max(0, (this.params.blend ?? 16) * (this._baseScale || 1) * dpr);
   if (blendDisp < 0.5) { ctx.drawImage(src, 0, 0, W, H); return c; }   // crisp seam
 
   // draw the mask into a small buffer, distance-transform its alpha, write the
@@ -166,7 +194,9 @@ proto._draw = function () {
   const ctx = this.el.ctx, s = this._scale;
   const W = this._dispW, H = this._dispH;
   ctx.clearRect(0, 0, W, H);
-  ctx.drawImage(this.img, 0, 0, W, H);
+  // pan/zoom: the image is drawn at (_panX,_panY) scaled by _scale (= base*zoom);
+  // at fit (zoom 1) this is (0,0,W,H). Everything below offsets by the same pan.
+  ctx.drawImage(this.img, this._panX, this._panY, this.imgW * s, this.imgH * s);
 
   // seam preview: tint the FEATHERED seam alpha (Softness) in the chosen color,
   // clipped to the crop region. DPR-backed (crisp on HiDPI). Mirrors the Python
@@ -184,7 +214,8 @@ proto._draw = function () {
     // getImageData readback + per-pixel pass = the big-image lag) and tint the mask
     // directly; the feathered seam preview is computed on stroke end. Big speedup.
     const alphaSrc = this._painting ? this._effectiveMaskCanvas() : this._seamAlphaCanvas();
-    tc.drawImage(alphaSrc, 0, 0, tw, th);
+    // draw the mask at the same pan/zoom rect as the image (backing px) so it aligns
+    tc.drawImage(alphaSrc, this._panX * dpr, this._panY * dpr, this.imgW * s * dpr, this.imgH * s * dpr);
     tc.globalCompositeOperation = "source-in";
     tc.fillStyle = this.previewColor || "#f6303a";
     tc.fillRect(0, 0, tw, th);
@@ -197,7 +228,7 @@ proto._draw = function () {
     if (this._region && !this._painting) {
       const r = this._region;
       ctx.beginPath();
-      ctx.rect(r.rx * s, r.ry * s, r.rw * s, r.rh * s);
+      ctx.rect(r.rx * s + this._panX, r.ry * s + this._panY, r.rw * s, r.rh * s);
       ctx.clip();
     }
     ctx.globalAlpha = this.maskOpacity;
@@ -211,14 +242,14 @@ proto._draw = function () {
     const [x0, y0, x1, y1] = this._bbox;
     ctx.strokeStyle = "rgba(255,255,255,0.55)";
     ctx.lineWidth = 1; ctx.setLineDash([4, 4]);
-    ctx.strokeRect(x0 * s + 0.5, y0 * s + 0.5, (x1 - x0) * s, (y1 - y0) * s);
+    ctx.strokeRect(x0 * s + this._panX + 0.5, y0 * s + this._panY + 0.5, (x1 - x0) * s, (y1 - y0) * s);
     ctx.setLineDash([]);
   }
 
   // crop region (orange dashed) + handles + size badge
   if (this._region) {
     const r = this._region;
-    const rx = r.rx * s, ry = r.ry * s, rw = r.rw * s, rh = r.rh * s;
+    const rx = r.rx * s + this._panX, ry = r.ry * s + this._panY, rw = r.rw * s, rh = r.rh * s;
     const boxColor = this._cropBoxColor || BRAND;   // white when the orange tint is active
     ctx.strokeStyle = boxColor; ctx.lineWidth = 2; ctx.setLineDash([7, 5]);
     ctx.strokeRect(rx, ry, rw, rh);

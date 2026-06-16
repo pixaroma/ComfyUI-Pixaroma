@@ -54,8 +54,12 @@ export class InpaintCropEditor {
     this.imgW = 0;
     this.imgH = 0;
     this.projectId = null;
-    this._scale = 1;
-    this._dispW = 0;   // logical display size, set by _fitCanvas before any draw
+    this._scale = 1;        // effective source->display px = _baseScale * _zoom
+    this._baseScale = 1;    // fit-to-window scale (zoom 1)
+    this._zoom = 1;         // 1 = fit; wheel zooms toward the cursor
+    this._panX = 0;         // display-px offset of the image origin (0 at fit)
+    this._panY = 0;
+    this._dispW = 0;   // logical display (viewport) size, set by _fitCanvas before any draw
     this._dispH = 0;
     this._srcPath = "";
     this._maskPath = "";
@@ -151,7 +155,8 @@ export class InpaintCropEditor {
 
         <b style="color:#f66744;">PAINTING</b><br>
         <b>Brush / Erase:</b> pick a tool or press <kbd>B</kbd> / <kbd>E</kbd> (hold <kbd>X</kbd> to flip briefly)<br>
-        <b>Brush size:</b> <kbd>[</kbd> / <kbd>]</kbd> or the mouse wheel<br>
+        <b>Brush size:</b> <kbd>[</kbd> / <kbd>]</kbd> or the Size slider<br>
+        <b>Zoom / Pan:</b> scroll wheel zooms toward the cursor; hold <kbd>Space</kbd> and drag (or middle-drag) to pan; scroll out to fit<br>
         <b>Show / hide mask:</b> <kbd>H</kbd><br>
         <b>Invert / Clear:</b> buttons in the sidebar (Invert = swap painted &harr; unpainted)<br>
         <b>Load a different image:</b> the Load Image button, or just <b>paste</b> / <b>drag</b> an image straight in here<br><br>
@@ -229,8 +234,8 @@ export class InpaintCropEditor {
       this.brushSize = parseInt(this.el.sizeSlider.numInput.value) || this.brushSize;
     });
     const sizeHint = document.createElement("div");
-    sizeHint.textContent = "[ smaller  ·  ] bigger  ·  scroll wheel";
-    sizeHint.style.cssText = "font-size:10px;color:#888;margin-top:5px;";
+    sizeHint.innerHTML = "[ smaller  ·  ] bigger<br>scroll = zoom  ·  space-drag = pan";
+    sizeHint.style.cssText = "font-size:10px;color:#888;margin-top:5px;line-height:1.5;";
     secBrush.content.append(this.el.sizeSlider.el, sizeHint);
     sidebar.appendChild(secBrush.el);
 
