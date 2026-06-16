@@ -205,9 +205,14 @@ proto._invertMask = function () {
 };
 
 proto._loadMaskFromURL = function (url) {
+  const token = this._loadToken;   // tie to the image-load generation that requested it
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
+    // bail if a newer open/load superseded this, OR the user already started working
+    // (painting / has undo history / a painted bbox) - don't clobber fresh strokes.
+    if (token !== this._loadToken) return;
+    if (this._painting || this._undo?.length || this._bbox) return;
     this._ensureMaskCanvas();
     const tmp = document.createElement("canvas");
     tmp.width = this.imgW; tmp.height = this.imgH;

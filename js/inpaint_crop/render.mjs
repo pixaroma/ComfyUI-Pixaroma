@@ -8,9 +8,11 @@ const proto = InpaintCropEditor.prototype;
 
 // ── image load ──────────────────────────────────────────────────────────────
 proto._loadImageFromURL = function (url, onDone) {
+  const token = (this._loadToken = (this._loadToken || 0) + 1);   // newest load wins
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.onload = () => {
+    if (token !== this._loadToken) return;   // a newer open/load superseded this one
     this.img = img;
     this.imgW = img.naturalWidth;
     this.imgH = img.naturalHeight;
@@ -27,8 +29,10 @@ proto._loadImageFromURL = function (url, onDone) {
 };
 
 proto._loadImageFromDataURL = function (dataURL) {
+  const token = (this._loadToken = (this._loadToken || 0) + 1);   // newest load wins
   const img = new Image();
   img.onload = () => {
+    if (token !== this._loadToken) return;   // a newer open/load superseded this one
     this.img = img;
     this.imgW = img.naturalWidth;
     this.imgH = img.naturalHeight;

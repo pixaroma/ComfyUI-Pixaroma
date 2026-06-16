@@ -325,14 +325,18 @@ app.registerExtension({
     };
     api.addEventListener("executed", onExec);
 
-    node.onConnectionsChange = (type, slotIndex, connected) => {
-      if (type !== LiteGraph.INPUT) return;
-      if (node.inputs?.[slotIndex]?.name !== "image") return;
-      if (isGraphLoading()) return;
-      node._pixInpaintSourceURL = null;
-      if (node.properties) delete node.properties.pixInpaintSource;
-      if (connected) refreshSourcePreview();
-      else restoreNodePreview(parts, "{}", node);
+    // wrap (don't clobber) any existing handler from the prototype / another ext;
+    // forward all args, then run our image-input source-preview logic.
+    const origConnChange = node.onConnectionsChange;
+    node.onConnectionsChange = function (type, slotIndex, connected) {
+      const r = origConnChange?.apply(this, arguments);
+      if (type === LiteGraph.INPUT && node.inputs?.[slotIndex]?.name === "image" && !isGraphLoading()) {
+        node._pixInpaintSourceURL = null;
+        if (node.properties) delete node.properties.pixInpaintSource;
+        if (connected) refreshSourcePreview();
+        else restoreNodePreview(parts, "{}", node);
+      }
+      return r;
     };
 
     const origRemoved = node.onRemoved;

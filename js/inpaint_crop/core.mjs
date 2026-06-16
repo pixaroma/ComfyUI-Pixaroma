@@ -336,6 +336,7 @@ export class InpaintCropEditor {
   _setTool(v) { this.tool = v; }
 
   _resetAll() {
+    this._setTool("add");        // back to Brush (was left on Erase after a reset)
     this.brushSize = DEFAULT_BRUSH_SIZE;
     this.maskOpacity = 0.5;
     this.params.blend = 16;
@@ -352,6 +353,7 @@ export class InpaintCropEditor {
     this.el.growSlider?.setValue(4);
     this.el.ctxSlider?.setValue(24);
     this.el.targetSlider?.setValue(1024);
+    this._toolGrid?.setActive?.("add");
     this._blendModeGrid?.setActive?.("mask");
     this._sizeModeGrid?.setActive?.("keep");
     this._multipleGrid?.setActive?.(8);
