@@ -179,7 +179,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Wire an image in, or drag-drop / paste one onto the node body.",
-          "Click `Open mask editor` and paint over the area to change. Use Brush / Erase, the size slider (or `[` `]` and the mouse wheel), Clear and Invert.",
+          "Click `Open mask editor` and paint over the area to change. Use Brush / Erase (B / E), the size slider or `[` `]`, Clear and Invert. Scroll the wheel to zoom in for fine detail; hold Space and drag (or middle-drag) to pan.",
           "In the editor, drag `Softness` to set how soft the seam blends - the preview shows it live. Softness, blend mode, mask grow, crop size and context are on the node AND mirrored in the editor, so set them wherever is handier.",
           "Click `Save`, then wire `image` and `mask` into your inpaint model.",
           "Send `crop_info` to Inpaint Stitch Pixaroma.",
