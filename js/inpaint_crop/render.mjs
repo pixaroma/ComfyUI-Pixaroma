@@ -210,10 +210,11 @@ proto._draw = function () {
     const tc = t.getContext("2d");
     tc.setTransform(1, 0, 0, 1, 0, 0);
     tc.clearRect(0, 0, tw, th);
-    // While a stroke is active, skip the distance-transform seam preview (a
-    // getImageData readback + per-pixel pass = the big-image lag) and tint the mask
-    // directly; the feathered seam preview is computed on stroke end. Big speedup.
-    const alphaSrc = this._painting ? this._effectiveMaskCanvas() : this._seamAlphaCanvas();
+    // Always show the FEATHERED seam preview (even mid-stroke) so the mask doesn't
+    // flash crisp-while-painting then blurred-on-release. The rAF coalescing
+    // (_requestRedraw) keeps it smooth; if a very large image ever lags during a
+    // stroke, throttle _seamAlphaCanvas while _painting rather than skipping it.
+    const alphaSrc = this._seamAlphaCanvas();
     // draw the mask at the same pan/zoom rect as the image (backing px) so it aligns
     tc.drawImage(alphaSrc, this._panX * dpr, this._panY * dpr, this.imgW * s * dpr, this.imgH * s * dpr);
     tc.globalCompositeOperation = "source-in";

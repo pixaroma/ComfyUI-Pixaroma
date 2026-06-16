@@ -56,6 +56,8 @@ proto._bindMouse = function (cvs) {
       const x0 = e.clientX, y0 = e.clientY, px0 = this._panX, py0 = this._panY;
       this._panning = true;
       cvs.style.cursor = "grabbing";
+      if (this._dispW) this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH);  // hide the brush ring while panning
+      this._lastCursorPos = null;
       detachPan();
       panMove = (ev) => {
         this._panX = px0 + (ev.clientX - x0);
@@ -77,7 +79,7 @@ proto._bindMouse = function (cvs) {
     window.addEventListener("mousemove", winMove);
     window.addEventListener("mouseup", winUp);
   });
-  cvs.addEventListener("mousemove", (e) => { if (!this._painting && !this._panning) this._drawCursor(this._displayPos(e)); });
+  cvs.addEventListener("mousemove", (e) => { if (!this._painting && !this._panning && !this._spaceHeld) this._drawCursor(this._displayPos(e)); });
   cvs.addEventListener("mouseleave", () => { if (!this._painting && this._dispW) { this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH); this._lastCursorPos = null; } });
   // wheel = zoom toward the cursor (brush size moved to [ / ] + the Size slider)
   cvs.addEventListener("wheel", (e) => {
@@ -318,7 +320,12 @@ proto._bindKeys = function () {
     if (ctrl) return;
     if (e.code === "Space") {   // hold Space to pan the zoomed view (drag)
       e.preventDefault();
-      if (!this._spaceHeld) { this._spaceHeld = true; if (this.el.canvas) this.el.canvas.style.cursor = "grab"; }
+      if (!this._spaceHeld) {
+        this._spaceHeld = true;
+        if (this.el.canvas) this.el.canvas.style.cursor = "grab";
+        if (this._dispW) this.el.curCtx?.clearRect(0, 0, this._dispW, this._dispH);  // hide the brush ring
+        this._lastCursorPos = null;
+      }
       return;
     }
     if (key === "b") { e.preventDefault(); this._setTool("add"); this._toolGrid?.setActive?.("add"); return; }
