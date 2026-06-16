@@ -45,6 +45,40 @@ PIXAROMA_VENDOR_DIR = os.path.realpath(
     os.path.join(PIXAROMA_ASSETS_DIR, "vendor")
 )
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Browser-cache fix for our .mjs files.
+# ComfyUI core's cache middleware sets "Cache-Control: no-store" on .js/.css
+# responses, but it checks request.path.endswith(".js") - which does NOT match our
+# .mjs ES modules (we serve almost all code as .mjs at /extensions/<folder>/...). So
+# the browser heuristically caches them, and after a plugin update users see the node
+# but not the new .mjs code until a hard refresh. Mirror ComfyUI's behavior for OUR
+# OWN .mjs/.js files via an on_response_prepare hook, so a normal reload picks up
+# updates. Python change -> needs a full ComfyUI restart. Only touches this plugin's
+# files; the served folder name is auto-derived so a renamed install still works.
+_PIX_DIR = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
+_PIX_PREFIX = "/extensions/" + _PIX_DIR + "/"
+
+
+async def _pixaroma_no_cache(request, response):
+    p = request.path
+    if p.startswith(_PIX_PREFIX) and (p.endswith(".mjs") or p.endswith(".js")):
+        response.headers["Cache-Control"] = "no-store"
+
+
+def _pixaroma_install_no_cache():
+    try:
+        inst = getattr(PromptServer, "instance", None)
+        app = getattr(inst, "app", None) if inst else None
+        if app is None or getattr(app, "_pixaroma_no_cache_installed", False):
+            return
+        app.on_response_prepare.append(_pixaroma_no_cache)
+        app._pixaroma_no_cache_installed = True
+    except Exception as e:
+        print("[Pixaroma] no-cache hook not installed:", e)
+
+
+_pixaroma_install_no_cache()
+
 # Offline-first vendored third-party assets (Three.js, OrbitControls, loaders…).
 # Served with arbitrary path depth so `three/examples/jsm/…` resolves.
 _VENDOR_PATH_RE = re.compile(r"^[A-Za-z0-9_\-./]+$")
