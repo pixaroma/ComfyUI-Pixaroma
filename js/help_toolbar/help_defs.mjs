@@ -188,7 +188,7 @@ const HELP = {
       {
         heading: "Settings",
         defs: [
-          ["softness", "How far the seam feathers when the crop is pasted back. The editor previews it live; it travels to Inpaint Stitch automatically."],
+          ["softness", "How far the seam feathers when the crop is pasted back. Higher values grow the crop a little so the soft blend has room (you'll see the crop box expand). The editor previews it live; it travels to Inpaint Stitch automatically."],
           ["size mode", "Keep shape scales the long side to the target with no stretching (best quality). Force size outputs a square. Free keeps the natural size."],
           ["context px", "How much surrounding area to include around your mask."],
           ["mask grow / blur", "Expand the mask before cropping, and soften the mask the model sees."],

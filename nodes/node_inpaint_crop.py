@@ -255,17 +255,21 @@ class PixaromaInpaintCrop:
         mask = resolve_inpaint_mask(disk_mask, upstream_mask)
 
         params = self._params(size_mode, target, multiple, context_px, mask_grow, mask_blur)
+        # Seam softness (the node 'softness' knob, mirrored by the editor): feed it
+        # into the geometry so the crop CONTEXT grows to fit the feather (Option B -
+        # compute_region uses max(context_px, blend)), then ride it on crop_info to
+        # Inpaint Stitch as the seam-feather width.
+        sb = max(0, min(150, int(softness)))
+        params["blend"] = sb
         try:
             img_t, mask_t, crop_info, ow, oh = apply_inpaint_crop(image, mask, params)
         except Exception as e:
             print(f"[PixaromaInpaintCrop] crop error: {e}")
             return self._empty()
 
-        # Seam softness (the node 'softness' knob, mirrored by the editor) + blend
-        # mode (editor-only) ride crop_info to Inpaint Stitch. apply_inpaint_crop
-        # stays geometry-only, so inject here. (color_match is now the Stitch node's
-        # own knob.)
-        crop_info["blend"] = max(0, min(150, int(softness)))
+        # blend mode (editor-only) also rides crop_info. (color_match is now the
+        # Stitch node's own knob.)
+        crop_info["blend"] = sb
         _bm = str(meta.get("blend_mode", "mask"))
         crop_info["blend_mode"] = _bm if _bm in ("mask", "whole_crop") else "mask"
 

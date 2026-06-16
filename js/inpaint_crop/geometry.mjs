@@ -10,7 +10,7 @@
 export const GEO_DEFAULTS = {
   size_mode: "keep", target: 1024, target_w: 1024, target_h: 1024,
   multiple: 8, context_px: 24, context_pct: 10, mask_grow: 4, mask_blur: 4,
-  min_size: 256, max_size: 2048, allow_upscale: true,
+  blend: 16, min_size: 256, max_size: 2048, allow_upscale: true,
 };
 
 const roundMult = (v, m) => {
@@ -27,8 +27,11 @@ export function computeRegion(bbox, W, H, params) {
   const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
   const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
 
-  let rw = bw + 2 * p.context_px + bw * p.context_pct / 100;
-  let rh = bh + 2 * p.context_px + bh * p.context_pct / 100;
+  // context expand uses max(context_px, blend) so the seam feather has room to reach
+  // 0 inside the crop (Option B - mirror of compute_region; a big softness grows it).
+  const ctx = Math.max(p.context_px, p.blend || 0);
+  let rw = bw + 2 * ctx + bw * p.context_pct / 100;
+  let rh = bh + 2 * ctx + bh * p.context_pct / 100;
 
   const mult = p.multiple, mode = p.size_mode;
   let out_w, out_h;

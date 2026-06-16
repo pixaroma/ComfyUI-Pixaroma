@@ -50,6 +50,7 @@ DEFAULTS = {
     "context_pct": 10.0,        # extra padding as a fraction of the bbox (total %)
     "mask_grow": 4,             # dilate the mask before measuring the bbox
     "mask_blur": 4,             # soften the OUTPUT mask edge (conditioning), px
+    "blend": 16,                # seam feather px (stitch); also grows the crop context
     "fill_holes": True,
     "min_size": 256,
     "max_size": 2048,
@@ -82,7 +83,7 @@ def merge_params(p):
     if out["resample"] not in _RESAMPLE:
         out["resample"] = "lanczos"
     for k in ("target", "target_w", "target_h", "multiple", "context_px",
-              "mask_grow", "mask_blur", "min_size", "max_size"):
+              "mask_grow", "mask_blur", "blend", "min_size", "max_size"):
         out[k] = int(round(float(out[k])))
     out["context_pct"] = float(out["context_pct"])
     out["fill_holes"] = bool(out["fill_holes"])
@@ -223,9 +224,12 @@ def compute_region(bbox, W, H, p):
     cx = (x0 + x1) / 2.0
     cy = (y0 + y1) / 2.0
 
-    # context expand: context_px each side (total 2*px) + context_pct of bbox total
-    rw = bw + 2.0 * p["context_px"] + bw * p["context_pct"] / 100.0
-    rh = bh + 2.0 * p["context_px"] + bh * p["context_pct"] / 100.0
+    # context expand: max(context_px, blend) each side + context_pct of bbox total.
+    # The max-with-blend (Option B) gives the seam feather room to reach 0 INSIDE the
+    # crop, so a big softness grows the crop instead of being clamped at stitch time.
+    ctx = max(p["context_px"], p["blend"])
+    rw = bw + 2.0 * ctx + bw * p["context_pct"] / 100.0
+    rh = bh + 2.0 * ctx + bh * p["context_pct"] / 100.0
 
     mode = p["size_mode"]
     mult = p["multiple"]
@@ -397,13 +401,12 @@ def _blur_alpha(alpha, blend):
     ghost/halo of the old content. Coverage/grow is the crop node's mask_grow
     job; this only softens the outer seam.
 
-    Rect-edge guard: after the outward feather, the OUTWARD part is faded to 0
-    within `blend` px of the crop rectangle border (`min(feather, rect_ramp)`), so
-    a feather wider than the surrounding context can't leave a hard nonzero alpha
-    at the rectangle edge (the "high blend = straight line" bug). The MASK CORE
-    stays fully opaque (`max(.., mask)`) - the guard limits only the feather, it
-    must never dim the inpaint where the mask sits near the crop edge (the crop
-    hugs the mask, so otherwise a big blend would ghost the whole masked object).
+    The crop node now grows the crop context to max(context_px, blend)
+    (compute_region, Option B), so the mask always sits >= blend px from the crop
+    edge and the outward feather reaches 0 BEFORE the border on its own. That
+    replaced the old rect-edge guard + core-opaque clamp (which crushed a too-wide
+    feather and could ghost a mask near the crop edge); the smoothstep is opaque
+    inside by construction, so no clamp is needed.
     """
     k = int(blend)
     if k <= 0:
@@ -425,18 +428,6 @@ def _blur_alpha(alpha, blend):
         mbf = mb.astype(np.float32)
         blurred = gaussian_blur_np(mbf, max(1, int(k / 1.7)))
         soft = np.where(mbf > 0.5, 1.0, blurred).astype(np.float32)
-    # rect-edge guard (see docstring): fade the feather to 0 within k px of the
-    # crop border so it can't paint a hard line along the rectangle edge.
-    ch, cw = soft.shape
-    ys = np.minimum(np.arange(ch), (ch - 1) - np.arange(ch)).reshape(ch, 1)
-    xs = np.minimum(np.arange(cw), (cw - 1) - np.arange(cw)).reshape(1, cw)
-    de = np.minimum(ys, xs).astype(np.float32)
-    r = np.clip(de / float(k), 0.0, 1.0)
-    rect = (r * r * (3.0 - 2.0 * r)).astype(np.float32)
-    soft = np.minimum(soft, rect)
-    # the rect guard limits only the OUTWARD feather; the mask core stays fully
-    # opaque so the inpaint is never dimmed/ghosted near the crop edge.
-    soft = np.maximum(soft, mb.astype(np.float32))
     return torch.from_numpy(np.clip(soft, 0.0, 1.0).astype(np.float32))
 
 
