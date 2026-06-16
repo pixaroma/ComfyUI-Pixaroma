@@ -76,6 +76,12 @@ No more guessing crop sizes with numbers! Visually draw your crop box, or set wi
 ### 🧩 Image Uncrop
 The other half of crop-and-edit: paste an edited or upscaled crop **back** onto the original image at the exact spot it came from. Wire the **crop_info** from Image Crop into it, run your crop through any nodes you like (upscale, recolor, inpaint, remove background), and Image Uncrop drops the result back in place - everything outside the crop stays untouched. A **feather** slider softens the seam for a seamless blend, and transparency carries straight through.
 
+### 🩹 Inpaint Crop Pixaroma
+The easy way to set up an inpaint. Open the fullscreen editor and **paint** over the part you want the AI to redo - brush, erase, invert, an adjustable brush, and **zoom** (scroll) + **pan** (Space-drag) for fine detail. The node automatically finds the area around your mask, adds a margin, and crops a clean, **model-friendly** piece (sized to a multiple of 8 and scaled toward your target) so even a small spot gets enough resolution to look sharp. Set how the result blends back - **softness**, mask grow, and **Mask** (only the painted area) vs **Whole crop** - right here, with a live preview. Wire the cropped **image** and **mask** into your inpaint or edit model (Flux, KSampler, edit models), then send the **crop_info** wire to Inpaint Stitch to paste the result back. Turn on **invert_mask** to inpaint the opposite area (no separate Invert Mask node), and it works with a mask wired in too. Works in both the classic and the new node interface.
+
+### 🪡 Inpaint Stitch Pixaroma
+The other half: paste your inpainted crop **back** onto the original, blended so the seam disappears. Wire in the **crop_info** from Inpaint Crop and your processed crop, and by default only the area you painted changes - everything else stays pixel-perfect. Fine-tune the **softness**, **blend mode**, and an optional **color match** right on this node; because it runs after the sampler, changing them re-runs only this node (instant, no re-generating the image). It also hands back the untouched **original**, so you can drop both into Image Compare for an instant before / after.
+
 ### 🌓 Image Compare
 The best way to see the difference between two images. Easily compare them side-by-side with a slider, overlap them, or highlight exactly what changed between the two versions.
 
@@ -270,6 +276,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ---
 
 ## 🛠 Changelog
+
+### **June 16, 2026 · v1.3.92**
+- **NEW: Inpaint Crop + Inpaint Stitch Pixaroma** - the easy way to inpaint. Open the editor, paint over the part you want the AI to change, and the node automatically crops a clean, model-friendly piece around it; run it through your model, then Inpaint Stitch pastes the result back at the exact spot, blended so the seam disappears. The editor has **zoom** (scroll wheel) and **pan** (Space-drag) for fine detail, brush / erase / invert, an adjustable brush, and a live preview of how the edit will blend. Set how it blends back (softness, mask grow, mask vs whole-crop) on the node or in the editor; tweak the blend on the Stitch node afterwards without re-generating.
+- **No more hard refresh after every update.** The plugin now tells the browser not to cache its files, so from now on plugin updates show up on a normal page reload. (Do **one** last hard refresh - Ctrl+Shift+R - right after this update to clear the old cache; after that, a normal reload is enough.)
+- **Press `\` to open Node Colors.** With a node, several nodes, or a group selected, tap the **`\`** key to open the color palette (it's also labeled in the right-click menu now).
 
 ### **June 15, 2026 · v1.3.88-1.3.91**
 - **NEW: Image Uncrop Pixaroma** - paste an edited or upscaled crop back onto the original image at the exact spot it came from, with a **feather** slider for a seamless blend.
