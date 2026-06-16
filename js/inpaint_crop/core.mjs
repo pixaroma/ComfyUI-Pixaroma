@@ -55,8 +55,8 @@ export class InpaintCropEditor {
 
     // brush / mask state
     this.tool = "add";           // "add" | "erase"
-    this.brushSize = 48;         // display px (diameter)
-    this.softness = 0.5;         // 0 hard .. 1 soft
+    this.brushSize = 80;         // display px (diameter) - default; persists per node across opens
+    this.softness = 0.4;         // 0 hard .. 1 soft (slider shows 40)
     this.maskOpacity = 0.5;
     this.maskVisible = true;
     this._painting = false;
@@ -74,7 +74,7 @@ export class InpaintCropEditor {
 
   // upstreamUrl: live source from the wired IMAGE input (wins over saved src).
   // params: { size_mode, target, multiple, context_px, mask_grow } (internal keys)
-  open(jsonStr, upstreamUrl, params) {
+  open(jsonStr, upstreamUrl, params, prefs) {
     let data = {};
     try { data = jsonStr && jsonStr !== "{}" ? JSON.parse(jsonStr) : {}; } catch (e) {}
 
@@ -83,6 +83,14 @@ export class InpaintCropEditor {
     this._maskPath = data.mask_path || "";
     this.params = { ...(params || {}) };
     this._fromUpstream = !!upstreamUrl;
+
+    // restore brush prefs from a previous open on this node (size / soft edge /
+    // opacity persist across opens; absent -> the constructor defaults above).
+    if (prefs && typeof prefs === "object") {
+      if (prefs.brushSize != null) this.brushSize = prefs.brushSize;
+      if (prefs.softness != null) this.softness = prefs.softness;
+      if (prefs.maskOpacity != null) this.maskOpacity = prefs.maskOpacity;
+    }
 
     this._buildUI();
     this.layout.mount();

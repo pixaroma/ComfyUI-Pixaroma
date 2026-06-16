@@ -38,25 +38,32 @@ function buildSourceURL(part, bust) {
 }
 
 function getUpstreamImageURL(node) {
-  if (node._pixInpaintSourceURL) return node._pixInpaintSourceURL;
+  // Prefer the LIVE wired source so a just-changed Load Image (or any live
+  // preview) is what the editor opens. The cached executed-source URL below is
+  // only a fallback for generative upstreams whose pixels exist solely as the
+  // temp PNG the Python node saved on the last run. (Without this order,
+  // swapping the Load Image file showed the PREVIOUS run's image until re-run.)
   const input = (node.inputs || []).find((i) => i.name === "image");
-  if (!input || input.link == null) return null;
   const graph = node.graph;
-  if (!graph) return null;
-  let link = graph.links?.[input.link];
-  if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
-  if (!link) return null;
-  const src = graph.getNodeById(link.origin_id);
-  if (!src) return null;
-  if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
-    const w = (src.widgets || []).find((x) => x.name === "image");
-    if (w && w.value) return `/view?filename=${encodeURIComponent(w.value)}&type=input&t=${Date.now()}`;
+  if (input && input.link != null && graph) {
+    let link = graph.links?.[input.link];
+    if (!link && typeof graph.links?.get === "function") link = graph.links.get(input.link);
+    const src = link && graph.getNodeById(link.origin_id);
+    if (src) {
+      if (src.comfyClass === "LoadImage" || src.type === "LoadImage") {
+        const w = (src.widgets || []).find((x) => x.name === "image");
+        if (w && w.value) return `/view?filename=${encodeURIComponent(w.value)}&type=input&t=${Date.now()}`;
+      }
+      if (src.imgs && src.imgs.length > 0) {
+        const img = src.imgs[link.origin_slot] || src.imgs[0];
+        if (typeof img === "string") return img;
+        if (img && img.src) return img.src;
+      }
+    }
   }
-  if (src.imgs && src.imgs.length > 0) {
-    const img = src.imgs[link.origin_slot] || src.imgs[0];
-    if (typeof img === "string") return img;
-    if (img && img.src) return img.src;
-  }
+  // fallback: source PNG from the last Python execute (generative upstreams, or
+  // before a live preview exists), and the paste / drag-drop / restored case.
+  if (node._pixInpaintSourceURL) return node._pixInpaintSourceURL;
   return null;
 }
 
@@ -160,8 +167,15 @@ app.registerExtension({
     // ── Open mask editor button ──
     node.addWidget("button", "Open mask editor", null, () => {
       if (node._pixInpaintEditor?.el?.overlay?.isConnected) return;
+      refreshSourcePreview();   // sync the node thumbnail to the current upstream image
       const editor = new InpaintCropEditor();
       node._pixInpaintEditor = editor;
+      // brush size / soft edge / opacity persist across opens on this node
+      const captureBrush = () => {
+        node._pixInpaintBrush = {
+          brushSize: editor.brushSize, softness: editor.softness, maskOpacity: editor.maskOpacity,
+        };
+      };
 
       editor.onSave = (jsonStr, extra, preview) => {
         stateJson = jsonStr;
@@ -172,15 +186,16 @@ app.registerExtension({
         }
         if (preview) showNodePreview(parts, preview, null, node);
         if (app.graph) { app.graph.setDirtyCanvas(true, true); app.graph.change?.(); }
+        captureBrush();
       };
       editor.onSaveToDisk = (d) => downloadDataURL(d, "pixaroma_inpaint_crop");
       editor.onLoadImage = () => {
         const idx = (node.inputs || []).findIndex((i) => i.name === "image");
         if (idx >= 0 && node.inputs[idx].link != null) { try { node.disconnectInput(idx); } catch {} }
       };
-      editor.onClose = () => { node._pixInpaintEditor = null; node.setDirtyCanvas(true, true); };
+      editor.onClose = () => { captureBrush(); node._pixInpaintEditor = null; node.setDirtyCanvas(true, true); };
 
-      editor.open(stateJson, getUpstreamImageURL(node), readParams(node));
+      editor.open(stateJson, getUpstreamImageURL(node), readParams(node), node._pixInpaintBrush);
     });
 
     // ── mini-preview DOM widget (also carries the hidden state) ──
