@@ -118,8 +118,12 @@ class PixaromaInpaintStitch:
         try:
             result, original = stitch_back(crop_info, image, mask, blend, blend_mode, color_match)
         except Exception as e:
+            # A genuine fault inside stitch_back (e.g. CUDA OOM). Pass the inpainted
+            # image through as the result, but keep `original` as the TRUE uncropped
+            # original (crop_info["image"] already passed the dim==4 guard above), so a
+            # downstream before/after compare shows the real original, not a patch copy.
             print(f"[PixaromaInpaintStitch] stitch error: {e}")
-            return (image, image)
+            return (image, crop_info["image"])
         return (result, original)
 
 

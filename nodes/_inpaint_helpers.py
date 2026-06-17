@@ -213,7 +213,8 @@ def resolve_inpaint_mask(disk_mask, upstream_mask):
     mask falls back to the wired mask. This is what makes the `mask` input tooltip
     true: clear it or never paint, and the wired mask is used as-is. Returns the
     chosen mask tensor, or None when neither has content."""
-    if isinstance(disk_mask, torch.Tensor) and float(disk_mask.detach().max()) > 1e-6:
+    if (isinstance(disk_mask, torch.Tensor) and disk_mask.numel()
+            and float(disk_mask.detach().max()) > 1e-6):
         return disk_mask
     if isinstance(upstream_mask, torch.Tensor):
         return upstream_mask
