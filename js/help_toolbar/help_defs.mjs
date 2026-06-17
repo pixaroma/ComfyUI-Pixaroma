@@ -46,6 +46,8 @@ const HELP = {
         bullets: [
           "Type a number in the big field to set an exact seed (it switches to Fixed).",
           "In Fixed mode the same seed runs every time; in Random mode a new one rolls each Run.",
+          "When you wire this into KSampler it takes over the seed, so KSampler's own seed control greys out. Use the Random and Fixed buttons here instead.",
+          "The seed is picked in your browser. If you run a workflow through the API with no browser open, use Fixed with a set number (Random falls back to 0 there).",
         ],
       },
       {

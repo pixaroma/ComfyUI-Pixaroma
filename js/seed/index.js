@@ -256,10 +256,28 @@ function copySeed(node, btn) {
     btn.textContent = ok ? "Copied" : "No clipboard";
     setTimeout(() => { btn.classList.remove("is-flashing"); btn.textContent = "Copy"; }, 700);
   };
+  // Fallback for INSECURE contexts (ComfyUI served over http://<LAN-IP>), where
+  // navigator.clipboard is undefined — a throwaway textarea + execCommand still
+  // works because the click is a user gesture. Mirrors Version Check / Show Text.
+  const legacyCopy = () => {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      flash(ok);
+    } catch (_e) {
+      flash(false);
+    }
+  };
   if (navigator.clipboard?.writeText) {
-    navigator.clipboard.writeText(text).then(() => flash(true)).catch(() => flash(false));
+    navigator.clipboard.writeText(text).then(() => flash(true)).catch(legacyCopy);
   } else {
-    flash(false);
+    legacyCopy();
   }
 }
 
