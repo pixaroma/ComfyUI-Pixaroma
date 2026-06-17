@@ -37,7 +37,7 @@ const HELP = {
         heading: "Buttons",
         defs: [
           ["New fixed random", "Rolls a brand-new random seed and locks it (switches to Fixed). Use it when a random result is great and you want to keep that exact seed."],
-          ["Use last seed", "Loads the seed from the previous run and locks it. Perfect for making variations off the image you just liked."],
+          ["Use last seed", "Loads the seed from the previous run and locks it. Perfect for making variations off the image you just liked. It works within the current session only, so after you reload or reopen the workflow it stays greyed out until you Run once."],
           ["Copy", "Copies the current seed to your clipboard."],
         ],
       },

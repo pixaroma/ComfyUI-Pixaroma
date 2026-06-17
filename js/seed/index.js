@@ -63,15 +63,22 @@ function injectCSS() {
       border-radius: 7px;
       padding: 3px;
     }
+    /* Real <button>s (keyboard-reachable), styled to look like flat segments. */
     .pix-seed-seg {
       flex: 1;
       text-align: center;
       padding: 6px;
+      border: none;
       border-radius: 5px;
+      background: transparent;
+      font-family: inherit;
       font-size: 12px;
       color: rgba(255,255,255,0.55);
       cursor: pointer;
       user-select: none;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
       transition: background 0.08s, color 0.08s;
     }
     .pix-seed-seg:hover:not(.active) { color: rgba(255,255,255,0.85); }
@@ -80,6 +87,7 @@ function injectCSS() {
       color: #fff;
       font-weight: 500;
     }
+    .pix-seed-seg:focus-visible { outline: 2px solid ${BRAND}; outline-offset: -2px; }
     /* Action buttons — semi-transparent white surface, brand fill on hover
        (matches the Text / Prompt Pack action-button family). */
     .pix-seed-btn {
@@ -121,7 +129,7 @@ function injectCSS() {
     .pix-seed-lastrun {
       font-size: 11px;
       line-height: 1.6; /* room so descenders (y, g) aren't clipped at the node edge */
-      color: rgba(255,255,255,0.42);
+      color: rgba(255,255,255,0.55);
       text-align: center;
       white-space: nowrap;
       overflow: hidden;
@@ -260,19 +268,21 @@ function copySeed(node, btn) {
   // navigator.clipboard is undefined — a throwaway textarea + execCommand still
   // works because the click is a user gesture. Mirrors Version Check / Show Text.
   const legacyCopy = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    let ok = false;
     try {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
       document.body.appendChild(ta);
       ta.select();
-      const ok = document.execCommand("copy");
-      ta.remove();
-      flash(ok);
+      ok = document.execCommand("copy");
     } catch (_e) {
-      flash(false);
+      ok = false;
+    } finally {
+      ta.remove(); // always remove, even if execCommand throws
     }
+    flash(ok);
   };
   if (navigator.clipboard?.writeText) {
     navigator.clipboard.writeText(text).then(() => flash(true)).catch(legacyCopy);
@@ -325,7 +335,8 @@ function buildSeedBody(node, root) {
   const pill = document.createElement("div");
   pill.className = "pix-seed-pill";
   for (const [m, label] of [["random", "Random"], ["fixed", "Fixed"]]) {
-    const seg = document.createElement("div");
+    const seg = document.createElement("button");
+    seg.type = "button";
     seg.className = "pix-seed-seg" + (state.mode === m ? " active" : "");
     seg.textContent = label;
     seg.dataset.mode = m;
