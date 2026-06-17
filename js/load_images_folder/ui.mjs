@@ -219,8 +219,10 @@ export function openPickGallery(node, anchorEl, ctx) {
     return SORTS.find((s) => s.value === `${state.sort}|${state.sort_dir}`)?.label || "Name ↑";
   }
   function updateCounts() {
+    const total = (node._pixLifFiles || []).length;
     cnEl.textContent = selSet.size;
-    ctEl.textContent = (node._pixLifFiles || []).length;
+    ctEl.textContent = total;
+    firstInput.max = String(total || 1); // spinner arrows stop at the image count
   }
   function commit() {
     const sorted = sortFiles(node._pixLifFiles || [], state.sort, state.sort_dir);
@@ -291,10 +293,11 @@ export function openPickGallery(node, anchorEl, ctx) {
       .forEach((f) => selSet.add(f.file));
     renderGrid();
     commit();
+    return n; // the actual count selected (clamped to how many images exist)
   }
   gal.querySelector('[data-act="first"]').addEventListener("click", () => {
-    firstInput.value = String(Math.max(1, parseInt(firstInput.value, 10) || 1));
-    applyFirstN(firstInput.value);
+    const applied = applyFirstN(Math.max(1, parseInt(firstInput.value, 10) || 1));
+    firstInput.value = String(Math.max(1, applied)); // show the real, capped count
   });
   // Live-apply as the user types / steps the number so "type a number → it
   // selects" works without a separate click. Debounced so typing "12" applies
@@ -306,8 +309,13 @@ export function openPickGallery(node, anchorEl, ctx) {
     clearTimeout(firstTimer);
     firstTimer = null;
     if (gal._pixClosed) return;
-    if (firstInput.value.trim() === "") return; // empty = no change
-    applyFirstN(firstInput.value);
+    const raw = firstInput.value.trim();
+    if (raw === "") return; // empty = no change
+    const total = (node._pixLifFiles || []).length;
+    const typed = Math.max(0, parseInt(raw, 10) || 0);
+    const applied = applyFirstN(typed);
+    // snap the box down to the real max when you ask for more than exist
+    if (total > 0 && typed > total) firstInput.value = String(applied);
   };
   firstInput.addEventListener("input", () => {
     clearTimeout(firstTimer);
