@@ -207,6 +207,10 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# Internal Claude Code development notes - local only, NOT published.
+# Kept on the dev machine + backed up to Dropbox; end users don't need it.
+CLAUDE.md
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
