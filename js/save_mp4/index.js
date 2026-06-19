@@ -14,7 +14,20 @@ function injectCSS() {
   _mp4CssInjected = true;
   const style = document.createElement("style");
   style.id = "pix-mp4-css";
-  style.textContent = `.lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }`;
+  style.textContent = `
+.lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }
+.pix-mp4-media { position:relative; flex:1 1 0; min-height:0; }
+.pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
+.pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
+.pix-mp4-btn { width:24px; height:24px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; padding:0; border:none; border-radius:4px; background:transparent; cursor:pointer; }
+.pix-mp4-btn:hover { background:rgba(255,255,255,0.10); }
+.pix-mp4-ico { width:15px; height:15px; pointer-events:none; background-color:rgba(255,255,255,0.85); -webkit-mask:var(--ico) center/contain no-repeat; mask:var(--ico) center/contain no-repeat; }
+.pix-mp4-btn:hover .pix-mp4-ico { background-color:#fff; }
+.pix-mp4-scrub { flex:1 1 auto; min-width:30px; height:6px; position:relative; border-radius:3px; background:rgba(255,255,255,0.16); cursor:pointer; }
+.pix-mp4-scrub-fill { position:absolute; left:0; top:0; height:100%; width:0%; border-radius:3px; background:#f66744; pointer-events:none; }
+.pix-mp4-scrub-handle { position:absolute; top:50%; left:0%; width:11px; height:11px; border-radius:50%; background:#fff; transform:translate(-50%,-50%); pointer-events:none; box-shadow:0 0 2px rgba(0,0,0,0.6); }
+.pix-mp4-time { flex:0 0 auto; font:11px monospace; color:rgba(255,255,255,0.70); white-space:nowrap; user-select:none; }
+`;
   document.head.appendChild(style);
 }
 
@@ -50,21 +63,28 @@ const PREVIEW_MIN_H = 180;
 // workflows keep their own size because configure() runs after onNodeCreated
 // (Vue Compat #8).
 const DEFAULT_H = 420;
+// Shared mask-image icon set (borrowed from AudioReact's transport bar).
+const UI_ICON = "/pixaroma/assets/icons/ui/";
 
 // Vue can tear down a node's DOM widget and rebuild it (e.g. when the
 // user switches workflow tabs and back). The cached node._pixaromaVideo
 // then points at the OLD detached element. Look up the live <video> via
-// the widget element and re-cache it so subsequent runs work.
+// the widget element and re-cache it (+ the placeholder and the control-bar
+// elements) so subsequent runs and bar updates work.
 function getLiveVideo(node) {
   if (node._pixaromaVideo?.isConnected) return node._pixaromaVideo;
   const w = node.widgets?.find((x) => x.name === "pixaroma_video_preview");
   const root = w?.element;
   if (!root || !root.isConnected) return null;
   const vid = root.querySelector("video");
-  const placeholder = root.querySelector("div");
   if (!vid?.isConnected) return null;
   node._pixaromaVideo = vid;
-  node._pixaromaPlaceholder = placeholder;
+  node._pixaromaPlaceholder = root.querySelector(".pix-mp4-placeholder");
+  node._pixMp4Bar = root.querySelector(".pix-mp4-bar");
+  node._pixMp4PlayIco = root.querySelector(".pix-mp4-btn .pix-mp4-ico");
+  node._pixMp4Fill = root.querySelector(".pix-mp4-scrub-fill");
+  node._pixMp4Handle = root.querySelector(".pix-mp4-scrub-handle");
+  node._pixMp4Time = root.querySelector(".pix-mp4-time");
   return vid;
 }
 
@@ -78,6 +98,37 @@ function buildViewUrl(entry) {
     t: String(Date.now()),
   });
   return `/view?${params.toString()}`;
+}
+
+function fmtTime(sec) {
+  if (!isFinite(sec) || sec < 0) sec = 0;
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// Sync the custom control bar to the <video>'s current state: enabled/grayed,
+// play vs pause icon, scrub fill + handle, and the "cur / total" time text.
+// Called from the video's own events and from the executed handler. Cheap +
+// idempotent, so wiring it to timeupdate is fine.
+function refreshBar(node) {
+  const v = node._pixaromaVideo;
+  const bar = node._pixMp4Bar;
+  if (!v || !bar) return;
+  const hasSrc = !!v.src;
+  bar.classList.toggle("is-disabled", !hasSrc);
+  const playing = hasSrc && !v.paused && !v.ended;
+  node._pixMp4PlayIco?.style.setProperty(
+    "--ico",
+    `url(${UI_ICON}${playing ? "pause" : "play"}.svg)`
+  );
+  const dur = isFinite(v.duration) ? v.duration : 0;
+  const cur = isFinite(v.currentTime) ? v.currentTime : 0;
+  const ratio = dur > 0 ? Math.max(0, Math.min(1, cur / dur)) : 0;
+  const pct = (ratio * 100).toFixed(2) + "%";
+  if (node._pixMp4Fill) node._pixMp4Fill.style.width = pct;
+  if (node._pixMp4Handle) node._pixMp4Handle.style.left = pct;
+  if (node._pixMp4Time) node._pixMp4Time.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
 }
 
 app.registerExtension({
@@ -100,36 +151,149 @@ app.registerExtension({
       // mp4 entry simply fails to load as an image and is skipped).
       this.hideOutputImages = true;
 
-      // Preview wrap: position:relative so the absolute children stack inside
-      // it. flex:1 1 0 + min-height:0 fill the allocated row in Nodes 2.0; in
-      // legacy the framework sets this element's height each frame to the
-      // distributeSpace-allocated (filled) height. box-sizing:border-box so
-      // that height is the box exactly (no spill).
+      const node = this;
+
+      // Preview wrap: a flex COLUMN — the media area fills the top, the custom
+      // control bar is pinned at the bottom. flex:1 1 0 + min-height:0 fill the
+      // allocated row in Nodes 2.0; in legacy the framework sets this element's
+      // height each frame to the distributeSpace-allocated (filled) height.
       const wrap = document.createElement("div");
       wrap.className = "pix-mp4-root";
       wrap.style.cssText =
-        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
+        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;";
 
-      // object-fit:contain = fill the wrap, never distort. absolute inset:0
-      // so the wrap's (framework/flex) height is the box the clip fits into.
+      // Media area (flex:1) holds the <video> + placeholder, both absolute
+      // inset:0 so exactly one shows at a time. object-fit:contain so a
+      // portrait/landscape clip letterboxes instead of distorting.
+      const media = document.createElement("div");
+      media.className = "pix-mp4-media";
+      wrap.appendChild(media);
+
       const video = document.createElement("video");
-      video.controls = true;
-      video.loop = true;
+      video.loop = true; // NOTE: no `controls` — we draw our own bar below
       video.style.cssText =
-        "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;border-radius:4px;display:none;";
-      wrap.appendChild(video);
+        "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;display:none;";
+      media.appendChild(video);
 
       // Appended AFTER the video so, as equal position:absolute siblings, it
       // stacks on top. Safe because exactly one of the two is display:block at
       // a time (placeholder until the first clip loads, video thereafter).
       const placeholder = document.createElement("div");
+      placeholder.className = "pix-mp4-placeholder";
       placeholder.textContent = "(no video yet — run the workflow)";
       placeholder.style.cssText =
-        "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:12px;text-align:center;padding:16px;box-sizing:border-box;background:#1a1a1a;border-radius:4px;";
-      wrap.appendChild(placeholder);
+        "position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#888;font-size:12px;text-align:center;padding:16px;box-sizing:border-box;background:#1a1a1a;";
+      media.appendChild(placeholder);
+
+      // Custom control bar UNDER the video, ALWAYS visible (grayed via
+      // .is-disabled when there's nothing to play). Replaces the native
+      // <video controls> overlay, which can't be moved below the picture.
+      // Order: play | time | scrub (fills) | fullscreen.
+      const bar = document.createElement("div");
+      bar.className = "pix-mp4-bar is-disabled";
+      // Swallow mousedown so interacting with the bar never starts a node drag.
+      bar.addEventListener("mousedown", (e) => e.stopPropagation());
+
+      const playBtn = document.createElement("button");
+      playBtn.className = "pix-mp4-btn";
+      playBtn.title = "Play / Pause";
+      const playIco = document.createElement("span");
+      playIco.className = "pix-mp4-ico";
+      playIco.style.setProperty("--ico", `url(${UI_ICON}play.svg)`);
+      playBtn.appendChild(playIco);
+      bar.appendChild(playBtn);
+
+      const timeEl = document.createElement("span");
+      timeEl.className = "pix-mp4-time";
+      timeEl.textContent = "0:00 / 0:00";
+      bar.appendChild(timeEl);
+
+      const scrub = document.createElement("div");
+      scrub.className = "pix-mp4-scrub";
+      const fill = document.createElement("div");
+      fill.className = "pix-mp4-scrub-fill";
+      scrub.appendChild(fill);
+      const handle = document.createElement("div");
+      handle.className = "pix-mp4-scrub-handle";
+      scrub.appendChild(handle);
+      bar.appendChild(scrub);
+
+      const fsBtn = document.createElement("button");
+      fsBtn.className = "pix-mp4-btn";
+      fsBtn.title = "Fullscreen";
+      const fsIco = document.createElement("span");
+      fsIco.className = "pix-mp4-ico";
+      fsIco.style.setProperty("--ico", `url(${UI_ICON}fit.svg)`);
+      fsBtn.appendChild(fsIco);
+      bar.appendChild(fsBtn);
+
+      wrap.appendChild(bar);
 
       this._pixaromaVideo = video;
       this._pixaromaPlaceholder = placeholder;
+      this._pixMp4Bar = bar;
+      this._pixMp4PlayIco = playIco;
+      this._pixMp4Fill = fill;
+      this._pixMp4Handle = handle;
+      this._pixMp4Time = timeEl;
+
+      // Play / pause.
+      playBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!video.src) return;
+        if (video.paused) video.play().catch(() => {});
+        else video.pause();
+      });
+      // Fullscreen (native; falls back to the webkit prefix on old Safari).
+      fsBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (!video.src) return;
+        (video.requestFullscreen || video.webkitRequestFullscreen)?.call(video);
+      });
+      // Keep the bar in sync with playback.
+      ["play", "pause", "ended", "timeupdate", "loadedmetadata", "durationchange"].forEach(
+        (ev) => video.addEventListener(ev, () => refreshBar(node))
+      );
+
+      // Scrub: click/drag to seek. Global mousemove/mouseup capture so a drag
+      // that releases outside the track still ends cleanly. Listeners are
+      // stashed on the node so onRemoved can detach them (no window leak).
+      let dragging = false;
+      const seekFrom = (ev) => {
+        if (!video.src) return;
+        const rect = scrub.getBoundingClientRect();
+        if (rect.width <= 0) return;
+        const ratio = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const dur = isFinite(video.duration) ? video.duration : 0;
+        if (dur > 0) {
+          video.currentTime = ratio * dur;
+          refreshBar(node);
+        }
+      };
+      scrub.addEventListener("mousedown", (e) => {
+        dragging = true;
+        seekFrom(e);
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      const onMove = (e) => { if (dragging) seekFrom(e); };
+      const onUp = () => { dragging = false; };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      this._pixMp4ScrubMove = onMove;
+      this._pixMp4ScrubUp = onUp;
+
+      // Detach the window scrub listeners when the node is removed (instance
+      // patch so re-registration can't double-wrap).
+      const protoRemoved = nodeType.prototype.onRemoved;
+      this.onRemoved = function () {
+        if (this._pixMp4ScrubMove) window.removeEventListener("mousemove", this._pixMp4ScrubMove);
+        if (this._pixMp4ScrubUp) window.removeEventListener("mouseup", this._pixMp4ScrubUp);
+        this._pixMp4ScrubMove = this._pixMp4ScrubUp = null;
+        return protoRemoved?.apply(this, arguments);
+      };
+
+      refreshBar(node); // initial grayed state
 
       const widget = this.addDOMWidget(
         "pixaroma_video_preview",
@@ -181,4 +345,7 @@ api.addEventListener("executed", ({ detail }) => {
     node._pixaromaPlaceholder.style.display = "none";
   }
   video.load();
+  // Enable the control bar now that there's a clip (its own loadedmetadata /
+  // timeupdate events take over from here).
+  refreshBar(node);
 });
