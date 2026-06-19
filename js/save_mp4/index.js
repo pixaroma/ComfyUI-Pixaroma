@@ -178,8 +178,15 @@ app.registerExtension({
       let chromeTries = 0;
       const captureChrome = () => {
         if (node._mp4Chrome != null || isVueNodes()) return;
-        const ch = (node.size?.[1] || 0) - (widget.computedHeight || 0);
-        if (ch > 0 && widget.computedHeight > 0) node._mp4Chrome = ch;
+        // Derive chrome from the SAME ph that computeSize contributes, NOT
+        // widget.computedHeight (LiteGraph's arrange path can set the latter
+        // to ph + 4, which would shave 4px off the captured chrome).
+        const ph = Math.max(
+          PREVIEW_MIN_H,
+          node.properties?.[PREVIEW_PROP] ?? DEFAULT_PREVIEW_H
+        );
+        const ch = (node.size?.[1] || 0) - ph;
+        if (ch > 0) node._mp4Chrome = ch;
         else if (chromeTries++ < 20) requestAnimationFrame(captureChrome);
       };
       requestAnimationFrame(captureChrome);
@@ -198,15 +205,14 @@ app.registerExtension({
         if (this.properties[PREVIEW_PROP] !== ph) this.properties[PREVIEW_PROP] = ph;
       };
 
-      // Fresh-node default only. Mutate indices rather than replacing the
-      // array (plays nicer with Vue's reactive proxy, convention #9).
-      // configure() runs AFTER onNodeCreated and restores saved-workflow
-      // sizes, so this never clobbers a saved size.
+      // Fresh-node default. LiteGraph already set node.size to computeSize()
+      // (= chrome + preview height) before onNodeCreated ran, so only enforce
+      // the WIDTH floor here — do NOT reset the height. Resetting it would
+      // override the computeSize-settled height and could make the preview
+      // spill below the node (the height is governed by computeSize alone).
+      // The !this.size branch is purely defensive (LiteGraph always sets it).
       if (!this.size) this.size = [MIN_W, DEFAULT_H];
-      if (this.size[0] < MIN_W) {
-        this.size[0] = MIN_W;
-        this.size[1] = DEFAULT_H;
-      }
+      else if (this.size[0] < MIN_W) this.size[0] = MIN_W;
 
       return ret;
     };
