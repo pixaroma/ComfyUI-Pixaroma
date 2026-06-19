@@ -31,14 +31,14 @@ registerNodeHelp("PixaromaSetNode", {
       ],
     },
     {
-      heading: "Subgraphs",
+      heading: "Subgraphs (important)",
       body:
-        "A Set is visible to its own graph and to every subgraph nested inside it. So a Set in the main graph can be read by Gets inside your subgraphs. The same name can be reused in two unrelated subgraphs without clashing.",
+        "Think of subgraphs as nested boxes. A Set reaches INWARD, never outward: it can be read inside its own graph and any subgraph nested deeper inside it, but never by the graph outside it.\n\nSo a Set in the MAIN graph can be read by Gets everywhere, including inside your subgraphs. A Set placed INSIDE a subgraph stays private to that subgraph, so a Get outside cannot see it.\n\nTip: put a Set in the main graph for any value you want to reach everywhere. Because each Set stays in its own box, two separate subgraphs can reuse the same name for different things without clashing.",
     },
     {
       heading: "The little value line",
       body:
-        "When the node is expanded and the stored value is a simple number, text, or true/false, a small grey readout shows it (for example = 81). Images, models, and latents show no preview, just the name. It is only a display helper and is never saved into the workflow.",
+        "When the node is expanded and the value is a plain number, text, or true/false, a small grey readout shows it (for example = 81). Images, models, and latents show no preview, just the name.\n\nIt is a quick helper that peeks at the source field, so a plain Number or Text node reads exactly. If the value is calculated by another node (a math node, a sampler), it is only known once you run, so the line stays blank. It is display only, never saved, and never changes the value that actually flows.",
     },
   ],
   footer: "Tip: keep Set/Get nodes collapsed. They are meant to disappear into the background.",
@@ -56,7 +56,7 @@ registerNodeHelp("PixaromaGetNode", {
     {
       heading: "How to use it",
       bullets: [
-        "Click the dropdown and choose which Set to read (it lists the names in scope).",
+        "Click the dropdown and choose which Set to read (it lists the Sets it can reach from here).",
         "Wire the output into any matching input.",
         "Add as many Get nodes as you like for the same name to fan one value out.",
       ],
@@ -68,14 +68,14 @@ registerNodeHelp("PixaromaGetNode", {
       ],
     },
     {
-      heading: "Subgraphs",
+      heading: "Subgraphs (important)",
       body:
-        "A Get looks for its Set in its own graph first, then the parent, then further out toward the main graph. So a Get inside a subgraph can read a Set defined in the graph that contains it.",
+        "A Get reads OUTWARD. It looks for its Set in its own subgraph first, then the graph just outside it, and so on out to the main graph. So a Get inside a subgraph can read a Set in the main graph (or any graph that contains it), but it cannot reach a Set buried inside a different subgraph.\n\nShort version: a Set reaches inward, a Get reads outward. Keep shared Sets in the main graph and any Get can read them. If the dropdown does not list a name you made, that Set is in a box this Get cannot see into.",
     },
     {
       heading: "The little value line",
       body:
-        "When expanded, a simple number, text, or true/false value shows as a small grey readout (for example = 81). It mirrors whatever the chosen Set is holding. It is display only and is never saved.",
+        "When expanded, a plain number, text, or true/false shows as a small grey readout (for example = 81), mirroring the chosen Set. A value calculated by another node is only known once you run, so the line stays blank until then. Display only, never saved, never changes the value that flows.",
     },
   ],
   footer: "If the dropdown is empty, add a Set Pixaroma node first and give it a name.",
