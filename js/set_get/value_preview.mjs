@@ -72,7 +72,7 @@ function fmt(v, type) {
   if (v == null) return null;
   if (typeof v === "boolean") return v ? "true" : "false";
   if (typeof v === "number") {
-    if (!isFinite(v)) return String(v);
+    if (!isFinite(v)) return null; // hide the line for NaN / Infinity
     // An INT-typed slot emits a whole number even when the source widget holds
     // a decimal (e.g. Number Pixaroma 5.5 -> its int output is 6), so round.
     if (String(type).toUpperCase() === "INT") return String(bankersRound(v));
@@ -205,7 +205,9 @@ export function paintReadout(node, ctx) {
     }
     anchor = Math.max(anchor, wd.last_y + h);
   }
-  if (anchor <= 0) anchor = (node.size?.[1] || 0) - ROW_H; // fallback
+  // No widget drawn yet (first frame after add) -> skip; we paint next frame
+  // once last_y is set, rather than guess a position from the node bottom.
+  if (anchor <= 0) return;
 
   // Grow the node just enough to enclose the line right under the name
   // (converges in one frame; never resize mid-load -> Vue Compat #18).
@@ -275,10 +277,11 @@ export function refreshValue(node) {
 // Single shared poll: keeps readouts live when the user edits an upstream
 // number. Only touches expanded Set/Get nodes in the currently-viewed graph,
 // and only repaints on a real change.
-let _poll = null;
 export function startValuePoll() {
-  if (_poll) return;
-  _poll = setInterval(() => {
+  // Window-scoped guard so a module re-import (hot reload) cannot start a second
+  // interval running in parallel.
+  if (window.__pixSgValPoll) return;
+  window.__pixSgValPoll = setInterval(() => {
     const g = app.canvas?.graph || app.graph;
     if (!g?._nodes) return;
     for (const n of g._nodes) {
