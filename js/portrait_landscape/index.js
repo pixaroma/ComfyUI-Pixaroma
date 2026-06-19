@@ -18,12 +18,12 @@ const PAD = 6;
 const GAP = 6;
 const WIDGET_H = BTN_H + PAD * 2;
 
-// Default = minimum size (CLAUDE.md UI conventions #5). Wide enough that the
-// two pills don't crowd, tall enough for the two number fields + pill row.
+// Fresh-drop WIDTH (CLAUDE.md UI conventions #5) - wide enough that the two
+// pills don't crowd. The HEIGHT is auto-fit to the content (title + the two
+// number fields + the pill row) via node.computeSize(), so there's no empty
+// gap under the pills and no over-tall default.
 const DEFAULT_W = 240;
-const DEFAULT_H = 190;
 const MIN_W = 240;
-const MIN_H = 160;
 
 function injectCSS() {
   if (document.getElementById("pix-portrait-landscape-css")) return;
@@ -148,12 +148,15 @@ function setupNode(node) {
   // in legacy. Uninstalled in onRemoved.
   node._pixPlFloorOff = installResizeFloor(root, () => WIDGET_H);
 
-  // Default size for fresh-on-canvas drops. configure() runs AFTER nodeCreated
-  // (Vue Compat #8) and overwrites with the saved size on workflow restore +
-  // duplicate, so existing workflows keep their size. Mutate the array rather
-  // than replacing it (plays nicer with any reactive proxy on node.size).
+  // Fresh-drop size: width = DEFAULT_W, height = LiteGraph's natural content
+  // height (title + the two number fields + the pill row) so the node hugs its
+  // content with no empty gap. configure() runs AFTER nodeCreated (Vue Compat
+  // #8) and overwrites both on workflow restore + duplicate, so existing
+  // workflows keep their saved size; only fresh drops use this. Mutate the
+  // array rather than replacing it (plays nicer with any reactive proxy).
+  const snugH = node.computeSize()[1];
   node.size[0] = DEFAULT_W;
-  node.size[1] = DEFAULT_H;
+  node.size[1] = snugH;
   node.setDirtyCanvas(true, true);
 }
 
@@ -171,17 +174,18 @@ app.registerExtension({
       return r;
     };
 
-    // Clamp manual resize so the pills + fields never clip past the node
-    // frame. LEGACY-ONLY: in Nodes 2.0 the rendered size lives in the Vue
-    // layout store, so clamping node.size there desyncs and makes the node
-    // jump on a workflow switch (CLAUDE.md "Nodes 2.0 manual-resize MINIMUM").
+    // Clamp manual resize WIDTH so the two pills never clip past the right
+    // edge. Height is left to LiteGraph (its content-based min floors it, so
+    // the node can't be dragged shorter than the pills + fields, and there's
+    // no forced empty space). LEGACY-ONLY: in Nodes 2.0 the rendered size
+    // lives in the Vue layout store, so clamping node.size there desyncs and
+    // makes the node jump on a workflow switch (CLAUDE.md "Nodes 2.0
+    // manual-resize MINIMUM").
     const _origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes()) {
         if (size[0] < MIN_W) size[0] = MIN_W;
-        if (size[1] < MIN_H) size[1] = MIN_H;
         if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-        if (this.size[1] < MIN_H) this.size[1] = MIN_H;
       }
       if (_origOnResize) return _origOnResize.apply(this, arguments);
     };
@@ -195,7 +199,6 @@ app.registerExtension({
       if (isVueNodes()) return;
       if (this.flags?.collapsed) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      if (this.size[1] < MIN_H) this.size[1] = MIN_H;
     };
 
     const _origOnRemoved = nodeType.prototype.onRemoved;
