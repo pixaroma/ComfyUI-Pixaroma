@@ -120,6 +120,9 @@ app.registerExtension({
         "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000;border-radius:4px;display:none;";
       wrap.appendChild(video);
 
+      // Appended AFTER the video so, as equal position:absolute siblings, it
+      // stacks on top. Safe because exactly one of the two is display:block at
+      // a time (placeholder until the first clip loads, video thereafter).
       const placeholder = document.createElement("div");
       placeholder.textContent = "(no video yet — run the workflow)";
       placeholder.style.cssText =
@@ -153,7 +156,12 @@ app.registerExtension({
         const nodeH = node.size?.[1] || (ESTIMATED_CHROME + PREVIEW_MIN_H);
         const h = Math.max(PREVIEW_MIN_H, nodeH - top - WIDGET_BOTTOM_PAD);
         this.computedHeight = h;
-        if (!isVueNodes()) wrap.style.height = h + "px";
+        // Legacy: pin the element height (absolute children would otherwise
+        // collapse the wrap to 0). Nodes 2.0: clear any pin so the flex fill
+        // (computeLayoutSize) governs — this also un-sticks a height left over
+        // from a live Legacy->Nodes 2.0 renderer toggle.
+        if (isVueNodes()) wrap.style.height = "";
+        else wrap.style.height = h + "px";
         return [width, h];
       };
 
@@ -162,8 +170,14 @@ app.registerExtension({
       // so the saved node width round-trips (Compare gotcha 2).
       widget.computeLayoutSize = () => ({ minHeight: PREVIEW_MIN_H, minWidth: 1 });
 
-      if (!this.size || this.size[0] < MIN_W) {
-        this.size = [MIN_W, DEFAULT_H];
+      // Fresh-node default only. Mutate indices rather than replacing the
+      // array (plays nicer with Vue's reactive proxy, convention #9).
+      // configure() runs AFTER onNodeCreated and restores saved-workflow
+      // sizes, so this never clobbers a saved size.
+      if (!this.size) this.size = [MIN_W, DEFAULT_H];
+      if (this.size[0] < MIN_W) {
+        this.size[0] = MIN_W;
+        this.size[1] = DEFAULT_H;
       }
 
       return ret;
