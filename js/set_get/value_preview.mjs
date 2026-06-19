@@ -181,43 +181,70 @@ export function ensureValueWidget(node) {
   }
 }
 
-// Classic only: paint "= value" in the reserved strip at the bottom of the node
-// body, right under the name field. Vue uses the DOM element instead. Called
-// from each node's onDrawForeground.
+// Classic only: paint "= value" right under the NAME FIELD. We anchor to the
+// name widget's actual drawn position (widget.last_y), NOT the node bottom,
+// because the node's minimum height leaves slack below the last widget and
+// anchoring to the bottom floated the line low. Vue uses the DOM element.
+// Called from each node's onDrawForeground (draw time, so last_y is set).
 export function paintReadout(node, ctx) {
   if (isVue() || node.flags?.collapsed) return;
   if (!node._pixSgValShown || !node._pixSgValText || !ctx) return;
   const w = node.size?.[0] || 0;
-  const h = node.size?.[1] || 0;
-  if (w <= 0 || h <= 0) return;
+  if (w <= 0) return;
+
+  // Bottom of the last widget (the name field) in body coordinates.
+  const NW_H = window.LiteGraph?.NODE_WIDGET_HEIGHT || 20;
+  let anchor = 0;
+  for (const wd of node.widgets || []) {
+    if (typeof wd.last_y !== "number") continue;
+    let h = NW_H;
+    try {
+      h = wd.computeSize?.(w)?.[1] || NW_H;
+    } catch {
+      /* ignore */
+    }
+    anchor = Math.max(anchor, wd.last_y + h);
+  }
+  if (anchor <= 0) anchor = (node.size?.[1] || 0) - ROW_H; // fallback
+
+  // Grow the node just enough to enclose the line right under the name
+  // (converges in one frame; never resize mid-load -> Vue Compat #18).
+  const needed = anchor + ROW_H;
+  if ((node.size?.[1] || 0) < needed) {
+    let loading = false;
+    try {
+      loading = isGraphLoading();
+    } catch {
+      /* ignore */
+    }
+    if (!loading) node.setSize?.([node.size[0], needed]);
+  }
+
   ctx.save();
-  // Clip to the bottom strip so a long value never spills sideways.
   ctx.beginPath();
-  ctx.rect(0, h - ROW_H, w, ROW_H);
+  ctx.rect(0, anchor, w, ROW_H); // clip so a long value never spills sideways
   ctx.clip();
   ctx.fillStyle = "rgba(255, 255, 255, 0.55)";
   ctx.font = "11px monospace";
   ctx.textAlign = "left";
   ctx.textBaseline = "alphabetic";
-  ctx.fillText("= " + node._pixSgValText, 12, h - 6);
+  ctx.fillText("= " + node._pixSgValText, 12, anchor + 13);
   ctx.restore();
 }
 
-// Classic only: the node frame is drawn at node.size and does NOT auto-grow,
-// so reserve one row for the painted readout when it is shown (and release it
-// when hidden). Vue's grid grows on its own. Never resize during a load (would
-// dirty the saved workflow, Vue Compat #18).
+// Classic only: when the readout is HIDDEN, shrink the node back to its content
+// (drop the row the painted line used). When SHOWN, paintReadout sizes the node
+// to the real name-field anchor during draw, so nothing to do here. Vue's grid
+// handles its own height. Never resize during a load (Vue Compat #18).
 function fitNodeForReadout(node) {
-  if (isVue()) return;
+  if (isVue() || node._pixSgValShown) return;
   try {
     if (isGraphLoading()) return;
   } catch {
     /* ignore */
   }
   const base = node.computeSize?.();
-  if (!base) return;
-  const extra = node._pixSgValShown ? ROW_H : 0;
-  node.setSize?.([node.size?.[0] || base[0], base[1] + extra]);
+  if (base) node.setSize?.([node.size?.[0] || base[0], base[1]]);
 }
 
 // Recompute the readout for one node. Cheap; safe to call often.
