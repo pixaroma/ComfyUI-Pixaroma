@@ -11,16 +11,21 @@ registerNodeHelp("PixaromaSetNode", {
     {
       heading: "What it does",
       body:
-        "Set Pixaroma is a wireless wire. Connect anything into it (an image, a model, a number, a prompt) and give it a name. A Get Pixaroma node anywhere in the workflow can then read that same value by picking the name, with no cable running across the canvas.\n\nIt lives only in the editor. At run time the value flows straight from the original source to wherever the Get node feeds, exactly as if you had wired them directly, so it never slows anything down or changes the result.",
+        "Set Pixaroma is a wireless wire. Connect anything into it (an image, a model, a number, a prompt) and give it a name. A Get Pixaroma node anywhere in the workflow can then read that same value by picking the name, with no cable running across the canvas.\n\nIt also has a passthrough output: wire it straight to a node sitting nearby, and use Get nodes for the ones far away - same value either way.\n\nIt lives only in the editor. At run time the value flows straight from the original source, exactly as if you had wired it directly, so it never slows anything down or changes the result.",
     },
     {
       heading: "How to use it",
       bullets: [
         "Drag a connection into the input. The node takes on that wire's type and colour.",
         "Type a name in the field (for example length, base_model, positive).",
-        "Add a Get Pixaroma node and choose the same name to read the value back.",
+        "Wire the output to a nearby node directly, or add Get Pixaroma nodes for far-apart ones.",
         "Keep the node collapsed (click the dot in its title bar) to keep the canvas tidy.",
       ],
+    },
+    {
+      heading: "Colours",
+      body:
+        "Colour a Set however you like (right-click -> Colors). Any Get that reads it takes the same colour, so matching pairs are easy to spot, and the Gets follow along when you recolour the Set later. Turn off 'Get matches its Set's colour' in Settings (under Pixaroma) to leave Gets on their own colour.",
     },
     {
       heading: "Right-click menu",
@@ -60,6 +65,11 @@ registerNodeHelp("PixaromaGetNode", {
         "Wire the output into any matching input.",
         "Add as many Get nodes as you like for the same name to fan one value out.",
       ],
+    },
+    {
+      heading: "Colours",
+      body:
+        "A Get takes the colour of the Set it reads, so a matching pair is easy to spot, and each name in the dropdown is tagged with that Set's colour. Colour the Set (right-click -> Colors) and the Get follows. Turn off 'Get matches its Set's colour' in Settings (under Pixaroma) to leave Gets alone.",
     },
     {
       heading: "Right-click menu",

@@ -17,10 +17,23 @@ import { app } from "/scripts/app.js";
 import { registerPixaromaSetNode } from "./set_node.mjs";
 import { registerPixaromaGetNode } from "./get_node.mjs";
 import { startValuePoll } from "./value_preview.mjs";
+import { SETTING_ID, recolorAllGets } from "./colors.mjs";
 import "./help.mjs"; // registers help for both nodes (convention #16)
 
 app.registerExtension({
   name: "Pixaroma.SetGet",
+  settings: [
+    {
+      id: SETTING_ID,
+      name: "Get matches its Set's colour",
+      type: "boolean",
+      defaultValue: true,
+      tooltip:
+        "A Get node takes the colour you gave its Set, so matching pairs are easy to spot. Turn off to leave Gets on their own colour.",
+      category: ["👑 Pixaroma", "Set & Get"],
+      onChange: () => recolorAllGets(),
+    },
+  ],
   registerCustomNodes() {
     registerPixaromaSetNode();
     registerPixaromaGetNode();

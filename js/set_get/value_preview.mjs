@@ -20,6 +20,7 @@ import { app } from "/scripts/app.js";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { SET_TYPE, GET_TYPE, getLink, findSetterByName } from "./scope.mjs";
+import { inheritSetColor } from "./colors.mjs";
 
 const SIMPLE_TYPES = new Set(["INT", "FLOAT", "NUMBER", "STRING", "BOOLEAN", "BOOL"]);
 const CSS_ID = "pix-setget-css";
@@ -85,13 +86,28 @@ function fmt(v, type) {
   return s;
 }
 
-// Best-effort read of a primitive value from a source node's widgets.
-function readPrimitiveWidget(node, type) {
+// Best-effort read of a primitive value from a source node's widgets, for the
+// specific OUTPUT slot the Set is wired to.
+function readPrimitiveWidget(node, slot, type) {
   if (!node || !Array.isArray(node.widgets)) return null;
   const T = String(type).toUpperCase();
   const wantNum = /INT|FLOAT|NUMBER/.test(T);
   const wantBool = /BOOL/.test(T);
-  for (const w of node.widgets) {
+
+  // Prefer the widget whose name matches the output slot we are reading, so a
+  // node with both a "width" and a "height" output reads the right one. Falls
+  // back to the first matching-kind widget (e.g. a Number node whose "int" and
+  // "float" outputs both come from one "value" widget).
+  const order = node.widgets.slice();
+  const outName = node.outputs?.[slot]?.name;
+  if (outName) {
+    const i = order.findIndex(
+      (w) => w && (w.name || "").toLowerCase() === String(outName).toLowerCase()
+    );
+    if (i > 0) order.unshift(order.splice(i, 1)[0]);
+  }
+
+  for (const w of order) {
     if (!w || w.hidden) continue;
     const name = (w.name || "").toLowerCase();
     if (name === "control_after_generate") continue;
@@ -144,7 +160,7 @@ export function deriveSetValue(setNode) {
   if (!isSimpleType(type) || setNode.inputs[0].link == null) return null;
   const src = setSourceOf(setNode);
   if (!src) return null;
-  return fmt(readPrimitiveWidget(src.node, type), type);
+  return fmt(readPrimitiveWidget(src.node, src.slot, type), type);
 }
 
 // Value string for a Get node via its resolved setter.
@@ -285,6 +301,14 @@ export function startValuePoll() {
     const g = app.canvas?.graph || app.graph;
     if (!g?._nodes) return;
     for (const n of g._nodes) {
+      // A Get mirrors its Set's colour - keep it synced even when collapsed.
+      if (n.type === GET_TYPE) {
+        try {
+          inheritSetColor(n);
+        } catch {
+          /* ignore */
+        }
+      }
       if ((n.type === SET_TYPE || n.type === GET_TYPE) && !n.flags?.collapsed) {
         refreshValue(n);
       }

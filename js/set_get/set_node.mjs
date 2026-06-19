@@ -2,16 +2,18 @@
 // ║  Set Pixaroma - virtual "named variable" sink                 ║
 // ╚═══════════════════════════════════════════════════════════════╝
 //
-// Minimal virtual node: ONE input (adopts whatever type is wired) + an editable
-// name. No output (wireless by design - read it back with Get Pixaroma). Purely
-// frontend (isVirtualNode), so it never reaches the backend; Get nodes resolve
-// straight through to the real upstream source at submission.
+// Virtual node: ONE input (adopts whatever type is wired) + an editable name +
+// a passthrough OUTPUT. Wire the output straight to a nearby node, or read the
+// value back from anywhere with Get Pixaroma - same value either way. Purely
+// frontend (isVirtualNode), so it never reaches the backend; both the Get nodes
+// and the passthrough output resolve straight to the real upstream source.
 
 import { app } from "/scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
   SET_TYPE,
   GET_TYPE,
+  getLink,
   getGraphAncestors,
   collectNodesOfType,
   findGettersByName,
@@ -68,6 +70,7 @@ export function registerPixaromaSetNode() {
       );
 
       this.addInput("*", "*");
+      this.addOutput("*", "*"); // passthrough: emits whatever is wired in
       this.refreshTitle();
     }
 
@@ -81,23 +84,34 @@ export function registerPixaromaSetNode() {
       paintReadout(this, ctx);
     }
 
+    // Set the input AND the passthrough output to one type. Colour is left to
+    // the user (right-click -> Colors); the Get nodes mirror whatever it is.
+    setAdoptedType(type) {
+      const t = type || "*";
+      if (this.inputs?.[0]) {
+        this.inputs[0].type = t;
+        this.inputs[0].name = t;
+      }
+      if (this.outputs?.[0]) {
+        this.outputs[0].type = t;
+        this.outputs[0].name = t;
+      }
+    }
+
     onConnectionsChange(slotType, slot, isConnect, link_info) {
       // Skip during load AND the link-restore window that fires after
       // configure() (Vue Compat #19) so we never rewrite saved state.
       if (app.configuringGraph || isGraphLoading()) return;
 
-      // Disconnect → revert to the wildcard type.
+      // Input disconnect → revert to the wildcard type.
       if (slotType === LiteGraph.INPUT && !isConnect) {
-        if (this.inputs[slot]) {
-          this.inputs[slot].type = "*";
-          this.inputs[slot].name = "*";
-        }
+        this.setAdoptedType("*");
         this.update();
         refreshValue(this);
         return;
       }
 
-      // Connect → adopt the upstream type.
+      // Input connect → adopt the upstream type (input + output both take it).
       if (link_info && this.graph && slotType === LiteGraph.INPUT && isConnect) {
         let type;
         if (typeof link_info.resolve === "function") {
@@ -110,15 +124,32 @@ export function registerPixaromaSetNode() {
           type = src?.outputs?.[link_info.origin_slot]?.type;
         }
         if (type) {
-          this.inputs[0].type = type;
-          this.inputs[0].name = type;
+          this.setAdoptedType(type);
           this.validateName(this.graph);
           this.properties.previousName = this.widgets[0].value;
         }
       }
 
+      // Output event → keep the output type mirrored to the input.
+      if (slotType === LiteGraph.OUTPUT && this.outputs?.[0]) {
+        const inType = this.inputs?.[0]?.type ?? "*";
+        this.outputs[0].type = inType;
+        this.outputs[0].name = inType;
+      }
+
       this.update();
       refreshValue(this);
+    }
+
+    // Passthrough: a node wired to our output resolves to whatever feeds our
+    // input (same source the Get nodes read). isVirtualNode + this is the
+    // reroute contract; cross-graph is rare for a directly-wired output, so the
+    // same-graph link path covers it.
+    getInputLink() {
+      // The Set has a single input; its passthrough output reads from it.
+      const si = this.inputs?.[0];
+      if (!si || si.link == null) return null;
+      return getLink(this.graph, si.link);
     }
 
     // Ensure the name is unique within scope (own graph + ancestors). Returns
@@ -180,6 +211,15 @@ export function registerPixaromaSetNode() {
     }
 
     onConfigure() {
+      // Migration: a Set saved before the passthrough output existed has none -
+      // add it so older workflows gain the output (flags the workflow modified
+      // once; re-saving settles it).
+      if (this.outputs?.length === 0) {
+        this.addOutput("*", "*");
+        const t = this.inputs?.[0]?.type ?? "*";
+        this.outputs[0].type = t;
+        this.outputs[0].name = t;
+      }
       // Only run paste de-duplication when actually pasting, not on load.
       if (this._justAdded && this.graph && !app.configuringGraph) {
         const oldName = this.widgets[0].value;
@@ -191,8 +231,7 @@ export function registerPixaromaSetNode() {
           setTimeout(() => pasteRenameMap.delete(oldName), 0);
         }
         if (this.inputs[0]?.link == null) {
-          this.inputs[0].type = "*";
-          this.inputs[0].name = "*";
+          this.setAdoptedType("*");
         }
       }
       this._justAdded = false;
@@ -205,6 +244,10 @@ export function registerPixaromaSetNode() {
       if (cloned.inputs?.[0]) {
         cloned.inputs[0].type = "*";
         cloned.inputs[0].name = "*";
+      }
+      if (cloned.outputs?.[0]) {
+        cloned.outputs[0].type = "*";
+        cloned.outputs[0].name = "*";
       }
       cloned.properties.previousName = "";
       return cloned;

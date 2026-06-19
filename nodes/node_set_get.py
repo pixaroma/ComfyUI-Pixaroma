@@ -23,10 +23,11 @@ _CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 class PixaromaSetNode:
     DESCRIPTION = (
         "Store any connection under a name, then read it back anywhere with a "
-        "Get Pixaroma node. A wireless wire that keeps the canvas clean. It "
-        "lives only in the editor: at run time the value flows straight from "
-        "the original source to wherever a Get feeds, so it never changes the "
-        "result or slows anything down. Wire anything in, type a name, and "
+        "Get Pixaroma node. A wireless wire that keeps the canvas clean. It also "
+        "has a passthrough output, so a nearby node can wire to it directly while "
+        "far ones read it with a Get. It lives only in the editor: at run time "
+        "the value flows straight from the original source, so it never changes "
+        "the result or slows anything down. Wire anything in, type a name, and "
         "keep the node collapsed to stay tidy."
     )
 
@@ -50,12 +51,16 @@ class PixaromaSetNode:
             },
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = (ANY,)
+    RETURN_NAMES = ("*",)
+    OUTPUT_TOOLTIPS = (
+        "The same value you wired in. Connect a nearby node directly here, or read it from anywhere with Get Pixaroma.",
+    )
     FUNCTION = "noop"
     CATEGORY = _CATEGORY
 
     def noop(self, **kwargs):
-        return ()
+        return (None,)
 
 
 class PixaromaGetNode:

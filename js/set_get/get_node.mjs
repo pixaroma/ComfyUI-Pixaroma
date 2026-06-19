@@ -23,6 +23,7 @@ import {
   pasteRenameMap,
 } from "./scope.mjs";
 import { ensureValueWidget, refreshValue, paintReadout } from "./value_preview.mjs";
+import { inheritSetColor } from "./colors.mjs";
 
 const BRAND_TITLE = "#1d1d1d";
 const BRAND_BODY = "#2a2a2a";
@@ -77,11 +78,20 @@ export function registerPixaromaGetNode() {
         if (x > width - 40) return widget.incrementValue?.({ e, node, canvas });
         const values = comboOptions.values;
         if (!values.length) return;
-        new LiteGraph.ContextMenu(values, {
+        const menu = new LiteGraph.ContextMenu(values, {
           scale: Math.max(1, canvas.ds.scale),
           event: e,
           className: "dark",
           callback: (v) => widget.setValue?.(v, { e, node, canvas }),
+        });
+        // Colour each entry's left edge by that Set's own colour.
+        const entries = menu.root?.querySelectorAll(".litemenu-entry");
+        values.forEach((nm, i) => {
+          const el = entries?.[i];
+          if (!el) return;
+          const setter = findSetterByName(this.graph, nm);
+          el.style.borderLeft = `4px solid ${setter?.node?.bgcolor || "#888"}`;
+          el.style.paddingLeft = "8px";
         });
       };
 
@@ -139,6 +149,7 @@ export function registerPixaromaGetNode() {
         this.setType("*");
         this.title = name ? `Get: ${name}` : "Get Pixaroma";
       }
+      inheritSetColor(this); // take the chosen Set's colour
       refreshValue(this);
       app.canvas?.setDirty(true, true);
     }
