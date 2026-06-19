@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
+import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
 // Nodes 2.0 renders its own native .image-preview panel because this node
 // emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
@@ -27,33 +27,29 @@ function injectCSS() {
 //   - The node does NOT resize when a clip loads. The <video> FIT-CONTAINS
 //     the clip (object-fit:contain), so a portrait/landscape clip
 //     letterboxes instead of growing the node over the user's other nodes.
-//   - The preview-area height is a STORED per-node value (node.properties),
-//     never derived from node.size. computeSize returns that stored value,
-//     so it can NEVER feed back and grow the node. (The bug an earlier
-//     "node.size minus estimated chrome" fill caused: the chrome estimate
-//     was smaller than the real chrome, so each layout pass made the node's
-//     minimum a few px TALLER than itself -> it ballooned and the preview
-//     spilled past the bottom. A stored constant can't feed back.)
-//   - Legacy: the user drag-resizes the node; onResize maps the dragged
-//     height into the stored preview height (draggedH - chrome, chrome
-//     captured once from a settled frame) so the video fills the body with
-//     no feedback loop. Nodes 2.0: the flex computeLayoutSize fills the body.
-//   - No setSize-on-load and no aspect dependency, so loading a clip never
-//     changes node.size.
+//   - The preview is a plain DOM widget with NO custom computeSize. Legacy
+//     LiteGraph treats ANY widget that has a computeSize as fixed-height,
+//     which both pins the node's minimum to the current height (so it can't
+//     be dragged smaller) and drops it from the fill pool (so it spills) —
+//     that was the bug. Instead: getMinHeight gives a small constant floor
+//     (so the node can be dragged down to chrome + floor), and NO
+//     getMaxHeight lets the widget absorb all free vertical space (so it
+//     FILLS the body, no spill). The framework sizes the element each frame;
+//     the <video> object-fit:contains inside it.
+//   - One mechanism drives BOTH renderers (legacy distributeSpace + the Vue
+//     computeLayoutSize flex row), so there is no per-renderer branch.
+//   - The node size is the user's drag, serialized natively by LiteGraph;
+//     loading a clip never changes it.
 
 const MIN_W = 320;
-// Floor for the preview area (legacy computeSize + Nodes 2.0
-// computeLayoutSize + getMinHeight all use it).
+// Smallest the preview area can be dragged to. Drives the DOM widget's
+// getMinHeight + computeLayoutSize, which is what the node's minimum height
+// sums — so the node can shrink down to (chrome + this), and no further.
 const PREVIEW_MIN_H = 180;
-// Default preview-area height for a fresh node. Stored per-node on
-// node.properties[PREVIEW_PROP] and adjusted when the user drag-resizes.
-const DEFAULT_PREVIEW_H = 240;
-// Fresh-node default node height (LiteGraph re-settles it to chrome +
-// preview via computeSize). Saved workflows keep their own size because
-// configure() runs after onNodeCreated (Vue Compat #8).
-const DEFAULT_H = 360;
-// node.properties key for the persisted preview-area height.
-const PREVIEW_PROP = "mp4PreviewH";
+// Fresh-node default node height (a comfortable starting preview). Saved
+// workflows keep their own size because configure() runs after onNodeCreated
+// (Vue Compat #8).
+const DEFAULT_H = 420;
 
 // Vue can tear down a node's DOM widget and rebuild it (e.g. when the
 // user switches workflow tabs and back). The cached node._pixaromaVideo
@@ -104,19 +100,18 @@ app.registerExtension({
       // mp4 entry simply fails to load as an image and is skipped).
       this.hideOutputImages = true;
 
-      const node = this;
-
-      // Preview wrap: position:relative so the absolutely-filled children
-      // stack inside it. flex:1 1 0 + min-height:0 make it FILL the
-      // allocated row in Nodes 2.0 (Vue wraps DOM widgets in a flex column);
-      // in legacy the height is pinned explicitly in computeSize below.
+      // Preview wrap: position:relative so the absolute children stack inside
+      // it. flex:1 1 0 + min-height:0 fill the allocated row in Nodes 2.0; in
+      // legacy the framework sets this element's height each frame to the
+      // distributeSpace-allocated (filled) height. box-sizing:border-box so
+      // that height is the box exactly (no spill).
       const wrap = document.createElement("div");
       wrap.className = "pix-mp4-root";
       wrap.style.cssText =
         "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
 
       // object-fit:contain = fill the wrap, never distort. absolute inset:0
-      // so the wrap's (pinned/flex) height is the box the clip fits into.
+      // so the wrap's (framework/flex) height is the box the clip fits into.
       const video = document.createElement("video");
       video.controls = true;
       video.loop = true;
@@ -146,73 +141,23 @@ app.registerExtension({
       // false in Nodes 2.0 so the <video> renders in the Vue body.
       applyAdaptiveCanvasOnly(widget);
 
-      // computeSize returns the STORED preview height (never a value derived
-      // from node.size), so it can't feed back and grow the node. See the
-      // header comment for the growth bug this replaced.
-      widget.computeSize = function (width) {
-        const ph = Math.max(
-          PREVIEW_MIN_H,
-          node.properties?.[PREVIEW_PROP] ?? DEFAULT_PREVIEW_H
-        );
-        this.computedHeight = ph;
-        // Legacy: pin the element height (absolute children would otherwise
-        // collapse the wrap to 0). Nodes 2.0: clear any pin so the flex fill
-        // (computeLayoutSize) governs — this also un-sticks a height left over
-        // from a live Legacy->Nodes 2.0 renderer toggle.
-        if (isVueNodes()) wrap.style.height = "";
-        else wrap.style.height = ph + "px";
-        return [width, ph];
-      };
-
-      // Nodes 2.0: become the node's sole auto-grow row so the preview fills
-      // the body (the native widgets above are min-content rows). minWidth:1
-      // so the saved node width round-trips (Compare gotcha 2).
+      // NO custom computeSize on purpose (see header). The node's minimum
+      // height sums this widget's computeLayoutSize().minHeight, so the floor
+      // is PREVIEW_MIN_H and the node can be dragged smaller down to it; with
+      // NO maxHeight the widget absorbs all free vertical space and fills the
+      // body. This one method drives both the legacy distributeSpace path and
+      // the Nodes 2.0 flex row. minWidth:1 so the saved node width round-trips
+      // (Compare gotcha 2).
       widget.computeLayoutSize = () => ({ minHeight: PREVIEW_MIN_H, minWidth: 1 });
 
-      // Capture the node "chrome" (height of everything above the preview)
-      // ONCE from a settled frame: chrome = node.size[1] - preview height.
-      // Used only to map a drag-resize back into the stored preview height.
-      // Retried via rAF so it runs after the first layout has set node.size
-      // and the widget's computedHeight. Legacy only (Nodes 2.0 fills via the
-      // flex computeLayoutSize and doesn't need this).
-      let chromeTries = 0;
-      const captureChrome = () => {
-        if (node._mp4Chrome != null || isVueNodes()) return;
-        // Derive chrome from the SAME ph that computeSize contributes, NOT
-        // widget.computedHeight (LiteGraph's arrange path can set the latter
-        // to ph + 4, which would shave 4px off the captured chrome).
-        const ph = Math.max(
-          PREVIEW_MIN_H,
-          node.properties?.[PREVIEW_PROP] ?? DEFAULT_PREVIEW_H
-        );
-        const ch = (node.size?.[1] || 0) - ph;
-        if (ch > 0) node._mp4Chrome = ch;
-        else if (chromeTries++ < 20) requestAnimationFrame(captureChrome);
-      };
-      requestAnimationFrame(captureChrome);
-
-      // Legacy drag-resize: map the dragged node height into the STORED
-      // preview height (absolute: draggedH - chrome). No node.size feedback
-      // loop, no floor glitch. Diff-write so a configure-time call with the
-      // restored size can't dirty the workflow on load. Nodes 2.0 resizes via
-      // the flex computeLayoutSize, so skip there.
-      const protoResize = nodeType.prototype.onResize;
-      this.onResize = function (size) {
-        protoResize?.apply(this, arguments);
-        if (isVueNodes() || this._mp4Chrome == null) return;
-        const ph = Math.max(PREVIEW_MIN_H, Math.round(size[1] - this._mp4Chrome));
-        if (!this.properties) this.properties = {};
-        if (this.properties[PREVIEW_PROP] !== ph) this.properties[PREVIEW_PROP] = ph;
-      };
-
-      // Fresh-node default. LiteGraph already set node.size to computeSize()
-      // (= chrome + preview height) before onNodeCreated ran, so only enforce
-      // the WIDTH floor here — do NOT reset the height. Resetting it would
-      // override the computeSize-settled height and could make the preview
-      // spill below the node (the height is governed by computeSize alone).
-      // The !this.size branch is purely defensive (LiteGraph always sets it).
+      // Fresh-node defaults (width floor + a comfortable starting height).
+      // These run for a SAVED node too, but configure() restores the saved
+      // size right after onNodeCreated (Vue Compat #8), so saved sizes win and
+      // this never dirties a loaded workflow. The node can still be dragged
+      // smaller afterwards (down to chrome + PREVIEW_MIN_H).
       if (!this.size) this.size = [MIN_W, DEFAULT_H];
-      else if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
 
       return ret;
     };
