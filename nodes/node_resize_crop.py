@@ -124,6 +124,11 @@ class PixaromaResizeCrop:
 
         out_image = torch.cat(out_imgs, dim=0) if len(out_imgs) > 1 else out_imgs[0]
         out_mask = torch.cat(out_masks, dim=0) if len(out_masks) > 1 else out_masks[0]
+        # Match the input device so both outputs pair cleanly with GPU-resident
+        # tensors downstream (CLAUDE.md Image Crop/Uncrop Pattern #6). No-op for
+        # the usual CPU IMAGE case.
+        out_image = out_image.to(image.device)
+        out_mask = out_mask.to(image.device)
         if final_w is None:
             final_w, final_h = tw, th
 
