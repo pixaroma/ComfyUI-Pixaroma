@@ -256,13 +256,28 @@ class PixaromaSaveMp4:
         drain_thread = threading.Thread(target=_drain, args=(proc.stderr,), daemon=True)
         drain_thread.start()
 
+        broke_pipe = False
         try:
-            for i in range(n_frames):
-                comfy.model_management.throw_exception_if_processing_interrupted()
-                frame_u8 = (frames[i].clamp(0.0, 1.0).cpu().numpy() * 255.0
-                            ).astype(np.uint8)
-                proc.stdin.write(frame_u8.tobytes())
-            proc.stdin.close()
+            try:
+                for i in range(n_frames):
+                    comfy.model_management.throw_exception_if_processing_interrupted()
+                    frame_u8 = (frames[i].clamp(0.0, 1.0).cpu().numpy() * 255.0
+                                ).astype(np.uint8)
+                    proc.stdin.write(frame_u8.tobytes())
+            except BrokenPipeError:
+                # ffmpeg closed its input before we fed every frame. This is the
+                # EXPECTED outcome when trim_to_audio adds -shortest and the audio
+                # is shorter than the frames: ffmpeg finalizes the mp4 at the
+                # audio's end and exits, so the remaining frame writes break the
+                # pipe. The output is already complete (trimmed to the audio).
+                # Stop feeding; a genuine ffmpeg failure still surfaces as a
+                # non-zero exit code below.
+                broke_pipe = True
+            try:
+                if not proc.stdin.closed:
+                    proc.stdin.close()
+            except OSError:
+                pass
             proc.wait()
             drain_thread.join()
             if proc.returncode != 0:
@@ -291,6 +306,8 @@ class PixaromaSaveMp4:
                 except OSError:
                     pass
 
+        if broke_pipe:
+            print("[Pixaroma] Save Mp4 — video trimmed to the audio length (trim_to_audio is on).")
         if save_mode == "preview":
             print(f"[Pixaroma] Save Mp4 — preview written to temp/ (auto-cleared on restart): {out_path}")
         else:
