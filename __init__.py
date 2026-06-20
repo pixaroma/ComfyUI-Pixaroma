@@ -84,6 +84,8 @@ from .nodes.node_load_images_folder import NODE_CLASS_MAPPINGS as _MAPS_LIF
 from .nodes.node_load_images_folder import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LIF
 from .nodes.node_set_get import NODE_CLASS_MAPPINGS as _MAPS_SET_GET
 from .nodes.node_set_get import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SET_GET
+from .nodes.node_load_video import NODE_CLASS_MAPPINGS as _MAPS_LOAD_VIDEO
+from .nodes.node_load_video import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_VIDEO
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -139,6 +141,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_FIND_REPLACE,
     **_MAPS_LIF,
     **_MAPS_SET_GET,
+    **_MAPS_LOAD_VIDEO,
 }
 
 # combine all node display name mappings
@@ -186,6 +189,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_FIND_REPLACE,
     **_NAMES_LIF,
     **_NAMES_SET_GET,
+    **_NAMES_LOAD_VIDEO,
 }
 
 # web directory for loading js files

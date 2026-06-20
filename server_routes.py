@@ -747,6 +747,69 @@ async def audio_studio_upload(request):
     return web.json_response({"path": rel})
 
 
+# ── Load Video Pixaroma: video upload ────────────────────────────────────────
+_LOAD_VIDEO_UPLOAD_EXTS = {
+    "mp4", "mov", "mkv", "webm", "avi", "m4v", "gif",
+    "mpg", "mpeg", "wmv", "flv", "ogv", "ts",
+}
+_LOAD_VIDEO_MAX_BYTES = 1024 * 1024 * 1024  # 1 GB
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/load_video/upload")
+async def load_video_upload(request):
+    """Save an uploaded video into input/pixaroma/ so the Load Video node can
+    pick it (the combo walks input/ recursively) and the in-node <video>
+    preview can fetch it via /view?type=input. Mirrors the audio_studio upload
+    pattern: extension allow-list, size cap, path-traversal-safe target."""
+    reader = await request.multipart()
+    file_bytes = None
+    file_filename = None
+    while True:
+        field = await reader.next()
+        if field is None:
+            break
+        if field.name == "file":
+            file_filename = field.filename or ""
+            file_bytes = await field.read(decode=False)
+
+    if not file_bytes or not file_filename:
+        return web.json_response({"error": "file field is missing."}, status=400)
+    if len(file_bytes) > _LOAD_VIDEO_MAX_BYTES:
+        return web.json_response({"error": "file too large (over 1 GB)."}, status=400)
+
+    base = os.path.basename(file_filename.replace("\\", "/"))
+    stem, ext = os.path.splitext(base)
+    ext = ext.lower().lstrip(".")
+    if ext not in _LOAD_VIDEO_UPLOAD_EXTS:
+        return web.json_response(
+            {"error": f"video extension {ext!r} not allowed."}, status=400,
+        )
+    stem = re.sub(r"[^A-Za-z0-9_\- ]", "_", stem).strip().strip(".") or "video"
+
+    # De-dup within input/pixaroma so a re-upload never overwrites a file the
+    # user might still be using elsewhere.
+    candidate = f"{stem}.{ext}"
+    n = 1
+    while True:
+        target = _safe_path(candidate)
+        if target is None:
+            return web.json_response({"error": "path traversal blocked."}, status=400)
+        if not os.path.exists(target):
+            break
+        candidate = f"{stem}_{n}.{ext}"
+        n += 1
+
+    with open(target, "wb") as fh:
+        fh.write(file_bytes)
+
+    return web.json_response({
+        "name": f"pixaroma/{candidate}",  # combo value, relative to input/
+        "subfolder": "pixaroma",
+        "filename": candidate,
+        "type": "input",
+    })
+
+
 # Canonical list of bg-removal models shown in the Image Composer
 # dropdown. Each entry carries:
 #   id      — rembg session name (also dropdown `value`)

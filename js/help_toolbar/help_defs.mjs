@@ -648,6 +648,51 @@ const HELP = {
     footer: "This is a terminal save node, it has no outputs.",
   },
 
+  "PixaromaLoadVideo": {
+    title: "Load Video Pixaroma",
+    tagline: "Upload or pick a video, decode it to frames plus audio and info, and preview it right on the node.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Loads a video from ComfyUI's input folder and turns it into a batch of image frames you can feed into any image or video workflow. A video preview plays on the node body so you can check the clip without leaving ComfyUI.\n\nThe details you usually need are built in as separate outputs, so you do not need a second 'video info' node.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Click `choose video to upload` to add a file from your computer, or pick one from the dropdown (use the arrows to flip through).",
+          "Wire `frames` into an image or video node. To rebuild a video later, send `frames` and `audio` straight into Save Mp4 Pixaroma.",
+          "The clip plays in the preview as soon as it is selected, no need to run first.",
+        ],
+      },
+      {
+        heading: "Loading controls",
+        defs: [
+          ["Max frames", "The most frames to load. 0 = all. A safety valve so a long video does not run out of memory; try 120 to load just the first 120 frames."],
+          ["Force FPS", "Force a steady frames-per-second by dropping or duplicating frames (a 60fps clip forced to 24). 0 = keep the original rate. AI video models usually expect a fixed rate."],
+          ["Skip first frames", "Skip this many frames from the start, like trimming an intro."],
+          ["Every Nth frame", "Keep every Nth frame and skip the rest. 2 = every other frame. The fps output is adjusted so playback stays real-time."],
+          ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally, or both for an exact size."],
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["frames", "The video as a batch of image frames."],
+          ["audio", "The soundtrack (empty if the file has none). Wire into Save Mp4 to keep the sound."],
+          ["frame_count", "How many frames were loaded."],
+          ["fps", "Frames per second of the loaded clip."],
+          ["width / height", "Frame size in pixels, after any resize."],
+          ["duration", "Length of the loaded clip in seconds."],
+        ],
+      },
+      {
+        heading: "Requirements",
+        body: "Load Video reads frames with PyAV (or imageio as a fallback) and gets audio with ffmpeg. Most ComfyUI setups already have these, so usually there is nothing to install. If you ever see a 'video reader' message, install PyAV: in ComfyUI Manager use its pip install option and enter `av` (portable Windows: run `python_embeded\\python.exe -m pip install av` in your ComfyUI folder).",
+      },
+    ],
+    footer: "Pairs with Save Mp4 Pixaroma; frames and audio wire straight across.",
+  },
+
   "PixaromaImageResize": {
     title: "Image Resize Pixaroma",
     tagline: "Resize an image (and its mask) mid-workflow using a set of smart resize modes.",
