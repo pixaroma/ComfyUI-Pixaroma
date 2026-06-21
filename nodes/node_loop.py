@@ -14,14 +14,14 @@ A hidden engine node (Loop Engine) drives that recursion - users never place it
 by hand; Loop End spawns it automatically.
 
 Slots:
-- Loop Start: `total` (rounds), optional `initial_value1..5` (the starting
-  carried values), outputs `flow`, `index` (0-based round counter), and
-  `value1..5` (the carried values for this round).
-- Loop End: `flow` (wire it from Loop Start's flow), optional `value1..5`
+- Loop Start: `total` (rounds), optional `value1..5` (the starting carried
+  values), outputs `loop`, `index` (0-based round counter), and `value1..5`
+  (the carried values for this round).
+- Loop End: `loop` (wire it from Loop Start's loop), optional `value1..5`
   (feed the updated carried values back here), outputs `value1..5` (the final
   values after the last round).
 
-The `flow` wire simply tells the two brackets they belong together.
+The `loop` wire simply tells the two brackets they belong together.
 """
 
 # ComfyUI's graph-expansion / recursion primitives. Guarded so the plugin still
@@ -50,6 +50,10 @@ _LOOP_START = "PixaromaLoopStart"
 _LOOP_END = "PixaromaLoopEnd"
 _LOOP_ENGINE = "PixaromaLoopEngine"
 
+# hidden input on Loop Start that carries the current round number through the
+# recursion (set by the engine each round; absent on the very first round -> 0).
+_INDEX_KEY = "start_index"
+
 _NEED_UPDATE = (
     "Loop Start / Loop End need ComfyUI's graph-expansion feature "
     "(comfy_execution.graph). Please update ComfyUI to a current version."
@@ -75,20 +79,20 @@ class PixaromaLoopStart:
                 "total": ("INT", {"default": 2, "min": 1, "max": 100000, "step": 1, "tooltip": "How many times the section between Loop Start and Loop End runs."}),
             },
             "optional": {
-                ("initial_value%d" % i): (ANY, {"tooltip": "Starting value carried into round 0. After that, the matching slot from Loop End takes over each round. Optional."})
+                ("value%d" % i): (ANY, {"tooltip": "Starting value carried into round 0. After that, the matching slot from Loop End takes over each round. Optional."})
                 for i in range(1, NUM + 1)
             },
             "hidden": {
-                "initial_value0": (ANY,),
+                _INDEX_KEY: (ANY,),
                 "prompt": "PROMPT",
                 "unique_id": "UNIQUE_ID",
             },
         }
 
     RETURN_TYPES = tuple(["FLOW_CONTROL", "INT"] + [ANY] * NUM)
-    RETURN_NAMES = tuple(["flow", "index"] + ["value%d" % i for i in range(1, NUM + 1)])
+    RETURN_NAMES = tuple(["loop", "index"] + ["value%d" % i for i in range(1, NUM + 1)])
     OUTPUT_TOOLTIPS = tuple(
-        ["Wire this into Loop End's flow input to pair the two brackets.",
+        ["Wire this into Loop End's loop input to pair the two brackets.",
          "Which round we are on, starting at 0 (0, 1, 2 ...)."]
         + ["Carried value %d for this round." % i for i in range(1, NUM + 1)]
     )
@@ -98,16 +102,16 @@ class PixaromaLoopStart:
     def run(self, total, prompt=None, unique_id=None, **kwargs):
         if not _LOOP_OK:
             raise RuntimeError(_NEED_UPDATE)
-        i = kwargs.get("initial_value0", 0) or 0
-        outputs = [kwargs.get("initial_value%d" % n, None) for n in range(1, NUM + 1)]
-        # flow is consumed by Loop End via a raw link (it only needs the topology,
-        # not this value), so a simple stub is fine.
+        i = kwargs.get(_INDEX_KEY, 0) or 0
+        outputs = [kwargs.get("value%d" % n, None) for n in range(1, NUM + 1)]
+        # loop is consumed by Loop End via a raw link (it only needs the
+        # topology, not this value), so a simple stub is fine.
         return tuple(["stub", i] + outputs)
 
 
 class PixaromaLoopEnd:
     DESCRIPTION = (
-        "Closing bracket of a loop. Wire 'flow' from Loop Start. Feed the "
+        "Closing bracket of a loop. Wire 'loop' from Loop Start. Feed the "
         "values you want to carry to the next round into the value slots "
         "(for example a Combine node that piles up each round's frames). When "
         "all rounds are done, the value slots output the final carried values. "
@@ -118,10 +122,10 @@ class PixaromaLoopEnd:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "flow": ("FLOW_CONTROL", {"rawLink": True, "tooltip": "Wire this from Loop Start's flow output."}),
+                "loop": ("FLOW_CONTROL", {"rawLink": True, "tooltip": "Wire this from Loop Start's loop output."}),
             },
             "optional": {
-                ("initial_value%d" % i): (ANY, {"rawLink": True, "tooltip": "The updated carried value to hand to the next round. Wire the matching Loop Start value slot's downstream result here. Optional."})
+                ("value%d" % i): (ANY, {"rawLink": True, "tooltip": "The updated carried value to hand to the next round. Wire the matching Loop Start value slot's downstream result here. Optional."})
                 for i in range(1, NUM + 1)
             },
             "hidden": {
@@ -138,21 +142,21 @@ class PixaromaLoopEnd:
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
-    def run(self, flow, dynprompt=None, unique_id=None, **kwargs):
+    def run(self, loop, dynprompt=None, unique_id=None, **kwargs):
         if not _LOOP_OK:
             raise RuntimeError(_NEED_UPDATE)
         graph = GraphBuilder()
-        start_id = flow[0]
+        start_id = loop[0]
 
         total = None
         start_node = dynprompt.get_node(start_id)
         if start_node["class_type"] == _LOOP_START:
             total = start_node["inputs"].get("total")
 
-        carried = {("initial_value%d" % i): kwargs.get("initial_value%d" % i, None) for i in range(1, NUM + 1)}
+        carried = {("value%d" % i): kwargs.get("value%d" % i, None) for i in range(1, NUM + 1)}
         engine = graph.node(
             _LOOP_ENGINE,
-            flow=flow,
+            loop=loop,
             index_in=[start_id, 1],  # Loop Start output slot 1 = index
             total=total,
             **carried,
@@ -176,7 +180,7 @@ class PixaromaLoopEngine:
     def INPUT_TYPES(cls):
         inputs = {
             "required": {
-                "flow": ("FLOW_CONTROL", {"rawLink": True}),
+                "loop": ("FLOW_CONTROL", {"rawLink": True}),
                 "index_in": (ANY,),
                 "total": (ANY,),
             },
@@ -187,7 +191,7 @@ class PixaromaLoopEngine:
             },
         }
         for i in range(1, NUM + 1):
-            inputs["optional"]["initial_value%d" % i] = (ANY,)
+            inputs["optional"]["value%d" % i] = (ANY,)
         return inputs
 
     RETURN_TYPES = tuple([ANY] * NUM)
@@ -234,7 +238,7 @@ class PixaromaLoopEngine:
                 contained[child_id] = True
                 self.collect_contained(child_id, upstream, contained)
 
-    def run(self, flow, index_in, total, dynprompt=None, unique_id=None, **kwargs):
+    def run(self, loop, index_in, total, dynprompt=None, unique_id=None, **kwargs):
         try:
             next_index = int(index_in) + 1
         except Exception:
@@ -246,7 +250,7 @@ class PixaromaLoopEngine:
 
         # Loop is finished - emit the carried values unchanged.
         if next_index >= limit:
-            return tuple(kwargs.get("initial_value%d" % i, None) for i in range(1, NUM + 1))
+            return tuple(kwargs.get("value%d" % i, None) for i in range(1, NUM + 1))
 
         # Another round is due: clone the loop body + this engine and re-run with
         # the next index and the current carried values.
@@ -279,7 +283,7 @@ class PixaromaLoopEngine:
         self.explore_output_nodes(dynprompt, upstream, output_nodes, parent_ids)
 
         contained = {}
-        open_node = flow[0]
+        open_node = loop[0]
         self.collect_contained(open_node, upstream, contained)
         contained[unique_id] = True
         contained[open_node] = True
@@ -303,9 +307,9 @@ class PixaromaLoopEngine:
         # Re-seed the cloned Loop Start: bump the index, hand it this round's
         # carried values.
         new_open = graph.lookup_node(open_node)
-        new_open.set_input("initial_value0", next_index)
+        new_open.set_input(_INDEX_KEY, next_index)
         for i in range(1, NUM + 1):
-            new_open.set_input("initial_value%d" % i, kwargs.get("initial_value%d" % i, None))
+            new_open.set_input("value%d" % i, kwargs.get("value%d" % i, None))
 
         my_clone = graph.lookup_node("Recurse")
         return {

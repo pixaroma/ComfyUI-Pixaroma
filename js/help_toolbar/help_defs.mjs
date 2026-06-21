@@ -66,7 +66,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Put your nodes BETWEEN Loop Start and Loop End and that whole section runs again and again. Set `total` to the number of rounds. Use it to build a long video in chunks, grow a batch of images, or run the same step over and over.\n\nIt always comes as a pair with `Loop End` - wire Loop Start's `flow` output into Loop End's `flow` input so the two brackets know they belong together.",
+        body: "Put your nodes BETWEEN Loop Start and Loop End and that whole section runs again and again. Set `total` to the number of rounds. Use it to build a long video in chunks, grow a batch of images, or run the same step over and over.\n\nIt always comes as a pair with `Loop End` - wire Loop Start's `loop` output into Loop End's `loop` input so the two brackets know they belong together.",
       },
       {
         heading: "Carrying values between rounds",
@@ -75,7 +75,7 @@ const HELP = {
       {
         heading: "Outputs",
         defs: [
-          ["flow", "Wire this into Loop End's flow input to pair the two brackets."],
+          ["loop", "Wire this into Loop End's loop input to pair the two brackets."],
           ["index", "Which round you are on, counting from 0 (0, 1, 2 ...). Handy for picking a different frame or value each round."],
           ["value1...value5", "The carried values for this round. Only use as many as you need."],
         ],
@@ -98,12 +98,12 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Marks the end of the repeating section. Wire `flow` from `Loop Start`. Into the `value` slots, feed whatever you want carried to the next round (often a `Combine` node that gathers each round's frames). After the last round finishes, the value slots output the final carried values.",
+        body: "Marks the end of the repeating section. Wire `loop` from `Loop Start`. Into the `value` slots, feed whatever you want carried to the next round (often a `Combine` node that gathers each round's frames). After the last round finishes, the value slots output the final carried values.",
       },
       {
         heading: "How to use",
         bullets: [
-          "Wire `flow` from Loop Start's flow output.",
+          "Wire `loop` from Loop Start's loop output.",
           "Put your generation nodes between Loop Start and Loop End.",
           "Feed the result you want to keep building into a `value` slot here - it loops back to Loop Start for the next round.",
           "Wire the matching output (value1, value2 ...) onward to use the final result after all rounds are done.",
