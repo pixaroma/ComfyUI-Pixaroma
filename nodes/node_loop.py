@@ -60,6 +60,25 @@ _NEED_UPDATE = (
     "(comfy_execution.graph). Please update ComfyUI to a current version."
 )
 
+# A carried value that happens to look like a node link ([text, number]) would
+# be mistaken for a wire when re-seeded into the cloned Loop Start (ComfyUI's
+# is_link treats any [str, number] 2-item list as a connection - e.g. Combine
+# joining text + a number gives ["cat", 0]). We wrap exactly those values for
+# the trip around the loop and unwrap them in Loop Start, so any value is safe.
+_LITERAL_KEY = "__pixaroma_loop_literal__"
+
+
+def _shield_literal(v):
+    if is_link is not None and is_link(v):
+        return {_LITERAL_KEY: v}
+    return v
+
+
+def _unshield_literal(v):
+    if isinstance(v, dict) and len(v) == 1 and _LITERAL_KEY in v:
+        return v[_LITERAL_KEY]
+    return v
+
 
 class PixaromaLoopStart:
     DESCRIPTION = (
@@ -106,7 +125,7 @@ class PixaromaLoopStart:
         if not _LOOP_OK:
             raise RuntimeError(_NEED_UPDATE)
         i = kwargs.get(_INDEX_KEY, 0) or 0
-        outputs = [kwargs.get("value%d" % n, None) for n in range(1, NUM + 1)]
+        outputs = [_unshield_literal(kwargs.get("value%d" % n, None)) for n in range(1, NUM + 1)]
         # loop is consumed by Loop End via a raw link (it only needs the
         # topology, not this value), so a simple stub is fine. Match the
         # output order: carried values, then loop (stub), then index.
@@ -322,7 +341,7 @@ class PixaromaLoopEngine:
         new_open = graph.lookup_node(open_node)
         new_open.set_input(_INDEX_KEY, next_index)
         for i in range(1, NUM + 1):
-            new_open.set_input("value%d" % i, kwargs.get("value%d" % i, None))
+            new_open.set_input("value%d" % i, _shield_literal(kwargs.get("value%d" % i, None)))
 
         my_clone = graph.lookup_node("Recurse")
         return {

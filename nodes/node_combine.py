@@ -61,15 +61,47 @@ class PixaromaCombine:
         )
         return out
 
+    @staticmethod
+    def _kind(v):
+        """A plain-English name for a value's type (for friendly errors)."""
+        if isinstance(v, torch.Tensor):
+            return "an image"
+        if isinstance(v, dict) and "samples" in v:
+            return "a latent"
+        if isinstance(v, bool):
+            return "a true/false value"
+        if isinstance(v, str):
+            return "text"
+        if isinstance(v, (int, float)):
+            return "a number"
+        if isinstance(v, (list, tuple)):
+            return "a list"
+        return "that"
+
+    @classmethod
+    def _mix_msg(cls, a, b, want):
+        return (
+            "Combine Pixaroma can only join two things of the same kind. You "
+            "gave it %s and %s. Wire %s into any1 and any2 (or leave one empty)."
+            % (cls._kind(a), cls._kind(b), want)
+        )
+
     def run(self, any1=None, any2=None):
         a, b = any1, any2
 
-        # Images / video-frame batches (tensors [B, H, W, C])
-        if isinstance(a, torch.Tensor) or isinstance(b, torch.Tensor):
-            if a is None:
-                return (b,)
-            if b is None:
-                return (a,)
+        # Empty side -> pass the other through (safe loop accumulator: round 1
+        # has nothing to add yet).
+        if a is None:
+            return (b,)
+        if b is None:
+            return (a,)
+
+        # Images / video-frame batches (tensors [B, H, W, C]) -> stack into one
+        # batch. Both sides must be images, else a clear message.
+        a_img, b_img = isinstance(a, torch.Tensor), isinstance(b, torch.Tensor)
+        if a_img or b_img:
+            if not (a_img and b_img):
+                raise ValueError(self._mix_msg(a, b, "two images"))
             if a.shape[1:] != b.shape[1:]:
                 import comfy.utils
 
@@ -78,43 +110,37 @@ class PixaromaCombine:
                 ).movedim(1, -1)
             return (torch.cat((a, b), 0),)
 
-        # Latents (dict with "samples")
-        if isinstance(a, dict) and "samples" in a:
-            if b is None:
-                return (a,)
-            if isinstance(b, dict) and "samples" in b:
-                return (self._latent_batch(a, b),)
-        if isinstance(b, dict) and "samples" in b:
-            if a is None:
-                return (b,)
-            if isinstance(a, dict) and "samples" in a:
-                return (self._latent_batch(b, a),)
+        # Latents (dict with "samples") -> batch the same way.
+        a_lat = isinstance(a, dict) and "samples" in a
+        b_lat = isinstance(b, dict) and "samples" in b
+        if a_lat or b_lat:
+            if not (a_lat and b_lat):
+                raise ValueError(self._mix_msg(a, b, "two latents"))
+            return (self._latent_batch(a, b),)
 
-        # Numbers / strings -> gather into a list (bool is excluded so it is not
-        # treated as an int)
-        if isinstance(a, (str, float, int)) and not isinstance(a, bool):
-            if b is None:
-                return (a,)
+        # Numbers / text -> gather into a list (bool excluded so it is not
+        # treated as a number).
+        a_sc = isinstance(a, (str, int, float)) and not isinstance(a, bool)
+        b_sc = isinstance(b, (str, int, float)) and not isinstance(b, bool)
+        if a_sc:
             if isinstance(b, tuple):
                 return (b + (a,),)
             if isinstance(b, list):
                 return (b + [a],)
             return ([a, b],)
-        if isinstance(b, (str, float, int)) and not isinstance(b, bool):
-            if a is None:
-                return (b,)
+        if b_sc:
             if isinstance(a, tuple):
                 return (a + (b,),)
             if isinstance(a, list):
                 return (a + [b],)
             return ([b, a],)
 
-        # Anything else (lists / tuples / objects)
-        if a is None:
-            return (b,)
-        if b is None:
-            return (a,)
-        return (a + b,)
+        # Lists / tuples -> concatenate; anything else, try to add, else a clear
+        # message instead of a raw Python error.
+        try:
+            return (a + b,)
+        except Exception:
+            raise ValueError(self._mix_msg(a, b, "two things of the same kind"))
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaCombine": PixaromaCombine}
