@@ -52,6 +52,16 @@ class PixaromaCombine:
         out = a.copy()
         s1 = a["samples"]
         s2 = b["samples"]
+        # Match device + precision (the two latents may live on CPU vs GPU or
+        # at different precisions inside a loop).
+        if s2.device != s1.device or s2.dtype != s1.dtype:
+            s2 = s2.to(device=s1.device, dtype=s1.dtype)
+        if s1.shape[1] != s2.shape[1]:
+            raise ValueError(
+                "Combine Pixaroma can't join two latents with different channel "
+                "counts (they come from different model families). Use latents "
+                "from the same model."
+            )
         if s1.shape[1:] != s2.shape[1:]:
             s2 = comfy.utils.common_upscale(s2, s1.shape[3], s1.shape[2], "bilinear", "center")
         out["samples"] = torch.cat((s1, s2), dim=0)
@@ -102,13 +112,27 @@ class PixaromaCombine:
         if a_img or b_img:
             if not (a_img and b_img):
                 raise ValueError(self._mix_msg(a, b, "two images"))
-            if a.shape[1:] != b.shape[1:]:
-                import comfy.utils
+            # Match device + precision so a loop accumulator can cross CPU/GPU
+            # or float16/float32 without a raw torch error.
+            if b.device != a.device or b.dtype != a.dtype:
+                b = b.to(device=a.device, dtype=a.dtype)
+            # Standard image batch [B, H, W, C]: resize b's H/W to match a.
+            if a.ndim == b.ndim == 4 and a.shape[-1] == b.shape[-1]:
+                if a.shape[1:] != b.shape[1:]:
+                    import comfy.utils
 
-                b = comfy.utils.common_upscale(
-                    b.movedim(-1, 1), a.shape[2], a.shape[1], "bilinear", "center"
-                ).movedim(1, -1)
-            return (torch.cat((a, b), 0),)
+                    b = comfy.utils.common_upscale(
+                        b.movedim(-1, 1), a.shape[2], a.shape[1], "bilinear", "center"
+                    ).movedim(1, -1)
+                return (torch.cat((a, b), 0),)
+            # Same-shape non-standard tensors (e.g. two masks): just stack.
+            if a.shape[1:] == b.shape[1:]:
+                return (torch.cat((a, b), 0),)
+            raise ValueError(
+                "Combine Pixaroma can't stack these two images: their shapes "
+                "don't match and can't be auto-resized (different channel "
+                "counts, or one is a mask). Make them the same kind first."
+            )
 
         # Latents (dict with "samples") -> batch the same way.
         a_lat = isinstance(a, dict) and "samples" in a

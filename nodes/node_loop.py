@@ -180,10 +180,13 @@ class PixaromaLoopEnd:
         graph = GraphBuilder()
         start_id = loop[0]
 
-        total = None
         start_node = dynprompt.get_node(start_id)
-        if start_node["class_type"] == _LOOP_START:
-            total = start_node["inputs"].get("total")
+        if not start_node or start_node.get("class_type") != _LOOP_START:
+            raise RuntimeError(
+                "Loop End Pixaroma: the 'loop' input must be wired from a "
+                "Loop Start node's 'loop' output."
+            )
+        total = start_node["inputs"].get("total")
 
         carried = {("value%d" % i): kwargs.get("value%d" % i, None) for i in range(1, NUM + 1)}
         engine = graph.node(
@@ -270,15 +273,26 @@ class PixaromaLoopEngine:
                 contained[child_id] = True
                 self.collect_contained(child_id, upstream, contained)
 
-    def run(self, loop, index_in, total, dynprompt=None, unique_id=None, **kwargs):
+    def run(self, loop=None, index_in=None, total=None, dynprompt=None, unique_id=None, **kwargs):
+        # Belt-and-braces: this node is internal (Loop End spawns it). If it has
+        # no real loop wire (e.g. hand-placed), do nothing instead of crashing.
+        if not isinstance(loop, (list, tuple)) or not loop:
+            return tuple([None] * NUM)
+
         try:
             next_index = int(index_in) + 1
-        except Exception:
-            next_index = 1
+        except (TypeError, ValueError):
+            # The index always arrives from Loop Start as a whole number; if it
+            # somehow doesn't, stop rather than risk an endless loop.
+            return tuple(kwargs.get("value%d" % i, None) for i in range(1, NUM + 1))
         try:
             limit = int(total)
-        except Exception:
-            limit = 1
+        except (TypeError, ValueError):
+            # Surface the problem instead of silently running a single round.
+            raise RuntimeError(
+                "Loop End Pixaroma: 'total' (the number of rounds) on Loop "
+                "Start must be a whole number."
+            )
 
         # Loop is finished - emit the carried values unchanged.
         if next_index >= limit:
