@@ -13,13 +13,14 @@ the next index and the updated carried values (tail recursion via GraphBuilder).
 A hidden engine node (Loop Engine) drives that recursion - users never place it
 by hand; Loop End spawns it automatically.
 
-Slots:
+Slots (ordered so the value wires line up straight and loop/index stay out of
+the way):
 - Loop Start: `total` (rounds), optional `value1..5` (the starting carried
-  values), outputs `loop`, `index` (0-based round counter), and `value1..5`
-  (the carried values for this round).
-- Loop End: `loop` (wire it from Loop Start's loop), optional `value1..5`
-  (feed the updated carried values back here), outputs `value1..5` (the final
-  values after the last round).
+  values); outputs `value1..5` (this round's carried values) first, then `loop`
+  and `index` (0-based round counter) at the bottom.
+- Loop End: optional `value1..5` (feed the updated carried values back here)
+  first, then `loop` at the bottom (wire it from Loop Start's loop); outputs
+  `value1..5` (the final values after the last round).
 
 The `loop` wire simply tells the two brackets they belong together.
 """
@@ -89,12 +90,14 @@ class PixaromaLoopStart:
             },
         }
 
-    RETURN_TYPES = tuple(["FLOW_CONTROL", "INT"] + [ANY] * NUM)
-    RETURN_NAMES = tuple(["loop", "index"] + ["value%d" % i for i in range(1, NUM + 1)])
+    # Outputs: the carried values first, then loop, then index at the bottom -
+    # so the value wires run straight across and loop/index tuck out of the way.
+    RETURN_TYPES = tuple([ANY] * NUM + ["FLOW_CONTROL", "INT"])
+    RETURN_NAMES = tuple(["value%d" % i for i in range(1, NUM + 1)] + ["loop", "index"])
     OUTPUT_TOOLTIPS = tuple(
-        ["Wire this into Loop End's loop input to pair the two brackets.",
-         "Which round we are on, starting at 0 (0, 1, 2 ...)."]
-        + ["Carried value %d for this round." % i for i in range(1, NUM + 1)]
+        ["Carried value %d for this round." % i for i in range(1, NUM + 1)]
+        + ["Wire this into Loop End's loop input to pair the two brackets.",
+           "Which round we are on, starting at 0 (0, 1, 2 ...)."]
     )
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
@@ -105,8 +108,9 @@ class PixaromaLoopStart:
         i = kwargs.get(_INDEX_KEY, 0) or 0
         outputs = [kwargs.get("value%d" % n, None) for n in range(1, NUM + 1)]
         # loop is consumed by Loop End via a raw link (it only needs the
-        # topology, not this value), so a simple stub is fine.
-        return tuple(["stub", i] + outputs)
+        # topology, not this value), so a simple stub is fine. Match the
+        # output order: carried values, then loop (stub), then index.
+        return tuple(outputs + ["stub", i])
 
 
 class PixaromaLoopEnd:
@@ -120,14 +124,18 @@ class PixaromaLoopEnd:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # value slots first, then loop at the bottom (so it lines up with Loop
+        # Start's loop output and the value wires stay straight). loop is
+        # declared optional only so it can sit after the values - it MUST be
+        # connected; run() raises a clear error if it is missing.
+        optional = {
+            ("value%d" % i): (ANY, {"rawLink": True, "tooltip": "The updated carried value to hand to the next round. Wire the matching Loop Start value slot's downstream result here. Optional."})
+            for i in range(1, NUM + 1)
+        }
+        optional["loop"] = ("FLOW_CONTROL", {"rawLink": True, "tooltip": "Wire this from Loop Start's loop output. Required for the loop to run."})
         return {
-            "required": {
-                "loop": ("FLOW_CONTROL", {"rawLink": True, "tooltip": "Wire this from Loop Start's loop output."}),
-            },
-            "optional": {
-                ("value%d" % i): (ANY, {"rawLink": True, "tooltip": "The updated carried value to hand to the next round. Wire the matching Loop Start value slot's downstream result here. Optional."})
-                for i in range(1, NUM + 1)
-            },
+            "required": {},
+            "optional": optional,
             "hidden": {
                 "dynprompt": "DYNPROMPT",
                 "unique_id": "UNIQUE_ID",
@@ -142,9 +150,14 @@ class PixaromaLoopEnd:
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔀 Logic & Flow"
 
-    def run(self, loop, dynprompt=None, unique_id=None, **kwargs):
+    def run(self, loop=None, dynprompt=None, unique_id=None, **kwargs):
         if not _LOOP_OK:
             raise RuntimeError(_NEED_UPDATE)
+        if not loop or not isinstance(loop, (list, tuple)):
+            raise RuntimeError(
+                "Loop End Pixaroma: connect the 'loop' input to Loop Start's "
+                "'loop' output."
+            )
         graph = GraphBuilder()
         start_id = loop[0]
 
@@ -157,7 +170,7 @@ class PixaromaLoopEnd:
         engine = graph.node(
             _LOOP_ENGINE,
             loop=loop,
-            index_in=[start_id, 1],  # Loop Start output slot 1 = index
+            index_in=[start_id, NUM + 1],  # Loop Start's index output (now the last slot)
             total=total,
             **carried,
         )

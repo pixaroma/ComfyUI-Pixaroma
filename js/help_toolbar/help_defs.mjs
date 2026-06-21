@@ -75,9 +75,9 @@ const HELP = {
       {
         heading: "Outputs",
         defs: [
+          ["value1...value5", "The carried values for this round. Only use as many as you need."],
           ["loop", "Wire this into Loop End's loop input to pair the two brackets."],
           ["index", "Which round you are on, counting from 0 (0, 1, 2 ...). Handy for picking a different frame or value each round."],
-          ["value1...value5", "The carried values for this round. Only use as many as you need."],
         ],
       },
       {
