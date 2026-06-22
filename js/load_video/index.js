@@ -15,7 +15,7 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-lv-css";
   style.textContent = `
-.pix-lv-media { position:relative; flex:1 1 0; min-height:0; }
+.pix-lv-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-lv-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-lv-bar.is-disabled { opacity:0.40; pointer-events:none; }
 .pix-lv-btn { width:24px; height:24px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; padding:0; border:none; border-radius:4px; background:transparent; cursor:pointer; }
@@ -438,6 +438,22 @@ app.registerExtension({
       const node = this;
       // The DOM widget + restored combo value are in place by the next tick.
       queueMicrotask(() => restorePreview(node));
+      return r;
+    };
+
+    // Collapsing hides the preview; on expand re-fit (and re-show the source if
+    // the widget was rebuilt empty in Nodes 2.0) so the picture returns without
+    // a manual re-select. setPreview's own guard skips a redundant reload.
+    const onCollapseProto = nodeType.prototype.onCollapse;
+    nodeType.prototype.onCollapse = function () {
+      const r = onCollapseProto?.apply(this, arguments);
+      const node = this;
+      requestAnimationFrame(() => {
+        const v = getLiveVideo(node);
+        if (!v) return;
+        if (!v.src) restorePreview(node);
+        else { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} }
+      });
       return r;
     };
   },

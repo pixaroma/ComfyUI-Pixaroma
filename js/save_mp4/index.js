@@ -16,7 +16,7 @@ function injectCSS() {
   style.id = "pix-mp4-css";
   style.textContent = `
 .lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }
-.pix-mp4-media { position:relative; flex:1 1 0; min-height:0; }
+.pix-mp4-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
 .pix-mp4-btn { width:24px; height:24px; flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; padding:0; border:none; border-radius:4px; background:transparent; cursor:pointer; }
@@ -129,6 +129,50 @@ function refreshBar(node) {
   if (node._pixMp4Fill) node._pixMp4Fill.style.width = pct;
   if (node._pixMp4Handle) node._pixMp4Handle.style.left = pct;
   if (node._pixMp4Time) node._pixMp4Time.textContent = `${fmtTime(cur)} / ${fmtTime(dur)}`;
+}
+
+// Apply a rendered-video entry to the <video>: set src, show it, hide the
+// placeholder, sync the bar, and kick a re-fit (the flex column can be left
+// collapsed by a tab-switch rebuild or a collapse/expand — display was toggled
+// without a re-layout). Returns false if the <video> isn't mounted yet.
+function applyVideoEntry(node, entry) {
+  const video = getLiveVideo(node);
+  if (!video || !entry || !entry.filename) return false;
+  node._pixMp4Name = entry.filename.split("/").pop();
+  video.src = buildViewUrl(entry);
+  video.style.display = "block";
+  if (node._pixaromaPlaceholder?.isConnected) node._pixaromaPlaceholder.style.display = "none";
+  video.load();
+  refreshBar(node);
+  requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
+  return true;
+}
+
+// Restore the preview after a Vue rebuild (workflow-tab switch). The last
+// rendered clip is persisted on node.properties (a runtime node._xxx field is
+// torn down by the tab switch; node.properties is serialized + restored —
+// Preview Image Pattern #4). On a fresh add / tab-switch restore the <video>
+// isn't mounted yet when onNodeCreated/onConfigure run, so retry on animation
+// frames until it exists, then apply (or just re-fit if nothing was rendered).
+function restorePreview(node, tries = 0) {
+  if (tries === 0) {
+    if (node._pixMp4Restoring) return; // serialise the onNodeCreated + onConfigure kicks
+    node._pixMp4Restoring = true;
+  }
+  if (getLiveVideo(node)) {
+    node._pixMp4Restoring = false;
+    const entry = node.properties?.pixMp4Video;
+    if (entry && entry.filename) {
+      applyVideoEntry(node, entry);
+    } else {
+      // No prior render — re-fit so the placeholder lays out correctly (and,
+      // with .pix-mp4-media overflow:hidden, can't overflow onto the bar).
+      requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
+    }
+    return;
+  }
+  if (tries >= 60) { node._pixMp4Restoring = false; return; } // ~1s, then give up
+  requestAnimationFrame(() => restorePreview(node, tries + 1));
 }
 
 app.registerExtension({
@@ -355,7 +399,41 @@ app.registerExtension({
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
       if (this.size[1] < DEFAULT_H) this.size[1] = DEFAULT_H;
 
+      // Restore a previously-rendered clip after a Vue rebuild (workflow-tab
+      // switch). queueMicrotask defers past configure() (Vue Compat #8) so
+      // node.properties.pixMp4Video is in place by the time we read it.
+      queueMicrotask(() => restorePreview(node));
+
       return ret;
+    };
+
+    // Belt-and-braces restore for the workflow-load / tab-switch path.
+    const onConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+      const r = onConfigure?.apply(this, arguments);
+      const node = this;
+      queueMicrotask(() => restorePreview(node));
+      return r;
+    };
+
+    // Collapsing hides the DOM widget; on expand the flex column needs a
+    // re-layout or the media can be left collapsed (placeholder overflowing the
+    // control bar). If the widget was rebuilt empty (Nodes 2.0), re-apply the
+    // persisted clip; otherwise just kick a re-fit. Harmless when collapsing.
+    const onCollapseProto = nodeType.prototype.onCollapse;
+    nodeType.prototype.onCollapse = function () {
+      const r = onCollapseProto?.apply(this, arguments);
+      const node = this;
+      requestAnimationFrame(() => {
+        const v = getLiveVideo(node);
+        if (!v) return;
+        if (!v.src && node.properties?.pixMp4Video?.filename) {
+          applyVideoEntry(node, node.properties.pixMp4Video);
+        } else {
+          try { window.dispatchEvent(new Event("resize")); } catch (_e) {}
+        }
+      });
+      return r;
     };
   },
 });
@@ -368,18 +446,18 @@ api.addEventListener("executed", ({ detail }) => {
     node = app.graph.getNodeById(parseInt(detail.node, 10));
   }
   if (!node) return;
-  const video = getLiveVideo(node);
-  if (!video) return;
-  const url = buildViewUrl(entries[0]);
-  // Real filename for the Download button (basename, in case of a subfolder).
-  node._pixMp4Name = (entries[0].filename || "video.mp4").split("/").pop();
-  video.src = url;
-  video.style.display = "block";
-  if (node._pixaromaPlaceholder?.isConnected) {
-    node._pixaromaPlaceholder.style.display = "none";
-  }
-  video.load();
-  // Enable the control bar now that there's a clip (its own loadedmetadata /
-  // timeupdate events take over from here).
-  refreshBar(node);
+  const entry = entries[0];
+  // Persist the rendered clip so the preview survives a workflow-tab switch /
+  // collapse-expand: Vue tears down the node + any node._xxx field, but
+  // node.properties is serialized and restored (Preview Image Pattern #4).
+  // Store just what buildViewUrl needs.
+  node.properties = node.properties || {};
+  node.properties.pixMp4Video = {
+    filename: entry.filename,
+    subfolder: entry.subfolder || "",
+    type: entry.type || "output",
+  };
+  // Show it now (its own loadedmetadata / timeupdate events drive the bar from
+  // here). applyVideoEntry sets the Download basename + kicks the re-fit.
+  applyVideoEntry(node, entry);
 });
