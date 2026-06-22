@@ -257,7 +257,7 @@ function installDrawHook() {
     ctx.strokeStyle = BRAND;
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (const g of state.activeGuides.slice(0, 6)) {
+    for (const g of state.activeGuides.slice(0, 8)) {
       if (g.axis === "X") {
         const x = toScreenX(g.value);
         ctx.moveTo(x, toScreenY(g.minPerp - overhang));
@@ -397,7 +397,7 @@ function findClosestSnap(movingValues, targetValues, threshold, stickyTarget, st
 // line position in graph space. perpRange is [minPerp, maxPerp] of the rects
 // being aligned (perp = the OTHER axis).
 function pushGuide(axis, value, perpRange) {
-  if (state.activeGuides.length >= 6) return;
+  if (state.activeGuides.length >= 8) return;
   state.activeGuides.push({ axis, value, minPerp: perpRange[0], maxPerp: perpRange[1] });
 }
 
@@ -436,6 +436,37 @@ function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
     }
   }
   return [lo, hi];
+}
+
+// Draw a guide for EVERY edge of `rect` that coincides (after snapping) with a
+// target's matching edge, deduped per axis+value and each spanning the moving
+// rect plus all targets sharing that line. Used by the group-move path so that
+// when two same-size groups align top AND bottom at once, both lines show — not
+// just the single edge that drove the position snap.
+function pushAlignedGuides(rect, targets, skip) {
+  const EPS = 0.5;
+  const me = rectEdges(rect);
+  const xVals = [me.left, me.right, me.centerX];
+  const yVals = [me.top, me.bottom, me.centerY];
+  const xg = new Map(), yg = new Map(); // rounded value -> { value, lo, hi }
+  const add = (map, val, lo, hi) => {
+    const k = Math.round(val);
+    const g = map.get(k);
+    if (g) { g.lo = Math.min(g.lo, lo); g.hi = Math.max(g.hi, hi); }
+    else map.set(k, { value: val, lo, hi });
+  };
+  for (const t of targets) {
+    if (t.collapsed || skip(t.ref)) continue;
+    const oE = rectEdges(t.rect), r = t.rect;
+    for (const mv of xVals) for (const tv of [oE.left, oE.right, oE.centerX]) {
+      if (Math.abs(mv - tv) < EPS) add(xg, tv, Math.min(rect.y, r.y), Math.max(rect.y + rect.h, r.y + r.h));
+    }
+    for (const mv of yVals) for (const tv of [oE.top, oE.bottom, oE.centerY]) {
+      if (Math.abs(mv - tv) < EPS) add(yg, tv, Math.min(rect.x, r.x), Math.max(rect.x + rect.w, r.x + r.w));
+    }
+  }
+  for (const g of xg.values()) pushGuide("X", g.value, [g.lo, g.hi]);
+  for (const g of yg.values()) pushGuide("Y", g.value, [g.lo, g.hi]);
 }
 
 // Drop drag bookkeeping AND clear active guides. Use this for both
@@ -590,6 +621,15 @@ function handleGroupDrag(c, group, e) {
   const gRect = groupRect(group);
   if (!gRect) { state.groupDrag = null; return; }
 
+  // A SIZE change on an existing session means the group is being RESIZED, not
+  // moved (some builds leave selected_group_resizing undefined) — bail so we
+  // don't fight the resize. A fresh session trivially matches and falls through.
+  if (state.groupDrag && state.groupDrag.ref === group &&
+      (Math.abs(gRect.w - state.groupDrag.w) > 0.01 || Math.abs(gRect.h - state.groupDrag.h) > 0.01)) {
+    state.groupDrag = null;
+    return;
+  }
+
   // (Re)initialise the session on a new group grab. Capture the group's origin,
   // the cursor origin, and each contained node's OFFSET from the group's
   // top-left (constant for a rigid move). The baseline tick applies no
@@ -619,10 +659,20 @@ function handleGroupDrag(c, group, e) {
 
   const stickyG = snapGraph * 1.5;
   const targets = alignTargets(c);
-  let bestX = null, bestXRect = null, bestY = null, bestYRect = null;
+  // A group aligns to other groups' FRAMES and to LOOSE nodes — never to the
+  // nodes nested INSIDE another group (their edges sit at different positions
+  // than the frame and would hijack the snap). Collect every grouped node so we
+  // can exclude them as targets.
+  const groupedNodes = new Set();
+  for (const t of targets) {
+    if (t.kind !== "group" || t.ref === group) continue;
+    for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
+  }
+  let bestX = null, bestY = null;
   for (const t of targets) {
     if (t.ref === group) continue;                                  // don't snap to self
     if (t.kind === "node" && di.containedSet.has(t.ref)) continue;  // nor to own children
+    if (t.kind === "node" && groupedNodes.has(t.ref)) continue;     // nor to other groups' children
     if (t.collapsed) continue;
     const oRect = t.rect;
     const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
@@ -630,9 +680,9 @@ function handleGroupDrag(c, group, e) {
     if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
     const oE = rectEdges(oRect);
     const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, di.stickyX, stickyG);
-    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) bestX = mx;
     const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, di.stickyY, stickyG);
-    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) bestY = my;
   }
   di.stickyX = bestX ? bestX.target : null;
   di.stickyY = bestY ? bestY.target : null;
@@ -641,27 +691,14 @@ function handleGroupDrag(c, group, e) {
   const fy = bestY ? desiredY + bestY.delta : desiredY;
   applyGroupDrag(group, di.contained, fx, fy, !!(bestX || bestY));
 
+  // Position correction uses only the single closest delta per axis (bestX/bestY),
+  // but the GUIDE lines fan out to EVERY edge of the snapped rect that coincides
+  // with a target — so two same-size groups show both their top AND bottom lines,
+  // not just the one that drove the snap.
   const finalRect = { x: fx, y: fy, w: di.w, h: di.h };
-  const skip = (ref) => ref === group || di.containedSet.has(ref);
+  const skip = (ref) => ref === group || di.containedSet.has(ref) || groupedNodes.has(ref);
   state.activeGuides = [];
-  if (bestX && bestXRect) {
-    const range = extendGuideRange(
-      "X", bestX.target,
-      Math.min(finalRect.y, bestXRect.y),
-      Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
-      targets, skip,
-    );
-    pushGuide("X", bestX.target, range);
-  }
-  if (bestY && bestYRect) {
-    const range = extendGuideRange(
-      "Y", bestY.target,
-      Math.min(finalRect.x, bestYRect.x),
-      Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
-      targets, skip,
-    );
-    pushGuide("Y", bestY.target, range);
-  }
+  pushAlignedGuides(finalRect, targets, skip);
   c.setDirty?.(true, true);
 }
 
