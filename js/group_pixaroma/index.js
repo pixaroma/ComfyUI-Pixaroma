@@ -308,6 +308,10 @@ function computeHeader(group) {
 function paintGroup(group, gc, ctx) {
   const r = groupRect(group);
   if (!r) return;
+  // Save canvas state FIRST - before any other work - so the draw wrapper's catch
+  // can always balance exactly one ctx.save() if anything below throws. groupRect
+  // (the only call above) returns null on bad input rather than throwing.
+  ctx.save();
   const { x, y, w, h } = r;
   const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
   const color = group.color || NEUTRAL;
@@ -322,8 +326,6 @@ function paintGroup(group, gc, ctx) {
   const allBypassed = count > 0 && nodes.every((n) => n.mode === 4);
   const allCollapsed = count > 0 && nodes.every((n) => !!n.flags?.collapsed);
   const active = { mute: allMuted, bypass: allBypassed, collapse: allCollapsed, color: false };
-
-  ctx.save();
 
   // 1) Interior fill (whole body, rounded), at the user's strength.
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);

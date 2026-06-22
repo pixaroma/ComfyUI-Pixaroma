@@ -311,7 +311,8 @@ const GROUP_COLORS = [
   { label: "Light Pink",   color: "#d57bba" },
   { label: "Soft Pink",    color: "#d350ac" },
   { label: "Mid Pink",     color: "#cf2a9e" },
-  // Row 2 fill + Row 3 → 3 full rows of 15 (May 2026, Pixaroma palette).
+  // Row 2 fill + Row 3 of the hand-picked hues (2 quick-access colors are pinned
+  // at the very top of the list; the swatch grid flex-wraps, so exact rows vary).
   { label: "Light Indigo", color: "#9b8ad5" },
   { label: "Soft Indigo",  color: "#6a5fd3" },
   { label: "Mid Indigo",   color: "#4a3fcf" },
