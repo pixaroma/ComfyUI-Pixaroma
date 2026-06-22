@@ -1,4 +1,5 @@
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import { BRAND } from "../shared/index.mjs";
 
 // =============================================================================
@@ -48,6 +49,10 @@ const state = {
 // declared lower in the module would initialize. Accessing it then throws
 // "Cannot access '_origResizeLength' before initialization" (TDZ).
 let _origResizeLength = null;
+// Live execution state (from ComfyUI api events) so a folded bar can show that a
+// node inside it is currently running + its progress.
+let _runningNodeId = null;
+let _progress = null; // { value, max, node }
 
 // ── Layout constants (graph units) ───────────────────────────────────────────
 const TITLE_H = () => window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
@@ -64,6 +69,8 @@ const RESIZE_GRAB = 20; // group-resize grab depth (px) + the visual hint size
 // '#335' / our old '#3f789e' fallback made "No Color" groups look deliberately
 // blue, which was confusing).
 const NEUTRAL = "#58585e";
+// Folded-bar "a node inside me is running right now" accent (success green).
+const RUN_GREEN = "#3ec371";
 
 const BTN_KEYS = ["mute", "bypass", "color", "collapse", "fold"];
 const ICONS = {
@@ -125,6 +132,7 @@ app.registerExtension({
     }
     installDrawOverride();
     installFoldHooks();
+    installExecListeners();
     applyResizeLength();
     installPointerHook();
     // Warm the icon cache so the first hover doesn't flash empty buttons.
@@ -705,6 +713,33 @@ function unfoldGroup(group) {
 }
 function toggleFold(group) { if (isFolded(group)) unfoldGroup(group); else foldGroup(group); }
 
+// Track which node is executing (so a folded bar can light up + name it). Uses
+// ComfyUI's reliable api events (Vue Compat #4). detail can be a bare id or an
+// object { node }, and a null id = that prompt finished.
+let _execListenersInstalled = false;
+function installExecListeners() {
+  if (_execListenersInstalled || !api?.addEventListener) return;
+  const repaint = () => app.canvas?.setDirty?.(true, true);
+  const clear = () => { _runningNodeId = null; _progress = null; repaint(); };
+  api.addEventListener("executing", (e) => {
+    const d = e?.detail;
+    _runningNodeId = d && typeof d === "object" ? d.node : d;
+    if (_runningNodeId == null) _progress = null;
+    repaint();
+  });
+  api.addEventListener("progress", (e) => {
+    const d = e?.detail || {};
+    const node = d.node != null ? d.node : _runningNodeId;
+    _progress = { value: Number(d.value) || 0, max: Number(d.max) || 0, node };
+    repaint();
+  });
+  api.addEventListener("execution_start", clear);
+  api.addEventListener("execution_success", clear);
+  api.addEventListener("execution_error", clear);
+  api.addEventListener("execution_interrupted", clear);
+  _execListenersInstalled = true;
+}
+
 // The slim bar drawn in place of a folded group (called from paintGroup).
 function drawFoldedBar(group, gc, ctx, r) {
   const { x, y, w, h } = r;
@@ -716,11 +751,27 @@ function drawFoldedBar(group, gc, ctx, r) {
   const gi = foldMaps().info.get(group) || { count: group.flags?.[FOLD_KEY]?.nodes?.length || 0, inC: 0, outC: 0 };
   const GF = window.LiteGraph?.GROUP_FONT || "Arial";
 
+  // Is a node inside this folded group executing right now? (member list includes
+  // any nested groups' nodes too, so the outer bar lights up for nested runs.)
+  const fk = group.flags?.[FOLD_KEY];
+  const memberIds = fk && Array.isArray(fk.nodes) ? fk.nodes : [];
+  const running = _runningNodeId != null && memberIds.some((id) => String(id) === String(_runningNodeId));
+  const runNode = running ? findNode(app.canvas?.graph, _runningNodeId) : null;
+  const runTitle = running ? (runNode?.title || runNode?.type || "running") : "";
+  const prog = running && _progress && _progress.max > 0 && String(_progress.node) === String(_runningNodeId)
+    ? Math.max(0, Math.min(1, _progress.value / _progress.max)) : null;
+
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
   ctx.globalAlpha = 0.92 * ea; ctx.fillStyle = color; ctx.fill();
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
   ctx.globalAlpha = 0.55 * ea; ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
   ctx.globalAlpha = ea;
+
+  // Running: a green border so the user can spot the active group at a glance.
+  if (running) {
+    rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
+    ctx.globalAlpha = ea; ctx.lineWidth = 2.5; ctx.strokeStyle = RUN_GREEN; ctx.stroke();
+  }
 
   if (group.selected) {
     rr(ctx, x - 1.5, y - 1.5, w + 3, h + 3, RADIUS + 2);
@@ -750,33 +801,49 @@ function drawFoldedBar(group, gc, ctx, r) {
 
   ctx.textBaseline = "middle";
   let rightLimit = x + w - PAD;
-  const links = gi.inC + gi.outC;
-  if (links > 0) {
-    ctx.font = `${BADGE_FONT - 1}px ${GF}`;
-    const lstr = links + (links === 1 ? " link" : " links");
-    const lw = ctx.measureText(lstr).width;
-    ctx.fillStyle = ink; ctx.globalAlpha = 0.7 * ea; ctx.textAlign = "right";
-    ctx.fillText(lstr, rightLimit, cy + 0.5);
-    ctx.globalAlpha = ea;
-    rightLimit -= lw + 8;
-  }
-  ctx.font = `${BADGE_FONT}px ${GF}`;
-  const cstr = String(gi.count);
-  const bw = ctx.measureText(cstr).width + 12;
-  const bh = BADGE_FONT + 6;
-  const badgeX = rightLimit - bw;
-  if (badgeX > x + 44) {
-    rr(ctx, badgeX, y + (h - bh) / 2, bw, bh, bh / 2);
-    ctx.fillStyle = inkWhite ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)"; ctx.fill();
-    ctx.fillStyle = ink; ctx.textAlign = "center";
-    ctx.fillText(cstr, badgeX + bw / 2, cy + 0.5);
-    rightLimit = badgeX - 6;
+  if (running) {
+    // Show WHICH node is running (more useful than the link/count during a run).
+    ctx.font = `${BADGE_FONT}px ${GF}`;
+    ctx.fillStyle = RUN_GREEN; ctx.globalAlpha = ea; ctx.textAlign = "right";
+    const rtMax = Math.max(40, x + w - PAD - (cr.x + cr.w + 4) - 60);
+    const shown = ellipsize(ctx, "▶ " + runTitle, rtMax);
+    ctx.fillText(shown, rightLimit, cy + 0.5);
+    rightLimit -= ctx.measureText(shown).width + 8;
+  } else {
+    const links = gi.inC + gi.outC;
+    if (links > 0) {
+      ctx.font = `${BADGE_FONT - 1}px ${GF}`;
+      const lstr = links + (links === 1 ? " link" : " links");
+      const lw = ctx.measureText(lstr).width;
+      ctx.fillStyle = ink; ctx.globalAlpha = 0.7 * ea; ctx.textAlign = "right";
+      ctx.fillText(lstr, rightLimit, cy + 0.5);
+      ctx.globalAlpha = ea;
+      rightLimit -= lw + 8;
+    }
+    ctx.font = `${BADGE_FONT}px ${GF}`;
+    const cstr = String(gi.count);
+    const bw = ctx.measureText(cstr).width + 12;
+    const bh = BADGE_FONT + 6;
+    const badgeX = rightLimit - bw;
+    if (badgeX > x + 44) {
+      rr(ctx, badgeX, y + (h - bh) / 2, bw, bh, bh / 2);
+      ctx.fillStyle = inkWhite ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)"; ctx.fill();
+      ctx.fillStyle = ink; ctx.textAlign = "center";
+      ctx.fillText(cstr, badgeX + bw / 2, cy + 0.5);
+      rightLimit = badgeX - 6;
+    }
   }
   ctx.font = `600 ${TITLE_FONT}px ${GF}`;
   ctx.fillStyle = ink; ctx.textAlign = "left";
   const titleX = cr.x + cr.w + 4;
   const title = ellipsize(ctx, group.title || "Group", rightLimit - titleX - 4);
   ctx.fillText(title, titleX, cy + 0.5);
+
+  // Progress bar (steps etc.) along the bottom edge while a member runs.
+  if (prog != null) {
+    ctx.globalAlpha = ea; ctx.fillStyle = RUN_GREEN;
+    ctx.fillRect(x + 1, y + h - 3, (w - 2) * prog, 2.5);
+  }
 }
 
 // ── Folded-bar pointer handling: drag to move (member nodes ride along), quick
