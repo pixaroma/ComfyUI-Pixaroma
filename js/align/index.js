@@ -4,6 +4,10 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 
 // =============================================================================
 // Align Pixaroma - toggleable snap & alignment guides for the node canvas.
+// Nodes AND groups both participate: drag a node or a group and it snaps to the
+// edges/centers of nearby nodes and groups alike (groups are move-only; a group
+// carries its contained nodes with it). alignTargets() is the single combined
+// node+group target list every snap path iterates.
 //
 // Architecture: window-level pointermove listener does the snap math + node
 // position mutation. LGraphCanvas.prototype.onDrawForeground is monkey-patched
@@ -41,6 +45,9 @@ const state = {
   // position, independent of LiteGraph's tick-by-tick deltas. Snap engages
   // when desired puts an edge within snapDist of a target line.
   dragInfo: null,       // { posX, posY, cursorX, cursorY, nodeId } or null
+  // Group-move tracking (separate from dragInfo so the carefully-tuned node
+  // path is untouched). Captured on the first tick of a group drag.
+  groupDrag: null,      // { ref, gx0, gy0, w, h, cursorX, cursorY, contained, ... } or null
 };
 
 const ICON_URL = "/pixaroma/assets/icons/ui/align-center-v.svg";
@@ -150,7 +157,7 @@ app.registerExtension({
       type: "boolean",
       defaultValue: false,
       category: ["👑 Pixaroma", "Align"],
-      tooltip: "Snap nodes to others' edges and centers while dragging or resizing. Hold Shift to bypass (Alt is taken by ComfyUI for duplicate-during-drag).",
+      tooltip: "Snap nodes and groups to each other's edges and centers while dragging (and nodes while resizing). Hold Shift to bypass (Alt is taken by ComfyUI for duplicate-during-drag).",
       onChange: (v) => {
         state.enabled = !!v;
         updateToolbarTint();
@@ -308,6 +315,58 @@ function nodeRect(n) {
   };
 }
 
+// ── Group geometry ───────────────────────────────────────────────────────
+// A group's alignable rect is its full bounding box (the title strip sits
+// INSIDE the top of the box, so there's no title-bar offset like nodes).
+// Read/write defensively across litegraph versions and both renderers: the
+// _pos/_size fields, the pos/size getters, or the _bounding [x,y,w,h] cache.
+function groupPos(g) {
+  if (Array.isArray(g?._pos)) return [g._pos[0], g._pos[1]];
+  if (Array.isArray(g?.pos)) return [g.pos[0], g.pos[1]];
+  if (Array.isArray(g?._bounding)) return [g._bounding[0], g._bounding[1]];
+  return null;
+}
+function groupSize(g) {
+  if (Array.isArray(g?._size)) return [g._size[0], g._size[1]];
+  if (Array.isArray(g?.size)) return [g.size[0], g.size[1]];
+  if (Array.isArray(g?._bounding)) return [g._bounding[2], g._bounding[3]];
+  return null;
+}
+function groupRect(g) {
+  const p = groupPos(g), s = groupSize(g);
+  if (!p || !s) return null;
+  return { x: p[0], y: p[1], w: s[0], h: s[1] };
+}
+// Write a group's top-left. Array-replace through the pos getter (so any
+// reactive Nodes 2.0 setter fires) AND sync the raw _pos/_bounding fields, so
+// the group renders at the new spot in either renderer regardless of which the
+// renderer reads. (Children are moved separately by the caller.)
+function setGroupPos(g, x, y) {
+  try { g.pos = [x, y]; } catch (_e) { /* no setter in this build */ }
+  if (Array.isArray(g._pos)) { g._pos[0] = x; g._pos[1] = y; }
+  if (Array.isArray(g._bounding)) { g._bounding[0] = x; g._bounding[1] = y; }
+}
+function graphGroups(c) {
+  return c?.graph?._groups || c?.graph?.groups || [];
+}
+
+// Unified alignment targets: every node (its visual rect, title bar included)
+// PLUS every group (its bounding box). The snap loops and guide extension
+// iterate this one list, so nodes snap to groups and groups snap to nodes from
+// a single code path. kind distinguishes the two for the multi-select skip
+// (which is keyed on node ids); ref is the source object for identity skips.
+function alignTargets(c) {
+  const out = [];
+  for (const n of (c.graph?._nodes || [])) {
+    out.push({ ref: n, kind: "node", id: n.id, rect: nodeRect(n), collapsed: !!n.flags?.collapsed });
+  }
+  for (const g of graphGroups(c)) {
+    const r = groupRect(g);
+    if (r) out.push({ ref: g, kind: "group", id: g.id, rect: r, collapsed: false });
+  }
+  return out;
+}
+
 // Find the closest snap delta along one axis. Returns { delta, target, movingValue } or null.
 // movingValues / targetValues are arrays of edge values along ONE axis.
 // Hysteresis: a target equal to `stickyTarget` (the one we were snapped to last
@@ -340,13 +399,15 @@ function pushGuide(axis, value, perpRange) {
 // equals the guide value within EPS. This makes a column of 3+ nodes show
 // one continuous guide that spans the whole column instead of a short
 // segment between only the moving and matched rects.
+// candidates are unified target objects ({ ref, rect, collapsed, ... } from
+// alignTargets); skipFn receives the source ref (node or group).
 function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
   const EPS = 0.5;
   let lo = baseLo, hi = baseHi;
-  for (const other of candidates) {
-    if (skipFn(other)) continue;
-    if (other.flags?.collapsed) continue;
-    const oR = nodeRect(other);
+  for (const cand of candidates) {
+    if (cand.collapsed) continue;
+    if (skipFn(cand.ref)) continue;
+    const oR = cand.rect;
     const oE = rectEdges(oR);
     let match = false;
     if (axis === "X") {
@@ -376,6 +437,7 @@ function extendGuideRange(axis, value, baseLo, baseHi, candidates, skipFn) {
 // promptly; redraw is cheap when there's nothing to draw.
 function resetDrag() {
   state.dragInfo = null;
+  state.groupDrag = null;
   state._prevNodeStates = null;
   state._vueResizing = false;
   state._gestureSizes = null;
@@ -402,6 +464,11 @@ function onWindowPointerDown(e) {
   for (const n of c.graph._nodes) sizes.set(n.id, [n.size[0], n.size[1]]);
   state._gestureSizes = sizes;
   state._vueResizing = false;
+  // Baseline every group's rect (capture phase, before any drag moves them) so
+  // a group MOVE is detectable by position change from the very first move tick.
+  const grects = new Map();
+  for (const g of graphGroups(c)) { const r = groupRect(g); if (r) grects.set(g, r); }
+  state._prevGroupRects = grects;
   // If the pointer grabbed a RESIZE HANDLE, the element under it shows a
   // `*-resize` cursor. Latch the resize flag immediately so the move guard bails
   // from tick 0 - on the very first pointermove the node's size hasn't changed
@@ -441,6 +508,156 @@ function applyNodeRect(node, x, y, w, h, snapActive) {
   }
 }
 
+// ── Group drag: detection + snap (Approach A — absolute desired-from-origin) ─
+// A group move also shifts its contained nodes, so the node change-detector
+// below would mistake those for a node drag. We therefore detect + fully handle
+// a group drag FIRST (and return), before any node logic runs.
+
+// Refresh the per-group rect cache (runs every drag tick) so the next tick's
+// change-detection has a fresh baseline.
+function refreshGroupCache(c) {
+  if (!state._prevGroupRects) state._prevGroupRects = new Map();
+  state._prevGroupRects.clear();
+  for (const g of graphGroups(c)) { const r = groupRect(g); if (r) state._prevGroupRects.set(g, r); }
+}
+
+// Identify a group being MOVED this tick. Strong signal first (legacy canvas
+// tracks the grabbed group), then a renderer-agnostic fallback: a group whose
+// top-left changed since last tick with its SIZE unchanged (a size change means
+// a resize, which we don't snap). Returns the group or null.
+function findDraggedGroup(c) {
+  const prev = state._prevGroupRects;
+  const sizeUnchanged = (g) => {
+    const p = prev?.get(g), r = groupRect(g);
+    if (!p || !r) return true;
+    return Math.abs(r.w - p.w) <= 0.01 && Math.abs(r.h - p.h) <= 0.01;
+  };
+  if (c.selected_group && !c.selected_group_resizing && sizeUnchanged(c.selected_group)) {
+    return c.selected_group;
+  }
+  if (!prev) return null;
+  for (const g of graphGroups(c)) {
+    const r = groupRect(g), p = prev.get(g);
+    if (!r || !p) continue;
+    const moved = Math.abs(r.x - p.x) > 0.01 || Math.abs(r.y - p.y) > 0.01;
+    const resized = Math.abs(r.w - p.w) > 0.01 || Math.abs(r.h - p.h) > 0.01;
+    if (moved && !resized) return g;
+  }
+  return null;
+}
+
+// Nodes that move rigidly with the group. Prefer LiteGraph's own _nodes (it
+// recomputes them when the group grab starts); fall back to geometry (node
+// center inside the group rect) for any build that doesn't populate it.
+function groupContainedNodes(c, g, gRect) {
+  if (Array.isArray(g._nodes) && g._nodes.length) return g._nodes.slice();
+  const out = [];
+  for (const n of (c.graph?._nodes || [])) {
+    const r = nodeRect(n);
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    if (cx >= gRect.x && cx <= gRect.x + gRect.w && cy >= gRect.y && cy <= gRect.y + gRect.h) out.push(n);
+  }
+  return out;
+}
+
+// Write the snapped group + contained-node positions. Legacy: overwrite absolute
+// every tick (same as the node path). Nodes 2.0: only correct when a snap is
+// actually engaged, deferred in a rAF so it wins over Vue's own cursor-driven
+// write (mirrors applyNodePos); when not snapped, leave the reactive drag alone.
+function applyGroupDrag(g, contained, gx, gy, snapActive) {
+  if (isVueNodes()) {
+    if (!snapActive) return;
+    requestAnimationFrame(() => {
+      setGroupPos(g, gx, gy);
+      for (const cn of contained) cn.node.pos = [gx + cn.off[0], gy + cn.off[1]];
+    });
+  } else {
+    setGroupPos(g, gx, gy);
+    for (const cn of contained) { cn.node.pos[0] = gx + cn.off[0]; cn.node.pos[1] = gy + cn.off[1]; }
+  }
+}
+
+function handleGroupDrag(c, group, e) {
+  const scale = c.ds?.scale || 1;
+  const snapGraph = state.snapDistPx / scale;
+  const gRect = groupRect(group);
+  if (!gRect) { state.groupDrag = null; return; }
+
+  // (Re)initialise the session on a new group grab. Capture the group's origin,
+  // the cursor origin, and each contained node's OFFSET from the group's
+  // top-left (constant for a rigid move). The baseline tick applies no
+  // correction (desired == current), so the group never jumps on grab.
+  if (!state.groupDrag || state.groupDrag.ref !== group) {
+    const contained = groupContainedNodes(c, group, gRect).map((n) => ({
+      node: n, off: [n.pos[0] - gRect.x, n.pos[1] - gRect.y],
+    }));
+    state.groupDrag = {
+      ref: group,
+      gx0: gRect.x, gy0: gRect.y, w: gRect.w, h: gRect.h,
+      cursorX: e.clientX, cursorY: e.clientY,
+      contained,
+      containedSet: new Set(contained.map((cn) => cn.node)),
+      stickyX: null, stickyY: null,
+    };
+    return;
+  }
+
+  const di = state.groupDrag;
+  const desiredX = di.gx0 + (e.clientX - di.cursorX) / scale;
+  const desiredY = di.gy0 + (e.clientY - di.cursorY) / scale;
+  const movingRect = { x: desiredX, y: desiredY, w: di.w, h: di.h };
+  const movingE = rectEdges(movingRect);
+  const movingX = [movingE.left, movingE.right, movingE.centerX];
+  const movingY = [movingE.top, movingE.bottom, movingE.centerY];
+
+  const stickyG = snapGraph * 1.5;
+  const targets = alignTargets(c);
+  let bestX = null, bestXRect = null, bestY = null, bestYRect = null;
+  for (const t of targets) {
+    if (t.ref === group) continue;                                  // don't snap to self
+    if (t.kind === "node" && di.containedSet.has(t.ref)) continue;  // nor to own children
+    if (t.collapsed) continue;
+    const oRect = t.rect;
+    const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
+    const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
+    if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
+    const oE = rectEdges(oRect);
+    const mx = findClosestSnap(movingX, [oE.left, oE.right, oE.centerX], snapGraph, di.stickyX, stickyG);
+    if (mx && (!bestX || Math.abs(mx.delta) < Math.abs(bestX.delta))) { bestX = mx; bestXRect = oRect; }
+    const my = findClosestSnap(movingY, [oE.top, oE.bottom, oE.centerY], snapGraph, di.stickyY, stickyG);
+    if (my && (!bestY || Math.abs(my.delta) < Math.abs(bestY.delta))) { bestY = my; bestYRect = oRect; }
+  }
+  di.stickyX = bestX ? bestX.target : null;
+  di.stickyY = bestY ? bestY.target : null;
+
+  const fx = bestX ? desiredX + bestX.delta : desiredX;
+  const fy = bestY ? desiredY + bestY.delta : desiredY;
+  applyGroupDrag(group, di.contained, fx, fy, !!(bestX || bestY));
+
+  const finalRect = { x: fx, y: fy, w: di.w, h: di.h };
+  const skip = (ref) => ref === group || di.containedSet.has(ref);
+  state.activeGuides = [];
+  if (bestX && bestXRect) {
+    const range = extendGuideRange(
+      "X", bestX.target,
+      Math.min(finalRect.y, bestXRect.y),
+      Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
+      targets, skip,
+    );
+    pushGuide("X", bestX.target, range);
+  }
+  if (bestY && bestYRect) {
+    const range = extendGuideRange(
+      "Y", bestY.target,
+      Math.min(finalRect.x, bestYRect.x),
+      Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
+      targets, skip,
+    );
+    pushGuide("Y", bestY.target, range);
+  }
+  c.setDirty?.(true, true);
+}
+
 function onWindowPointerMove(e) {
   if (!state.enabled) { resetDrag(); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
@@ -453,6 +670,17 @@ function onWindowPointerMove(e) {
   // them since neither moves a node.)
   if (c.dragging_rectangle != null) { resetDrag(); return; }
   if (c.dragging_canvas) { resetDrag(); return; }
+
+  // ── Group drag takes precedence over node logic. Detect it first (and keep an
+  // in-progress session alive even on a still tick, so guides don't flicker when
+  // you pause), then handle + return. A group move also shifts its contained
+  // nodes, which the node detector below would otherwise misread as a node drag.
+  // The button-held + shift + marquee/pan gates above already cleared groupDrag
+  // when appropriate; pointerup/cancel clears it via resetDrag.
+  const draggedGroup = findDraggedGroup(c) || state.groupDrag?.ref || null;
+  refreshGroupCache(c);
+  if (draggedGroup) { handleGroupDrag(c, draggedGroup, e); return; }
+
   // LEGACY-ONLY drag gates. Nodes 2.0 moves nodes WITHOUT setting
   // last_mouse_dragging (undefined) or pointer.dragStarted (stays false) -
   // verified via console diagnostic 2026-06-01 - so gating on them would bail
@@ -731,7 +959,7 @@ function onWindowPointerMove(e) {
     }
 
     const stickyG = snapGraph * 1.5;
-    const nodes = c.graph?._nodes || [];
+    const targets = alignTargets(c);
     let snapLeft = null, snapRight = null, snapTop = null, snapBot = null;
     const tryTarget = (curBest, t, value, sticky, rect) => {
       const d = t - value;
@@ -741,10 +969,10 @@ function onWindowPointerMove(e) {
       }
       return curBest;
     };
-    for (const other of nodes) {
-      if (other === draggedNode) continue;
-      if (other.flags?.collapsed) continue;
-      const oRect = nodeRect(other);
+    for (const tg of targets) {
+      if (tg.ref === draggedNode) continue;
+      if (tg.collapsed) continue;
+      const oRect = tg.rect;
       const oE = rectEdges(oRect);
       if (leftMoves) {
         for (const t of [oE.left, oE.right, oE.centerX]) {
@@ -846,12 +1074,13 @@ function onWindowPointerMove(e) {
     const movingY = [movingE.top, movingE.bottom, movingE.centerY];
     const stickyG = snapGraph * 1.5;
     const allNodes = c.graph?._nodes || [];
+    const targets = alignTargets(c);
     let bestX = null, bestXRect = null;
     let bestY = null, bestYRect = null;
-    for (const other of allNodes) {
-      if (di.origIds.has(other.id)) continue;
-      if (other.flags?.collapsed) continue;
-      const oRect = nodeRect(other);
+    for (const tg of targets) {
+      if (tg.kind === "node" && di.origIds.has(tg.id)) continue;
+      if (tg.collapsed) continue;
+      const oRect = tg.rect;
       const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
       const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
       if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
@@ -884,8 +1113,8 @@ function onWindowPointerMove(e) {
         "X", bestX.target,
         Math.min(finalBBox.y, bestXRect.y),
         Math.max(finalBBox.y + finalBBox.h, bestXRect.y + bestXRect.h),
-        allNodes,
-        (n) => di.origIds.has(n.id) || n === bestXRect,
+        targets,
+        (ref) => ref && di.origIds.has(ref.id),
       );
       pushGuide("X", bestX.target, range);
     }
@@ -894,8 +1123,8 @@ function onWindowPointerMove(e) {
         "Y", bestY.target,
         Math.min(finalBBox.x, bestYRect.x),
         Math.max(finalBBox.x + finalBBox.w, bestYRect.x + bestYRect.w),
-        allNodes,
-        (n) => di.origIds.has(n.id) || n === bestYRect,
+        targets,
+        (ref) => ref && di.origIds.has(ref.id),
       );
       pushGuide("Y", bestY.target, range);
     }
@@ -920,13 +1149,13 @@ function onWindowPointerMove(e) {
   const movingY = [movingE.top, movingE.bottom, movingE.centerY];
 
   const stickyG = snapGraph * 1.5;
-  const nodes = c.graph?._nodes || [];
+  const targets = alignTargets(c);
   let bestX = null, bestXRect = null;
   let bestY = null, bestYRect = null;
-  for (const other of nodes) {
-    if (other === draggedNode) continue;
-    if (other.flags?.collapsed) continue;
-    const oRect = nodeRect(other);
+  for (const t of targets) {
+    if (t.ref === draggedNode) continue;
+    if (t.collapsed) continue;
+    const oRect = t.rect;
     const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
     const dyc = Math.max(0, Math.max(oRect.y - (movingRect.y + movingRect.h), movingRect.y - (oRect.y + oRect.h)));
     if (dxc > 2 * stickyG && dyc > 2 * stickyG) continue;
@@ -957,8 +1186,8 @@ function onWindowPointerMove(e) {
       "X", bestX.target,
       Math.min(finalRect.y, bestXRect.y),
       Math.max(finalRect.y + finalRect.h, bestXRect.y + bestXRect.h),
-      nodes,
-      (n) => n === draggedNode || n === bestXRect,
+      targets,
+      (ref) => ref === draggedNode,
     );
     pushGuide("X", bestX.target, range);
   }
@@ -967,8 +1196,8 @@ function onWindowPointerMove(e) {
       "Y", bestY.target,
       Math.min(finalRect.x, bestYRect.x),
       Math.max(finalRect.x + finalRect.w, bestYRect.x + bestYRect.w),
-      nodes,
-      (n) => n === draggedNode || n === bestYRect,
+      targets,
+      (ref) => ref === draggedNode,
     );
     pushGuide("Y", bestY.target, range);
   }
