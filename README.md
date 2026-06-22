@@ -295,10 +295,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 22, 2026 · v1.3.101**
+### **June 22, 2026 · v1.3.101–v1.3.102**
 - **Align tool now works with groups.** Drag a group and it snaps into line with nearby nodes and other groups, with the orange guide lines showing as it goes, and the nodes inside the group move along with it. Dragging a node now snaps to a group's edges too. (Turn on the Align button in the top toolbar to use it.)
 - **Node and group colour favourites are now separate.** Saving a colour to a favourite from the group colour menu no longer overwrites the node colours you saved - each keeps its own set of favourites.
 - **"Pick custom..." colours now open on the node's current colour**, so you can make a small adjustment instead of starting from an unrelated colour.
+- **NEW: Group styling.** Groups get a cleaner look - rounded corners, a coloured header bar showing the group's name and how many nodes are inside, and a soft tint. Hover over a group and a row of buttons appears on its header so you can, in one click, mute all / bypass all / pick a colour / collapse or expand all the nodes inside. On by default (you can switch it off in Settings if you prefer the plain look).
+- **NEW: Smart node title colour.** A node's title text now turns white or dark automatically to stay readable on whatever colour you give the node - no more grey titles vanishing on light colours. On by default.
+- **Fresher colour swatches.** The custom-colour picker has a brighter, more modern palette, and the Pixaroma orange plus a handy dark grey are pinned at the front for quick access (for both nodes and groups). Picking a custom colour for a group now starts from the group's current colour.
+- **More Align fixes.** Dragging a node, or selecting text inside a group, no longer drags the whole group by mistake; and collapsed nodes now snap into line too.
+- **Load Video uses less memory** when loading big or long videos, so it's less likely to bog things down.
 
 ### **June 21, 2026 · v1.3.100**
 - **NEW: Loop Start / Loop End + Combine Pixaroma** - repeat a part of your workflow as many times as you like. Put your nodes between Loop Start and Loop End, set the number of rounds, and the section runs over and over - great for making a long video in chunks or stacking up a batch of images. Each round can carry values forward to the next, and the new **Combine** node piles each round's result onto the running total (images into one batch, numbers into a list). If you try to join two things that don't fit (like an image and text), you get a friendly message instead of a cryptic error. Polished over several careful review passes. Works in both the classic and the new node interface.
