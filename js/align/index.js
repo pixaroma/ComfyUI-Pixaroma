@@ -301,11 +301,20 @@ function getTitleH(n) {
 }
 
 function nodeRect(n) {
+  // A COLLAPSED node renders as just its title bar - a small pill of
+  // _collapsed_width, sitting at pos[1] - titleH like any title. Use THAT small
+  // rect so collapsed nodes snap/align by what's actually drawn (not their
+  // hidden expanded body). _collapsed_width is set during draw; fall back to
+  // LiteGraph.NODE_COLLAPSED_WIDTH (80) before the first paint.
+  if (n.flags?.collapsed) {
+    const th = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+    const cw = n._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80;
+    return { x: n.pos[0], y: n.pos[1] - th, w: cw, h: th };
+  }
   // In LiteGraph, node.pos[1] is the top of the BODY (below the title bar),
   // and node.size[1] is the body height. The title sits at pos[1] - titleH.
   // For snap to align with the visual top edge of the node, include the
-  // title bar in the rect. Collapsed nodes have no body, just title.
-  // no_title nodes (Label / Note) have no title bar at all.
+  // title bar in the rect. no_title nodes (Label / Note) have no title bar.
   const titleH = getTitleH(n);
   return {
     x: n.pos[0],
@@ -365,7 +374,10 @@ function graphGroups(c) {
 function alignTargets(c) {
   const out = [];
   for (const n of (c.graph?._nodes || [])) {
-    out.push({ ref: n, kind: "node", id: n.id, rect: nodeRect(n), collapsed: !!n.flags?.collapsed });
+    // collapsed:false on purpose - collapsed nodes now participate fully as snap
+    // targets (nodeRect returns their small title-bar rect). They used to be
+    // skipped via this flag, which is why a collapsed node never snapped.
+    out.push({ ref: n, kind: "node", id: n.id, rect: nodeRect(n), collapsed: false });
   }
   for (const g of graphGroups(c)) {
     const r = groupRect(g);
@@ -843,12 +855,12 @@ function onWindowPointerMove(e) {
   // marquee/pan). Clear any guides but DON'T resetDrag - that wipes the cache we
   // just refreshed, and the next tick could then never detect movement (the
   // bug that broke Align entirely in Nodes 2.0: every tick-0 cleared the cache).
-  if (!draggedNode || draggedNode.flags?.collapsed) {
+  if (!draggedNode) {
     if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
     return;
   }
 
-  // Multi-select detection. If 2+ uncollapsed nodes are selected AND the
+  // Multi-select detection. If 2+ nodes (collapsed included) are selected AND the
   // identified draggedNode is in that selection, the drag is treated as a
   // rigid bbox move where the cursor delta moves every selected node by the
   // same amount and snap is computed on the bbox edges/centers.
@@ -860,7 +872,7 @@ function onWindowPointerMove(e) {
     if (sel) {
       const selVals = Object.values(sel);
       if (selVals.length > 1 && selVals.includes(draggedNode)) {
-        const live = selVals.filter((n) => n && !n.flags?.collapsed);
+        const live = selVals.filter((n) => n);
         if (live.length > 1) multiNodes = live;
       }
     }
@@ -893,11 +905,11 @@ function onWindowPointerMove(e) {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const n of multiNodes) {
         origPositions.set(n.id, { x: n.pos[0], y: n.pos[1] });
-        const visTop = n.pos[1] - getTitleH(n);
-        minX = Math.min(minX, n.pos[0]);
-        minY = Math.min(minY, visTop);
-        maxX = Math.max(maxX, n.pos[0] + n.size[0]);
-        maxY = Math.max(maxY, n.pos[1] + n.size[1]);
+        const r = nodeRect(n); // collapse-aware visual rect
+        minX = Math.min(minX, r.x);
+        minY = Math.min(minY, r.y);
+        maxX = Math.max(maxX, r.x + r.w);
+        maxY = Math.max(maxY, r.y + r.h);
       }
       state.dragInfo = {
         nodeId: draggedNode.id,
@@ -1184,9 +1196,12 @@ function onWindowPointerMove(e) {
 
   // Build moving rect at desired position. Use the VISUAL rect (including
   // the title bar above pos[1]) so snap aligns with what the user sees.
-  const titleH = getTitleH(draggedNode);
-  const w = draggedNode.size[0];
-  const h = draggedNode.size[1];
+  // Collapse-aware moving rect: a collapsed node is just its title pill.
+  const collapsed = !!draggedNode.flags?.collapsed;
+  const TH = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
+  const titleH = collapsed ? TH : getTitleH(draggedNode);
+  const w = collapsed ? (draggedNode._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80) : draggedNode.size[0];
+  const h = collapsed ? 0 : draggedNode.size[1];
   const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
   const movingE = rectEdges(movingRect);
   const movingX = [movingE.left, movingE.right, movingE.centerX];
