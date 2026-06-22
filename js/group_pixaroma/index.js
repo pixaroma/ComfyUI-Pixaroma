@@ -444,6 +444,10 @@ function installDrawOverride() {
       paintGroup(this, graphCanvas, ctx);
     } catch (err) {
       console.warn("[Pixaroma.Groups] paint error, falling back to native", err);
+      // Balance paintGroup's ctx.save() so the native fallback (and the rest of
+      // this frame's nodes/groups) render with a clean canvas state. restore() on
+      // an already-balanced stack is a harmless no-op.
+      try { ctx.restore(); } catch (_e) {}
       return _origDraw.call(this, graphCanvas, ctx);
     }
   };
@@ -523,7 +527,9 @@ function installPointerHook() {
   _pointerInstalled = true;
 }
 function onWindowPointerMove(e) {
-  if (!state.enabled) return;
+  // Clear stale hover state when disabled, so re-enabling doesn't briefly show
+  // buttons at the last cursor spot before the next move updates it.
+  if (!state.enabled) { state.cursor = null; _hoverGroupActive = false; return; }
   const c = app.canvas;
   const canvasEl = c?.canvas;
   if (!canvasEl) return;
