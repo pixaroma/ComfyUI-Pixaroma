@@ -326,8 +326,42 @@ function computeHeader(group) {
   }
   const cur = state.cursor;
   const hover = !!(cur && cur.gx >= r.x && cur.gx <= r.x + r.w && cur.gy >= r.y && cur.gy <= r.y + r.h);
-  const showButtons = fits && (hover || !!group.selected);
+  const showButtons = fits && (hover || isGroupSelected(group));
   return { x: r.x, y: r.y, w: r.w, h: r.h, th, buttons, fits, showButtons };
+}
+
+// A group is genuinely selected when it's in canvas.selectedItems (the Set that
+// holds selected nodes AND groups). `group.selected` is NOT reliable - it's set
+// on the first select but is FALSE after you click away and click the group
+// again, so the canvas-painted selection outline + header buttons would vanish
+// even though the group IS selected and draggable (the "looks unselected" bug on
+// re-selecting a collapsed/folded group). selectedItems is the source of truth.
+function isGroupSelected(group) {
+  if (!group) return false;
+  if (group.selected) return true;
+  const sel = app.canvas?.selectedItems;
+  if (sel && typeof sel.has === "function" && sel.has(group)) return true;
+  return false;
+}
+
+// After a fold/unfold changes the group's box, re-select it so ComfyUI's native
+// SelectionToolbox (the floating trash / color / collapse / more bar) recomputes
+// its position - it caches the position at select time and does NOT follow our
+// programmatic box change, so it would otherwise hang at the old (expanded) spot.
+// Best-effort + guarded across frontend versions; a no-op if the group isn't
+// selected or the methods are absent.
+function nudgeSelectionToolbox(group) {
+  const c = app.canvas;
+  if (!c || !group) return;
+  try {
+    const sel = c.selectedItems;
+    if (!(sel && typeof sel.has === "function" && sel.has(group))) return;
+    if (typeof c.deselect === "function" && typeof c.select === "function") {
+      c.deselect(group); c.select(group);
+    } else if (typeof c.deselectItem === "function" && typeof c.selectItem === "function") {
+      c.deselectItem(group); c.selectItem(group);
+    }
+  } catch (_e) {}
 }
 
 // =============================================================================
@@ -395,7 +429,7 @@ function paintGroup(group, gc, ctx) {
   ctx.fill();
 
   // 5) Selection outline.
-  if (group.selected) {
+  if (isGroupSelected(group)) {
     rr(ctx, x - 1.5, y - 1.5, w + 3, h + 3, RADIUS + 2);
     ctx.globalAlpha = ea;
     ctx.lineWidth = 2;
@@ -762,6 +796,7 @@ function foldGroup(group) {
   invalidateFold();
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
+  nudgeSelectionToolbox(group); // box shrank → reposition the native toolbar
 }
 // Bounding box of a set of node ids (+ padding), for recovering a lost restore box.
 function boundsOfNodes(ids) {
@@ -814,6 +849,7 @@ function unfoldGroup(group) {
   invalidateFold();
   app.graph?.setDirtyCanvas?.(true, true);
   try { app.graph?.change?.(); } catch (_e) {}
+  nudgeSelectionToolbox(group); // box grew back → reposition the native toolbar
 }
 function toggleFold(group) { if (isFolded(group)) unfoldGroup(group); else foldGroup(group); }
 
@@ -879,7 +915,7 @@ function drawFoldedBar(group, gc, ctx, r) {
     ctx.globalAlpha = ea; ctx.lineWidth = 2.5; ctx.strokeStyle = RUN_GREEN; ctx.stroke();
   }
 
-  if (group.selected) {
+  if (isGroupSelected(group)) {
     rr(ctx, x - 1.5, y - 1.5, w + 3, h + 3, RADIUS + 2);
     ctx.lineWidth = 2; ctx.strokeStyle = BRAND; ctx.stroke();
   }
