@@ -364,6 +364,23 @@ function nudgeSelectionToolbox(group) {
   } catch (_e) {}
 }
 
+// Select a group exclusively (deselect everything else, then select it). We own
+// the folded-bar pointerdown (stopImmediatePropagation), so LiteGraph never runs
+// its own select for it - WE must, or the bar drags but never shows as selected
+// (no outline / toolbar). Best-effort + guarded; reuses the same select/deselect
+// API the toolbar nudge proved works.
+function selectGroupExclusive(group, c) {
+  c = c || app.canvas;
+  if (!c || !group || typeof c.select !== "function") return;
+  try {
+    if (typeof c.deselectAll === "function") c.deselectAll();
+    else if (c.selectedItems && typeof c.deselect === "function") {
+      for (const it of [...c.selectedItems]) if (it !== group) c.deselect(it);
+    }
+    c.select(group);
+  } catch (_e) {}
+}
+
 // =============================================================================
 // The painter
 // =============================================================================
@@ -1022,6 +1039,10 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     c.setDirty?.(true, true);
     return;
   }
+  // A single click on the bar (not the expand chevron, not a double-click) selects
+  // the group so the outline + toolbar show - LiteGraph never sees this event (we
+  // stop it), so it won't select for us. Then the bar-drag is set up below.
+  selectGroupExclusive(group, c);
   const rec = (_lastBarDown = { t: now, g: group, moved: false });
   const barW = r0.w, barH = r0.h, bx = r0.x, by = r0.y;
   const start = [gx, gy];
@@ -1247,6 +1268,20 @@ function onWindowPointerDown(e) {
   const off = c.ds?.offset || [0, 0];
   const gx = (e.clientX - rect.left) / scale - off[0];
   const gy = (e.clientY - rect.top) / scale - off[1];
+  // A VISIBLE node rendered on top of a group (groups always draw BEHIND nodes)
+  // owns the click - don't let our folded-bar handler or header buttons steal it
+  // (the "clicking a node sitting over a group's icons presses the group button"
+  // bug). Exclude nodes hidden BY a fold (they're off-screen, so a folded bar
+  // parked over a hidden member must still be clickable).
+  let nodeHere = null;
+  try {
+    const nh = c.graph?.getNodeOnPos?.(gx, gy);
+    if (nh && !foldMaps().hiddenSet.has(String(nh.id))) nodeHere = nh;
+  } catch (_e) {}
+  // Visible node on top → return WITHOUT consuming so LiteGraph selects / moves the
+  // node. A fold-HIDDEN node is excluded above, so the title-drag takeover below
+  // still drags a group masked by a hidden member / enclosing group.
+  if (nodeHere) return;
   // Folded bars first: they carry no header buttons, and we own their pointer
   // (drag to move, double-click to unfold). Bail as soon as one is hit.
   for (const g of graphGroups(c)) {
