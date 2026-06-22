@@ -253,6 +253,10 @@ const HUE_FOLDERS = [
 // darker than body).
 
 const TITLE_SWATCHES = [
+  // Quick-access, pinned first: brand orange + a dark gray (mirrors the group
+  // grid). The orange is bright, but the adaptive node-title feature keeps its
+  // text readable.
+  "#f66744", "#4a4a4e",
   // Neutrals
   "#000000", "#0a0a0a", "#141414", "#1a1a1a", "#1d1d1d", "#242424",
   "#2a2a2a", "#2f2f2f", "#353535", "#3a3a3a", "#404040", "#4a4a4a",
@@ -265,6 +269,8 @@ const TITLE_SWATCHES = [
 ];
 
 const BODY_SWATCHES = [
+  // Quick-access, pinned first: brand orange + a dark gray (mirrors the group grid).
+  "#f66744", "#4a4a4e",
   // Neutrals (slightly lighter than title row)
   "#141414", "#1a1a1a", "#1d1d1d", "#242424", "#2a2a2a", "#2f2f2f",
   "#353535", "#3a3a3a", "#404040", "#454545", "#4a4a4a", "#505050",
