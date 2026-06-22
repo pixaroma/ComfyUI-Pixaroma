@@ -52,7 +52,7 @@ const BTN_GAP = 4;
 const ICON = 13;
 const TITLE_FONT = 15;
 const BADGE_FONT = 12;
-const RES_MARK = 10; // resize-handle hint at bottom-right
+const RESIZE_GRAB = 20; // group-resize grab depth (px) + the visual hint size
 // Fallback for a group with NO color set (ComfyUI "No Color"). A neutral slate
 // grey so an uncolored group reads as colorless, not blue (the native default
 // '#335' / our old '#3f789e' fallback made "No Color" groups look deliberately
@@ -87,6 +87,7 @@ app.registerExtension({
         "Restyle ComfyUI groups: rounded corners, a colored header bar with the group title + node count, and hover buttons to mute / bypass / color / collapse the whole group. Turn off to use ComfyUI's native group look.",
       onChange: (v) => {
         state.enabled = !!v;
+        applyResizeLength();
         app.canvas?.setDirty?.(true, true);
       },
     },
@@ -115,6 +116,7 @@ app.registerExtension({
       if (Number.isFinite(d)) state.interiorStrength = Math.max(0, Math.min(40, d)) / 100;
     }
     installDrawOverride();
+    applyResizeLength();
     installPointerHook();
     // Warm the icon cache so the first hover doesn't flash empty buttons.
     for (const url of Object.values(ICONS)) getRawImg(url);
@@ -336,15 +338,16 @@ function paintGroup(group, gc, ctx) {
   ctx.strokeStyle = color;
   ctx.stroke();
 
-  // 4) Resize hint (bottom-right triangle), subtle. Inset by ~RADIUS so it tucks
-  // INSIDE the rounded corner instead of poking past the rounded border.
-  const rm = RADIUS - 1;
+  // 4) Resize hint (bottom-right). Sized to the (enlarged) grab zone and inset a
+  // few px so it tucks inside the rounded corner instead of poking past it.
+  const rInset = 4;
+  const rLeg = RESIZE_GRAB - rInset;
   ctx.globalAlpha = 0.45 * ea;
   ctx.fillStyle = ink;
   ctx.beginPath();
-  ctx.moveTo(x + w - rm, y + h - rm);
-  ctx.lineTo(x + w - rm - RES_MARK, y + h - rm);
-  ctx.lineTo(x + w - rm, y + h - rm - RES_MARK);
+  ctx.moveTo(x + w - rInset, y + h - rInset);
+  ctx.lineTo(x + w - rInset - rLeg, y + h - rInset);
+  ctx.lineTo(x + w - rInset, y + h - rInset - rLeg);
   ctx.closePath();
   ctx.fill();
 
@@ -440,6 +443,18 @@ function installDrawOverride() {
   };
   _drawInstalled = true;
   console.log("[Pixaroma.Groups] LGraphGroup.draw override installed");
+}
+
+// Enlarge the group-resize grab zone so the corner is easy to grab despite the
+// rounded corners. LiteGraph's resize hit-test reads the static
+// LGraphGroup.resizeLength (verified from the bundle); bump it while styling is
+// enabled, restore the original when disabled.
+let _origResizeLength = null;
+function applyResizeLength() {
+  const G = window.LiteGraph?.LGraphGroup || window.LGraphGroup;
+  if (!G) return;
+  if (_origResizeLength == null) _origResizeLength = G.resizeLength;
+  G.resizeLength = state.enabled ? RESIZE_GRAB : (_origResizeLength != null ? _origResizeLength : 10);
 }
 
 // =============================================================================
