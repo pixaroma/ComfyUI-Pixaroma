@@ -53,6 +53,11 @@ const ICON = 13;
 const TITLE_FONT = 15;
 const BADGE_FONT = 12;
 const RES_MARK = 10; // resize-handle hint at bottom-right
+// Fallback for a group with NO color set (ComfyUI "No Color"). A neutral slate
+// grey so an uncolored group reads as colorless, not blue (the native default
+// '#335' / our old '#3f789e' fallback made "No Color" groups look deliberately
+// blue, which was confusing).
+const NEUTRAL = "#58585e";
 
 const BTN_KEYS = ["mute", "bypass", "color", "collapse"];
 const ICONS = {
@@ -277,7 +282,7 @@ function paintGroup(group, gc, ctx) {
   if (!r) return;
   const { x, y, w, h } = r;
   const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
-  const color = group.color || "#3f789e";
+  const color = group.color || NEUTRAL;
   const ink = pickInk(color);
   const inkWhite = ink === "#ffffff";
   const th = TITLE_H();
