@@ -711,6 +711,14 @@ function foldChevronRect(r) {
   return { x: r.x + 4, y: r.y + (r.h - s) / 2, w: s, h: s };
 }
 
+// Is (gx,gy) on a group's title strip (the draggable bar at the top of its box)?
+function groupTitleHit(g, gx, gy) {
+  const r = groupRect(g);
+  if (!r) return false;
+  const th = TITLE_H();
+  return gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + th;
+}
+
 function _measCtx() {
   if (!_measCtx._c) _measCtx._c = document.createElement("canvas").getContext("2d");
   return _measCtx._c;
@@ -999,6 +1007,43 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
   window.addEventListener("pointercancel", onUp, true);
 }
 
+// Drag an EXPANDED group by its title bar when ComfyUI's native drag can't grab it
+// (its title is masked by an overlapping node or an enclosing group). Moves the
+// group box + its center-inside nodes, like a normal group move.
+function startExpandedGroupDrag(e, group, c, gx, gy) {
+  if (_barDragCleanup) { try { _barDragCleanup(); } catch (_e) {} }
+  const r0 = groupRect(group);
+  if (!r0) return;
+  const bx = r0.x, by = r0.y, bw = r0.w, bh = r0.h;
+  const members = containedNodesCentered(group).filter((n) => n && n.pos);
+  const startPos = members.map((n) => [n.pos[0], n.pos[1]]);
+  const start = [gx, gy];
+  let moved = false;
+  const onMove = (ev) => {
+    const p = screenToGraph(c, ev);
+    const dx = p[0] - start[0], dy = p[1] - start[1];
+    if (!moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+    moved = true;
+    setGroupRect(group, bx + dx, by + dy, bw, bh);
+    for (let i = 0; i < members.length; i++) {
+      members[i].pos[0] = startPos[i][0] + dx;
+      members[i].pos[1] = startPos[i][1] + dy;
+    }
+    c.setDirty?.(true, true);
+  };
+  const cleanup = () => {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", onUp, true);
+    if (_barDragCleanup === cleanup) _barDragCleanup = null;
+  };
+  const onUp = () => { cleanup(); if (moved) { try { app.graph?.change?.(); } catch (_e) {} } };
+  _barDragCleanup = cleanup;
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onUp, true);
+}
+
 // =============================================================================
 // The fold hooks (the heart of it). Verified against api-B1Iozgjo.js:
 //  - computeVisibleNodes builds canvas.visible_nodes, which drives node PAINT,
@@ -1181,6 +1226,46 @@ function onWindowPointerDown(e) {
         c.setDirty?.(true, true);
         return;
       }
+    }
+  }
+
+  // Expanded group whose title bar is MASKED - an overlapping node (e.g. a tall
+  // preview node) or an enclosing group makes ComfyUI grab the wrong thing, so the
+  // group won't drag. Take over and drag the intended (innermost) group ourselves,
+  // but ONLY when native would grab something else - normal standalone groups keep
+  // native dragging + double-click rename.
+  let target = null, targetArea = Infinity;
+  for (const g of graphGroups(c)) {
+    if (isFolded(g) || isHiddenGroup(g)) continue;
+    if (!groupTitleHit(g, gx, gy)) continue;
+    const r = groupRect(g);
+    const area = r.w * r.h;
+    if (area < targetArea) { target = g; targetArea = area; }
+  }
+  if (target) {
+    let nativeWrong = false;
+    try {
+      const node = c.graph?.getNodeOnPos?.(gx, gy);
+      const ng = c.graph?.getGroupTitlebarOnPos?.(gx, gy);
+      if (node || (ng && ng !== target)) nativeWrong = true;
+    } catch (_e) {}
+    if (!nativeWrong) {
+      // Also take over if a LARGER group's body encloses this point (its body
+      // masks the inner title even when the titlebar hit-test would pick ours).
+      for (const g of graphGroups(c)) {
+        if (g === target || isFolded(g) || isHiddenGroup(g)) continue;
+        const r = groupRect(g);
+        if (r && gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h && r.w * r.h > targetArea) {
+          nativeWrong = true;
+          break;
+        }
+      }
+    }
+    if (nativeWrong) {
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      startExpandedGroupDrag(e, target, c, gx, gy);
     }
   }
 }
