@@ -687,18 +687,24 @@ function setNodeWidgets(n, hidden) {
 }
 function syncHiddenWidgets(hiddenSet) {
   const graph = app.canvas?.graph;
+  let restored = false;
   for (const id of [..._widgetsHiddenIds]) {
     if (!hiddenSet.has(id)) {
       const n = findNode(graph, id);
       if (n) setNodeWidgets(n, false);
       _widgetsHiddenIds.delete(id);
+      restored = true;
     }
   }
   for (const id of hiddenSet) {
+    if (_widgetsHiddenIds.has(id)) continue; // hide once on entering the fold
     const n = findNode(graph, id);
-    if (n) setNodeWidgets(n, true); // re-assert every frame so a re-rendered widget stays hidden
-    _widgetsHiddenIds.add(id);
+    if (n) { setNodeWidgets(n, true); _widgetsHiddenIds.add(id); }
   }
+  // A restored fill DOM widget (Save Mp4's video, a preview, etc.) can come back
+  // with a stale, collapsed layout after display:none. Kick a re-layout so its
+  // body re-fits without the user having to refresh the page.
+  if (restored) requestAnimationFrame(() => { try { window.dispatchEvent(new Event("resize")); } catch (_e) {} });
 }
 
 function barOut(g) { const r = groupRect(g); return r ? [r.x + r.w, r.y + r.h / 2] : null; }
