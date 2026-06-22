@@ -15,6 +15,7 @@ function injectCSS() {
   const style = document.createElement("style");
   style.id = "pix-lv-css";
   style.textContent = `
+.pix-lv-inner { position:absolute; inset:0; display:flex; flex-direction:column; }
 .pix-lv-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-lv-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-lv-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -243,12 +244,21 @@ app.registerExtension({
       // below (same fill strategy as Save Mp4).
       const wrap = document.createElement("div");
       wrap.className = "pix-lv-root";
+      // NO display:flex here — ComfyUI's DOM-widget manager sets wrap.style.display
+      // itself (block to show, none to hide on collapse), which clobbers an inline
+      // flex and collapses the media to 0. The flex column lives on an inner
+      // absolute-filled layer ComfyUI never touches (see Save Mp4 for the verified
+      // measurement), so it always fills.
       wrap.style.cssText =
-        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;";
+        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
+
+      const inner = document.createElement("div");
+      inner.className = "pix-lv-inner";
+      wrap.appendChild(inner);
 
       const media = document.createElement("div");
       media.className = "pix-lv-media";
-      wrap.appendChild(media);
+      inner.appendChild(media);
 
       const video = document.createElement("video");
       video.loop = true; // no native controls — we draw our own bar
@@ -312,7 +322,7 @@ app.registerExtension({
       fsBtn.appendChild(fsIco);
       bar.appendChild(fsBtn);
 
-      wrap.appendChild(bar);
+      inner.appendChild(bar);
 
       this._pixLvVideo = video;
       this._pixLvPlaceholder = placeholder;

@@ -16,6 +16,7 @@ function injectCSS() {
   style.id = "pix-mp4-css";
   style.textContent = `
 .lg-node:has(.pix-mp4-root) .image-preview { display: none !important; }
+.pix-mp4-inner { position:absolute; inset:0; display:flex; flex-direction:column; }
 .pix-mp4-media { position:relative; flex:1 1 0; min-height:0; overflow:hidden; }
 .pix-mp4-bar { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:5px 8px; box-sizing:border-box; background:rgba(0,0,0,0.30); }
 .pix-mp4-bar.is-disabled { opacity:0.40; pointer-events:none; }
@@ -203,15 +204,27 @@ app.registerExtension({
       // height each frame to the distributeSpace-allocated (filled) height.
       const wrap = document.createElement("div");
       wrap.className = "pix-mp4-root";
+      // NO display:flex here — ComfyUI's DOM-widget manager sets wrap.style.display
+      // itself (block to show, none to hide on collapse), which clobbers an inline
+      // flex and collapses the media to 0 (verified via a live measurement: the
+      // root's computed display became "block" after a rebuild/collapse, media_h 0
+      // while media_grow 1). The flex column lives on an inner absolute-filled
+      // layer ComfyUI never touches, so it always fills.
       wrap.style.cssText =
-        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;";
+        "position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;border-radius:4px;overflow:hidden;";
+
+      // Inner flex layer: position:absolute inset:0 fills the wrap regardless of
+      // the wrap's display, and its display:flex column (stylesheet) survives.
+      const inner = document.createElement("div");
+      inner.className = "pix-mp4-inner";
+      wrap.appendChild(inner);
 
       // Media area (flex:1) holds the <video> + placeholder, both absolute
       // inset:0 so exactly one shows at a time. object-fit:contain so a
       // portrait/landscape clip letterboxes instead of distorting.
       const media = document.createElement("div");
       media.className = "pix-mp4-media";
-      wrap.appendChild(media);
+      inner.appendChild(media);
 
       const video = document.createElement("video");
       video.loop = true; // NOTE: no `controls` — we draw our own bar below
@@ -283,7 +296,7 @@ app.registerExtension({
       fsBtn.appendChild(fsIco);
       bar.appendChild(fsBtn);
 
-      wrap.appendChild(bar);
+      inner.appendChild(bar);
 
       this._pixaromaVideo = video;
       this._pixaromaPlaceholder = placeholder;
