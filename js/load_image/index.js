@@ -285,7 +285,21 @@ function updateLoadPreview(node) {
 // Nodes 2.0 cards, then request a canvas repaint for the legacy cards.
 function updateInfoBar(node) {
   const hint = node._pixLiRoot?.querySelector('[data-role="hint"]');
-  if (hint) hint.style.display = node.imgs?.[0]?.naturalWidth ? "none" : "";
+  if (hint) {
+    // Hide the "or drag here" hint when an image is loaded OR a file is selected.
+    // A selected filename is known synchronously (after configure), whereas
+    // node.imgs[0] loads ASYNC on a rebuild and is briefly unavailable on a
+    // collapse-expand — so checking only the loaded image made the hint flash
+    // visible for a fraction of a second on every expand / workflow-switch (the
+    // panel measured ~47px taller with the hint, then settled when it loaded).
+    // The filename is stable across both, so the hint never flashes.
+    const hasImageOrFile = !!(
+      node.imgs?.[0]?.naturalWidth ||
+      node._pixLiImageWidget?.value ||
+      node._pixLiSelectedFilename
+    );
+    hint.style.display = hasImageOrFile ? "none" : "";
+  }
   if (isVueNodes()) renderLoadPreviewCanvas(node);
   node.setDirtyCanvas?.(true, true);
 }
