@@ -311,6 +311,10 @@ function computeHeader(group) {
 function paintGroup(group, gc, ctx) {
   const r = groupRect(group);
   if (!r) return;
+  // Nested inside a folded group? Don't draw it at all (its nodes are already
+  // hidden via the outer group's node list). Return BEFORE ctx.save so there is
+  // nothing to balance.
+  if (isHiddenGroup(group)) return;
   // Save canvas state FIRST - before any other work - so the draw wrapper's catch
   // can always balance exactly one ctx.save() if anything below throws. groupRect
   // (the only call above) returns null on bad input rather than throwing.
@@ -542,6 +546,30 @@ function findNode(graph, idStr) {
   for (const n of graph._nodes || []) if (String(n.id) === String(idStr)) return n;
   return null;
 }
+function findGroup(gid) {
+  if (gid == null) return null;
+  for (const g of graphGroups(app.canvas)) if (g.id != null && String(g.id) === String(gid)) return g;
+  return null;
+}
+// A group is "inside" another when its box sits fully within (and is smaller
+// than) the other's. Folding an outer group tucks these away too - their member
+// nodes are already hidden via the outer's node list, so leaving the inner group
+// box drawn (empty) is the nested-group bug this fixes.
+function groupInside(inner, outer) {
+  const a = groupRect(inner), b = groupRect(outer);
+  if (!a || !b) return false;
+  const T = 4;
+  return a.x >= b.x - T && a.y >= b.y - T && a.x + a.w <= b.x + b.w + T &&
+    a.y + a.h <= b.y + b.h + T && a.w * a.h <= b.w * b.h;
+}
+function containedGroups(G) {
+  const out = [];
+  for (const g of graphGroups(app.canvas)) {
+    if (g === G || g.id == null) continue;
+    if (groupInside(g, G)) out.push(g);
+  }
+  return out;
+}
 
 // Write group geometry IN PLACE - _pos/_size are often Float32Array subarray
 // views of _bounding, so set all three (Align Pattern #18: never Array.isArray a
@@ -561,6 +589,7 @@ function buildFoldMaps() {
   const graph = app.canvas?.graph;
   const hiddenSet = new Set();
   const hiddenNodes = [];
+  const hiddenGroups = new Set();
   const info = new Map();
   for (const g of graphGroups(app.canvas)) {
     const f = g?.flags?.[FOLD_KEY];
@@ -568,6 +597,7 @@ function buildFoldMaps() {
     const memberSet = new Set(f.nodes.map(String));
     const gi = { count: f.nodes.length, inC: 0, outC: 0 };
     info.set(g, gi);
+    if (Array.isArray(f.groups)) for (const gid of f.groups) hiddenGroups.add(String(gid));
     for (const idStr of f.nodes) {
       const n = findNode(graph, idStr);
       if (!n || !n.pos || !n.size) continue;
@@ -594,9 +624,10 @@ function buildFoldMaps() {
       } catch (_e) {}
     }
   }
-  return { hiddenSet, hiddenNodes, info };
+  return { hiddenSet, hiddenNodes, hiddenGroups, info };
 }
 function foldMaps() { if (!_foldFrameMaps) _foldFrameMaps = buildFoldMaps(); return _foldFrameMaps; }
+function isHiddenGroup(g) { return !!(g && g.id != null && foldMaps().hiddenGroups.has(String(g.id))); }
 
 // Hide a node's DOM widgets (Note / preview / our DOM-widget nodes) while folded;
 // ComfyUI re-shows them when the node re-enters visible_nodes on unfold.
@@ -651,8 +682,14 @@ function foldGroup(group) {
   const r = groupRect(group);
   if (!r) return;
   const members = containedNodes(group);
+  const grps = containedGroups(group).filter((g) => g.id != null);
   group.flags = group.flags || {};
-  group.flags[FOLD_KEY] = { v: 1, nodes: members.map((n) => String(n.id)), box: [r.x, r.y, r.w, r.h] };
+  group.flags[FOLD_KEY] = {
+    v: 1,
+    nodes: members.map((n) => String(n.id)),
+    groups: grps.map((g) => String(g.id)),
+    box: [r.x, r.y, r.w, r.h],
+  };
   setGroupRect(group, r.x, r.y, computeBarWidth(group), TITLE_H());
   invalidateFold();
   app.graph?.setDirtyCanvas?.(true, true);
@@ -778,6 +815,17 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     .map((id) => findNode(app.graph, id))
     .filter((n) => n && n.pos);
   const startPos = members.map((n) => [n.pos[0], n.pos[1]]);
+  // Nested groups ride along too: capture each one's current box plus, if it is
+  // itself folded, its stored restore box, so reopening stays aligned.
+  const memberGroups = (Array.isArray(f.groups) ? f.groups : []).map(findGroup).filter(Boolean);
+  const mgStart = memberGroups.map((g) => {
+    const gr = groupRect(g);
+    const inf = g.flags?.[FOLD_KEY];
+    return {
+      box: gr ? [gr.x, gr.y, gr.w, gr.h] : null,
+      rbox: inf && arrLike(inf.box, 4) ? [inf.box[0], inf.box[1]] : null,
+    };
+  });
   const start = [gx, gy];
   let moved = false;
   const onMove = (ev) => {
@@ -789,6 +837,12 @@ function onFoldedBarPointerDown(e, group, c, gx, gy) {
     for (let i = 0; i < members.length; i++) {
       members[i].pos[0] = startPos[i][0] + dx;
       members[i].pos[1] = startPos[i][1] + dy;
+    }
+    for (let i = 0; i < memberGroups.length; i++) {
+      const s = mgStart[i];
+      if (s.box) setGroupRect(memberGroups[i], s.box[0] + dx, s.box[1] + dy, s.box[2], s.box[3]);
+      const inf = memberGroups[i].flags?.[FOLD_KEY];
+      if (inf && s.rbox && arrLike(inf.box, 4)) { inf.box[0] = s.rbox[0] + dx; inf.box[1] = s.rbox[1] + dy; }
     }
     invalidateFold();
     c.setDirty?.(true, true);
@@ -910,6 +964,7 @@ function onWindowPointerMove(e) {
   state.cursor = { gx, gy };
   let over = false;
   for (const g of graphGroups(c)) {
+    if (isHiddenGroup(g)) continue;
     const r = groupRect(g);
     if (r && gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) { over = true; break; }
   }
@@ -935,7 +990,7 @@ function onWindowPointerDown(e) {
   // Folded bars first: they carry no header buttons, and we own their pointer
   // (drag to move, double-click to unfold). Bail as soon as one is hit.
   for (const g of graphGroups(c)) {
-    if (!isFolded(g)) continue;
+    if (!isFolded(g) || isHiddenGroup(g)) continue;
     const fr = groupRect(g);
     if (!fr) continue;
     if (gx >= fr.x && gx <= fr.x + fr.w && gy >= fr.y && gy <= fr.y + fr.h) {
@@ -947,7 +1002,7 @@ function onWindowPointerDown(e) {
     }
   }
   for (const g of graphGroups(c)) {
-    if (isFolded(g)) continue;
+    if (isFolded(g) || isHiddenGroup(g)) continue;
     const head = computeHeader(g);
     if (!head || !head.fits) continue;
     // Cheap reject: only the header band carries buttons.
