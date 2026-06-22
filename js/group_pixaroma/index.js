@@ -42,6 +42,12 @@ const state = {
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
 };
+// Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
+// the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
+// registerExtension when a saved value is applied - which is before a `let`
+// declared lower in the module would initialize. Accessing it then throws
+// "Cannot access '_origResizeLength' before initialization" (TDZ).
+let _origResizeLength = null;
 
 // ── Layout constants (graph units) ───────────────────────────────────────────
 const TITLE_H = () => window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
@@ -448,8 +454,8 @@ function installDrawOverride() {
 // Enlarge the group-resize grab zone so the corner is easy to grab despite the
 // rounded corners. LiteGraph's resize hit-test reads the static
 // LGraphGroup.resizeLength (verified from the bundle); bump it while styling is
-// enabled, restore the original when disabled.
-let _origResizeLength = null;
+// enabled, restore the original when disabled. (_origResizeLength is declared at
+// the TOP of the module - see the TDZ note there.)
 function applyResizeLength() {
   const G = window.LiteGraph?.LGraphGroup || window.LGraphGroup;
   if (!G) return;
