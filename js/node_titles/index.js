@@ -122,14 +122,36 @@ function refreshVue() {
     const n = byId.get(String(id));
     if (!n) continue;
     const ink = state.enabled ? pickInk(barColor(n)) : null;
-    const val = ink || ""; // "" restores the native class color
+    const val = ink || "";
     if (h.__pixTitleInk === val) continue; // skip redundant writes
-    h.style.color = val;
+    if (ink) {
+      h.style.setProperty("--pix-title-ink", ink);
+      h.setAttribute("data-pix-ink", "");
+    } else {
+      h.style.removeProperty("--pix-title-ink");
+      h.removeAttribute("data-pix-ink");
+    }
     h.__pixTitleInk = val;
   }
 }
+// CSS that forces the title text to our per-node ink, beating ComfyUI's title
+// color class (`.text-node-component-header` -> var(--fg-color), a light color)
+// AND the selected-state color (white, which was invisible on light title bars).
+// The per-node --pix-title-ink var + data-pix-ink marker are set on each header
+// in refreshVue; `*` also covers EditableText's inner text element.
+function injectVueCSS() {
+  if (document.getElementById("pix-node-titles-css")) return;
+  const el = document.createElement("style");
+  el.id = "pix-node-titles-css";
+  el.textContent =
+    '.lg-node-header[data-pix-ink] [data-testid="node-title"],' +
+    '.lg-node-header[data-pix-ink] [data-testid="node-title"] *' +
+    "{color:var(--pix-title-ink)!important;}";
+  document.head.appendChild(el);
+}
 function installVuePoll() {
   if (_vueTimer) return;
+  injectVueCSS();
   // Only meaningful in Nodes 2.0; the tick self-checks and is a no-op otherwise.
   _vueTimer = setInterval(() => {
     if (isVueNodes()) refreshVue();
