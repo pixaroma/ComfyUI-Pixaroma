@@ -295,6 +295,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 22, 2026 · v1.3.101**
+- **Align tool now works with groups.** Drag a group and it snaps into line with nearby nodes and other groups, with the orange guide lines showing as it goes, and the nodes inside the group move along with it. Dragging a node now snaps to a group's edges too. (Turn on the Align button in the top toolbar to use it.)
+- **Node and group colour favourites are now separate.** Saving a colour to a favourite from the group colour menu no longer overwrites the node colours you saved - each keeps its own set of favourites.
+- **"Pick custom..." colours now open on the node's current colour**, so you can make a small adjustment instead of starting from an unrelated colour.
+
 ### **June 21, 2026 · v1.3.100**
 - **NEW: Loop Start / Loop End + Combine Pixaroma** - repeat a part of your workflow as many times as you like. Put your nodes between Loop Start and Loop End, set the number of rounds, and the section runs over and over - great for making a long video in chunks or stacking up a batch of images. Each round can carry values forward to the next, and the new **Combine** node piles each round's result onto the running total (images into one batch, numbers into a list). If you try to join two things that don't fit (like an image and text), you get a friendly message instead of a cryptic error. Polished over several careful review passes. Works in both the classic and the new node interface.
 
