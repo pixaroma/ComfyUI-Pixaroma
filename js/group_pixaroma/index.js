@@ -44,11 +44,10 @@ const state = {
   interiorStrength: 0.12, // 0..0.4, from the strength setting / 100
   cursor: null,           // { gx, gy } in graph space, tracked from pointermove
   foldHideWires: true,    // hide crossing wires of a folded group instead of rerouting them (default ON)
-  // Header button + count-badge visibility (toggled from the group right-click menu,
-  // persisted in one setting). Default all ON. Lets users slim the header - e.g. hide
-  // Run/Mute/Bypass if they use another extension's group toggles, so they don't clash.
-  buttons: { queue: true, mute: true, bypass: true, color: true, collapse: true, fold: true },
-  showCount: true,         // the node-count badge
+  // Are OUR group-header buttons (+ count badge) shown? Toggled all-or-none from the
+  // group right-click menu, persisted. Hidden = a clean styled header with the right
+  // side free, so another extension's group buttons can use it without overlapping.
+  buttonsVisible: true,
 };
 // Declared up here (NOT next to applyResizeLength below) because ComfyUI can fire
 // the Enabled setting's onChange -> applyResizeLength SYNCHRONOUSLY during
@@ -80,19 +79,9 @@ const NEUTRAL = "#58585e";
 const RUN_GREEN = "#3ec371";
 
 const BTN_KEYS = ["queue", "mute", "bypass", "color", "collapse", "fold"];
-// Button key -> menu label. The show/hide toggles live in the group RIGHT-CLICK
-// menu (see installGroupMenu), not the Settings panel - one discoverable place,
-// no settings-panel clutter, and the node-count badge gets a toggle too.
-const BTN_LABELS = [
-  ["queue", "Run"],
-  ["mute", "Mute"],
-  ["bypass", "Bypass"],
-  ["color", "Color"],
-  ["collapse", "Collapse"],
-  ["fold", "Fold"],
-];
-// One UNREGISTERED setting (no Settings-panel row) holds the visibility JSON blob.
-const BTN_VIS_SETTING = "Pixaroma.Groups.ButtonVisibility";
+// One all-or-none Show/Hide lives in the group RIGHT-CLICK menu (see installGroupMenu),
+// not the Settings panel. An UNREGISTERED setting (no Settings-panel row) persists it.
+const BTN_VIS_SETTING = "Pixaroma.Groups.ButtonsVisible";
 const ICONS = {
   queue: "/pixaroma/assets/icons/ui/play.svg",
   mute: "/pixaroma/assets/icons/ui/off.svg",
@@ -337,7 +326,7 @@ function computeHeader(group) {
   const r = groupRect(group);
   if (!r) return null;
   const th = TITLE_H();
-  const keys = BTN_KEYS.filter((k) => state.buttons[k] !== false);
+  const keys = state.buttonsVisible ? BTN_KEYS : [];
   const n = keys.length;
   const total = n * BTN + Math.max(0, n - 1) * BTN_GAP;
   const fits = n > 0 && r.w >= total + 70; // leave room for title + badge
@@ -493,7 +482,7 @@ function paintGroup(group, gc, ctx) {
   const rightLimit = head && head.showButtons ? head.buttons[0].x - BTN_GAP : x + w - PAD;
   const badgeX = rightLimit - bw;
   const badgeY = y + (th - bh) / 2;
-  const showCountBadge = state.showCount !== false && badgeX > x + PAD + 8;
+  const showCountBadge = state.buttonsVisible && badgeX > x + PAD + 8;
   if (showCountBadge) {
     rr(ctx, badgeX, badgeY, bw, bh, bh / 2);
     ctx.fillStyle = inkWhite ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.13)";
@@ -666,7 +655,7 @@ function pixGroupToast(summary, detail, severity = "info", life = 5000) {
 // Worded conditionally so it's accurate whether or not the other one is currently on.
 const GROUP_OVERLAP_NOTICE_KEY = "pixaroma.groups.headerOverlapNotice.v1";
 function maybeShowGroupButtonOverlapNotice() {
-  if (!state.enabled) return;
+  if (!state.enabled || !state.buttonsVisible) return;
   const exts = app.extensions;
   const present = Array.isArray(exts) && exts.some(
     (e) => e && typeof e.name === "string" && e.name.toLowerCase().includes("groupheadertoggle"),
@@ -696,36 +685,16 @@ function runAction(key, group) {
 // =============================================================================
 function loadButtonVis() {
   try {
-    let raw = app.ui?.settings?.getSettingValue?.(BTN_VIS_SETTING);
-    if (typeof raw === "string") raw = JSON.parse(raw);
-    if (raw && typeof raw === "object") {
-      for (const [key] of BTN_LABELS) if (key in raw) state.buttons[key] = raw[key] !== false;
-      if ("count" in raw) state.showCount = raw.count !== false;
-    }
+    const raw = app.ui?.settings?.getSettingValue?.(BTN_VIS_SETTING);
+    if (raw !== undefined) state.buttonsVisible = !(raw === false || raw === "false" || raw === 0);
   } catch (_e) {}
 }
-function saveButtonVis() {
-  try {
-    const obj = { count: state.showCount !== false };
-    for (const [key] of BTN_LABELS) obj[key] = state.buttons[key] !== false;
-    app.ui?.settings?.setSettingValueAsync?.(BTN_VIS_SETTING, JSON.stringify(obj));
-  } catch (_e) {}
-}
-function toggleButtonVis(key) {
-  if (key === "count") state.showCount = state.showCount === false; // flip
-  else state.buttons[key] = state.buttons[key] === false;           // flip
-  saveButtonVis();
+function setButtonsVisible(v) {
+  state.buttonsVisible = !!v;
+  try { app.ui?.settings?.setSettingValueAsync?.(BTN_VIS_SETTING, state.buttonsVisible); } catch (_e) {}
   app.canvas?.setDirty?.(true, true);
-}
-function groupButtonMenuItems() {
-  const mark = (on) => (on === false ? "☐  " : "☑  ");
-  const items = BTN_LABELS.map(([key, label]) => ({
-    content: mark(state.buttons[key]) + label,
-    callback: () => toggleButtonVis(key),
-  }));
-  items.push(null); // separator
-  items.push({ content: mark(state.showCount) + "Node count", callback: () => toggleButtonVis("count") });
-  return items;
+  // Showing ours? Remind once if another extension also draws on group headers.
+  if (state.buttonsVisible) maybeShowGroupButtonOverlapNotice();
 }
 let _groupMenuPatched = false;
 function installGroupMenu() {
@@ -737,17 +706,15 @@ function installGroupMenu() {
     const opts = orig.apply(this, arguments) || [];
     try {
       // getCanvasMenuOptions takes no args, so read the live cursor + the group under
-      // it (the toggles are global, but we only show the entry on a group right-click).
+      // it; only add the entry on a group right-click. One all-or-none toggle, label
+      // reflects state (one click, menu closes - nothing to keep open).
       if (state.enabled) {
         const gm = this.graph_mouse || [0, 0];
         const grp = this.graph?.getGroupOnPos?.(gm[0], gm[1]);
         if (grp) {
           opts.push(null, {
-            content: "👑 Group buttons",
-            has_submenu: true,
-            callback: (_v, _o, e, parentMenu) => {
-              new window.LiteGraph.ContextMenu(groupButtonMenuItems(), { event: e, parentMenu, title: "Group buttons" });
-            },
+            content: state.buttonsVisible ? "👑 Hide Pixaroma group buttons" : "👑 Show Pixaroma group buttons",
+            callback: () => setButtonsVisible(!state.buttonsVisible),
           });
         }
       }
