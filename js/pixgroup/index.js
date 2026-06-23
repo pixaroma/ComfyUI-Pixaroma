@@ -103,6 +103,20 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+// Vertically center text by its ACTUAL glyph box. Digit-only / caps text drawn
+// with textBaseline:"middle" floats visually high (the em box reserves descender
+// space the glyphs don't use), so center by the measured ascent/descent instead.
+function fillTextVCenter(ctx, text, x, yMid) {
+  const m = ctx.measureText(text);
+  if (m.actualBoundingBoxAscent != null && m.actualBoundingBoxDescent != null) {
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, x, yMid + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  } else {
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, yMid);
+  }
+}
+
 let _selectedId = null;
 
 function drawOne(ctx, g) {
@@ -144,10 +158,14 @@ function drawOne(ctx, g) {
   ctx.fillStyle = tInk;
   ctx.font = "11px 'Segoe UI', system-ui, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(String(count), bx + bw / 2, by + bh / 2 + 1);
+  fillTextVCenter(ctx, String(count), bx + bw / 2, by + bh / 2);
   ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
 
-  // resize handle (bottom-right triangle)
+  // resize handle (bottom-right) — clipped to the rounded border so its outer
+  // corner follows the curve instead of poking a sharp triangle past the edge.
+  ctx.save();
+  roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
   ctx.fillStyle = rgba(color, sel ? 1 : 0.85);
   ctx.beginPath();
   ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
@@ -155,6 +173,7 @@ function drawOne(ctx, g) {
   ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);
   ctx.closePath();
   ctx.fill();
+  ctx.restore();
 }
 
 let _origDrawGroups = null;
