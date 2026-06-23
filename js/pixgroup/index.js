@@ -225,9 +225,13 @@ function headerButtons(g, showButtons) {
 
 function drawButton(ctx, b, g, tInk) {
   const hot = _hotBtn && _hotBtn.gid === g.id && _hotBtn.key === b.key;
-  ctx.fillStyle = hot ? BRAND : (tInk === "#ffffff" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.14)");
+  // Hover just LIGHTENS the chip a little (no orange fill); the icon keeps its ink.
+  const light = tInk === "#ffffff";
+  ctx.fillStyle = light
+    ? (hot ? "rgba(255,255,255,0.32)" : "rgba(255,255,255,0.13)")
+    : (hot ? "rgba(0,0,0,0.30)" : "rgba(0,0,0,0.13)");
   roundRect(ctx, b.x, b.y, b.w, b.h, 4); ctx.fill();
-  const ic = tintedIcon(BTN_ICONS[b.key], hot ? "#ffffff" : tInk);
+  const ic = tintedIcon(BTN_ICONS[b.key], tInk);
   if (ic) ctx.drawImage(ic, b.x + (b.w - BICON) / 2, b.y + (b.h - BICON) / 2, BICON, BICON);
 }
 
@@ -440,19 +444,30 @@ function getSelected() {
   return ensureGroups().find((g) => g.id === _selectedId) || null;
 }
 
-// Delete / Backspace removes the selected Pixaroma group (like a native group),
-// but ONLY ours — we consume the event so ComfyUI doesn't also delete nodes.
-// Ignored while typing, with a modifier, or while the styling palette is open.
+// Keyboard: G wraps the selected nodes in a Pixaroma group (like ComfyUI's
+// group-selected); Delete / Backspace removes the selected Pixaroma group (ours
+// only — we consume the event so ComfyUI doesn't also delete nodes). Both are
+// ignored while typing or holding a modifier.
 function onKeyDown(e) {
-  if (e.key !== "Delete" && e.key !== "Backspace") return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-  if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
-  const g = getSelected();
-  if (!g) return;
-  e.preventDefault(); e.stopImmediatePropagation();
-  deleteGroup(g);
+
+  // G — group the selected nodes. Only acts (and consumes the key) when there IS
+  // a selection, so a bare 'g' otherwise passes through to anything else.
+  if ((e.key === "g" || e.key === "G") && !e.shiftKey) {
+    const sel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+    if (sel.length) { e.preventDefault(); e.stopImmediatePropagation(); addGroup(null); }
+    return;
+  }
+
+  if (e.key === "Delete" || e.key === "Backspace") {
+    if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
+    const g = getSelected();
+    if (!g) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    deleteGroup(g);
+  }
 }
 
 // Double-click the header → inline rename (native-group style). The styling
@@ -465,7 +480,14 @@ function onDblClick(e) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
-    if (inHeader(g, p)) { e.preventDefault(); e.stopImmediatePropagation(); inlineRename(g); return; }
+    if (inHeader(g, p)) {
+      // A double-click that lands on a header button is just two fast button
+      // clicks (toggling mute/bypass/fold) - do NOT open rename; it was stealing
+      // rapid toggles. Rename only fires on a double-click of the title strip.
+      const { btns } = headerButtons(g, true);
+      for (const b of btns) if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) return;
+      e.preventDefault(); e.stopImmediatePropagation(); inlineRename(g); return;
+    }
     if (inRect(g, p)) break;
   }
 }
