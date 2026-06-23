@@ -27,8 +27,11 @@ function setupLabel(node, withResize = false) {
   try {
     hideJsonWidget(node.widgets, "label_json");
     node._labelCfg = parseCfg(node);
-    node.color = "transparent";
-    node.bgcolor = "transparent";
+    // Fully transparent, but in a format ComfyUI's color parser accepts — the CSS
+    // keyword "transparent" isn't recognised (only #hex / rgb(a) / hsl(a)) and logs
+    // an "Unsupported color format" warning on every canvas paint.
+    node.color = "rgba(0,0,0,0)";
+    node.bgcolor = "rgba(0,0,0,0)";
     node.flags = node.flags || {};
     node.flags.no_title = true;
     // Remove input slots so no connections can be made (only when some exist,
@@ -168,8 +171,8 @@ app.registerExtension({
       // canvas. setupVueLabel + setupLabel already handle transparency + slot
       // stripping there, so skip the canvas paint entirely.
       if (isVueNodes()) return;
-      this.color = "transparent";
-      this.bgcolor = "transparent";
+      this.color = "rgba(0,0,0,0)";       // parser-safe transparent (not the "transparent" keyword)
+      this.bgcolor = "rgba(0,0,0,0)";
 
       const c = this._labelCfg || DEFAULTS;
       const m = measureLabel(c);
