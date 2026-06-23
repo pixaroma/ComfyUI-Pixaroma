@@ -59,3 +59,24 @@ export function recolorAllGets() {
   }
   app.canvas?.setDirty(true, true);
 }
+
+// Exposed for the color picker (js/node_colors). A Get mirrors its Set's colour
+// every frame (inheritSetColor in onDrawForeground), so colouring a Get directly
+// just flashes and reverts. Colour the SET instead: it sticks AND the whole
+// variable (Set + all its Gets) takes the colour, which matches the ColorMatch
+// idea. Returns the node the picker should actually colour (the in-scope Set for a
+// Get when ColorMatch is on; otherwise the node unchanged, incl. ColorMatch off or
+// an orphan Get with no Set).
+export function colorTargetFor(node) {
+  try {
+    if (node && node.type === GET_TYPE && isColorMatchOn()) {
+      const setter = findSetterByName(node.graph, node.widgets?.[0]?.value)?.node;
+      if (setter) return setter;
+    }
+  } catch { /* ignore */ }
+  return node;
+}
+try {
+  window.PixaromaSetGet = window.PixaromaSetGet || {};
+  window.PixaromaSetGet.colorTargetFor = colorTargetFor;
+} catch { /* ignore */ }

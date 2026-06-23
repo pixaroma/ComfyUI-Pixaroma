@@ -480,13 +480,22 @@ function captureColors(node) {
   return { title, body };
 }
 
+// A Set/Get "Get" node mirrors its Set's color every frame (Set/Get ColorMatch), so
+// coloring a Get directly just flashes and reverts. Redirect Gets to their Set so the
+// color sticks (and colors the whole variable). The Set/Get module exposes the lookup;
+// it returns the node unchanged when ColorMatch is off or there's no Set in scope.
+function colorTarget(n) {
+  try { return window.PixaromaSetGet?.colorTargetFor?.(n) || n; } catch (_e) { return n; }
+}
 function getTargetNodes(currentNode) {
   const sel = app.canvas?.selected_nodes;
+  let nodes = [currentNode];
   if (sel) {
-    const nodes = Object.values(sel);
-    if (nodes.length > 1 && nodes.includes(currentNode)) return nodes;
+    const arr = Object.values(sel);
+    if (arr.length > 1 && arr.includes(currentNode)) nodes = arr;
   }
-  return [currentNode];
+  // Map Gets → their Set, then dedup (several Gets can share one Set).
+  return [...new Set(nodes.map(colorTarget))];
 }
 
 function applyColors(nodes, titleHex, bodyHex) {
