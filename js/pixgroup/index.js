@@ -167,15 +167,17 @@ let _hiddenCache = null;
 function invalidateHidden() { _hiddenCache = null; }
 function buildHidden() {
   const hidden = new Set();
-  const showById = new Map(); // idStr -> owning folded group's showLinks
+  const owner = new Map(); // idStr -> the folded group hiding it (read .showLinks live)
   for (const g of ensureGroups()) {
     if (!g.folded || !Array.isArray(g.foldNodes)) continue;
-    const sl = !!g.showLinks;
-    for (const id of g.foldNodes) { const s = String(id); hidden.add(s); if (!showById.has(s)) showById.set(s, sl); }
+    for (const id of g.foldNodes) { const s = String(id); hidden.add(s); if (!owner.has(s)) owner.set(s, g); }
   }
-  return { hidden, showById };
+  return { hidden, owner };
 }
 function hiddenMaps() { if (!_hiddenCache) _hiddenCache = buildHidden(); return _hiddenCache; }
+// Bar attach points (graph coords) for rerouting a crossing wire onto a folded bar.
+function barOut(g) { return [g.x + g.w, g.y + g.h / 2]; }
+function barIn(g) { return [g.x, g.y + g.h / 2]; }
 
 // ── drawing (graph-space ctx, behind nodes) ─────────────────────────────
 function roundRect(ctx, x, y, w, h, r) {
@@ -677,14 +679,24 @@ function installFoldHooks() {
     proto.renderLink = function (ctx, a, b, link, skipBorder, flow, color, startDir, endDir, opts) {
       try {
         if (link && link.origin_id != null) {
-          const { hidden, showById } = hiddenMaps();
-          if (hidden.size) {
-            const o = String(link.origin_id), t = String(link.target_id);
-            const oh = hidden.has(o), th = hidden.has(t);
-            if (oh || th) {
-              const showO = oh ? showById.get(o) : true;
-              const showT = th ? showById.get(t) : true;
-              if (!(showO && showT)) return; // hidden by default while folded
+          const { owner } = hiddenMaps();
+          if (owner.size) {
+            const oG = owner.get(String(link.origin_id));
+            const tG = owner.get(String(link.target_id));
+            // Internal wire (both ends inside ONE folded group) → always hidden.
+            if (oG && tG && oG === tG) return;
+            if (oG || tG) {
+              // Crossing wire (one end inside a folded group, the other outside):
+              // hidden by default; when that group opts to "show links" we render it
+              // REROUTED to the bar edge — so only outside-going wires show and they
+              // connect to the bar instead of being cut off at the hidden node.
+              const show = (oG ? !!oG.showLinks : true) && (tG ? !!tG.showLinks : true);
+              if (!show) return;
+              const na = oG ? barOut(oG) : a;
+              const nb = tG ? barIn(tG) : b;
+              let no = opts;
+              if (opts) { no = Object.assign({}, opts); if (oG) no.startControl = undefined; if (tG) no.endControl = undefined; }
+              return _origRenderLink.call(this, ctx, na || a, nb || b, link, skipBorder, flow, color, startDir, endDir, no);
             }
           }
         }
