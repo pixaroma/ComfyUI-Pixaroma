@@ -161,6 +161,19 @@ function groupMemberNodes(g) {
   return containedNodes(g);
 }
 
+// Other Pixaroma groups whose CENTER sits inside g (nested groups). Moving g must
+// carry their FRAMES along; their member nodes are already in g's node list, so we
+// translate only the nested frames (no double-move of the nodes inside them).
+function containedGroups(g) {
+  const out = [];
+  for (const o of ensureGroups()) {
+    if (o === g) continue;
+    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+    if (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h) out.push(o);
+  }
+  return out;
+}
+
 // Set of all node ids hidden by folded groups + whether each owner shows wires.
 // Cached; invalidated on fold / unfold / delete / configure (the id set only
 // changes then — node moves don't change it).
@@ -423,7 +436,9 @@ function onDown(e) {
     if (inHeader(g, p)) {
       // groupMemberNodes (not containedNodes) so a folded bar drags its hidden members.
       const members = groupMemberNodes(g).map((n) => ({ n, dx: n.pos[0] - g.x, dy: n.pos[1] - g.y }));
-      _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members };
+      // nested Pixaroma groups ride along too (their frames; nodes move via `members`).
+      const subGroups = containedGroups(g).map((sg) => ({ sg, dx: sg.x - g.x, dy: sg.y - g.y }));
+      _drag = { mode: "move", g, ox: p[0], oy: p[1], gx: g.x, gy: g.y, members, subGroups };
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
   }
@@ -441,6 +456,7 @@ function onMove(e) {
     g.x = _drag.gx + (p[0] - _drag.ox);
     g.y = _drag.gy + (p[1] - _drag.oy);
     for (const m of _drag.members) { m.n.pos[0] = g.x + m.dx; m.n.pos[1] = g.y + m.dy; }
+    if (_drag.subGroups) for (const s of _drag.subGroups) { s.sg.x = g.x + s.dx; s.sg.y = g.y + s.dy; }
   } else {
     g.w = Math.max(MIN_W, _drag.ow + (p[0] - _drag.ox));
     g.h = Math.max(MIN_H, _drag.oh + (p[1] - _drag.oy));
