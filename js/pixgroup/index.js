@@ -121,7 +121,19 @@ function screenToGraph(clientX, clientY) {
 // ── geometry ────────────────────────────────────────────────────────────
 function inRect(g, p)   { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + g.h; }
 function inHeader(g, p) { return p[0] >= g.x && p[0] <= g.x + g.w && p[1] >= g.y && p[1] <= g.y + headerH(g); }
-function inResize(g, p) { return p[0] >= g.x + g.w - HANDLE && p[0] <= g.x + g.w && p[1] >= g.y + g.h - HANDLE && p[1] <= g.y + g.h; }
+// Which corner (if any) the point is over → 4-corner resize. Disabled when folded
+// (the bar isn't resizable). Buttons are hit-tested BEFORE this, so the top-right
+// corner only resizes where there isn't a button.
+function cornerAt(g, p) {
+  if (g.folded) return null;
+  if (p[0] < g.x || p[0] > g.x + g.w || p[1] < g.y || p[1] > g.y + g.h) return null;
+  const L = p[0] <= g.x + HANDLE, R = p[0] >= g.x + g.w - HANDLE;
+  const T = p[1] <= g.y + HANDLE, B = p[1] >= g.y + g.h - HANDLE;
+  if (T && L) return "tl"; if (T && R) return "tr";
+  if (B && L) return "bl"; if (B && R) return "br";
+  return null;
+}
+function cornerCursor(c) { return (c === "tl" || c === "br") ? "nwse-resize" : "nesw-resize"; }
 function groupAt(p) {
   const gs = ensureGroups();
   for (let i = gs.length - 1; i >= 0; i--) if (inRect(gs[i], p)) return gs[i];
@@ -429,8 +441,12 @@ function onDown(e) {
         }
       }
     }
-    if (!g.folded && inResize(g, p)) {
-      _drag = { mode: "resize", g, ox: p[0], oy: p[1], ow: g.w, oh: g.h };
+    const corner = cornerAt(g, p);
+    if (corner) {
+      // anchor = the FIXED (opposite) corner; the dragged corner follows the cursor
+      const ax = corner.includes("l") ? g.x + g.w : g.x;
+      const ay = corner.includes("t") ? g.y + g.h : g.y;
+      _drag = { mode: "resize", g, corner, ax, ay };
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
@@ -458,8 +474,13 @@ function onMove(e) {
     for (const m of _drag.members) { m.n.pos[0] = g.x + m.dx; m.n.pos[1] = g.y + m.dy; }
     if (_drag.subGroups) for (const s of _drag.subGroups) { s.sg.x = g.x + s.dx; s.sg.y = g.y + s.dy; }
   } else {
-    g.w = Math.max(MIN_W, _drag.ow + (p[0] - _drag.ox));
-    g.h = Math.max(MIN_H, _drag.oh + (p[1] - _drag.oy));
+    // resize from any corner: grow from the fixed anchor toward the cursor
+    const c = _drag.corner, ax = _drag.ax, ay = _drag.ay;
+    const w = Math.max(MIN_W, c.includes("l") ? ax - p[0] : p[0] - ax);
+    const h = Math.max(MIN_H, c.includes("t") ? ay - p[1] : p[1] - ay);
+    g.w = w; g.h = h;
+    g.x = c.includes("l") ? ax - w : ax;
+    g.y = c.includes("t") ? ay - h : ay;
   }
   e.preventDefault(); e.stopPropagation();
   repaint();
@@ -499,8 +520,9 @@ function onHover(e) {
       const { btns } = headerButtons(g, true);
       for (const b of btns) if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) { hotBtn = { gid: g.id, key: b.key }; break; }
     }
+    const corner = cornerAt(g, p);
     if (hotBtn) cur = "pointer";
-    else if (!g.folded && inResize(g, p)) cur = "nwse-resize";
+    else if (corner) cur = cornerCursor(corner);
     else if (inHeader(g, p)) cur = "move";
     break; // topmost group only
   }
