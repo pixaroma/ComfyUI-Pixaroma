@@ -1209,6 +1209,134 @@ function openGroupColorsPalette(targets, group) {
   place(getGroupScreenRect(group));
 }
 
+// ── Custom Pixaroma group (js/pixgroup) styling ─────────────────────────────
+// A Pixaroma group has a title + body (like a node), PLUS per-group opacity and
+// font size that native ComfyUI groups can't do. So this is the node palette
+// (Title/Body picker + favourites + presets) with three extra sliders. We mutate
+// the group object's fields (titleColor/bodyColor/titleAlpha/bodyAlpha/fontSize —
+// the contract with pixgroup) and repaint; pixgroup owns the drawing + saving.
+function pixGroupScreenRect(g) {
+  const c = app.canvas, el = c?.canvas, ds = c?.ds;
+  if (!el || !ds || !g) return null;
+  const r = el.getBoundingClientRect();
+  const s = ds.scale || 1, o = ds.offset || [0, 0];
+  const left = r.left + (g.x + o[0]) * s, top = r.top + (g.y + o[1]) * s;
+  return { left, top, width: g.w * s, height: g.h * s, right: left + g.w * s, bottom: top + g.h * s };
+}
+function pixRepaint() { try { app.canvas?.setDirty(true, true); } catch (_e) {} try { app.graph?.change?.(); } catch (_e) {} }
+
+function openPixGroupPalette(g) {
+  if (!g) return;
+  const { modal, place, onClose } = makePalShell("Pixaroma Group");
+  let titleHex = g.titleColor || g.color || GROUP_DEFAULT_COLOR;
+  let bodyHex  = g.bodyColor  || g.color || GROUP_DEFAULT_COLOR;
+  let target = "title";
+  const applyNow = () => { g.titleColor = titleHex; g.bodyColor = bodyHex; pixRepaint(); };
+
+  const seg = document.createElement("div"); seg.className = "pix-nc-seg";
+  const titleBtn = document.createElement("button"); titleBtn.type = "button"; titleBtn.textContent = "Title";
+  const bodyBtn  = document.createElement("button"); bodyBtn.type  = "button"; bodyBtn.textContent  = "Body";
+  seg.appendChild(titleBtn); seg.appendChild(bodyBtn); modal.appendChild(seg);
+  const syncSeg = () => { titleBtn.classList.toggle("on", target === "title"); bodyBtn.classList.toggle("on", target === "body"); };
+
+  const prow = document.createElement("div"); prow.className = "pix-nc-prow";
+  const pickerWrap = document.createElement("div"); pickerWrap.className = "pix-nc-pickerwrap";
+  const picker = createPixaromaColorPicker({
+    initialColor: titleHex, swatches: [], hideReset: true,
+    onChange: (c) => { if (c == null) return; if (target === "title") titleHex = c; else bodyHex = c; applyNow(); refreshHex(); },
+  });
+  pickerWrap.appendChild(picker.element); prow.appendChild(pickerWrap);
+  onClose(() => picker.destroy());
+
+  const favCol = document.createElement("div"); favCol.className = "pix-nc-favcol";
+  const favLbl = document.createElement("div"); favLbl.className = "pix-nc-favlbl"; favLbl.textContent = "FAVS";
+  favCol.appendChild(favLbl);
+  const favGrid = document.createElement("div"); favGrid.className = "pix-nc-favgrid";
+  favCol.appendChild(favGrid); prow.appendChild(favCol); modal.appendChild(prow);
+
+  const applyPair = (t, b) => { titleHex = t; bodyHex = b; applyNow(); picker.setColor(target === "title" ? titleHex : bodyHex); refreshHex(); };
+  function renderFavorites() {
+    favGrid.innerHTML = "";
+    const add = document.createElement("div"); add.className = "pix-nc-addfav"; add.textContent = "+";
+    add.title = "Save the current colors to favourites";
+    add.addEventListener("click", () => {
+      const favs = getFavorites(); let idx = favs.findIndex((f) => !f);
+      if (idx < 0) idx = FAVORITE_SLOTS - 1;
+      saveFavoriteSlot(idx, titleHex, bodyHex); renderFavorites();
+    });
+    favGrid.appendChild(add);
+    const favs = getFavorites();
+    for (let i = 0; i < FAVORITE_SLOTS; i++) {
+      const f = favs[i];
+      if (f) {
+        const sw = makeTwoToneSwatch(f.title, f.body);
+        sw.title = `Favourite ${i + 1} — click to apply, right-click to remove`;
+        sw.addEventListener("click", () => applyPair(f.title, f.body));
+        sw.addEventListener("contextmenu", (e) => { e.preventDefault(); const a = getFavorites().slice(); a[i] = null; setFavorites(a); renderFavorites(); });
+        favGrid.appendChild(sw);
+      } else {
+        const empty = document.createElement("div"); empty.className = "pix-nc-fav-empty"; empty.title = `Favourite ${i + 1} (empty)`;
+        favGrid.appendChild(empty);
+      }
+    }
+  }
+  renderFavorites();
+
+  const hexWrap = document.createElement("div"); hexWrap.className = "pix-nc-hexwrap";
+  const titleBar = buildHexBar("Title", () => titleHex, (v) => { titleHex = v; applyNow(); if (target === "title") picker.setColor(v); });
+  const bodyBar  = buildHexBar("Body",  () => bodyHex,  (v) => { bodyHex  = v; applyNow(); if (target === "body")  picker.setColor(v); });
+  hexWrap.appendChild(titleBar.el); hexWrap.appendChild(bodyBar.el); modal.appendChild(hexWrap);
+  function refreshHex() { titleBar.set(titleHex); bodyBar.set(bodyHex); }
+
+  titleBtn.addEventListener("click", () => { target = "title"; syncSeg(); picker.setColor(titleHex); });
+  bodyBtn.addEventListener("click",  () => { target = "body";  syncSeg(); picker.setColor(bodyHex); });
+  syncSeg();
+
+  // ── extra sliders ComfyUI groups can't do: Title/Body opacity + Font size ──
+  const sliderInputs = [];
+  const sliderRow = (labelText, min, max, step, get, set, fmt) => {
+    const lbl = document.createElement("div"); lbl.className = "pix-nc-presetlbl"; lbl.style.marginTop = "11px"; lbl.textContent = labelText;
+    modal.appendChild(lbl);
+    const row = document.createElement("div"); row.style.cssText = "display:flex;align-items:center;gap:10px;padding:0;";
+    const s = document.createElement("input"); s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step); s.value = String(get());
+    s.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
+    const v = document.createElement("span"); v.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;"; v.textContent = fmt(get());
+    s.addEventListener("input", () => { const n = Number(s.value); set(n); v.textContent = fmt(n); pixRepaint(); });
+    row.appendChild(s); row.appendChild(v); modal.appendChild(row);
+    sliderInputs.push({ s, v, get, fmt });
+  };
+  sliderRow("Title opacity", 0.2, 1, 0.05, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { g.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  sliderRow("Body opacity", 0, 0.6, 0.02, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { g.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
+  sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { g.fontSize = n; }, (n) => String(n));
+  const refreshSliders = () => { for (const si of sliderInputs) { si.s.value = String(si.get()); si.v.textContent = si.fmt(si.get()); } };
+
+  const scroll = document.createElement("div"); scroll.className = "pix-nc-pal-scroll"; modal.appendChild(scroll);
+  const plbl = document.createElement("div"); plbl.className = "pix-nc-presetlbl"; plbl.textContent = "Colors";
+  scroll.appendChild(plbl);
+  const grid = document.createElement("div"); grid.className = "pix-nc-presetgrid";
+  for (const p of NODE_PAIRS) {
+    const sw = makeTwoToneSwatch(p.title, p.body); sw.title = p.label;
+    sw.addEventListener("click", () => applyPair(p.title, p.body));
+    grid.appendChild(sw);
+  }
+  scroll.appendChild(grid);
+
+  const foot = document.createElement("div"); foot.className = "pix-nc-foot";
+  const hint = document.createElement("span"); hint.className = "pix-nc-hint";
+  hint.innerHTML = "<b>+</b> save current · click = apply";
+  foot.appendChild(hint);
+  foot.appendChild(palToolBtn("Reset", () => {
+    g.titleColor = GROUP_DEFAULT_COLOR; g.bodyColor = GROUP_DEFAULT_COLOR;
+    g.titleAlpha = 0.92; g.bodyAlpha = 0.12; g.fontSize = 14;
+    titleHex = GROUP_DEFAULT_COLOR; bodyHex = GROUP_DEFAULT_COLOR;
+    picker.setColor(target === "title" ? titleHex : bodyHex);
+    refreshHex(); refreshSliders(); pixRepaint();
+  }));
+  modal.appendChild(foot);
+
+  place(pixGroupScreenRect(g));
+}
+
 app.registerExtension({
   name: "Pixaroma.NodeColors",
 
@@ -1316,6 +1444,13 @@ app.registerExtension({
         openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups);
         return;
       }
+      // A selected custom Pixaroma group (its own selection, owned by js/pixgroup).
+      const pix = window.PixaromaPixGroup?.getSelected?.();
+      if (pix) {
+        e.preventDefault(); e.stopPropagation();
+        openPixGroupPalette(pix);
+        return;
+      }
       if (groups.length) {
         e.preventDefault(); e.stopPropagation();
         openGroupColorsPalette(groups, groups[0]);
@@ -1331,6 +1466,9 @@ app.registerExtension({
         open: openGroupColorsPalette,
         getTargets: getTargetGroups,
       };
+      // The custom Pixaroma group (js/pixgroup) opens its styling through this
+      // same color tool — node-style title/body picker + opacity + font sliders.
+      window.PixaromaNodeColors = { openPixGroup: openPixGroupPalette };
     } catch (_e) {}
   },
 });

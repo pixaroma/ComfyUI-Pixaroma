@@ -1,5 +1,4 @@
 import { app } from "/scripts/app.js";
-import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Pixaroma Group (custom) — PROTOTYPE                                   ║
@@ -308,8 +307,30 @@ function onHover(e) {
   else if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
 }
 
+// The currently-selected Pixaroma group (our own selection, by _selectedId).
+// Exposed so the color tool's "\" shortcut can open the styling palette for it.
+function getSelected() {
+  if (_selectedId == null) return null;
+  return ensureGroups().find((g) => g.id === _selectedId) || null;
+}
+
+// Delete / Backspace removes the selected Pixaroma group (like a native group),
+// but ONLY ours — we consume the event so ComfyUI doesn't also delete nodes.
+// Ignored while typing, with a modifier, or while the styling palette is open.
+function onKeyDown(e) {
+  if (e.key !== "Delete" && e.key !== "Backspace") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
+  const g = getSelected();
+  if (!g) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  deleteGroup(g);
+}
+
 // Double-click the header → inline rename (native-group style). The styling
-// editor opens from the right-click menu (and the Color button in step 2).
+// editor opens from the right-click menu and the "\" shortcut (color tool).
 function onDblClick(e) {
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return;
@@ -356,49 +377,25 @@ function deleteGroup(g) {
   const i = gs.indexOf(g);
   if (i >= 0) gs.splice(i, 1);
   if (_selectedId === g.id) _selectedId = null;
-  closeEditor();
   markChanged();
 }
 
 // ── style editor popup ──────────────────────────────────────────────────
-function injectEditorCSS() {
+// Styling now lives in the shared color tool (js/node_colors openPixGroupPalette);
+// this module only needs CSS for the inline-rename input on the header.
+function injectRenameCSS() {
   if (document.getElementById("pix-pg-css")) return;
   const s = document.createElement("style");
   s.id = "pix-pg-css";
   s.textContent = `
-.pix-pg-editor { position: fixed; z-index: 10000; width: 300px; box-sizing: border-box;
-  background: #26262b; border: 1px solid #3a3a40; border-radius: 12px; padding: 14px 15px;
-  color: #e8e8ea; font: 13px 'Segoe UI', system-ui, sans-serif; box-shadow: 0 8px 32px rgba(0,0,0,0.6); }
-.pix-pg-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px; cursor: move; }
-.pix-pg-hd h4 { margin: 0; font-size: 14px; font-weight: 500; color: #f2f2f4; }
-.pix-pg-x { background: transparent; border: none; color: #9a9aa0; font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
-.pix-pg-x:hover { color: #fff; background: rgba(255,255,255,0.08); }
 .pix-pg-rename { position: fixed; z-index: 10001; box-sizing: border-box;
   background: rgba(20,20,20,0.96); border: 1px solid #f66744; border-radius: 4px;
   color: #fff; padding: 0 6px; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 600; outline: none; }
-.pix-pg-seg { display: flex; background: #1d1d1d; border: 1px solid #3a3a40; border-radius: 7px; padding: 3px; gap: 3px; margin: 0 0 10px; }
-.pix-pg-seg button { flex: 1; text-align: center; font: 12px 'Segoe UI', system-ui, sans-serif; padding: 5px 0;
-  border-radius: 5px; color: #bdbdc2; background: transparent; border: none; cursor: pointer; }
-.pix-pg-seg button.on { background: #f66744; color: #fff; }
-.pix-pg-editor .pix-cp { width: 100%; gap: 0; }
-.pix-pg-editor .pix-cp-sv { height: 188px; min-width: 0; border-radius: 6px; border-color: #45454c; }
-.pix-pg-editor .pix-cp-hue { width: 16px; height: 188px; border-radius: 6px; border-color: #45454c; }
-.pix-pg-editor .pix-cp-hexrow { display: none; }
-.pix-pg-hex { display: flex; align-items: center; gap: 8px; background: #161616; border: 1px solid #3a3a40;
-  border-radius: 6px; padding: 6px 9px; margin-top: 9px; }
-.pix-pg-chip { width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2); flex: 0 0 auto; }
-.pix-pg-hexk { font: 11px 'Segoe UI', system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
-.pix-pg-hexv { flex: 1; min-width: 0; background: transparent; border: none; outline: none;
-  color: #f66744; font: 12px 'Consolas', monospace; letter-spacing: 0.03em; padding: 0; }
-.pix-pg-row { display: flex; align-items: center; gap: 10px; margin-top: 9px; }
-.pix-pg-row label { font: 11px 'Segoe UI', system-ui, sans-serif; color: #8a8a90; width: 86px; flex: 0 0 auto; letter-spacing: 0.04em; }
-.pix-pg-row input[type=range] { flex: 1; min-width: 0; accent-color: #f66744; cursor: pointer; }
-.pix-pg-row .val { width: 38px; text-align: right; font-size: 12px; color: #bbb; }
   `;
   document.head.appendChild(s);
 }
 
-// graph → screen rect for a group, to place the editor beside it.
+// graph → screen rect for a group (used to position the inline-rename input).
 function groupScreenRect(g) {
   const c = app.canvas, el = c?.canvas, ds = c?.ds;
   if (!el || !ds) return null;
@@ -407,108 +404,10 @@ function groupScreenRect(g) {
   const left = r.left + (g.x + o[0]) * s, top = r.top + (g.y + o[1]) * s;
   return { left, top, width: g.w * s, height: g.h * s, right: left + g.w * s, bottom: top + g.h * s };
 }
-function placeEditor(el, rect) {
-  const vw = window.innerWidth, vh = window.innerHeight, mw = el.offsetWidth, mh = el.offsetHeight, gap = 12, pad = 8;
-  if (!rect) { el.style.left = Math.max(pad, (vw - mw) / 2) + "px"; el.style.top = Math.max(pad, (vh - mh) / 2) + "px"; return; }
-  let left = rect.right + gap;
-  if (left + mw > vw - pad) left = rect.left - gap - mw;
-  if (left < pad) left = Math.max(pad, vw - mw - pad);
-  let top = rect.top;
-  if (top + mh > vh - pad) top = vh - mh - pad;
-  if (top < pad) top = pad;
-  el.style.left = left + "px"; el.style.top = top + "px";
-}
-function makeDraggable(el, handle) {
-  let sx = 0, sy = 0, sl = 0, st = 0, on = false;
-  handle.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".pix-pg-x")) return;
-    on = true; sx = e.clientX; sy = e.clientY;
-    const r = el.getBoundingClientRect(); sl = r.left; st = r.top;
-    try { handle.setPointerCapture(e.pointerId); } catch (_e) {}
-    e.preventDefault(); e.stopPropagation();
-  });
-  handle.addEventListener("pointermove", (e) => { if (!on) return; e.stopPropagation(); el.style.left = (sl + e.clientX - sx) + "px"; el.style.top = (st + e.clientY - sy) + "px"; });
-  const end = (e) => { on = false; try { handle.releasePointerCapture(e.pointerId); } catch (_e) {} };
-  handle.addEventListener("pointerup", end);
-  handle.addEventListener("pointercancel", end);
-}
-
-let _editorEl = null;
-function closeEditor() { if (_editorEl) { try { _editorEl._cleanup?.(); } catch (_e) {} _editorEl.remove(); _editorEl = null; } }
-
-function openEditor(g, anchorRect) {
-  closeEditor();
-  injectEditorCSS();
-  let target = "title";
-  const cur = () => (target === "title" ? gTitleColor(g) : gBodyColor(g));
-  const setCur = (c) => { if (target === "title") g.titleColor = c; else g.bodyColor = c; };
-
-  const panel = document.createElement("div");
-  panel.className = "pix-pg-editor";
-  panel.style.left = "-9999px"; panel.style.top = "0px";
-
-  const hd = document.createElement("div"); hd.className = "pix-pg-hd";
-  const h4 = document.createElement("h4"); h4.textContent = "Pixaroma Group"; hd.appendChild(h4);
-  const xb = document.createElement("button"); xb.className = "pix-pg-x"; xb.textContent = "✕"; xb.title = "Close";
-  xb.addEventListener("click", closeEditor); hd.appendChild(xb);
-  panel.appendChild(hd);
-
-  const seg = document.createElement("div"); seg.className = "pix-pg-seg";
-  const tb = document.createElement("button"); tb.type = "button"; tb.textContent = "Title";
-  const bb = document.createElement("button"); bb.type = "button"; bb.textContent = "Body";
-  seg.appendChild(tb); seg.appendChild(bb); panel.appendChild(seg);
-  const syncSeg = () => { tb.classList.toggle("on", target === "title"); bb.classList.toggle("on", target === "body"); };
-
-  const picker = createPixaromaColorPicker({
-    initialColor: cur(), swatches: [], hideReset: true,
-    onChange: (c) => { if (c == null) return; setCur(c); refreshHex(); repaint(); markChanged(); },
-  });
-  panel.appendChild(picker.element);
-
-  const hex = document.createElement("div"); hex.className = "pix-pg-hex";
-  const chip = document.createElement("span"); chip.className = "pix-pg-chip";
-  const hk = document.createElement("span"); hk.className = "pix-pg-hexk"; hk.textContent = "Title";
-  const hv = document.createElement("input"); hv.className = "pix-pg-hexv"; hv.spellcheck = false;
-  hex.appendChild(chip); hex.appendChild(hk); hex.appendChild(hv); panel.appendChild(hex);
-  hv.addEventListener("mousedown", (e) => e.stopPropagation());
-  hv.addEventListener("input", () => {
-    let v = hv.value.trim(); if (!v.startsWith("#")) v = "#" + v;
-    if (/^#[0-9a-f]{6}$/i.test(v)) { setCur(v); chip.style.background = v; picker.setColor(v); repaint(); markChanged(); }
-  });
-  function refreshHex() { const c = cur(); hk.textContent = target === "title" ? "Title" : "Body"; hv.value = c; chip.style.background = c; }
-
-  function slider(label, min, max, step, get, set, fmt) {
-    const row = document.createElement("div"); row.className = "pix-pg-row";
-    const l = document.createElement("label"); l.textContent = label;
-    const s = document.createElement("input"); s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step); s.value = String(get());
-    const v = document.createElement("span"); v.className = "val"; v.textContent = fmt(get());
-    s.addEventListener("input", () => { const n = Number(s.value); set(n); v.textContent = fmt(n); repaint(); markChanged(); });
-    row.appendChild(l); row.appendChild(s); row.appendChild(v); panel.appendChild(row);
-  }
-  slider("Title opacity", 0.2, 1, 0.05, () => gTitleAlpha(g), (n) => { g.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  slider("Body opacity", 0, 0.6, 0.02, () => gBodyAlpha(g), (n) => { g.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  slider("Font size", 10, 32, 1, () => gFontSize(g), (n) => { g.fontSize = n; }, (n) => String(n));
-
-  tb.addEventListener("click", () => { target = "title"; syncSeg(); picker.setColor(gTitleColor(g)); refreshHex(); });
-  bb.addEventListener("click", () => { target = "body"; syncSeg(); picker.setColor(gBodyColor(g)); refreshHex(); });
-  syncSeg(); refreshHex();
-
-  document.body.appendChild(panel);
-  placeEditor(panel, anchorRect);
-  makeDraggable(panel, hd);
-
-  function onDoc(e) { if (!panel.contains(e.target)) closeEditor(); }
-  function onKey(e) { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); closeEditor(); } }
-  setTimeout(() => document.addEventListener("pointerdown", onDoc, true), 0);
-  window.addEventListener("keydown", onKey, true);
-  panel._cleanup = () => { document.removeEventListener("pointerdown", onDoc, true); window.removeEventListener("keydown", onKey, true); try { picker.destroy(); } catch (_e) {} };
-  _editorEl = panel;
-}
-
 // Inline rename right on the group header (native-group style), positioned over
 // the title in screen space. Commit on Enter / blur, cancel on Esc.
 function inlineRename(g) {
-  injectEditorCSS();
+  injectRenameCSS();
   const rect = groupScreenRect(g);
   if (!rect) return;
   const scale = app.canvas?.ds?.scale || 1;
@@ -547,7 +446,7 @@ function installMenu() {
     opts.push(null);
     opts.push({ content: "👑 Add Pixaroma Group", callback: () => addGroup(p) });
     if (over) {
-      opts.push({ content: "👑 Edit Pixaroma Group", callback: () => openEditor(over, groupScreenRect(over)) });
+      opts.push({ content: "👑 Edit Pixaroma Group", callback: () => { if (window.PixaromaNodeColors?.openPixGroup) window.PixaromaNodeColors.openPixGroup(over); else inlineRename(over); } });
       opts.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
     }
     return opts;
@@ -605,7 +504,15 @@ app.registerExtension({
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
     window.addEventListener("dblclick", onDblClick, true);
-    // Prototype: expose a console helper for quick add while testing.
-    try { window.PixAddGroup = () => addGroup(app.canvas?.graph_mouse ? [app.canvas.graph_mouse[0], app.canvas.graph_mouse[1]] : null); } catch (_e) {}
+    window.addEventListener("keydown", onKeyDown, true);
+    // Expose to the color tool (js/node_colors): the "\" shortcut opens the
+    // styling palette for the selected group; repaint after it edits fields.
+    try {
+      window.PixaromaPixGroup = {
+        getSelected,
+        groupAt,
+        repaint: () => repaint(),
+      };
+    } catch (_e) {}
   },
 });
