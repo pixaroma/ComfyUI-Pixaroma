@@ -1452,14 +1452,24 @@ function onWindowPointerMove(e) {
   const gx = (e.clientX - rect.left) / scale - off[0];
   const gy = (e.clientY - rect.top) / scale - off[1];
   state.cursor = { gx, gy };
-  let over = false;
+  let over = false, overHeader = false;
+  const th = TITLE_H();
   for (const g of graphGroups(c)) {
     if (isHiddenGroup(g)) continue;
     const r = groupRect(g);
-    if (r && gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) { over = true; break; }
+    if (r && gx >= r.x && gx <= r.x + r.w && gy >= r.y && gy <= r.y + r.h) {
+      over = true;
+      if (gy <= r.y + th) overHeader = true; // header band = where the hover buttons live
+      break;
+    }
   }
-  if (over) { _hoverGroupActive = true; c.setDirty?.(true, true); }
-  else if (_hoverGroupActive) { _hoverGroupActive = false; c.setDirty?.(true, true); }
+  // Repaint only when the hover state CHANGES (show/hide the buttons) or the cursor is
+  // over a HEADER (the per-button highlight needs per-move updates). Do NOT repaint
+  // while merely moving over a group BODY - this used to fire a full-canvas setDirty on
+  // EVERY mousemove, which is a ~50ms redraw on a big graph (the rAF-violation flood).
+  const changed = over !== _hoverGroupActive;
+  _hoverGroupActive = over;
+  if (changed || overHeader) c.setDirty?.(true, true);
 }
 function onWindowPointerDown(e) {
   if (!state.enabled) return;
