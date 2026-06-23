@@ -444,23 +444,16 @@ function getSelected() {
   return ensureGroups().find((g) => g.id === _selectedId) || null;
 }
 
-// Keyboard: G wraps the selected nodes in a Pixaroma group (like ComfyUI's
-// group-selected); Delete / Backspace removes the selected Pixaroma group (ours
-// only — we consume the event so ComfyUI doesn't also delete nodes). Both are
-// ignored while typing or holding a modifier.
+// Delete / Backspace removes the selected Pixaroma group (ours only — we consume
+// the event so ComfyUI doesn't also delete nodes). Ignored while typing, with a
+// modifier, or while the styling palette / rename input is open. (The "group the
+// selection" shortcut lives in ComfyUI's keybinding registry instead — see the
+// commands/keybindings in registerExtension — so it's discoverable + rebindable
+// and can't silently fight another extension's key.)
 function onKeyDown(e) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target;
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
-
-  // G — group the selected nodes. Only acts (and consumes the key) when there IS
-  // a selection, so a bare 'g' otherwise passes through to anything else.
-  if ((e.key === "g" || e.key === "G") && !e.shiftKey) {
-    const sel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
-    if (sel.length) { e.preventDefault(); e.stopImmediatePropagation(); addGroup(null); }
-    return;
-  }
-
   if (e.key === "Delete" || e.key === "Backspace") {
     if (document.querySelector(".pix-nc-pal, .pix-pg-rename")) return; // editing → don't delete
     const g = getSelected();
@@ -792,6 +785,22 @@ function installPersistence() {
 
 app.registerExtension({
   name: "Pixaroma.PixGroup",
+  // "Group selected nodes" via ComfyUI's command + keybinding system (NOT a raw key
+  // listener), so it shows in Settings → Keybindings, any conflict is surfaced there,
+  // and the user can rebind it if another extension also wants G. Core bindings take
+  // precedence, so this never silently steals a built-in key.
+  commands: [
+    {
+      id: "Pixaroma.GroupSelected",
+      label: "Pixaroma: Group selected nodes",
+      function: () => {
+        const sel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+        if (sel.length) addGroup(null);
+        else toast("Select nodes first", "Select one or more nodes, then group them.");
+      },
+    },
+  ],
+  keybindings: [{ combo: { key: "g" }, commandId: "Pixaroma.GroupSelected" }],
   setup() {
     installDraw();
     installMenu();
