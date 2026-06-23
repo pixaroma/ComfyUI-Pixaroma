@@ -180,8 +180,10 @@ function containedGroups(g) {
   const out = [];
   for (const o of ensureGroups()) {
     if (o === g) continue;
-    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
-    if (cx >= g.x && cx <= g.x + g.w && cy >= g.y && cy <= g.y + g.h) out.push(o);
+    // FULLY contained, not center-inside: a LARGER outer group's center can fall
+    // inside a small inner group, which falsely made the inner "contain" the outer
+    // (so moving/folding the inner dragged the outer along). Nesting = whole box in.
+    if (o.x >= g.x && o.y >= g.y && o.x + o.w <= g.x + g.w && o.y + o.h <= g.y + g.h) out.push(o);
   }
   return out;
 }
