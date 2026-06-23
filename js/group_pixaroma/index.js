@@ -287,6 +287,23 @@ function pickInk(color) {
   return lum > 150 ? "#1a1a1a" : "#ffffff";
 }
 
+// Per-group color opacity (group.flags.pixGroupAlpha, 0..1, default 1) set from the
+// Group Colors picker's transparency slider. Fades the header/interior/border toward
+// the canvas so a bright group can be dimmed for legibility; serializes on flags.
+function groupAlpha(group) {
+  const v = group && group.flags && group.flags.pixGroupAlpha;
+  return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1;
+}
+// Blend a hex over the dark canvas at alpha `a`, so pickInk reflects the FADED bar
+// (a bright color faded to near-transparent reads as dark → white ink stays legible).
+function fadeOverCanvas(hex, a) {
+  const c = parseHex(hex);
+  if (!c) return hex;
+  const bg = 30; // ~ComfyUI canvas (#1e1e1e)
+  const h2 = (v) => Math.round(bg * (1 - a) + v * a).toString(16).padStart(2, "0");
+  return "#" + h2(c.r) + h2(c.g) + h2(c.b);
+}
+
 function rr(ctx, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
@@ -420,7 +437,10 @@ function paintGroup(group, gc, ctx) {
   const { x, y, w, h } = r;
   const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
   const color = group.color || NEUTRAL;
-  const ink = pickInk(color);
+  const ga = groupAlpha(group);
+  // Ink adapts to the EFFECTIVE (faded) header so titles stay legible; ga===1 keeps
+  // the exact current behavior.
+  const ink = pickInk(ga < 0.999 ? fadeOverCanvas(color, 0.92 * ga) : color);
   const inkWhite = ink === "#ffffff";
   const th = TITLE_H();
   const head = computeHeader(group);
@@ -434,19 +454,19 @@ function paintGroup(group, gc, ctx) {
 
   // 1) Interior fill (whole body, rounded), at the user's strength.
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
-  ctx.globalAlpha = state.interiorStrength * ea;
+  ctx.globalAlpha = state.interiorStrength * ea * ga;
   ctx.fillStyle = color;
   ctx.fill();
 
   // 2) Header bar (rounded top corners, square bottom), near-solid.
   rrTop(ctx, x + 0.5, y + 0.5, w, th, RADIUS);
-  ctx.globalAlpha = 0.92 * ea;
+  ctx.globalAlpha = 0.92 * ea * ga;
   ctx.fillStyle = color;
   ctx.fill();
 
   // 3) Border.
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
-  ctx.globalAlpha = 0.55 * ea;
+  ctx.globalAlpha = 0.55 * ea * ga;
   ctx.lineWidth = 2;
   ctx.strokeStyle = color;
   ctx.stroke();
@@ -1092,7 +1112,8 @@ function drawFoldedBar(group, gc, ctx, r) {
   const { x, y, w, h } = r;
   const ea = gc?.editor_alpha != null ? gc.editor_alpha : 1;
   const color = group.color || NEUTRAL;
-  const ink = pickInk(color);
+  const ga = groupAlpha(group);
+  const ink = pickInk(ga < 0.999 ? fadeOverCanvas(color, 0.92 * ga) : color);
   const inkWhite = ink === "#ffffff";
   const cy = y + h / 2;
   const gi = foldMaps().info.get(group) || { count: group.flags?.[FOLD_KEY]?.nodes?.length || 0, inC: 0, outC: 0 };
@@ -1109,9 +1130,9 @@ function drawFoldedBar(group, gc, ctx, r) {
     ? Math.max(0, Math.min(1, _progress.value / _progress.max)) : null;
 
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
-  ctx.globalAlpha = 0.92 * ea; ctx.fillStyle = color; ctx.fill();
+  ctx.globalAlpha = 0.92 * ea * ga; ctx.fillStyle = color; ctx.fill();
   rr(ctx, x + 0.5, y + 0.5, w, h, RADIUS);
-  ctx.globalAlpha = 0.55 * ea; ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
+  ctx.globalAlpha = 0.55 * ea * ga; ctx.lineWidth = 2; ctx.strokeStyle = color; ctx.stroke();
   ctx.globalAlpha = ea;
 
   // Running: a green border so the user can spot the active group at a glance.

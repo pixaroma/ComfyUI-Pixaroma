@@ -566,6 +566,18 @@ function applyGroupColor(groups, hex) {
   app.graph?.setDirtyCanvas(true, true);
 }
 
+// All currently-selected groups (selectedItems is a Set mixing nodes + groups; a
+// group duck-types via recomputeInsideNodes). Used so the "\" shortcut can color
+// nodes AND groups together when both are selected.
+function getSelectedGroups() {
+  const items = app.canvas?.selectedItems;
+  const groups = [];
+  if (items && typeof items.forEach === "function") {
+    items.forEach((it) => { if (it && typeof it.recomputeInsideNodes === "function") groups.push(it); });
+  }
+  return groups;
+}
+
 function resetGroupColor(groups) {
   for (const g of groups) delete g.color; // reverts to LiteGraph default
   app.graph?.setDirtyCanvas(true, true);
@@ -970,7 +982,7 @@ function openCustomColorsModal(opts) {
   window.addEventListener("keydown", onKey, true);
 }
 
-function pickCustom(nodes, anchorNode) {
+function pickCustom(nodes, anchorNode, groups = []) {
   // Seed the picker with the node's CURRENT colors so the user can nudge an
   // existing color instead of starting from an unrelated one. anchorNode is the
   // right-clicked / selected node (its color is "the" color when several are
@@ -978,17 +990,24 @@ function pickCustom(nodes, anchorNode) {
   const seed = captureColors(anchorNode || nodes[0]);
   // Snapshot raw colors so Cancel can restore exactly what was there before.
   const originals = nodes.map((n) => ({ color: n.color, bgcolor: n.bgcolor }));
+  const groupOriginals = groups.map((g) => g.color);
+  // Mixed selection: also color the groups (single color via pickGroupColor).
+  const applyAll = (titleHex, bodyHex) => {
+    applyColors(nodes, titleHex, bodyHex);
+    if (groups.length) applyGroupColor(groups, pickGroupColor({ title: titleHex, body: bodyHex }));
+  };
   openCustomColorsModal({
     initialTitle: seed.title,
     initialBody:  seed.body,
     anchorRect: getNodeScreenRect(anchorNode || nodes[0]),
-    onPreview: (titleHex, bodyHex) => applyColors(nodes, titleHex, bodyHex),
+    onPreview: applyAll,
     onApply: (titleHex, bodyHex) => {
-      applyColors(nodes, titleHex, bodyHex);
+      applyAll(titleHex, bodyHex);
       colorClipboard = { title: titleHex, body: bodyHex };
     },
     onCancel: () => {
       nodes.forEach((n, i) => { n.color = originals[i].color; n.bgcolor = originals[i].bgcolor; });
+      groups.forEach((g, i) => { g.color = groupOriginals[i]; });
       app.graph?.setDirtyCanvas(true, true);
     },
   });
@@ -1337,8 +1356,9 @@ function palToolBtn(text, onClick) {
   return b;
 }
 
-function openNodeColorsPalette(targets, node) {
-  const suffix = targets.length > 1 ? ` (${targets.length} nodes)` : "";
+function openNodeColorsPalette(targets, node, groups = []) {
+  const gsuffix = groups.length ? ` + ${groups.length} group${groups.length > 1 ? "s" : ""}` : "";
+  const suffix = (targets.length > 1 ? ` (${targets.length} nodes)` : "") + gsuffix;
   const { modal, close, place } = makePalShell(`Pixaroma Node Colors${suffix}`);
 
   // Live preview node — updates on hover, persists the applied combo.
@@ -1355,7 +1375,13 @@ function openNodeColorsPalette(targets, node) {
   scroll.addEventListener("mouseleave", showApplied);
   modal.appendChild(scroll);
 
-  const applyPair = (t, b) => { applyColors(targets, t, b); applied = { title: t, body: b }; showApplied(); };
+  const applyPair = (t, b) => {
+    applyColors(targets, t, b);
+    // Groups also selected → color them too (single color = the more saturated of
+    // the node's title/body), so one pick recolors nodes + groups together.
+    if (groups.length) applyGroupColor(groups, pickGroupColor({ title: t, body: b }));
+    applied = { title: t, body: b }; showApplied();
+  };
 
   // Favorites: click a filled swatch to apply; per-slot Save captures the
   // node's CURRENT colors (so apply-then-Save stores the chosen combo).
@@ -1410,9 +1436,10 @@ function openNodeColorsPalette(targets, node) {
   // Tools: Pick custom… / Reset.
   const tools = document.createElement("div");
   tools.className = "pix-nc-pal-tools";
-  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets, node); }));
+  tools.appendChild(palToolBtn("Pick custom…", () => { close(); pickCustom(targets, node, groups); }));
   tools.appendChild(palToolBtn("Reset colors", () => {
     resetColors(targets);
+    if (groups.length) resetGroupColor(groups);
     applied = captureColors(node);
     showApplied();
   }));
@@ -1453,6 +1480,46 @@ function openGroupColorsPalette(targets, group) {
   modal.appendChild(scroll);
 
   const applyOne = (hex) => { applyGroupColor(targets, hex); applied = hex; showApplied(); };
+
+  // Transparency (per-group color opacity) — dim a bright group so its title stays
+  // legible, right here instead of the Settings panel. Stored on group.flags
+  // (pixGroupAlpha, serializes) and read by Group Pixaroma's renderer. Only shown
+  // when Group Pixaroma styling is on (native groups ignore the flag).
+  const groupsStylingOn = app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.Enabled");
+  if (groupsStylingOn !== false) {
+    const opSec = document.createElement("div");
+    opSec.className = "pix-nc-pal-section";
+    const opLbl = document.createElement("div");
+    opLbl.className = "pix-nc-pal-grouplabel";
+    opLbl.textContent = "Transparency";
+    opSec.appendChild(opLbl);
+    const opRow = document.createElement("div");
+    opRow.style.cssText = "display:flex;align-items:center;gap:10px;padding:2px 0 4px;";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "20"; slider.max = "100"; slider.step = "5";
+    slider.title = "Dim the group color so the title stays readable (100% = full color).";
+    slider.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
+    const initA = Number.isFinite(group.flags?.pixGroupAlpha) ? group.flags.pixGroupAlpha : 1;
+    slider.value = String(Math.round(Math.max(0.2, Math.min(1, initA)) * 100));
+    const opVal = document.createElement("span");
+    opVal.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;";
+    opVal.textContent = slider.value + "%";
+    slider.addEventListener("input", () => {
+      const a = Math.max(0.2, Math.min(1, Number(slider.value) / 100));
+      opVal.textContent = slider.value + "%";
+      for (const g of targets) {
+        g.flags = g.flags || {};
+        g.flags.pixGroupAlpha = a;
+        if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
+      }
+      app.graph?.setDirtyCanvas(true, true);
+    });
+    opRow.appendChild(slider);
+    opRow.appendChild(opVal);
+    opSec.appendChild(opRow);
+    scroll.appendChild(opSec);
+  }
 
   // Favorites mapped to a single color via pickGroupColor; Save stores the
   // group's current color as a flat title==body pair (shared with nodes).
@@ -1629,19 +1696,16 @@ app.registerExtension({
       const c = app.canvas;
       if (!c) return;
       const nodes = c.selected_nodes ? Object.values(c.selected_nodes) : [];
+      const groups = getSelectedGroups();
       if (nodes.length) {
         e.preventDefault(); e.stopPropagation();
-        openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0]);
+        // Mixed selection → color the selected groups alongside the nodes (one pick).
+        openNodeColorsPalette(getTargetNodes(nodes[0]), nodes[0], groups);
         return;
       }
-      const items = c.selectedItems;   // a Set mixing nodes + groups (Node Colors pattern)
-      if (items && typeof items.forEach === "function") {
-        let group = null;
-        items.forEach((it) => { if (!group && typeof it?.recomputeInsideNodes === "function") group = it; });
-        if (group) {
-          e.preventDefault(); e.stopPropagation();
-          openGroupColorsPalette(getTargetGroups(group), group);
-        }
+      if (groups.length) {
+        e.preventDefault(); e.stopPropagation();
+        openGroupColorsPalette(groups, groups[0]);
       }
     }, true);
 
