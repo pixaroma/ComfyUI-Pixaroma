@@ -522,6 +522,13 @@ const LI_CARDS_H = 124;
 // (~240) + the dims label row (18). A constant floor is dirty-proof on reload
 // (Vue Compat #18). Tune for a bigger / smaller minimum preview.
 const LI_PREVIEW_FILL_MIN = 258;
+// Smaller preview allowance for the MANUAL-RESIZE floor only, so a Nodes 2.0 node can
+// be dragged compact. The old floor counted the full 258 preview, so the node's min was
+// ~full-size and it could never shrink ("goes full size"). The default/natural size
+// still uses LI_PREVIEW_FILL_MIN, so a fresh node opens with the big preview; this only
+// lowers how SMALL the user can drag it. (overflow:hidden on .pix-li-inner clips the
+// preview when the node is smaller than the full content, so nothing spills.)
+const LI_PREVIEW_FLOOR_MIN = 72;
 
 
 // Nodes 2.0 preview: a second DOM widget's host collapses to 0 on this node (the
@@ -615,35 +622,32 @@ function setupLoadImageNode(node) {
   // duplicated node inherits the inflated minimum). Instead, sum each
   // child's natural offsetHeight (which is intrinsic to the child, NOT
   // influenced by root's stretched size) plus flex gaps and root padding.
-  function measureContentHeight() {
+  // Sum the controls' heights + the preview canvas counted at `previewMin` (NOT its
+  // grown size, or the grown canvas would re-inflate the min and the node could never
+  // shrink). measureContentHeight uses the FULL preview min (the natural/default size);
+  // measureFloorHeight uses a SMALLER one (the manual-resize floor) so the node can be
+  // dragged compact. Children live on the inner flex layer, so measure inner.children.
+  function measureH(previewMin) {
     let totalH = 0;
     let visible = 0;
-    // Children live on the inner flex layer (see the inner-layer note above), so
-    // measure inner.children, not root.children (root holds only `inner`).
     for (const child of inner.children) {
       const style = window.getComputedStyle(child);
       if (style.position === "absolute" || style.position === "fixed") continue;
       if (style.display === "none") continue;
-      // The Nodes 2.0 image preview canvas is a flex grower (fills extra node
-      // height when the node is dragged taller). Count only its MINIMUM in this
-      // floor, not its grown size - otherwise the grown canvas would re-inflate
-      // the node's min height and it could never shrink back.
-      if (child === node._pixLiImageCanvas) { totalH += LI_PREVIEW_FILL_MIN; visible += 1; continue; }
+      if (child === node._pixLiImageCanvas) { totalH += previewMin; visible += 1; continue; }
       totalH += child.offsetHeight;
       visible += 1;
     }
     const padding = 10; // root padding: 2px top + 8px bottom
     const gaps = Math.max(0, visible - 1) * 7; // flex `gap: 7px` between children
-    // Before the DOM widget is attached to the document, every child's
-    // offsetHeight is 0 (queueMicrotask renders before LiteGraph's first paint),
-    // so return a sane placeholder in that pre-layout case ONLY. Once laid out,
-    // hug the REAL content height with no floor. A 280px floor made short modes
-    // (e.g. "Off", which has no settings panel ≈ 220px of content) pad the
-    // controls widget taller than its content, leaving dead space between the
-    // "Upscaling" button and the image preview — that was the Off-mode gap.
+    // Before the DOM widget is attached to the document, every child's offsetHeight
+    // is 0 (queueMicrotask renders before LiteGraph's first paint), so return a sane
+    // placeholder in that pre-layout case ONLY. Once laid out, hug the real content.
     if (totalH < 20) return 280;
     return totalH + padding + gaps;
   }
+  const measureContentHeight = () => measureH(LI_PREVIEW_FILL_MIN);
+  const measureFloorHeight = () => measureH(LI_PREVIEW_FLOOR_MIN);
   node._pixLiMeasureHeight = measureContentHeight;
 
   const widget = node.addDOMWidget("pixaroma_load_image_ui", "custom", root, {
@@ -675,7 +679,7 @@ function setupLoadImageNode(node) {
   // BELOW its content → the image spills out the bottom of the frame. Pin a real
   // floor (= the content height) only while a resize handle is dragged. No-op in
   // legacy (it has no .lg-node resize handle) and outside a drag.
-  node._pixLiFloorOff = installResizeFloor(root, measureContentHeight);
+  node._pixLiFloorOff = installResizeFloor(root, measureFloorHeight);
 
   // Nodes 2.0 preview rebuild: the controls panel becomes a FIXED (min-content)
   // row so it's not a grower, then add the fill preview widget (sole grower) and
