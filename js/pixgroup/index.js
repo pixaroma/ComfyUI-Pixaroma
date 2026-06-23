@@ -221,9 +221,12 @@ function roundRect(ctx, x, y, w, h, r) {
 // with textBaseline:"middle" floats visually high (the em box reserves descender
 // space the glyphs don't use), so center by the measured ascent/descent instead.
 function fillTextVCenter(ctx, text, x, yMid) {
+  // Set the baseline BEFORE measuring: actualBoundingBox metrics are relative to
+  // the current textBaseline, so measuring under a stale "middle" baseline (left
+  // from the title draw) computed the wrong offset and put the digit ~3px high.
+  ctx.textBaseline = "alphabetic";
   const m = ctx.measureText(text);
   if (m.actualBoundingBoxAscent != null && m.actualBoundingBoxDescent != null) {
-    ctx.textBaseline = "alphabetic";
     ctx.fillText(text, x, yMid + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
   } else {
     ctx.textBaseline = "middle";
