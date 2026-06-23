@@ -948,6 +948,17 @@ function setupLoadImageNode(node) {
     if (isVueNodes() && node._pixLiImageWidget?.value && !node.imgs?.[0]?.naturalWidth) {
       updateNativePreview(node, node._pixLiImageWidget.value);
     }
+    // Nodes 2.0: the node frame does NOT auto-grow to the controls panel, so a fresh
+    // node opens too short and clips the body (console: node H 219 vs content 631).
+    // Size it to the content once, AFTER layout (so the measure is real). Fresh drops
+    // ONLY - a saved workflow keeps its size (Vue Compat #18: never resize on load).
+    if (isVueNodes() && !wasConfigured) {
+      requestAnimationFrame(() => {
+        if (isGraphLoading()) return;
+        const h = node._pixLiMeasureHeight?.();
+        if (h && typeof node.setSize === "function") node.setSize([node.size[0], h]);
+      });
+    }
   });
 }
 
