@@ -955,8 +955,15 @@ function setupLoadImageNode(node) {
     if (isVueNodes() && !wasConfigured) {
       requestAnimationFrame(() => {
         if (isGraphLoading()) return;
-        const h = node._pixLiMeasureHeight?.();
-        if (h && typeof node.setSize === "function") node.setSize([node.size[0], h]);
+        const content = node._pixLiMeasureHeight?.();
+        if (!content || typeof node.setSize !== "function") return;
+        // node.size[1] is the slot area + body, but measureContentHeight is only the
+        // controls panel (which in Nodes 2.0 includes the preview canvas). So add the
+        // slots above it - the same `aboveControls` math fitPreview uses for legacy.
+        // (Sizing to `content` alone left the node short by the slot rows → clipped.)
+        const SLOT_H = window.LiteGraph?.NODE_SLOT_HEIGHT || 20;
+        const aboveControls = (node.outputs?.length || 7) * SLOT_H + 6;
+        node.setSize([node.size[0], aboveControls + content]);
       });
     }
   });
