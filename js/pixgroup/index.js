@@ -178,6 +178,23 @@ function groupMemberNodes(g) {
   return containedNodes(g);
 }
 
+// Member COUNT for the badge — cached so drawOne doesn't full-scan every node on
+// EVERY frame (a real cost on big graphs during a drag). Folded = the fixed
+// foldNodes count (instant). The cache lives in a WeakMap, NOT on the group object,
+// so it never serializes (which would bloat the workflow + falsely flag it modified)
+// and is GC'd when a group is deleted. 200ms TTL: the number lags a few frames when
+// a node enters/leaves, which is imperceptible for a count.
+const _countCache = new WeakMap(); // group obj -> { count, at }
+function memberCount(g) {
+  if (g.folded) return Array.isArray(g.foldNodes) ? g.foldNodes.length : 0;
+  const now = (typeof performance !== "undefined" ? performance.now() : Date.now());
+  const c = _countCache.get(g);
+  if (c && now - c.at < 200) return c.count;
+  const count = containedNodes(g).length;
+  _countCache.set(g, { count, at: now });
+  return count;
+}
+
 // Other Pixaroma groups whose CENTER sits inside g (nested groups). Moving g must
 // carry their FRAMES along; their member nodes are already in g's node list, so we
 // translate only the nested frames (no double-move of the nodes inside them).
@@ -381,8 +398,8 @@ function drawOne(ctx, g) {
   ctx.fillText(running ? ("▶ " + runTitle) : (g.title || "Group"), g.x + 12, g.y + hH / 2 + 1);
   ctx.restore();
 
-  // node-count badge
-  const count = groupMemberNodes(g).length;
+  // node-count badge (cached; see memberCount — avoids a full node scan per frame)
+  const count = memberCount(g);
   const bd = layout.badge;
   ctx.fillStyle = tInk === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)";
   roundRect(ctx, bd.x, bd.y, bd.w, bd.h, 8); ctx.fill();
