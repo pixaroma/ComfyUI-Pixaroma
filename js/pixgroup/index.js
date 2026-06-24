@@ -39,7 +39,10 @@ const MIN_W = 140, MIN_H = 80;
 let _runningNodeId = null, _progress = null;
 
 let _idc = 0;
-function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++); }
+// id = time + a per-session counter + a short random suffix, so ids stay unique
+// even across a reload (the counter resets to 0 each load, and Date.now() is only
+// ms-granular) — avoids a fresh group colliding with a saved group's id.
+function newId() { return "pg_" + Date.now().toString(36) + "_" + (_idc++) + "_" + Math.random().toString(36).slice(2, 6); }
 
 // Authoritative in-memory list of our groups for the current graph. We keep
 // graph.extra.pixaromaGroups pointed at it AND (via installPersistence) inject
@@ -295,6 +298,7 @@ let _selectedId = null;            // the PRIMARY selected group (last clicked) 
 let _selectedIds = new Set();      // ALL selected groups (multi-select via shift-click)
 let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style only, not nodes
 let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
+let _pasteSeq = 0;                 // cascades repeated Ctrl+V offsets WITHOUT mutating the clipboard
 let _marqueeRect = null;           // last seen ComfyUI marquee rect [x,y,w,h]; add our groups on release
 let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
 let _hotBtn = null;         // { gid, key } of the button under the cursor
@@ -516,9 +520,12 @@ function onDown(e) {
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
     if (isHiddenGroup(g)) continue; // hidden by a folded ancestor → not interactive
-    // header buttons FIRST, so a button click never starts a drag/rename
+    // header buttons FIRST, so a button click never starts a drag/rename. Hit-test
+    // the SAME buttons that are painted (drawOne uses this showBtns), so a click in
+    // empty header space can't trigger a button that isn't actually visible.
     if (inHeader(g, p)) {
-      const { btns } = headerButtons(g, true);
+      const showBtns = (g.id === _hoverId) || _selectedIds.has(g.id);
+      const { btns } = headerButtons(g, showBtns);
       for (const b of btns) {
         if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) {
           selectGroup(g); e.preventDefault(); e.stopImmediatePropagation();
@@ -756,8 +763,8 @@ function onKeyDown(e) {
     if (k === "c") {
       const sel = getSelectedGroups();
       const nativeNodes = app.canvas?.selected_nodes ? Object.keys(app.canvas.selected_nodes).length : 0;
-      if (sel.length && !nativeNodes) { _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0)); _groupClipActive = true; }
-      else if (nativeNodes) { _groupClipActive = false; } // nodes selected → defer to ComfyUI
+      if (sel.length && !nativeNodes) { _groupClipboard = sel.map((gr) => cloneGroupFrame(gr, 0, 0)); _groupClipActive = true; _pasteSeq = 0; }
+      else { _groupClipActive = false; } // nodes selected OR nothing of ours → relinquish so Ctrl+V defers to ComfyUI
       return;
     }
     if (k === "v") {
@@ -792,7 +799,9 @@ function onDblClick(e) {
       // A double-click that lands on a header button is just two fast button
       // clicks (toggling mute/bypass/fold) - do NOT open rename; it was stealing
       // rapid toggles. Rename only fires on a double-click of the title strip.
-      const { btns } = headerButtons(g, true);
+      // Match the painted buttons (same showBtns as drawOne / onDown).
+      const showBtns = (g.id === _hoverId) || _selectedIds.has(g.id);
+      const { btns } = headerButtons(g, showBtns);
       for (const b of btns) if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) return;
       e.preventDefault(); e.stopImmediatePropagation(); inlineRename(g); return;
     }
@@ -876,10 +885,12 @@ function pasteGroups() {
   if (!_groupClipboard || !_groupClipboard.length) return;
   const gs = ensureGroups();
   const newSel = new Set();
+  // Cascade repeated pastes via a counter, NOT by mutating the clipboard entries
+  // (mutating them made the clipboard drift permanently away from the source).
+  const off = 40 * (++_pasteSeq);
   for (const data of _groupClipboard) {
-    const c = cloneGroupFrame(data, 40, 40);
+    const c = cloneGroupFrame(data, off, off);
     gs.push(c); newSel.add(c.id);
-    data.x += 40; data.y += 40;   // cascade repeated pastes so they don't stack
   }
   _selectedIds = newSel; _selectedId = [...newSel].pop() || null;
   clearNativeSelection(); markChanged();
@@ -1216,9 +1227,15 @@ function installPersistence() {
   G.serialize = function () {
     const data = origSerialize.apply(this, arguments);
     try {
-      if (this === app.graph && _mirror.length && data) {
-        if (!data.extra) data.extra = {};
-        data.extra.pixaromaGroups = JSON.parse(JSON.stringify(_mirror));
+      if (this === app.graph && data) {
+        if (_mirror.length) {
+          if (!data.extra) data.extra = {};
+          data.extra.pixaromaGroups = JSON.parse(JSON.stringify(_mirror));
+        } else if (data.extra && "pixaromaGroups" in data.extra) {
+          // No groups → OMIT the key entirely (deterministic: matches a workflow
+          // that never had groups, instead of leaving a stale empty array).
+          delete data.extra.pixaromaGroups;
+        }
       }
     } catch (_e) { /* never break a save */ }
     return data;
@@ -1286,6 +1303,13 @@ app.registerExtension({
     window.addEventListener("pointerup", onWinPointerUp, true);
     window.addEventListener("dblclick", onDblClick, true);
     window.addEventListener("keydown", onKeyDown, true);
+    // Safety net: if focus is lost mid-drag (alt-tab) the browser may emit no
+    // pointerup, leaving _drag stuck (and onHover then early-returns forever). Clear
+    // it on blur so the next interaction is clean.
+    window.addEventListener("blur", () => {
+      if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
+      _natGrpDrag = null;
+    });
     // Expose to the color tool (js/node_colors): the "\" shortcut opens the
     // styling palette for the selected group; repaint after it edits fields.
     try {
