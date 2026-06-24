@@ -674,8 +674,13 @@ function groupContainedNodes(c, g, gRect) {
 function applyGroupDrag(g, contained, gx, gy, snapActive) {
   if (isVueNodes()) {
     if (!snapActive) return;
+    // The group FRAME is canvas-painted (nothing competes to write it), so set it
+    // SYNCHRONOUSLY — deferring it to the rAF made the frame oscillate between
+    // ComfyUI's unsnapped paint and our snapped paint (the "group frame wiggles but
+    // the nodes don't" report). The NODES are Vue-rendered, so their write stays in
+    // the rAF to win over Vue's own cursor-driven layout write.
+    setGroupPos(g, gx, gy);
     requestAnimationFrame(() => {
-      setGroupPos(g, gx, gy);
       for (const cn of contained) cn.node.pos = [gx + cn.off[0], gy + cn.off[1]];
     });
   } else {
