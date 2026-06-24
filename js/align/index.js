@@ -826,20 +826,16 @@ function snapMovingRect(rect, opts) {
   const exPix = new Set(opts.excludePixIds || []);   // dragged pixgroup ids — don't snap to them
   const exNodes = new Set(opts.excludeNodes || []);  // their member nodes — nor to own children
   const targets = alignTargets(c);
-  // Like handleGroupDrag: don't snap to nodes nested inside a native group (their
-  // edges differ from the frame and would hijack the snap).
-  const groupedNodes = new Set();
-  for (const t of targets) {
-    if (t.kind !== "group") continue;
-    for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
-  }
+  // A Pixaroma group aligns to ANY node or group frame on the canvas (except its own
+  // contents) — INCLUDING a node that sits inside a ComfyUI group. (Native-group moves
+  // still skip other groups' nested nodes via handleGroupDrag, for frame-to-frame.)
   const me = rectEdges(rect);
   const movingX = [me.left, me.right, me.centerX];
   const movingY = [me.top, me.bottom, me.centerY];
   let bestX = null, bestY = null;
   for (const t of targets) {
     if (t.kind === "pixgroup" && exPix.has(t.id)) continue;
-    if (t.kind === "node" && (exNodes.has(t.ref) || groupedNodes.has(t.ref))) continue;
+    if (t.kind === "node" && exNodes.has(t.ref)) continue;
     if (t.collapsed) continue;
     const oRect = t.rect;
     const dxc = Math.max(0, Math.max(oRect.x - (rect.x + rect.w), rect.x - (oRect.x + oRect.w)));
@@ -856,7 +852,7 @@ function snapMovingRect(rect, opts) {
   const dx = bestX ? bestX.delta : 0, dy = bestY ? bestY.delta : 0;
   const finalRect = { x: rect.x + dx, y: rect.y + dy, w: rect.w, h: rect.h };
   const guideTargets = targets.filter((t) => !(t.kind === "pixgroup" && exPix.has(t.id)));
-  const skip = (ref) => !!(ref && (exNodes.has(ref) || groupedNodes.has(ref)));
+  const skip = (ref) => !!(ref && exNodes.has(ref));
   state.activeGuides = [];
   pushAlignedGuides(finalRect, guideTargets, skip);
   c.setDirty?.(true, true);
@@ -875,15 +871,20 @@ function snapResizeCorner(x, y, opts) {
   const stickyG = snapGraph * 1.5;
   const exPix = new Set(opts.excludePixIds || []);
   const targets = alignTargets(c);
+  // includeGroupedNodes (Pixaroma-group resize): align to ANY node, even ones inside
+  // a ComfyUI group. Native-group resize leaves it off → keeps frame-to-frame, but
+  // still snaps to its OWN contained nodes (the excludeGroupId skip).
   const groupedNodes = new Set();
-  for (const t of targets) {
-    if (t.kind !== "group") continue;
-    // Skip the group BEING resized: we WANT its edge to snap to its OWN contained
-    // nodes (so you can fit the frame snugly to its contents). Once the edge passes
-    // a node's center the node counts as "contained", and excluding it here is
-    // exactly what stopped the bottom edge from ever reaching that node's bottom.
-    if (opts.excludeGroupId != null && t.id === opts.excludeGroupId) continue;
-    for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
+  if (!opts.includeGroupedNodes) {
+    for (const t of targets) {
+      if (t.kind !== "group") continue;
+      // Skip the group BEING resized: we WANT its edge to snap to its OWN contained
+      // nodes (so you can fit the frame snugly to its contents). Once the edge passes
+      // a node's center the node counts as "contained", and excluding it here is
+      // exactly what stopped the bottom edge from ever reaching that node's bottom.
+      if (opts.excludeGroupId != null && t.id === opts.excludeGroupId) continue;
+      for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
+    }
   }
   let bx = null, by = null; // { delta, target, rect }
   for (const t of targets) {

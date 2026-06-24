@@ -589,7 +589,7 @@ function onMove(e) {
     const g = _drag.g;
     const c = _drag.corner, ax = _drag.ax, ay = _drag.ay;
     let cx = p[0], cy = p[1];
-    const snap = window.PixaromaAlign?.snapResizeCorner?.(cx, cy, { excludePixIds: [g.id], bypass: e.shiftKey });
+    const snap = window.PixaromaAlign?.snapResizeCorner?.(cx, cy, { excludePixIds: [g.id], includeGroupedNodes: true, bypass: e.shiftKey });
     if (snap) { cx = snap.x; cy = snap.y; }
     const w = Math.max(MIN_W, c.includes("l") ? ax - cx : cx - ax);
     const h = Math.max(MIN_H, c.includes("t") ? ay - cy : cy - ay);
