@@ -114,9 +114,64 @@ function openLabelEditor(node) {
   ed.open();
 }
 
+// Legacy only: in current ComfyUI the node BODY paints our transparent bgcolor
+// ("rgba(0,0,0,0)") as opaque BLACK (the color util drops the alpha), so the node
+// frame shows as black corners behind a large-radius pill, and a fully transparent
+// label becomes a solid black box. We can't make the body transparent, so for the
+// duration of a Label's drawNode call we either: (opaque pill) paint the body to
+// MATCH the pill - same colour + same corner radius - so the body IS the pill and
+// the corners fall back to the grid; or (transparent label) skip the body fill
+// entirely so the grid shows through and only the text remains. Restored after.
+// No-op in Nodes 2.0, where drawNode skips body paint.
+function installLabelShadowHook() {
+  if (window._pixLblShadowWrapped) return;
+  const proto = window.LGraphCanvas?.prototype;
+  if (typeof proto?.drawNode !== "function") {
+    console.warn("[Pixaroma.Label] LGraphCanvas.drawNode not found - shadow suppression disabled");
+    return;
+  }
+  window._pixLblShadowWrapped = true;
+  const orig = proto.drawNode;
+  proto.drawNode = function (node, ctx) {
+    if (ctx && node && (node.comfyClass === "PixaromaLabel" || node.type === "PixaromaLabel")) {
+      const cfg = node._labelCfg || DEFAULTS;
+      const opaque = cfg.backgroundColor && cfg.backgroundColor !== "transparent";
+      if (opaque) {
+        // Opaque pill: paint the node body to MATCH the pill - same colour + same
+        // corner radius (ROUND_RADIUS, clamped to half the node) - so the frame stops
+        // showing as black corners; the corners outside that radius fall back to the
+        // grid. The label's onDrawForeground draws the pill + text on top. Restored.
+        const maxR = Math.floor(Math.min(node.size?.[0] || 0, node.size?.[1] || 0) / 2);
+        const sBg = node.bgcolor, sCol = node.color, sR = window.LiteGraph?.ROUND_RADIUS;
+        node.bgcolor = cfg.backgroundColor;
+        node.color = cfg.backgroundColor;
+        if (window.LiteGraph) {
+          window.LiteGraph.ROUND_RADIUS = Math.max(1, Math.min(Math.round(cfg.borderRadius || 0), maxR || 1));
+        }
+        try { return orig.apply(this, arguments); }
+        finally {
+          node.bgcolor = sBg; node.color = sCol;
+          if (window.LiteGraph) window.LiteGraph.ROUND_RADIUS = sR;
+        }
+      } else {
+        // Transparent label: we can't make the body transparent (it renders black),
+        // so SKIP the body fill - the grid shows through fully. There is no pill to
+        // draw in this mode, and the text uses fillText (not fill), so only the
+        // unwanted body rectangle is suppressed. ctx.fill is restored in finally.
+        const origFill = ctx.fill;
+        ctx.fill = function () {};
+        try { return orig.apply(this, arguments); }
+        finally { ctx.fill = origFill; }
+      }
+    }
+    return orig.apply(this, arguments);
+  };
+}
+
 // ─── Extension Registration ──────────────────────────────────
 app.registerExtension({
   name: "Pixaroma.Label",
+  setup() { installLabelShadowHook(); },
 
   // "Edit Label" in the node right-click menu — new context-menu API (replaces the
   // deprecated getNodeMenuOptions monkey-patch). A reliable edit path in both
