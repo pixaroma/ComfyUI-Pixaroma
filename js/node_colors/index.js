@@ -1422,14 +1422,14 @@ function openPixGroupPalette(g) {
     // editable number + up/down spinner arrows (type a value + Enter / blur; Esc
     // cancels; click an arrow or press ArrowUp/Down to step by one)
     const vWrap = document.createElement("div");
-    vWrap.style.cssText = "display:flex;align-items:stretch;flex:0 0 auto;height:22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:4px;overflow:hidden;";
+    vWrap.style.cssText = "display:flex;align-items:stretch;flex:0 0 auto;height:24px;background:#161616;border:1px solid #3a3a40;border-radius:6px;overflow:hidden;";
     const v = document.createElement("input"); v.type = "text"; v.value = fmt(get());
     v.style.cssText = "width:46px;min-width:46px;text-align:right;font-size:12px;color:#ddd;background:transparent;border:none;outline:none;padding:0 4px;";
-    const spin = document.createElement("div"); spin.style.cssText = "display:flex;flex-direction:column;width:15px;flex:0 0 auto;border-left:1px solid rgba(255,255,255,0.12);";
+    const spin = document.createElement("div"); spin.style.cssText = "display:flex;flex-direction:column;width:15px;flex:0 0 auto;border-left:1px solid #3a3a40;";
     const up = document.createElement("button"); up.type = "button"; up.textContent = "▲";
     const dn = document.createElement("button"); dn.type = "button"; dn.textContent = "▼";
-    const sbtn = "flex:1 1 0;border:none;background:rgba(255,255,255,0.04);color:#aaa;font-size:7px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;";
-    up.style.cssText = sbtn; dn.style.cssText = sbtn + "border-top:1px solid rgba(255,255,255,0.12);";
+    const sbtn = "flex:1 1 0;border:none;background:rgba(255,255,255,0.05);color:#aaa;font-size:7px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;";
+    up.style.cssText = sbtn; dn.style.cssText = sbtn + "border-top:1px solid #3a3a40;";
     spin.appendChild(up); spin.appendChild(dn); vWrap.appendChild(v); vWrap.appendChild(spin);
     s.addEventListener("input", () => { const n = Number(s.value); set(n); v.value = fmt(n); pixRepaint(); });
     const apply = (n) => { n = Math.max(min, Math.min(max, Math.round(n / step) * step)); set(n); s.value = String(n); v.value = fmt(n); pixRepaint(); };
@@ -1452,8 +1452,8 @@ function openPixGroupPalette(g) {
     row.appendChild(s); row.appendChild(vWrap); modal.appendChild(row);
     sliderInputs.push({ s, v, get, fmt });
   };
-  sliderRow("Title opacity", 0.2, 1, 0.01, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => Math.round(n * 100) + "%", (x) => x / 100);
-  sliderRow("Body opacity", 0, 0.6, 0.01, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { for (const t of targets) t.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%", (x) => x / 100);
+  sliderRow("Title opacity", 0.2, 1, 0.01, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => String(Math.round(n * 100)), (x) => x / 100);
+  sliderRow("Body opacity", 0, 0.6, 0.01, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { for (const t of targets) t.bodyAlpha = n; }, (n) => String(Math.round(n * 100)), (x) => x / 100);
   sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { for (const t of targets) t.fontSize = n; }, (n) => String(n), (x) => x);
   const refreshSliders = () => { for (const si of sliderInputs) { si.s.value = String(si.get()); si.v.value = si.fmt(si.get()); } };
 
