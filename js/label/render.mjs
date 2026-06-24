@@ -361,14 +361,15 @@ export function injectCSS() {
 }
 .pix-lbl-spinbtns button:last-child { border-top: 1px solid #3a3a40; }
 .pix-lbl-spinbtns button:hover { background: rgba(255,255,255,0.12); color: #fff; }
-/* Background / Text color bars (Group "Title #hex / Body #hex" style): a dark
-   rounded field with a live swatch chip, a label, and an editable hex value.
-   Clicking the bar selects it as the picker's target (orange border = active). */
+/* Background / Text color buttons (Group chip style): a dark rounded button
+   with a live swatch chip + label. They select which target the picker +
+   swatches edit (orange border = active); the live, editable hex shows under
+   the picker (the picker's own hex field), which follows the selected button. */
 .pix-lbl-cbars { display: flex; gap: 8px; margin-bottom: 10px; }
 .pix-lbl-cbar {
-    flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 8px;
+    flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
     background: #161616; border: 1px solid #3a3a40; border-radius: 6px;
-    padding: 6px 9px; cursor: pointer; text-align: left; transition: border-color 0.12s;
+    padding: 8px 9px; cursor: pointer; transition: border-color 0.12s;
 }
 .pix-lbl-cbar:hover { border-color: #555; }
 .pix-lbl-cbar.active { border-color: ${BRAND}; }
@@ -385,12 +386,8 @@ export function injectCSS() {
     background-size: 100% 100%, 8px 8px, 8px 8px;
     background-position: 0 0, 0 0, 4px 4px;
 }
-.pix-lbl-cbar-k { font: 11px system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
-.pix-lbl-cbar-v {
-    flex: 1 1 auto; min-width: 0; background: transparent; border: none; outline: none;
-    color: ${BRAND}; font: 12.5px "Consolas", monospace; letter-spacing: 0.03em; padding: 0;
-}
-.pix-lbl-cbar-v::placeholder { color: #6a6a70; font-style: italic; letter-spacing: 0; }
+.pix-lbl-cbar.active .pix-lbl-cbar-k { color: ${BRAND}; }
+.pix-lbl-cbar-k { font: 12px system-ui, sans-serif; color: #bbb; flex: 0 0 auto; }
 /* Colors: SV picker (left) | swatch grid (right), filling the full width.
    The grid is a perfect 9x4 of the 36 palette colours, so it always fills
    complete rows (no empty cells) whether or not Transparent is shown. */

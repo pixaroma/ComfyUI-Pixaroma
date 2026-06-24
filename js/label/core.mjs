@@ -276,7 +276,9 @@ export class LabelEditor {
     const curColorFor = (k) => (k === "bg" ? c.backgroundColor : c.fontColor);
     const isTransp = () => c.backgroundColor === "transparent";
 
-    // Two color bars (Background / Text) — click to select, type to edit.
+    // Two color buttons (Background / Text) — chip + label. They select which
+    // target the picker + swatches edit; the live hex shows under the picker
+    // (the picker's own hex field), which follows the selected button.
     const bars = el("div", "pix-lbl-cbars");
     const mkBar = (key, text) => {
       const bar = el("button", "pix-lbl-cbar");
@@ -284,15 +286,9 @@ export class LabelEditor {
       const chip = el("span", "pix-lbl-cbar-chip");
       const k = el("span", "pix-lbl-cbar-k");
       k.textContent = text;
-      const inp = document.createElement("input");
-      inp.type = "text";
-      inp.className = "pix-lbl-cbar-v";
-      inp.spellcheck = false;
-      inp.setAttribute("aria-label", text + " color hex");
       bar.appendChild(chip);
       bar.appendChild(k);
-      bar.appendChild(inp);
-      bar._key = key; bar._chip = chip; bar._inp = inp;
+      bar._key = key; bar._chip = chip;
       bars.appendChild(bar);
       return bar;
     };
@@ -328,8 +324,6 @@ export class LabelEditor {
         const tr = bar._key === "bg" && cur === "transparent";
         bar._chip.classList.toggle("is-transp", tr);
         bar._chip.style.background = tr ? "" : cur;
-        if (document.activeElement !== bar._inp) bar._inp.value = tr ? "" : cur;
-        bar._inp.placeholder = tr ? "transparent" : "";
         bar.classList.toggle("active", target === bar._key);
       }
     };
@@ -375,29 +369,10 @@ export class LabelEditor {
       syncBars(); syncSwSel(); syncTransVis();
     };
 
-    // Bar interactions: click the bar selects that target; the hex input edits live.
+    // Bar interactions: click a button to choose which target the picker +
+    // swatches edit (the live hex shows + edits under the picker).
     for (const bar of allBars) {
-      bar.addEventListener("click", (e) => {
-        if (e.target === bar._inp) return; // the input manages its own focus
-        selectTarget(bar._key);
-      });
-      bar._inp.addEventListener("mousedown", (e) => e.stopPropagation());
-      bar._inp.addEventListener("focus", () => { selectTarget(bar._key); bar._inp.select(); });
-      bar._inp.addEventListener("input", () => {
-        let v = bar._inp.value.trim();
-        if (!v.startsWith("#")) v = "#" + v;
-        if (/^#[0-9a-f]{6}$/i.test(v)) {
-          if (bar._key === "bg") c.backgroundColor = v;
-          else c.fontColor = v;
-          picker.setColor(v);
-          syncBars(); syncSwSel(); this._updatePreview();
-        }
-      });
-      bar._inp.addEventListener("keydown", (e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") bar._inp.blur();
-      });
-      bar._inp.addEventListener("blur", () => syncBars());
+      bar.addEventListener("click", () => selectTarget(bar._key));
     }
 
     for (const { el: t, hex } of swTiles) {
