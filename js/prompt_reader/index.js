@@ -330,8 +330,8 @@ function hideNativeImageCombo(node) {
   requestAnimationFrame(() => {
     for (const w of (node.widgets || [])) {
       if (!w || w.name === "pixaroma_prompt_reader_ui") continue;
-      if (w.element) w.element.style.display = "none";
-      if (w.inputEl) w.inputEl.style.display = "none";
+      const _el = w.element || w.inputEl; // prefer .element; .inputEl only on old builds (no deprecation warning)
+      if (_el) _el.style.display = "none";
     }
   });
   return imageWidget;

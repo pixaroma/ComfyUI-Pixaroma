@@ -114,11 +114,12 @@ export function hideJsonWidget(widgets, widgetName) {
     // stay hidden in BOTH renderers, so a static true is correct here.
     if (!w.options) w.options = {};
     w.options.canvasOnly = true;
-    if (w.element) w.element.style.display = "none";
-    requestAnimationFrame(() => {
-      if (w.element) w.element.style.display = "none";
-      if (w.inputEl) w.inputEl.style.display = "none";
-    });
+    // Prefer the modern widget.element; fall back to the deprecated widget.inputEl
+    // only on older builds that lack .element. The || short-circuits, so .inputEl
+    // is never READ when .element exists -> no "inputEl is deprecated" warning.
+    const hideEl = () => { const el = w.element || w.inputEl; if (el) el.style.display = "none"; };
+    hideEl();
+    requestAnimationFrame(hideEl);
   }
   return w;
 }

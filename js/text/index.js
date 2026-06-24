@@ -283,16 +283,16 @@ function hideNativeTextWidget(node) {
     w.computeSize = () => [0, -4];
     if (!w.options) w.options = {};
     w.options.canvasOnly = true;
-    if (w.element) w.element.style.display = "none";
-    if (w.inputEl) w.inputEl.style.display = "none";
+    const _el = w.element || w.inputEl; // prefer .element; .inputEl only on old builds (no deprecation warning)
+    if (_el) _el.style.display = "none";
   }
   // Vue may DOM-render a widget AFTER nodeCreated, so re-hide on the next
   // animation frame as a belt-and-braces.
   requestAnimationFrame(() => {
     for (const w of (node.widgets || [])) {
       if (!w || w.name === "pix_text_ui") continue;
-      if (w.element) w.element.style.display = "none";
-      if (w.inputEl) w.inputEl.style.display = "none";
+      const _el = w.element || w.inputEl; // prefer .element; .inputEl only on old builds (no deprecation warning)
+      if (_el) _el.style.display = "none";
     }
   });
   return textWidget;
