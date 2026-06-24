@@ -873,6 +873,11 @@ function snapResizeCorner(x, y, opts) {
   const groupedNodes = new Set();
   for (const t of targets) {
     if (t.kind !== "group") continue;
+    // Skip the group BEING resized: we WANT its edge to snap to its OWN contained
+    // nodes (so you can fit the frame snugly to its contents). Once the edge passes
+    // a node's center the node counts as "contained", and excluding it here is
+    // exactly what stopped the bottom edge from ever reaching that node's bottom.
+    if (opts.excludeGroupId != null && t.id === opts.excludeGroupId) continue;
     for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
   }
   let bx = null, by = null; // { delta, target, rect }
