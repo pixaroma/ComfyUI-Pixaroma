@@ -361,23 +361,33 @@ export function injectCSS() {
 }
 .pix-lbl-spinbtns button:last-child { border-top: 1px solid #3a3a40; }
 .pix-lbl-spinbtns button:hover { background: rgba(255,255,255,0.12); color: #fff; }
-/* Background / Text color buttons (Group chip style): a dark rounded button
-   with a live swatch chip + label. They select which target the picker +
-   swatches edit (orange border = active); the live, editable hex shows under
-   the picker (the picker's own hex field), which follows the selected button. */
-.pix-lbl-cbars { display: flex; gap: 8px; margin-bottom: 10px; }
+/* Background / Text color buttons — Prompt-Multi-style segmented pills: solid
+   orange when active, gray when inactive. They select which target the picker +
+   swatches edit; the selected colour's label + editable hex code shows in the
+   bar under the picker (.pix-lbl-hexbar). */
+.pix-lbl-cbars { display: flex; gap: 6px; margin-bottom: 10px; }
 .pix-lbl-cbar {
-    flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
-    background: #161616; border: 1px solid #3a3a40; border-radius: 6px;
-    padding: 8px 9px; cursor: pointer; transition: border-color 0.12s;
+    flex: 1 1 0; min-width: 0; box-sizing: border-box;
+    padding: 9px 8px; border-radius: 6px; cursor: pointer; text-align: center;
+    font: 13px system-ui, sans-serif;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.85); transition: background 0.12s, color 0.12s, border-color 0.12s;
 }
-.pix-lbl-cbar:hover { border-color: #555; }
-.pix-lbl-cbar.active { border-color: ${BRAND}; }
-.pix-lbl-cbar-chip {
+.pix-lbl-cbar:hover { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+.pix-lbl-cbar.active { background: ${BRAND}; border-color: ${BRAND}; color: #fff; }
+/* Hex bar under the picker (Group "Body #hex" style): dark interior, swatch
+   chip, the selected target's label (gray) + its editable hex code (orange).
+   It replaces the picker's own hex field (hidden below), and the label switches
+   between "Background" and "Text" with the selected button. */
+.pix-lbl-hexbar {
+    display: flex; align-items: center; gap: 8px; margin-top: 8px;
+    background: #161616; border: 1px solid #3a3a40; border-radius: 6px; padding: 7px 9px;
+}
+.pix-lbl-hexbar-chip {
     width: 18px; height: 18px; border-radius: 4px; flex: 0 0 auto;
     border: 1px solid rgba(255,255,255,0.2); box-sizing: border-box;
 }
-.pix-lbl-cbar-chip.is-transp {
+.pix-lbl-hexbar-chip.is-transp {
     background-color: #3a3a3a;
     background-image:
       linear-gradient(45deg, transparent 44%, #e0504a 44%, #e0504a 56%, transparent 56%),
@@ -386,8 +396,12 @@ export function injectCSS() {
     background-size: 100% 100%, 8px 8px, 8px 8px;
     background-position: 0 0, 0 0, 4px 4px;
 }
-.pix-lbl-cbar.active .pix-lbl-cbar-k { color: ${BRAND}; }
-.pix-lbl-cbar-k { font: 12px system-ui, sans-serif; color: #bbb; flex: 0 0 auto; }
+.pix-lbl-hexbar-k { font: 11px system-ui, sans-serif; color: #8a8a90; flex: 0 0 auto; }
+.pix-lbl-hexbar-v {
+    flex: 1 1 auto; min-width: 0; background: transparent; border: none; outline: none;
+    color: ${BRAND}; font: 12.5px "Consolas", monospace; letter-spacing: 0.03em; padding: 0;
+}
+.pix-lbl-hexbar-v::placeholder { color: #6a6a70; font-style: italic; letter-spacing: 0; }
 /* Colors: SV picker (left) | swatch grid (right), filling the full width.
    The grid is a perfect 9x4 of the 36 palette colours, so it always fills
    complete rows (no empty cells) whether or not Transparent is shown. */
@@ -430,6 +444,9 @@ export function injectCSS() {
 .pix-lbl-panel .pix-cp { width: 100%; max-width: none; margin: 0; min-width: 0; }
 .pix-lbl-panel .pix-cp-sv-row { min-width: 0; }
 .pix-lbl-panel .pix-cp-sv { height: 170px; min-width: 0; }
+/* Hide the picker's own hex field — our labelled .pix-lbl-hexbar replaces it
+   (it shows the selected target's name + code and changes with the buttons). */
+.pix-lbl-panel .pix-cp-hexrow { display: none; }
 `;
   document.head.appendChild(style);
 }

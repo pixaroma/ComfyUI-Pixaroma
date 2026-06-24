@@ -276,19 +276,16 @@ export class LabelEditor {
     const curColorFor = (k) => (k === "bg" ? c.backgroundColor : c.fontColor);
     const isTransp = () => c.backgroundColor === "transparent";
 
-    // Two color buttons (Background / Text) — chip + label. They select which
-    // target the picker + swatches edit; the live hex shows under the picker
-    // (the picker's own hex field), which follows the selected button.
+    // Two color buttons (Background / Text) — Prompt-Multi-style segmented pills
+    // (solid orange = active, gray = inactive). They select which target the
+    // picker + swatches edit; the selected colour's label + editable hex code
+    // shows in the bar UNDER the picker (Group "Body #hex" style).
     const bars = el("div", "pix-lbl-cbars");
     const mkBar = (key, text) => {
       const bar = el("button", "pix-lbl-cbar");
       bar.type = "button";
-      const chip = el("span", "pix-lbl-cbar-chip");
-      const k = el("span", "pix-lbl-cbar-k");
-      k.textContent = text;
-      bar.appendChild(chip);
-      bar.appendChild(k);
-      bar._key = key; bar._chip = chip;
+      bar.textContent = text;
+      bar._key = key;
       bars.appendChild(bar);
       return bar;
     };
@@ -319,13 +316,7 @@ export class LabelEditor {
     transBtn.title = "Transparent background";
 
     const syncBars = () => {
-      for (const bar of allBars) {
-        const cur = curColorFor(bar._key);
-        const tr = bar._key === "bg" && cur === "transparent";
-        bar._chip.classList.toggle("is-transp", tr);
-        bar._chip.style.background = tr ? "" : cur;
-        bar.classList.toggle("active", target === bar._key);
-      }
+      for (const bar of allBars) bar.classList.toggle("active", target === bar._key);
     };
     const syncSwSel = () => {
       const cur = curColorFor(target);
@@ -347,14 +338,58 @@ export class LabelEditor {
         if (!color) return;
         if (target === "bg") c.backgroundColor = color;
         else c.fontColor = color;
-        syncBars(); syncSwSel(); this._updatePreview();
+        syncBars(); syncSwSel(); syncHexBar(); this._updatePreview();
       },
     });
     this._picker = picker;
-    // Layout: SV picker (left) | swatch grid + Transparent (right), full width.
+
+    // Hex bar UNDER the picker (Group "Body #hex" style): chip + the selected
+    // target's label ("Background" / "Text") + its editable hex code in orange.
+    // It follows the selected button; the picker's own hex field is hidden (CSS).
+    const hexBar = el("div", "pix-lbl-hexbar");
+    const hexChip = el("span", "pix-lbl-hexbar-chip");
+    const hexK = el("span", "pix-lbl-hexbar-k");
+    const hexV = document.createElement("input");
+    hexV.type = "text";
+    hexV.className = "pix-lbl-hexbar-v";
+    hexV.spellcheck = false;
+    hexV.setAttribute("aria-label", "selected color hex");
+    hexBar.appendChild(hexChip);
+    hexBar.appendChild(hexK);
+    hexBar.appendChild(hexV);
+
+    const syncHexBar = () => {
+      hexK.textContent = target === "bg" ? "Background" : "Text";
+      const cur = curColorFor(target);
+      const tr = target === "bg" && cur === "transparent";
+      hexChip.classList.toggle("is-transp", tr);
+      hexChip.style.background = tr ? "" : cur;
+      if (document.activeElement !== hexV) hexV.value = tr ? "" : cur;
+      hexV.placeholder = tr ? "transparent" : "";
+    };
+    hexV.addEventListener("mousedown", (e) => e.stopPropagation());
+    hexV.addEventListener("focus", () => hexV.select());
+    hexV.addEventListener("input", () => {
+      let v = hexV.value.trim();
+      if (!v.startsWith("#")) v = "#" + v;
+      if (/^#[0-9a-f]{6}$/i.test(v)) {
+        if (target === "bg") c.backgroundColor = v;
+        else c.fontColor = v;
+        picker.setColor(v);
+        syncBars(); syncSwSel(); syncHexBar(); this._updatePreview();
+      }
+    });
+    hexV.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") hexV.blur();
+    });
+    hexV.addEventListener("blur", () => syncHexBar());
+
+    // Layout: SV picker + hex bar (left) | swatch grid + Transparent (right).
     const colorRow = el("div", "pix-lbl-colorrow");
     const pickerCol = el("div", "pix-lbl-pickercol");
     pickerCol.appendChild(picker.element);
+    pickerCol.appendChild(hexBar);
     const swatchCol = el("div", "pix-lbl-swatchcol");
     swatchCol.appendChild(swGrid);
     swatchCol.appendChild(transBtn);
@@ -366,7 +401,7 @@ export class LabelEditor {
       target = k;
       const cur = curColorFor(k);
       picker.setColor(k === "bg" && cur === "transparent" ? "#333333" : cur);
-      syncBars(); syncSwSel(); syncTransVis();
+      syncBars(); syncSwSel(); syncTransVis(); syncHexBar();
     };
 
     // Bar interactions: click a button to choose which target the picker +
@@ -380,16 +415,16 @@ export class LabelEditor {
         if (target === "bg") c.backgroundColor = hex;
         else c.fontColor = hex;
         picker.setColor(hex);          // move the SV marker to the picked swatch
-        syncBars(); syncSwSel(); this._updatePreview();
+        syncBars(); syncSwSel(); syncHexBar(); this._updatePreview();
       };
     }
     transBtn.onclick = () => {
       if (target !== "bg") return;     // transparent is Background-only
       c.backgroundColor = "transparent";
-      syncBars(); syncSwSel(); this._updatePreview();
+      syncBars(); syncSwSel(); syncHexBar(); this._updatePreview();
     };
 
-    syncBars(); syncSwSel(); syncTransVis();
+    syncBars(); syncSwSel(); syncTransVis(); syncHexBar();
     body.appendChild(colorSection);
 
     // ── Spacing & Style — 2x2 grid of slider + number + spinner
