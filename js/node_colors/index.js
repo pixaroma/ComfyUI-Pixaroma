@@ -1219,52 +1219,6 @@ function openGroupColorsPalette(targets, group) {
   let hex = captureGroupColor(group);
   const applyNow = () => applyGroupColor(targets, hex);
 
-  // ── Per-group display sliders (Transparency + Interior fill), shown only
-  // when Group Pixaroma styling is on. Stored on group.flags (serialize),
-  // read by Group Pixaroma's renderer. Native groups ignore the flags. ──
-  const groupsStylingOn = app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.Enabled");
-  if (groupsStylingOn !== false) {
-    const sliderRow = (labelText, title, min, max, step, initVal, fmt, onVal) => {
-      const lbl = document.createElement("div");
-      lbl.className = "pix-nc-presetlbl"; lbl.style.marginTop = "0"; lbl.textContent = labelText;
-      modal.appendChild(lbl);
-      const row = document.createElement("div");
-      row.style.cssText = "display:flex;align-items:center;gap:10px;padding:0 0 8px;";
-      const s = document.createElement("input");
-      s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step);
-      s.title = title;
-      s.className = "pix-nc-slider";
-      s.value = String(initVal);
-      const setFill = () => { const pct = (max === min) ? 0 : ((Number(s.value) - min) / (max - min)) * 100; s.style.setProperty("--fill", Math.max(0, Math.min(100, pct)) + "%"); };
-      setFill();
-      const v = document.createElement("span");
-      v.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;";
-      v.textContent = fmt(initVal);
-      s.addEventListener("input", () => {
-        const n = Number(s.value);
-        v.textContent = fmt(n);
-        setFill();
-        for (const g of targets) {
-          g.flags = g.flags || {};
-          onVal(g, n);
-          if (typeof g.setDirtyCanvas === "function") g.setDirtyCanvas(false, true);
-        }
-        app.graph?.setDirtyCanvas(true, true);
-      });
-      row.appendChild(s); row.appendChild(v);
-      modal.appendChild(row);
-    };
-    const initA = Math.round(Math.max(0.2, Math.min(1, Number.isFinite(group.flags?.pixGroupAlpha) ? group.flags.pixGroupAlpha : 1)) * 100);
-    sliderRow("Transparency", "Dim the whole group color so the title stays readable (100% = full color).",
-      20, 100, 5, initA, (n) => n + "%", (g, n) => { g.flags.pixGroupAlpha = Math.max(0.2, Math.min(1, n / 100)); });
-    const globalInt = Number(app.ui?.settings?.getSettingValue?.("Pixaroma.Groups.InteriorStrength"));
-    const baseInt = Number.isFinite(group.flags?.pixInteriorStrength)
-      ? group.flags.pixInteriorStrength * 100
-      : (Number.isFinite(globalInt) ? globalInt : 12);
-    sliderRow("Interior fill", "How strongly the group body is tinted (per-group; the Settings value is the default).",
-      0, 40, 1, Math.round(Math.max(0, Math.min(40, baseInt))), (n) => String(n), (g, n) => { g.flags.pixInteriorStrength = Math.max(0, Math.min(40, n)) / 100; });
-  }
-
   // ── Picker + favourites row ──
   const prow = document.createElement("div"); prow.className = "pix-nc-prow";
   const pickerWrap = document.createElement("div"); pickerWrap.className = "pix-nc-pickerwrap";
@@ -1685,17 +1639,10 @@ app.registerExtension({
     // (The "\" shortcut is now registered via commands/keybindings above, so it
     // shows in Settings → Keybindings and is rebindable — no raw listener here.)
 
-    // Expose the group color palette so other Pixaroma canvas features (Group
-    // Pixaroma) can open the exact same picker without re-importing this module
-    // (importing an extension entry risks a second evaluation / double menu
-    // wiring). Read-only handles to two module-scope fns; safe to call anytime.
+    // The custom Pixaroma group (js/pixgroup) opens its styling through this
+    // color tool — node-style title/body picker + opacity + font sliders — and
+    // shares the session color clipboard with nodes (its right-click Copy/Paste).
     try {
-      window.PixaromaGroupColors = {
-        open: openGroupColorsPalette,
-        getTargets: getTargetGroups,
-      };
-      // The custom Pixaroma group (js/pixgroup) opens its styling through this
-      // same color tool — node-style title/body picker + opacity + font sliders.
       window.PixaromaNodeColors = {
         openPixGroup: openPixGroupPalette,
         // Shared session color clipboard, so the Pixaroma group right-click menu

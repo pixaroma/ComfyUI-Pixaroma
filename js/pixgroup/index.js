@@ -20,9 +20,11 @@ import { openHelpPopup } from "../shared/help.mjs";
 //   grab the HEADER to move (contained nodes follow), the CORNER to resize.
 // • Create / rename / delete via the canvas right-click menu.
 //
-// Touches NOTHING in js/group_pixaroma, js/node_colors, or js/align. Purely
-// additive. If the feel passes: add color (Node Colors palette) + Align
-// support, port the header buttons, then retire the native-group overlay.
+// This is THE Pixaroma group system (the old native-group styling overlay was
+// retired). It owns color (via the Node Colors palette, through the
+// window.PixaromaNodeColors bridge), header buttons (Run/Mute/Bypass/Fold),
+// multi-select, resize, duplicate, and nesting. Native ComfyUI groups still
+// exist but render in ComfyUI's plain style.
 
 const BRAND = "#f66744";
 const RUN_GREEN = "#3ec371";  // a folded group lights up green while a member runs
