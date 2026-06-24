@@ -1419,19 +1419,25 @@ function openPixGroupPalette(g) {
     const row = document.createElement("div"); row.style.cssText = "display:flex;align-items:center;gap:10px;padding:0;";
     const s = document.createElement("input"); s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step); s.value = String(get());
     s.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
-    // editable number field (type a value + Enter / blur; Esc cancels)
+    // editable number + up/down spinner arrows (type a value + Enter / blur; Esc
+    // cancels; click an arrow or press ArrowUp/Down to step by one)
+    const vWrap = document.createElement("div");
+    vWrap.style.cssText = "display:flex;align-items:stretch;flex:0 0 auto;height:22px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:4px;overflow:hidden;";
     const v = document.createElement("input"); v.type = "text"; v.value = fmt(get());
-    v.style.cssText = "width:52px;min-width:52px;text-align:right;font-size:12px;color:#ddd;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:1px 5px;outline:none;";
+    v.style.cssText = "width:46px;min-width:46px;text-align:right;font-size:12px;color:#ddd;background:transparent;border:none;outline:none;padding:0 4px;";
+    const spin = document.createElement("div"); spin.style.cssText = "display:flex;flex-direction:column;width:15px;flex:0 0 auto;border-left:1px solid rgba(255,255,255,0.12);";
+    const up = document.createElement("button"); up.type = "button"; up.textContent = "▲";
+    const dn = document.createElement("button"); dn.type = "button"; dn.textContent = "▼";
+    const sbtn = "flex:1 1 0;border:none;background:rgba(255,255,255,0.04);color:#aaa;font-size:7px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;";
+    up.style.cssText = sbtn; dn.style.cssText = sbtn + "border-top:1px solid rgba(255,255,255,0.12);";
+    spin.appendChild(up); spin.appendChild(dn); vWrap.appendChild(v); vWrap.appendChild(spin);
     s.addEventListener("input", () => { const n = Number(s.value); set(n); v.value = fmt(n); pixRepaint(); });
-    const commitV = () => {
-      const raw = parseFloat(v.value);
-      if (Number.isFinite(raw)) {
-        let n = parse ? parse(raw) : raw;
-        n = Math.max(min, Math.min(max, Math.round(n / step) * step));
-        set(n); s.value = String(n); pixRepaint();
-      }
-      v.value = fmt(get());
-    };
+    const apply = (n) => { n = Math.max(min, Math.min(max, Math.round(n / step) * step)); set(n); s.value = String(n); v.value = fmt(n); pixRepaint(); };
+    const stepBy = (dir) => apply(get() + dir * step);
+    const commitV = () => { const raw = parseFloat(v.value); if (Number.isFinite(raw)) apply(parse ? parse(raw) : raw); else v.value = fmt(get()); };
+    for (const b of [up, dn]) { b.addEventListener("mousedown", (e) => e.stopPropagation()); b.addEventListener("pointerdown", (e) => e.stopPropagation()); }
+    up.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); stepBy(1); });
+    dn.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); stepBy(-1); });
     v.addEventListener("mousedown", (e) => e.stopPropagation());
     v.addEventListener("pointerdown", (e) => e.stopPropagation());
     v.addEventListener("focus", () => v.select());
@@ -1439,9 +1445,11 @@ function openPixGroupPalette(g) {
       e.stopPropagation();
       if (e.key === "Enter") { e.preventDefault(); commitV(); v.blur(); }
       else if (e.key === "Escape") { e.preventDefault(); v.value = fmt(get()); v.blur(); }
+      else if (e.key === "ArrowUp") { e.preventDefault(); stepBy(1); }
+      else if (e.key === "ArrowDown") { e.preventDefault(); stepBy(-1); }
     });
     v.addEventListener("blur", commitV);
-    row.appendChild(s); row.appendChild(v); modal.appendChild(row);
+    row.appendChild(s); row.appendChild(vWrap); modal.appendChild(row);
     sliderInputs.push({ s, v, get, fmt });
   };
   sliderRow("Title opacity", 0.2, 1, 0.01, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => Math.round(n * 100) + "%", (x) => x / 100);
