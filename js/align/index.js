@@ -192,7 +192,7 @@ app.registerExtension({
     installPointerHook();
     installDrawHook();
     // Group Pixaroma's pixgroup drag calls this for its snap (it owns its own move).
-    try { window.PixaromaAlign = { snapMovingRect, endExternalDrag: clearExternalGuides }; } catch (_e) {}
+    try { window.PixaromaAlign = { snapMovingRect, snapResizeCorner, endExternalDrag: clearExternalGuides }; } catch (_e) {}
   },
 });
 
@@ -718,6 +718,13 @@ function handleGroupDrag(c, group, e) {
     if (t.ref === group) continue;                                  // don't snap to self
     if (t.kind === "node" && di.containedSet.has(t.ref)) continue;  // nor to own children
     if (t.kind === "node" && groupedNodes.has(t.ref)) continue;     // nor to other groups' children
+    // A Pixaroma group INSIDE this native group is carried with it (Group Pixaroma
+    // moves it on the group drag), so it's a moving target → skip it, else the group
+    // wiggles trying to snap to something that follows it.
+    if (t.kind === "pixgroup") {
+      const r = t.rect;
+      if (r.x >= gRect.x && r.y >= gRect.y && r.x + r.w <= gRect.x + gRect.w && r.y + r.h <= gRect.y + gRect.h) continue;
+    }
     if (t.collapsed) continue;
     const oRect = t.rect;
     const dxc = Math.max(0, Math.max(oRect.x - (movingRect.x + movingRect.w), movingRect.x - (oRect.x + oRect.w)));
@@ -801,6 +808,50 @@ function snapMovingRect(rect, opts) {
   pushAlignedGuides(finalRect, guideTargets, skip);
   c.setDirty?.(true, true);
   return { dx, dy };
+}
+
+// Snap a RESIZE corner (the cursor point) to nearby target edges, one axis each.
+// Returns the snapped { x, y } for the dragged corner + draws a guide per snapped
+// axis. Used by Group Pixaroma's pixgroup corner-resize.
+function snapResizeCorner(x, y, opts) {
+  opts = opts || {};
+  const c = app.canvas;
+  if (!state.enabled || !c || opts.bypass) { clearExternalGuides(); return { x, y }; }
+  const scale = c.ds?.scale || 1;
+  const snapGraph = state.snapDistPx / scale;
+  const stickyG = snapGraph * 1.5;
+  const exPix = new Set(opts.excludePixIds || []);
+  const targets = alignTargets(c);
+  const groupedNodes = new Set();
+  for (const t of targets) {
+    if (t.kind !== "group") continue;
+    for (const n of groupContainedNodes(c, t.ref, t.rect)) groupedNodes.add(n);
+  }
+  let bx = null, by = null; // { delta, target, rect }
+  for (const t of targets) {
+    if (t.kind === "pixgroup" && exPix.has(t.id)) continue;
+    if (t.kind === "node" && groupedNodes.has(t.ref)) continue;
+    if (t.collapsed) continue;
+    const oE = rectEdges(t.rect);
+    for (const tv of [oE.left, oE.right, oE.centerX]) {
+      const d = tv - x;
+      const allowed = (state._extStickyX != null && Math.abs(tv - state._extStickyX) < 0.01) ? stickyG : snapGraph;
+      if (Math.abs(d) <= allowed && (!bx || Math.abs(d) < Math.abs(bx.delta))) bx = { delta: d, target: tv, rect: t.rect };
+    }
+    for (const tv of [oE.top, oE.bottom, oE.centerY]) {
+      const d = tv - y;
+      const allowed = (state._extStickyY != null && Math.abs(tv - state._extStickyY) < 0.01) ? stickyG : snapGraph;
+      if (Math.abs(d) <= allowed && (!by || Math.abs(d) < Math.abs(by.delta))) by = { delta: d, target: tv, rect: t.rect };
+    }
+  }
+  state._extStickyX = bx ? bx.target : null;
+  state._extStickyY = by ? by.target : null;
+  const sx = bx ? x + bx.delta : x, sy = by ? y + by.delta : y;
+  state.activeGuides = [];
+  if (bx) pushGuide("X", bx.target, [Math.min(sy, bx.rect.y), Math.max(sy, bx.rect.y + bx.rect.h)]);
+  if (by) pushGuide("Y", by.target, [Math.min(sx, by.rect.x), Math.max(sx, by.rect.x + by.rect.w)]);
+  c.setDirty?.(true, true);
+  return { x: sx, y: sy };
 }
 
 function onWindowPointerMove(e) {

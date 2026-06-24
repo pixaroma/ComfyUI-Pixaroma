@@ -576,11 +576,15 @@ function onMove(e) {
     for (const s of starts) { s.gr.x = s.x + ddx + sdx; s.gr.y = s.y + ddy + sdy; }
     for (const s of _drag.nodeStarts) { s.n.pos[0] = s.x + ddx + sdx; s.n.pos[1] = s.y + ddy + sdy; }
   } else {
-    // resize from any corner: grow from the fixed anchor toward the cursor (single group)
+    // resize from any corner: grow from the fixed anchor toward the cursor (single
+    // group). Align Pixaroma: snap the dragged CORNER to nearby node/group edges.
     const g = _drag.g;
     const c = _drag.corner, ax = _drag.ax, ay = _drag.ay;
-    const w = Math.max(MIN_W, c.includes("l") ? ax - p[0] : p[0] - ax);
-    const h = Math.max(MIN_H, c.includes("t") ? ay - p[1] : p[1] - ay);
+    let cx = p[0], cy = p[1];
+    const snap = window.PixaromaAlign?.snapResizeCorner?.(cx, cy, { excludePixIds: [g.id], bypass: e.shiftKey });
+    if (snap) { cx = snap.x; cy = snap.y; }
+    const w = Math.max(MIN_W, c.includes("l") ? ax - cx : cx - ax);
+    const h = Math.max(MIN_H, c.includes("t") ? ay - cy : cy - ay);
     g.w = w; g.h = h;
     g.x = c.includes("l") ? ax - w : ax;
     g.y = c.includes("t") ? ay - h : ay;
@@ -591,10 +595,9 @@ function onMove(e) {
 
 function onUp(e) {
   if (!_drag) return;
-  const wasMove = _drag.mode === "move";
   _drag = null;
   stopWin();
-  if (wasMove) { try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
+  try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} // clear snap guides (move OR resize)
   markChanged();
 }
 
@@ -1258,7 +1261,7 @@ app.registerExtension({
         // For Align Pixaroma: every visible group's rect (snap TARGETS) + whether a
         // group is being dragged (so Align bails its node detector while we own the drag).
         allRects: () => ensureGroups().filter((g) => !isHiddenGroup(g)).map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h })),
-        isDragging: () => !!(_drag && _drag.mode === "move"),
+        isDragging: () => !!_drag, // move OR resize — Align bails its node detector + keeps our guides
       };
     } catch (_e) {}
   },
