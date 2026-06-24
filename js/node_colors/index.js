@@ -829,6 +829,18 @@ function buildHexBar(label, getVal, onCommit) {
   });
   const set = (v) => { inp.value = v || ""; chip.style.background = v || "transparent"; };
   set(getVal());
+  // Click the swatch to copy the color code (with a brief green flash).
+  chip.style.cursor = "pointer";
+  chip.title = "Copy color code";
+  chip.addEventListener("mousedown", (e) => e.stopPropagation());
+  chip.addEventListener("pointerdown", (e) => e.stopPropagation());
+  chip.addEventListener("click", () => {
+    const hex = (inp.value || "").trim();
+    if (!hex) return;
+    const flash = () => { const o = chip.style.boxShadow; chip.style.boxShadow = "0 0 0 2px #3ec371"; setTimeout(() => { chip.style.boxShadow = o; }, 600); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(hex).then(flash).catch(() => {}); }
+    else { try { const ta = document.createElement("textarea"); ta.value = hex; ta.style.cssText = "position:fixed;opacity:0;"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); flash(); } catch (_e) {} }
+  });
   return { el, set };
 }
 
@@ -1401,21 +1413,41 @@ function openPixGroupPalette(g) {
 
   // ── extra sliders ComfyUI groups can't do: Title/Body opacity + Font size ──
   const sliderInputs = [];
-  const sliderRow = (labelText, min, max, step, get, set, fmt) => {
+  const sliderRow = (labelText, min, max, step, get, set, fmt, parse) => {
     const lbl = document.createElement("div"); lbl.className = "pix-nc-presetlbl"; lbl.style.marginTop = "11px"; lbl.textContent = labelText;
     modal.appendChild(lbl);
     const row = document.createElement("div"); row.style.cssText = "display:flex;align-items:center;gap:10px;padding:0;";
     const s = document.createElement("input"); s.type = "range"; s.min = String(min); s.max = String(max); s.step = String(step); s.value = String(get());
     s.style.cssText = "flex:1 1 auto;accent-color:#f66744;cursor:pointer;";
-    const v = document.createElement("span"); v.style.cssText = "min-width:40px;text-align:right;font-size:12px;color:#bbb;"; v.textContent = fmt(get());
-    s.addEventListener("input", () => { const n = Number(s.value); set(n); v.textContent = fmt(n); pixRepaint(); });
+    // editable number field (type a value + Enter / blur; Esc cancels)
+    const v = document.createElement("input"); v.type = "text"; v.value = fmt(get());
+    v.style.cssText = "width:52px;min-width:52px;text-align:right;font-size:12px;color:#ddd;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:1px 5px;outline:none;";
+    s.addEventListener("input", () => { const n = Number(s.value); set(n); v.value = fmt(n); pixRepaint(); });
+    const commitV = () => {
+      const raw = parseFloat(v.value);
+      if (Number.isFinite(raw)) {
+        let n = parse ? parse(raw) : raw;
+        n = Math.max(min, Math.min(max, Math.round(n / step) * step));
+        set(n); s.value = String(n); pixRepaint();
+      }
+      v.value = fmt(get());
+    };
+    v.addEventListener("mousedown", (e) => e.stopPropagation());
+    v.addEventListener("pointerdown", (e) => e.stopPropagation());
+    v.addEventListener("focus", () => v.select());
+    v.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); commitV(); v.blur(); }
+      else if (e.key === "Escape") { e.preventDefault(); v.value = fmt(get()); v.blur(); }
+    });
+    v.addEventListener("blur", commitV);
     row.appendChild(s); row.appendChild(v); modal.appendChild(row);
     sliderInputs.push({ s, v, get, fmt });
   };
-  sliderRow("Title opacity", 0.2, 1, 0.05, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  sliderRow("Body opacity", 0, 0.6, 0.02, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { for (const t of targets) t.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%");
-  sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { for (const t of targets) t.fontSize = n; }, (n) => String(n));
-  const refreshSliders = () => { for (const si of sliderInputs) { si.s.value = String(si.get()); si.v.textContent = si.fmt(si.get()); } };
+  sliderRow("Title opacity", 0.2, 1, 0.01, () => (Number.isFinite(g.titleAlpha) ? g.titleAlpha : 0.92), (n) => { for (const t of targets) t.titleAlpha = n; }, (n) => Math.round(n * 100) + "%", (x) => x / 100);
+  sliderRow("Body opacity", 0, 0.6, 0.01, () => (Number.isFinite(g.bodyAlpha) ? g.bodyAlpha : 0.12), (n) => { for (const t of targets) t.bodyAlpha = n; }, (n) => Math.round(n * 100) + "%", (x) => x / 100);
+  sliderRow("Font size", 10, 32, 1, () => (Number.isFinite(g.fontSize) ? g.fontSize : 14), (n) => { for (const t of targets) t.fontSize = n; }, (n) => String(n), (x) => x);
+  const refreshSliders = () => { for (const si of sliderInputs) { si.s.value = String(si.get()); si.v.value = si.fmt(si.get()); } };
 
   const scroll = document.createElement("div"); scroll.className = "pix-nc-pal-scroll"; modal.appendChild(scroll);
   const plbl = document.createElement("div"); plbl.className = "pix-nc-presetlbl"; plbl.textContent = "Colors";
