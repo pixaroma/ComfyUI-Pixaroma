@@ -471,6 +471,7 @@ function installDraw() {
   const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
+    try { carryNativeGroupDrags(); } catch (_e) {} // carry our groups while a native group is dragged (both renderers)
     try {
       const gs = ensureGroups();
       if (gs.length) {
@@ -550,6 +551,7 @@ function clickIsOnSelectedNode(p) {
 
 function onDown(e) {
   if (e.button !== 0) return;
+  _lmbDown = true; // left button held: enables the native-group-drag carry (cleared on pointerup/cancel/blur)
   _marqueeRect = null; _marqueeShift = false; // start fresh: drop any stale marquee from an abandoned drag
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return; // only the graph canvas surface
@@ -685,6 +687,7 @@ function onUp(e) {
 // not ours, so on release we ADD any Pixaroma group the marquee rect touched to our
 // selection (non-exclusive — ComfyUI's node/group selection stays).
 function onWinPointerUp() {
+  _lmbDown = false;
   _natGrpDrag = null; _carry = null; // end any native-group / node-drag carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
@@ -710,32 +713,35 @@ function onWinPointerUp() {
   repaint();
 }
 
-// While a NATIVE ComfyUI group is dragged, ComfyUI moves it + its nodes but NOT
-// our Pixaroma groups sitting inside it — so carry them. Detect the drag by the
-// group's own position change (selected_group goes stale; a size change = resize).
-const _natGrpPrev = new WeakMap();  // native group → last {x,y,w,h}
+// While a NATIVE ComfyUI group is dragged, ComfyUI moves it + its nodes but NOT our
+// Pixaroma groups sitting inside it, so carry them. Runs from the DRAW LOOP (every
+// repaint), NOT pointermove: in Nodes 2.0 the native-group title drag does not reach
+// our window pointermove handler, but the canvas still repaints each frame as the
+// group moves and drawGroups reads the live group._pos, so the draw loop catches it
+// in BOTH renderers. Gate on the left button being held (_lmbDown) so a programmatic
+// move / workflow load / undo (button up) is ignored and never carries or dirties.
+const _natGrpPrev = new WeakMap();  // native group -> last {x,y,w,h}
 let _natGrpDrag = null;             // { grp, pix: [our groups snapshotted inside] }
-function trackNativeGroupDrag(e) {
-  const dragging = (e.buttons & 1) === 1;
-  if (!dragging) _natGrpDrag = null;
+let _lmbDown = false;               // left mouse button currently held (gates the carry below)
+function carryNativeGroupDrags() {
   for (const grp of nativeGroups()) {
     const box = natGrpBox(grp); if (!box) continue;
     const prev = _natGrpPrev.get(grp);
-    _natGrpPrev.set(grp, box);
-    if (!prev || !dragging) continue;
+    _natGrpPrev.set(grp, box);           // keep prev fresh every frame, even when idle
+    if (!prev || !_lmbDown) continue;    // only carry during an actual mouse drag
     const dx = box.x - prev.x, dy = box.y - prev.y;
     if ((dx === 0 && dy === 0) || box.w !== prev.w || box.h !== prev.h) continue; // still / resized
-    // First move tick → snapshot our groups whose whole box was inside its PREVIOUS
+    // First move tick: snapshot our groups whose whole box was inside its PREVIOUS
     // box; then translate that fixed set by each tick's delta (their member nodes are
-    // inside the native group too, so ComfyUI moves them — we move only the frames).
+    // inside the native group too, so ComfyUI moves them; we move only the frames).
     if (!_natGrpDrag || _natGrpDrag.grp !== grp) {
       _natGrpDrag = { grp, pix: ensureGroups().filter((o) =>
         o.x >= prev.x && o.y >= prev.y && o.x + o.w <= prev.x + prev.w && o.y + o.h <= prev.y + prev.h) };
     }
-    if (_natGrpDrag.pix.length) {
-      for (const o of _natGrpDrag.pix) { o.x += dx; o.y += dy; }
-      markChanged();
-    }
+    // Positions only: we are already inside onDrawBackground, so the new frame
+    // positions paint THIS frame. ComfyUI's native group move already flags the graph
+    // modified, so no markChanged() here (it would setDirty re-entrantly mid-draw).
+    for (const o of _natGrpDrag.pix) { o.x += dx; o.y += dy; }
   }
 }
 
@@ -822,7 +828,6 @@ function onHover(e) {
     if (_hoverId !== null || _hotBtn !== null) { _hoverId = null; _hotBtn = null; repaint(); }
     return;
   }
-  trackNativeGroupDrag(e);
   trackSelectedNodeDrag(e);
   if (!el) return;
   // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
@@ -1527,6 +1532,7 @@ app.registerExtension({
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
     window.addEventListener("pointerup", onWinPointerUp, true);
+    window.addEventListener("pointercancel", onWinPointerUp, true); // also clears _lmbDown / carry on an interrupted drag
     window.addEventListener("dblclick", onDblClick, true);
     window.addEventListener("keydown", onKeyDown, true);
     // Safety net: if focus is lost mid-drag (alt-tab) the browser may emit no
@@ -1534,7 +1540,7 @@ app.registerExtension({
     // it on blur so the next interaction is clean.
     window.addEventListener("blur", () => {
       if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
-      _natGrpDrag = null; _carry = null;
+      _natGrpDrag = null; _carry = null; _lmbDown = false;
       _marqueeRect = null; _marqueeShift = false; // a marquee abandoned by alt-tab must not apply on the return release
     });
     // Expose to the color tool (js/node_colors): the "\" shortcut opens the
