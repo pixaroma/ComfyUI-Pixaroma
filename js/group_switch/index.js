@@ -76,7 +76,7 @@ function writeState(node, patch) {
 // is stable no matter how the list is sorted.
 function decoratedGroups(node) {
   const b = bridge();
-  if (!b || !b.listGroups) return [];
+  if (!b || typeof b.listGroups !== "function") return [];
   const st = readState(node);
   let groups = b.listGroups() || [];
   const nameCount = {};
@@ -111,7 +111,7 @@ function isOn(node, g) {
 // Flip a group, honoring the switching rule across the groups this switch owns.
 function toggleGroup(node, g) {
   const b = bridge();
-  if (!b || !b.setGroupSwitch) return;
+  if (!b || typeof b.setGroupSwitch !== "function") return;
   const st = readState(node);
   const willOn = !isOn(node, g);
   if (st.restriction === "any") {
@@ -134,7 +134,7 @@ function enforceRestriction(node) {
   const st = readState(node);
   if (st.restriction === "any") return;
   const b = bridge();
-  if (!b || !b.setGroupSwitch) return;
+  if (!b || typeof b.setGroupSwitch !== "function") return;
   const groups = visibleGroups(node);
   const onGroups = groups.filter((g) => isOn(node, g));
   if (onGroups.length > 1) for (let i = 1; i < onGroups.length; i++) b.setGroupSwitch(onGroups[i].id, false, st.action);
@@ -143,7 +143,8 @@ function enforceRestriction(node) {
 
 // ── node body render (just the switches) ───────────────────────────────────
 function bodyHeight(node) {
-  const hasBridge = !!(bridge() && bridge().listGroups);
+  const b = bridge();
+  const hasBridge = !!(b && typeof b.listGroups === "function");
   const rows = hasBridge ? visibleGroups(node).length : 0;
   let h = ROOT_PAD + TOP_H;
   if (!hasBridge || rows === 0) h += HINT_H;
@@ -188,12 +189,14 @@ function renderNode(node) {
   const root = node._pixGsRoot;
   if (!root) return;
   const st = readState(node);
+  const b = bridge();
+  const hasBridge = !!(b && typeof b.listGroups === "function");
   const groups = visibleGroups(node);
   // Skip a rebuild when nothing the body shows has changed — keeps the 350ms
   // sync poll from churning the DOM (flicker + lost hover) every tick.
   const sig = JSON.stringify({
     a: st.action, sc: st.scope, so: st.sort, r: st.restriction,
-    has: !!(bridge() && bridge().listGroups),
+    has: hasBridge,
     g: groups.map((g) => [g.id, g.label, g.color, isOn(node, g) ? 1 : 0]),
   });
   if (root._pixGsSig === sig) return;
@@ -209,7 +212,7 @@ function renderNode(node) {
   root.appendChild(top);
 
   const list = el("div", "pix-gs-list");
-  if (!bridge() || !bridge().listGroups) {
+  if (!hasBridge) {
     const h = el("div", "pix-gs-hint"); h.textContent = "Pixaroma groups are not available.";
     list.appendChild(h);
   } else if (!groups.length) {
@@ -327,7 +330,7 @@ function renderPanelBody(node, body) {
   aSec.appendChild(segmented(
     [{ v: "mute", label: "Mute" }, { v: "bypass", label: "Bypass" }],
     st.action,
-    (v) => { writeState(node, { action: v }); renderNode(node); renderPanelBody(node, body); }
+    (v) => { writeState(node, { action: v }); enforceRestriction(node); renderNode(node); renderPanelBody(node, body); }
   ));
   body.appendChild(aSec);
 
@@ -335,7 +338,7 @@ function renderPanelBody(node, body) {
   gSec.appendChild(segmented(
     [{ v: "all", label: "All" }, { v: "pick", label: "Pick" }],
     st.scope,
-    (v) => { writeState(node, { scope: v }); renderNode(node); renderPanelBody(node, body); }
+    (v) => { writeState(node, { scope: v }); enforceRestriction(node); renderNode(node); renderPanelBody(node, body); }
   ));
   if (st.scope === "pick") {
     gSec.appendChild(buildPickArea(node, body));
