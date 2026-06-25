@@ -300,6 +300,7 @@ let _groupClipboard = null;        // copied group frames (Ctrl+C); frame/style 
 let _groupClipActive = false;      // true when OUR groups were the last Ctrl+C (so Ctrl+V is ours)
 let _pasteSeq = 0;                 // cascades repeated Ctrl+V offsets WITHOUT mutating the clipboard
 let _marqueeRect = null;           // last seen ComfyUI marquee rect [x,y,w,h]; add our groups on release
+let _marqueeShift = false;         // was Shift held during the marquee (Shift = add to selection, plain = replace)
 let _hoverId = null;        // group whose buttons are revealed (cursor inside it)
 let _hotBtn = null;         // { gid, key } of the button under the cursor
 let _hoverPt = null;        // last cursor pos in graph coords
@@ -549,6 +550,7 @@ function clickIsOnSelectedNode(p) {
 
 function onDown(e) {
   if (e.button !== 0) return;
+  _marqueeRect = null; _marqueeShift = false; // start fresh: drop any stale marquee from an abandoned drag
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return; // only the graph canvas surface
   const p = screenToGraph(e.clientX, e.clientY);
@@ -686,20 +688,25 @@ function onWinPointerUp() {
   _natGrpDrag = null; _carry = null; // end any native-group / node-drag carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
-  _marqueeRect = null;
+  const shift = _marqueeShift;
+  _marqueeRect = null; _marqueeShift = false;
   const x0 = Math.min(mx, mx + mw), x1 = Math.max(mx, mx + mw);
   const y0 = Math.min(my, my + mh), y1 = Math.max(my, my + mh);
   if (x1 - x0 < 4 && y1 - y0 < 4) return; // ignore a click-sized rect
   const hit = [];
   for (const g of ensureGroups()) {
     if (isHiddenGroup(g)) continue;
-    // ONLY when the whole group box is inside the marquee (like ComfyUI groups) —
-    // so marqueeing a node doesn't grab a big group just because it clipped its edge.
+    // ONLY when the whole group box is inside the marquee (like ComfyUI groups) so
+    // marqueeing a node doesn't grab a big group just because it clipped its edge.
     if (g.x >= x0 && g.x + g.w <= x1 && g.y >= y0 && g.y + g.h <= y1) hit.push(g);
   }
-  if (!hit.length) return;
-  for (const g of hit) _selectedIds.add(g.id); // additive (matches Ctrl-drag)
-  _selectedId = hit[hit.length - 1].id;
+  // A plain marquee REPLACES our group selection (matches ComfyUI's node marquee, so a
+  // fresh marquee elsewhere drops a previously-selected group even when it hits none);
+  // Shift+marquee ADDS to it.
+  if (!shift) { _selectedIds.clear(); _selectedId = null; }
+  else if (!hit.length) return; // Shift + empty rect: nothing to add, leave selection as-is
+  for (const g of hit) _selectedIds.add(g.id);
+  if (hit.length) _selectedId = hit[hit.length - 1].id;
   repaint();
 }
 
@@ -821,7 +828,7 @@ function onHover(e) {
   // Track ComfyUI's marquee rect while it drags, so onWinPointerUp can add our
   // groups to the selection (the marquee already grabs nodes + native groups).
   const dr = app.canvas?.dragging_rectangle;
-  if (dr && dr.length >= 4) _marqueeRect = [dr[0], dr[1], dr[2], dr[3]];
+  if (dr && dr.length >= 4) { _marqueeRect = [dr[0], dr[1], dr[2], dr[3]]; _marqueeShift = !!e.shiftKey; }
   if (e.target !== el) {
     if (_cursorOverride) { el.style.cursor = ""; _cursorOverride = false; }
     if (_hoverId !== null || _hotBtn !== null) { _hoverId = null; _hotBtn = null; repaint(); }
