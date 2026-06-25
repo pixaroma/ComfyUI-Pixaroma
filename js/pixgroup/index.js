@@ -308,22 +308,38 @@ let _hoverPt = null;        // last cursor pos in graph coords
 // can't drift. Buttons sit at the header's right; the count badge to their left.
 // Folded → one Unfold button; expanded → Run / Mute / Bypass / Fold.
 const BSZ = 18, BGAP = 4, BPAD = 8, BICON = 12;
-function headerButtons(g, showButtons) {
+
+// How much of the header chrome shows, set from the "Group header buttons"
+// setting: "always" (everything visible), "compact" (Fold + count stay, the
+// Run/Mute/Bypass actions reveal on hover/select — the default), or "hover"
+// (EVERYTHING, including Fold + the count, hides until hover/select).
+let _btnVis = "compact";
+function mapBtnVis(v) { return v === "Always" ? "always" : v === "Hover only" ? "hover" : "compact"; }
+
+function headerButtons(g, revealed) {
   const hH = headerH(g);
   const bw = 24, bh = 16;
-  // The count badge is ALWAYS flush in the group's top-right corner — it never
-  // drifts when the buttons appear on hover, so the number stays put in every
-  // group (nested or not). Buttons sit to the LEFT of the badge.
-  const badge = { x: g.x + g.w - BPAD - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh };
-  let rx = badge.x - 6;
-  // The fold/unfold toggle is ALWAYS shown; Run/Mute/Bypass reveal on hover/select.
-  const keys = g.folded
-    ? ["unfold"]
-    : (showButtons ? ["run", "mute", "bypass", "fold"] : ["fold"]);
+  // In "hover" mode the count badge also hides until revealed; otherwise it is
+  // ALWAYS flush in the top-right corner (never drifts as buttons appear).
+  const showBadge = (_btnVis !== "hover") || revealed;
+  const badge = { x: g.x + g.w - BPAD - bw, y: g.y + (hH - bh) / 2, w: bw, h: bh, show: showBadge };
+  let rx = showBadge ? badge.x - 6 : g.x + g.w - BPAD;
+  let keys;
+  if (g.folded) {
+    keys = ["unfold"]; // a folded bar always keeps its one Unfold affordance
+  } else {
+    // "always" → all buttons; "compact" → Fold always, actions on reveal;
+    // "hover" → Fold + actions both only on reveal.
+    const showActions = (_btnVis === "always") || revealed;
+    const showFold = (_btnVis !== "hover") || revealed;
+    keys = [];
+    if (showActions) keys.push("run", "mute", "bypass");
+    if (showFold) keys.push("fold");
+  }
   const by = g.y + (hH - BSZ) / 2;
   const btns = [];
   for (let i = keys.length - 1; i >= 0; i--) { rx -= BSZ; btns.unshift({ key: keys[i], x: rx, y: by, w: BSZ, h: BSZ }); rx -= BGAP; }
-  const leftmost = btns.length ? btns[0].x : badge.x;
+  const leftmost = btns.length ? btns[0].x : (showBadge ? badge.x : g.x + g.w - BPAD);
   const titleClipW = Math.max(20, leftmost - 6 - (g.x + 12));
   return { btns, badge, titleClipW };
 }
@@ -402,17 +418,20 @@ function drawOne(ctx, g) {
   ctx.fillText(running ? ("▶ " + runTitle) : (g.title || "Group"), g.x + 12, g.y + hH / 2 + 1);
   ctx.restore();
 
-  // node-count badge (cached; see memberCount — avoids a full node scan per frame)
-  const count = memberCount(g);
+  // node-count badge (cached; see memberCount — avoids a full node scan per frame).
+  // Hidden in "hover only" mode until the group is hovered/selected (badge.show).
   const bd = layout.badge;
-  ctx.fillStyle = tInk === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)";
-  roundRect(ctx, bd.x, bd.y, bd.w, bd.h, 8); ctx.fill();
-  ctx.fillStyle = tInk;
-  ctx.font = "11px 'Segoe UI', system-ui, sans-serif";
-  ctx.textAlign = "center";
-  fillTextVCenter(ctx, String(count), bd.x + bd.w / 2, bd.y + bd.h / 2);
-  ctx.textAlign = "left";
-  ctx.textBaseline = "middle";
+  if (bd.show) {
+    const count = memberCount(g);
+    ctx.fillStyle = tInk === "#ffffff" ? "rgba(255,255,255,0.22)" : "rgba(0,0,0,0.22)";
+    roundRect(ctx, bd.x, bd.y, bd.w, bd.h, 8); ctx.fill();
+    ctx.fillStyle = tInk;
+    ctx.font = "11px 'Segoe UI', system-ui, sans-serif";
+    ctx.textAlign = "center";
+    fillTextVCenter(ctx, String(count), bd.x + bd.w / 2, bd.y + bd.h / 2);
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+  }
 
   // header buttons (fold/unfold always shown; Run/Mute/Bypass reveal on hover/select)
   for (const b of layout.btns) drawButton(ctx, b, g, tInk);
@@ -943,6 +962,43 @@ function toggleMode(g, mode) {
   markChanged();
 }
 
+// ── Group Switch bridge helpers (js/group_switch) ──────────────────────────
+// The Group Switch node controls groups through these. State is READ from the
+// member nodes' live modes — so a switch reflects the group's own header
+// Mute/Bypass button and every other switch (one shared source of truth) — and
+// a flip reuses applyModeDeep so it reaches into subgraphs.
+function groupState(g) {
+  const ns = groupMemberNodes(g);
+  if (!ns.length) return { muted: false, bypassed: false, count: 0 };
+  return { muted: ns.every((n) => n.mode === 2), bypassed: ns.every((n) => n.mode === 4), count: ns.length };
+}
+function setGroupSwitch(id, on, action) {
+  const g = ensureGroups().find((x) => x.id === id);
+  if (!g) return;
+  const ns = groupMemberNodes(g);
+  if (!ns.length) return;
+  const mode = on ? 0 : (action === "bypass" ? 4 : 2);
+  for (const n of ns) applyModeDeep(n, mode);
+  markChanged();
+}
+// Center the viewport on a group + select it — the "locate" affordance the
+// switch's pick list uses to tell same-named groups apart.
+function revealGroup(id) {
+  const g = ensureGroups().find((x) => x.id === id);
+  if (!g) return;
+  selectGroup(g);
+  try {
+    const c = app.canvas, ds = c?.ds, el = c?.canvas;
+    if (ds && el && ds.offset) {
+      const r = el.getBoundingClientRect();
+      const s = ds.scale || 1;
+      ds.offset[0] = (r.width / 2) / s - (g.x + g.w / 2);
+      ds.offset[1] = (r.height / 2) / s - (g.y + g.h / 2);
+    }
+  } catch (_e) {}
+  repaint();
+}
+
 // Fold = collapse the whole group to a slim bar: capture the member ids, shrink the
 // box to a SHORT left-aligned bar (header height + a width that just fits the title
 // + count + unfold button), hide the members (computeVisibleNodes wrap in legacy +
@@ -1229,6 +1285,21 @@ function installPersistence() {
 
 app.registerExtension({
   name: "Pixaroma.PixGroup",
+  settings: [
+    {
+      id: "Pixaroma.PixGroup.ButtonVisibility",
+      name: "Group header buttons",
+      type: "combo",
+      options: ["Always", "Compact", "Hover only"],
+      defaultValue: "Compact",
+      tooltip:
+        "When a Pixaroma group's header buttons show. Always: every button stays visible. " +
+        "Compact: Fold and the node count stay, Run/Mute/Bypass appear on hover or select. " +
+        "Hover only: everything (including Fold and the count) appears only when you hover or select the group.",
+      category: ["👑 Pixaroma", "Group"],
+      onChange: (v) => { _btnVis = mapBtnVis(v); repaint(); },
+    },
+  ],
   // "Group selected nodes" via ComfyUI's command + keybinding system (NOT a raw key
   // listener), so it shows in Settings → Keybindings, any conflict is surfaced there,
   // and the user can rebind it if another extension also wants G. Core bindings take
@@ -1286,6 +1357,9 @@ app.registerExtension({
     installPersistence();
     installFoldHooks();
     installExecListeners();
+    // onChange only fires when the user changes the setting — read the saved value
+    // once at startup so a non-default choice applies on load.
+    try { const v = app.ui?.settings?.getSettingValue?.("Pixaroma.PixGroup.ButtonVisibility"); if (v) _btnVis = mapBtnVis(v); } catch (_e) {}
     // Pick up groups from a workflow that was already loaded before this ran.
     try {
       const init = app.graph?.extra?.pixaromaGroups;
@@ -1324,6 +1398,12 @@ app.registerExtension({
         // group is being dragged (so Align bails its node detector while we own the drag).
         allRects: () => ensureGroups().filter((g) => !isHiddenGroup(g)).map((g) => ({ id: g.id, x: g.x, y: g.y, w: g.w, h: g.h })),
         isDragging: () => !!_drag, // move OR resize — Align bails its node detector + keeps our guides
+        // For the Group Switch node (js/group_switch): list groups, read a group's
+        // live mute/bypass state, flip it, and center the view on one to locate it.
+        listGroups: () => ensureGroups().map((g) => ({ id: g.id, title: g.title || "Group", color: gTitleColor(g) })),
+        getGroupState: (id) => { const g = ensureGroups().find((x) => x.id === id); return g ? groupState(g) : null; },
+        setGroupSwitch,
+        revealGroup,
       };
     } catch (_e) {}
   },
