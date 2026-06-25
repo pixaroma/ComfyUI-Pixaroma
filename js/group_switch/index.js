@@ -36,7 +36,7 @@ const ROW_GAP = 1;         // .pix-gs-list row gap
 const TOP_H = 32;          // .pix-gs-top strip (mute tag + gear) — measured
 const LIST_PAD = 6;        // .pix-gs-list bottom padding + a 2px hair
 const ROOT_PAD = 4;        // .pix-gs-root vertical padding (2 + 2)
-const HINT_H = 42;         // empty / "no groups" hint height
+const HINT_H = 60;         // empty / "no groups" hint (2 lines + 10px pad + list pad)
 
 const DEFAULT_STATE = {
   version: 1,
@@ -449,7 +449,7 @@ function injectCSS() {
     ".pix-gs-tog .k{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#c8c8c8;transition:left .15s,background .15s;}",
     ".pix-gs-tog.on{background:#f66744;}",
     ".pix-gs-tog.on .k{left:18px;background:#fff;}",
-    ".pix-gs-hint{font-size:11.5px;color:rgba(255,255,255,0.42);padding:8px;line-height:1.5;text-align:center;}",
+    ".pix-gs-hint{font-size:11.5px;color:rgba(255,255,255,0.42);padding:10px 16px;line-height:1.5;text-align:center;}",
     ".pix-gs-panel{position:fixed;z-index:10010;width:320px;max-width:94vw;background:#232325;border:1px solid rgba(255,255,255,0.14);border-radius:11px;box-shadow:0 10px 34px rgba(0,0,0,0.5);font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;}",
     ".pix-gs-phead{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid rgba(255,255,255,0.08);color:#fff;font-size:13px;font-weight:500;cursor:move;}",
     ".pix-gs-px{border:0;background:transparent;color:rgba(255,255,255,0.5);font-size:13px;cursor:pointer;padding:2px 7px;border-radius:5px;}",
