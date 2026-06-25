@@ -532,6 +532,21 @@ function stopWin() {
   window.removeEventListener("pointercancel", onUp, true);
 }
 
+// True if the click landed on a node that is part of ComfyUI's current node
+// selection — i.e. the user is grabbing an existing node+group multi-selection to
+// drag it, NOT clicking empty canvas. Used so dragging a selected node does not
+// deselect our co-selected groups.
+function clickIsOnSelectedNode(p) {
+  const sel = app.canvas?.selected_nodes;
+  if (!sel) return false;
+  for (const k in sel) {
+    const n = sel[k]; if (!n || !n.pos) continue;
+    const b = nodeVisualBounds(n);
+    if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) return true;
+  }
+  return false;
+}
+
 function onDown(e) {
   if (e.button !== 0) return;
   const c = app.canvas;
@@ -566,8 +581,8 @@ function onDown(e) {
     if (inHeader(g, p)) {
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleGroupSelection(g); repaint(); return; } // shift/ctrl/cmd = add or remove from selection, no drag
-      if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an unselected group → select only it
-      else { _selectedId = g.id; clearNativeSelection(); }      // already in the selection → keep it, drag them all
+      if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an UNselected group → exclusive select (clears nodes)
+      else { _selectedId = g.id; }                              // already selected → KEEP the whole multi-selection (incl. native nodes) and drag it as one unit
       if (e.altKey) {
         // alt-drag = duplicate the styled frame(s) and drag the COPIES (frame only;
         // the nodes stay with the originals).
@@ -583,6 +598,11 @@ function onDown(e) {
         for (const n of groupMemberNodes(sgrp)) movedNodes.set(String(n.id), n);
         for (const ng of groupMemberGroups(sgrp)) movedGroups.add(ng);
       }
+      // Also carry any SEPARATELY-selected native nodes (a node + group multi-
+      // selection) so dragging the group moves them as one unit AND keeps them
+      // selected (we no longer clearNativeSelection above). Deduped vs members.
+      const nativeSel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
+      for (const n of nativeSel) if (n && n.pos && !movedNodes.has(String(n.id))) movedNodes.set(String(n.id), n);
       const groupStarts = [...movedGroups].map((gr) => ({ gr, x: gr.x, y: gr.y }));
       const nodeStarts = [...movedNodes.values()].map((n) => ({ n, x: n.pos[0], y: n.pos[1] }));
       _drag = { mode: "move", ox: p[0], oy: p[1], groupStarts, nodeStarts };
@@ -590,10 +610,11 @@ function onDown(e) {
     }
   }
   // Clicked the body (likely a node) or empty canvas → deselect OUR groups, but
-  // NOT on a shift/ctrl/cmd-click: that's additive, so keep the group selected and
-  // let the node JOIN the selection (e.g. to wrap both with G). Never consume, so
-  // node-drag / marquee / pan all work normally.
-  if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size) { _selectedId = null; _selectedIds.clear(); repaint(); }
+  // NOT on a shift/ctrl/cmd-click (additive: keep the group, let the node JOIN it),
+  // and NOT when grabbing a node that's part of the current node+group selection
+  // (the user is dragging the whole multi-selection — keep the groups selected).
+  // Never consume, so node-drag / marquee / pan all work normally.
+  if (!(e.shiftKey || e.ctrlKey || e.metaKey) && _selectedIds.size && !clickIsOnSelectedNode(p)) { _selectedId = null; _selectedIds.clear(); repaint(); }
 }
 
 function onMove(e) {
