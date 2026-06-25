@@ -37,6 +37,9 @@ const TOP_H = 32;          // .pix-gs-top strip (mute tag + gear) — measured
 const LIST_PAD = 6;        // .pix-gs-list bottom padding + a 2px hair
 const ROOT_PAD = 4;        // .pix-gs-root vertical padding (2 + 2)
 const HINT_H = 60;         // empty / "no groups" hint (2 lines + 10px pad + list pad)
+const VUE_CHROME = 52;     // Nodes 2.0 only: node.size[1] = bodyHeight + footer
+                           // chip + borders (~52, measured 248 - 196) — used to
+                           // shrink-fit the node (Vue never auto-shrinks).
 
 const DEFAULT_STATE = {
   version: 1,
@@ -146,17 +149,21 @@ function bodyHeight(node) {
   else h += rows * ROW_H + Math.max(0, rows - 1) * ROW_GAP + LIST_PAD;
   return Math.max(MIN_BODY, h);
 }
-// Legacy: snap the node to hug the body EXACTLY and SYNCHRONOUSLY (no rAF).
-// node.computeSize is overridden in setupNode to return the exact body height —
-// the stock computeSize reserves a phantom input/output slot row (a = max(in,
-// out, 1) * NODE_SLOT_HEIGHT) plus per-widget spacing, ~38px of dead space under
-// the switches on this dot-less node. Vue sizes via computeLayoutSize /
-// getMinHeight instead. Never on the load path (dirty-on-load).
+// Snap the node to hug the body EXACTLY and SYNCHRONOUSLY (no rAF), in BOTH
+// renderers. Classic: node.computeSize is overridden in setupNode to return the
+// exact body height (the stock one reserves a phantom slot row + per-widget
+// spacing, ~38px of dead space on this dot-less node). Nodes 2.0: the node
+// auto-GROWS to content but never auto-SHRINKS, so removing groups left it tall
+// with a gap above the footer — re-assert node.size = body + fixed chrome so it
+// hugs on add AND remove. Never on the load path (dirty-on-load); the signature
+// gate in renderNode means this only runs when the group set actually changes.
 function refreshNodeSize(node) {
-  if (isVueNodes() || isGraphLoading()) return;
+  if (isGraphLoading()) return;
   try {
     if (typeof node.setSize !== "function") return;
-    const target = typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight(node);
+    const target = isVueNodes()
+      ? bodyHeight(node) + VUE_CHROME
+      : (typeof node.computeSize === "function" ? node.computeSize()[1] : bodyHeight(node));
     if (Math.abs((node.size[1] || 0) - target) > 1) node.setSize([node.size[0], target]);
   } catch (_e) {}
 }
