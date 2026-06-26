@@ -1535,6 +1535,33 @@ function installPersistence() {
   G._pixGroupPersistWrapped = true;
 }
 
+// A Pixaroma group nested INSIDE a native ComfyUI group used to show the whole
+// native-group menu (Fit Group To Nodes, Select Nodes, Bypass Group Nodes, Edit
+// Group, AND our own ComfyUI-Group-Color items) stacked on top of the Pixaroma
+// group's own menu, because the click point is also inside the native group so
+// ComfyUI's getGroupOnPos finds it (GitLab #9). A Pixaroma group renders ON TOP,
+// so when one covers the point the user is targeting IT — hide the native group
+// from getGroupOnPos there. That single gate feeds ComfyUI's group options, the
+// "Edit Group" submenu, AND node_colors' native-group color items, so suppressing
+// it removes all of them at once. The native group stays fully interactive on its
+// title bar (uses getGroupTitlebarOnPos), edges, resize corner, and uncovered
+// body — groupAt only matches where a Pixaroma group is actually drawn.
+function installGroupMenuGuard() {
+  const G = app.graph?.constructor?.prototype || window.LGraph?.prototype;
+  if (!G || G._pixGroupOnPosWrapped) return;
+  const orig = G.getGroupOnPos;
+  if (typeof orig !== "function") return;
+  G.getGroupOnPos = function (x, y) {
+    try {
+      // Only on the graph where our (top-level) Pixaroma groups live; inside a
+      // subgraph defer entirely so its native groups behave normally.
+      if (this === app.graph && groupAt([x, y])) return undefined;
+    } catch (_e) {}
+    return orig.apply(this, arguments);
+  };
+  G._pixGroupOnPosWrapped = true;
+}
+
 app.registerExtension({
   name: "Pixaroma.PixGroup",
   settings: [
@@ -1607,6 +1634,7 @@ app.registerExtension({
   setup() {
     installDraw();
     installPersistence();
+    installGroupMenuGuard();
     installFoldHooks();
     installExecListeners();
     // onChange only fires when the user changes the setting — read the saved value
