@@ -894,12 +894,14 @@ function _carryTick() {
   const nativeDragging = carryNativeGroupDrags(); // DETECTION only (sets _natGrpDrag); no apply
   if (nativeDragging || _carry) {
     if (isVueNodes()) {
-      // NODES 2.0: the NODE carry runs in pointermove from the CURSOR (trackSelectedNodeDrag)
-      // because node.pos lags through Vue's reactive layout. Here apply only the NATIVE-group
-      // carry (its title drag doesn't reach our pointermove) and force a FULL redraw so the
-      // frame tracks (a bg-only redraw lagged — same as the smooth pixgroup-header drag).
-      try { applyNativeCarry(); } catch (_e) {}
-      try { app.canvas?.setDirty(true, true); } catch (_e) {}
+      // NODES 2.0: the NODE carry runs in pointermove (trackSelectedNodeDrag, which already
+      // repaints) because node.pos lags through Vue's reactive layout. Here apply ONLY the
+      // NATIVE-group carry (its title drag doesn't reach our pointermove) and redraw only
+      // when it actually moved. Redrawing every rAF for a node drag too — on top of the
+      // pointermove repaint — overloaded Vue and made everything (incl. the Comfy group) lag.
+      let moved = false;
+      try { moved = applyNativeCarry(); } catch (_e) {}
+      if (moved) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
     } else {
       // CLASSIC: the carry is applied in the DRAW pass (onDrawBackground) so the frame is
       // drawn from the same data as the fg nodes (no trail). Here just force BOTH canvases
