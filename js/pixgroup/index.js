@@ -977,7 +977,10 @@ function trackSelectedNodeDrag(e) {
     _clickDeselectPending = false; // a real drag
     for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
     for (const m of _carry.members) { m.n.pos = [m.x + dx, m.y + dy]; }
-    repaint();
+    // Redraw SYNCHRONOUSLY now (not setDirty, which defers to the next rAF ~16ms later) so
+    // the canvas-drawn frame keeps up with the GPU-rendered Vue node on a FAST drag instead
+    // of trailing it by a frame. Fall back to setDirty if a direct draw isn't available.
+    try { app.canvas.draw(true, true); } catch (_e) { repaint(); }
   }
 }
 // Called from onDrawBackground (the draw pass), NOT a separate rAF — so it reads the
