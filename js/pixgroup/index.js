@@ -864,9 +864,17 @@ function trackSelectedNodeDrag(e) {
     return;
   }
   if (!_carry.ref || !_carry.ref.pos) { _carry = null; return; }
-  const nodeMoved = Math.abs(_carry.ref.pos[0] - _carry.rx) > 0.01 || Math.abs(_carry.ref.pos[1] - _carry.ry) > 0.01;
-  if (!nodeMoved) return;
-  const ddx = p[0] - _carry.cx, ddy = p[1] - _carry.cy; // cursor delta
+  // ComfyUI does NOT move the node until the cursor passes a ~12px drag THRESHOLD, but
+  // our snapshot started counting at the press. So the node's actual delta and the raw
+  // cursor delta differ by exactly that threshold → the frame rides ~12px ahead of the
+  // node (the node drifts to the frame's trailing edge = "moves slowly inside"). The
+  // moment the node first moves, RE-ANCHOR the cursor reference so the frame's cursor
+  // delta equals the node's delta from here on (zero offset, and no per-tick node.pos
+  // read so there's no read-order wiggle either).
+  const nd_x = _carry.ref.pos[0] - _carry.rx, nd_y = _carry.ref.pos[1] - _carry.ry;
+  if (Math.abs(nd_x) < 0.01 && Math.abs(nd_y) < 0.01) return; // still under ComfyUI's drag threshold
+  if (!_carry.anchored) { _carry.cx = p[0] - nd_x; _carry.cy = p[1] - nd_y; _carry.anchored = true; }
+  const ddx = p[0] - _carry.cx, ddy = p[1] - _carry.cy; // cursor delta, anchored to the node's start-of-move
   const vue = isVueNodes();
   for (const f of _carry.frames) { f.g.x = f.x + ddx; f.g.y = f.y + ddy; }
   for (const m of _carry.members) { if (vue) m.n.pos = [m.x + ddx, m.y + ddy]; else { m.n.pos[0] = m.x + ddx; m.n.pos[1] = m.y + ddy; } }
