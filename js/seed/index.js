@@ -556,7 +556,6 @@ function findSeedNode(index, promptId) {
   return null;
 }
 
-let _seedRunNonce = 0; // monotonic per-call nonce for Random mode (see hook below)
 const _origGraphToPrompt = app.graphToPrompt.bind(app);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
@@ -581,13 +580,16 @@ app.graphToPrompt = async function (...args) {
           refreshLastRun(node);
         }
         entry.inputs = entry.inputs || {};
-        // Random: add a per-call nonce so the injected string ALWAYS differs and
-        // the node re-runs even on the ~1-in-2^53 chance two rolls collide.
-        // Fixed: NO nonce, so the string is constant and ComfyUI caches it
-        // (repeatable). get_seed ignores the nonce.
-        entry.inputs[HIDDEN_INPUT_NAME] = isRandom
-          ? JSON.stringify({ runSeed, _n: ++_seedRunNonce })
-          : JSON.stringify({ runSeed });
+        // Inject ONLY the seed value (no nonce) so the cache key IS the seed,
+        // exactly like ComfyUI's native seed and rgthree. Random rolls a fresh
+        // seed each run -> different string -> re-run; Fixed / "Use last seed"
+        // reuse a value -> identical string -> ComfyUI caches (no re-run).
+        // This is why "Use last seed" now returns the cached output instantly
+        // instead of regenerating once first (issue #11): the Random run that
+        // PRODUCED the seed and the Fixed run that REUSES it inject byte-identical
+        // SeedState. A ~1-in-2^53 random collision merely cache-hits an IDENTICAL
+        // image (same seed = same result), which is correct, not a re-run we want.
+        entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({ runSeed });
       }
     }
   } catch (e) {
