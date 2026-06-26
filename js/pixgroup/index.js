@@ -615,6 +615,7 @@ function onDown(e) {
   _lmbDown = true; startCarryLoop(); // left button held: run the native-group-drag carry loop (stopped on pointerup/cancel/blur)
   _marqueeRect = null; _marqueeShift = false; // start fresh: drop any stale marquee from an abandoned drag
   _clickDeselectPending = false; // set when we KEEP selection for a possible drag; a plain click (no drag) deselects on release
+  _pendingPixSelect = null;      // set on an already-selected pixgroup header press; a plain click (no drag) collapses to just it on release
   const c = app.canvas;
   if (!c || e.target !== c.canvas) return; // only the graph canvas surface
   const p = screenToGraph(e.clientX, e.clientY);
@@ -645,10 +646,15 @@ function onDown(e) {
       selectGroup(g); e.preventDefault(); e.stopImmediatePropagation(); startWin(); repaint(); return;
     }
     if (inHeader(g, p)) {
+      // A NODE under the cursor WINS over the group header move: a node whose title bar
+      // sits on/near the group's bar must be draggable on its own, not bonded to the group
+      // (the header buttons above already returned, so they still work). Fall through to the
+      // node/deselect path below instead of starting a group drag.
+      if (nodeAtPoint(p)) break;
       e.preventDefault(); e.stopImmediatePropagation();
       if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleGroupSelection(g); repaint(); return; } // shift/ctrl/cmd = add or remove from selection, no drag
       if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an UNselected group → exclusive select (clears nodes)
-      else { _selectedId = g.id; }                              // already selected → KEEP the whole multi-selection (incl. native nodes) and drag it as one unit
+      else { _selectedId = g.id; _pendingPixSelect = g.id; }    // already selected → KEEP the whole multi-selection for a possible DRAG; a plain CLICK (no drag) collapses to just this group on release
       if (e.altKey) {
         // alt-drag = duplicate the styled frame(s) and drag the COPIES (frame only;
         // the nodes stay with the originals).
@@ -710,6 +716,7 @@ function onMove(e) {
   if (_drag.mode === "move") {
     // one cursor delta moves every captured group frame + node (handles multi-select)
     const ddx = p[0] - _drag.ox, ddy = p[1] - _drag.oy;
+    if (Math.abs(ddx) > 3 || Math.abs(ddy) > 3) _pendingPixSelect = null; // a real drag → keep the multi-selection (not a click-to-collapse)
     // Align Pixaroma snap: ask Align for a snap on the dragged frames' bounding box,
     // then apply the SAME extra delta to every frame + node so they move rigidly.
     let sdx = 0, sdy = 0;
@@ -775,10 +782,17 @@ function onUp(e) {
 function onWinPointerUp() {
   _lmbDown = false;
   if (_carryRaf) { cancelAnimationFrame(_carryRaf); _carryRaf = 0; } // stop the carry loop promptly
+  // A plain CLICK (no drag) on an already-selected pixgroup header → collapse the whole
+  // selection to JUST that pixgroup (clear the co-selected native nodes/groups), like
+  // ComfyUI selecting just the clicked item. A real drag cleared the flag in onMove.
+  if (_pendingPixSelect != null) {
+    const gid = _pendingPixSelect; _pendingPixSelect = null;
+    _selectedIds = new Set([gid]); _selectedId = gid; clearNativeSelection(); repaint();
+  }
   // A press that grabbed the unit but never dragged = a plain CLICK on a node / native
   // group → deselect our groups (ComfyUI selects just that item; we mirror it). A real
   // drag cleared the flag in applyNodeCarry / applyNativeCarry.
-  if (_clickDeselectPending) { _clickDeselectPending = false; if (_selectedIds.size) { _selectedIds.clear(); _selectedId = null; repaint(); } }
+  else if (_clickDeselectPending) { _clickDeselectPending = false; if (_selectedIds.size) { _selectedIds.clear(); _selectedId = null; repaint(); } }
   _natGrpDrag = null; _carry = null; // end any native-group / node-drag carry
   if (!_marqueeRect) return;
   const [mx, my, mw, mh] = _marqueeRect;
@@ -900,6 +914,7 @@ function startCarryLoop() {
 // and make the group jump; pixgroup snaps the unit's frame bbox via snapMovingRect.
 let _carry = null; // active node-drag carry snapshot, or null
 let _clickDeselectPending = false; // a press grabbed the unit; a plain click (no drag) deselects our groups on release
+let _pendingPixSelect = null; // a press grabbed an already-selected pixgroup header; a plain click (no drag) collapses the selection to just that pixgroup on release
 function snapshotCarry(cursor) {
   if (!_selectedIds.size) return null;
   const selNodes = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
@@ -1803,7 +1818,7 @@ app.registerExtension({
     // it on blur so the next interaction is clean.
     window.addEventListener("blur", () => {
       if (_drag) { _drag = null; stopWin(); try { window.PixaromaAlign?.endExternalDrag?.(); } catch (_e) {} }
-      _natGrpDrag = null; _carry = null; _lmbDown = false; _clickDeselectPending = false;
+      _natGrpDrag = null; _carry = null; _lmbDown = false; _clickDeselectPending = false; _pendingPixSelect = null;
       if (_carryRaf) { cancelAnimationFrame(_carryRaf); _carryRaf = 0; }
       _marqueeRect = null; _marqueeShift = false; // a marquee abandoned by alt-tab must not apply on the return release
     });
