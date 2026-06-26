@@ -760,8 +760,11 @@ function carryNativeGroupDrags() {
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
   // bg-only redraw (groups live on the background canvas); do NOT force a foreground/Vue
-  // repaint each frame. ComfyUI's native group move already flags the graph modified.
-  if (carryNativeGroupDrags()) { try { app.canvas?.setDirty(false, true); } catch (_e) {} }
+  // repaint each frame. ComfyUI's native group / node move already flags the graph.
+  let dirty = false;
+  if (carryNativeGroupDrags()) dirty = true;  // a NATIVE group dragged -> carry our frames
+  if (carrySelectedNodeDrag()) dirty = true;  // a co-selected NODE dragged -> carry our frames
+  if (dirty) { try { app.canvas?.setDirty(false, true); } catch (_e) {} }
   _carryRaf = requestAnimationFrame(_carryTick);
 }
 function startCarryLoop() {
@@ -802,30 +805,37 @@ function snapshotCarry(cursor) {
            excludeIds: frames.map((f) => f.g.id),
            excludeNodes: [...members.map((m) => m.n), ...nodes.map((nn) => nn.n)] };
 }
+// pointermove only SNAPSHOTS the carry (on the first drag tick) and clears it when
+// the button is up. The actual frame movement happens in the rAF loop below
+// (carrySelectedNodeDrag), NOT here — moving the frame in pointermove raced the
+// node's own (Vue-reactive) render and left a tiny lag/wiggle; doing it in rAF,
+// right before paint, composites the frame in sync with the node (same mechanism
+// the smooth native-group carry uses).
 function trackSelectedNodeDrag(e) {
   const dragging = (e.buttons & 1) === 1;
   if (!dragging) { _carry = null; return; }
+  if (_carry) return;                 // already carrying; the rAF loop moves it
+  if (!_selectedIds.size) return;
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  if (!_carry) {
-    // Nodes 2.0: a node click's target isn't the canvas, so onDown can't snapshot
-    // pre-move — snapshot on the first dragging tick instead (a ~1-tick offset).
-    if (_selectedIds.size) _carry = snapshotCarry(p);
-    return;
-  }
-  if (!_carry.ref || !_carry.ref.pos) { _carry = null; return; }
-  // Follow the SELECTED node's ACTUAL movement (ComfyUI owns the selected nodes and
-  // moves them — we never write them; that double-write vs ComfyUI, keyed off the
-  // cursor with a 1-tick offset, WAS the wiggle). Keying the carry off the node delta
-  // (not the cursor) makes the frames + the non-selected members track the nodes
-  // EXACTLY in both renderers, so the group can't drift against the node inside it.
-  // A wire-drag / pan / marquee moves the cursor but no node → delta 0 → left alone.
+  // Nodes 2.0: a node click's target isn't the canvas, so onDown can't snapshot
+  // pre-move — snapshot on the first dragging tick instead (a ~1-tick offset).
+  _carry = snapshotCarry(p);
+}
+// rAF-driven: follow the dragged node's ACTUAL movement once per FRAME, right before
+// paint. ComfyUI owns the selected nodes (we never write them — that double-write was
+// the original wiggle); we only move the carried frames + the non-selected members to
+// the node's delta, so the group can't drift against the node inside it. delta 0
+// (wire-drag / pan / marquee moves the cursor but no node) → left alone.
+function carrySelectedNodeDrag() {
+  if (!_carry) return false;
+  if (!_carry.ref || !_carry.ref.pos) { _carry = null; return false; }
   const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
-  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return;
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false;
   const vue = isVueNodes();
   for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
   for (const m of _carry.members) { if (vue) m.n.pos = [m.x + dx, m.y + dy]; else { m.n.pos[0] = m.x + dx; m.n.pos[1] = m.y + dy; } }
-  markChanged();
+  return true;
 }
 
 // Cursor hint so the grab zones are discoverable: a resize arrow over the
