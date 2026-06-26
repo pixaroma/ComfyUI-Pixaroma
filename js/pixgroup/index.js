@@ -797,11 +797,15 @@ function carryNativeGroupDrags() {
 }
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
-  // bg-only redraw (groups live on the background canvas); do NOT force a foreground/Vue
-  // repaint each frame. ComfyUI's native group move already flags the graph modified.
-  // (The node-drag carry runs in pointermove instead — see trackSelectedNodeDrag — so
-  // it can follow the CURSOR, which never lags the way the Vue-reactive node.pos does.)
-  if (carryNativeGroupDrags()) { try { app.canvas?.setDirty(false, true); } catch (_e) {} }
+  let dirty = false;
+  if (carryNativeGroupDrags()) dirty = true;       // a NATIVE group dragged -> carry our frames
+  else if (carrySelectedNodeDrag()) dirty = true;  // a co-selected NODE dragged -> carry our frames (native takes precedence)
+  // setDirty(true, true): force BOTH canvases to redraw THIS frame. The group frame
+  // lives on the background canvas and the nodes on the foreground; redrawing only the
+  // bg (false, true) let the frame trail the nodes by a frame. Redrawing both together
+  // locks them. We READ node._pos / the dragged node.pos here in the rAF (latest
+  // committed position) so the frame follows the node EXACTLY — no cursor-vs-node jitter.
+  if (dirty) { try { app.canvas?.setDirty(true, true); } catch (_e) {} }
   _carryRaf = requestAnimationFrame(_carryTick);
 }
 function startCarryLoop() {
@@ -842,43 +846,34 @@ function snapshotCarry(cursor) {
            excludeIds: frames.map((f) => f.g.id),
            excludeNodes: [...members.map((m) => m.n), ...nodes.map((nn) => nn.n)] };
 }
-// Runs in pointermove (onHover). Moves the carried frames + non-selected members by
-// the CURSOR delta — NOT node.pos. ComfyUI moves the selected nodes by that same
-// cursor, so the frame tracks them exactly; reading the cursor (vs node.pos, which
-// lags a frame or two through Vue's reactive layout = the "slow" trailing) is what
-// keeps it locked. We never write the selected nodes (ComfyUI owns them; that
-// double-write was the original wiggle). Gated on a selected node having actually
-// moved, so a wire-drag / pan / marquee (cursor moves, no node) is left alone.
+// pointermove (onHover) only SNAPSHOTS the carry and clears it on button-up. The
+// actual movement happens in the rAF loop (carrySelectedNodeDrag) so it can read the
+// dragged node's LATEST committed position once per frame, right before paint — which
+// is exact (no drag-threshold offset, since node.pos IS post-threshold) and jitter-free
+// (no separate cursor read racing ComfyUI's node update).
 function trackSelectedNodeDrag(e) {
   const dragging = (e.buttons & 1) === 1;
   if (!dragging) { _carry = null; return; }
-  // A native ComfyUI group is being dragged → the rAF carry owns the frames; don't
-  // ALSO carry them here off the cursor (that double-move was the comfy-drag "slow").
-  if (_natGrpDrag) { _carry = null; return; }
+  if (_natGrpDrag) { _carry = null; return; } // a native group drag owns the frames
+  if (_carry) return;                          // already snapshotted; the rAF loop moves it
+  if (!_selectedIds.size) return;
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  if (!_carry) {
-    // Nodes 2.0: a node click's target isn't the canvas, so onDown can't snapshot
-    // pre-move — snapshot on the first dragging tick instead (a ~1-tick offset).
-    if (_selectedIds.size) _carry = snapshotCarry(p);
-    return;
-  }
-  if (!_carry.ref || !_carry.ref.pos) { _carry = null; return; }
-  // ComfyUI does NOT move the node until the cursor passes a ~12px drag THRESHOLD, but
-  // our snapshot started counting at the press. So the node's actual delta and the raw
-  // cursor delta differ by exactly that threshold → the frame rides ~12px ahead of the
-  // node (the node drifts to the frame's trailing edge = "moves slowly inside"). The
-  // moment the node first moves, RE-ANCHOR the cursor reference so the frame's cursor
-  // delta equals the node's delta from here on (zero offset, and no per-tick node.pos
-  // read so there's no read-order wiggle either).
-  const nd_x = _carry.ref.pos[0] - _carry.rx, nd_y = _carry.ref.pos[1] - _carry.ry;
-  if (Math.abs(nd_x) < 0.01 && Math.abs(nd_y) < 0.01) return; // still under ComfyUI's drag threshold
-  if (!_carry.anchored) { _carry.cx = p[0] - nd_x; _carry.cy = p[1] - nd_y; _carry.anchored = true; }
-  const ddx = p[0] - _carry.cx, ddy = p[1] - _carry.cy; // cursor delta, anchored to the node's start-of-move
+  _carry = snapshotCarry(p);
+}
+// rAF-driven (called from _carryTick). Move the carried frames + non-selected members
+// by the dragged node's EXACT delta (node.pos - start). node.pos is post-threshold and
+// is the single source of truth, so the frame is locked to the node with no offset and
+// no cursor-vs-node jitter. ComfyUI owns the selected node; we never write it.
+function carrySelectedNodeDrag() {
+  if (!_carry) return false;
+  if (!_carry.ref || !_carry.ref.pos) { _carry = null; return false; }
+  const dx = _carry.ref.pos[0] - _carry.rx, dy = _carry.ref.pos[1] - _carry.ry;
+  if (Math.abs(dx) < 0.01 && Math.abs(dy) < 0.01) return false; // under the drag threshold / not moving
   const vue = isVueNodes();
-  for (const f of _carry.frames) { f.g.x = f.x + ddx; f.g.y = f.y + ddy; }
-  for (const m of _carry.members) { if (vue) m.n.pos = [m.x + ddx, m.y + ddy]; else { m.n.pos[0] = m.x + ddx; m.n.pos[1] = m.y + ddy; } }
-  repaint();
+  for (const f of _carry.frames) { f.g.x = f.x + dx; f.g.y = f.y + dy; }
+  for (const m of _carry.members) { if (vue) m.n.pos = [m.x + dx, m.y + dy]; else { m.n.pos[0] = m.x + dx; m.n.pos[1] = m.y + dy; } }
+  return true;
 }
 
 // Cursor hint so the grab zones are discoverable: a resize arrow over the
