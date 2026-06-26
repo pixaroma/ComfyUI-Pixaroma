@@ -185,15 +185,16 @@ def _derive_icon_label(stem: str) -> str:
     return joined[0].upper() + joined[1:]
 
 
-_PIXAROMA_VERSION_CACHE = None
-
-
 def _read_pixaroma_version():
-    """Read the plugin version from pyproject.toml (cached). Mirrors the
-    startup banner's logic in __init__.py. Returns a string or 'unknown'."""
-    global _PIXAROMA_VERSION_CACHE
-    if _PIXAROMA_VERSION_CACHE is not None:
-        return _PIXAROMA_VERSION_CACHE
+    """Read the plugin version from pyproject.toml FRESH on every call (NOT cached).
+
+    Reading a ~1KB TOML on the rare Version Check request is negligible, and a fresh
+    read means a version bump on disk is reflected immediately — WITHOUT a ComfyUI
+    restart. The old module-global cache held the version read at STARTUP, so after
+    an update (files bumped, browser hard-refreshed) the server kept reporting the
+    old number while the JS reported the new one, firing a FALSE "browser cache
+    outdated" warning even though the install was correct. Returns a string or
+    'unknown'."""
     version = "unknown"
     try:
         import toml
@@ -213,7 +214,6 @@ def _read_pixaroma_version():
                         break
         except Exception:
             pass
-    _PIXAROMA_VERSION_CACHE = version
     return version
 
 
