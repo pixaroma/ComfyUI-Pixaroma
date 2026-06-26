@@ -233,6 +233,23 @@ function selectedNativeGroupBoxes() {
   for (const grp of nativeGroups()) if (sel.has(grp)) { const b = natGrpBox(grp); if (b) out.push(b); }
   return out;
 }
+// The SELECTED native ComfyUI groups themselves (not just their boxes).
+function selectedNativeGroups() {
+  const sel = app.canvas?.selectedItems;
+  if (!sel || typeof sel.has !== "function") return [];
+  return nativeGroups().filter((grp) => sel.has(grp));
+}
+// (nodesInBox — nodes whose visual center sits in a box — is defined once below,
+// near the Group Switch helpers; reused here to carry a native group's contents.)
+// Write a native group's top-left in place. Its _pos is a Float32Array (usually a
+// subarray VIEW of _bounding, so writing _pos also updates _bounding) — NEVER
+// Array.isArray it; write _bounding too in case they're separate arrays on some build.
+function setNativeGroupPos(grp, x, y) {
+  const pos = grp._pos || grp.pos;
+  if (pos && pos.length >= 2) { pos[0] = x; pos[1] = y; }
+  const b = grp._bounding;
+  if (b && b.length >= 2) { b[0] = x; b[1] = y; }
+}
 
 // Set of all node ids hidden by folded groups + whether each owner shows wires.
 // Cached; invalidated on fold / unfold / delete / configure (the id set only
@@ -617,9 +634,18 @@ function onDown(e) {
       // selected (we no longer clearNativeSelection above). Deduped vs members.
       const nativeSel = app.canvas?.selected_nodes ? Object.values(app.canvas.selected_nodes) : [];
       for (const n of nativeSel) if (n && n.pos && !movedNodes.has(String(n.id))) movedNodes.set(String(n.id), n);
+      // Also carry any co-selected NATIVE ComfyUI groups: their box AND their contained
+      // nodes (ComfyUI isn't the one dragging them here — WE are — so it won't move
+      // their contents). Contained nodes deduped vs everything already moving.
+      const natStarts = [];
+      for (const grp of selectedNativeGroups()) {
+        const box = natGrpBox(grp); if (!box) continue;
+        natStarts.push({ grp, x: box.x, y: box.y });
+        for (const n of nodesInBox(box)) if (n && n.pos && !movedNodes.has(String(n.id))) movedNodes.set(String(n.id), n);
+      }
       const groupStarts = [...movedGroups].map((gr) => ({ gr, x: gr.x, y: gr.y }));
       const nodeStarts = [...movedNodes.values()].map((n) => ({ n, x: n.pos[0], y: n.pos[1] }));
-      _drag = { mode: "move", ox: p[0], oy: p[1], groupStarts, nodeStarts };
+      _drag = { mode: "move", ox: p[0], oy: p[1], groupStarts, nodeStarts, natStarts };
       startWin(); repaint(); return;
     }
   }
@@ -668,6 +694,9 @@ function onMove(e) {
       if (vue) s.n.pos = [nx, ny];
       else { s.n.pos[0] = nx; s.n.pos[1] = ny; }
     }
+    // Carry co-selected native ComfyUI group frames by the same delta (their contained
+    // nodes were folded into nodeStarts above, so they've already moved).
+    for (const s of _drag.natStarts || []) setNativeGroupPos(s.grp, s.x + ddx + sdx, s.y + ddy + sdy);
   } else {
     // resize from any corner: grow from the fixed anchor toward the cursor (single
     // group). Align Pixaroma: snap the dragged CORNER to nearby node/group edges.
@@ -1187,6 +1216,7 @@ function toggleMode(g, mode) {
 function nodesInBox(box) {
   const out = [];
   for (const n of (app.graph?._nodes || [])) {
+    if (!n || !n.pos) continue;
     const b = nodeVisualBounds(n);
     const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
     if (cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h) out.push(n);
