@@ -609,6 +609,24 @@ function applyGroupColor(groups, hex) {
   }
   app.graph?.setDirtyCanvas(true, true);
 }
+// Darken a #rrggbb by amt (0..1). A native group has ONE fill color; when that single
+// color is applied to a node or Pixaroma group (which have title + body), we use the
+// color as the BODY and a darkened shade as the TITLE bar so they read like a node.
+function darkenHex(hex, amt) {
+  const h = String(hex || "").trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) return hex;
+  const f = Math.max(0, 1 - (amt || 0));
+  const ch = (i) => Math.max(0, Math.min(255, Math.round(parseInt(h.slice(i, i + 2), 16) * f)));
+  return "#" + [ch(0), ch(2), ch(4)].map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+// Apply ONE group color across a mixed selection: native groups (fill), nodes
+// (title=darker, body=color) and Pixaroma groups (title=darker, body=color). Mirrors
+// the node menu so right-clicking ANY selected item colors the whole selection.
+function applyGroupColorToSelection(groups, nodes, pixGroups, hex) {
+  applyGroupColor(groups, hex);
+  if (nodes && nodes.length) applyColors(nodes, darkenHex(hex, 0.3), hex);
+  if (pixGroups && pixGroups.length) { for (const pg of pixGroups) { pg.titleColor = darkenHex(hex, 0.3); pg.bodyColor = hex; } pixRepaint(); }
+}
 
 // All currently-selected groups (selectedItems is a Set mixing nodes + groups; a
 // group duck-types via recomputeInsideNodes). Used so the "\" shortcut can color
@@ -1212,12 +1230,14 @@ function openNodeColorsPalette(targets, node, groups = [], pixGroups = []) {
   place(getNodeScreenRect(node));
 }
 
-function openGroupColorsPalette(targets, group) {
-  const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
+function openGroupColorsPalette(targets, group, nodes = [], pixGroups = []) {
+  const total = targets.length + nodes.length + pixGroups.length;
+  const suffix = total > 1 ? ` (${total} items)` : "";
   const { modal, place, onClose } = makePalShell(`ComfyUI Group Color${suffix}`);
 
   let hex = captureGroupColor(group);
-  const applyNow = () => applyGroupColor(targets, hex);
+  // Color the native group(s) AND any co-selected nodes / Pixaroma groups in one pick.
+  const applyNow = () => applyGroupColorToSelection(targets, nodes, pixGroups, hex);
 
   // ── Picker + favourites row ──
   const prow = document.createElement("div"); prow.className = "pix-nc-prow";
@@ -1304,6 +1324,8 @@ function openGroupColorsPalette(targets, group) {
   foot.appendChild(makeHelpBtn());
   foot.appendChild(palToolBtn("Reset color", () => {
     resetGroupColor(targets);
+    if (nodes.length) resetColors(nodes);
+    if (pixGroups.length) { for (const pg of pixGroups) { pg.titleColor = "#4a4a4e"; pg.bodyColor = "#2a2a2a"; } pixRepaint(); }
     hex = captureGroupColor(group);
     picker.setColor(hex);
     refreshHex();
@@ -1609,12 +1631,24 @@ app.registerExtension({
     }
     if (!group) return []; // empty canvas → no Pixaroma entries
     const targets = getTargetGroups(group);
-    const suffix = targets.length > 1 ? ` (${targets.length} groups)` : "";
+    // If the right-clicked group is part of the current multi-selection, color the WHOLE
+    // selection (co-selected nodes + Pixaroma groups too) so it matches the node / pixgroup
+    // menus. A right-click on an UNselected group colors just that group.
+    const groupSelected = !!(app.canvas?.selectedItems?.has?.(group));
+    const selNodes = groupSelected && canvas?.selected_nodes ? Object.values(canvas.selected_nodes) : [];
+    const pixGroups = groupSelected ? (window.PixaromaPixGroup?.getSelectedGroups?.() || []) : [];
+    const total = targets.length + selNodes.length + pixGroups.length;
+    const suffix = total > 1 ? ` (${total} items)` : "";
+    const resetAll = () => {
+      resetGroupColor(targets);
+      if (selNodes.length) resetColors(selNodes);
+      if (pixGroups.length) { for (const pg of pixGroups) { pg.titleColor = "#4a4a4e"; pg.bodyColor = "#2a2a2a"; } pixRepaint(); }
+    };
     const items = [
       null,
       {
         content: `👑 ComfyUI Group Color (\\)${suffix}`,
-        callback: () => openGroupColorsPalette(targets, group),
+        callback: () => openGroupColorsPalette(targets, group, selNodes, pixGroups),
       },
       {
         content: `👑 Copy Group Color`,
@@ -1627,12 +1661,12 @@ app.registerExtension({
     if (colorClipboard) {
       items.push({
         content: `👑 Paste Group Color${suffix}`,
-        callback: () => applyGroupColor(targets, pickGroupColor(colorClipboard)),
+        callback: () => applyGroupColorToSelection(targets, selNodes, pixGroups, pickGroupColor(colorClipboard)),
       });
     }
     items.push({
       content: `👑 Reset Group Color${suffix}`,
-      callback: () => resetGroupColor(targets),
+      callback: resetAll,
     });
     return items;
   },
