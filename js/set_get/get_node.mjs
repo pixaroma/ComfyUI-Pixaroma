@@ -17,6 +17,7 @@ import {
   SET_TYPE,
   GET_TYPE,
   getLink,
+  firstWiredInput,
   findSetterByName,
   findRootGraph,
   getVisibleSetNames,
@@ -143,7 +144,7 @@ export function registerPixaromaGetNode() {
       const setter = this.findSetter(this.graph);
       const name = this.widgets[0].value;
       if (setter) {
-        this.setType(setter.inputs?.[0]?.type ?? "*");
+        this.setType(firstWiredInput(setter)?.type ?? "*");
         this.title = `Get: ${name}`;
       } else {
         this.setType("*");
@@ -183,7 +184,9 @@ export function registerPixaromaGetNode() {
         (n) => n.type === SET_TYPE && n.widgets?.[0]?.value === name
       );
       if (!setter) return null;
-      const slotInfo = setter.inputs?.[slot];
+      // Read the Set's first WIRED input, not a fixed slot, so a stale duplicate
+      // input slot on the Set can't make the Get resolve to nothing.
+      const slotInfo = firstWiredInput(setter);
       if (!slotInfo || slotInfo.link == null) return null;
       return getLink(this.graph, slotInfo.link);
     }
@@ -196,7 +199,7 @@ export function registerPixaromaGetNode() {
       if (!result) return undefined;
       if (result.graph === this.graph) return undefined;
       const { node: setter, graph: setterGraph } = result;
-      const slotInfo = setter.inputs?.[slot];
+      const slotInfo = firstWiredInput(setter);
       if (!slotInfo || slotInfo.link == null) return undefined;
       const link = getLink(setterGraph, slotInfo.link);
       if (!link) return undefined;

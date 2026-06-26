@@ -33,6 +33,13 @@ class PixaromaSetNode:
 
     @classmethod
     def INPUT_TYPES(cls):
+        # Declare NO 'value' input here on purpose. The frontend (js/set_get) adds
+        # the real input and renames it to the wired type. If a 'value' input were
+        # declared, ComfyUI's def-reconciliation would RE-ADD it to already-loaded
+        # Set nodes (it no longer matches the renamed input by name), creating a
+        # duplicate "phantom" input that broke value passthrough - the wire stopped
+        # transmitting until you moved it to the new slot. Keeping only the name
+        # widget here means there is no input slot for ComfyUI to re-add.
         return {
             "required": {
                 "name": (
@@ -41,12 +48,6 @@ class PixaromaSetNode:
                         "default": "",
                         "tooltip": "The variable name. A Get Pixaroma node reads this value by picking this name.",
                     },
-                ),
-            },
-            "optional": {
-                "value": (
-                    ANY,
-                    {"tooltip": "Connect anything here. The node takes on that wire's type."},
                 ),
             },
         }

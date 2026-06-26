@@ -14,6 +14,7 @@ import {
   SET_TYPE,
   GET_TYPE,
   getLink,
+  firstWiredInput,
   getGraphAncestors,
   collectNodesOfType,
   findGettersByName,
@@ -146,8 +147,9 @@ export function registerPixaromaSetNode() {
     // reroute contract; cross-graph is rare for a directly-wired output, so the
     // same-graph link path covers it.
     getInputLink() {
-      // The Set has a single input; its passthrough output reads from it.
-      const si = this.inputs?.[0];
+      // Read the FIRST WIRED input (not just slot 0) so a stale duplicate slot
+      // can't break the passthrough output.
+      const si = firstWiredInput(this);
       if (!si || si.link == null) return null;
       return getLink(this.graph, si.link);
     }
@@ -177,7 +179,7 @@ export function registerPixaromaSetNode() {
     // Push type + rename out to this Set's getters, refresh combos + readout.
     update() {
       if (!this.graph) return;
-      const type = this.inputs?.[0]?.type ?? "*";
+      const type = firstWiredInput(this)?.type ?? "*";
       const name = this.widgets[0].value;
       findGettersByName(this.graph, name).forEach((e) => e.node.setType?.(type));
       const prev = this.properties.previousName;
@@ -219,6 +221,20 @@ export function registerPixaromaSetNode() {
         const t = this.inputs?.[0]?.type ?? "*";
         this.outputs[0].type = t;
         this.outputs[0].name = t;
+      }
+      // Heal the old phantom-"value" duplicate input: keep ONE input (the wired
+      // one, else slot 0) and drop the rest. The Python def no longer declares a
+      // 'value' input, so ComfyUI won't re-add it; this cleans up nodes saved while
+      // it did. Only runs when there is more than one input, so a clean node is
+      // never touched (no dirty-on-load). Removed slots are unwired (the wired one
+      // is kept), so no link breaks.
+      if (this.inputs && this.inputs.length > 1) {
+        let keep = this.inputs.findIndex((i) => i && i.link != null);
+        if (keep < 0) keep = 0;
+        for (let i = this.inputs.length - 1; i >= 0; i--) {
+          if (i !== keep) this.removeInput(i);
+        }
+        this.setAdoptedType(this.inputs[0]?.type ?? "*");
       }
       // Only run paste de-duplication when actually pasting, not on load.
       if (this._justAdded && this.graph && !app.configuringGraph) {

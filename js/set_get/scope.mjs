@@ -35,6 +35,17 @@ export function getLink(graph, linkId) {
   return store?.[linkId] ?? null;
 }
 
+// The Set node has ONE meaningful value input, but older workflows can carry a
+// stale DUPLICATE input slot (a phantom "value" input ComfyUI used to re-add from
+// the Python def). Resolve the FIRST input that actually has a wire, so the value
+// transmits no matter which slot it ended up on; fall back to slot 0.
+export function firstWiredInput(node) {
+  const ins = node?.inputs;
+  if (!ins || !ins.length) return null;
+  for (const inp of ins) { if (inp && inp.link != null) return inp; }
+  return ins[0] || null;
+}
+
 export function findRootGraph(graph) {
   if (!graph) return null;
   return graph.rootGraph || graph;
