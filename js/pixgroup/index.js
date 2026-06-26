@@ -490,12 +490,13 @@ function installDraw() {
   const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
-    // Sync a node-drag carry HERE, inside the draw pass, reading the dragged node's
-    // LIVE position — so the carried frame + members are positioned from the exact same
-    // data the nodes are about to be drawn with. Doing it in a separate rAF left the
-    // frame one frame behind ("lazy brush"); this draws them locked. Runs before the
-    // groups are drawn below, and before ComfyUI draws the foreground nodes.
+    // Sync a node-drag OR native-group-drag carry HERE, inside the draw pass, reading the
+    // dragged node's / native group's LIVE position — so the carried frames + members are
+    // positioned from the exact same data the nodes are about to be drawn with. Doing it
+    // in a separate rAF left the frames one frame behind ("lazy brush"); this draws them
+    // locked. Runs before the groups are drawn below + before ComfyUI draws the fg nodes.
     try { applyNodeCarry(); } catch (_e) {}
+    try { applyNativeCarry(); } catch (_e) {}
     try {
       const gs = ensureGroups();
       if (gs.length) {
@@ -776,30 +777,45 @@ const _natGrpPrev = new WeakMap();  // native group -> last {x,y,w,h}
 let _natGrpDrag = null;             // { grp, pix: [our groups snapshotted inside] }
 let _lmbDown = false;               // left mouse button currently held (gates the carry)
 let _carryRaf = 0;                  // active rAF id for the native-group carry loop
+// DETECTION ONLY (runs in the rAF). When a native ComfyUI group is being dragged,
+// snapshot it + the contained pixgroups' base positions ONCE. The actual move is applied
+// in the DRAW pass (applyNativeCarry), reading the group's LIVE _pos at draw time so the
+// frames are drawn locked to it (the old per-tick incremental apply in the rAF left them
+// one frame behind = the "lazy brush" trail).
 function carryNativeGroupDrags() {
-  let carried = false;
   // When WE own a drag (a Pixaroma-group header drag) we move the native group + its
-  // contents ourselves in onMove — so the carry loop must NOT also carry the pixgroups
-  // by that same box delta (double-move = the shake). Keep the per-group baseline fresh
-  // either way so a real native-group drag right after ours starts from a 0 delta.
+  // contents ourselves in onMove — so do NOT also carry here (double-move = the shake).
+  // Keep the per-group baseline fresh either way so a real native-group drag right after
+  // ours starts from a 0 delta.
   const ownDrag = !!_drag;
   for (const grp of nativeGroups()) {
     const box = natGrpBox(grp); if (!box) continue;
     const prev = _natGrpPrev.get(grp);
     _natGrpPrev.set(grp, box);
-    if (!prev || !_lmbDown || ownDrag) continue; // only carry during an ACTUAL native-group drag (not our own)
+    if (!prev || !_lmbDown || ownDrag) continue; // only during an ACTUAL native-group drag (not our own)
     const dx = box.x - prev.x, dy = box.y - prev.y;
     if ((dx === 0 && dy === 0) || box.w !== prev.w || box.h !== prev.h) continue; // still / resized
-    // First move tick: snapshot our groups whose whole box was inside its PREVIOUS
-    // box; then translate that fixed set by each tick's delta (their member nodes are
-    // inside the native group too, so ComfyUI moves them; we move only the frames).
     if (!_natGrpDrag || _natGrpDrag.grp !== grp) {
-      _natGrpDrag = { grp, pix: ensureGroups().filter((o) =>
-        o.x >= prev.x && o.y >= prev.y && o.x + o.w <= prev.x + prev.w && o.y + o.h <= prev.y + prev.h) };
+      _natGrpDrag = {
+        grp, gx0: prev.x, gy0: prev.y, // the group's PRE-move position
+        pix: ensureGroups().filter((o) => // our groups whose whole box was inside its previous box
+          o.x >= prev.x && o.y >= prev.y && o.x + o.w <= prev.x + prev.w && o.y + o.h <= prev.y + prev.h)
+          .map((o) => ({ o, x0: o.x, y0: o.y })),
+      };
     }
-    if (_natGrpDrag.pix.length) { for (const o of _natGrpDrag.pix) { o.x += dx; o.y += dy; } carried = true; }
   }
-  return carried;
+  return !!(_natGrpDrag && _natGrpDrag.pix.length); // a native group with our groups inside is being dragged
+}
+// Apply the native-group carry in the DRAW pass: read the dragged group's live _pos NOW
+// and place the contained pixgroups at base + (live - start), so they're drawn locked to
+// the group instead of trailing it by a frame. ComfyUI moves the group's member NODES, so
+// we move only the pixgroup frames.
+function applyNativeCarry() {
+  if (!_natGrpDrag || !_lmbDown) return false;
+  const box = natGrpBox(_natGrpDrag.grp); if (!box) return false;
+  const dx = box.x - _natGrpDrag.gx0, dy = box.y - _natGrpDrag.gy0;
+  for (const p of _natGrpDrag.pix) { p.o.x = p.x0 + dx; p.o.y = p.y0 + dy; }
+  return _natGrpDrag.pix.length > 0;
 }
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
