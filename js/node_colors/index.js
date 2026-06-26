@@ -1369,8 +1369,11 @@ function openPixGroupPalette(g) {
   let bodyHex  = g.bodyColor  || g.color || GROUP_DEFAULT_COLOR;
   let target = "title";
   const applyExtras = () => {
-    if (selNodes.length) applyColors(selNodes, titleHex, bodyHex);                                // node title bar + body
-    for (const cg of selComfyGroups) { try { cg.color = bodyHex; cg.setDirtyCanvas?.(false, true); } catch (_e) {} } // group fill = body
+    if (selNodes.length) applyColors(selNodes, titleHex, bodyHex);                                  // node title bar + body
+    // A native Comfy group is ONE color (its title bar + a faint fill of the same), so it must
+    // take the pixgroup's TITLE (the vivid main color), NOT the dark body backing — otherwise it
+    // goes dark while the pixgroup/node read as the title color.
+    for (const cg of selComfyGroups) { try { cg.color = titleHex; cg.setDirtyCanvas?.(false, true); } catch (_e) {} }
   };
   const applyNow = () => { for (const t of targets) { t.titleColor = titleHex; t.bodyColor = bodyHex; } applyExtras(); pixRepaint(); };
 
