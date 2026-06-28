@@ -109,7 +109,7 @@ function clockParts(ms, dec) {
 function paint(node) {
   const wrap = node._pixRtTime;
   if (!wrap) return;
-  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals ?? 2);
+  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals ?? DEFAULT_STATE.decimals);
   const sig = parts.groups.map((g) => g.unit).join(",") + (parts.frac ? "|f" : "");
   if (node._rtShapeSig !== sig) {
     node._rtShapeSig = sig;
@@ -596,7 +596,7 @@ const HELP = {
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
-      ["Clock color", "Pick from the quick swatches or open the full color picker."],
+      ["Clock color", "Pick the digit color right in the panel: tap a swatch, drag the color square, or type a hex code. Reset returns it to Pixaroma orange."],
     ]},
     { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
   ],
