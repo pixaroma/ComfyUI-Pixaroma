@@ -298,7 +298,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **June 28, 2026 · v1.4.9**
+### **June 28, 2026 · v1.4.9–v1.4.10**
+- **Turn a regular group into a Pixaroma Group.** Right-click a standard ComfyUI group and pick "Convert to Pixaroma Group": it becomes a Pixaroma group of the same size, name, and colour, so moving an existing layout to the new style is one click instead of rebuilding it by hand.
+- **Pixaroma Groups no longer leak into subgraphs.** When you step into a subgraph you now see only that subgraph's own groups, not copies of the ones outside, and deleting a group inside a subgraph no longer deletes the matching one outside.
+- **Dragging a group by its title bar always works now.** Before, grabbing the bottom half of a group's title bar (especially with a large title font) could pan the canvas instead of moving the group. Now the whole title bar moves the group, matching the move cursor you see.
+- **Save Mp4 stores the workflow inside the video.** The full workflow is now saved inside the mp4, so you can drag a saved video back into ComfyUI to rebuild the graph, just like a saved image. Reading it back needs a video pack such as Video Helper Suite installed.
+- **Filename date stamps accept lowercase `hh` for the hour.** When you put a date pattern in the filename (like `%date:yyyy-MM-dd hh-mm-ss%`), the hour now works with lowercase `hh`, matching the built-in Save Image (uppercase `HH` still works too).
 - **The Seed node shows the seed it actually used.** In Random mode the big number now updates on every Run to the seed that made the latest image, so it matches the output instead of looking frozen. Switching to Fixed keeps that same seed (so the number does not jump), and Copy copies whatever is shown.
 - **Find Set Pixaroma by dragging any wire.** Drag a connection out from a node and search, and Set Pixaroma now shows up for any kind of value (numbers, seeds, images, and more), not just text.
 - **Get / Set nodes hold their picked name more reliably.** Added safeguards so a Get node (and occasionally a Set) does not lose the name you chose during long sessions with many of them, something a few users ran into in heavier workflows.
