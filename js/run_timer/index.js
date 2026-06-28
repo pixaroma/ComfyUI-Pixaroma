@@ -26,7 +26,7 @@ const STATE_PROP = "runTimerState";
 
 const NODE_W = 240;     // default body width on a fresh drop
 const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
-const CLOCK_H = 96;     // body height (constant — the clock + its unit labels)
+const CLOCK_H = 84;     // body height (constant — single centered clock line)
 const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
 
 const DEFAULT_STATE = {
@@ -92,11 +92,11 @@ function clockParts(ms, dec) {
     const h = Math.floor(ms / 3600000);
     const m = Math.floor((ms % 3600000) / 60000);
     const s = Math.floor((ms % 60000) / 1000);
-    return { groups: [{ num: String(h), unit: "hr" }, { num: pad(m, 2), unit: "min" }, { num: pad(s, 2), unit: "sec" }], frac: "" };
+    return { groups: [{ num: String(h), unit: "h" }, { num: pad(m, 2), unit: "m" }, { num: pad(s, 2), unit: "s" }], frac: "" };
   }
   const mm = Math.floor(ms / 60000);
   const ss = Math.floor((ms % 60000) / 1000);
-  const groups = [{ num: pad(mm, 2), unit: "min" }, { num: pad(ss, 2), unit: "sec" }];
+  const groups = [{ num: pad(mm, 2), unit: "m" }, { num: pad(ss, 2), unit: "s" }];
   let frac = "";
   if (dec === 3) frac = "." + pad(Math.floor(ms % 1000), 3);
   else if (dec === 2) frac = "." + pad(Math.floor((ms % 1000) / 10), 2);
@@ -479,13 +479,13 @@ function injectCSS() {
   s.textContent = [
     ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
-    ".pix-rt-time{display:flex;align-items:flex-start;justify-content:center;gap:5px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
-    ".pix-rt-cseg{display:flex;flex-direction:column;align-items:center;}",
-    ".pix-rt-numwrap{display:flex;align-items:baseline;line-height:1;}",
+    ".pix-rt-time{display:flex;align-items:center;justify-content:center;gap:4px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
+    ".pix-rt-cseg{display:inline-flex;align-items:flex-start;}",
+    ".pix-rt-numwrap{display:inline-flex;align-items:baseline;line-height:1;}",
     ".pix-rt-num{font-size:30px;letter-spacing:1px;}",
     ".pix-rt-frac{font-size:19px;opacity:0.85;letter-spacing:0.5px;}",
     ".pix-rt-colon{font-size:30px;line-height:1;opacity:0.7;}",
-    ".pix-rt-unit{font-size:10px;line-height:1;margin-top:3px;color:rgba(255,255,255,0.4);letter-spacing:0.5px;}",
+    ".pix-rt-unit{font-size:13px;line-height:1;margin-left:2px;margin-top:2px;opacity:0.5;}",
     ".pix-rt-dot{position:absolute;top:8px;left:9px;width:8px;height:8px;border-radius:50%;background:#6b6b72;}",
     ".pix-rt-dot.run{background:#3ec371;animation:pixRtPulse 1s infinite;}",
     ".pix-rt-dot.done{background:#f66744;}",
