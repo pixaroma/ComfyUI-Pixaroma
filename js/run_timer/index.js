@@ -26,7 +26,7 @@ const STATE_PROP = "runTimerState";
 
 const NODE_W = 240;     // default body width on a fresh drop
 const MIN_W = 200;      // resize floor — keeps the widest readout (00:00:000) un-clipped
-const CLOCK_H = 82;     // body height (constant — the clock is a single fixed line)
+const CLOCK_H = 96;     // body height (constant — the clock + its unit labels)
 const VUE_CHROME = 52;  // Nodes 2.0 only: node.size[1] = body + footer chip + borders
 
 const DEFAULT_STATE = {
@@ -87,26 +87,59 @@ async function playSound(filename, volume01) {
 
 // ── time formatting ─────────────────────────────────────────────────────────
 function pad(n, l) { n = String(n); while (n.length < l) n = "0" + n; return n; }
-function fmtTime(ms, dec) {
+// Break ms into labeled groups. The fraction (hundredths / milliseconds) rides
+// on the seconds group after a decimal point, so it reads as "8.886 sec"; the
+// hr/min/sec labels under each group say which is which. Past an hour the layout
+// becomes hr:min:sec (the fraction is dropped — it just flickers at that scale).
+// Math.floor on every part is REQUIRED: ms is a float, so without it the raw
+// decimals leak (e.g. "886.5999999999").
+function clockParts(ms, dec) {
   if (ms >= 3600000) {
-    // Auto-expand past an hour: H:MM:SS, drop the fraction (it just flickers).
     const h = Math.floor(ms / 3600000);
     const m = Math.floor((ms % 3600000) / 60000);
     const s = Math.floor((ms % 60000) / 1000);
-    return h + ":" + pad(m, 2) + ":" + pad(s, 2);
+    return { groups: [{ num: String(h), unit: "hr" }, { num: pad(m, 2), unit: "min" }, { num: pad(s, 2), unit: "sec" }], frac: "" };
   }
   const mm = Math.floor(ms / 60000);
   const ss = Math.floor((ms % 60000) / 1000);
-  if (dec === 0) return pad(mm, 2) + ":" + pad(ss, 2);
-  if (dec === 3) return pad(mm, 2) + ":" + pad(ss, 2) + ":" + pad(ms % 1000, 3);
-  const cc = Math.floor((ms % 1000) / 10);
-  return pad(mm, 2) + ":" + pad(ss, 2) + ":" + pad(cc, 2);
+  const groups = [{ num: pad(mm, 2), unit: "min" }, { num: pad(ss, 2), unit: "sec" }];
+  let frac = "";
+  if (dec === 3) frac = "." + pad(Math.floor(ms % 1000), 3);
+  else if (dec === 2) frac = "." + pad(Math.floor((ms % 1000) / 10), 2);
+  return { groups, frac };
 }
 
 // ── display ─────────────────────────────────────────────────────────────────
+// Rebuild the segment STRUCTURE only when the shape changes (hour rollover or a
+// decimals change); otherwise just update the numbers each frame for speed.
 function paint(node) {
-  if (!node._pixRtTime) return;
-  node._pixRtTime.textContent = fmtTime(node._rtDisplayMs || 0, node._pixRtDecimals ?? 2);
+  const wrap = node._pixRtTime;
+  if (!wrap) return;
+  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals ?? 2);
+  const sig = parts.groups.map((g) => g.unit).join(",") + (parts.frac ? "|f" : "");
+  if (node._rtShapeSig !== sig) {
+    node._rtShapeSig = sig;
+    wrap.innerHTML = "";
+    node._rtNumEls = [];
+    node._rtFracEl = null;
+    parts.groups.forEach((g, i) => {
+      if (i > 0) { const c = el("span", "pix-rt-colon"); c.textContent = ":"; wrap.appendChild(c); }
+      const seg = el("span", "pix-rt-seg");
+      const nw = el("span", "pix-rt-numwrap");
+      const num = el("span", "pix-rt-num"); num.textContent = g.num; nw.appendChild(num);
+      if (parts.frac && i === parts.groups.length - 1) {
+        const fr = el("span", "pix-rt-frac"); fr.textContent = parts.frac; nw.appendChild(fr);
+        node._rtFracEl = fr;
+      }
+      const unit = el("span", "pix-rt-unit"); unit.textContent = g.unit;
+      seg.appendChild(nw); seg.appendChild(unit);
+      wrap.appendChild(seg);
+      node._rtNumEls.push(num);
+    });
+  } else {
+    parts.groups.forEach((g, i) => { if (node._rtNumEls && node._rtNumEls[i]) node._rtNumEls[i].textContent = g.num; });
+    if (node._rtFracEl) node._rtFracEl.textContent = parts.frac;
+  }
 }
 function setDot(node, mode) {
   if (!node._pixRtDot) return;
@@ -446,7 +479,13 @@ function injectCSS() {
   s.textContent = [
     ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
-    ".pix-rt-time{font:400 30px 'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;color:var(--cc,#f66744);letter-spacing:1px;font-variant-numeric:tabular-nums;white-space:nowrap;}",
+    ".pix-rt-time{display:flex;align-items:flex-start;justify-content:center;gap:5px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
+    ".pix-rt-seg{display:flex;flex-direction:column;align-items:center;}",
+    ".pix-rt-numwrap{display:flex;align-items:baseline;line-height:1;}",
+    ".pix-rt-num{font-size:30px;letter-spacing:1px;}",
+    ".pix-rt-frac{font-size:19px;opacity:0.85;letter-spacing:0.5px;}",
+    ".pix-rt-colon{font-size:30px;line-height:1;opacity:0.7;}",
+    ".pix-rt-unit{font-size:10px;line-height:1;margin-top:3px;color:rgba(255,255,255,0.4);letter-spacing:0.5px;}",
     ".pix-rt-dot{position:absolute;top:8px;left:9px;width:8px;height:8px;border-radius:50%;background:#6b6b72;}",
     ".pix-rt-dot.run{background:#3ec371;animation:pixRtPulse 1s infinite;}",
     ".pix-rt-dot.done{background:#f66744;}",
@@ -504,7 +543,7 @@ function setupNode(node) {
   const root = el("div", "pix-rt-root");
   const screen = el("div", "pix-rt-screen");
   const dot = el("span", "pix-rt-dot");
-  const time = el("span", "pix-rt-time"); time.textContent = "00:00:00";
+  const time = el("div", "pix-rt-time");
   screen.appendChild(dot); screen.appendChild(time);
   root.appendChild(screen);
 
@@ -515,6 +554,7 @@ function setupNode(node) {
   node._rtDisplayMs = 0;
   node._rtRunning = false;
   node._pixRtDecimals = DEFAULT_STATE.decimals;
+  paint(node); // render the initial 00:00 so the screen is not blank pre-microtask
 
   const widget = node.addDOMWidget("run_timer_ui", "pixaroma_run_timer", root, {
     getValue: () => readState(node),
