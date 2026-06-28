@@ -303,6 +303,25 @@ export function startValuePoll() {
     for (const n of g._nodes) {
       // A Get mirrors its Set's colour - keep it synced even when collapsed.
       if (n.type === GET_TYPE) {
+        // Self-heal: if a transient race cleared the combo selection, restore it
+        // from the stable backstop property. Only when the chosen Set still
+        // exists and we're not mid-load, so it never fights a genuine re-pick or
+        // a faithful configure() restore. The combo has no "blank" option, so an
+        // empty value is always an accidental clear, never a user choice.
+        try {
+          const want = n.properties?.pixSGName;
+          if (
+            want &&
+            !n.widgets?.[0]?.value &&
+            !isGraphLoading() &&
+            findSetterByName(n.graph, want)
+          ) {
+            n.widgets[0].value = want;
+            n.onRename?.();
+          }
+        } catch {
+          /* ignore */
+        }
         try {
           inheritSetColor(n);
         } catch {

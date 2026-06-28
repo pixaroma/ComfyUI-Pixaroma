@@ -171,8 +171,27 @@ export function getVisibleSetNames(graph) {
 // Force every Get node (root + all subgraphs) to re-read its combo values.
 // Needed in Nodes 2.0 (Vue) where the combo options are cached until the
 // widget.options reference changes.
+//
+// Re-splicing every Get's combo widget forces a Vue re-extraction; doing it on
+// every reconnect / generation is pure churn (and the window that amplifies the
+// value-loss race). So skip when the set of visible Set names is UNCHANGED -
+// only a Set add / remove / rename can change what a dropdown should list.
+let _lastComboSig = null;
 export function refreshAllGetCombos(graph) {
-  for (const g of allLiveGraphs(graph)) {
+  const graphs = allLiveGraphs(graph);
+  const names = new Set();
+  for (const g of graphs) {
+    for (const node of g._nodes || []) {
+      if (node.type === SET_TYPE) {
+        const v = node.widgets?.[0]?.value;
+        if (v) names.add(v);
+      }
+    }
+  }
+  const sig = [...names].sort().join(String.fromCharCode(1));
+  if (sig === _lastComboSig) return;
+  _lastComboSig = sig;
+  for (const g of graphs) {
     for (const node of g._nodes || []) {
       if (node.type === GET_TYPE) node._refreshComboOptions?.();
     }

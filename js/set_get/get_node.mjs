@@ -51,7 +51,16 @@ export function registerPixaromaGetNode() {
       // Live combo: values are the in-scope Set names, read fresh each render.
       const comboOptions = {};
       Object.defineProperty(comboOptions, "values", {
-        get: () => (this.graph ? getVisibleSetNames(this.graph) : []),
+        // ALWAYS include the current value so neither renderer ever sees
+        // "value not in options" - that state makes the Nodes 2.0 combo blank
+        // the display (and is the window where a transient clear slips in). The
+        // chosen name stays selectable even while its Set is momentarily out of
+        // scope (tab switch / node rebuild / right after a Set rename).
+        get: () => {
+          const cur = this.widgets?.[0]?.value;
+          const names = this.graph ? getVisibleSetNames(this.graph) : [];
+          return cur && !names.includes(cur) ? [cur, ...names] : names;
+        },
         enumerable: true,
         configurable: true,
       });
@@ -131,6 +140,10 @@ export function registerPixaromaGetNode() {
 
     setName(name) {
       this.widgets[0].value = name;
+      // Mirror to a stable property (LiteGraph serializes node.properties
+      // natively) so the chosen name has a backstop that the volatile combo
+      // widget / renderer extraction can never touch.
+      if (this.properties.pixSGName !== name) this.properties.pixSGName = name;
       this.onRename();
     }
 
@@ -143,6 +156,8 @@ export function registerPixaromaGetNode() {
     onRename() {
       const setter = this.findSetter(this.graph);
       const name = this.widgets[0].value;
+      // Keep the stable backstop property in lockstep (diff-gated -> no dirty).
+      if (name && this.properties.pixSGName !== name) this.properties.pixSGName = name;
       if (setter) {
         this.setType(firstWiredInput(setter)?.type ?? "*");
         this.title = `Get: ${name}`;
@@ -222,6 +237,20 @@ export function registerPixaromaGetNode() {
         setTimeout(() => {
           if (this.graph) this.onRename();
         }, 0);
+      }
+      // Backstop: if the combo arrived EMPTY (a transient clear that got saved
+      // into the workflow), restore the chosen name from the stable property;
+      // otherwise adopt the current value into the property (covers nodes saved
+      // before this backstop existed). Diff-gated so a clean post-fix workflow
+      // stays byte-identical on open/close (Vue Compat #18).
+      const savedName = this.properties.pixSGName;
+      if (savedName && !this.widgets[0].value) {
+        this.widgets[0].value = savedName;
+      } else if (
+        this.widgets[0].value &&
+        this.properties.pixSGName !== this.widgets[0].value
+      ) {
+        this.properties.pixSGName = this.widgets[0].value;
       }
       this._justAdded = false;
       refreshValue(this);

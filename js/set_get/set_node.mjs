@@ -18,6 +18,7 @@ import {
   getGraphAncestors,
   collectNodesOfType,
   findGettersByName,
+  findSetterByName,
   findSubgraphNodeFor,
   refreshAllGetCombos,
   pasteRenameMap,
@@ -183,9 +184,22 @@ export function registerPixaromaSetNode() {
       const name = this.widgets[0].value;
       findGettersByName(this.graph, name).forEach((e) => e.node.setType?.(type));
       const prev = this.properties.previousName;
+      // Cross-rename getters from the OLD name to the new one when THIS Set was
+      // just renamed - but ONLY getters whose old name is now ORPHANED (no other
+      // Set still owns it). findGettersByName matches by NAME ONLY, so without
+      // this guard a stale previousName that happens to equal ANOTHER live Set's
+      // name would steal and overwrite that Set's getters -> the reported
+      // "Get nodes lose their values" bug.
       if (name && prev && prev !== name) {
-        findGettersByName(this.graph, prev).forEach((e) => e.node.setName?.(name));
+        findGettersByName(this.graph, prev).forEach((e) => {
+          if (!findSetterByName(e.node.graph || this.graph, prev)) e.node.setName?.(name);
+        });
       }
+      // Single source of truth: sync previousName at the END of EVERY update()
+      // path. The input-disconnect and output-event paths used to reach update()
+      // WITHOUT resetting previousName, letting it drift stale and mis-fire the
+      // cross-rename above on later connection churn (every generation).
+      if (name) this.properties.previousName = name;
       refreshAllGetCombos(this.graph);
       refreshValue(this);
       app.canvas?.setDirty(true, true);
