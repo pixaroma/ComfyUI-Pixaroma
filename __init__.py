@@ -92,6 +92,8 @@ from .nodes.node_combine import NODE_CLASS_MAPPINGS as _MAPS_COMBINE
 from .nodes.node_combine import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_COMBINE
 from .nodes.node_group_switch import NODE_CLASS_MAPPINGS as _MAPS_GROUP_SWITCH
 from .nodes.node_group_switch import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_GROUP_SWITCH
+from .nodes.node_run_timer import NODE_CLASS_MAPPINGS as _MAPS_RUN_TIMER
+from .nodes.node_run_timer import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RUN_TIMER
 
 # development mode for loading additional refrence nodes
 dev_mode = False
@@ -151,6 +153,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_LOOP,
     **_MAPS_COMBINE,
     **_MAPS_GROUP_SWITCH,
+    **_MAPS_RUN_TIMER,
 }
 
 # combine all node display name mappings
@@ -202,6 +205,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_LOOP,
     **_NAMES_COMBINE,
     **_NAMES_GROUP_SWITCH,
+    **_NAMES_RUN_TIMER,
 }
 
 # web directory for loading js files

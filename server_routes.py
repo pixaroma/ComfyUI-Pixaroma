@@ -223,6 +223,28 @@ async def pixaroma_version(request):
     return web.json_response({"version": _read_pixaroma_version()})
 
 
+@PromptServer.instance.routes.get("/pixaroma/api/sounds")
+async def pixaroma_sounds(request):
+    """List the chime/notification sounds in assets/sounds/.
+
+    Used by Run Timer Pixaroma's settings to populate the chime-sound picker.
+    Mirrors node_notify._list_sounds(); the files themselves are served by the
+    existing /pixaroma/assets/sounds/<filename> route. Returns
+    { "sounds": [ "Vista.mp3", ... ] } (empty list on a missing folder/error).
+    """
+    sounds_dir = os.path.join(PIXAROMA_ASSETS_DIR, "sounds")
+    try:
+        if not os.path.isdir(sounds_dir):
+            return web.json_response({"sounds": []})
+        files = sorted(
+            f for f in os.listdir(sounds_dir)
+            if f.lower().endswith((".mp3", ".wav", ".ogg"))
+        )
+        return web.json_response({"sounds": files})
+    except Exception:
+        return web.json_response({"sounds": []})
+
+
 @PromptServer.instance.routes.get("/pixaroma/api/note/icons/list")
 async def list_note_icons(request):
     """Enumerate the note inline-icon folder.
