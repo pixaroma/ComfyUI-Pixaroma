@@ -19,9 +19,10 @@ class PixaromaRunTimer:
         "turn the chime on or off, pick the sound and volume (with a Preview "
         "button), choose how many decimals to show, and set the clock color.\n\n"
         "Chime sounds are the same library as Notify Pixaroma - drop a .mp3, "
-        ".wav, or .ogg into assets/sounds/ to add more (restart ComfyUI to pick "
-        "up new files). A master mute for all run-timer chimes lives in Settings "
-        "-> Pixaroma -> Run Timer."
+        ".wav, or .ogg with a simple name (letters, numbers, dashes) into "
+        "assets/sounds/ to add more (restart ComfyUI to pick up new files). A "
+        "master mute for all run-timer chimes lives in Settings -> Pixaroma -> "
+        "Run Timer."
     )
 
     @classmethod

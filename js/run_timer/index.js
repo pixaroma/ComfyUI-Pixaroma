@@ -255,10 +255,14 @@ function renderPanelBody(node, body) {
   const fillSounds = () => {
     sel.innerHTML = "";
     const cur = readState(node).sound || defaultSound();
-    const list = _soundsCache.length ? _soundsCache : [cur].filter(Boolean);
+    const list = _soundsCache.length ? _soundsCache.slice() : [cur].filter(Boolean);
+    // Saved sound no longer in the library: still show it (marked) so the
+    // selection matches state instead of silently snapping to the first file.
+    if (cur && list.indexOf(cur) === -1) list.unshift(cur);
     for (const f of list) {
       const op = el("option"); op.value = f;
-      op.textContent = f.replace(/\.[^.]+$/, "");
+      const missing = _soundsCache.length > 0 && _soundsCache.indexOf(f) === -1;
+      op.textContent = f.replace(/\.[^.]+$/, "") + (missing ? " (missing)" : "");
       if (f === cur) op.selected = true;
       sel.appendChild(op);
     }
@@ -384,6 +388,7 @@ function makeDraggable(panel, handle) {
     const r = panel.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
     const move = (ev) => {
+      if (!panel.isConnected) { up(); return; } // panel closed mid-drag — self-detach
       panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, ev.clientX - ox)) + "px";
       panel.style.top = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ev.clientY - oy)) + "px";
     };
@@ -423,7 +428,9 @@ function openPanel(node) {
   document.body.appendChild(panel);
   placeBeside(panel, getNodeScreenRect(node));
   requestAnimationFrame(reclampPanel);
+  const _p = panel;
   setTimeout(() => {
+    if (_panel !== _p) return; // closed within the same tick — don't orphan listeners
     document.addEventListener("pointerdown", outsideClose, true);
     document.addEventListener("keydown", escClose, true);
   }, 0);
@@ -549,7 +556,7 @@ const HELP = {
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
       ["Clock color", "Pick from the quick swatches or open the full color picker."],
     ]},
-    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
+    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
   ],
 };
 

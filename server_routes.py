@@ -236,9 +236,14 @@ async def pixaroma_sounds(request):
     try:
         if not os.path.isdir(sounds_dir):
             return web.json_response({"sounds": []})
+        # Only list files the asset-serving route can actually deliver: its
+        # filename check is _SAFE_ID_RE on the name minus dots/dashes/underscores,
+        # so a name with a space (e.g. "My Chime.mp3") would 400 on playback.
+        # Filtering here keeps the picker from offering an unplayable file.
         files = sorted(
             f for f in os.listdir(sounds_dir)
             if f.lower().endswith((".mp3", ".wav", ".ogg"))
+            and _SAFE_ID_RE.match(f.replace(".", "").replace("-", "").replace("_", ""))
         )
         return web.json_response({"sounds": files})
     except Exception:
