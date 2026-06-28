@@ -329,14 +329,44 @@ function renderPanelBody(node, body) {
   requestAnimationFrame(reclampPanel);
 }
 
-function positionPanel(panel, ev) {
-  const pad = 10, w = panel.offsetWidth, h = panel.offsetHeight;
-  let x = (ev && ev.clientX != null ? ev.clientX + 14 : window.innerWidth / 2 - w / 2);
-  let y = (ev && ev.clientY != null ? ev.clientY - 8 : 90);
-  x = Math.max(pad, Math.min(x, window.innerWidth - w - pad));
-  y = Math.max(pad, Math.min(y, window.innerHeight - h - pad));
-  panel.style.left = x + "px";
-  panel.style.top = y + "px";
+// Screen-pixel rect of the node (DOM in Nodes 2.0, geometry math in legacy) so
+// the panel can open BESIDE the node instead of over it. (Node Colors pattern.)
+function getNodeScreenRect(node) {
+  if (isVueNodes() && node && node.id != null) {
+    const elx = document.querySelector('[data-node-id="' + node.id + '"]');
+    if (elx) return elx.getBoundingClientRect();
+  }
+  const c = app.canvas;
+  const ds = c && c.ds, canvasEl = c && c.canvas;
+  if (!ds || !canvasEl || !node || !node.pos || !node.size) return null;
+  const cr = canvasEl.getBoundingClientRect();
+  const titleH = (window.LiteGraph && window.LiteGraph.NODE_TITLE_HEIGHT) || 30;
+  const scale = ds.scale || 1, off = ds.offset || [0, 0];
+  const left = cr.left + (node.pos[0] + off[0]) * scale;
+  const top = cr.top + (node.pos[1] - titleH + off[1]) * scale;
+  const width = node.size[0] * scale;
+  const height = (node.size[1] + titleH) * scale;
+  return { left, top, right: left + width, bottom: top + height, width, height };
+}
+// Place the panel just to the RIGHT of the node, flipping left / clamping into
+// the viewport as needed. No rect (node off-screen) → center it.
+function placeBeside(panel, rect) {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const mw = panel.offsetWidth, mh = panel.offsetHeight;
+  const gap = 12, pad = 8;
+  if (!rect) {
+    panel.style.left = Math.max(pad, (vw - mw) / 2) + "px";
+    panel.style.top = Math.max(pad, (vh - mh) / 2) + "px";
+    return;
+  }
+  let left = rect.right + gap;
+  if (left + mw > vw - pad) left = rect.left - gap - mw; // flip to the left
+  if (left < pad) left = Math.max(pad, vw - mw - pad);   // last resort: pin right
+  let top = rect.top;
+  if (top + mh > vh - pad) top = vh - mh - pad;
+  if (top < pad) top = pad;
+  panel.style.left = left + "px";
+  panel.style.top = top + "px";
 }
 function reclampPanel() {
   if (!_panel) return;
@@ -376,7 +406,7 @@ function closePanel() {
   document.removeEventListener("pointerdown", outsideClose, true);
   document.removeEventListener("keydown", escClose, true);
 }
-function openPanel(node, ev) {
+function openPanel(node) {
   closePanel();
   injectCSS();
   const panel = el("div", "pix-rt-panel");
@@ -391,7 +421,7 @@ function openPanel(node, ev) {
   panel.appendChild(body);
   renderPanelBody(node, body);
   document.body.appendChild(panel);
-  positionPanel(panel, ev);
+  placeBeside(panel, getNodeScreenRect(node));
   requestAnimationFrame(reclampPanel);
   setTimeout(() => {
     document.addEventListener("pointerdown", outsideClose, true);
@@ -544,7 +574,7 @@ app.registerExtension({
 
   getNodeMenuItems(node) {
     if (!node || node.comfyClass !== NODE_NAME) return [];
-    return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node, null) }];
+    return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node) }];
   },
 
   beforeRegisterNodeDef(nodeType, nodeData) {
