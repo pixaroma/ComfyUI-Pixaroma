@@ -10,7 +10,8 @@ import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRoot
 // app.graphToPrompt hook at the bottom injects the resolved per-run seed.
 //
 // Behaviour:
-//   • Random mode  → each Run rolls a fresh seed; "Last run" shows what ran.
+//   • Random mode  → each Run rolls a fresh seed; the big number updates to the
+//                    seed that actually ran (display-only — never persisted).
 //   • Fixed  mode  → the locked seed is used every Run (repeatable).
 //   • New fixed random → roll a new seed and switch to Fixed (locks a roll).
 //   • Use last seed    → load the previous run's seed and switch to Fixed.
@@ -219,16 +220,27 @@ function writeState(node, state) {
   node.properties[STATE_PROP] = JSON.stringify(state);
 }
 
-// Fill the "Last run" line for the current state (random: actual last seed;
-// fixed: a plain hint so the line keeps a constant height = no layout gap).
-function refreshLastRunEl(el, mode, lastSeed) {
-  if (mode === "fixed") {
-    el.textContent = "Fixed: same seed every run";
-  } else if (lastSeed != null) {
-    el.textContent = `Last run: ${lastSeed}`;
-  } else {
-    el.textContent = "Last run: not run yet";
+// The number the big field should SHOW. In Random mode that is the seed that
+// actually ran last (so the field tracks the output the user sees); before the
+// first run it falls back to the stored value. Fixed mode shows the stored
+// value. This is display-only: the last-run seed lives on the runtime field
+// (node._pixSeedLastRun), never in node.properties, so a run can never dirty a
+// saved workflow (Vue Compat #18).
+function displayedSeed(node, state) {
+  if (state.mode === "random" && node._pixSeedLastRun != null) {
+    return clampSeed(node._pixSeedLastRun);
   }
+  return state.seed;
+}
+
+// Fill the hint line under the buttons. The big number now carries the actual
+// seed (see displayedSeed), so this line just explains the mode instead of
+// repeating the number.
+function refreshLastRunEl(el, mode, _lastSeed) {
+  el.textContent =
+    mode === "fixed"
+      ? "Fixed: same seed every run"
+      : "Random: rolls a new seed each run";
 }
 
 // Lightweight refresh used by the graphToPrompt hook — updates the last-run
@@ -241,6 +253,15 @@ function refreshLastRun(node) {
   const lastSeed = node._pixSeedLastRun ?? null;
   const lr = root.querySelector(".pix-seed-lastrun");
   if (lr) refreshLastRunEl(lr, state.mode, lastSeed);
+  // Random mode: reflect the seed that actually ran in the big number, so the
+  // field changes each run to match the output. Visual only (never written to
+  // properties). Skip while the field is focused so it can't yank a number the
+  // user is mid-typing.
+  const num = root.querySelector(".pix-seed-num");
+  if (num && document.activeElement !== num && state.mode === "random" && lastSeed != null) {
+    num.value = String(clampSeed(lastSeed));
+    fitSeedFont(num);
+  }
   const useLast = root.querySelector(".pix-seed-uselast");
   if (useLast) useLast.disabled = lastSeed == null;
 }
@@ -256,10 +277,9 @@ function syncModeUI(root, mode) {
 
 function copySeed(node, btn) {
   const state = readState(node);
-  // What-you-see-is-what-you-copy: copy exactly the seed shown in the big
-  // field. To grab the actual last-run seed in Random mode, click "Use last
-  // seed" first (it loads that seed into the field), then Copy.
-  const text = String(clampSeed(state.seed));
+  // What-you-see-is-what-you-copy: copy exactly the seed shown in the big field
+  // (the last-run seed in Random mode, the locked value in Fixed).
+  const text = String(clampSeed(displayedSeed(node, state)));
   const flash = (ok) => {
     btn.classList.toggle("is-flashing", ok);
     btn.textContent = ok ? "Copied" : "No clipboard";
@@ -308,17 +328,23 @@ function buildSeedBody(node, root) {
   num.autocomplete = "off";
   num.inputMode = "numeric";
   num.className = "pix-seed-num";
-  num.value = String(state.seed);
+  num.value = String(displayedSeed(node, state));
   num.title = "The seed value. Type a number to set an exact seed (switches to Fixed).";
   const commitNum = () => {
     const cleaned = num.value.replace(/[^\d]/g, "");
     const cur = readState(node);
-    // Empty / non-numeric input keeps the existing seed instead of wiping to 0.
-    const v = cleaned === "" ? cur.seed : clampSeed(cleaned);
+    // Compare against what the field was SHOWING (the last-run seed in Random,
+    // else the stored value), so a bare focus/blur in Random mode - where the
+    // field shows the last run, not state.seed - doesn't look like an edit and
+    // flip the mode to Fixed.
+    const baseline = displayedSeed(node, cur);
+    // Empty / non-numeric input keeps the shown seed instead of wiping to 0.
+    const v = cleaned === "" ? baseline : clampSeed(cleaned);
     num.value = String(v); // reflect any clamp
     fitSeedFont(num); // a newly-typed long seed may need a smaller font to fit
-    // No change -> don't flip the mode on a bare focus/blur, and don't rebuild.
-    if (v === cur.seed) return;
+    // No real change -> don't flip the mode on a bare focus/blur, and don't rebuild.
+    if (v === baseline) return;
+    // Typing an exact seed locks it (Fixed).
     writeState(node, { ...cur, seed: v, mode: "fixed" });
     // Surgical UI sync (NOT a full renderUI rebuild) so blurring the field by
     // clicking a pill/button can't destroy that control mid-click.
@@ -347,7 +373,13 @@ function buildSeedBody(node, root) {
     seg.addEventListener("click", () => {
       const cur = readState(node);
       if (cur.mode === m) return;
-      writeState(node, { ...cur, mode: m });
+      const next = { ...cur, mode: m };
+      // Switching Random -> Fixed locks the seed the user is CURRENTLY seeing
+      // (the last run), not the older stored value, so the number doesn't jump.
+      if (m === "fixed" && cur.mode === "random" && node._pixSeedLastRun != null) {
+        next.seed = clampSeed(node._pixSeedLastRun);
+      }
+      writeState(node, next);
       renderUI(node);
     });
     pill.appendChild(seg);

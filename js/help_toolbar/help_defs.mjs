@@ -29,7 +29,7 @@ const HELP = {
       {
         heading: "Modes",
         defs: [
-          ["Random", "Rolls a fresh seed every time you Run. The Last run line shows the seed that actually made the latest image."],
+          ["Random", "Rolls a fresh seed every time you Run, and the big number updates to show the seed that actually made the latest image (so it changes each Run)."],
           ["Fixed", "Keeps the same seed every Run, so the result is repeatable."],
         ],
       },
