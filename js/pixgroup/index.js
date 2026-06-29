@@ -1756,7 +1756,7 @@ const GROUP_HELP = {
       "Drag the header to move it (the nodes inside move with it); drag the bottom-right corner to resize. Both snap to the grid when ComfyUI's \"Always snap to grid\" setting is on.",
       "Copy with Ctrl+C and paste with Ctrl+V - the pasted copy lands where your mouse is. Alt-drag the header also duplicates it.",
       "Double-click the title to rename. Select it and press Delete to remove it (the nodes stay).",
-      "Right-click and pick \"Pin Group\" to lock it in place so it can't be moved or resized (a pin shows in its title). Unpin from the same menu.",
+      "Right-click and pick \"Pin Group\" to lock it so it can't be moved or resized (a pin shows in its title). With several items selected it pins the whole selection, and ComfyUI's own Pin button now locks selected groups too. Unpin the same way.",
     ]},
     { heading: "Header buttons", defs: [
       ["Run", "Queue only this group's output nodes (a Save or Preview inside it)."],
@@ -1880,6 +1880,60 @@ function installVueMenuDismissGuard() {
   }, true);
 }
 
+// ── Pin / lock position (selection-aware + native-pin sync) ──────────────────
+// Pixaroma groups aren't native objects, so ComfyUI's native Pin (selection
+// toolbar / node menu) never touches them. Two hooks close that gap:
+//  1) setSelectionPinned — our menu's "Pin selection" pins/unpins every selected
+//     pixgroup AND the co-selected native nodes + native groups in one action.
+//  2) installPinSync — wrap LGraphNode/LGraphGroup .pin() (what the native UI
+//     calls per selected item) so a native pin of a mixed selection ALSO flips the
+//     co-selected pixgroups: read the gesture's target off a just-pinned native
+//     item and mirror it to our selected groups.
+function setSelectionPinned(target) {
+  for (const g of getSelectedGroups()) { if (target) g.pinned = true; else delete g.pinned; }
+  const c = app.canvas;
+  const nodes = c?.selected_nodes ? Object.values(c.selected_nodes) : [];
+  for (const n of nodes) { try { n.pin?.(target); } catch (_e) {} }
+  for (const grp of selectedNativeGroups()) { try { grp.pin?.(target); } catch (_e) {} }
+  markChanged(); repaint();
+  try { app.canvas?.setDirty(true, true); } catch (_e) {}
+}
+
+let _pinMirrorQueued = false;
+function schedulePinMirror() {
+  if (!_selectedIds.size || _pinMirrorQueued) return;
+  _pinMirrorQueued = true;
+  // Runs AFTER the native pin loop (it calls .pin() on each selected item
+  // synchronously), so every native item is already at the gesture's target.
+  queueMicrotask(() => {
+    _pinMirrorQueued = false;
+    if (!_selectedIds.size) return;
+    const c = app.canvas;
+    let target = null;
+    const nodes = c?.selected_nodes ? Object.values(c.selected_nodes) : [];
+    for (const n of nodes) { if (n && n.flags) { target = !!n.flags.pinned; break; } }
+    if (target === null) for (const grp of selectedNativeGroups()) { if (grp) { target = !!(grp.pinned ?? grp.flags?.pinned); break; } }
+    if (target === null) return; // no native item in the selection to mirror from
+    let changed = false;
+    for (const g of ensureGroups()) {
+      if (!_selectedIds.has(g.id)) continue;
+      if (target && !g.pinned) { g.pinned = true; changed = true; }
+      else if (!target && g.pinned) { delete g.pinned; changed = true; }
+    }
+    if (changed) { markChanged(); repaint(); }
+  });
+}
+function installPinSync() {
+  const wrap = (proto) => {
+    if (!proto || typeof proto.pin !== "function" || proto._pixPinWrapped) return;
+    const orig = proto.pin;
+    proto.pin = function (...a) { const r = orig.apply(this, a); try { schedulePinMirror(); } catch (_e) {} return r; };
+    proto._pixPinWrapped = true;
+  };
+  try { wrap(window.LiteGraph?.LGraphNode?.prototype || app.graph?._nodes?.[0]?.constructor?.prototype); } catch (_e) {}
+  try { const gp = window.LiteGraph?.LGraphGroup?.prototype || (app.graph?._groups && app.graph._groups[0] && app.graph._groups[0].constructor?.prototype); wrap(gp); } catch (_e) {}
+}
+
 app.registerExtension({
   name: "Pixaroma.PixGroup",
   settings: [
@@ -1942,7 +1996,21 @@ app.registerExtension({
       items.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
       if (window.PixaromaNodeColors?.getColorClipboard?.()) items.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
       items.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
-      items.push({ content: over.pinned ? "👑 Unpin Group" : "👑 Pin Group", callback: () => { if (over.pinned) delete over.pinned; else over.pinned = true; markChanged(); repaint(); } });
+      const _pixSel = getSelectedGroups();
+      const _natN = canvas?.selected_nodes ? Object.keys(canvas.selected_nodes).length : 0;
+      // The right-clicked group is part of a multi-selection → pin/unpin the WHOLE
+      // selection (its pixgroups + co-selected native nodes + native groups), not
+      // just this one. A lone group (or one not in the selection) toggles by itself.
+      const _multiPin = _selectedIds.has(over.id) && (_pixSel.length > 1 || _natN > 0 || selectedNativeGroups().length > 0);
+      items.push({
+        content: _multiPin ? (over.pinned ? "👑 Unpin selection" : "👑 Pin selection")
+                           : (over.pinned ? "👑 Unpin Group" : "👑 Pin Group"),
+        callback: () => {
+          const target = !over.pinned;
+          if (_multiPin) setSelectionPinned(target);
+          else { if (target) over.pinned = true; else delete over.pinned; markChanged(); repaint(); }
+        },
+      });
       if (over.folded) items.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       items.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
       items.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
@@ -1963,6 +2031,7 @@ app.registerExtension({
     installPersistence();
     installGroupMenuGuard();
     installVueMenuDismissGuard();
+    installPinSync();
     installFoldHooks();
     installExecListeners();
     // onChange only fires when the user changes the setting — read the saved value
@@ -1978,7 +2047,7 @@ app.registerExtension({
     // self-heals the draw if ComfyUI ever recreates app.canvas (the wrap is on the
     // canvas INSTANCE, not the prototype). updateFoldNodeHideCSS re-asserts Nodes 2.0
     // hide CSS for late-mounted nodes.
-    setInterval(() => { try { installDraw(); updateFoldNodeHideCSS(); } catch (_e) {} }, 700);
+    setInterval(() => { try { installDraw(); updateFoldNodeHideCSS(); installPinSync(); } catch (_e) {} }, 700);
     window.addEventListener("pointerdown", onDown, true);
     window.addEventListener("pointermove", onHover, false);
     window.addEventListener("pointerup", onWinPointerUp, true);
