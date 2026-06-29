@@ -479,7 +479,8 @@ function drawOne(ctx, g) {
   ctx.fillStyle = running ? RUN_GREEN : tInk;
   ctx.font = `600 ${fs}px 'Segoe UI', system-ui, sans-serif`;
   ctx.textBaseline = "middle"; ctx.textAlign = "left";
-  ctx.fillText(running ? ("▶ " + runTitle) : (g.title || "Group"), g.x + 12, g.y + hH / 2 + 1);
+  const _titleStr = running ? ("▶ " + runTitle) : ((g.pinned ? "📌 " : "") + (g.title || "Group"));
+  ctx.fillText(_titleStr, g.x + 12, g.y + hH / 2 + 1);
   ctx.restore();
 
   // node-count badge (cached; see memberCount — avoids a full node scan per frame).
@@ -711,7 +712,8 @@ function onDown(e) {
         }
       }
     }
-    const corner = cornerAt(g, p);
+    // pinned groups are locked: never resize (or move) them
+    const corner = g.pinned ? null : cornerAt(g, p);
     if (corner) {
       // anchor = the FIXED (opposite) corner; the dragged corner follows the cursor
       const ax = corner.includes("l") ? g.x + g.w : g.x;
@@ -730,6 +732,7 @@ function onDown(e) {
       if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleGroupSelection(g); repaint(); return; } // shift/ctrl/cmd = add or remove from selection, no drag
       if (!_selectedIds.has(g.id)) selectGroup(g);              // plain click on an UNselected group → exclusive select (clears nodes)
       else { _selectedId = g.id; _pendingPixSelect = g.id; }    // already selected → KEEP the whole multi-selection for a possible DRAG; a plain CLICK (no drag) collapses to just this group on release
+      if (g.pinned) { repaint(); return; }                     // pinned → select only; never start a move / duplicate-drag
       if (e.altKey) {
         // alt-drag = duplicate the styled frame(s) and drag the COPIES (frame only;
         // the nodes stay with the originals).
@@ -741,9 +744,10 @@ function onDown(e) {
       // Move EVERY selected group + its members + nested frames (deduped) by one delta.
       const movedGroups = new Set(), movedNodes = new Map();
       for (const sgrp of getSelectedGroups()) {
+        if (sgrp.pinned) continue;                             // a co-selected pinned group (and its members) stays put
         movedGroups.add(sgrp);
         for (const n of groupMemberNodes(sgrp)) movedNodes.set(String(n.id), n);
-        for (const ng of groupMemberGroups(sgrp)) movedGroups.add(ng);
+        for (const ng of groupMemberGroups(sgrp)) if (!ng.pinned) movedGroups.add(ng);
       }
       // Also carry any SEPARATELY-selected native nodes (a node + group multi-
       // selection) so dragging the group moves them as one unit AND keeps them
@@ -941,7 +945,8 @@ function carryNativeGroupDrags() {
     if (!_natGrpDrag || _natGrpDrag.grp !== grp) {
       _natGrpDrag = {
         grp, gx0: prev.x, gy0: prev.y, // the group's PRE-move position
-        pix: ensureGroups().filter((o) => // our groups whose whole box was inside its previous box
+        pix: ensureGroups().filter((o) => // our groups whose whole box was inside its previous box (pinned stay put)
+          !o.pinned &&
           o.x >= prev.x && o.y >= prev.y && o.x + o.w <= prev.x + prev.w && o.y + o.h <= prev.y + prev.h)
           .map((o) => ({ o, x0: o.x, y0: o.y })),
       };
@@ -1003,8 +1008,9 @@ function snapshotCarry(cursor) {
   const selIds = new Set(selNodes.map((n) => String(n.id)));
   const frames = [], members = [], fSet = new Set();
   for (const g of getSelectedGroups()) {
+    if (g.pinned) continue;   // pinned → not carried by a node drag; its members stay too
     if (!fSet.has(g)) { fSet.add(g); frames.push({ g, x: g.x, y: g.y, w: g.w, h: g.h }); }
-    for (const ng of groupMemberGroups(g)) if (!fSet.has(ng)) { fSet.add(ng); frames.push({ g: ng, x: ng.x, y: ng.y, w: ng.w, h: ng.h }); }
+    for (const ng of groupMemberGroups(g)) if (!ng.pinned && !fSet.has(ng)) { fSet.add(ng); frames.push({ g: ng, x: ng.x, y: ng.y, w: ng.w, h: ng.h }); }
     for (const n of groupMemberNodes(g)) if (!selIds.has(String(n.id)) && n.pos) members.push({ n, x: n.pos[0], y: n.pos[1] });
   }
   if (!frames.length) return null; // a node is selected but no group → nothing to carry
@@ -1095,13 +1101,13 @@ function onHover(e) {
       const { btns } = headerButtons(g, true);
       for (const b of btns) if (p[0] >= b.x && p[0] <= b.x + b.w && p[1] >= b.y && p[1] <= b.y + b.h) { hotBtn = { gid: g.id, key: b.key }; break; }
     }
-    const corner = cornerAt(g, p);
+    const corner = g.pinned ? null : cornerAt(g, p);
     if (hotBtn) cur = "pointer";
     else if (corner) cur = cornerCursor(corner);
     // Show the move cursor on the header EXCEPT where a non-member node wins (same
     // test onDown uses to start the drag), so the cursor never promises a move the
-    // drag won't perform.
-    else if (inHeader(g, p) && !nonMemberNodeAtHeader(g, p)) cur = "move";
+    // drag won't perform. A pinned group is locked, so no move/resize cursor.
+    else if (!g.pinned && inHeader(g, p) && !nonMemberNodeAtHeader(g, p)) cur = "move";
     break; // topmost group only
   }
   if (cur) { el.style.cursor = cur; _cursorOverride = true; }
@@ -1306,7 +1312,7 @@ function cloneGroupFrame(g, dx, dy) {
   c.id = newId();
   c.x = (g.x || 0) + (dx || 0);
   c.y = (g.y || 0) + (dy || 0);
-  c.folded = false; delete c.foldNodes; delete c.foldGroups; delete c.hOpen; delete c.wOpen;
+  c.folded = false; delete c.foldNodes; delete c.foldGroups; delete c.hOpen; delete c.wOpen; delete c.pinned;
   return c;
 }
 function duplicateSelectedFrames() {
@@ -1750,6 +1756,7 @@ const GROUP_HELP = {
       "Drag the header to move it (the nodes inside move with it); drag the bottom-right corner to resize. Both snap to the grid when ComfyUI's \"Always snap to grid\" setting is on.",
       "Copy with Ctrl+C and paste with Ctrl+V - the pasted copy lands where your mouse is. Alt-drag the header also duplicates it.",
       "Double-click the title to rename. Select it and press Delete to remove it (the nodes stay).",
+      "Right-click and pick \"Pin Group\" to lock it in place so it can't be moved or resized (a pin shows in its title). Unpin from the same menu.",
     ]},
     { heading: "Header buttons", defs: [
       ["Run", "Queue only this group's output nodes (a Save or Preview inside it)."],
@@ -1935,6 +1942,7 @@ app.registerExtension({
       items.push({ content: "👑 Copy Group Colors", callback: () => { window.PixaromaNodeColors?.setColorClipboard?.({ title: gTitleColor(over), body: gBodyColor(over) }); } });
       if (window.PixaromaNodeColors?.getColorClipboard?.()) items.push({ content: "👑 Paste Group Colors", callback: () => { const c = window.PixaromaNodeColors?.getColorClipboard?.(); if (!c) return; const sel = getSelectedGroups(); const tgts = (sel.length && sel.includes(over)) ? sel : [over]; for (const t of tgts) { t.titleColor = c.title; t.bodyColor = c.body; } markChanged(); } });
       items.push({ content: over.folded ? "👑 Unfold Group" : "👑 Fold Group", callback: () => toggleFold(over) });
+      items.push({ content: over.pinned ? "👑 Unpin Group" : "👑 Pin Group", callback: () => { if (over.pinned) delete over.pinned; else over.pinned = true; markChanged(); repaint(); } });
       if (over.folded) items.push({ content: (over.showLinks !== false) ? "👑 Hide links while folded" : "👑 Show links while folded", callback: () => { over.showLinks = (over.showLinks === false); invalidateHidden(); markChanged(); } });
       items.push({ content: "👑 Group Help", callback: () => openHelpPopup(GROUP_HELP) });
       items.push({ content: "👑 Delete Pixaroma Group", callback: () => deleteGroup(over) });
