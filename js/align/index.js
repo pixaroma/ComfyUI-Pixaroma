@@ -1086,6 +1086,16 @@ function onWindowPointerMove(e) {
     return;
   }
 
+  // A PINNED node is locked (flags.pinned): native LiteGraph won't drag it, so
+  // Align must not either. If the node we identified as dragged is pinned, stand
+  // down for this gesture. (A multi-select where only SOME members are pinned is
+  // handled below by excluding the pinned ones from the moving set.)
+  if (draggedNode.flags?.pinned) {
+    state.dragInfo = null;
+    if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+    return;
+  }
+
   // Multi-select detection. If 2+ nodes (collapsed included) are selected AND the
   // identified draggedNode is in that selection, the drag is treated as a
   // rigid bbox move where the cursor delta moves every selected node by the
@@ -1098,7 +1108,9 @@ function onWindowPointerMove(e) {
     if (sel) {
       const selVals = Object.values(sel);
       if (selVals.length > 1 && selVals.includes(draggedNode)) {
-        const live = selVals.filter((n) => n);
+        // Exclude PINNED nodes from the moving set - they stay locked even when an
+        // unpinned sibling in the selection is dragged (native LiteGraph skips them).
+        const live = selVals.filter((n) => n && !(n.flags && n.flags.pinned));
         if (live.length > 1) multiNodes = live;
       }
     }
