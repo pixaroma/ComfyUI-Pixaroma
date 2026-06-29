@@ -98,10 +98,28 @@ export function attachTextareaEditor(node, taEl, rowId) {
 }
 
 function autoGrow(ta) {
+  // EMPTY field: pin to the CSS min (2 rows). Measuring scrollHeight on an empty
+  // field balloons it to the wrapped multi-line PLACEHOLDER height (worse on a
+  // narrow node), so skip the measure and let the CSS min-height rule it. This is
+  // also what stops the bottom button row from being shoved onto the frame edge.
+  if (!ta.value) { ta.style.height = ""; return; }
   // Reset to single line, then grow to scrollHeight up to max-height (CSS cap).
   ta.style.height = "auto";
   const h = Math.min(ta.scrollHeight, 120);
   ta.style.height = h + "px";
+}
+
+// Re-run auto-grow on every textarea in a root. Called from a ResizeObserver in
+// index.js so multi-line fields RESTORE their height when the node body becomes
+// visible again (workflow load / tab switch / collapse-expand) or the node is
+// resized wider/narrower. The one-shot rAF in attachTextareaEditor measures only
+// once, and scrollHeight is 0 while the body is hidden, so without this the
+// fields collapse to min height until the user pokes them (the "reverts to min
+// height" bug). Touches ONLY the textarea elements, never node.size, so it stays
+// dirty-on-load safe.
+export function autoGrowTextareas(root) {
+  if (!root) return;
+  root.querySelectorAll(".pix-pm-textarea").forEach((ta) => autoGrow(ta));
 }
 
 // pixConfirm: small Pixaroma-themed confirmation dialog. Replaces native

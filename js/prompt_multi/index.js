@@ -16,7 +16,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { installResizeFloor, isVueNodes } from "../shared/index.mjs";
-import { pixConfirm } from "./interaction.mjs";
+import { pixConfirm, autoGrowTextareas } from "./interaction.mjs";
 import { isQueueLoopActive, runQueueLoop, feedsOnlyInactiveSwitch } from "../shared/queue_drivers.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/index.mjs";
 
@@ -205,6 +205,25 @@ app.registerExtension({
         // (Nodes 2.0) so the bottom button row can't be squished out of frame.
         node._pixPmFloorOff = installResizeFloor(root, measureContentHeight);
 
+        // Re-grow textareas whenever the body becomes visible again (workflow
+        // load / tab switch / collapse-expand) or the node width changes. The
+        // one-shot rAF in attachTextareaEditor measures once and reads
+        // scrollHeight 0 while the body is hidden, so multi-line fields collapse
+        // to min height until the user pokes them - this restores them
+        // deterministically. Gated on a WIDTH change so our own height edits
+        // don't re-trigger it (no feedback loop); never touches node.size, so it
+        // is dirty-on-load safe (the abandoned setSize-from-ResizeObserver path
+        // is what desynced Align - we only resize the textarea elements).
+        let _pmLastW = -1;
+        const _pmRO = new ResizeObserver(() => {
+          const w = root.clientWidth;
+          if (w === _pmLastW) return;
+          _pmLastW = w;
+          autoGrowTextareas(root);
+        });
+        _pmRO.observe(root);
+        node._pixPmRO = _pmRO;
+
         node._pixPmGrow = () => {
           growNodeToContent(node);
           node.setDirtyCanvas(true, true);
@@ -258,6 +277,8 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPmFloorOff?.();
       this._pixPmFloorOff = null;
+      this._pixPmRO?.disconnect();
+      this._pixPmRO = null;
       this._pixPmRoot = null;
       this._pixPmRerender = null;
       this._pixPmRenderOnly = null;
