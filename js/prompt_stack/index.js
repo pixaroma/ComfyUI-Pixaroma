@@ -11,7 +11,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, renderRows, measureContentHeight } from "./render.mjs";
 import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes } from "../shared/index.mjs";
-import { pixConfirm } from "./interaction.mjs";
+import { pixConfirm, autoGrowTextareas } from "./interaction.mjs";
 
 const DEFAULT_W = 400;
 const DEFAULT_H = 180;
@@ -53,12 +53,25 @@ function setNodeHeight(node, h) {
   node.setSize?.([node.size[0], h]);
 }
 
+// Chrome the node height must budget for ABOVE the DOM body that
+// measureContentHeight does NOT include: the title bar PLUS one row per output
+// slot (Prompt Stack has one output: text). Computed from the live slot count so
+// it stays correct if the slots ever change. For one output this equals the old
+// fixed 50 (~30 title + ~20 slot), so existing nodes keep their height (no
+// dirty-on-load); the body's own bottom padding is the margin.
+function chromeAllowance(node) {
+  const LG = window.LiteGraph || {};
+  const titleH = LG.NODE_TITLE_HEIGHT || 30;
+  const slotH = LG.NODE_SLOT_HEIGHT || 20;
+  const slots = Math.max(node.outputs?.length || 0, node.inputs?.length || 0);
+  return titleH + slots * slotH;
+}
+
 function growNodeToContent(node) {
   const root = node._pixPsRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  // ~30 title + ~10 body top padding + ~10 body bottom padding (breathing room)
-  const desired = contentH + 50;
+  const desired = contentH + chromeAllowance(node);
   if (desired > node.size[1]) setNodeHeight(node, desired);
 }
 
@@ -69,7 +82,7 @@ function fitNodeToContent(node) {
   const root = node._pixPsRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = Math.max(DEFAULT_H, contentH + 50);
+  const desired = Math.max(DEFAULT_H, contentH + chromeAllowance(node));
   setNodeHeight(node, desired);
 }
 
@@ -218,6 +231,23 @@ app.registerExtension({
         // (Nodes 2.0) so the bottom button row can't be squished out of frame.
         node._pixPsFloorOff = installResizeFloor(root, measureContentHeight);
 
+        // Re-grow textareas whenever the body becomes visible again (workflow
+        // load / tab switch / collapse-expand) or the node width changes. The
+        // one-shot rAF in attachTextareaEditor measures once and reads
+        // scrollHeight 0 while the body is hidden, so multi-line fields collapse
+        // to min height until the user pokes them - this restores them. Gated on
+        // a WIDTH change so our own height edits don't re-trigger it (no loop);
+        // never touches node.size, so it is dirty-on-load safe.
+        let _psLastW = -1;
+        const _psRO = new ResizeObserver(() => {
+          const w = root.clientWidth;
+          if (w === _psLastW) return;
+          _psLastW = w;
+          autoGrowTextareas(root);
+        });
+        _psRO.observe(root);
+        node._pixPsRO = _psRO;
+
         // Expose a tiny grow helper so interaction handlers (textarea
         // autogrow) can ask the node to expand without doing a full rerender.
         node._pixPsGrow = () => {
@@ -284,6 +314,8 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       this._pixPsFloorOff?.();
       this._pixPsFloorOff = null;
+      this._pixPsRO?.disconnect();
+      this._pixPsRO = null;
       this._pixPsRoot = null;
       this._pixPsRerender = null;
       this._pixPsRenderOnly = null;
