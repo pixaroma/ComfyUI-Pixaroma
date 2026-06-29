@@ -30,11 +30,20 @@ const DEFAULT_W = 380;
 const DEFAULT_H = 292;
 const MIN_W = 380;
 const MIN_H = 292;
-// Space above the DOM body (title bar + small gap; Prompt Multi has no
-// input slots). The Queue Text / List Prompts pills moved from the canvas
-// slot-row INTO the DOM body (measured by measureContentHeight) for Nodes
-// 2.0, so this no longer needs to budget for canvas pills.
-const CHROME_ALLOWANCE = 40;
+// Chrome the node height must budget for ABOVE the DOM body, which
+// measureContentHeight does NOT include: the title bar PLUS one row per output
+// slot. Prompt Multi has two outputs (text + prompts), so the body starts ~40px
+// (2 slot rows) below the title. The old fixed 40 only covered the title, so
+// when a textarea grew the node under-grew by the slot rows and the bottom
+// button row spilled past the frame. Computed from the live slot count so it
+// stays correct if the slots ever change.
+function chromeAllowance(node) {
+  const LG = window.LiteGraph || {};
+  const titleH = LG.NODE_TITLE_HEIGHT || 30;
+  const slotH = LG.NODE_SLOT_HEIGHT || 20;
+  const slots = Math.max(node.outputs?.length || 0, node.inputs?.length || 0);
+  return titleH + slots * slotH + 12; // title + slot rows + a little breathing room
+}
 
 // Commit a new node height. A bare `node.size[1] = h` array-index write can
 // be reverted by Nodes 2.0's reactive layout when the node was last sized in
@@ -49,7 +58,7 @@ function growNodeToContent(node) {
   const root = node._pixPmRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = contentH + CHROME_ALLOWANCE;
+  const desired = contentH + chromeAllowance(node);
   if (desired > node.size[1]) setNodeHeight(node, desired);
 }
 
@@ -57,7 +66,7 @@ function fitNodeToContent(node) {
   const root = node._pixPmRoot;
   if (!root) return;
   const contentH = measureContentHeight(root);
-  const desired = Math.max(DEFAULT_H, contentH + CHROME_ALLOWANCE);
+  const desired = Math.max(DEFAULT_H, contentH + chromeAllowance(node));
   setNodeHeight(node, desired);
 }
 
