@@ -301,6 +301,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **June 30, 2026 · v1.4.13**
+- **Drag a quick preview back onto the canvas.** The Preview Image node now saves the full workflow inside its temporary preview images (the ones made in Preview mode while you iterate), so you can drag one straight back into ComfyUI to rebuild the graph, just like a saved image. Before this, only the Save modes did that, so you had to save to your output folder and tidy up afterwards.
+
 ### **June 29, 2026 · v1.4.12**
 - **Pin a Pixaroma Group to lock it in place.** Right-click a Pixaroma group and pick "Pin Group" and it stays put: you can no longer move or resize it by accident, and a pin shows in its title. It works with a whole selection too, so pinning several things at once (or pressing ComfyUI's own Pin button) now locks your Pixaroma groups along with the nodes. Unpin from the same menu, and the locked state saves with your workflow.
 - **Pinned nodes stay locked when Align is on.** If you pinned a few nodes and had Pixaroma's Align feature switched on, dragging the selection used to drag the pinned ones along too. Now pinned nodes stay anchored whether one or several are selected.
