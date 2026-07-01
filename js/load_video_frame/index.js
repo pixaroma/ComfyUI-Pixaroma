@@ -27,7 +27,7 @@ function injectCSS() {
 .pix-lvf-scrub { flex:1 1 auto; min-width:30px; height:6px; position:relative; border-radius:3px; background:rgba(255,255,255,0.16); cursor:pointer; }
 .pix-lvf-scrub-fill { position:absolute; left:0; top:0; height:100%; width:0%; border-radius:3px; background:#f66744; pointer-events:none; }
 .pix-lvf-scrub-handle { position:absolute; top:50%; left:0%; width:12px; height:12px; border-radius:50%; background:#fff; transform:translate(-50%,-50%); pointer-events:none; box-shadow:0 0 2px rgba(0,0,0,0.6); }
-.pix-lvf-frame { flex:0 0 auto; font:11px monospace; color:rgba(255,255,255,0.72); white-space:nowrap; user-select:none; }
+.pix-lvf-frame { flex:0 0 auto; font:11px monospace; color:rgba(255,255,255,0.72); white-space:pre; user-select:none; }
 .pix-lvf-toast { position:fixed; left:50%; bottom:40px; transform:translateX(-50%); background:#1d1d1d; color:#fff; border:1px solid #f66744; border-radius:6px; padding:8px 14px; font:13px sans-serif; z-index:99999; box-shadow:0 4px 12px rgba(0,0,0,0.5); pointer-events:none; }
 `;
   document.head.appendChild(style);
@@ -121,9 +121,16 @@ function updateBar(node) {
   if (node._pixLvfFill) node._pixLvfFill.style.width = pct;
   if (node._pixLvfHandle) node._pixLvfHandle.style.left = pct;
   if (node._pixLvfReadout) {
-    node._pixLvfReadout.textContent = total > 0
-      ? `frame ${frame} · ${total} frames`
-      : `frame ${frame}`;
+    if (total > 0) {
+      // Right-pad the frame number to the widest it can get (digits of the last
+      // frame) so the readout width never changes as you scrub. Without this, a
+      // 1->3 digit change widens the readout, which squeezes the flex slider and
+      // nudges the ▶ arrow. Monospace + white-space:pre keeps the padding exact.
+      const w = String(total - 1).length;
+      node._pixLvfReadout.textContent = `frame ${String(frame).padStart(w, " ")} · ${total} frames`;
+    } else {
+      node._pixLvfReadout.textContent = `frame ${frame}`;
+    }
   }
   const hasVid = !!getLiveVideo(node)?.src;
   node._pixLvfBar?.classList.toggle("is-disabled", !hasVid);
