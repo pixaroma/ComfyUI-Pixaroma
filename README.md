@@ -304,7 +304,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **July 1, 2026 · v1.4.14**
+### **July 1, 2026 · v1.4.14–v1.4.15**
+- **XY Plot saves at full resolution now.** The comparison grid you export is no longer shrunk down to the on-screen preview size. A new Save row on the node lets you choose how big the Save buttons write out: 2048, 4096, 8192, or Full for the original size, so a big grid finally comes out big. It's built only when you press Save, so your runs stay just as fast as before, and both Save Disk (to your computer) and Save Output (to ComfyUI's output folder) use your chosen size. The node's Help has a short "Saving and image size" section explaining it.
 - **NEW: Load Video Frame Pixaroma.** Grab one exact frame out of a video and use it as an image, like a Load Image node but for video. Load a clip and a preview shows on the node with a slider: drag it to any spot, step one frame back or forward with the arrow buttons, or type the exact frame number. It reads the frame count for you and shows where you are ("frame 76 · 117 frames"), and hands you the picked frame plus its mask and the video's frame count, fps, width and height. Great for pulling a still, a start frame, or a reference out of a video without exporting it somewhere else first. Works in both the classic and the new node interface.
 
 ### **June 30, 2026 · v1.4.13**
