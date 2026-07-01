@@ -39,6 +39,8 @@ export { isVueNodes, applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRep
 
 export { installResizeFloor, measureRootContent } from "./resize_floor.mjs";
 
+export { installCanvasZoomPassthrough } from "./canvas_zoom.mjs";
+
 export {
   createPixaromaColorPicker,
   openPixaromaColorPickerPopup,
