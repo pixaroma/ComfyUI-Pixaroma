@@ -18,6 +18,13 @@ import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
 // a floating panel opened from the node's right-click menu. State is stored on
 // node.properties.runTimerState — serialized natively, restored on load.
 //
+// The last FINISHED total is ALSO persisted (node.properties.runTimerLastMs) so
+// it survives a workflow-tab switch / page reload instead of resetting to zero
+// (the live _rtDisplayMs field is torn down with the node — Preview Image
+// Pattern #4). A finished run writes it, so the workflow flags "modified" —
+// accepted, exactly like Preview Image / Save Mp4. The restore path only READS
+// it, so a plain open never dirties the workflow (Vue Compat #18).
+//
 // Built for BOTH renderers (the dot-less DOM-widget sizing recipe + the
 // floating settings panel are the Group Switch pattern).
 
@@ -154,6 +161,20 @@ function applyState(node) {
   if (node._pixRtScreen) node._pixRtScreen.style.setProperty("--cc", st.color || BRAND);
   paint(node);
 }
+// Restore the last frozen total from node.properties so a workflow-tab switch
+// or page reload shows it again instead of 00:00 (the live _rtDisplayMs field
+// is torn down with the node — Preview Image Pattern #4). READ-ONLY: it never
+// writes node.properties, so a plain open stays dirty-on-load safe (Vue Compat
+// #18). Skipped while a run is live so it can't clobber the counting value.
+// A real run is a performance.now() delta (hours at most), so reject an absurd
+// value from a hand-edited / corrupted / shared workflow JSON — it would render
+// a garbage clock. The only legitimate writer is finishAll.
+const MAX_RESTORE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days — generous vs any real run
+function restoreLastRun(node) {
+  if (node._rtRunning) return;
+  const ms = node.properties && node.properties.runTimerLastMs;
+  if (typeof ms === "number" && isFinite(ms) && ms >= 0 && ms <= MAX_RESTORE_MS) node._rtDisplayMs = ms;
+}
 
 // ── run lifecycle (drives every Run Timer on the canvas) ────────────────────
 const _timers = new Set();
@@ -203,6 +224,12 @@ function finishAll(success) {
     if (!node._rtRunning) continue;   // idempotent: first finish wins
     node._rtRunning = false;
     node._rtDisplayMs = performance.now() - node._rtStart;
+    // Persist the frozen total so a workflow-tab switch / reload restores it
+    // (see restoreLastRun). This is a genuine run-completion write — it flags
+    // the workflow "modified" (accepted, like Preview Image / Save Mp4). It is
+    // NEVER written on the load path, so it stays dirty-on-load safe.
+    if (!node.properties) node.properties = {};
+    node.properties.runTimerLastMs = node._rtDisplayMs;
     paint(node);
     setDot(node, "done");
     flashScreen(node);
@@ -584,8 +611,9 @@ function setupNode(node) {
 
   _timers.add(node);
   // nodeCreated fires BEFORE configure() restores node.properties (Vue Compat
-  // #8) — defer so a saved timer shows its restored color/decimals, not defaults.
-  queueMicrotask(() => { applyState(node); refreshNodeSize(node); });
+  // #8) — defer so a saved timer shows its restored color/decimals AND its last
+  // finished time (restoreLastRun), not defaults / 00:00.
+  queueMicrotask(() => { restoreLastRun(node); applyState(node); refreshNodeSize(node); });
 }
 
 const HELP = {
@@ -600,7 +628,7 @@ const HELP = {
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
       ["Clock color", "Pick the digit color right in the panel: tap a swatch, drag the color square, or type a hex code. Reset returns it to Pixaroma orange."],
     ]},
-    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
+    { heading: "Good to know", body: "The node only shows the clock - all the controls are in the right-click menu. It does not need to be wired to anything; just drop it on the canvas. Each workflow remembers its own last time, so you can switch between workflow tabs to compare how long each one took; the time only resets when you run that workflow again. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
   ],
 };
 
@@ -636,7 +664,7 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
-      if (this._pixRtRoot) applyState(this);
+      if (this._pixRtRoot) { restoreLastRun(this); applyState(this); }
       return r;
     };
 
