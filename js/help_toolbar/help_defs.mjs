@@ -686,7 +686,7 @@ const HELP = {
         bullets: [
           "`PNG` is lossless, keeps transparency, and embeds the workflow: drag a saved PNG back into ComfyUI to reload everything with the exact seed that made it.",
           "`JPG` makes much smaller files with a quality setting. ComfyUI cannot reload workflows from JPG files, so pick PNG when that matters.",
-          "Right-click the node for `Save Image settings`: JPG quality, workflow embedding on or off, and `Save on every run` (turn it off to test a workflow without writing files).",
+          "Right-click the node for `Save Image settings`: date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG quality, workflow embedding on or off, and `Save on every run` (turn it off to test a workflow without writing files).",
           "`Open folder` opens the save location in your file explorer.",
         ],
       },

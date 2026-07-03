@@ -128,7 +128,8 @@ export function buildRoot() {
   );
   inner.appendChild(secName);
 
-  // ── format ──
+  // ── format ── (hint on its OWN full-width line below the buttons, so
+  // switching PNG/JPG never wraps to a second line and never shifts layout)
   const secFmt = el("div");
   secFmt.appendChild(el("span", "pix-si-lab", "Format"));
   const rowFmt = el("div", "pix-si-row");
@@ -138,13 +139,13 @@ export function buildRoot() {
   fmtPng.title = "Lossless PNG. Keeps transparency and can embed the workflow for drag-back reload.";
   const fmtJpg = el("button", null, "JPG");
   fmtJpg.type = "button";
-  fmtJpg.title = "Smaller JPG files. Quality is in the right-click settings. No transparency.";
+  fmtJpg.title = "Smaller JPG files. Quality is in the right-click settings. No transparency. Workflows reload from PNG only.";
   seg.appendChild(fmtPng);
   seg.appendChild(fmtJpg);
   rowFmt.appendChild(seg);
-  const fmtHint = el("span", "pix-si-fmt-hint", "");
-  rowFmt.appendChild(fmtHint);
   secFmt.appendChild(rowFmt);
+  const fmtHint = el("div", "pix-si-hint", "");
+  secFmt.appendChild(fmtHint);
   inner.appendChild(secFmt);
 
   // ── saved this run ──

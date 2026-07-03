@@ -158,6 +158,59 @@ export function openSettingsPanel(node, onChange) {
 
   const body = el("div", "pix-si-pbody");
 
+  // Date style — what the + Date chip inserts (regional order)
+  const dWrap = el("div");
+  const dRow = el("div", "pix-si-prow");
+  dRow.appendChild(el("span", "pix-si-plab", "Date style"));
+  const dSeg = el("div", "pix-si-seg");
+  const styles = ["yyyy-MM-dd", "dd-MM-yyyy", "MM-dd-yyyy"];
+  const dBtns = styles.map((fmt) => {
+    const b = el("button", null, fmt);
+    b.type = "button";
+    b.style.fontSize = "11px";
+    b.style.padding = "4px 8px";
+    b.classList.toggle("on", (readState(node).dateStyle || "yyyy-MM-dd") === fmt);
+    b.addEventListener("click", () => {
+      const st = readState(node);
+      st.dateStyle = fmt;
+      writeState(node, st);
+      dBtns.forEach((x) => x.classList.toggle("on", x === b));
+      if (_onChange) _onChange();
+    });
+    dSeg.appendChild(b);
+    return b;
+  });
+  dRow.appendChild(dSeg);
+  dWrap.appendChild(dRow);
+  dWrap.appendChild(el("div", "pix-si-psub", "The order the + Date chip inserts (MM month, dd day)"));
+  body.appendChild(dWrap);
+
+  // Counter digits — %counter% zero-padding
+  const cWrap = el("div");
+  const cRow = el("div", "pix-si-prow");
+  cRow.appendChild(el("span", "pix-si-plab", "Counter digits"));
+  const cSl = el("input", "pix-si-qsl");
+  cSl.type = "range";
+  cSl.min = "1";
+  cSl.max = "8";
+  cSl.step = "1";
+  cSl.value = String(readState(node).counterDigits ?? 5);
+  const cVal = el("span", "pix-si-qval", "0".repeat(parseInt(cSl.value, 10) || 5) );
+  cVal.style.minWidth = "58px";
+  cSl.addEventListener("input", () => {
+    const n = Math.max(1, Math.min(8, parseInt(cSl.value, 10) || 5));
+    cVal.textContent = "0".repeat(n);
+    const st = readState(node);
+    st.counterDigits = n;
+    writeState(node, st);
+    if (_onChange) _onChange();
+  });
+  cRow.appendChild(cSl);
+  cRow.appendChild(cVal);
+  cWrap.appendChild(cRow);
+  cWrap.appendChild(el("div", "pix-si-psub", "How many digits %counter% uses (00001 = 5)"));
+  body.appendChild(cWrap);
+
   // JPG quality
   const qWrap = el("div");
   const qRow = el("div", "pix-si-prow");

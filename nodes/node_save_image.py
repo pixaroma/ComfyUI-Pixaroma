@@ -38,6 +38,8 @@ DEFAULT_STATE = {
     "quality": 90,
     "embedWorkflow": True,
     "saveOnRun": True,
+    "dateStyle": "yyyy-MM-dd",  # JS-only (what the + Date chip inserts)
+    "counterDigits": 5,         # %counter% zero-padding (00001 = 5)
 }
 
 # Extensions stripped off a wired `name` value so "cat.png" doesn't become
@@ -166,6 +168,10 @@ class PixaromaSaveImage:
             quality = 90
         embed = bool(state.get("embedWorkflow", True))
         save_on = bool(state.get("saveOnRun", True))
+        try:
+            digits = max(1, min(8, int(state.get("counterDigits", 5))))
+        except Exception:
+            digits = 5
 
         h = int(images.shape[1])
         w = int(images.shape[2])
@@ -239,7 +245,7 @@ class PixaromaSaveImage:
                         ck = (parent.lower(), d)
                         if ck not in dir_counters:
                             dir_counters[ck] = _next_counter(parent, d)
-                        d = d.replace("%counter%", f"{dir_counters[ck]:05}")
+                        d = d.replace("%counter%", f"{dir_counters[ck]:0{digits}}")
                     resolved_dirs.append(d)
                     parent = os.path.join(parent, d)
                 sub_dirs = resolved_dirs
@@ -263,11 +269,11 @@ class PixaromaSaveImage:
             path = fname = None
             while True:
                 if has_counter:
-                    fname = base_tpl.replace("%counter%", f"{counter:05}") + ext
+                    fname = base_tpl.replace("%counter%", f"{counter:0{digits}}") + ext
                 elif suffix == 0:
                     fname = base_tpl + ext
                 else:
-                    fname = f"{base_tpl}_{suffix:05}{ext}"
+                    fname = f"{base_tpl}_{suffix:0{digits}}{ext}"
                 cand = os.path.join(target_dir, fname)
                 try:
                     fd = os.open(cand, os.O_WRONLY | os.O_CREAT | os.O_EXCL)

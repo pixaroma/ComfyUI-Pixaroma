@@ -14,6 +14,8 @@ export const DEFAULT_STATE = {
   quality: 90,
   embedWorkflow: true,
   saveOnRun: true,
+  dateStyle: "yyyy-MM-dd", // what the + Date chip inserts (regional order)
+  counterDigits: 5, // %counter% zero-padding (00001 = 5)
 };
 
 export function readState(node) {

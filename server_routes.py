@@ -1818,6 +1818,28 @@ async def api_save_image_open_folder(request):
         import sys
         if sys.platform == "win32":
             os.startfile(path)
+            # Best-effort: bring the Explorer window to the FRONT. Like the
+            # native folder dialog, a window opened by the server lands
+            # BEHIND the browser (user report: "looked like it did nothing,
+            # it was only on the taskbar"). AppActivate matches the window
+            # title, which for Explorer is the folder's leaf name; path goes
+            # through an env var to avoid any quoting issues.
+            try:
+                leaf = os.path.basename(path.rstrip("\\/")) or path
+                ps = (
+                    "Start-Sleep -Milliseconds 600;"
+                    "$ws=New-Object -ComObject WScript.Shell;"
+                    "[void]$ws.AppActivate($env:PIX_SI_LEAF)"
+                )
+                env = dict(os.environ)
+                env["PIX_SI_LEAF"] = leaf
+                subprocess.Popen(
+                    ["powershell", "-NoProfile", "-Command", ps],
+                    env=env,
+                    creationflags=0x08000000,  # CREATE_NO_WINDOW
+                )
+            except Exception:
+                pass
         elif sys.platform == "darwin":
             subprocess.Popen(["open", path])
         else:
