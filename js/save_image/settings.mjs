@@ -243,14 +243,6 @@ export function openSettingsPanel(node, onChange) {
       "Drag the file back into ComfyUI to reload it (works with PNG)"
     )
   );
-  body.appendChild(
-    switchRow(
-      node,
-      "saveOnRun",
-      "Save on every run",
-      "Off = run the workflow without writing files"
-    )
-  );
 
   panel.appendChild(body);
   document.body.appendChild(panel);

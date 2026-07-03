@@ -128,13 +128,14 @@ class PixaromaSaveImage:
         "never overwrites), %width%, %height%, %batch_num%, plus node references like %Seed Pixaroma.seed%. "
         "Use / in the name to create subfolders. Format is PNG (lossless, embeds the workflow so the file can be "
         "dragged back into ComfyUI) or JPG (smaller, quality setting in the right-click panel; ComfyUI cannot "
-        "reload workflows from JPG). Right-click the node for date style, counter digits, JPG quality, workflow "
-        "embedding, and the save-on-every-run switch. Batches save every frame with the counter increasing.\n\n"
-        "Saved images show in a large preview on the node: click the image or use the arrows to flip through a "
-        "batch, with a thumbnail strip below. Resize the node to make the preview bigger. With save-on-every-run "
-        "off the node previews without writing to your folder (frames go to ComfyUI's temporary folder instead), "
-        "so it can double as a preview node. Open folder shows the save location in your file explorer; the "
-        "window can appear on the taskbar."
+        "reload workflows from JPG). Right-click the node for date style, counter digits, JPG quality, and "
+        "workflow embedding. Batches save every frame with the counter increasing.\n\n"
+        "Saved images show in a large preview on the node: click the image or hover for the arrows to flip "
+        "through a batch, use the thumbnail strip below, and the Copy and Open buttons on the preview's corner "
+        "copy the shown image to the clipboard or open it in a new tab. Resize the node to make the preview "
+        "bigger. The Mode toggle switches Save (files are written on every run) and Preview (images show on the "
+        "node, nothing goes to your folder), so it can double as a preview node. Open folder shows the save "
+        "location in your file explorer; the window can appear on the taskbar."
     )
 
     @classmethod
@@ -216,7 +217,7 @@ class PixaromaSaveImage:
                 "w": w,
                 "h": h,
                 "inside_output": inside_output,
-                "note": "Saving is off - preview only, nothing was written",
+                "note": "Preview mode - nothing was written to your folder",
             }
             return {"ui": {"pixaroma_save_frames": entries}}
 

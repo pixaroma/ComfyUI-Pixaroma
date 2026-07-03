@@ -45,14 +45,23 @@ export function injectCSS() {
     ".pix-si-seg button.on{background:#f66744;color:#fff;}",
     ".pix-si-fmt-hint{font-size:10px;color:#8f8f8f;line-height:1.4;flex:1;min-width:0;}",
     ".pix-si-saved{flex:1 1 0;min-height:0;display:flex;flex-direction:column;gap:6px;}",
+    // the view is a bordered drop-zone box only while EMPTY; with an image it
+    // goes frameless so the picture floats on the node like Preview Image
     ".pix-si-view{position:relative;flex:1 1 0;min-height:90px;background:#151515;border:1px solid #3c3c3c;border-radius:4px;overflow:hidden;}",
+    ".pix-si-view.has{background:transparent;border-color:transparent;}",
     ".pix-si-big{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;cursor:pointer;}",
     ".pix-si-ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#777;font-size:11px;padding:8px;text-align:center;}",
     ".pix-si-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);color:#ddd;border-radius:4px;padding:4px 7px;font-size:11px;cursor:pointer;display:none;}",
+    ".pix-si-view.has:hover .pix-si-nav.show{display:block;}",
     ".pix-si-nav.prev{left:6px;}",
     ".pix-si-nav.next{right:6px;}",
     ".pix-si-nav:hover{background:#f66744;border-color:#f66744;color:#fff;}",
     ".pix-si-count{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.55);color:#ddd;font-size:11px;padding:1px 7px;border-radius:3px;display:none;}",
+    ".pix-si-act{position:absolute;top:6px;right:6px;display:none;gap:4px;}",
+    ".pix-si-view.has .pix-si-act{display:flex;}",
+    ".pix-si-abtn{background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.18);color:#ddd;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;font-family:inherit;}",
+    ".pix-si-abtn:hover{background:#f66744;border-color:#f66744;color:#fff;}",
+    ".pix-si-dims{flex:0 0 auto;text-align:center;font-size:10px;color:#8f8f8f;display:none;}",
     ".pix-si-strip{display:flex;gap:5px;flex-wrap:wrap;flex:0 0 auto;}",
     ".pix-si-thumb{height:44px;width:44px;object-fit:cover;border-radius:4px;border:1px solid #444;background:#1d1d1d;display:block;cursor:pointer;}",
     ".pix-si-thumb.sel{border-color:#f66744;box-shadow:0 0 0 1px #f66744;}",
@@ -158,9 +167,29 @@ export function buildRoot() {
   secFmt.appendChild(fmtHint);
   inner.appendChild(secFmt);
 
+  // ── mode (Save / Preview on the node face, like the format toggle) ──
+  const secMode = el("div");
+  secMode.appendChild(el("span", "pix-si-lab", "Mode"));
+  const rowMode = el("div", "pix-si-row");
+  const segMode = el("div", "pix-si-seg");
+  const modeSave = el("button", null, "Save");
+  modeSave.type = "button";
+  modeSave.title = "Write the files on every run";
+  const modePreview = el("button", null, "Preview");
+  modePreview.type = "button";
+  modePreview.title = "Show the images on the node without writing anything to your folder";
+  segMode.appendChild(modeSave);
+  segMode.appendChild(modePreview);
+  rowMode.appendChild(segMode);
+  secMode.appendChild(rowMode);
+  const modeHint = el("div", "pix-si-hint", "");
+  secMode.appendChild(modeHint);
+  inner.appendChild(secMode);
+
   // ── saved this run: big preview (fills the node) + thumb strip + status ──
   const secSaved = el("div", "pix-si-saved");
-  secSaved.appendChild(el("span", "pix-si-lab", "Saved this run"));
+  const savedLab = el("span", "pix-si-lab", "Saved this run");
+  secSaved.appendChild(savedLab);
   const view = el("div", "pix-si-view");
   const bigImg = el("img", "pix-si-big");
   bigImg.style.display = "none";
@@ -172,12 +201,24 @@ export function buildRoot() {
   navNext.type = "button";
   navNext.title = "Next image";
   const counter = el("div", "pix-si-count", "");
+  const act = el("div", "pix-si-act");
+  const actCopy = el("button", "pix-si-abtn", "Copy");
+  actCopy.type = "button";
+  actCopy.title = "Copy the shown image to the clipboard";
+  const actOpen = el("button", "pix-si-abtn", "Open");
+  actOpen.type = "button";
+  actOpen.title = "Open the shown image in a new browser tab";
+  act.appendChild(actCopy);
+  act.appendChild(actOpen);
   view.appendChild(bigImg);
   view.appendChild(ph);
   view.appendChild(navPrev);
   view.appendChild(navNext);
   view.appendChild(counter);
+  view.appendChild(act);
   secSaved.appendChild(view);
+  const dims = el("div", "pix-si-dims", "");
+  secSaved.appendChild(dims);
   const strip = el("div", "pix-si-strip");
   secSaved.appendChild(strip);
   const status = el("div", "pix-si-status");
@@ -205,13 +246,20 @@ export function buildRoot() {
     fmtPng,
     fmtJpg,
     fmtHint,
+    modeSave,
+    modePreview,
+    modeHint,
     savedSec: secSaved,
+    savedLab,
     view,
     bigImg,
     ph,
     navPrev,
     navNext,
     counter,
+    actCopy,
+    actOpen,
+    dims,
     strip,
     stIco,
     stTxt,

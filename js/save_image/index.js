@@ -134,6 +134,23 @@ function setStatus(node, kind, text) {
   ui.stTxt.textContent = text;
 }
 
+// Temporary status message that restores the previous one (unless something
+// else replaced it meanwhile).
+function flashStatus(node, kind, text, ms = 2400) {
+  const ui = node._pixSiUI;
+  if (!ui) return;
+  const prev = { c: ui.stIco.className, g: ui.stIco.textContent, t: ui.stTxt.textContent };
+  setStatus(node, kind, text);
+  clearTimeout(node._pixSiFlashT);
+  node._pixSiFlashT = setTimeout(() => {
+    if (ui.stTxt.textContent === text) {
+      ui.stIco.className = prev.c;
+      ui.stIco.textContent = prev.g;
+      ui.stTxt.textContent = prev.t;
+    }
+  }, ms);
+}
+
 function buildViewUrl(f) {
   return (
     "/view?filename=" + encodeURIComponent(f.filename) +
@@ -175,17 +192,21 @@ function renderPreviewUI(node) {
   node._pixSiSel = sel;
   ui.ph.style.display = n ? "none" : "flex";
   ui.bigImg.style.display = n ? "block" : "none";
+  ui.view.classList.toggle("has", n > 0);
   if (n) {
     const f = frames[sel];
     if (ui.bigImg.getAttribute("src") !== f.src) ui.bigImg.src = f.src;
     ui.bigImg.title = (f.title || "") + (n > 1 ? " - click for the next image" : "");
   }
   const multi = n > 1;
-  ui.navPrev.style.display = multi ? "block" : "none";
-  ui.navNext.style.display = multi ? "block" : "none";
+  ui.navPrev.classList.toggle("show", multi);
+  ui.navNext.classList.toggle("show", multi);
   ui.counter.style.display = multi ? "block" : "none";
   const total = Math.max(node._pixSiTotal || 0, n);
   ui.counter.textContent = (sel + 1) + " / " + total;
+  const d = node._pixSiLastDims;
+  ui.dims.style.display = n && d ? "block" : "none";
+  if (n && d) ui.dims.textContent = d.w + " × " + d.h;
   ui.strip.innerHTML = "";
   if (multi) {
     frames.forEach((f, i) => {
@@ -212,6 +233,38 @@ function stepPreview(node, dir) {
   if (n < 2) return;
   node._pixSiSel = ((node._pixSiSel || 0) + dir + n) % n;
   renderPreviewUI(node);
+}
+
+// Copy the SHOWN frame to the OS clipboard as PNG (Preview Image parity).
+// Converted through a canvas so JPG saves copy fine (clipboards want PNG).
+async function copyFrame(node) {
+  const ui = node._pixSiUI;
+  const frames = node._pixSiFrames || [];
+  const f = frames[node._pixSiSel || 0];
+  if (!ui || !f) return;
+  try {
+    if (!navigator.clipboard || !window.ClipboardItem) throw new Error("no clipboard api");
+    const img = ui.bigImg;
+    if (!img.naturalWidth) throw new Error("not loaded");
+    const cv = document.createElement("canvas");
+    cv.width = img.naturalWidth;
+    cv.height = img.naturalHeight;
+    cv.getContext("2d").drawImage(img, 0, 0);
+    const blob = await new Promise((res) => cv.toBlob(res, "image/png"));
+    if (!blob) throw new Error("convert failed");
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+    flashStatus(node, "ok", "Copied to clipboard");
+  } catch {
+    flashStatus(node, "info", "Could not copy - the browser blocked clipboard access");
+  }
+}
+
+function openFrame(node) {
+  const frames = node._pixSiFrames || [];
+  const f = frames[node._pixSiSel || 0];
+  if (!f) return;
+  const w = window.open(f.src, "_blank", "noopener");
+  if (!w) flashStatus(node, "info", "Popup blocked by the browser");
 }
 
 // ── live "Will save as" preview ───────────────────────────────────────────────
@@ -307,6 +360,13 @@ function syncFace(node) {
   ui.fmtHint.textContent = jpg
     ? "Smaller files, quality " + (st.quality ?? 90) + " (right-click to change)."
     : "Lossless. Best choice when embedding the workflow.";
+  const preview = !st.saveOnRun;
+  ui.modeSave.classList.toggle("on", !preview);
+  ui.modePreview.classList.toggle("on", preview);
+  ui.modeHint.textContent = preview
+    ? "Nothing is written to your folder - preview only."
+    : "Files are written on every run.";
+  ui.savedLab.textContent = preview ? "Preview (not saved)" : "Saved this run";
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -439,6 +499,15 @@ function wireEvents(node, ui) {
   ui.fmtPng.addEventListener("click", () => setFormat("png"));
   ui.fmtJpg.addEventListener("click", () => setFormat("jpg"));
 
+  const setMode = (saveOn) => {
+    const st = readState(node);
+    st.saveOnRun = saveOn;
+    writeState(node, st);
+    syncFace(node);
+  };
+  ui.modeSave.addEventListener("click", () => setMode(true));
+  ui.modePreview.addEventListener("click", () => setMode(false));
+
   // preview navigation: click the image or use the arrows to flip the batch
   ui.bigImg.addEventListener("click", () => stepPreview(node, 1));
   ui.navPrev.addEventListener("click", (e) => {
@@ -449,6 +518,18 @@ function wireEvents(node, ui) {
     e.stopPropagation();
     stepPreview(node, 1);
   });
+  ui.actCopy.addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyFrame(node);
+  });
+  ui.actOpen.addEventListener("click", (e) => {
+    e.stopPropagation();
+    openFrame(node);
+  });
+  // no browser context menu over the preview (Copy / Open cover its uses;
+  // the node's own right-click menu stays available from the title bar)
+  ui.view.addEventListener("contextmenu", (e) => e.preventDefault());
+  ui.strip.addEventListener("contextmenu", (e) => e.preventDefault());
 
   ui.browseBtn.addEventListener("click", async () => {
     const start = readState(node).folder || "";
@@ -482,26 +563,17 @@ function wireEvents(node, ui) {
       });
       const j = await r.json();
       if (!j || !j.ok) {
-        setStatus(node, "info", (j && j.message) || "Could not open the folder");
+        flashStatus(node, "info", (j && j.message) || "Could not open the folder", 3200);
         return;
       }
-      // Visible feedback: the server tries hard to bring Explorer to the
-      // front, but Windows can still refuse - say where the window went and
-      // restore the previous status (usually "Saved N images...") after.
+      // Visible feedback: the window can land behind the browser (Windows
+      // blocks focus-stealing; the AV-safe plain open is all we ship).
       ui.openBtn.textContent = "Opened ✓";
-      const prevIco = ui.stIco.className;
-      const prevGlyph = ui.stIco.textContent;
-      const prevTxt = ui.stTxt.textContent;
-      setStatus(node, "info", "Folder opened - check the taskbar if it is not in front");
       clearTimeout(node._pixSiOpenT);
       node._pixSiOpenT = setTimeout(() => {
         ui.openBtn.textContent = "Open folder";
-        if (ui.stTxt.textContent === "Folder opened - check the taskbar if it is not in front") {
-          ui.stIco.className = prevIco;
-          ui.stIco.textContent = prevGlyph;
-          ui.stTxt.textContent = prevTxt;
-        }
-      }, 3000);
+      }, 1600);
+      flashStatus(node, "info", "Folder opened - check the taskbar if it is not in front", 3000);
     } catch {}
   });
 }
@@ -761,6 +833,7 @@ app.registerExtension({
       closeSettingsPanelFor(this);
       clearTimeout(this._pixSiCntTimer);
       clearTimeout(this._pixSiOpenT);
+      clearTimeout(this._pixSiFlashT);
       this._pixSiUI = null;
       return origRemoved?.apply(this, arguments);
     };
