@@ -66,6 +66,21 @@ export function resolveDateTokens(s) {
   );
 }
 
+// JS mirror of nodes/node_save_image.py::_expand_native_tokens — ComfyUI's
+// native %year% %month% %day% %hour% %minute% %second% tokens.
+export function expandNativeTokens(s) {
+  if (typeof s !== "string" || !s.includes("%")) return s;
+  const d = new Date();
+  const p = (v, len) => String(v).padStart(len, "0");
+  return s
+    .replace(/%year%/g, p(d.getFullYear(), 4))
+    .replace(/%month%/g, p(d.getMonth() + 1, 2))
+    .replace(/%day%/g, p(d.getDate(), 2))
+    .replace(/%hour%/g, p(d.getHours(), 2))
+    .replace(/%minute%/g, p(d.getMinutes(), 2))
+    .replace(/%second%/g, p(d.getSeconds(), 2));
+}
+
 // Mirror of the Python cleanup for a wired `name` value: strip a known media
 // extension ("cat.png" -> "cat") and neutralize path separators.
 export function cleanInputName(v) {

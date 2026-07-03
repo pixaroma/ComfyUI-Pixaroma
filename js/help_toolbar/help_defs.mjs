@@ -673,8 +673,9 @@ const HELP = {
         heading: "Filename tokens (click the chips to insert them)",
         defs: [
           ["%input%", "The wired name input, e.g. the filename from Load Image Pixaroma, so results keep the original name."],
-          ["%date:yyyy-MM-dd%", "The save date. Any combination of yyyy MM dd hh mm ss works, e.g. %date:yyyy-MM-dd hh-mm-ss%."],
-          ["%counter%", "An auto-increasing number that continues from the highest one already in the folder."],
+          ["%date:yyyy-MM-dd%", "The save date and time. Codes: yyyy year, MM month, dd day, hh hours, mm minutes, ss seconds. Careful: capital MM is the MONTH, lowercase mm is MINUTES (same rule as ComfyUI's built-in Save Image), so a date is yyyy-MM-dd and a time is hh-mm-ss."],
+          ["%counter%", "An auto-increasing number that continues from the highest one already in the folder. Without %counter% in the name, the node still never overwrites: a taken name gets a _00001 style ending added automatically (batches too)."],
+          ["%year% %month% %day% %hour% %minute% %second%", "Native ComfyUI tokens, same values as the built-in Save Image node. %date:...% does the same thing in a shorter form."],
           ["%width% / %height%", "The image size in pixels."],
           ["%batch_num%", "The frame's position inside a batch (0, 1, 2 ...)."],
           ["%Seed Pixaroma.seed%", "A node reference: prints another node's value into the name, like the seed that made the image."],

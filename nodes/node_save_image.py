@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import time
 
 import folder_paths
 import numpy as np
@@ -47,6 +48,27 @@ _MEDIA_EXT_RE = re.compile(
 
 _THUMB_MAX = 16    # thumbnails shipped to the node preview (all files still save)
 _THUMB_SIDE = 192  # thumbnail long side in px
+
+
+def _expand_native_tokens(s):
+    """Expand ComfyUI's native %year% %month% %day% %hour% %minute% %second%
+    tokens. Native SaveImage gets these from folder_paths.get_save_image_path
+    (compute_vars), which this node bypasses because it saves to arbitrary
+    folders - so expand them here with the same zero-padded values (real user
+    report: they worked in Preview Image Pixaroma but came out literal here)."""
+    if not isinstance(s, str) or "%" not in s:
+        return s
+    now = time.localtime()
+    for k, v in (
+        ("%year%", f"{now.tm_year:04}"),
+        ("%month%", f"{now.tm_mon:02}"),
+        ("%day%", f"{now.tm_mday:02}"),
+        ("%hour%", f"{now.tm_hour:02}"),
+        ("%minute%", f"{now.tm_min:02}"),
+        ("%second%", f"{now.tm_sec:02}"),
+    ):
+        s = s.replace(k, v)
+    return s
 
 
 def _tensor_to_pil(tensor):
@@ -119,6 +141,14 @@ class PixaromaSaveImage:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma/🖼️ Image"
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # Always re-execute so every Run actually saves. Without this,
+        # deleting the saved files and clicking Run again did NOTHING
+        # (ComfyUI's input-hash cache skipped the node) - real user report
+        # on day one. Same choice as Preview Image Pixaroma.
+        return float("nan")
+
     def save(self, images, name=None, SaveImageState="", prompt=None, extra_pnginfo=None):
         state = dict(DEFAULT_STATE)
         try:
@@ -171,6 +201,7 @@ class PixaromaSaveImage:
             input_name = input_name.replace("\\", "_").replace("/", "_")
         resolved = pattern.replace("%input%", input_name)
         resolved = _expand_date_tokens(resolved)
+        resolved = _expand_native_tokens(resolved)
         resolved = resolved.replace("%width%", str(w)).replace("%height%", str(h))
         note = None
         rel = _safe_prefix(resolved)
