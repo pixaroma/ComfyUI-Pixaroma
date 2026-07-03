@@ -30,10 +30,10 @@ import {
 import { injectCSS, buildRoot, el } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 
-const MIN_W = 330;
-const DEFAULT_W = 400;
-const DEFAULT_H = 600;
-const PREVIEW_MIN = 90; // the big preview's minimum height inside the floor
+const MIN_W = 360;
+const DEFAULT_W = 460;
+const DEFAULT_H = 740;
+const PREVIEW_MIN = 160; // the viewer's minimum height inside the floor
 const THUMB_SHOW_MAX = 16;
 
 const CHIPS = [
@@ -125,30 +125,27 @@ async function pickNativeFolder(startPath) {
   }
 }
 
-// ── status + thumbnails ──────────────────────────────────────────────────────
-function setStatus(node, kind, text) {
+// ── the single info line under the image (dims + save summary + flashes) ─────
+function updateInfoLine(node) {
   const ui = node._pixSiUI;
   if (!ui) return;
-  ui.stIco.className = "pix-si-stico " + (kind === "ok" ? "ok" : "info");
-  ui.stIco.textContent = kind === "ok" ? "✓" : "●";
-  ui.stTxt.textContent = text;
+  const parts = [];
+  const d = node._pixSiLastDims;
+  if (d) parts.push(d.w + " × " + d.h);
+  if (node._pixSiSummary) parts.push(node._pixSiSummary);
+  ui.infoLine.textContent = parts.join("   ·   ");
+  ui.infoLine.title = node._pixSiFolderInfo || "";
+  ui.infoLine.style.color = "#8f8f8f";
 }
 
-// Temporary status message that restores the previous one (unless something
-// else replaced it meanwhile).
-function flashStatus(node, kind, text, ms = 2400) {
+// Temporary message on the info line; reverts to dims + summary after.
+function flashStatus(node, kind, text, ms = 2600) {
   const ui = node._pixSiUI;
   if (!ui) return;
-  const prev = { c: ui.stIco.className, g: ui.stIco.textContent, t: ui.stTxt.textContent };
-  setStatus(node, kind, text);
+  ui.infoLine.textContent = text;
+  ui.infoLine.style.color = kind === "ok" ? "#3ec371" : "#cfcfcf";
   clearTimeout(node._pixSiFlashT);
-  node._pixSiFlashT = setTimeout(() => {
-    if (ui.stTxt.textContent === text) {
-      ui.stIco.className = prev.c;
-      ui.stIco.textContent = prev.g;
-      ui.stTxt.textContent = prev.t;
-    }
-  }, ms);
+  node._pixSiFlashT = setTimeout(() => updateInfoLine(node), ms);
 }
 
 function buildViewUrl(f) {
@@ -180,7 +177,8 @@ function entriesToFrames(list) {
   return frames;
 }
 
-// ── the big preview (one image + arrows + counter + thumb strip) ─────────────
+// ── the viewer (Preview Image parity): single fills; batch = grid; click a
+// cell to expand it, ✕ goes back; hover arrows + counter in expanded view ────
 function renderPreviewUI(node) {
   const ui = node._pixSiUI;
   if (!ui) return;
@@ -190,42 +188,52 @@ function renderPreviewUI(node) {
   if (sel >= n) sel = n - 1;
   if (sel < 0) sel = 0;
   node._pixSiSel = sel;
-  ui.ph.style.display = n ? "none" : "flex";
-  ui.bigImg.style.display = n ? "block" : "none";
+
   ui.view.classList.toggle("has", n > 0);
-  if (n) {
+  ui.ph.style.display = n ? "none" : "flex";
+  const gridmode = n > 1 && !node._pixSiExpanded;
+  ui.view.classList.toggle("gridmode", gridmode);
+  ui.bigImg.style.display = n && !gridmode ? "block" : "none";
+
+  if (n && !gridmode) {
     const f = frames[sel];
     if (ui.bigImg.getAttribute("src") !== f.src) ui.bigImg.src = f.src;
     ui.bigImg.title = (f.title || "") + (n > 1 ? " - click for the next image" : "");
   }
-  const multi = n > 1;
-  ui.navPrev.classList.toggle("show", multi);
-  ui.navNext.classList.toggle("show", multi);
-  ui.counter.style.display = multi ? "block" : "none";
-  const total = Math.max(node._pixSiTotal || 0, n);
-  ui.counter.textContent = (sel + 1) + " / " + total;
-  const d = node._pixSiLastDims;
-  ui.dims.style.display = n && d ? "block" : "none";
-  if (n && d) ui.dims.textContent = d.w + " × " + d.h;
-  ui.strip.innerHTML = "";
-  if (multi) {
+
+  ui.grid.innerHTML = "";
+  if (gridmode) {
+    const cols = Math.ceil(Math.sqrt(n));
+    ui.grid.style.gridTemplateColumns = "repeat(" + cols + ", 1fr)";
+    const total = Math.max(node._pixSiTotal || 0, n);
     frames.forEach((f, i) => {
-      const im = el("img", "pix-si-thumb" + (i === sel ? " sel" : ""));
+      const cell = el("div", "pix-si-cell");
+      const im = el("img");
       im.loading = "lazy";
       im.src = f.src;
-      im.title = f.title || "";
       im.onerror = () => {
         im.style.display = "none";
       };
-      im.addEventListener("click", () => {
+      cell.title = (f.title || "") + " - click to view";
+      cell.appendChild(im);
+      cell.appendChild(el("div", "pix-si-cellbadge", (i + 1) + " / " + total));
+      cell.addEventListener("click", () => {
         node._pixSiSel = i;
+        node._pixSiExpanded = true;
         renderPreviewUI(node);
       });
-      ui.strip.appendChild(im);
+      ui.grid.appendChild(cell);
     });
-    const more = total - n;
-    if (more > 0) ui.strip.appendChild(el("div", "pix-si-more", "+" + more));
   }
+
+  const expandedMulti = n > 1 && !gridmode;
+  ui.navPrev.classList.toggle("show", expandedMulti);
+  ui.navNext.classList.toggle("show", expandedMulti);
+  ui.counter.style.display = expandedMulti ? "block" : "none";
+  ui.closeX.style.display = expandedMulti ? "block" : "none";
+  const total = Math.max(node._pixSiTotal || 0, n);
+  ui.counter.textContent = (sel + 1) + " / " + total;
+  updateInfoLine(node);
 }
 
 function stepPreview(node, dir) {
@@ -357,16 +365,12 @@ function syncFace(node) {
   const jpg = st.format === "jpg";
   ui.fmtPng.classList.toggle("on", !jpg);
   ui.fmtJpg.classList.toggle("on", jpg);
-  ui.fmtHint.textContent = jpg
-    ? "Smaller files, quality " + (st.quality ?? 90) + " (right-click to change)."
-    : "Lossless. Best choice when embedding the workflow.";
+  ui.fmtJpg.title =
+    "Smaller JPG files, quality " + (st.quality ?? 90) +
+    " (right-click to change). No transparency. Workflows reload from PNG only.";
   const preview = !st.saveOnRun;
   ui.modeSave.classList.toggle("on", !preview);
   ui.modePreview.classList.toggle("on", preview);
-  ui.modeHint.textContent = preview
-    ? "Nothing is written to your folder - preview only."
-    : "Files are written on every run.";
-  ui.savedLab.textContent = preview ? "Preview (not saved)" : "Saved this run";
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -375,17 +379,17 @@ function restoreLastRun(node) {
   if (!ui) return;
   const last = node.properties?.pixSiLastRun;
   if (!last || typeof last !== "object") return;
-  if (typeof last.text === "string" && last.text) {
-    setStatus(node, last.ok ? "ok" : "info", last.text);
-  }
   if (last.w && last.h) node._pixSiLastDims = { w: last.w, h: last.h };
+  if (typeof last.sum === "string") node._pixSiSummary = last.sum;
+  if (typeof last.folder === "string") node._pixSiFolderInfo = last.folder;
   const frames = entriesToFrames(last.entries);
   if (frames.length) {
     node._pixSiFrames = frames;
     node._pixSiSel = 0;
+    node._pixSiExpanded = false;
     node._pixSiTotal = Math.max(last.n || 0, frames.length);
-    renderPreviewUI(node);
   }
+  renderPreviewUI(node);
 }
 
 // ── wiring ───────────────────────────────────────────────────────────────────
@@ -460,7 +464,7 @@ function wireEvents(node, ui) {
       if (c.dyn === "model") {
         const tok = findModelToken();
         if (!tok) {
-          setStatus(node, "info", "No model loader found in this workflow");
+          flashStatus(node, "info", "No model loader found in this workflow");
           return;
         }
         insertToken(node, ui, tok);
@@ -508,7 +512,7 @@ function wireEvents(node, ui) {
   ui.modeSave.addEventListener("click", () => setMode(true));
   ui.modePreview.addEventListener("click", () => setMode(false));
 
-  // preview navigation: click the image or use the arrows to flip the batch
+  // viewer: click the image or use the hover arrows to flip; ✕ back to grid
   ui.bigImg.addEventListener("click", () => stepPreview(node, 1));
   ui.navPrev.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -518,18 +522,20 @@ function wireEvents(node, ui) {
     e.stopPropagation();
     stepPreview(node, 1);
   });
-  ui.actCopy.addEventListener("click", (e) => {
+  ui.closeX.addEventListener("click", (e) => {
     e.stopPropagation();
-    copyFrame(node);
+    node._pixSiExpanded = false;
+    renderPreviewUI(node);
   });
-  ui.actOpen.addEventListener("click", (e) => {
-    e.stopPropagation();
-    openFrame(node);
+  ui.btnCopy.addEventListener("click", () => copyFrame(node));
+  ui.btnOpen.addEventListener("click", () => openFrame(node));
+  // No browser context menu anywhere on the node body (user request) - the
+  // text fields keep it (paste needs it), everything else suppresses it.
+  ui.root.addEventListener("contextmenu", (e) => {
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    e.preventDefault();
   });
-  // no browser context menu over the preview (Copy / Open cover its uses;
-  // the node's own right-click menu stays available from the title bar)
-  ui.view.addEventListener("contextmenu", (e) => e.preventDefault());
-  ui.strip.addEventListener("contextmenu", (e) => e.preventDefault());
 
   ui.browseBtn.addEventListener("click", async () => {
     const start = readState(node).folder || "";
@@ -550,11 +556,11 @@ function wireEvents(node, ui) {
       syncFace(node);
       updatePreview(node);
     } else if (!(res && res.cancelled)) {
-      setStatus(node, "info", "Folder dialog unavailable - paste the path instead");
+      flashStatus(node, "info", "Folder dialog unavailable - paste the path instead", 3200);
     }
   });
 
-  ui.openBtn.addEventListener("click", async () => {
+  ui.btnFolder.addEventListener("click", async () => {
     try {
       const r = await fetch("/pixaroma/api/save_image/open_folder", {
         method: "POST",
@@ -568,12 +574,7 @@ function wireEvents(node, ui) {
       }
       // Visible feedback: the window can land behind the browser (Windows
       // blocks focus-stealing; the AV-safe plain open is all we ship).
-      ui.openBtn.textContent = "Opened ✓";
-      clearTimeout(node._pixSiOpenT);
-      node._pixSiOpenT = setTimeout(() => {
-        ui.openBtn.textContent = "Open folder";
-      }, 1600);
-      flashStatus(node, "info", "Folder opened - check the taskbar if it is not in front", 3000);
+      flashStatus(node, "ok", "Folder opened - check the taskbar if it is not in front", 3000);
     } catch {}
   });
 }
@@ -663,21 +664,22 @@ function installExecutedListener() {
 
     node._pixSiFrames = entriesToFrames(frames);
     node._pixSiSel = 0;
+    node._pixSiExpanded = false; // batches land on the grid first
     node._pixSiTotal = Math.max(status ? status.saved : 0, node._pixSiFrames.length);
-    renderPreviewUI(node);
 
     if (status) {
       if (status.w && status.h) node._pixSiLastDims = { w: status.w, h: status.h };
       const ok = status.saved > 0;
-      let text;
+      let sum;
       if (ok) {
-        text = "Saved " + status.saved + (status.saved === 1 ? " image to " : " images to ") + status.folder;
-        if (status.note) text += " (" + status.note + ")";
+        sum = "saved " + status.saved + (status.saved === 1 ? " image" : " images");
+        if (status.note) sum += " (" + status.note + ")";
       } else {
-        text = status.note || "Nothing was written";
+        sum = "preview only - not saved";
       }
-      setStatus(node, ok ? "ok" : "info", text);
-      // Persist a LIGHT restore snapshot so the status + preview survive a
+      node._pixSiSummary = sum;
+      node._pixSiFolderInfo = status.folder || "";
+      // Persist a LIGHT restore snapshot so the preview + summary survive a
       // workflow-tab switch (Preview Pattern #4 family; writing properties
       // after a run is the accepted "Save Changes?" trade-off). Tokens stay
       // valid for the server session, so external saves restore too.
@@ -695,7 +697,8 @@ function installExecutedListener() {
         if (!node.properties) node.properties = {};
         node.properties.pixSiLastRun = {
           ok,
-          text,
+          sum,
+          folder: node._pixSiFolderInfo,
           entries: keep,
           n: node._pixSiTotal,
           w: status.w,
@@ -703,6 +706,7 @@ function installExecutedListener() {
         };
       } catch {}
     }
+    renderPreviewUI(node);
     node._pixSiCntKey = null; // files landed on disk - refetch the counter
     updatePreview(node);
     growToFloor(node);
@@ -832,7 +836,6 @@ app.registerExtension({
       } catch {}
       closeSettingsPanelFor(this);
       clearTimeout(this._pixSiCntTimer);
-      clearTimeout(this._pixSiOpenT);
       clearTimeout(this._pixSiFlashT);
       this._pixSiUI = null;
       return origRemoved?.apply(this, arguments);

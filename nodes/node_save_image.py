@@ -130,12 +130,12 @@ class PixaromaSaveImage:
         "dragged back into ComfyUI) or JPG (smaller, quality setting in the right-click panel; ComfyUI cannot "
         "reload workflows from JPG). Right-click the node for date style, counter digits, JPG quality, and "
         "workflow embedding. Batches save every frame with the counter increasing.\n\n"
-        "Saved images show in a large preview on the node: click the image or hover for the arrows to flip "
-        "through a batch, use the thumbnail strip below, and the Copy and Open buttons on the preview's corner "
-        "copy the shown image to the clipboard or open it in a new tab. Resize the node to make the preview "
-        "bigger. The Mode toggle switches Save (files are written on every run) and Preview (images show on the "
-        "node, nothing goes to your folder), so it can double as a preview node. Open folder shows the save "
-        "location in your file explorer; the window can appear on the taskbar."
+        "Saved images show in a large preview on the node: one image fills the area, a batch shows as a grid. "
+        "Click a picture in the grid to view it big, click it or hover for the arrows to flip through, and the "
+        "X returns to the grid. Copy puts the shown image on the clipboard, Open shows it in a new browser tab. "
+        "Resize the node to make the preview bigger. The Mode toggle switches Save (files are written on every "
+        "run) and Preview (images show on the node, nothing goes to your folder), so it can double as a preview "
+        "node. Open Folder shows the save location in your file explorer; the window can appear on the taskbar."
     )
 
     @classmethod
