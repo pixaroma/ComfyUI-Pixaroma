@@ -304,6 +304,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **July 3, 2026 · v1.4.18**
+- **Put the seed into your saved file names.** You can now print the number from a Seed Pixaroma node straight into the file name of a Save Image, Preview Image Pixaroma, or Save Mp4 node. Type `%Seed Pixaroma.seed%` in the filename field where you want the number (for example `render_%Seed Pixaroma.seed%`) and your saved file comes out as `render_4595344337756276`. It works just like ComfyUI's built-in `%KSampler.seed%` trick, in both the built-in Save Image node and our own save nodes, and the number always matches the image you just made, whether the seed is Random or Fixed. Tip: point the token at the Seed node itself, not at the sampler.
+
 ### **July 2, 2026 · v1.4.17**
 - **Run Timer keeps each workflow's time when you switch tabs.** Before, switching to another workflow tab reset the clock to zero, so you lost the time you had just measured. Now every workflow remembers its own last time, and it only resets when you run that workflow again, so you can keep a few workflows in separate tabs and switch between them to compare how long each one takes. The time stays after a page reload too.
 
