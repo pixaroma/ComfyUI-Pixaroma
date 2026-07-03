@@ -674,7 +674,7 @@ const HELP = {
         defs: [
           ["%input%", "The wired name input, e.g. the filename from Load Image Pixaroma, so results keep the original name."],
           ["%date:yyyy-MM-dd%", "The save date and time. Codes: yyyy year, MM month, dd day, hh hours, mm minutes, ss seconds. Careful: capital MM is the MONTH, lowercase mm is MINUTES (same rule as ComfyUI's built-in Save Image), so a date is yyyy-MM-dd and a time is hh-mm-ss."],
-          ["%counter%", "An auto-increasing number that continues from the highest one already in the folder. Without %counter% in the name, the node still never overwrites: a taken name gets a _00001 style ending added automatically (batches too)."],
+          ["%counter%", "An auto-increasing number that continues from the highest one already in the folder. Without %counter% in the name, the node still never overwrites: a taken name gets a _001 style ending added automatically (batches too, following your counter digits setting)."],
           ["%year% %month% %day% %hour% %minute% %second%", "Native ComfyUI tokens, same values as the built-in Save Image node. %date:...% does the same thing in a shorter form."],
           ["%width% / %height%", "The image size in pixels."],
           ["%batch_num%", "The frame's position inside a batch (0, 1, 2 ...)."],
@@ -687,13 +687,12 @@ const HELP = {
           "`PNG` is lossless, keeps transparency, and embeds the workflow: drag a saved PNG back into ComfyUI to reload everything with the exact seed that made it.",
           "`JPG` makes much smaller files with a quality setting. ComfyUI cannot reload workflows from JPG files, so pick PNG when that matters.",
           "`Mode` switches between `Save` (files are written on every run) and `Preview` (the images show on the node but nothing goes to your folder; frames use ComfyUI's temporary folder, cleared on restart). So the node can also replace a preview node while you iterate.",
-          "`Copy`, `Open`, and `Folder` sit in the button row: Copy puts the shown image on your clipboard, Open shows it in a new browser tab, Folder opens the save location. Right-clicking the preview image gives the same `Open image`, `Copy image`, and `Save image` (download) options.",
-          "Right-click the node for `Save Image settings`: date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG quality, and workflow embedding on or off.",
-          "`Open folder` opens the save location in your file explorer. The window can appear on the taskbar instead of in front; that is a Windows limitation.",
+          "`Copy`, `Open`, and `Folder` sit in the button row: Copy puts the shown image on your clipboard, Open shows it in a new browser tab, Folder opens the save location in your file explorer (the window can appear on the taskbar instead of in front; that is a Windows limitation). Right-clicking the preview image gives the same `Open image`, `Copy image`, and `Save image` (download) options.",
+          "Right-click the node for `Save Image settings`: date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG quality, and workflow embedding on or off. `Reset node size` in the same menu returns the node to its default size.",
         ],
       },
     ],
-    footer: "The thumbnails and the green confirmation show exactly what landed on disk in the last run.",
+    footer: "The preview and the line under it show exactly what landed on disk in the last run.",
   },
 
   "PixaromaLoadImagesFolder": {
