@@ -105,8 +105,16 @@ function measureFloor(ui) {
 // height gets mis-scaled into graph units). Idempotent: a correct load
 // matches the saved size and writes nothing, so no dirty-on-load.
 function reassertSavedSize(node, saved) {
+  // any user press means the user owns the size now - the deferred passes
+  // must not fight a manual resize made inside the 400ms window
+  let done = false;
+  const cancel = () => {
+    done = true;
+    window.removeEventListener("pointerdown", cancel, true);
+  };
+  window.addEventListener("pointerdown", cancel, true);
   const apply = () => {
-    if (!node._pixSiUI) return;
+    if (done || !node._pixSiUI) return;
     if (Math.abs(node.size[0] - saved[0]) > 1 || Math.abs(node.size[1] - saved[1]) > 1) {
       if (node.setSize) node.setSize([saved[0], saved[1]]);
       else {
@@ -118,7 +126,10 @@ function reassertSavedSize(node, saved) {
   };
   apply();
   requestAnimationFrame(apply);
-  setTimeout(apply, 400); // late fitters too (post-load layout passes)
+  setTimeout(() => {
+    apply(); // late fitters too (post-load layout passes)
+    cancel(); // and always release the listener
+  }, 400);
 }
 
 // Grow-ONLY fit: after a run adds the thumb strip, make sure the node is at
@@ -316,6 +327,7 @@ function downloadFrame(node) {
 
 // ── right-click menu on the preview image (native Save Image parity) ─────────
 let _imgMenu = null;
+let _imgMenuNode = null; // owner, so removing another node can't close it
 function _imgMenuOutside(e) {
   if (_imgMenu && !_imgMenu.contains(e.target)) closeImageMenu();
 }
@@ -328,6 +340,7 @@ function closeImageMenu() {
     _imgMenu.remove();
   } catch {}
   _imgMenu = null;
+  _imgMenuNode = null;
   document.removeEventListener("pointerdown", _imgMenuOutside, true);
   document.removeEventListener("keydown", _imgMenuEsc, true);
 }
@@ -335,6 +348,7 @@ function openImageMenu(node, x, y) {
   closeImageMenu();
   const menu = el("div", "pix-si-menu");
   _imgMenu = menu;
+  _imgMenuNode = node;
   const add = (label, fn) => {
     const it = el("div", "pix-si-mitem", label);
     it.addEventListener("click", () => {
@@ -389,7 +403,7 @@ function resolveWiredName(node) {
 
 function scheduleCounterFetch(node, folderRaw, nameWithExt) {
   if (!nameWithExt.includes("%counter%")) return;
-  const key = folderRaw + " " + nameWithExt;
+  const key = folderRaw + "\u0000" + nameWithExt;
   if (node._pixSiCntKey === key) return; // already fetched / in flight
   node._pixSiCntKey = key;
   clearTimeout(node._pixSiCntTimer);
@@ -596,6 +610,17 @@ function wireEvents(node, ui) {
 
   // viewer: click the image or use the hover arrows to flip; ✕ back to grid
   ui.bigImg.addEventListener("click", () => stepPreview(node, 1));
+  // a stale src (external-save token after a ComfyUI restart) must hide, not
+  // show the browser's broken-image icon (grid cells already self-hide)
+  ui.bigImg.addEventListener("error", () => {
+    ui.bigImg.style.display = "none";
+  });
+  ui.bigImg.addEventListener("load", () => {
+    const frames = node._pixSiFrames || [];
+    const n = frames.length;
+    const gridmode = n > 1 && !node._pixSiExpanded;
+    ui.bigImg.style.display = n && !gridmode ? "block" : "none";
+  });
   ui.navPrev.addEventListener("click", (e) => {
     e.stopPropagation();
     stepPreview(node, -1);
@@ -928,6 +953,8 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData?.name !== COMFY_CLASS) return;
+    if (nodeType.prototype._pixSiPatched) return; // hot-reload re-wrap guard
+    nodeType.prototype._pixSiPatched = true;
 
     const origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
@@ -985,7 +1012,7 @@ app.registerExtension({
         this._pixSiFloorOff?.();
       } catch {}
       closeSettingsPanelFor(this);
-      closeImageMenu();
+      if (_imgMenuNode === this) closeImageMenu();
       clearTimeout(this._pixSiCntTimer);
       clearTimeout(this._pixSiFlashT);
       this._pixSiUI = null;

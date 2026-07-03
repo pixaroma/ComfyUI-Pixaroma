@@ -99,6 +99,10 @@ def _tensor_to_pil(tensor):
     return Image.fromarray(arr)
 
 
+_EXIF_MAX = 64000  # JPEG APP1 segment tops out ~65 KB; Pillow raises
+                   # "EXIF data is too long" past it (verified empirically)
+
+
 def _build_jpeg_exif(prompt=None, workflow=None):
     """EXIF bytes embedding workflow + prompt, using the community convention
     ComfyUI already reads for WebP (0x010E ImageDescription = 'Workflow:<json>',
@@ -106,14 +110,25 @@ def _build_jpeg_exif(prompt=None, workflow=None):
     has NO jpeg workflow reader (verified in the bundle's
     getWorkflowDataFromFile), so drag-back restore works from PNG only - but
     other tools can read this, and a future frontend may add it.
+
+    A big graph easily exceeds the ~65 KB JPEG EXIF segment limit and Pillow
+    then raises AT SAVE TIME - so try workflow+prompt, fall back to workflow
+    only, and skip embedding entirely when even that is too large (the JPG
+    still saves; PNG is the reload format anyway).
     """
-    exif = Image.Exif()
     try:
-        if workflow is not None:
-            exif[0x010E] = "Workflow:" + json.dumps(_json_safe(workflow))
-        if prompt is not None:
-            exif[0x010F] = "Prompt:" + json.dumps(_json_safe(prompt))
-        return exif.tobytes()
+        for wf, pr in ((workflow, prompt), (workflow, None)):
+            if wf is None and pr is None:
+                return None
+            exif = Image.Exif()
+            if wf is not None:
+                exif[0x010E] = "Workflow:" + json.dumps(_json_safe(wf))
+            if pr is not None:
+                exif[0x010F] = "Prompt:" + json.dumps(_json_safe(pr))
+            data = exif.tobytes()
+            if len(data) <= _EXIF_MAX:
+                return data
+        return None
     except Exception:
         return None
 
@@ -283,7 +298,10 @@ class PixaromaSaveImage:
                 )
 
             has_counter = "%counter%" in base_tpl
-            key = target_dir.lower()
+            # key by dir + template so filename FAMILIES count independently
+            # (e.g. img_%batch_num%_%counter% - each batch_num scans its own
+            # existing files instead of inheriting another family's counter)
+            key = (target_dir.lower(), base_tpl)
             if has_counter and key not in counters:
                 counters[key] = _next_counter(target_dir, base_tpl + ext)
 
@@ -310,10 +328,16 @@ class PixaromaSaveImage:
                         counter += 1
                     else:
                         suffix += 1
-                    if counter > 999999 or suffix > 999999:
+                    if counter > 99999999 or suffix > 99999999:
                         raise RuntimeError(
                             "Save Image Pixaroma: could not find a free filename (counter overflow)"
                         )
+                except OSError as e:
+                    # read-only folder, AV lock, dead network share, ... -
+                    # a clear message instead of a raw traceback
+                    raise RuntimeError(
+                        f"Save Image Pixaroma: cannot write in '{target_dir}': {e}"
+                    )
             if has_counter:
                 counters[key] = counter + 1
 
@@ -336,7 +360,12 @@ class PixaromaSaveImage:
                     elif pil.mode != "RGB":
                         rgb = pil.convert("RGB")
                     if exif_bytes:
-                        rgb.save(path, "JPEG", quality=quality, exif=exif_bytes)
+                        try:
+                            rgb.save(path, "JPEG", quality=quality, exif=exif_bytes)
+                        except ValueError:
+                            # EXIF rejected by this Pillow build (size limit
+                            # differences) - the image matters more, save plain
+                            rgb.save(path, "JPEG", quality=quality)
                     else:
                         rgb.save(path, "JPEG", quality=quality)
                 ok = True
@@ -351,15 +380,21 @@ class PixaromaSaveImage:
 
             entry = {"filename": fname}
             if inside_output:
+                # all entries kept - native SaveImage parity for the Assets
+                # panel; the frontend caps the DISPLAY at 16 itself
                 sub = os.path.relpath(target_dir, out_real)
                 entry["subfolder"] = "" if sub == "." else sub.replace("\\", "/")
                 entry["type"] = "output"
             else:
+                # external entries beyond the preview cap carry no token, so
+                # they are dead weight in the payload - skip them (the status
+                # dict carries the true saved count)
+                if len(results) >= _PREVIEW_MAX:
+                    continue
                 entry["path"] = path
-                if len(results) < _PREVIEW_MAX:
-                    # full-quality preview via the token route (/view can't
-                    # serve external paths)
-                    entry["token"] = _register_serve_token(path)
+                # full-quality preview via the token route (/view can't
+                # serve external paths)
+                entry["token"] = _register_serve_token(path)
             results.append(entry)
 
         status = {
@@ -376,9 +411,9 @@ class PixaromaSaveImage:
 
         # Inside output/: emit the standard ui.images key so the Media Assets
         # panel refreshes (Preview Pattern #14); the JS previews via /view.
-        # Outside: our custom key with base64 thumbs (/view can't serve those
-        # paths). ONE key either way so the Assets stack badge stays correct
-        # (Preview Pattern #16).
+        # Outside: our custom key with token-served entries (/view can't serve
+        # those paths). ONE key either way so the Assets stack badge stays
+        # correct (Preview Pattern #16).
         ui_key = "images" if inside_output else "pixaroma_save_frames"
         return {"ui": {ui_key: results}}
 
