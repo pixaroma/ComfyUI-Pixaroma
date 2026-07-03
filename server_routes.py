@@ -10,7 +10,12 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
-from .nodes._save_helpers import _build_pnginfo, _safe_prefix
+from .nodes._save_helpers import (
+    _build_pnginfo,
+    _next_counter,
+    _resolve_save_folder,
+    _safe_prefix,
+)
 from .nodes._prompt_reader_helpers import read_prompt_from_image
 from .nodes._bg_removal_helpers import (
     get_birefnet_inventory,
@@ -1747,5 +1752,76 @@ async def api_lif_pick_native(request):
         if path and os.path.isdir(path):
             return web.json_response({"ok": True, "path": path})
         return web.json_response({"ok": False, "cancelled": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "message": str(e)})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Save Image Pixaroma routes: live filename-counter preview + open-in-explorer.
+# The Browse button reuses /pixaroma/api/load_images_folder/pick_native above.
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/save_image/next_counter")
+async def api_save_image_next_counter(request):
+    """Next %counter% value for the node's live 'Will save as' preview.
+
+    `name` is the resolved filename template (extension included, %counter%
+    still in it, may contain '/' subfolder segments - the JS resolves dates /
+    input / node-reference tokens before calling). `folder` is the raw folder
+    field, resolved exactly like the node resolves it at save time. A folder
+    that doesn't exist yet just means counter 1. Directory scan runs in an
+    executor so a huge folder can't stall other requests.
+    """
+    folder_raw = request.query.get("folder", "")
+    name = request.query.get("name", "")
+
+    def _scan():
+        base, _inside = _resolve_save_folder(folder_raw)
+        parts = [p for p in name.replace("\\", "/").split("/") if p]
+        if not parts:
+            return 1
+        d = os.path.join(base, *parts[:-1]) if len(parts) > 1 else base
+        return _next_counter(d, parts[-1])
+
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        counter = await loop.run_in_executor(None, _scan)
+        return web.json_response(
+            {"ok": True, "counter": counter, "padded": f"{counter:05}"}
+        )
+    except Exception as e:
+        return web.json_response(
+            {"ok": False, "message": str(e), "counter": 1, "padded": "00001"}
+        )
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/save_image/open_folder")
+async def api_save_image_open_folder(request):
+    """Open the OS file explorer at the node's save folder. Local-install QoL,
+    same trust level as the native folder dialog (the server IS the user's
+    machine); the path is resolved the same way the save does and must already
+    exist as a directory."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    folder_raw = str(data.get("folder", "") or "")
+    path, _inside = _resolve_save_folder(folder_raw)
+    if not os.path.isdir(path):
+        return web.json_response({
+            "ok": False,
+            "message": "Folder does not exist yet - it is created on the first save.",
+        })
+    try:
+        import subprocess
+        import sys
+        if sys.platform == "win32":
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+        return web.json_response({"ok": True})
     except Exception as e:
         return web.json_response({"ok": False, "message": str(e)})

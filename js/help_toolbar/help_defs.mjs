@@ -661,6 +661,38 @@ const HELP = {
     footer: "Replaces Get Image Size + Image Scale chains in most workflows.",
   },
 
+  "PixaromaSaveImage": {
+    title: "Save Image Pixaroma",
+    tagline: "Save images to any folder on your computer, with a live preview of the exact filename.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Saves every image it receives to the folder you choose: type or paste any path, click `Browse` to pick one with the normal system dialog, or leave the field empty to use ComfyUI's output folder. The `Will save as` line always shows the exact file the next run will create, so complex naming patterns are never a surprise.\n\nBatches are handled automatically: every frame is saved with the counter increasing, and files never overwrite existing ones. Type `/` in the name to create subfolders, so `%date:yyyy-MM-dd%/image_%counter%` makes a folder per day.",
+      },
+      {
+        heading: "Filename tokens (click the chips to insert them)",
+        defs: [
+          ["%input%", "The wired name input, e.g. the filename from Load Image Pixaroma, so results keep the original name."],
+          ["%date:yyyy-MM-dd%", "The save date. Any combination of yyyy MM dd hh mm ss works, e.g. %date:yyyy-MM-dd hh-mm-ss%."],
+          ["%counter%", "An auto-increasing number that continues from the highest one already in the folder."],
+          ["%width% / %height%", "The image size in pixels."],
+          ["%batch_num%", "The frame's position inside a batch (0, 1, 2 ...)."],
+          ["%Seed Pixaroma.seed%", "A node reference: prints another node's value into the name, like the seed that made the image."],
+        ],
+      },
+      {
+        heading: "Format and settings",
+        bullets: [
+          "`PNG` is lossless, keeps transparency, and embeds the workflow: drag a saved PNG back into ComfyUI to reload everything with the exact seed that made it.",
+          "`JPG` makes much smaller files with a quality setting. ComfyUI cannot reload workflows from JPG files, so pick PNG when that matters.",
+          "Right-click the node for `Save Image settings`: JPG quality, workflow embedding on or off, and `Save on every run` (turn it off to test a workflow without writing files).",
+          "`Open folder` opens the save location in your file explorer.",
+        ],
+      },
+    ],
+    footer: "The thumbnails and the green confirmation show exactly what landed on disk in the last run.",
+  },
+
   "PixaromaLoadImagesFolder": {
     title: "Load Images from Folder Pixaroma",
     tagline: "Load many images from any folder and run your workflow on each one, one at a time.",

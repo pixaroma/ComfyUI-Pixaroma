@@ -7,6 +7,7 @@ Used by node_preview.py (Python entry) and server_routes.py (HTTP routes).
 
 import json
 import math
+import os
 import re
 import time
 
@@ -193,6 +194,71 @@ def _safe_prefix(s):
         if not result:
             return None
     return result
+
+
+# ---- arbitrary-folder saving (Save Image Pixaroma) ----
+
+def _resolve_save_folder(raw):
+    """Resolve the user's folder field to an absolute directory path.
+
+    Empty -> ComfyUI's output directory. Env vars (%USERPROFILE%, $HOME) and
+    '~' are expanded; surrounding quotes are stripped (Explorer's "Copy as
+    path" pastes them). A RELATIVE path is treated as a subfolder of the
+    output directory. Returns (abs_path, inside_output) where inside_output
+    is True when the resolved folder sits under output/ (so callers can emit
+    ui.images for the Assets panel and serve previews via /view).
+
+    folder_paths is imported lazily so this module stays importable in
+    unit-test environments without ComfyUI.
+    """
+    import folder_paths
+    out_dir = os.path.realpath(folder_paths.get_output_directory())
+    s = (raw or "").strip().strip('"').strip("'")
+    if not s:
+        return out_dir, True
+    s = os.path.expandvars(os.path.expanduser(s))
+    if not os.path.isabs(s):
+        s = os.path.join(out_dir, s)
+    real = os.path.realpath(s)
+    try:
+        inside = os.path.commonpath([real, out_dir]) == out_dir
+    except ValueError:  # different drives on Windows
+        inside = False
+    return real, inside
+
+
+_COUNTER_TOKEN = "%counter%"
+
+
+def _next_counter(dir_path, name_template):
+    """Next %counter% value for name_template inside dir_path (max found + 1).
+
+    name_template is a FINAL file name (extension included) with %counter%
+    still in it, everything else already resolved. Scan is case-insensitive
+    (Windows filesystems are). Missing/unreadable dir or no token -> 1.
+    Files are never overwritten: the caller claims the name with O_EXCL and
+    bumps on collision, so this is just the fast starting point.
+    """
+    if _COUNTER_TOKEN not in name_template:
+        return 1
+    pre, _, post = name_template.partition(_COUNTER_TOKEN)
+    post = post.replace(_COUNTER_TOKEN, "")  # collapse accidental repeats
+    try:
+        names = os.listdir(dir_path)
+    except OSError:
+        return 1
+    rx = re.compile(
+        "^" + re.escape(pre) + r"(\d+)" + re.escape(post) + "$", re.IGNORECASE
+    )
+    mx = 0
+    for n in names:
+        m = rx.match(n)
+        if m:
+            try:
+                mx = max(mx, int(m.group(1)))
+            except ValueError:
+                pass
+    return mx + 1
 
 
 # ---- workflow metadata embedding ----
