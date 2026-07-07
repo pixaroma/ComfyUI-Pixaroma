@@ -153,8 +153,9 @@ function paint(node) {
   }
 }
 function setDot(node, mode) {
-  if (!node._pixRtDot) return;
-  node._pixRtDot.className = "pix-rt-dot" + (mode === "run" ? " run" : mode === "done" ? " done" : "");
+  node._rtDotState = mode; // the classic-bare canvas painter reads this
+  if (node._pixRtDot) node._pixRtDot.className = "pix-rt-dot" + (mode === "run" ? " run" : mode === "done" ? " done" : "");
+  if (!isVueNodes() && readState(node).bare) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
 }
 function flashScreen(node) {
   const scr = node._pixRtScreen;
@@ -168,7 +169,7 @@ function applyState(node) {
   const st = readState(node);
   node._pixRtDecimals = st.decimals;
   if (node._pixRtScreen) node._pixRtScreen.style.setProperty("--cc", st.color || BRAND);
-  paint(node);
+  refreshClock(node);
 }
 // Restore the last frozen total from node.properties so a workflow-tab switch
 // or page reload shows it again instead of 00:00 (the live _rtDisplayMs field
@@ -195,7 +196,7 @@ function loop() {
     if (node._rtRunning) {
       anyRunning = true;
       node._rtDisplayMs = now - node._rtStart;
-      paint(node);
+      refreshClock(node);
     }
   }
   _rafId = anyRunning ? requestAnimationFrame(loop) : null;
@@ -209,7 +210,7 @@ function startAll() {
     node._rtStart = performance.now();
     node._rtDisplayMs = 0;
     setDot(node, "run");
-    paint(node);
+    refreshClock(node);
   }
   if (_timers.size) ensureLoop();
 }
@@ -239,7 +240,7 @@ function finishAll(success) {
     // NEVER written on the load path, so it stays dirty-on-load safe.
     if (!node.properties) node.properties = {};
     node.properties.runTimerLastMs = node._rtDisplayMs;
-    paint(node);
+    refreshClock(node);
     setDot(node, "done");
     flashScreen(node);
     if (success) maybeChime(node);
@@ -544,11 +545,13 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-rt-css";
   s.textContent = [
-    // pointer-events:none → the whole clock body is click-through, so dragging it
-    // moves the NODE (via the canvas) instead of grabbing the display; user-select
-    // :none → the digits can never be selected as text. Right-click still opens
-    // the menu (the canvas gets it); the node has no interactive body controls.
-    ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;pointer-events:none;user-select:none;-webkit-user-select:none;}",
+    // user-select:none → the digits never select as text. pointer-events is set
+    // PER-RENDERER in JS (applyRootMode): none in Nodes 2.0 bare (drag + right-
+    // click go through to the canvas), auto otherwise (the DOM widget stays
+    // interactive). In the CLASSIC renderer bare mode the DOM widget is hidden and
+    // the clock is painted straight on the canvas (onDrawForeground) so it's a real
+    // canvas node — draggable + right-clickable like the Label node.
+    ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;user-select:none;-webkit-user-select:none;}",
     ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
     ".pix-rt-time{display:flex;align-items:center;justify-content:center;gap:4px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
     ".pix-rt-cseg{display:inline-flex;align-items:flex-start;}",
@@ -693,34 +696,104 @@ function applyBare(node) {
     node._pixRtBadges = undefined;
   }
   if (node._pixRtRoot) node._pixRtRoot.classList.toggle("pix-rt-bare", bare);
+  applyRootMode(node);
   refreshNodeSize(node);
   node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   app.graph && app.graph.setDirtyCanvas && app.graph.setDirtyCanvas(true, true);
 }
 
-// Classic only: the node body CARD (fill + outline) is canvas-painted behind the
-// DOM clock, so a bare node still shows a gray frame around the clock. Wrap
-// drawNode and, for a bare Run Timer, neuter ctx.fill + ctx.stroke for the
-// duration so the body/outline isn't painted — only the DOM clock (drawn on top)
-// shows, with the grid through the frame area (the Label node's approach). No-op
-// in Nodes 2.0 (drawNode skips body paint there; the frame is hidden via CSS).
-function installRtFrameHook() {
-  if (typeof window === "undefined" || window._pixRtFrameWrapped) return;
-  const proto = window.LGraphCanvas && window.LGraphCanvas.prototype;
-  if (!proto || typeof proto.drawNode !== "function") return;
-  window._pixRtFrameWrapped = true;
-  const orig = proto.drawNode;
-  proto.drawNode = function (node, ctx) {
-    if (ctx && node && (node.comfyClass === NODE_NAME || node.type === NODE_NAME) &&
-        node.properties && node.properties[STATE_PROP] && node.properties[STATE_PROP].bare) {
-      const of = ctx.fill, os = ctx.stroke;
-      ctx.fill = function () {};
-      ctx.stroke = function () {};
-      try { return orig.apply(this, arguments); }
-      finally { ctx.fill = of; ctx.stroke = os; }
+// Show/route the DOM clock per renderer + mode. CLASSIC BARE hides the DOM widget
+// (the clock is canvas-painted via onDrawForeground → a real, draggable canvas
+// node). NODES 2.0 BARE makes it click-through so drag / right-click reach the
+// canvas. Everything else keeps the DOM widget interactive (unchanged).
+function applyRootMode(node) {
+  const root = node._pixRtRoot;
+  if (!root) return;
+  const bare = !!readState(node).bare;
+  const vue = isVueNodes();
+  if (!vue && bare) {
+    root.style.display = "none";
+    root.style.pointerEvents = "";
+  } else {
+    root.style.display = "";
+    root.style.pointerEvents = (vue && bare) ? "none" : "auto";
+  }
+}
+
+// Refresh the on-screen clock the right way for the node's renderer/mode: a
+// canvas repaint for CLASSIC BARE (onDrawForeground redraws), else the DOM paint.
+function refreshClock(node) {
+  if (!isVueNodes() && readState(node).bare) {
+    node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+  } else {
+    paint(node);
+  }
+}
+
+// Vertically center digit/colon text by its ACTUAL glyph box (digit-only strings
+// float high with textBaseline:middle — CLAUDE.md canvas note).
+function fillTextVC(ctx, text, x, yMid) {
+  const m = ctx.measureText(text);
+  if (m && m.actualBoundingBoxAscent != null && m.actualBoundingBoxDescent != null) {
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(text, x, yMid + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2);
+  } else {
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, x, yMid);
+  }
+}
+
+// CLASSIC BARE: paint the whole clock (screen + digits + units + status dot)
+// straight onto the node canvas, so the node is a plain canvas node — LiteGraph
+// handles drag + right-click natively (like the Label node). ctx is already
+// translated to the node body origin. Mirrors the DOM clock look.
+function paintLegacyBareClock(node, ctx) {
+  const w = node.size[0], h = node.size[1];
+  const p = 2;
+  const sx = p, sy = p, sw = Math.max(20, w - p * 2), sh = Math.max(20, h - p * 2);
+  const rr = (x, y, ww, hh, r) => { if (ctx.roundRect) ctx.roundRect(x, y, ww, hh, r); else ctx.rect(x, y, ww, hh); };
+  ctx.save();
+  // screen
+  ctx.fillStyle = "#0c0c0e";
+  ctx.beginPath(); rr(sx, sy, sw, sh, 8); ctx.fill();
+  ctx.lineWidth = 1; ctx.strokeStyle = "#1d1d20";
+  ctx.beginPath(); rr(sx + 0.5, sy + 0.5, sw - 1, sh - 1, 7.5); ctx.stroke();
+  // status dot
+  const dm = node._rtDotState || "idle";
+  ctx.fillStyle = dm === "run" ? "#3ec371" : dm === "done" ? "#f66744" : "#6b6b72";
+  ctx.beginPath(); ctx.arc(sx + 11, sy + 11, 4, 0, Math.PI * 2); ctx.fill();
+  // time
+  const col = readState(node).color || BRAND;
+  const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals != null ? node._pixRtDecimals : 0);
+  const NUM = "600 30px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const UNIT = "500 13px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const FRAC = "600 19px 'Consolas','DejaVu Sans Mono',ui-monospace,monospace";
+  const gap = 5;
+  ctx.textAlign = "left";
+  ctx.font = NUM; const colonW = ctx.measureText(":").width;
+  const segs = parts.groups.map((g, i) => {
+    ctx.font = NUM; const nw = ctx.measureText(g.num).width;
+    ctx.font = UNIT; const uw = ctx.measureText(g.unit).width;
+    let fw = 0;
+    if (parts.frac && i === parts.groups.length - 1) { ctx.font = FRAC; fw = ctx.measureText(parts.frac).width; }
+    return { g, nw, uw, fw };
+  });
+  let total = 0;
+  segs.forEach((s, i) => { if (i > 0) total += gap * 2 + colonW; total += s.nw + s.fw + 2 + s.uw; });
+  let x = sx + (sw - total) / 2;
+  const midY = sy + sh / 2;
+  segs.forEach((s, i) => {
+    if (i > 0) {
+      ctx.font = NUM; ctx.fillStyle = col; ctx.globalAlpha = 0.7;
+      fillTextVC(ctx, ":", x + gap, midY); ctx.globalAlpha = 1; x += gap * 2 + colonW;
     }
-    return orig.apply(this, arguments);
-  };
+    ctx.font = NUM; ctx.fillStyle = col; ctx.globalAlpha = 1;
+    fillTextVC(ctx, s.g.num, x, midY); x += s.nw;
+    if (s.fw) { ctx.font = FRAC; ctx.globalAlpha = 0.85; fillTextVC(ctx, parts.frac, x, midY); ctx.globalAlpha = 1; x += s.fw; }
+    ctx.font = UNIT; ctx.fillStyle = col; ctx.globalAlpha = 0.5; ctx.textBaseline = "alphabetic";
+    ctx.fillText(s.g.unit, x + 2, midY - 8); ctx.globalAlpha = 1; x += 2 + s.uw;
+  });
+  ctx.restore();
 }
 // Flip this node between the normal card and the bare clock (user action → a
 // node.properties write is fine; never on the load path).
@@ -837,7 +910,6 @@ app.registerExtension({
 
   setup() {
     installRunListeners();
-    installRtFrameHook();
     fetchSounds().then((list) => { _soundsCache = list; });
   },
 
@@ -887,6 +959,20 @@ app.registerExtension({
         this.size[1] = bodyHeight();
       }
       if (_origResize) return _origResize.apply(this, arguments);
+    };
+
+    // Classic BARE: paint the clock straight onto the node canvas so it's a real
+    // canvas node (drag + right-click work natively, like the Label node).
+    // onDrawForeground fires reliably in the classic renderer; Nodes 2.0 skips it
+    // and keeps the DOM clock.
+    const _origFg = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _origFg ? _origFg.apply(this, arguments) : undefined;
+      if (ctx && !isVueNodes() && this.properties &&
+          this.properties[STATE_PROP] && this.properties[STATE_PROP].bare) {
+        try { paintLegacyBareClock(this, ctx); } catch (_e) {}
+      }
+      return r;
     };
   },
 
