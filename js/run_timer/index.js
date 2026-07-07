@@ -42,9 +42,9 @@ const BRAND = "#f66744";
 const NODE_NAME = "PixaromaRunTimer";
 const STATE_PROP = "runTimerState";
 
-const NODE_W = 240;  // default width on a fresh drop
-const MIN_W = 200;   // resize floor — keeps the widest readout (00:00:000) un-clipped
-const CLOCK_H = 84;  // node height (constant — a single centered clock line)
+const NODE_W = 185;  // default width on a fresh drop (compact)
+const MIN_W = 160;   // resize floor — keeps the m:s readout un-clipped
+const CLOCK_H = 54;  // node height (constant — a single tight clock line)
 
 const DEFAULT_STATE = {
   version: 1,
@@ -495,9 +495,11 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-rt-css";
   s.textContent = [
-    // The DOM clock (Nodes 2.0 only). user-select:none so the digits never select.
-    ".pix-rt-root{display:flex;padding:6px 8px;box-sizing:border-box;width:100%;height:100%;user-select:none;-webkit-user-select:none;}",
-    ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:8px;box-sizing:border-box;}",
+    // The DOM clock (Nodes 2.0 only). padding:0 → the dark screen fills the node
+    // EXACTLY, so there is no frame ring / gray contour around it (the screen IS
+    // the node surface). user-select:none so the digits never select.
+    ".pix-rt-root{display:flex;padding:0;box-sizing:border-box;width:100%;height:100%;user-select:none;-webkit-user-select:none;}",
+    ".pix-rt-screen{flex:1;min-width:0;position:relative;display:flex;align-items:center;justify-content:center;background:#0c0c0e;border:1px solid #1d1d20;border-radius:8px;padding:6px;box-sizing:border-box;}",
     ".pix-rt-time{display:flex;align-items:center;justify-content:center;gap:4px;font-family:'Consolas','DejaVu Sans Mono','SF Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--cc,#f66744);}",
     ".pix-rt-cseg{display:inline-flex;align-items:flex-start;}",
     ".pix-rt-numwrap{display:inline-flex;align-items:baseline;line-height:1;}",
@@ -505,7 +507,7 @@ function injectCSS() {
     ".pix-rt-frac{font-size:19px;opacity:0.85;letter-spacing:0.5px;}",
     ".pix-rt-colon{font-size:30px;line-height:1;opacity:0.7;}",
     ".pix-rt-unit{font-size:13px;line-height:1;margin-left:2px;margin-top:2px;opacity:0.5;}",
-    ".pix-rt-dot{position:absolute;top:8px;left:9px;width:8px;height:8px;border-radius:50%;background:#6b6b72;}",
+    ".pix-rt-dot{position:absolute;top:6px;left:7px;width:7px;height:7px;border-radius:50%;background:#6b6b72;}",
     ".pix-rt-dot.run{background:#3ec371;animation:pixRtPulse 1s infinite;}",
     ".pix-rt-dot.done{background:#f66744;}",
     ".pix-rt-screen.flash{animation:pixRtFlash 0.6s;}",
@@ -525,6 +527,12 @@ function injectCSS() {
     // (render.mjs injectVueLabelCSS rule 1); mirror it, scoped to .pix-rt-root.
     ".lg-node:has(.pix-rt-root),.lg-node:has(.pix-rt-root) > div,.lg-node:has(.pix-rt-root) > div > div{min-width:0!important;min-height:0!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-header{display:none!important;}",
+    // Collapse the widget grid's padding/gaps + hide the reorder-handle gutter
+    // (Label render.mjs rule 2) so the clock isn't offset or ringed by widget
+    // chrome. The clock widget still fills the width (it's the last, 1fr column).
+    ".lg-node:has(.pix-rt-root) .lg-node-widgets{padding-right:0!important;row-gap:0!important;gap:0!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-widget{gap:0!important;}",
+    ".lg-node:has(.pix-rt-root) .lg-node-widget > *:first-child{display:none!important;}",
     ".lg-node:has(.pix-rt-root) .lg-node-content{padding:0!important;}",
     ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
     ".lg-node:has(.pix-rt-root) [class*=\"component-node-background\"] > div:has(.bg-node-component-surface),.lg-node:has(.pix-rt-root) .bg-node-component-surface{display:none!important;}",
@@ -591,7 +599,7 @@ function paintLegacyClock(node, ctx) {
   // status dot
   const dm = node._rtDotState || "idle";
   ctx.fillStyle = dm === "run" ? "#3ec371" : dm === "done" ? "#f66744" : "#6b6b72";
-  ctx.beginPath(); ctx.arc(13, 13, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(11, 11, 3.5, 0, Math.PI * 2); ctx.fill();
   // time
   const col = readState(node).color || BRAND;
   const parts = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals != null ? node._pixRtDecimals : 0);
@@ -679,6 +687,12 @@ function setupNode(node) {
   node._rtDotState = "idle";
   node._pixRtDecimals = DEFAULT_STATE.decimals;
   node.badges = []; // no pack badge (title-less like Label)
+  // Also set the per-node no_title FLAG (title_mode on the type handles the
+  // RENDER; this flag is what other features read — e.g. Align zeroes the title
+  // height only when flags.no_title is set, so top/center alignment lines up on a
+  // title-less node). Idempotent → no dirty-on-load once saved.
+  node.flags = node.flags || {};
+  if (!node.flags.no_title) node.flags.no_title = true;
 
   if (isVueNodes()) {
     // Nodes 2.0: a DOM-widget clock (frameless + click-through via the CSS above).
@@ -789,6 +803,9 @@ app.registerExtension({
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
+      // Re-assert the no_title flag after configure restores node.flags (Align).
+      this.flags = this.flags || {};
+      if (!this.flags.no_title) this.flags.no_title = true;
       restoreLastRun(this); applyState(this); refreshNodeSize(this);
       return r;
     };
