@@ -40,6 +40,11 @@ function injectCSS() {
       flex-direction: column;
       gap: 8px;
     }
+    /* Rows keep their intrinsic height even when the node is momentarily clamped
+       short (right after a Compact->Full rebuild). WITHOUT this, flex-shrink lets
+       the rows compress to fit the clamped body, so the height measure comes back
+       SHORT and the node settles ~1 row too short (clipped bottom line). */
+    .pix-seed-root > * { flex-shrink: 0; }
     /* Big editable seed number. Dark inset box, monospace, brand border on focus. */
     .pix-seed-num {
       width: 100%;
@@ -272,8 +277,12 @@ const COMPACT_MIN_W = 256; // compact mode widens to at least this so the one-li
 // documented way to shrink a Nodes 2.0 node, which otherwise only grows).
 function fitSeedNodeHeight(node) {
   if (typeof node.setSize !== "function") return;
-  let w = Math.max(MIN_W, node.size[0] || NODE_W);
-  if (readState(node).compact) w = Math.max(w, COMPACT_MIN_W);
+  // Full snaps back to the DEFAULT width so a toggled node matches a fresh one
+  // (the "shorter and wider than a new node" report); Compact widens to at least
+  // COMPACT_MIN_W so the one-line seed stays readable (keeping any wider width).
+  const w = readState(node).compact
+    ? Math.max(MIN_W, node.size[0] || NODE_W, COMPACT_MIN_W)
+    : NODE_W;
   node.setSize([w, node.computeSize()[1]]);
   // Force an immediate repaint. Without this the node keeps drawing at its OLD
   // size until the user moves the mouse / presses a key (the "stuck + clipped
