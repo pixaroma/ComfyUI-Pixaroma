@@ -711,32 +711,39 @@ function setupSeedNode(node) {
   // gets a random starting seed so the big number isn't a lonely 0; a restored
   // node already has seedState so we leave it untouched (no dirty-on-load).
   queueMicrotask(() => {
-    if (!node.properties?.[STATE_PROP]) {
+    const fresh = !node.properties?.[STATE_PROP];
+    if (fresh) {
       // Fresh drop: start in the size the user set as their default (a global
       // Pixaroma setting), else Full. Restored nodes keep their saved size.
       const defCompact = !!app.ui?.settings?.getSettingValue?.(DEFAULT_SIZE_SETTING);
       writeState(node, { ...DEFAULT_STATE, seed: rollSeed(DEFAULT_STATE.digits), compact: defCompact });
-      // A fresh compact node wants a touch more width so the one-line seed reads
-      // well. Fresh ONLY (restored nodes keep their saved width - never widened
-      // here, or that would dirty the saved workflow).
+      // Set the compact width up front so the first paint isn't briefly narrow
+      // (the snap below then confirms width + height in both renderers).
       if (defCompact && node.size[0] < COMPACT_MIN_W) node.size[0] = COMPACT_MIN_W;
     }
     // Build into the captured `root` directly — it may not be attached to the
     // page yet on a fresh drop, but the content shows once LiteGraph draws it.
     buildSeedBody(node, root);
-    // Once the body is laid out, snap the node to the measured content height
-    // (LEGACY only — Nodes 2.0 sizes via computeLayoutSize). Coarse-rounded, so
-    // this is idempotent on reload and never dirties a saved workflow. Two
-    // attempts cover whichever frame the body finishes laying out on.
     const snap = () => {
-      if (!isVueNodes() && typeof node.setSize === "function") {
-        // Preserve the user's (possibly resized) width — only re-fit the height.
+      if (typeof node.setSize !== "function") return;
+      if (fresh) {
+        // Fresh drop: fit to the ACTUAL content (width + height) in BOTH renderers.
+        // Nodes 2.0 grows-but-doesn't-shrink, so a fresh COMPACT node would else
+        // keep the tall fallback height with a big empty gap below the one-line
+        // body (user report). A fresh node has no saved size to preserve, so
+        // setSize is safe here (NOT a dirty-on-load path).
+        fitSeedNodeHeight(node);
+      } else if (!isVueNodes()) {
+        // Restored + Legacy: re-fit the (saved) content height, preserving the
+        // user's width. NOT Nodes 2.0 for a restored node - that risks dirty-on-
+        // load; Vue sizes it via computeLayoutSize. Coarse-rounded + idempotent.
         const w = Math.max(MIN_W, node.size[0] || NODE_W);
         node.setSize([w, node.computeSize()[1]]);
       }
     };
     requestAnimationFrame(snap);
     setTimeout(snap, 120);
+    setTimeout(snap, 280); // late pass: the tall Nodes 2.0 fallback settles, THEN shrink
   });
 }
 
