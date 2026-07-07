@@ -275,16 +275,23 @@ function fitSeedNodeHeight(node) {
   let w = Math.max(MIN_W, node.size[0] || NODE_W);
   if (readState(node).compact) w = Math.max(w, COMPACT_MIN_W);
   node.setSize([w, node.computeSize()[1]]);
+  // Force an immediate repaint. Without this the node keeps drawing at its OLD
+  // size until the user moves the mouse / presses a key (the "stuck + clipped
+  // until I move" report) - setSize alone doesn't reliably schedule a redraw of
+  // a DOM-widget node here.
+  node.setDirtyCanvas?.(true, true);
+  app.graph?.setDirtyCanvas?.(true, true);
 }
 
-// Re-fit over several frames after a layout-changing action (Compact <-> Full).
-// A single early measure can land SHORT - the rebuilt DOM body settles over a
-// few frames, and nothing re-fits the height later (onDrawForeground only heals
-// width), so the last row was getting clipped. The later passes correct it.
+// Re-fit after a layout-changing action (Compact <-> Full). The FIRST pass is
+// synchronous: when the node is already on the canvas (the toggle case) its DOM
+// widget is attached, so reading offsetHeight forces layout and the measure is
+// correct RIGHT NOW - the node resizes instantly, no delay. The rAF + timeout
+// passes are idempotent backups for any frame where the body isn't laid out yet.
 function refitSeedNode(node) {
-  requestAnimationFrame(() => requestAnimationFrame(() => fitSeedNodeHeight(node)));
-  setTimeout(() => fitSeedNodeHeight(node), 90);
-  setTimeout(() => fitSeedNodeHeight(node), 260);
+  fitSeedNodeHeight(node);
+  requestAnimationFrame(() => fitSeedNodeHeight(node));
+  setTimeout(() => fitSeedNodeHeight(node), 130);
 }
 
 // Flip this node between Compact and Full, rebuild the body, and re-fit the size.
@@ -726,12 +733,12 @@ app.registerExtension({
       null,
       {
         // quick one-click size flip
-        content: st.compact ? "Full size" : "Compact size",
+        content: st.compact ? "👑 Seed full size" : "👑 Seed compact size",
         callback: () => toggleSeedCompact(node),
       },
       {
         // the full panel: size (this node + new-node default) + seed digits
-        content: "⚙ Seed settings",
+        content: "👑 Seed settings",
         callback: () =>
           openSeedSettings(node, {
             readState,
