@@ -198,6 +198,12 @@ const MIN_W = 170; // resize floor — width shrinks to here, keeping the button
 // oscillation. This fallback is used ONLY before the body is laid out (a fresh
 // drop / first paint); the real measure takes over the instant children exist.
 const WIDGET_H_FALLBACK = 216;
+// Compact body is a single row - use a SMALL fallback for it. Using the full
+// 216 fallback whenever the body isn't measured yet (mid-drag, mid-reload) made
+// a compact node's floor jump to full height, so it could not shrink back
+// (Legacy) and grew on a hard refresh (Nodes 2.0). This keeps a compact node's
+// floor small in those windows.
+const COMPACT_H_FALLBACK = 48;
 const NODE_H_HINT = WIDGET_H_FALLBACK + 48; // starting height (replace-branch only)
 
 const STATE_PROP = "seedState";
@@ -266,9 +272,11 @@ function fitSeedFont(num) {
 // grid so font/sub-pixel jitter can't creep node.size across save/load
 // (dirty-on-load, Vue Compat #18). Falls back to a placeholder before the body
 // is laid out (children have offsetHeight 0 on a fresh drop).
-function measureSeedHeight(root) {
+function measureSeedHeight(root, compact) {
   const h = root ? measureRootContent(root) : 0;
-  if (!(h > 20)) return WIDGET_H_FALLBACK;
+  // Not laid out yet -> a MODE-AWARE fallback (compact must NOT start at the tall
+  // full-height fallback, or it can't shrink back / grows on reload).
+  if (!(h > 20)) return compact ? COMPACT_H_FALLBACK : WIDGET_H_FALLBACK;
   return Math.round(h / 4) * 4;
 }
 
@@ -662,7 +670,7 @@ function setupSeedNode(node) {
     // Measured content height, and NO getMaxHeight: a single-widget node has no
     // slack consumer, so an upper cap can only clip the bottom line (that was
     // the bug). Without a cap, LiteGraph sizes the body to exactly the content.
-    getMinHeight: () => measureSeedHeight(root),
+    getMinHeight: () => measureSeedHeight(root, readState(node).compact),
     margin: 4,
     serialize: false, // state lives on node.properties, not this widget
   });
@@ -672,10 +680,10 @@ function setupSeedNode(node) {
   // the saved width round-trips (Compare gotcha 2); Compact uses a real floor so
   // the one-line seed number isn't clipped in Nodes 2.0 (the compact width is
   // always >= this floor, so it never overrides a wider saved width).
-  _widget.computeLayoutSize = () => ({
-    minHeight: measureSeedHeight(root),
-    minWidth: readState(node).compact ? COMPACT_MIN_W : 1,
-  });
+  _widget.computeLayoutSize = () => {
+    const compact = readState(node).compact;
+    return { minHeight: measureSeedHeight(root, compact), minWidth: compact ? COMPACT_MIN_W : 1 };
+  };
   node._pixSeedRoot = root;
 
   // Re-fit the seed number font whenever the body's width settles or changes
@@ -770,13 +778,15 @@ app.registerExtension({
     return [
       null,
       {
-        // quick one-click size flip
-        content: st.compact ? "👑 Seed full size" : "👑 Seed compact size",
+        // quick one-click size flip (a size glyph, not the crown, so it stands
+        // out from the crowded crown items)
+        content: st.compact ? "↕ Seed full size" : "↕ Seed compact size",
         callback: () => toggleSeedCompact(node),
       },
       {
-        // the full panel: size (this node + new-node default) + seed digits
-        content: "👑 Seed settings",
+        // the full panel: size (this node + new-node default) + seed digits.
+        // Gear icon to match the other Pixaroma settings panels (Save Image etc.)
+        content: "⚙ Seed settings",
         callback: () =>
           openSeedSettings(node, {
             readState,
@@ -823,7 +833,17 @@ app.registerExtension({
     // height here (a per-paint height write risks dirty-on-load, Compat #18).
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
-      if (!isVueNodes() && this.size[0] < MIN_W) this.size[0] = MIN_W;
+      if (!isVueNodes()) {
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        // Height is content-driven; onResize is unreliable (Vue Compat #13), so
+        // heal it here too - snap an OVERSIZED height back down to the content so
+        // a compact node can't get stuck tall (the user could grow it but not
+        // shrink it back). Only when meaningfully too tall, so a correctly-sized
+        // node writes nothing (dirty-on-load safe: measureSeedHeight is coarse-
+        // rounded, so the target is stable across save/load).
+        const target = this.computeSize()[1];
+        if (this.size[1] > target + 2) this.size[1] = target;
+      }
       if (_origDraw) return _origDraw.apply(this, arguments);
     };
 
