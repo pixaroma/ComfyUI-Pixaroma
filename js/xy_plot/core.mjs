@@ -144,6 +144,15 @@ function previewValue(w) {
 let _loraOptions = null;
 let _loraFetchStarted = false;
 
+// Keep only real lora FILES. The "None" sentinel is a "no lora" placeholder some
+// loader nodes (e.g. ComfyUI-Easy-Use) add to their lora_name combo; since we
+// harvest the list across every node that has a lora_name input, that sentinel
+// would otherwise leak in and confuse (it is not a file, and the core Load LoRA
+// dropdown never shows it). A genuine lora would be "None.safetensors", not "None".
+function isLoraFileName(v) {
+  return typeof v === "string" && v.length > 0 && v.toLowerCase() !== "none";
+}
+
 function harvestLorasSync() {
   const set = new Set();
   try {
@@ -153,7 +162,7 @@ function harvestLorasSync() {
       if (!inp) continue;
       const spec = (inp.required && inp.required.lora_name) || (inp.optional && inp.optional.lora_name);
       const vals = Array.isArray(spec) ? spec[0] : null;
-      if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+      if (Array.isArray(vals)) for (const v of vals) if (isLoraFileName(v)) set.add(v);
     }
   } catch (_e) {}
   try {
@@ -162,7 +171,7 @@ function harvestLorasSync() {
       if (w && w.name === "lora_name") {
         let vals = w.options && w.options.values;
         if (typeof vals === "function") { try { vals = vals(); } catch (_e2) { vals = null; } }
-        if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+        if (Array.isArray(vals)) for (const v of vals) if (isLoraFileName(v)) set.add(v);
       }
     }
   } catch (_e) {}
@@ -184,7 +193,7 @@ function warmLoraCacheAsync() {
         const inp = defs[key] && defs[key].input;
         const spec = inp && ((inp.required && inp.required.lora_name) || (inp.optional && inp.optional.lora_name));
         const vals = Array.isArray(spec) ? spec[0] : null;
-        if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+        if (Array.isArray(vals)) for (const v of vals) if (isLoraFileName(v)) set.add(v);
       }
       if (set.size) _loraOptions = [...set].sort();
     } catch (_e) {}
