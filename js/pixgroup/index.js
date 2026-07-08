@@ -334,6 +334,22 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.arcTo(x, y, x + w, y, r);
   ctx.closePath();
 }
+// Rounded TOP corners, square bottom — the header strip shape. Painting this path
+// directly (then fill) reproduces exactly what the old "clip to the full rounded
+// box, then fillRect the header strip" produced, WITHOUT a per-frame rounded-rect
+// clip over the whole box (rounded-rect clips force the 2D rasterizer onto a slow
+// path scaled by the group's on-screen area — the main per-frame draw cost).
+function roundRectTop(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h);
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+}
 
 // Vertically center text by its ACTUAL glyph box. Digit-only / caps text drawn
 // with textBaseline:"middle" floats visually high (the em box reserves descender
@@ -455,12 +471,11 @@ function drawOne(ctx, g) {
   ctx.fillStyle = rgba(bColor, bA);
   roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.fill();
 
-  // header bar (title color + title opacity), clipped to the rounded top
-  ctx.save();
-  roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
+  // header bar (title color + title opacity), rounded to match the top corners.
+  // Painted as a rounded-TOP path (no full-box clip) — pixel-identical to the old
+  // clip+fillRect but without the expensive per-frame rounded-rect clip.
   ctx.fillStyle = rgba(tColor, tA);
-  ctx.fillRect(g.x, g.y, g.w, hH);
-  ctx.restore();
+  roundRectTop(ctx, g.x, g.y, g.w, Math.min(hH, g.h), 8); ctx.fill();
 
   // border (from the title color; orange when selected; green while running)
   ctx.strokeStyle = sel ? BRAND : rgba(tColor, Math.max(0.5, tA));
@@ -508,17 +523,17 @@ function drawOne(ctx, g) {
   }
 
   // resize handle (bottom-right) — not while folded (the bar isn't resizable).
+  // Corner vertex pulled onto the r=8 rounded corner (inset = 8*(1-1/√2)) so the
+  // triangle stays inside the rounded box WITHOUT a per-frame full-box clip.
   if (!g.folded) {
-    ctx.save();
-    roundRect(ctx, g.x, g.y, g.w, g.h, 8); ctx.clip();
+    const inset = 8 * (1 - Math.SQRT1_2);
     ctx.fillStyle = rgba(tColor, sel ? 1 : 0.85);
     ctx.beginPath();
     ctx.moveTo(g.x + g.w, g.y + g.h - HANDLE);
-    ctx.lineTo(g.x + g.w, g.y + g.h);
+    ctx.lineTo(g.x + g.w - inset, g.y + g.h - inset);
     ctx.lineTo(g.x + g.w - HANDLE, g.y + g.h);
     ctx.closePath();
     ctx.fill();
-    ctx.restore();
   }
 }
 
@@ -549,8 +564,18 @@ function installDraw() {
       const gs = ensureGroups();
       if (gs.length) {
         const { hiddenGroups } = hiddenMaps();
+        // Cull groups FULLY outside the visible area (LiteGraph's own per-frame
+        // graph-space viewport [x,y,w,h], === this.visible_area). An off-screen
+        // group otherwise still rasterizes its (clipped-out) fills + runs the
+        // member-count scan; culling drops it to ~0. Any partial overlap still
+        // draws fully. Falls back to draw-all when the area is unavailable.
+        const va = (area && area.length >= 4 && area[2] > 0 && area[3] > 0) ? area : null;
         ctx.save();
-        for (const g of gs) { if (hiddenGroups.has(String(g.id))) continue; drawOne(ctx, g); }
+        for (const g of gs) {
+          if (hiddenGroups.has(String(g.id))) continue;
+          if (va && (g.x > va[0] + va[2] || g.x + g.w < va[0] || g.y > va[1] + va[3] || g.y + g.h < va[1])) continue;
+          drawOne(ctx, g);
+        }
         ctx.restore();
       }
     } catch (_e) { /* never break the canvas */ }
@@ -969,11 +994,17 @@ function applyNativeCarry() {
 function _carryTick() {
   if (!_lmbDown) { _carryRaf = 0; return; }   // drag ended -> stop the loop
   // Detection + apply BOTH live in the bg draw pass (onDrawBackground) now, reading live
-  // positions. Here we only REQUEST that pass each frame so it fires at ~60Hz during a drag:
-  // a Vue node move doesn't redraw the bg on its own, and a Comfy-group drag's natural redraw
-  // cadence can be irregular. Gate on pixgroups existing (a carry could be in play). Vue:
-  // bg-only (nodes are Vue DOM, wires repaint themselves). Classic: force fg+bg in lockstep.
-  if (_carry || _natGrpDrag || ensureGroups().length) {
+  // positions. Here we only REQUEST that pass each frame so it fires at ~60Hz during a drag.
+  // Pump while an ACTUAL carry is live (_carry = node-drag carry, _natGrpDrag = native-group
+  // carry). The bare group-PRESENCE pump is kept ONLY in Nodes 2.0: there a native-group
+  // title drag doesn't reliably dirty the bg, and carryNativeGroupDrags() (which sets
+  // _natGrpDrag) runs INSIDE onDrawBackground, so this pump is the only thing that lets a
+  // native-group carry get detected. In the CLASSIC renderer a canvas-drawn native group
+  // self-dirties the bg every moved frame, so detection bootstraps within ~1 frame WITHOUT
+  // the pump — so dropping presence-pumping there stops forcing wasteful full-bg repaints
+  // during ordinary classic node drags (which have nothing to carry). Vue: bg-only (nodes
+  // are Vue DOM, wires repaint themselves). Classic (carry live): force fg+bg in lockstep.
+  if (_carry || _natGrpDrag || (isVueNodes() && ensureGroups().length)) {
     try { app.canvas?.setDirty(isVueNodes() ? false : true, true); } catch (_e) {}
   }
   _carryRaf = requestAnimationFrame(_carryTick);
