@@ -7,6 +7,7 @@
 // saved workflow (Vue Compat #18).
 
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 
 export const STATE_PROP = "xyPlotState";
 export const STATE_VERSION = 1;
@@ -126,6 +127,79 @@ function previewValue(w) {
   return v.length > 46 ? v.slice(0, 46) + "…" : v;
 }
 
+// ── LoRA options (for object-valued lora rows) ─────────────────────────────
+//
+// Multi-lora loaders (e.g. rgthree's Power Lora Loader) store each lora row as an
+// OBJECT widget value {on, lora, strength, ...} under a non-standard widget type,
+// so classifyWidget can't read an options list off the widget the way it does for
+// the core Load LoRA node's `lora_name` combo. We harvest the full lora filename
+// list from ComfyUI's node definitions (always registered) + any live lora_name
+// combo on the graph, and cache it.
+let _loraOptions = null;
+let _loraFetchStarted = false;
+
+function harvestLorasSync() {
+  const set = new Set();
+  try {
+    const reg = (window.LiteGraph && window.LiteGraph.registered_node_types) || {};
+    for (const key of Object.keys(reg)) {
+      const inp = reg[key] && reg[key].nodeData && reg[key].nodeData.input;
+      if (!inp) continue;
+      const spec = (inp.required && inp.required.lora_name) || (inp.optional && inp.optional.lora_name);
+      const vals = Array.isArray(spec) ? spec[0] : null;
+      if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+    }
+  } catch (_e) {}
+  try {
+    const nodes = app.graph?._nodes || app.graph?.nodes || [];
+    for (const n of nodes) for (const w of (n.widgets || [])) {
+      if (w && w.name === "lora_name") {
+        let vals = w.options && w.options.values;
+        if (typeof vals === "function") { try { vals = vals(); } catch (_e2) { vals = null; } }
+        if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+      }
+    }
+  } catch (_e) {}
+  return set;
+}
+
+// One-time async warm-up: pull the full lora list from ComfyUI's object_info so
+// the cache is complete even if the sync sources are momentarily sparse. Unions
+// into (never shrinks) the cache.
+function warmLoraCacheAsync() {
+  if (_loraFetchStarted) return;
+  _loraFetchStarted = true;
+  (async () => {
+    try {
+      const defs = api && api.getNodeDefs ? await api.getNodeDefs() : null;
+      if (!defs) return;
+      const set = new Set(_loraOptions || []);
+      for (const key of Object.keys(defs)) {
+        const inp = defs[key] && defs[key].input;
+        const spec = inp && ((inp.required && inp.required.lora_name) || (inp.optional && inp.optional.lora_name));
+        const vals = Array.isArray(spec) ? spec[0] : null;
+        if (Array.isArray(vals)) for (const v of vals) if (typeof v === "string") set.add(v);
+      }
+      if (set.size) _loraOptions = [...set].sort();
+    } catch (_e) {}
+  })();
+}
+
+// The available lora filenames, always including `extra` (the row's current pick)
+// so a live selection is never dropped even if the harvest missed it.
+export function loraOptions(extra) {
+  warmLoraCacheAsync();
+  if (!_loraOptions || !_loraOptions.length) {
+    const sync = harvestLorasSync();
+    if (sync.size) _loraOptions = [...sync].sort();
+  }
+  const set = new Set(_loraOptions || []);
+  if (extra) {
+    for (const v of (Array.isArray(extra) ? extra : [extra])) if (typeof v === "string" && v) set.add(v);
+  }
+  return [...set].sort();
+}
+
 // Classify a LiteGraph widget into a plottable kind, or null if it can't be
 // swept (button / toggle / image / internal / our own widgets).
 export function classifyWidget(w) {
@@ -139,6 +213,17 @@ export function classifyWidget(w) {
   // and hold a JSON blob, not a parameter anyone would sweep.
   if (w.hidden || t === "hidden") return null;
   if (w.options && w.options.canvasOnly === true) return null;
+  // Object-valued LoRA rows: multi-lora loaders (e.g. the Power Lora Loader) store
+  // each row as {on, lora, strength, ...} under a non-standard widget type, so the
+  // number/combo/text checks below would skip them. Detect by value shape and
+  // expose each row as a combo of lora filenames so it sweeps exactly like the core
+  // Load LoRA node's `lora_name`. Injection preserves the row dict (see injectAxis).
+  const oval = w.value;
+  if (oval && typeof oval === "object" && !Array.isArray(oval) &&
+      ("lora" in oval) && ("strength" in oval || "on" in oval)) {
+    const curLora = (typeof oval.lora === "string" && oval.lora !== "None") ? oval.lora : "";
+    return { name, type: "combo", options: loraOptions(curLora), cur: curLora };
+  }
   const cur = previewValue(w);
   if (t === "number") {
     const opts = w.options || {};
@@ -205,7 +290,10 @@ export function currentValuePreview(node, axis) {
   const target = graph?.getNodeById?.(axis.nodeId);
   const w = target?.widgets?.find((x) => x && x.name === axis.widgetName);
   if (!w || w.value == null) return "";
-  const v = String(w.value).replace(/\s+/g, " ").trim();
+  let raw = w.value;
+  // Object-valued lora rows (Power Lora Loader): show the lora file, not "[object Object]".
+  if (raw && typeof raw === "object" && !Array.isArray(raw) && "lora" in raw) raw = raw.lora || "None";
+  const v = String(raw).replace(/\s+/g, " ").trim();
   return v.length > 48 ? v.slice(0, 48) + "…" : v;
 }
 

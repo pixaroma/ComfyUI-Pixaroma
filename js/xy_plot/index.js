@@ -334,6 +334,14 @@ function injectAxis(out, axis, value) {
     }
     return;
   }
+  // Object-valued rows (rgthree Power Lora Loader and similar multi-lora loaders
+  // store each row as {on, lora, strength, ...}). Preserve the row and swap only
+  // the lora file - and force it on so the sweep actually takes effect - instead
+  // of clobbering the whole dict with a bare string (which the loader can't read).
+  if (cur && typeof cur === "object" && !Array.isArray(cur) && "lora" in cur) {
+    te.inputs[axis.widgetName] = { ...cur, lora: String(value), on: true };
+    return;
+  }
   // Number / combo / text(full-list): inject the swept value, OVERRIDING a
   // wired input if there is one. A converted-to-input widget (e.g. Empty Latent
   // Image's `width` wired from Resolution Pixaroma) appears in the prompt as a

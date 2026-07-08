@@ -39,6 +39,7 @@ const XY_HELP = {
       defs: [
         ["Number", "A `Range` (Start / End / Steps) or a `List` of values."],
         ["Dropdown", "A checklist - tick the samplers / models / schedulers you want to compare."],
+        ["LoRA", "Tick which loras to compare. Works with the core Load LoRA node and multi-lora loaders like the Power Lora Loader (pick the row you want to vary)."],
         ["Prompt text", "`Full list` (one full prompt per line) or `Find & replace` (swap a word for each value)."],
       ],
     },
