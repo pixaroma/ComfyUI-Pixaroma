@@ -307,6 +307,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **July 9, 2026 · v1.4.25**
+- **Groups no longer slow down the canvas.** Adding a Pixaroma Group could make panning and moving around the canvas feel sluggish, especially on some computers and when a large group filled the screen. That is fixed - groups now draw far more efficiently, so the canvas stays smooth whether or not a group is on screen. The group and its buttons look exactly the same as before.
+
 ### **July 8, 2026 · v1.4.24**
 - **XY Plot now works with the Power Lora Loader, and lets you compare lora strengths.** Before, XY Plot could only compare loras from the basic Load LoRA node. Now it also recognizes multi-lora loaders like the Power Lora Loader, so you can pick one of its lora rows as an axis. On top of swapping which lora loads, you can now put a lora's **strength** on an axis and compare weights side by side (for example 0.3, 0.6, 1.0) - and you can even make a two-way grid with the lora across the top and its strength down the side. The lora checklist shows all the loras you have installed (that is how you compare against ones not loaded in the node yet), and a stray "None" entry that used to sneak in from other loader nodes is gone. The node's Help explains it, including the reminder to turn off any other loras you are not comparing so they do not blend into every square.
 
