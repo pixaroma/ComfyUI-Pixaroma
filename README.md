@@ -307,7 +307,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **July 9, 2026 · v1.4.25**
+### **July 9, 2026 · v1.4.25–v1.4.26**
+- **Pause Image keeps your image details when you press Continue.** When you sent an image through the Pause Image node and pressed Continue, the saved image kept the picture but lost its details - the prompt, seed, and generation settings - so gallery tools that read that info, and our own Prompt Reader, showed them as blank. Now those details travel through the node, so images you save after Continue carry their full information again, exactly like images that skip the node. Continue is just as fast as before and produces the same image.
 - **Groups no longer slow down the canvas.** Adding a Pixaroma Group could make panning and moving around the canvas feel sluggish, especially on some computers and when a large group filled the screen. That is fixed - groups now draw far more efficiently, so the canvas stays smooth whether or not a group is on screen. The group and its buttons look exactly the same as before.
 
 ### **July 8, 2026 · v1.4.24**

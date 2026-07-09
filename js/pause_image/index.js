@@ -4,6 +4,7 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { getState, setGate, STATE_PROP } from "./state.mjs";
+import { applyGateMode } from "./prune.mjs";
 import {
   buildPauseWidget, renderPause, showFrame, frameViewUrl, NODE_MIN_W, NODE_MIN_H,
 } from "./ui.mjs";
@@ -328,136 +329,16 @@ function findNode(index, promptId) {
   return null;
 }
 
-// A ComfyUI prompt input link is EXACTLY [originNodeId, originSlot] - origin a
-// string/number, slot a number. Anything else (a scalar widget value, or a
-// list-valued widget that happens to be an array) is NOT a link. Matching the
-// exact shape avoids phantom edges from array-valued widgets.
-function isLink(v) {
-  return Array.isArray(v) && v.length === 2
-    && (typeof v[0] === "string" || typeof v[0] === "number")
-    && typeof v[1] === "number";
-}
-
-// Build origin -> Set(consumerIds) from the prompt.
-function buildConsumers(output) {
-  const consumers = new Map();
-  for (const id in output) {
-    const inputs = output[id]?.inputs;
-    if (!inputs) continue;
-    for (const k in inputs) {
-      if (!isLink(inputs[k])) continue;
-      const origin = String(inputs[k][0]);
-      if (!consumers.has(origin)) consumers.set(origin, new Set());
-      consumers.get(origin).add(String(id));
-    }
-  }
-  return consumers;
-}
-
-// Forward BFS from startId; returns the set of all nodes reachable downstream
-// (does NOT include startId).
-function collectDownstream(consumers, startId) {
-  const seen = new Set();
-  const stack = [String(startId)];
-  while (stack.length) {
-    const cur = stack.pop();
-    const next = consumers.get(cur);
-    if (!next) continue;
-    for (const c of next) {
-      if (!seen.has(c)) { seen.add(c); stack.push(c); }
-    }
-  }
-  return seen;
-}
-
-// Grow `keep` to include every ancestor of every node already in it (walk the
-// input link arrays [originId, originSlot] backward to closure). Continue uses
-// this so a kept downstream node also keeps its OWN side dependencies (e.g. an
-// upscaler's separate model / vae loaders), which are NOT downstream of the
-// gate but are needed to run the downstream branch.
-function addAncestors(output, keep) {
-  const stack = [...keep];
-  while (stack.length) {
-    const cur = stack.pop();
-    const inputs = output[cur]?.inputs;
-    if (!inputs) continue;
-    for (const k in inputs) {
-      if (!isLink(inputs[k])) continue;
-      const origin = String(inputs[k][0]);
-      if (output[origin] && !keep.has(origin)) {
-        keep.add(origin);
-        stack.push(origin);
-      }
-    }
-  }
-}
-
-// Apply one gate's effective mode to the prompt `out`. Extracted so the hook
-// can process CONTINUE gates before PAUSE/PASS ones (see the sort below).
-function applyGateMode(out, id, entry, mode) {
-  entry.inputs = entry.inputs || {};
-  if (mode === "pause") {
-    // Stop the run at the gate: delete every node downstream of it so the gate
-    // (an OUTPUT_NODE) becomes the run's endpoint for this branch. Intermediate
-    // non-output nodes (e.g. an upscaler) then have no consumer and ComfyUI
-    // auto-skips them. Parallel branches with their own outputs are untouched.
-    const consumers = buildConsumers(out);
-    const downstream = collectDownstream(consumers, id);
-    for (const d of downstream) delete out[d];
-    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pause" });
-  } else if (mode === "continue") {
-    // Skip the upstream ENTIRELY and run only the rest from the snapshot.
-    // Detaching the gate's own image link is not enough on its own: any OTHER
-    // node that consumed the gate's upstream (e.g. a Save Image wired directly
-    // off VAE Decode, in parallel with the gate) is still an output and would
-    // pull the whole model -> sampler -> decode chain again. So keep ONLY the
-    // gate, its downstream branch, and that branch's own side dependencies
-    // (e.g. the upscaler's model / vae loaders), and delete everything else.
-    // The gate reloads the snapshot.
-
-    // Capture the gate's own image SOURCE (origin node + slot) before detaching
-    // it - needed for the diamond reroute below.
-    const gateSrc = isLink(entry.inputs.image)
-      ? [String(entry.inputs.image[0]), Number(entry.inputs.image[1])]
-      : null;
-
-    delete entry.inputs.image;
-    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "continue" });
-
-    const consumers = buildConsumers(out);
-    const downstream = collectDownstream(consumers, id);  // strings
-
-    // Diamond reroute: a node AFTER the gate (e.g. an Image Compare's "before"
-    // input) might also read the gate's EXACT original-image source (the
-    // pre-gate image, e.g. VAE Decode). Left alone, that one link pulls the
-    // whole upstream back alive on Continue. Since the gate's snapshot IS that
-    // same image, reroute those downstream links to the gate's own output so
-    // nothing after the gate reaches back before it - the upstream then drops
-    // out of `keep` and is skipped. Only an EXACT (origin, slot) match is
-    // rerouted, so a different pre-gate image is never silently swapped.
-    if (gateSrc) {
-      for (const dId of downstream) {
-        const dInputs = out[dId]?.inputs;
-        if (!dInputs) continue;
-        for (const k in dInputs) {
-          const v = dInputs[k];
-          if (isLink(v) && String(v[0]) === gateSrc[0] && Number(v[1]) === gateSrc[1]) {
-            dInputs[k] = [String(id), 0];  // read the gate's snapshot output
-          }
-        }
-      }
-    }
-
-    const keep = new Set(downstream);
-    keep.add(String(id));    // the gate itself
-    addAncestors(out, keep); // + downstream's remaining side deps
-    for (const nid of Object.keys(out)) {
-      if (!keep.has(String(nid))) delete out[nid];
-    }
-  } else {
-    // Pass: no prune, whole workflow runs.
-    entry.inputs[HIDDEN_INPUT] = JSON.stringify({ mode: "pass" });
-  }
+// isOutput(classType): true iff a class_type is an OUTPUT_NODE (Save / Preview /
+// another gate). Read from the live node defs the frontend already holds
+// (registered_node_types[class_type].nodeData.output_node - the same accessor
+// pixgroup + xy_plot use). Every node that can appear in a prompt is registered,
+// so this resolves for all real nodes; if the registry is somehow missing we
+// return null so the prune falls back to the old delete-everything behavior.
+function makeIsOutput() {
+  const reg = window.LiteGraph?.registered_node_types;
+  if (!reg) return null;
+  return (classType) => !!(classType && reg[classType]?.nodeData?.output_node);
 }
 
 // Process order: a CONTINUE gate prunes the prompt down to its own downstream
@@ -475,6 +356,7 @@ app.graphToPrompt = async function (...args) {
   if (out) {
     // Gather every Pause Image entry + its effective mode first.
     let index = null;
+    const isOutput = makeIsOutput();
     const gates = [];
     for (const id in out) {
       const entry = out[id];
@@ -500,7 +382,7 @@ app.graphToPrompt = async function (...args) {
     gates.sort((a, b) => MODE_RANK[a.mode] - MODE_RANK[b.mode]);
     for (const g of gates) {
       if (!out[g.id]) continue;  // already pruned away by an earlier continue gate
-      applyGateMode(out, g.id, g.entry, g.mode);
+      applyGateMode(out, g.id, g.entry, g.mode, isOutput, HIDDEN_INPUT);
     }
   }
   return result;
