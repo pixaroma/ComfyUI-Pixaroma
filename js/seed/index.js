@@ -105,6 +105,14 @@ function injectCSS() {
     .pix-seed-spinbtn + .pix-seed-spinbtn { border-top: 1px solid #3a3d40; }
     .pix-seed-spinbtn:hover { background: ${BRAND}; color: #fff; }
     .pix-seed-spinbtn:active { background: #ff8a5e; }
+    /* Compact layout: a slim standalone spinner (full border + its own rounded
+       corners) rather than one attached to the number's right edge. */
+    .pix-seed-spin.compact {
+      width: 20px;
+      height: 32px;
+      border-left: 1px solid #3a3d40;
+      border-radius: 6px;
+    }
     /* Random | Fixed segmented pill. Active segment = solid brand. */
     .pix-seed-pill {
       display: flex;
@@ -152,6 +160,9 @@ function injectCSS() {
       cursor: pointer;
       user-select: none;
       text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
       transition: background 0.08s, border-color 0.08s, color 0.08s;
     }
     .pix-seed-newrandom { width: 100%; }
@@ -175,6 +186,7 @@ function injectCSS() {
     }
     .pix-seed-row { display: flex; gap: 8px; }
     .pix-seed-uselast { flex: 1; }
+    .pix-seed-hist { flex: 0 0 auto; min-width: 40px; }
     .pix-seed-copy { flex: 0 0 auto; min-width: 64px; }
     .pix-seed-lastrun {
       font-size: 11px;
@@ -365,7 +377,7 @@ function measureSeedHeight(root, compact) {
   return Math.round(h / 4) * 4;
 }
 
-const COMPACT_MIN_W = 300; // compact mode widens to at least this so a 16-digit seed sits comfortably (not shrunk small / clipped)
+const COMPACT_MIN_W = 320; // compact widens to at least this so a 16-digit seed + the spinner sit comfortably
 
 // Re-fit the node to the current content height (used after a Compact/Full
 // toggle - a user action, so writing node.size is fine; NEVER call this on the
@@ -586,6 +598,21 @@ function recordSeedHistory(seeds) {
   refreshSeedHistory(); // update the panel if it happens to be open
 }
 
+// Open the Seed history panel for `node` (shared by the right-click menu item
+// and the in-node H button). Builds the ctx the panel needs.
+function openSeedHistoryPanel(node) {
+  openSeedHistory(node, {
+    getHistory: getSeedHistory,
+    clearHistory: () => { saveSeedHistory([]); refreshSeedHistory(); },
+    copyToClipboard,
+    useSeed: (seed) => {
+      const cur = readState(node);
+      writeState(node, { ...cur, seed: clampSeed(seed), mode: "fixed" });
+      renderUI(node);
+    },
+  });
+}
+
 // Build the node body into `root` (the DOM widget element). Kept separate from
 // renderUI so the INITIAL render can target the captured root element even
 // before LiteGraph has attached it — bailing on isConnected there (the first
@@ -766,9 +793,9 @@ function bindHoldRepeat(btn, fn) {
 // The stacked ▲ / ▼ nudge column shown to the right of the seed number (Full
 // layout). Literal triangle glyphs in JS text (NOT a CSS \u escape in the CSS
 // template literal, which would be an illegal octal — convention #12).
-function makeSeedSpinner(node, root, num) {
+function makeSeedSpinner(node, root, num, compact) {
   const spin = document.createElement("div");
-  spin.className = "pix-seed-spin";
+  spin.className = "pix-seed-spin" + (compact ? " compact" : "");
   const up = document.createElement("button");
   up.type = "button";
   up.className = "pix-seed-spinbtn";
@@ -852,7 +879,9 @@ function buildSeedBody(node, root) {
       writeState(node, { ...cur, seed: rollSeed(cur.digits), mode: "fixed" });
       renderUI(node);
     });
-    row.append(num, tog, nb);
+    // Slim ▲/▼ spinner right after the number (compact variant).
+    const spin = makeSeedSpinner(node, root, num, true);
+    row.append(num, spin, tog, nb);
     root.appendChild(row);
     fitLater(num);
     return;
@@ -904,6 +933,13 @@ function buildSeedBody(node, root) {
     renderUI(node);
   });
 
+  const histBtn = document.createElement("button");
+  histBtn.type = "button";
+  histBtn.className = "pix-seed-btn pix-seed-hist";
+  histBtn.textContent = "H";
+  histBtn.title = "Seed history: your last 10 seeds (Use / Copy / Export).";
+  histBtn.addEventListener("click", () => openSeedHistoryPanel(node));
+
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
   copyBtn.className = "pix-seed-btn pix-seed-copy";
@@ -911,7 +947,7 @@ function buildSeedBody(node, root) {
   copyBtn.title = "Copy the seed shown above to the clipboard.";
   copyBtn.addEventListener("click", () => copySeed(node, copyBtn));
 
-  row.append(useLast, copyBtn);
+  row.append(useLast, histBtn, copyBtn);
   root.appendChild(row);
 
   // ── last-run line ─────────────────────────────────────────────
@@ -1111,17 +1147,7 @@ app.registerExtension({
         // recent seeds (global), with Use / Copy / Export .txt. A clock glyph,
         // off the crown, so it stands out from the crowded crown items.
         content: "🕘 Seed history",
-        callback: () =>
-          openSeedHistory(node, {
-            getHistory: getSeedHistory,
-            clearHistory: () => { saveSeedHistory([]); refreshSeedHistory(); },
-            copyToClipboard,
-            useSeed: (seed) => {
-              const cur = readState(node);
-              writeState(node, { ...cur, seed: clampSeed(seed), mode: "fixed" });
-              renderUI(node);
-            },
-          }),
+        callback: () => openSeedHistoryPanel(node),
       },
     ];
   },
