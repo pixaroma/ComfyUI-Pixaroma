@@ -307,6 +307,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **July 11, 2026 · v1.4.30**
+- **The Seed node got several handy additions.** Small up and down arrows next to the seed let you nudge it by one (hold to keep counting) - handy for trying the seeds right next to one you like. You can now set random seeds as short as three digits if you prefer small, easy-to-remember numbers. And a new Seed history panel - open it with the H button or by right-clicking the node - remembers the last ten seeds you have run, so you can reuse one, copy it, or save the whole list to a text file. The buttons were also rearranged so their labels always fit.
+- **Pause Image buttons are in a clearer order.** On the Pause Image node, Regenerate and Continue swapped places, so Regenerate is on the left and Continue on the right. It reads more naturally and helps avoid clicking the wrong one.
+
 ### **July 9, 2026 · v1.4.25–v1.4.29**
 - **Image Compare no longer errors when one image is missing.** If a branch feeding one of the two inputs is muted, bypassed, or simply left unconnected (common in a workflow that toggles between text-to-image and image-to-image), the node used to throw a system error even though nothing was actually wrong. Now it just shows whichever image is connected - or a short "connect images" note when neither is - and never interrupts your run. Both inputs are optional, so it is safe to leave the node in place.
 - **Fixed a small corner glitch on groups.** After the recent speed improvement, the little resize grip in a group's bottom-right corner could poke out past the rounded edge. It now tucks neatly back inside the corner, and groups stay just as fast.
