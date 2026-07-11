@@ -3,6 +3,7 @@ import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly, isVueNodes, measureRoot
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 import { openSeedSettings, closeSeedSettingsFor } from "./settings.mjs";
+import { openSeedHistory, closeSeedHistoryFor, refreshSeedHistory } from "./history.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Seed Pixaroma — a seed source with Random / Fixed modes + buttons.
@@ -64,6 +65,46 @@ function injectCSS() {
       outline: none;
     }
     .pix-seed-num:focus { border-color: ${BRAND}; }
+    /* Number field + up/down (±1) spinner sit side-by-side. The wrap takes the
+       number's place in the column, so the height measure is unchanged. */
+    .pix-seed-numwrap { display: flex; align-items: stretch; }
+    .pix-seed-numwrap .pix-seed-num {
+      flex: 1;
+      min-width: 0;
+      width: auto;
+      border-top-right-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .pix-seed-spin {
+      flex: 0 0 auto;
+      display: flex;
+      flex-direction: column;
+      width: 26px;
+      border: 1px solid #3a3d40;
+      border-left: none;
+      border-radius: 0 6px 6px 0;
+      overflow: hidden;
+    }
+    .pix-seed-spinbtn {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      background: #1f2123;
+      color: rgba(255,255,255,0.75);
+      font-size: 9px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      user-select: none;
+      appearance: none;
+      -webkit-appearance: none;
+      transition: background 0.08s, color 0.08s;
+    }
+    .pix-seed-spinbtn + .pix-seed-spinbtn { border-top: 1px solid #3a3d40; }
+    .pix-seed-spinbtn:hover { background: ${BRAND}; color: #fff; }
+    .pix-seed-spinbtn:active { background: #ff8a5e; }
     /* Random | Fixed segmented pill. Active segment = solid brand. */
     .pix-seed-pill {
       display: flex;
@@ -254,7 +295,7 @@ const STATE_PROP = "seedState";
 const HIDDEN_INPUT_NAME = "SeedState"; // matches Python INPUT_TYPES key
 
 const DEFAULT_SIZE_SETTING = "Pixaroma.Seed.DefaultSize"; // global default: new nodes start compact
-const MIN_DIGITS = 4;
+const MIN_DIGITS = 3; // was 4; users wanted small, memorable seeds (0-999 at 3 digits)
 const MAX_DIGITS = 16; // 16 = the full safe-integer range (original behaviour)
 
 const DEFAULT_STATE = {
@@ -451,24 +492,11 @@ function syncModeUI(root, mode) {
   });
 }
 
-function copySeed(node, btn, iconMode) {
-  const state = readState(node);
-  // What-you-see-is-what-you-copy: copy exactly the seed shown in the big field
-  // (the last-run seed in Random mode, the locked value in Fixed).
-  const text = String(clampSeed(displayedSeed(node, state)));
-  const flash = (ok) => {
-    // iconMode (compact copy button): flash the colour only, keep the SVG icon
-    // (rewriting textContent would wipe it).
-    btn.classList.toggle("is-flashing", ok);
-    if (!iconMode) btn.textContent = ok ? "Copied" : "No clipboard";
-    setTimeout(() => {
-      btn.classList.remove("is-flashing");
-      if (!iconMode) btn.textContent = "Copy";
-    }, 700);
-  };
-  // Fallback for INSECURE contexts (ComfyUI served over http://<LAN-IP>), where
-  // navigator.clipboard is undefined — a throwaway textarea + execCommand still
-  // works because the click is a user gesture. Mirrors Version Check / Show Text.
+// Write `text` to the clipboard, calling flash(ok) when done. Falls back to a
+// throwaway-textarea + execCommand for INSECURE contexts (ComfyUI served over
+// http://<LAN-IP>), where navigator.clipboard is undefined but a user-gesture
+// copy still works. Mirrors Version Check / Show Text.
+function copyToClipboard(text, flash) {
   const legacyCopy = () => {
     const ta = document.createElement("textarea");
     ta.value = text;
@@ -491,6 +519,71 @@ function copySeed(node, btn, iconMode) {
   } else {
     legacyCopy();
   }
+}
+
+function copySeed(node, btn, iconMode) {
+  const state = readState(node);
+  // What-you-see-is-what-you-copy: copy exactly the seed shown in the big field
+  // (the last-run seed in Random mode, the locked value in Fixed).
+  const text = String(clampSeed(displayedSeed(node, state)));
+  copyToClipboard(text, (ok) => {
+    // iconMode (compact copy button): flash the colour only, keep the SVG icon
+    // (rewriting textContent would wipe it).
+    btn.classList.toggle("is-flashing", ok);
+    if (!iconMode) btn.textContent = ok ? "Copied" : "No clipboard";
+    setTimeout(() => {
+      btn.classList.remove("is-flashing");
+      if (!iconMode) btn.textContent = "Copy";
+    }, 700);
+  });
+}
+
+// ── Seed history (global, persistent) ─────────────────────────────────────
+// The last N distinct seeds that ACTUALLY RAN, stored in a global ComfyUI
+// setting (unregistered settings persist — Vue Compat #20). Deliberately GLOBAL,
+// not per-node: it never writes node.properties, so recording a run can't dirty
+// a saved workflow (the same reason the last-run seed is runtime-only), and it
+// survives reloads. Shown/used from any Seed node's right-click "Seed history".
+const HISTORY_SETTING = "Pixaroma.Seed.History";
+const HISTORY_MAX = 10;
+
+function getSeedHistory() {
+  try {
+    const raw = app.ui?.settings?.getSettingValue?.(HISTORY_SETTING);
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr)) return [];
+    return arr.map((n) => Number(n)).filter((n) => Number.isFinite(n)).map((n) => clampSeed(n));
+  } catch {
+    return [];
+  }
+}
+
+function saveSeedHistory(arr) {
+  try {
+    app.ui?.settings?.setSettingValueAsync?.(
+      HISTORY_SETTING,
+      JSON.stringify(arr.slice(0, HISTORY_MAX))
+    );
+  } catch {}
+}
+
+// Record one or more just-run seeds (most-recent first), deduped + capped. Skips
+// the write when nothing changed, so Fixed-mode re-runs don't churn the setting.
+function recordSeedHistory(seeds) {
+  const add = (Array.isArray(seeds) ? seeds : [seeds]).map((s) => clampSeed(s));
+  if (!add.length) return;
+  const cur = getSeedHistory();
+  const seen = new Set();
+  const next = [];
+  for (const s of [...add, ...cur]) {
+    if (seen.has(s)) continue;
+    seen.add(s);
+    next.push(s);
+    if (next.length >= HISTORY_MAX) break;
+  }
+  if (next.length === cur.length && next.every((s, i) => s === cur[i])) return;
+  saveSeedHistory(next);
+  refreshSeedHistory(); // update the panel if it happens to be open
 }
 
 // Build the node body into `root` (the DOM widget element). Kept separate from
@@ -623,6 +716,77 @@ function makeSeedNumberInput(node, root, compact) {
   return num;
 }
 
+// Nudge the seed by ±1. Nudging picks a specific value, so it locks Fixed (same
+// as typing an exact number). Clamps to [0, MAX_SAFE_INTEGER]; a no-op at the
+// bounds. Updates the field + pill IN PLACE (no rebuild) so the spinner isn't
+// destroyed mid-hold.
+function stepSeed(node, root, num, dir) {
+  const cur = readState(node);
+  // Base off the number the field currently SHOWS — this covers an uncommitted
+  // typed value and a Random last-run seed alike; fall back to the effective
+  // seed if the field is missing / non-numeric.
+  const raw = num ? num.value.replace(/[^\d]/g, "") : "";
+  const base = raw !== "" ? clampSeed(raw) : clampSeed(displayedSeed(node, cur));
+  const v = clampSeed(base + dir);
+  if (v === base) return; // at 0 going down, or at the max going up
+  writeState(node, { ...cur, seed: v, mode: "fixed" });
+  if (num) { num.value = String(v); fitSeedFont(num); }
+  syncModeUI(root, "fixed");
+  refreshLastRun(node);
+  // Keep the compact hover popover (if it happens to be showing this node) in sync.
+  if (_seedTipNode === node && _seedTipEl && _seedTipEl.style.display !== "none") {
+    const tv = _seedTipEl.querySelector(".pix-seed-tip-val");
+    if (tv) tv.textContent = String(v);
+  }
+}
+
+// Press-and-hold auto-repeat for a spinner button: one step on press, then repeat
+// after a short delay. Self-cleaning on pointerup / cancel / leave (no leaks).
+function bindHoldRepeat(btn, fn) {
+  btn.addEventListener("pointerdown", (e) => {
+    if (e.button != null && e.button !== 0) return; // primary button only
+    e.preventDefault();
+    e.stopPropagation(); // don't let the canvas start a node drag
+    fn();
+    let iv = null;
+    const to = setTimeout(() => { iv = setInterval(fn, 80); }, 400);
+    const end = () => {
+      clearTimeout(to);
+      if (iv) clearInterval(iv);
+      window.removeEventListener("pointerup", end, true);
+      window.removeEventListener("pointercancel", end, true);
+      btn.removeEventListener("pointerleave", end);
+    };
+    window.addEventListener("pointerup", end, true);
+    window.addEventListener("pointercancel", end, true);
+    btn.addEventListener("pointerleave", end);
+  });
+}
+
+// The stacked ▲ / ▼ nudge column shown to the right of the seed number (Full
+// layout). Literal triangle glyphs in JS text (NOT a CSS \u escape in the CSS
+// template literal, which would be an illegal octal — convention #12).
+function makeSeedSpinner(node, root, num) {
+  const spin = document.createElement("div");
+  spin.className = "pix-seed-spin";
+  const up = document.createElement("button");
+  up.type = "button";
+  up.className = "pix-seed-spinbtn";
+  up.textContent = "▲";
+  up.title = "Increase the seed by 1 (locks it as Fixed). Hold to repeat.";
+  up.tabIndex = -1;
+  const down = document.createElement("button");
+  down.type = "button";
+  down.className = "pix-seed-spinbtn";
+  down.textContent = "▼";
+  down.title = "Decrease the seed by 1 (locks it as Fixed). Hold to repeat.";
+  down.tabIndex = -1;
+  bindHoldRepeat(up, () => stepSeed(node, root, num, +1));
+  bindHoldRepeat(down, () => stepSeed(node, root, num, -1));
+  spin.append(up, down);
+  return spin;
+}
+
 // One Random|Fixed segment button. Keeps the .pix-seed-seg class so syncModeUI
 // finds it; shared by Full ("Random"/"Fixed") and Compact ("R"/"F") with the
 // same click behaviour.
@@ -696,7 +860,12 @@ function buildSeedBody(node, root) {
 
   // ── FULL (default) ──
   const num = makeSeedNumberInput(node, root, false);
-  root.appendChild(num);
+  // Number + ▲/▼ nudge spinner in one row (spinner is Full-only; Compact stays a
+  // single tight line).
+  const numWrap = document.createElement("div");
+  numWrap.className = "pix-seed-numwrap";
+  numWrap.append(num, makeSeedSpinner(node, root, num));
+  root.appendChild(numWrap);
 
   const pill = document.createElement("div");
   pill.className = "pix-seed-pill";
@@ -938,6 +1107,22 @@ app.registerExtension({
             clampDigits,
           }),
       },
+      {
+        // recent seeds (global), with Use / Copy / Export .txt. A clock glyph,
+        // off the crown, so it stands out from the crowded crown items.
+        content: "🕘 Seed history",
+        callback: () =>
+          openSeedHistory(node, {
+            getHistory: getSeedHistory,
+            clearHistory: () => { saveSeedHistory([]); refreshSeedHistory(); },
+            copyToClipboard,
+            useSeed: (seed) => {
+              const cur = readState(node);
+              writeState(node, { ...cur, seed: clampSeed(seed), mode: "fixed" });
+              renderUI(node);
+            },
+          }),
+      },
     ];
   },
 
@@ -988,6 +1173,7 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSeedSettingsFor(this);
+      closeSeedHistoryFor(this);
       if (_seedTipNode === this) hideSeedTip();
       try {
         this._pixSeedRO?.disconnect();
@@ -1063,6 +1249,7 @@ app.graphToPrompt = async function (...args) {
   try {
     const out = result?.output;
     if (out) {
+      const ranSeeds = [];
       for (const id in out) {
         const entry = out[id];
         if (!entry || entry.class_type !== "PixaromaSeed") continue;
@@ -1083,6 +1270,7 @@ app.graphToPrompt = async function (...args) {
           // so a dangling Seed node's display doesn't flicker each frame.
           node._pixSeedLastRun = runSeed;
           refreshLastRun(node);
+          ranSeeds.push(runSeed);
         }
         entry.inputs = entry.inputs || {};
         // Inject ONLY the seed value (no nonce) so the cache key IS the seed,
@@ -1096,6 +1284,9 @@ app.graphToPrompt = async function (...args) {
         // image (same seed = same result), which is correct, not a re-run we want.
         entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify({ runSeed });
       }
+      // Remember the seeds that actually ran (global history; never touches
+      // node.properties, so it can't dirty a saved workflow).
+      if (ranSeeds.length) recordSeedHistory(ranSeeds);
     }
   } catch (e) {
     console.warn("[PixaromaSeed] graphToPrompt inject failed", e);

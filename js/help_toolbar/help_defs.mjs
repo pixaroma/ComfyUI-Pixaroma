@@ -39,15 +39,20 @@ const HELP = {
           ["New fixed random", "Rolls a brand-new random seed and locks it (switches to Fixed). Use it when a random result is great and you want to keep that exact seed."],
           ["Use last seed", "Loads the seed from the previous run and locks it. Perfect for making variations off the image you just liked. It works within the current session only, so after you reload or reopen the workflow it stays greyed out until you Run once."],
           ["Copy", "Copies the current seed to your clipboard."],
+          ["Up / down arrows", "The small ▲ / ▼ arrows next to the seed nudge it by one and lock it (Fixed). Hold an arrow to keep counting. Great for trying the seeds right next to one you like."],
         ],
       },
       {
         heading: "Size and settings",
-        body: "Right-click the node for two things: a one-click Compact size / Full size flip, and a Seed settings panel. Compact shrinks the node to a single row (the seed, a small Random/Fixed toggle, and an N button that rolls a new fixed random seed) so it takes less room; Full brings all the buttons back. To copy the seed in compact mode, hover over the number: a small popup shows the full seed with a copy button (handy since a long seed can get trimmed in the small field). Your choice of size is saved with the workflow.\n\nThe Seed settings panel also sets the size every NEW Seed node starts at (the same as ComfyUI Settings, under Pixaroma then Seed), so you can have them all come in compact if you like.",
+        body: "Right-click the node for a few things: a one-click Compact size / Full size flip, a Seed settings panel, and a Seed history list. Compact shrinks the node to a single row (the seed, a small Random/Fixed toggle, and an N button that rolls a new fixed random seed) so it takes less room; Full brings all the buttons back. To copy the seed in compact mode, hover over the number: a small popup shows the full seed with a copy button (handy since a long seed can get trimmed in the small field). Your choice of size is saved with the workflow.\n\nThe Seed settings panel also sets the size every NEW Seed node starts at (the same as ComfyUI Settings, under Pixaroma then Seed), so you can have them all come in compact if you like.",
       },
       {
         heading: "Random seed digits",
-        body: "In the Seed settings panel you can cap how big a Random seed is, from 4 up to 16 digits. Lower it if the seed feels too long or another tool expects a smaller number (for example 8 digits gives seeds from 0 to 99999999). It only changes the Random roll; typing an exact seed always works, whatever the setting.",
+        body: "In the Seed settings panel you can cap how big a Random seed is, from 3 up to 16 digits. Lower it if you want short, easy-to-remember seeds or another tool expects a smaller number (3 digits gives seeds from 0 to 999; 8 digits gives 0 to 99999999). It only changes the Random roll; typing an exact seed always works, whatever the setting.",
+      },
+      {
+        heading: "Seed history",
+        body: "Right-click the node and choose Seed history to see the last 10 seeds you have run. From the list you can Use a seed (it loads onto this node and locks to Fixed), Copy it, or Export the whole list as a text file. The history is shared across all your Seed nodes and is kept even after you reload, so a seed you liked earlier is still there.",
       },
       {
         heading: "Put the seed in your file names",
