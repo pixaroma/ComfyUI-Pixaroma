@@ -52,7 +52,7 @@ const HELP = {
       },
       {
         heading: "Seed history",
-        body: "Open it from the H button (in Full size, between Use last seed and Copy) or by right-clicking the node and choosing Seed history. It shows the last 10 seeds you have run. From the list you can Use a seed (it loads onto this node and locks to Fixed), Copy it, or Export the whole list as a text file. The history is shared across all your Seed nodes and is kept even after you reload, so a seed you liked earlier is still there.",
+        body: "Open it from the H button (in Full size, on the bottom row next to Copy) or by right-clicking the node and choosing Seed history. It shows the last 10 seeds you have run. From the list you can Use a seed (it loads onto this node and locks to Fixed), Copy it, or Export the whole list as a text file. The history is shared across all your Seed nodes and is kept even after you reload, so a seed you liked earlier is still there.",
       },
       {
         heading: "Put the seed in your file names",
