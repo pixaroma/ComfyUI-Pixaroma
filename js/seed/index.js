@@ -185,7 +185,9 @@ function injectCSS() {
     }
     .pix-seed-row { display: flex; gap: 8px; }
     .pix-seed-grow { flex: 1; min-width: 0; }
-    .pix-seed-hist { flex: 0 0 auto; min-width: 44px; }
+    /* H and Copy share a fixed width so the right column lines up. */
+    .pix-seed-hist { flex: 0 0 auto; min-width: 66px; }
+    .pix-seed-copy { flex: 0 0 auto; min-width: 66px; }
     .pix-seed-lastrun {
       font-size: 11px;
       line-height: 1.6; /* room so descenders (y, g) aren't clipped at the node edge */
@@ -286,7 +288,7 @@ injectCSS();
 
 // Default node WIDTH on a fresh drop. The node is horizontally resizable; the
 // height stays content-driven (see onResize + the post-layout snap below).
-const NODE_W = 270; // fits the two-per-row buttons (New fixed random | Use last seed) without truncating
+const NODE_W = 240; // room for [New fixed random | H] on top and [Use last seed | Copy] below
 const MIN_W = 170; // resize floor — width shrinks to here, keeping the buttons usable
 // Body height is MEASURED from the actual content (see measureSeedHeight), not a
 // hand-guessed constant — guessing the constant is what caused the gap-then-clip
@@ -900,9 +902,9 @@ function buildSeedBody(node, root) {
   pill.appendChild(makeModeSeg(node, root, "fixed", "Fixed", "Keep the same seed every run (repeatable result)."));
   root.appendChild(pill);
 
-  // ── Row 1: get a seed — New fixed random · Use last seed ──────
-  // (Use last seed sits up here so its full label always fits; it used to share
-  // a 3-button row and got truncated on narrower nodes.)
+  // ── Row 1: New fixed random · History ─────────────────────────
+  // New fixed random keeps a nearly-full row (the H button is small), so its
+  // label never truncates; the paired actions sit underneath.
   const row1 = document.createElement("div");
   row1.className = "pix-seed-row";
 
@@ -916,6 +918,20 @@ function buildSeedBody(node, root) {
     writeState(node, { ...cur, seed: rollSeed(cur.digits), mode: "fixed" });
     renderUI(node);
   });
+
+  const histBtn = document.createElement("button");
+  histBtn.type = "button";
+  histBtn.className = "pix-seed-btn pix-seed-hist";
+  histBtn.textContent = "H";
+  histBtn.title = "Seed history: your last 10 seeds (Use / Copy / Export).";
+  histBtn.addEventListener("click", () => openSeedHistoryPanel(node));
+
+  row1.append(newBtn, histBtn);
+  root.appendChild(row1);
+
+  // ── Row 2: Use last seed · Copy ───────────────────────────────
+  const row2 = document.createElement("div");
+  row2.className = "pix-seed-row";
 
   const useLast = document.createElement("button");
   useLast.type = "button";
@@ -931,28 +947,14 @@ function buildSeedBody(node, root) {
     renderUI(node);
   });
 
-  row1.append(newBtn, useLast);
-  root.appendChild(row1);
-
-  // ── Row 2: seed tools — Copy · History ────────────────────────
-  const row2 = document.createElement("div");
-  row2.className = "pix-seed-row";
-
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
-  copyBtn.className = "pix-seed-btn pix-seed-grow";
+  copyBtn.className = "pix-seed-btn pix-seed-copy";
   copyBtn.textContent = "Copy";
   copyBtn.title = "Copy the seed shown above to the clipboard.";
   copyBtn.addEventListener("click", () => copySeed(node, copyBtn));
 
-  const histBtn = document.createElement("button");
-  histBtn.type = "button";
-  histBtn.className = "pix-seed-btn pix-seed-hist";
-  histBtn.textContent = "H";
-  histBtn.title = "Seed history: your last 10 seeds (Use / Copy / Export).";
-  histBtn.addEventListener("click", () => openSeedHistoryPanel(node));
-
-  row2.append(copyBtn, histBtn);
+  row2.append(useLast, copyBtn);
   root.appendChild(row2);
 
   // ── last-run line ─────────────────────────────────────────────
