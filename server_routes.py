@@ -280,6 +280,8 @@ async def krea_lora_convert(request):
         data = await request.json()
     except Exception:
         return web.json_response({"ok": False, "message": "Bad request."}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"ok": False, "message": "Bad request."}, status=400)
     name = data.get("lora_name", "")
     out = data.get("output_name", "")
     overwrite = bool(data.get("overwrite", False))

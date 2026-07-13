@@ -21,6 +21,7 @@ import os
 import re
 import shutil
 import struct
+import uuid
 from collections import OrderedDict
 
 FAL_PREFIX = "base_model.model."
@@ -59,6 +60,15 @@ _TXTFUSION_RE = re.compile(r"^txtfusion\.(layerwise_blocks|refiner_blocks)\.(\d+
 # Real Krea 2 LoRA headers are ~64 KB; cap well above that so a corrupt/huge
 # header can never make us allocate gigabytes.
 _MAX_HEADER_BYTES = 200 * 1024 * 1024
+
+# Output-filename hardening: Windows-illegal characters + control chars, and
+# reserved device names that would error at create time.
+_ILLEGAL_RE = re.compile(r'[<>:"|?*\x00-\x1f]')
+_RESERVED_NAMES = (
+    {"CON", "PRN", "AUX", "NUL"}
+    | {"COM{}".format(i) for i in range(1, 10)}
+    | {"LPT{}".format(i) for i in range(1, 10)}
+)
 
 
 class KreaConvertError(Exception):
@@ -125,6 +135,12 @@ def convert_key(key):
 _LORA_SUFFIXES = (LORA_A_SUFFIX, LORA_B_SUFFIX, ".lora_down.weight", ".lora_up.weight")
 
 
+def _meta_dict(header):
+    """Return header['__metadata__'] if it is a dict, else {} (tolerate malformed files)."""
+    m = header.get("__metadata__", {})
+    return m if isinstance(m, dict) else {}
+
+
 def analyze(header):
     """Inspect a safetensors header and describe what it is (for the node readout).
 
@@ -134,7 +150,7 @@ def analyze(header):
                             diffusion_model. / plain diffusers), so no conversion needed.
       "unknown"          -> no LoRA tensors we recognize.
     """
-    meta = header.get("__metadata__", {}) or {}
+    meta = _meta_dict(header)
     tensor_keys = [k for k in header if k != "__metadata__"]
 
     fal_keys = [
@@ -173,7 +189,7 @@ def analyze(header):
 def build_converted_header(header):
     """Return (new_header_OrderedDict, stats). stats = {total, converted, skipped}."""
     converted = OrderedDict()
-    meta = dict(header.get("__metadata__", {}) or {})
+    meta = dict(_meta_dict(header))
     meta.setdefault("pixaroma_converted_from", str(meta.get("base_model", "fal/krea-2")))
     meta["pixaroma_converter"] = "ComfyUI-Pixaroma Krea LoRA Converter"
     converted["__metadata__"] = meta
@@ -209,12 +225,18 @@ def sanitize_output_name(name):
     """Return a safe bare filename ending in .safetensors, or raise. No directories."""
     name = (name or "").strip()
     # Output always lands next to the input; strip any path the user typed.
-    name = name.replace("\\", "/").split("/")[-1].strip()
+    name = name.replace("\\", "/").split("/")[-1]
+    # Neutralize Windows-illegal / control chars and trailing dots or spaces.
+    name = _ILLEGAL_RE.sub("_", name).strip().rstrip(". ")
     if not name or name in (".", ".."):
         raise KreaConvertError("Invalid output filename.")
-    if not name.lower().endswith(".safetensors"):
-        name = name + ".safetensors"
-    return name
+    stem = name[:-len(".safetensors")] if name.lower().endswith(".safetensors") else name
+    stem = stem.rstrip(". ")
+    if not stem:
+        raise KreaConvertError("Invalid output filename.")
+    if stem.upper() in _RESERVED_NAMES:
+        stem = stem + "_"
+    return stem + ".safetensors"
 
 
 def _write_converted(input_path, output_path, old_header_len, new_header):
@@ -223,7 +245,7 @@ def _write_converted(input_path, output_path, old_header_len, new_header):
     pad = (8 - (len(raw) % 8)) % 8
     raw += b" " * pad
     data_start = 8 + old_header_len
-    tmp = output_path + ".pixtmp"
+    tmp = "{}.{}.pixtmp".format(output_path, uuid.uuid4().hex)
     try:
         with open(input_path, "rb") as src, open(tmp, "wb") as dst:
             src.seek(data_start)

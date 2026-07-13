@@ -125,29 +125,20 @@ function renderInspect(node, info) {
   setConvertEnabled(node, true);
 }
 
-// Fill the output-name field with the suggested name, unless the user typed
-// their own (we only replace an empty field or a value we set ourselves).
-function maybeAutofillOutput(node, info) {
-  const w = node._klcOutputWidget;
-  if (!w || !info?.suggested_output) return;
-  const cur = (w.value || "").trim();
-  if (cur === "" || cur === node._klcLastSuggested) {
-    w.value = info.suggested_output;
-    node.setDirtyCanvas?.(true, true);
-  }
-  node._klcLastSuggested = info.suggested_output;
-}
-
 async function doInspect(node) {
   const lora = node._klcLoraWidget?.value;
   if (!lora) return;
+  // Monotonic request id: a slower response from an earlier pick must not
+  // overwrite the readout after a newer pick (or after the node is removed).
+  const reqId = (node._klcReqId = (node._klcReqId || 0) + 1);
   try {
     const r = await fetch(`/pixaroma/api/krea_lora/inspect?lora_name=${encodeURIComponent(lora)}`);
     const info = await r.json();
+    if (node._klcReqId !== reqId || !node.graph) return;
     node._klcLastInfo = info;
-    maybeAutofillOutput(node, info);
     renderInspect(node, info);
   } catch (e) {
+    if (node._klcReqId !== reqId || !node.graph) return;
     console.warn("[Krea LoRA Converter] inspect failed:", e);
     setStatus(node,"err", "Could not reach the server.");
   }
@@ -203,6 +194,8 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE) return;
+    if (nodeType.prototype._klcPatched) return;  // don't double-wrap on hot reload
+    nodeType.prototype._klcPatched = true;
 
     const origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {
@@ -286,6 +279,15 @@ app.registerExtension({
       origDraw?.call(this, ctx);
       if (this.flags?.collapsed || isVueNodes()) return;
       if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+    };
+
+    // Invalidate any in-flight inspect and drop cached DOM refs on removal.
+    const origRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+      this._klcReqId = (this._klcReqId || 0) + 1;
+      this._klcStatusEl = null;
+      this._klcBtn = null;
+      origRemoved?.apply(this, arguments);
     };
   },
 });
