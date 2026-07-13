@@ -310,7 +310,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **July 13, 2026 · v1.4.31**
+### **July 13, 2026 · v1.4.31–v1.4.32**
+- **The Run Timer can now remember your recent run times.** Right-click a Run Timer and pick Run time history to see the last ten finished runs, newest first. Each one shows which workflow it was and what time of day it ran, right next to how long it took, and the fastest is marked with a lightning bolt - so you can tell at a glance which workflow is quicker. The list is shared across all your workflows and is remembered between sessions, and you can copy a single time, save the whole list to a text file, or clear it.
 - **New: Krea LoRA Converter.** If you train a LoRA for the Krea 2 model on fal.ai, it will not load in ComfyUI on its own, because the file names its parts differently than ComfyUI expects. Drop in this node, pick your LoRA, and press Convert - it saves a ready-to-use copy into your LoRAs folder that works with any LoRA loader. Nothing about your training changes; the result is identical, just usable. It checks the file first and tells you what it is, so it will not touch a LoRA that already works, and it only ever reads your file and writes a new one - it never changes the original or downloads anything.
 
 ### **July 11, 2026 · v1.4.30**
