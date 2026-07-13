@@ -16,7 +16,6 @@ import {
   BRAND,
   applyAdaptiveCanvasOnly,
   isVueNodes,
-  isGraphLoading,
   installCanvasZoomPassthrough,
   registerNodeHelp,
 } from "../shared/index.mjs";
@@ -24,6 +23,10 @@ import {
 const NODE = "KreaLoraConvertPixaroma";
 const MIN_W = 300;
 const DEFAULT_W = 340;
+// Fixed DOM-widget height: button + gap + the fixed-size readout box + padding.
+// A constant means the node never needs re-measuring or re-fitting (so it can't
+// overflow or clip), and it is byte-identical every load (dirty-on-load safe).
+const WIDGET_H = 140;  // 8 pad + 30 button + 8 gap + 80 readout + 8 pad, plus a little headroom
 
 let _cssInjected = false;
 function injectCSS() {
@@ -47,9 +50,10 @@ function injectCSS() {
     .pix-klc-btn:hover { filter: brightness(1.08); }
     .pix-klc-btn:disabled { opacity: 0.55; cursor: default; filter: none; }
     .pix-klc-status {
+      height: 80px; box-sizing: border-box; overflow-y: auto;
       padding: 7px 9px; border-radius: 6px; line-height: 1.4;
       background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.10);
-      color: rgba(255,255,255,0.72); word-break: break-word;
+      color: rgba(255,255,255,0.72); word-break: break-word; white-space: pre-wrap;
     }
     .pix-klc-status.is-ok {
       background: rgba(62,195,113,0.14); border-color: #3ec371; color: #d6f5e2;
@@ -72,21 +76,7 @@ function setStatus(node, state, text) {
   if (state === "ok") el.classList.add("is-ok");
   else if (state === "warn") el.classList.add("is-warn");
   else if (state === "err") el.classList.add("is-err");
-  refitNode(node);
-}
-
-// Grow/shrink the node so the (variable-height) readout always fits inside the
-// frame. The readout height changes after an async inspect/convert, and the
-// framework does not re-measure a DOM widget on its own, so nudge it here.
-// Skipped during graph load so it never rewrites a saved node's size (dirty-on-load).
-function refitNode(node) {
-  requestAnimationFrame(() => {
-    if (!node.graph || isGraphLoading()) return;
-    const want = node.computeSize?.();
-    if (!want) return;
-    if (Math.abs((node.size?.[1] ?? 0) - want[1]) > 2) node.setSize?.([node.size[0], want[1]]);
-    node.setDirtyCanvas?.(true, true);
-  });
+  el.scrollTop = 0;  // show the start of a long (scrollable) message
 }
 
 function setConvertEnabled(node, on) {
@@ -112,7 +102,7 @@ function renderInspect(node, info) {
     return;
   }
   if (info.verdict === "already_loadable") {
-    setStatus(node,"neutral", "This LoRA already uses ComfyUI-style names (not the fal format), so there is nothing to convert. It should load in ComfyUI directly.");
+    setStatus(node,"neutral", "Already ComfyUI-compatible (not the fal format). Nothing to convert - it should load in ComfyUI directly.");
     setConvertEnabled(node, false);
     return;
   }
@@ -259,18 +249,11 @@ app.registerExtension({
         };
       }
 
-      const measure = () => {
-        const bh = btn.offsetHeight || 30;
-        const sh = status.offsetHeight || 30;
-        // button + gap + status + wrap padding (8 top / 8 bottom), coarse-rounded
-        return Math.round((bh + 8 + sh + 16) / 4) * 4;
-      };
-
       installCanvasZoomPassthrough(wrap);
       const widget = node.addDOMWidget("pixaroma_krea_convert", "pixaroma_krea_convert", wrap, {
         getValue: () => null,
         setValue: () => {},
-        getMinHeight: measure,
+        getMinHeight: () => WIDGET_H,  // fixed - the readout box scrolls if a message is long
         serialize: false,
       });
       applyAdaptiveCanvasOnly(widget);
