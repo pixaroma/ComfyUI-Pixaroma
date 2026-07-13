@@ -6,6 +6,7 @@ import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import { createPixaromaColorPicker } from "../shared/color_picker.mjs";
+import { openRunHistory, closeRunHistoryFor, refreshRunHistory } from "./history.mjs";
 
 // ╔══════════════════════════════════════════════════════════════════════╗
 // ║  Run Timer Pixaroma — a stopwatch for the whole workflow               ║
@@ -223,9 +224,79 @@ function restoreLastRun(node) {
   if (typeof ms === "number" && isFinite(ms) && ms >= 0 && ms <= MAX_RESTORE_MS) node._rtDisplayMs = ms;
 }
 
+// ── copy-to-clipboard (works over http LAN via an execCommand fallback) ──────
+function copyToClipboard(text, flash) {
+  const legacyCopy = () => {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    let ok = false;
+    try { document.body.appendChild(ta); ta.select(); ok = document.execCommand("copy"); }
+    catch (_e) { ok = false; }
+    finally { ta.remove(); }
+    flash(ok);
+  };
+  if (navigator.clipboard?.writeText) navigator.clipboard.writeText(text).then(() => flash(true)).catch(legacyCopy);
+  else legacyCopy();
+}
+
+// ── run time history (global, persistent) ───────────────────────────────────
+// The last N FINISHED runs, stored in a global ComfyUI setting (unregistered
+// settings persist — Vue Compat #20). Deliberately GLOBAL, not per-node: it never
+// writes node.properties, so recording a run can't dirty a saved workflow, and it
+// survives reloads. One entry per run {ms, name, at}; shown from any Run Timer's
+// right-click "Run time history". Mirrors the Seed history.
+const HISTORY_SETTING = "Pixaroma.RunTimer.History";
+const HISTORY_MAX = 10;
+
+// Best-effort name of the active workflow (for the history label). ComfyUI's
+// workflow store exposes activeWorkflow.filename (verified in the frontend
+// bundle); strip the folder + .json. Falls back through older APIs, then to
+// "Unsaved" so a fresh / temporary workflow still reads sensibly.
+function activeWorkflowName() {
+  try {
+    const wf = app.extensionManager?.workflow?.activeWorkflow
+            || app.workflowManager?.activeWorkflow;
+    let raw = (wf && (wf.filename || wf.key || wf.path || wf.name)) || "";
+    raw = String(raw).split(/[\\/]/).pop().replace(/\.json$/i, "").trim();
+    if (raw) return raw;
+  } catch (_e) {}
+  return "Unsaved";
+}
+
+function getRunHistory() {
+  try {
+    const raw = app.ui?.settings?.getSettingValue?.(HISTORY_SETTING);
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(arr)) return [];
+    return arr.filter((e) => e && typeof e === "object" && isFinite(Number(e.ms)));
+  } catch (_e) { return []; }
+}
+function saveRunHistory(arr) {
+  try {
+    app.ui?.settings?.setSettingValueAsync?.(HISTORY_SETTING, JSON.stringify(arr.slice(0, HISTORY_MAX)));
+  } catch (_e) {}
+}
+// Record one finished run (most-recent first, capped). Guards a garbage duration.
+function recordRunHistory(ms) {
+  const dur = Number(ms);
+  if (!isFinite(dur) || dur < 0) return;
+  const entry = { ms: Math.round(dur), name: activeWorkflowName(), at: Date.now() };
+  saveRunHistory([entry, ...getRunHistory()].slice(0, HISTORY_MAX));
+  refreshRunHistory(); // update the panel if it happens to be open
+}
+// Open the Run time history panel for `node`. Builds the ctx the panel needs.
+function openRunHistoryPanel(node) {
+  openRunHistory(node, {
+    getHistory: getRunHistory,
+    clearHistory: () => { saveRunHistory([]); refreshRunHistory(); },
+    copyToClipboard,
+  });
+}
+
 // ── run lifecycle (drives every Run Timer on the canvas) ────────────────────
 const _timers = new Set();
 let _rafId = null;
+let _runStart = null; // run-level origin (set on execution_start) → history duration
 function loop() {
   let anyRunning = false;
   const now = performance.now();
@@ -241,10 +312,11 @@ function loop() {
 function ensureLoop() { if (_rafId == null) _rafId = requestAnimationFrame(loop); }
 
 function startAll() {
+  _runStart = performance.now(); // one origin for the run → history duration
   for (const node of _timers) {
     clearTimeout(node._rtDotT);
     node._rtRunning = true;
-    node._rtStart = performance.now();
+    node._rtStart = _runStart; // share it so the frozen clock == the recorded time
     node._rtDisplayMs = 0;
     setDot(node, "run");
     refreshClock(node);
@@ -265,8 +337,10 @@ async function maybeChime(node) {
   if (sound) playSound(sound, (st.volume ?? 70) / 100);
 }
 function finishAll(success) {
+  let anyFinished = false;
   for (const node of _timers) {
     if (!node._rtRunning) continue;   // idempotent: first finish wins
+    anyFinished = true;
     node._rtRunning = false;
     node._rtDisplayMs = performance.now() - node._rtStart;
     // Persist the frozen total (see restoreLastRun). A genuine run-completion
@@ -279,6 +353,13 @@ function finishAll(success) {
     if (success) maybeChime(node);
     clearTimeout(node._rtDotT);
     node._rtDotT = setTimeout(() => setDot(node, "idle"), 2200);
+  }
+  // Record ONE history entry per run — successes only (an interrupted / errored
+  // run gives a partial, misleading time). anyFinished guards a double finish
+  // event (some builds fire BOTH 'executing'(null) and execution_success): after
+  // the first, every node is already stopped, so the second pass adds nothing.
+  if (anyFinished && success && _runStart != null) {
+    recordRunHistory(performance.now() - _runStart);
   }
 }
 
@@ -791,6 +872,7 @@ const HELP = {
       "Because it is saved with the workflow, a small 'unsaved changes' dot shows on the tab after a run. Switching tabs never asks you to save; only closing a tab asks, as always.",
       "If you switch tabs while a run is still going, that run's time is not captured, and you will see the previous finished time when you come back.",
     ]},
+    { heading: "Run time history", body: "Right-click the node and pick 'Run time history' to see the last 10 finished runs, newest first. Each line shows the workflow name and the time of day it ran, next to how long it took, and the fastest one is marked with a lightning bolt - handy for comparing how quick different workflows are. The list is shared across every workflow and is remembered between sessions (it is not saved inside any one workflow). You can copy a single line, export the whole list as a text file, or clear it. Only completed runs are listed; a run you stop or that errors out is skipped." },
     { heading: "Settings (right-click the node)", defs: [
       ["Chime on finish", "Turn the finish sound on or off."],
       ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
@@ -825,7 +907,11 @@ app.registerExtension({
     // node.type fallback (comfyClass isn't populated on every build/timing — the
     // exact case Label's own hook guards, js/label/index.js).
     if (!node || (node.type !== NODE_NAME && node.comfyClass !== NODE_NAME)) return [];
-    return [null, { content: "⚙ Run Timer settings", callback: () => openPanel(node) }];
+    return [
+      null,
+      { content: "🕘 Run time history", callback: () => openRunHistoryPanel(node) },
+      { content: "⚙ Run Timer settings", callback: () => openPanel(node) },
+    ];
   },
 
   beforeRegisterNodeDef(nodeType, nodeData) {
@@ -859,6 +945,7 @@ app.registerExtension({
       try { if (this._pixRtFloorOff) this._pixRtFloorOff(); } catch (_e) {}
       this._pixRtFloorOff = null;
       if (_panelNode === this) closePanel();
+      closeRunHistoryFor(this);
       if (_origRemoved) return _origRemoved.apply(this, arguments);
     };
 
