@@ -72,6 +72,30 @@ function writeState(node, patch) {
   return next;
 }
 
+// ── master mute (GLOBAL, not per node) ──────────────────────────────────────
+// One switch that silences the finish chime on EVERY Run Timer, in every
+// workflow. It is the SAME registered setting that shows in ComfyUI's Settings
+// (👑 Pixaroma → Run Timer) — the right-click panel just surfaces it so it is one
+// click away. Because both surfaces read/write this one setting, they can never
+// disagree, and it persists across reloads on its own (no node.properties, so a
+// run/mute can never dirty a workflow).
+const MUTE_ID = "Pixaroma.RunTimer.Muted";
+function isMuted() {
+  try { return app.ui.settings.getSettingValue(MUTE_ID) === true; }
+  catch (_e) { return false; }
+}
+function setMuted(on) {
+  try {
+    const s = app.ui.settings;
+    const r = s.setSettingValueAsync
+      ? s.setSettingValueAsync(MUTE_ID, !!on)
+      : s.setSettingValue(MUTE_ID, !!on);
+    if (r && typeof r.catch === "function") r.catch(() => {});
+  } catch (e) {
+    console.warn("[Run Timer Pixaroma] could not save the mute setting:", (e && e.message) || e);
+  }
+}
+
 // ── sounds (shared with Notify Pixaroma's library) ──────────────────────────
 let _soundsCache = [];
 let _soundsPromise = null;
@@ -331,8 +355,8 @@ function startAll() {
 }
 async function maybeChime(node) {
   const st = readState(node);
-  if (!st.chime) return;
-  if (app.ui.settings.getSettingValue("Pixaroma.RunTimer.Muted") === true) return;
+  if (!st.chime) return;   // this node's own switch
+  if (isMuted()) return;   // the global master mute (panel + Settings)
   let sound = st.sound;
   if (!sound) {
     // A very fast first run can finish before the sounds list has fetched. Await
@@ -388,6 +412,10 @@ function installRunListeners() {
 
 // ── settings panel (floating, draggable — Group Switch pattern) ─────────────
 let _panel = null, _panelNode = null;
+// Re-syncs the panel's master-mute row from the live setting. Set while a panel
+// is open; called by the setting's onChange so flipping the mute in ComfyUI's
+// Settings dialog is reflected here immediately (and vice versa).
+let _panelSyncMute = null;
 
 function section(title) {
   const s = el("div", "pix-rt-sect");
@@ -424,6 +452,23 @@ function toggle(on, onChange) {
   t.onclick = (e) => { e.stopPropagation(); state = !state; t.classList.toggle("on", state); onChange(state); };
   return t;
 }
+// Like toggle(), but its ON state is read LIVE from getOn() instead of an internal
+// flag — so an external change (the same setting flipped in ComfyUI's Settings
+// dialog) can re-sync it via .sync() with no stale-flag desync. sync(on) accepts an
+// explicit value for the case where the live read would be stale (see syncMute).
+function liveToggle(getOn, onChange) {
+  const t = el("span", "pix-rt-tog");
+  t.appendChild(el("span", "k"));
+  t.sync = (on) => { t.classList.toggle("on", on != null ? !!on : !!getOn()); };
+  t.onclick = (e) => {
+    e.stopPropagation();
+    const next = !getOn();
+    t.sync(next);       // optimistic: the store write may settle async
+    onChange(next);
+  };
+  t.sync();
+  return t;
+}
 function destroyPicker(node) {
   if (node && node._pixRtPicker) {
     try { node._pixRtPicker.destroy(); } catch (_e) {}
@@ -441,11 +486,28 @@ function renderPanelBody(node, body) {
   // ── Chime ──
   const cSec = section("Chime");
 
-  const chRow = row("Chime on finish");
+  // Master mute FIRST — it overrides everything below it. Global (every Run Timer,
+  // every workflow) and the same switch as ComfyUI Settings → 👑 Pixaroma → Run
+  // Timer, so the two stay in lockstep. Both surfaces use the SAME label.
+  const mRow = row("Mute all Run Timers");
+  mRow.title = "Master switch: no Run Timer plays its finish chime, in any workflow. Same switch as Settings, Pixaroma, Run Timer. The Preview button below still plays, so you can keep trying sounds out.";
+  const mTog = liveToggle(isMuted, (on) => { setMuted(on); syncMute(); });
+  mRow.appendChild(mTog);
+  cSec.appendChild(mRow);
+
+  // Shown only WHILE muted, so it costs no height the rest of the time. It is what
+  // explains the dimmed rows below (and that Preview is the exception).
+  const mHint = el("div", "pix-rt-hint");
+  mHint.textContent = "No timer will chime. The settings below are ignored until you unmute. Preview still plays.";
+  cSec.appendChild(mHint);
+
+  const chRow = row("Chime on finish (this timer)");
+  chRow.title = "Turns the finish sound on or off for THIS Run Timer only. Other Run Timers are not affected.";
   chRow.appendChild(toggle(st.chime, (on) => writeState(node, { chime: on })));
   cSec.appendChild(chRow);
 
   const sRow = row("Sound");
+  sRow.title = "The sound this timer plays when the workflow finishes. Drop your own .mp3, .wav or .ogg files into the assets/sounds folder to add more.";
   const sel = el("select", "pix-rt-select");
   sel.addEventListener("keydown", (e) => e.stopPropagation());
   const fillSounds = () => {
@@ -468,6 +530,7 @@ function renderPanelBody(node, body) {
   cSec.appendChild(sRow);
 
   const vRow = row("Volume");
+  vRow.title = "How loud this timer's finish sound is.";
   const vol = el("input", "pix-rt-vol");
   vol.type = "range"; vol.min = "0"; vol.max = "100"; vol.step = "1"; vol.value = String(st.volume);
   vol.style.setProperty("--fill", st.volume + "%");
@@ -478,6 +541,7 @@ function renderPanelBody(node, body) {
     vol.style.setProperty("--fill", vol.value + "%");
     writeState(node, { volume: parseInt(vol.value, 10) || 0 });
   });
+  prev.title = "Play the chosen sound right now. This always plays, even while muted, so you can keep trying sounds out.";
   prev.onclick = (e) => {
     e.stopPropagation();
     const s = readState(node);
@@ -485,6 +549,31 @@ function renderPanelBody(node, body) {
   };
   vRow.appendChild(vol); vRow.appendChild(vOut); vRow.appendChild(prev);
   cSec.appendChild(vRow);
+
+  // While the master mute is on, dim the per-node chime rows so it is obvious WHY
+  // nothing plays. They stay clickable (dim-not-disabled — the Prompt Reader idiom)
+  // so the user can still set this node up for when the mute comes back off. The
+  // Volume row uses pix-rt-dimv, which dims only its label/slider/readout and NOT
+  // the Preview button — Preview is the one control that still works while muted (a
+  // click on it IS the user asking to hear the sound now — the Notify precedent), so
+  // showing it greyed would read as broken.
+  //
+  // `force` matters: ComfyUI fires a setting's onChange BEFORE it writes the new
+  // value into its store (frontend settingStore.applySettingLocally), so a re-read
+  // via isMuted() from inside that handler returns the OLD value. The handler passes
+  // the new value in; the panel's own click path passes nothing and reads the store,
+  // which by then is written.
+  function syncMute(force) {
+    const on = (typeof force === "boolean") ? force : isMuted();
+    mTog.sync(on);
+    chRow.classList.toggle("pix-rt-dim", on);
+    sRow.classList.toggle("pix-rt-dim", on);
+    vRow.classList.toggle("pix-rt-dimv", on);
+    mHint.style.display = on ? "block" : "none";
+    requestAnimationFrame(reclampPanel);  // the hint changes the panel height
+  }
+  syncMute();
+  _panelSyncMute = syncMute;
 
   body.appendChild(cSec);
 
@@ -584,7 +673,7 @@ function escClose(e) { if (e.key === "Escape" && _panel) { e.stopPropagation(); 
 function closePanel() {
   destroyPicker(_panelNode);
   if (_panel) { try { _panel.remove(); } catch (_e) {} }
-  _panel = null; _panelNode = null;
+  _panel = null; _panelNode = null; _panelSyncMute = null;
   document.removeEventListener("pointerdown", outsideClose, true);
   document.removeEventListener("keydown", escClose, true);
 }
@@ -680,6 +769,14 @@ function injectCSS() {
     ".pix-rt-row{display:flex;align-items:center;gap:10px;margin-bottom:9px;}",
     ".pix-rt-row:last-child{margin-bottom:0;}",
     ".pix-rt-lbl{flex:1;font-size:12.5px;color:#ccc;}",
+    // Master mute ON → the per-node chime rows are overridden. Dim, NOT disabled:
+    // they stay clickable (so you can still set the node up). pix-rt-dimv dims the
+    // Volume row EXCEPT its Preview button — Preview still plays while muted, so it
+    // must not look greyed out. (Child opacity can't undo a parent's, hence the
+    // per-child rule rather than dimming the whole row.)
+    ".pix-rt-dim{opacity:0.45;}",
+    ".pix-rt-dimv > .pix-rt-lbl,.pix-rt-dimv > .pix-rt-vol,.pix-rt-dimv > .pix-rt-volout{opacity:0.45;}",
+    ".pix-rt-hint{display:none;font-size:11px;line-height:1.35;color:#8a8a8a;margin:-3px 0 9px;}",
     ".pix-rt-sublbl{font-size:11px;color:#888;margin:2px 0 8px;}",
     ".pix-rt-tog{width:34px;height:18px;border-radius:9px;background:#3a3a3a;position:relative;cursor:pointer;flex:none;transition:background .15s;}",
     ".pix-rt-tog .k{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#bbb;transition:left .15s,background .15s;}",
@@ -880,12 +977,14 @@ const HELP = {
     ]},
     { heading: "Run time history", body: "Right-click the node and pick 'Run time history' to see the last 10 finished runs, newest first. Each line shows the workflow name and the time of day it ran, next to how long it took, and the fastest one is marked with a lightning bolt - handy for comparing how quick different workflows are. The list is shared across every workflow and is remembered between sessions (it is not saved inside any one workflow). You can copy a single line, export the whole list as a text file, or clear it. Each run is filed under whichever workflow was active when it started. Only completed runs are listed; a run you stop or that errors out is skipped." },
     { heading: "Settings (right-click the node)", defs: [
-      ["Chime on finish", "Turn the finish sound on or off."],
-      ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now."],
+      ["Mute all Run Timers", "The master mute: no Run Timer plays its finish chime, in any workflow. It is the same switch as the one in ComfyUI Settings, under Pixaroma, Run Timer, so flipping either one flips both. While it is on, the rows below it are dimmed to show they are being ignored."],
+      ["Chime on finish (this timer)", "Turns the finish sound on or off for this one timer only. Other Run Timers keep chiming."],
+      ["Sound and Volume", "Pick the chime from the sound library and set how loud it is. The Preview button plays it right now, even while muted, so you can still try sounds out."],
       ["Decimals", "Show hundredths (2), milliseconds (3), or just minutes and seconds (Off)."],
       ["Clock color", "Pick the digit color right in the panel: tap a swatch, drag the color square, or type a hex code. Reset returns it to Pixaroma orange."],
     ]},
-    { heading: "Good to know", body: "It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder. A master mute for every Run Timer lives in Settings, under Pixaroma, Run Timer." },
+    { heading: "Two ways to silence it", body: "Use Mute all Run Timers when you just want quiet for a while: it silences every timer at once and is remembered until you turn it back off, and it is not tied to any workflow. Use Chime on finish when you want this one timer quiet but others still able to chime. If either one is off, no sound plays." },
+    { heading: "Good to know", body: "It does not need to be wired to anything; just drop it on the canvas. Add your own chimes by dropping .mp3, .wav, or .ogg files (use simple names - letters, numbers, dashes) into the assets/sounds folder." },
   ],
 };
 
@@ -894,12 +993,20 @@ app.registerExtension({
 
   settings: [
     {
-      id: "Pixaroma.RunTimer.Muted",
-      name: "Mute all chimes",
+      id: MUTE_ID,
+      // Same label as the panel row — it is the same switch, so it must not read as
+      // two different features.
+      name: "Mute all Run Timers",
       type: "boolean",
       defaultValue: false,
-      tooltip: "Master switch. When on, no Run Timer plays its finish chime.",
+      tooltip: "Master switch. When on, no Run Timer plays its finish chime, in any workflow. Also on the node's right-click settings panel.",
       category: ["👑 Pixaroma", "Run Timer"],
+      // Keep an OPEN right-click panel in step when the mute is flipped from
+      // ComfyUI's Settings dialog instead. ComfyUI calls onChange BEFORE it writes
+      // the store, so pass the NEW value through rather than letting syncMute re-read
+      // a stale one. Also fires once at startup, when no panel exists — the null
+      // check makes that a no-op.
+      onChange: (v) => { if (_panelSyncMute) { try { _panelSyncMute(v === true); } catch (_e) {} } },
     },
   ],
 
