@@ -15,6 +15,7 @@ node's cache signature - so a run picks up the new value with no IS_CHANGED.
 """
 
 import json
+import math
 
 from ._type_helpers import ANY
 
@@ -54,17 +55,27 @@ class PixaromaSliders:
         if not isinstance(slider, dict):
             return 0
         try:
+            # OverflowError matters: a bare 400-digit integer in the JSON parses
+            # as an arbitrary-precision Python int, and float() then raises.
             value = float(slider.get("value", 0) or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             value = 0.0
+        # The browser always sends a value inside the slider's range, but a
+        # hand-edited API file can send anything. Infinity or a 1e308 int would
+        # be passed straight into a downstream node, so refuse the nonsense here.
+        if not math.isfinite(value):
+            value = 0.0
+        value = max(-1e12, min(1e12, value))
         if str(slider.get("type") or "auto").lower() == "int":
             return int(round(value))
         return float(value)
 
     def run(self, SlidersState="{}"):
         try:
+            # RecursionError too: deeply nested JSON in a hand-edited file would
+            # otherwise take the whole run down.
             state = json.loads(SlidersState) if isinstance(SlidersState, str) else {}
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             state = {}
         if not isinstance(state, dict):
             state = {}

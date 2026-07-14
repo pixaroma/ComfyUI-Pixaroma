@@ -3,7 +3,7 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import {
-  STATE_PROP, ACCENT_SETTING, BRAND, MAX_SLIDERS,
+  ACCENT_SETTING, BRAND, MAX_SLIDERS,
   readState, normalizeSliders, syncOutputs, addSlider, resolveAutoType,
 } from "./core.mjs";
 import {
@@ -74,6 +74,15 @@ app.registerExtension({
       defaultValue: BRAND,
       tooltip: "The colour new Sliders nodes paint with, e.g. #f66744. Each node can override it in its own settings.",
       category: ["👑 Pixaroma", "Sliders"],
+      // Repaint every node that FOLLOWS the default (accent unset), so changing
+      // it is visible immediately instead of at the next interaction.
+      onChange: () => {
+        try {
+          for (const n of app.graph?._nodes || []) {
+            if (n?.comfyClass === CLASS && !n.properties?.slidersState?.accent) renderAll(n);
+          }
+        } catch {}
+      },
     },
   ],
 

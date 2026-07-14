@@ -227,7 +227,7 @@ export function openSlidersPanel(node, onChange) {
         seg.appendChild(b);
       });
 
-      const num = (key, step) => {
+      const num = (key) => {
         const inp = el("input");
         inp.type = "text";
         inp.value = String(s[key]);
@@ -235,13 +235,24 @@ export function openSlidersPanel(node, onChange) {
         const apply = () => {
           const v = parseFloat(inp.value);
           if (Number.isFinite(v)) s[key] = v;
+          // Put a back-to-front range the right way round and STORE it. Every
+          // reader (the fill, the drag mapping) has to agree on which end is
+          // which, or the slider paints from the wrong side and drags backwards.
+          if (Number(s.min) > Number(s.max)) {
+            const t = s.min; s.min = s.max; s.max = t;
+          }
           fire();                       // re-clamps the value into the new range
           inp.value = String(s[key]);
+          minInput.value = String(s.min);
+          maxInput.value = String(s.max);
         };
         inp.addEventListener("change", apply);
         inp.addEventListener("blur", apply);
         return inp;
       };
+      const minInput = num("min");
+      const maxInput = num("max");
+      const stepInput = num("step");
 
       const del = el("button", "pix-sldp-del", "✕");
       del.title = st.sliders.length > 1 ? "Remove this slider" : "A panel keeps at least one slider";
@@ -250,9 +261,14 @@ export function openSlidersPanel(node, onChange) {
         if (removeSlider(node, i)) { fire(); buildRows(); }
       });
 
-      row.append(name, seg, num("min"), num("max"), num("step"), del);
+      row.append(name, seg, minInput, maxInput, stepInput, del);
       body.appendChild(row);
     });
+
+    // Deleting a row makes room again, so the Add button's state is rebuilt here
+    // rather than only in its own click handler (it would otherwise stay greyed
+    // out after you delete one of 16 sliders).
+    if (add) add.disabled = readState(node).sliders.length >= MAX_SLIDERS;
 
     // ── accent colour ──────────────────────────────────────────────────────
     const acc = el("div", "pix-sldp-acc");
@@ -283,14 +299,13 @@ export function openSlidersPanel(node, onChange) {
     });
   });
 
-  buildRows();
-
+  // Built BEFORE buildRows(), which re-reads its disabled state on every rebuild.
   const add = el("button", "pix-sldp-btn primary", "+ Add slider");
   add.addEventListener("click", () => {
     if (addSlider(node)) { fire(); buildRows(); }
-    add.disabled = readState(node).sliders.length >= MAX_SLIDERS;
   });
-  add.disabled = readState(node).sliders.length >= MAX_SLIDERS;
+
+  buildRows();
 
   const mkDefault = el("button", "pix-sldp-btn", "Colour as default");
   mkDefault.title = "Use this node's colour for every new Sliders node";

@@ -65,13 +65,21 @@ export function decimalsOf(s) {
   return Math.min(6, txt.length - dot - 1);
 }
 
+// The slider's range, always low-to-high. A user can type Min 100 / Max 0 in the
+// settings, and EVERY reader has to agree on what that means - otherwise the
+// fill paints from the wrong end and the drag runs backwards.
+export function rangeOf(s) {
+  let lo = Number(s.min);
+  let hi = Number(s.max);
+  if (!Number.isFinite(lo)) lo = 0;
+  if (!Number.isFinite(hi)) hi = 1;
+  if (hi < lo) { const t = lo; lo = hi; hi = t; }
+  return [lo, hi];
+}
+
 // Snap to the step grid, clamp to the range, and kill float drift.
 export function clampValue(s, v) {
-  let min = Number(s.min);
-  let max = Number(s.max);
-  if (!Number.isFinite(min)) min = 0;
-  if (!Number.isFinite(max)) max = 1;
-  if (max < min) { const t = min; min = max; max = t; }
+  const [min, max] = rangeOf(s);
   let step = Math.abs(Number(s.step) || 0);
   if (!Number.isFinite(step) || step <= 0) step = s.type === "int" ? 1 : 0.01;
 

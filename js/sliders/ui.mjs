@@ -20,7 +20,7 @@
 //             return to the top-right corner and the node keeps working.
 
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
-import { readState, accentOf, clampValue, decimalsOf } from "./core.mjs";
+import { readState, accentOf, clampValue, decimalsOf, rangeOf } from "./core.mjs";
 
 export const ROW_H = 23;    // height of one slider row
 export const ROW_GAP = 6;   // gap between rows (matches the Vue widgets grid gap-y-1 + our own)
@@ -149,7 +149,7 @@ function makeRowEl(node, index) {
     const s = slider();
     if (!s) return 0;
     const r = sl.getBoundingClientRect();
-    const min = Number(s.min), max = Number(s.max);
+    const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0
     if (shift) {
       const dx = (clientX - startX) / Math.max(1, r.width);
       return startV + dx * (max - min) * 0.25;
@@ -219,7 +219,7 @@ export function paintRow(node, index) {
   const s = readState(node).sliders[index];
   if (!el || !s) return;
 
-  const min = Number(s.min), max = Number(s.max);
+  const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0
   const span = (max - min) || 1;
   const p = Math.min(100, Math.max(0, ((Number(s.value) - min) / span) * 100));
   const dec = decimalsOf(s);
