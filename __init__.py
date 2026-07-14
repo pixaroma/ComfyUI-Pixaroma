@@ -50,6 +50,8 @@ from .nodes.node_portrait_landscape import NODE_CLASS_MAPPINGS as _MAPS_PORTRAIT
 from .nodes.node_portrait_landscape import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PORTRAIT_LANDSCAPE
 from .nodes.node_number import NODE_CLASS_MAPPINGS as _MAPS_NUMBER
 from .nodes.node_number import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_NUMBER
+from .nodes.node_sliders import NODE_CLASS_MAPPINGS as _MAPS_SLIDERS
+from .nodes.node_sliders import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SLIDERS
 from .nodes.node_seed import NODE_CLASS_MAPPINGS as _MAPS_SEED
 from .nodes.node_seed import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SEED
 from .nodes.node_text import NODE_CLASS_MAPPINGS as _MAPS_TEXT
@@ -136,6 +138,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_WH,
     **_MAPS_PORTRAIT_LANDSCAPE,
     **_MAPS_NUMBER,
+    **_MAPS_SLIDERS,
     **_MAPS_SEED,
     **_MAPS_TEXT,
     **_MAPS_PROMPT_STACK,
@@ -187,6 +190,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_WH,
     **_NAMES_PORTRAIT_LANDSCAPE,
     **_NAMES_NUMBER,
+    **_NAMES_SLIDERS,
     **_NAMES_SEED,
     **_NAMES_TEXT,
     **_NAMES_PROMPT_STACK,
