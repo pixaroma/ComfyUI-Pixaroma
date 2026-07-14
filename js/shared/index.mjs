@@ -10,7 +10,7 @@
 // a hard refresh (Ctrl+Shift+R). It lives in this existing, widely-imported
 // module on purpose: a brand-new file is never in anyone's cache, so it could
 // never reveal a stale bundle.
-export const PIXAROMA_JS_VERSION = "1.4.33";
+export const PIXAROMA_JS_VERSION = "1.4.34";
 
 export {
   allow_debug,
