@@ -2,36 +2,34 @@
 //
 // In the legacy renderer the two mode pills (Single|Multi, Mute|Bypass) and the
 // per-row ON/OFF toggles are PAINTED on the canvas (render.mjs / onMouseDown).
-// Nodes 2.0 skips onDrawForeground, so we render a single DOM widget for the
-// node body instead: a mode bar on top, then one row per input below the
-// Vue-drawn input dots. Rows map to the dots by ORDER (row 1 = the 1st dot).
+// Nodes 2.0 skips onDrawForeground, so we render DOM widgets instead: a mode-bar
+// widget on top, then ONE ROW WIDGET PER INPUT.
 //
-// Mirrors js/switch/vue_list.mjs (the established Switch-family pattern) and
-// adds the two-toggle mode bar. Per the user's choice: each connected row has
-// an editable name field, and ONLY the ON/OFF toggle flips the scene (the rest
-// of the row is not a click target). Renaming + toggling write the SAME state
-// the legacy canvas reads, so both renderers stay in lockstep.
+// One widget per input is what puts each input's dot ON its own row (the same
+// side-by-side layout legacy has). See js/switch/vue_list.mjs for the full
+// explanation of ComfyUI's widget-socket model: an input marked
+// `input.widget = {name}` leaves the top dot column and its dot is rendered in
+// column 1 of the same-named widget's row - a real slot, not a decoration.
+//
+// The mode bar is a normal widget with no matching input, so it simply gets no
+// dot. Renaming + toggling write the SAME state the legacy canvas reads, so both
+// renderers stay in lockstep.
 
 import { readState, togglePillRow, setSelectMode, setMuteMode } from "./core.mjs";
 import { getUpstreamType } from "./render.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 
 const BRAND = "#f66744";
-const MODEBAR_H = 36; // mode bar block (segments + its padding)
-const LIST_ROW_H = 26; // per-row height incl. the 4px gap
-const LIST_PAD = 8;    // top + bottom padding of the list container
-
-function widgetHeight(node) {
-  const rows = node.inputs?.length || 1;
-  return MODEBAR_H + rows * LIST_ROW_H + LIST_PAD;
-}
+const MODEBAR_H = 34;                 // mode bar block (segments + its padding)
+const ROW_MIN_H = 24;                 // matches the 24px slot-dot row height
+const ROW_WIDGET_TYPE = "pixaroma_mute_switch_row";
+const ROW_WIDGET_NAME = (idx1) => `pixms_row_${idx1}`;
 
 function injectCSS() {
   if (document.getElementById("pix-ms-css")) return;
   const s = document.createElement("style");
   s.id = "pix-ms-css";
   s.textContent = `
-    .pix-ms-root { display:flex; flex-direction:column; width:100%; box-sizing:border-box; }
     /* Mode bar - two segmented toggles, Pixaroma DOM pill-bar style. */
     .pix-ms-modebar {
       display:flex; gap:8px; align-items:center; justify-content:space-between;
@@ -50,11 +48,10 @@ function injectCSS() {
     .pix-ms-segbtn:hover { color:#ddd; }
     .pix-ms-segbtn.active { background:${BRAND}; color:#fff; }
     .pix-ms-segbtn.active:hover { color:#fff; }
-    /* Scene rows. */
-    .pix-ms-list { display:flex; flex-direction:column; gap:4px; padding:0 6px 6px; box-sizing:border-box; width:100%; }
+    /* Scene rows - each is its own widget, so its input dot sits on the row. */
     .pix-ms-row {
-      display:flex; align-items:center; gap:8px; height:22px; box-sizing:border-box;
-      border-radius:6px; padding:0 8px;
+      display:flex; align-items:center; gap:8px; min-height:${ROW_MIN_H - 2}px;
+      box-sizing:border-box; border-radius:6px; padding:0 8px;
       border:1px solid rgba(255,255,255,0.12); background:rgba(255,255,255,0.04);
     }
     .pix-ms-row.trailing { opacity:0.5; border-style:dashed; }
@@ -83,6 +80,11 @@ function injectCSS() {
     .pix-ms-toggle.on { border-color:${BRAND}; background:${BRAND}; }
     .pix-ms-knob { position:absolute; top:2px; left:2px; width:8px; height:8px; border-radius:50%; background:#ccc; transition:left .1s ease; }
     .pix-ms-toggle.on .pix-ms-knob { left:16px; background:#fff; }
+
+    /* Vue paints a widget-row dot at opacity 0 until the row is hovered or the
+       input is wired. Our rows ARE the inputs, so every dot must always show -
+       otherwise an empty row looks like it has nowhere to plug a wire in. */
+    .lg-node-widget:has(.pix-ms-row) > div:first-child { opacity:1 !important; }
   `;
   document.head.appendChild(s);
 }
@@ -106,33 +108,88 @@ function buildSegToggle(leftLabel, rightLabel, active, leftTip, rightTip, onLeft
   return seg;
 }
 
+// Ensure node.widgets holds exactly one row widget per input slot, and that each
+// input carries the `widget` marker pointing at its row widget (that marker is
+// what moves the dot out of the top column and onto the row).
+function syncRowWidgets(node) {
+  const inputs = node.inputs || [];
+  const rows = node._pixMsRows || (node._pixMsRows = []);
+
+  // Drop surplus rows (a disconnect removed a slot). Row widgets are positional,
+  // so only the tail ever needs removing - names never have to change.
+  while (rows.length > inputs.length) {
+    const w = rows.pop();
+    const i = node.widgets ? node.widgets.indexOf(w) : -1;
+    if (i >= 0) node.widgets.splice(i, 1);
+    w.onRemove?.();
+  }
+
+  // Add missing rows (a connect grew the slot list). They append AFTER the mode
+  // bar widget, so the body reads mode bar first, then the rows.
+  while (rows.length < inputs.length) {
+    const el = document.createElement("div");
+    el.className = "pix-ms-row";
+    const w = node.addDOMWidget(ROW_WIDGET_NAME(rows.length + 1), ROW_WIDGET_TYPE, el, {
+      serialize: false,   // options.serialize -> keeps it out of the API prompt
+      getMinHeight: () => ROW_MIN_H,
+    });
+    // widget.serialize (top-level) is the SEPARATE flag LGraphNode.serialize()
+    // reads for workflow persistence - without it every row would take a slot in
+    // widgets_values and the saved file would change with the row count.
+    w.serialize = false;
+    applyAdaptiveCanvasOnly(w);
+    // Own-property shadow of DOMWidget.computeLayoutSize: without this each row
+    // is an "auto" (growing) grid row and they would split the node's spare
+    // height between them instead of hugging their content.
+    w.computeLayoutSize = undefined;
+    rows.push(w);
+  }
+
+  // Bind slot -> row widget. `_widget` is litegraph's direct binding; `widget`
+  // is the marker both renderers read.
+  let changed = false;
+  for (let i = 0; i < inputs.length; i++) {
+    const slot = inputs[i];
+    const w = rows[i];
+    if (!slot || !w) continue;
+    const name = ROW_WIDGET_NAME(i + 1);
+    if (slot.widget?.name !== name) {
+      slot.widget = { name };
+      changed = true;
+    }
+    if (slot._widget !== w) slot._widget = w;
+  }
+
+  // shallowReactive only tracks the ARRAY, not fields inside a slot, so the
+  // marker we just wrote is invisible to Vue until the array itself changes.
+  // Reassigning routes through the reactive setter and forces the re-read.
+  if (changed) node.inputs = inputs.slice();
+}
+
 // Build the Nodes 2.0 DOM body for a Mute Switch node and wire it as the node's
 // refresh target (node._pixMsRefresh). Returns { render }.
 export function buildMuteSwitchVueList(node) {
   injectCSS();
-  const root = document.createElement("div");
-  root.className = "pix-ms-root";
   const modebar = document.createElement("div");
   modebar.className = "pix-ms-modebar";
-  const list = document.createElement("div");
-  list.className = "pix-ms-list";
-  root.append(modebar, list);
 
-  const widget = node.addDOMWidget("pixaroma_mute_switch_list", "pixaroma_mute_switch_list", root, {
+  const barWidget = node.addDOMWidget("pixaroma_mute_switch_bar", "pixaroma_mute_switch_bar", modebar, {
     serialize: false,
-    getMinHeight: () => widgetHeight(node),
-    getMaxHeight: () => widgetHeight(node),
-    getValue: () => null,
-    setValue: () => {},
+    getMinHeight: () => MODEBAR_H,
   });
-  applyAdaptiveCanvasOnly(widget);
+  barWidget.serialize = false;
+  applyAdaptiveCanvasOnly(barWidget);
+  barWidget.computeLayoutSize = undefined;
 
   function render() {
+    syncRowWidgets(node);
+
     const state = readState(node);
     const selectMode = state.selectMode || "multi";
     const muteMode = state.muteMode || "mute";
     const rows = state.rows || [];
     const inputs = node.inputs || [];
+    const rowWidgets = node._pixMsRows || [];
 
     // ── Mode bar ──────────────────────────────────────────────────────────
     modebar.innerHTML = "";
@@ -155,9 +212,11 @@ export function buildMuteSwitchVueList(node) {
       ),
     );
 
-    // ── Scene rows ────────────────────────────────────────────────────────
-    list.innerHTML = "";
-    for (let i = 0; i < inputs.length; i++) {
+    // ── Scene rows (one widget each, so the dot lands on the row) ─────────
+    for (let i = 0; i < inputs.length && i < rowWidgets.length; i++) {
+      const rowEl = rowWidgets[i].element;
+      if (!rowEl) continue;
+
       const slotIdx1 = i + 1;
       const slot = inputs[i];
       const connected = slot != null && slot.link != null;
@@ -165,8 +224,8 @@ export function buildMuteSwitchVueList(node) {
       const row = rows[i];
       const on = connected && row && row.enabled;
 
-      const rowEl = document.createElement("div");
       rowEl.className = "pix-ms-row" + (isTrailing ? " trailing" : "");
+      rowEl.innerHTML = "";
 
       // Left: fixed "input N" identity (matches the dot label on the node edge).
       const numEl = document.createElement("span");
@@ -231,8 +290,6 @@ export function buildMuteSwitchVueList(node) {
         });
         rowEl.appendChild(toggleEl);
       }
-
-      list.appendChild(rowEl);
     }
   }
 
