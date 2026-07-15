@@ -77,14 +77,21 @@ function injectCSS() {
 }
 
 function ensureRoot(node) {
-  let root = node._pixSzRoot;
-  if (root && root.isConnected) return root;
+  const held = node._pixSzRoot;
+  if (held && held.isConnected) return held;
+  // Vue/ComfyUI may have replaced the element; re-find a mounted one via the
+  // widget. ComfyUI uses our div AS the widget element (adds h-full w-full), so
+  // the element itself may carry .pix-sz-root - check self before descendants.
   const w = (node.widgets || []).find((x) => x.name === "sizes_ui");
-  if (w?.element?.isConnected) {
-    const found = w.element.querySelector(".pix-sz-root");
-    if (found) { node._pixSzRoot = found; return found; }
-  }
-  return null;
+  const el = w?.element;
+  const elRoot = el?.classList?.contains?.("pix-sz-root")
+    ? el
+    : el?.querySelector?.(".pix-sz-root");
+  if (elRoot) { node._pixSzRoot = elRoot; return elRoot; }
+  // Fall back to the held root even if it is not connected yet (initial paint):
+  // populate it now and it shows the moment the element mounts. Bailing here was
+  // the empty-body bug - the first render ran before the element was in the DOM.
+  return held || null;
 }
 
 function render(node) {
