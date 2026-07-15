@@ -14,6 +14,7 @@ import {
 let _panel = null;
 let _panelNode = null;
 let _onChange = null;
+let _cpHandle = null; // open colour-picker popup, so the panel can close it too
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -158,6 +159,8 @@ function escClose(e) {
 }
 
 export function closeSizesPanel() {
+  try { _cpHandle?.close(); } catch {}
+  _cpHandle = null;
   if (_panel) { try { _panel.remove(); } catch {} }
   _panel = null;
   _panelNode = null;
@@ -293,19 +296,20 @@ export function openSizesPanel(node, onChange) {
   sw.title = "Pick the highlight colour";
   sw.style.background = accentOf(node);
   sw.addEventListener("click", () => {
-    // The LIVE picker (SV drag + hue + hex + button-safe swatches). onPick
-    // fires on every change, so the node's pills + selected row recolour live
-    // as you drag - just like the Group Colors picker.
-    openPixaromaColorPickerPopup(sw, {
+    // The LIVE picker (roomy SV plane + hue + hex + button-safe swatches). No
+    // transparent tile - an accent is always a colour. onPick fires on every
+    // change, so the node's pills + selected row recolour live as you drag.
+    _cpHandle = openPixaromaColorPickerPopup(sw, {
       initialColor: accentOf(node),
       swatches: BUTTON_PALETTE,
-      showClear: true,        // clear tile = follow the global default
-      resetColor: BRAND,
+      wide: true,
+      resetColor: BRAND,       // Reset -> the Pixaroma orange
       onPick: (c) => {
-        writeState(node, { ...readState(node), accent: c || null });
+        const col = c || BRAND;
+        writeState(node, { ...readState(node), accent: col });
         repaintAccent();
         // Recolour the node live without a full rebuild (cheap CSS var swap).
-        node._pixSzInner?.style.setProperty("--acc", c || accentOf(node));
+        node._pixSzInner?.style.setProperty("--acc", col);
         node.setDirtyCanvas?.(true, true);
       },
     });

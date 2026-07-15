@@ -215,12 +215,19 @@ function ensureCSS() {
   z-index: 100000;
   background: #1a1a1a;
   border: 1px solid #444;
-  border-radius: 5px;
+  border-radius: 8px;
   padding: 8px;
-  box-shadow: 0 6px 18px rgba(0,0,0,.5);
+  box-shadow: 0 12px 34px rgba(0,0,0,.6);
   width: 248px;
   box-sizing: border-box;
 }
+/* Roomier variant (Sliders / Sizes accent) - a proper SV plane like the
+   Group Colors picker rather than a cramped 80px strip. */
+.pix-cp-popup.pix-cp-popup-wide { width: 300px; padding: 12px; }
+.pix-cp-popup-wide .pix-cp-swatches { gap: 4px; }
+.pix-cp-popup-wide .pix-cp-sv { height: 190px; }
+.pix-cp-popup-wide .pix-cp-hex,
+.pix-cp-popup-wide .pix-cp-reset { height: 28px; font-size: 12px; }
 
 /* Compact popup — swatches + Reset / More-colors row only. Used by the
    text and highlight pickers in the Note editor. Excel-style apply-on-
@@ -653,6 +660,7 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
   ensureCSS();
   const popup = document.createElement("div");
   popup.className = "pix-cp-popup";
+  if (opts.wide) popup.classList.add("pix-cp-popup-wide");
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
   popup.style.top  = `${rect.bottom + 4}px`;
@@ -674,17 +682,36 @@ export function openPixaromaColorPickerPopup(anchorEl, opts = {}) {
   popup.appendChild(picker.element);
   document.body.appendChild(popup);
 
+  // Clamp into the viewport so a wide popup near an edge stays fully visible.
+  const pr = popup.getBoundingClientRect();
+  const vpad = 8;
+  if (pr.right > window.innerWidth - vpad)
+    popup.style.left = `${Math.max(vpad, window.innerWidth - pr.width - vpad)}px`;
+  if (pr.bottom > window.innerHeight - vpad)
+    popup.style.top = `${Math.max(vpad, window.innerHeight - pr.height - vpad)}px`;
+
   const onDocDown = (e) => {
-    if (!popup.contains(e.target) && e.target !== anchorEl) close();
+    if (!popup.contains(e.target) && e.target !== anchorEl && !anchorEl.contains?.(e.target)) close();
   };
+  const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+  let closed = false;
   function close() {
+    if (closed) return;
+    closed = true;
     document.removeEventListener("mousedown", onDocDown, true);
+    document.removeEventListener("pointerdown", onDocDown, true);
+    window.removeEventListener("keydown", onKey, true);
     picker.destroy();
     if (popup.parentNode) popup.remove();
   }
-  // Defer attach by one tick so the click that opened us doesn't
-  // immediately close us.
-  setTimeout(() => document.addEventListener("mousedown", onDocDown, true), 0);
+  // Defer attach by one tick so the click that opened us doesn't immediately
+  // close us. Listen on pointerdown too (some canvas clicks don't emit a
+  // document mousedown), so the popup never gets orphaned "in the air".
+  setTimeout(() => {
+    document.addEventListener("mousedown", onDocDown, true);
+    document.addEventListener("pointerdown", onDocDown, true);
+    window.addEventListener("keydown", onKey, true);
+  }, 0);
 
   return { close, getColor: picker.getColor, setColor: picker.setColor };
 }
