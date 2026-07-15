@@ -63,6 +63,38 @@ function writeBackWidgets(node, extra) {
     setNodeWidget(node, "blend_mode", BLEND_MODE_LABEL[extra.blend_mode] || "mask");
 }
 
+// Give a duplicated node its own on-disk scratch space. The state_json carries
+// a project_id that keys the src/mask files on disk; a duplicate (alt-drag,
+// right-click Duplicate, or Ctrl+C/V) copies it verbatim, so saving from the
+// copy's editor would overwrite the parent's files. If another live node of the
+// same type already holds this id, re-mint it + clear the paths so the copy
+// starts blank and isolated. A clean workflow load never has two nodes sharing
+// an id, so this is a no-op (no write) on load -> no dirty-on-load.
+function dedupeInpaintProjectId(node) {
+  try {
+    const w = node.widgets?.find((x) => x.name === "InpaintCropWidget");
+    if (!w) return;
+    let meta;
+    try { meta = JSON.parse(w.value?.state_json || "{}"); } catch { return; }
+    const myId = meta?.project_id;
+    if (!myId) return;
+    const g = node.graph || app.graph;
+    const nodes = g?._nodes || g?.nodes || [];
+    const collides = nodes.some((n) => {
+      if (n === node || n?.comfyClass !== node.comfyClass) return false;
+      const ow = n.widgets?.find((x) => x.name === "InpaintCropWidget");
+      if (!ow) return false;
+      let om; try { om = JSON.parse(ow.value?.state_json || "{}"); } catch { return false; }
+      return om?.project_id === myId;
+    });
+    if (!collides) return;
+    meta.project_id = "inpaint_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+    meta.src_path = "";
+    meta.mask_path = "";
+    w.value = { state_json: JSON.stringify(meta) };
+  } catch (e) { console.warn("[InpaintCrop] dedupe project id failed:", e); }
+}
+
 function buildSourceURL(part, bust) {
   if (!part || !part.filename) return null;
   const url = `/view?filename=${encodeURIComponent(part.filename)}` +
@@ -203,6 +235,10 @@ app.registerExtension({
         queueMicrotask(() => this._pixInpaintRefresh());
         setTimeout(() => this._pixInpaintRefresh?.(), 250);
       }
+      // After the node settles, give a DUPLICATE its own project_id (see
+      // dedupeInpaintProjectId). Deferred a microtask so a clipboard paste has
+      // added the node to its graph (so this.graph + the sibling are both live).
+      queueMicrotask(() => { if (!isGraphLoading()) dedupeInpaintProjectId(this); });
       return ret;
     };
   },

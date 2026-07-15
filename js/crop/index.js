@@ -107,6 +107,40 @@ function buildSourceURL(part, withCacheBust) {
   return withCacheBust ? `${url}&t=${Date.now()}` : url;
 }
 
+// Give a duplicated node its own on-disk scratch space. The crop_json carries a
+// project_id that keys the src/composite files on disk; a duplicate (alt-drag,
+// right-click Duplicate, or Ctrl+C/V) copies it verbatim, so saving from the
+// copy's editor would overwrite the parent's files. If another live node of the
+// same type already holds this id, re-mint it + clear the paths so the copy
+// starts blank and isolated. A clean workflow load never has two nodes sharing
+// an id, so this is a no-op (no write) on load -> no dirty-on-load. When the
+// copy is wired to an upstream image (the common case) src_path is unused, so
+// clearing it is invisible there.
+function dedupeCropProjectId(node) {
+  try {
+    const w = node.widgets?.find((x) => x.name === "CropWidget");
+    if (!w) return;
+    let meta;
+    try { meta = JSON.parse(w.value?.crop_json || "{}"); } catch { return; }
+    const myId = meta?.project_id;
+    if (!myId) return;
+    const g = node.graph || app.graph;
+    const nodes = g?._nodes || g?.nodes || [];
+    const collides = nodes.some((n) => {
+      if (n === node || n?.comfyClass !== node.comfyClass) return false;
+      const ow = n.widgets?.find((x) => x.name === "CropWidget");
+      if (!ow) return false;
+      let om; try { om = JSON.parse(ow.value?.crop_json || "{}"); } catch { return false; }
+      return om?.project_id === myId;
+    });
+    if (!collides) return;
+    meta.project_id = "crop_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9);
+    meta.src_path = "";
+    meta.composite_path = "";
+    w.value = { crop_json: JSON.stringify(meta) };
+  } catch (e) { console.warn("[PixaromaCrop] dedupe project id failed:", e); }
+}
+
 // ─── Global paste handler (clipboard → selected Crop node) ────────────────
 // Mirrors the way native LoadImage accepts a clipboard paste: when the user
 // presses Ctrl+V with an image in the clipboard AND a PixaromaCrop node is
@@ -260,6 +294,10 @@ app.registerExtension({
         queueMicrotask(() => this._pixaromaCropRefresh());
         setTimeout(() => this._pixaromaCropRefresh?.(), 250);
       }
+      // After the node settles, give a DUPLICATE its own project_id (see
+      // dedupeCropProjectId). Deferred a microtask so a clipboard paste has
+      // added the node to its graph (so this.graph + the sibling are both live).
+      queueMicrotask(() => { if (!isGraphLoading()) dedupeCropProjectId(this); });
       return ret;
     };
   },
