@@ -13,6 +13,7 @@ import {
   createNodePreview,
   showNodePreview,
   restoreNodePreview,
+  clearNodePreview,
   activateNodePreview,
   downloadDataURL,
   applyAdaptiveCanvasOnly,
@@ -138,6 +139,17 @@ function dedupeCropProjectId(node) {
     meta.src_path = "";
     meta.composite_path = "";
     w.value = { crop_json: JSON.stringify(meta) };
+    // Also clear the copied cached-source references, else the node-body
+    // thumbnail keeps showing the parent's image (restoreNodePreview can't
+    // blank an already-drawn image). Then repaint: the upstream if the copy is
+    // wired, otherwise the empty placeholder.
+    node._pixaromaCropSourceURL = null;
+    if (node.properties) {
+      delete node.properties.pixaromaCropSource;
+      delete node.properties.pixaromaCropSourceURL;
+    }
+    if (getUpstreamImageURL(node)) node._pixaromaCropRefresh?.();
+    else node._pixaromaCropClearPreview?.();
   } catch (e) { console.warn("[PixaromaCrop] dedupe project id failed:", e); }
 }
 
@@ -330,6 +342,8 @@ app.registerExtension({
       "Pixaroma",
       "Wire an IMAGE input and Run the workflow,\nor click 'Open Crop' to load an image",
     );
+    // let dedupe (module scope) blank this node's thumbnail after a duplicate
+    node._pixaromaCropClearPreview = () => clearNodePreview(parts, node);
 
     // ── State -- mirrors the hidden crop_json widget ──
     let cropJson = "{}";

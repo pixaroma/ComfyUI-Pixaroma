@@ -8,7 +8,7 @@ import { InpaintCropEditor, INPAINT_PREVIEW_COLORS } from "./core.mjs";
 import "./paint.mjs";   // mixin: brush / mask / keys
 import "./render.mjs";  // mixin: canvas render + save
 import {
-  createNodePreview, showNodePreview, restoreNodePreview, activateNodePreview,
+  createNodePreview, showNodePreview, restoreNodePreview, clearNodePreview, activateNodePreview,
   downloadDataURL, applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
@@ -92,6 +92,14 @@ function dedupeInpaintProjectId(node) {
     meta.src_path = "";
     meta.mask_path = "";
     w.value = { state_json: JSON.stringify(meta) };
+    // Also clear the copied cached-source references, else the node-body
+    // thumbnail keeps showing the parent's image (restoreNodePreview can't
+    // blank an already-drawn image). Then repaint: the upstream if the copy is
+    // wired, otherwise the empty placeholder.
+    node._pixInpaintSourceURL = null;
+    if (node.properties) delete node.properties.pixInpaintSource;
+    if (getUpstreamImageURL(node)) node._pixInpaintRefresh?.();
+    else node._pixInpaintClearPreview?.();
   } catch (e) { console.warn("[InpaintCrop] dedupe project id failed:", e); }
 }
 
@@ -258,6 +266,8 @@ app.registerExtension({
       "Inpaint Crop", "Pixaroma",
       "Wire an IMAGE and Run,\nor click 'Open mask editor' to load + paint",
     );
+    // let dedupe (module scope) blank this node's thumbnail after a duplicate
+    node._pixInpaintClearPreview = () => clearNodePreview(parts, node);
 
     let stateJson = "{}";
     let widget;

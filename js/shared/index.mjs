@@ -30,6 +30,7 @@ export {
   createNodePreview,
   showNodePreview,
   restoreNodePreview,
+  clearNodePreview,
   activateNodePreview,
 } from "./preview.mjs";
 

@@ -134,6 +134,23 @@ export function restoreNodePreview(parts, json, node) {
 }
 
 /**
+ * Reset the preview area back to its placeholder (instruction) state, clearing
+ * any previously-shown image. Needed because `restoreNodePreview` early-returns
+ * when the saved JSON has no path, so it cannot BLANK an image already on screen
+ * (e.g. a duplicated node whose thumbnail was drawn from the parent's now-cleared
+ * source). Shows the "wire an image / open the editor" hint again.
+ */
+export function clearNodePreview(parts, node) {
+  if (!parts) return;
+  const { previewBox, preview, dummy, infoLabel } = parts;
+  if (preview) preview.removeAttribute("src");
+  if (previewBox) previewBox.style.display = "none";
+  if (dummy) dummy.style.display = "";       // restore the placeholder widget
+  if (infoLabel) infoLabel.textContent = "";
+  node?.setDirtyCanvas?.(true, true);
+}
+
+/**
  * Activate the preview container after a short delay.
  *
  * Squaring of the preview box is now driven by the ResizeObserver
