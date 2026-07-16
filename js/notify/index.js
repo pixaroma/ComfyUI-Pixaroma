@@ -614,8 +614,15 @@ app.registerExtension({
       queueMicrotask(() => { if (!isGraphLoading()) dedupeNotifyId(this); });
       // Restore the saved fold. Deliberately no re-fit here: the saved height
       // already matches the saved fold state, and writing size on the load path
-      // would open the workflow "modified".
-      queueMicrotask(() => { applyFold(this); updateReadout(this); });
+      // would open the workflow "modified". The invalidate is required for the
+      // same reason toggleFold needs it - applyFold only mutates widget fields,
+      // which Nodes 2.0 never re-reads - and it is dirty-safe: the array keeps
+      // the same widgets, so widgets_values is unchanged.
+      queueMicrotask(() => {
+        applyFold(this);
+        invalidateVueWidgets(this);
+        updateReadout(this);
+      });
       return ret;
     };
 
