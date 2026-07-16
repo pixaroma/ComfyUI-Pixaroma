@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from ._resize_helpers import _apply_max_mp, _apply_pad
+from ._resize_helpers import _apply_max_mp, _apply_pad, _round_half_up
 
 try:
     import folder_paths
@@ -139,7 +139,7 @@ def _pads_for_ratio(src_w, src_h, ratio_text, anchor):
         return 0, 0, 0, 0
 
     if target > cur:  # wider: grow horizontally
-        add = int(round(src_h * target)) - src_w
+        add = _round_half_up(src_h * target) - src_w
         if add <= 0:
             return 0, 0, 0, 0
         if anchor in ("left", "top"):
@@ -149,7 +149,11 @@ def _pads_for_ratio(src_w, src_h, ratio_text, anchor):
         half = add // 2
         return 0, 0, half, add - half
 
-    add = int(round(src_w / target)) - src_h  # taller: grow vertically
+    # _round_half_up, never the built-in round(): Python's round() is banker's
+    # rounding (round(1498.5) = 1498) while JS Math.round always goes up, so a
+    # built-in round() here would make the live preview disagree with the real
+    # output at exact .5 boundaries - a 999-tall source at 3:2 hits it.
+    add = _round_half_up(src_w / target) - src_h  # taller: grow vertically
     if add <= 0:
         return 0, 0, 0, 0
     if anchor in ("top", "left"):

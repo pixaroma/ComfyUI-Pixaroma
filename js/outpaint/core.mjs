@@ -83,22 +83,13 @@ export function remapAnchor(anchor, toAxis) {
   return anchor;
 }
 
-// Mirrors Python's built-in round(), which is banker's rounding (half to even),
-// NOT _round_half_up. _pads_for_ratio calls the built-in, so at an exact .5 the
-// two would part company: a 999-high source at 3:2 gives 999*1.5 = 1498.5, where
-// Python yields 1498 and Math.round yields 1499, painting the green one pixel
-// wide of the real result.
-function roundHalfEven(x) {
-  const f = Math.floor(x);
-  const diff = x - f;
-  if (diff > 0.5) return f + 1;
-  if (diff < 0.5) return f;
-  return f % 2 === 0 ? f : f + 1;
-}
-
 // Mirrors _resize_helpers._round_half_up, which is floor(x + 0.5). Math.round
 // agrees for every positive value except the 0.49999999999999994 corner, where
 // Math.round is arguably more correct but stops mirroring Python.
+// Every dimension in node_outpaint.py goes through _round_half_up, never the
+// built-in round(): the built-in is banker's rounding, so a 999-high source at
+// 3:2 (999*1.5 = 1498.5) would give Python 1498 and JS 1499, and the preview
+// would paint the green one pixel wide of the real output.
 function roundHalfUp(x) {
   return Math.floor(x + 0.5);
 }
@@ -147,14 +138,14 @@ export function padsForRatio(srcW, srcH, ratioText, anchor) {
   // The cross-axis names are accepted on both axes so a stored anchor left over
   // from the other axis still reads as near/far rather than silently centring.
   if (axis === "h") {
-    const add = roundHalfEven(srcH * target) - srcW;
+    const add = roundHalfUp(srcH * target) - srcW;
     if (add <= 0) return none;
     if (anchor === "left" || anchor === "top") return { ...none, left: add };
     if (anchor === "right" || anchor === "bottom") return { ...none, right: add };
     const half = Math.floor(add / 2);
     return { ...none, left: half, right: add - half };
   }
-  const add = roundHalfEven(srcW / target) - srcH;
+  const add = roundHalfUp(srcW / target) - srcH;
   if (add <= 0) return none;
   if (anchor === "top" || anchor === "left") return { ...none, top: add };
   if (anchor === "bottom" || anchor === "right") return { ...none, bottom: add };
