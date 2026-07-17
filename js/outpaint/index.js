@@ -21,7 +21,7 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
-  BRAND, DEFAULT_RATIOS, DEFAULT_STATE, LIMITS, STATE_PROP,
+  BRAND, DEFAULT_RATIOS, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
   anchorAxis, finalSize, padsForState, readState, remapAnchor, writeState,
 } from "./core.mjs";
 
@@ -339,6 +339,21 @@ function renderLimitRow(node, host) {
 }
 
 // ── preview drawing ────────────────────────────────────────────────────────
+// Where the composition sits inside the preview box. A PURE function of the box,
+// the source and the pads, so the paint and the hit-test cannot drift apart -
+// the Compare lesson: never hit-test against geometry stashed during the last
+// paint, because a tap with no preceding move would read a stale one.
+function previewGeom(cssW, cssH, src, pads) {
+  const padW = src.w + pads.left + pads.right;
+  const padH = src.h + pads.top + pads.bottom;
+  // Fit the PADDED rect, not the image: the preview is the composition, so the
+  // green belongs inside the frame at the same proportions as the real output.
+  const scale = Math.min((cssW - PREVIEW_INSET * 2) / padW, (cssH - PREVIEW_INSET * 2) / padH);
+  const dw = padW * scale;
+  const dh = padH * scale;
+  return { scale, dw, dh, ox: (cssW - dw) / 2, oy: (cssH - dh) / 2 };
+}
+
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
   if (typeof ctx.roundRect === "function") { ctx.roundRect(x, y, w, h, r); return; }
@@ -474,16 +489,7 @@ function renderPreview(node) {
   const st = readState(node);
   const src = { w: img.naturalWidth, h: img.naturalHeight };
   const pads = padsForState(st, src.w, src.h);
-  const padW = src.w + pads.left + pads.right;
-  const padH = src.h + pads.top + pads.bottom;
-
-  // Fit the PADDED rect, not the image: the preview is the composition, so the
-  // green belongs inside the frame at the same proportions as the real output.
-  const scale = Math.min((cssW - PREVIEW_INSET * 2) / padW, (cssH - PREVIEW_INSET * 2) / padH);
-  const dw = padW * scale;
-  const dh = padH * scale;
-  const ox = (cssW - dw) / 2;
-  const oy = (cssH - dh) / 2;
+  const { scale, dw, dh, ox, oy } = previewGeom(cssW, cssH, src, pads);
 
   // Green underneath, image over it: the four bands are simply the green the
   // image does not cover, so they cannot drift out of step with the maths.
@@ -498,6 +504,131 @@ function renderPreview(node) {
 
   drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh);
   drawSizeBadge(ctx, cssW, cssH, finalSize(src.w, src.h, pads, st.limit, st.snap));
+}
+
+// A full canvas redraw per pointermove would be a synchronous repaint at
+// whatever rate the mouse reports (120Hz+ on plenty of hardware). Coalesce to
+// one per frame - the same lesson the Inpaint brush paid for.
+function requestPreviewRedraw(node) {
+  if (node._pixOpRaf) return;
+  node._pixOpRaf = requestAnimationFrame(() => {
+    node._pixOpRaf = null;
+    renderPreview(node);
+  });
+}
+
+// ── drag the green edges ───────────────────────────────────────────────────
+const HANDLE_HIT = 7;      // how close to an edge counts as grabbing it
+const CURSORS = { left: "ew-resize", right: "ew-resize", top: "ns-resize", bottom: "ns-resize" };
+
+// Which edge is under the pointer, or null. All four are grabbable, including
+// ones with no green on them yet: dragging an edge outward is HOW you add space.
+function hitEdge(lx, ly, g) {
+  const { ox, oy, dw, dh } = g;
+  const nearY = ly >= oy - HANDLE_HIT && ly <= oy + dh + HANDLE_HIT;
+  const nearX = lx >= ox - HANDLE_HIT && lx <= ox + dw + HANDLE_HIT;
+  // Left/right win the corners, arbitrarily but consistently.
+  if (nearY && Math.abs(lx - ox) <= HANDLE_HIT) return "left";
+  if (nearY && Math.abs(lx - (ox + dw)) <= HANDLE_HIT) return "right";
+  if (nearX && Math.abs(ly - oy) <= HANDLE_HIT) return "top";
+  if (nearX && Math.abs(ly - (oy + dh)) <= HANDLE_HIT) return "bottom";
+  return null;
+}
+
+// getBoundingClientRect reports SCREEN px while the preview draws in LAYOUT px,
+// and the node body is CSS-transform-scaled by the graph zoom - so without this
+// the grab drifts further from the cursor the more the user has zoomed in. Same
+// correction as Compare's localPos.
+function localPos(el, e) {
+  const r = el.getBoundingClientRect();
+  const sx = r.width ? el.clientWidth / r.width : 1;
+  const sy = r.height ? el.clientHeight / r.height : 1;
+  return [(e.clientX - r.left) * sx, (e.clientY - r.top) * sy];
+}
+
+// Everything the pointer needs to know about the current composition, or null
+// when there is nothing drawn to grab.
+function previewState(node) {
+  const ui = node._pixOpUI;
+  const img = ui && sourceImage(node);
+  if (!img) return null;
+  const cssW = ui.prev.clientWidth, cssH = ui.prev.clientHeight;
+  if (cssW <= 0 || cssH <= 0) return null;
+  const st = readState(node);
+  const src = { w: img.naturalWidth, h: img.naturalHeight };
+  const pads = padsForState(st, src.w, src.h);
+  return { st, src, pads, g: previewGeom(cssW, cssH, src, pads) };
+}
+
+function installDrag(node) {
+  const prev = node._pixOpUI.prev;
+
+  prev.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const ps = previewState(node);
+    if (!ps) return;
+    const [lx, ly] = localPos(prev, e);
+    const side = hitEdge(lx, ly, ps.g);
+    if (!side) return;
+    // Without this the canvas underneath takes the press and the whole node
+    // drags away from under the cursor.
+    e.stopPropagation();
+    e.preventDefault();
+    try { prev.setPointerCapture(e.pointerId); } catch (_e) { /* fine without it */ }
+    node._pixOpDrag = {
+      side, x: lx, y: ly, pads: { ...ps.pads },
+      // The scale at GRAB time, held for the whole gesture. The composition
+      // rescales to keep fitting as the pad grows, so reading a live scale would
+      // make the same cursor movement worth a different number of pixels from
+      // one frame to the next - the drag would feel like it was slipping.
+      scale: ps.g.scale,
+      needsFlip: ps.st.mode === "ratio",
+    };
+  });
+
+  prev.addEventListener("pointermove", (e) => {
+    const d = node._pixOpDrag;
+    if (!d) {
+      // Idle: just advertise which edges do something.
+      const ps = previewState(node);
+      const side = ps ? hitEdge(...localPos(prev, e), ps.g) : null;
+      prev.style.cursor = side ? CURSORS[side] : "";
+      return;
+    }
+    const [lx, ly] = localPos(prev, e);
+    // Cursor delta -> SOURCE pixels. Outward on this edge means more green;
+    // pulling out grows the canvas and shrinks the image inside the preview,
+    // which reads as zooming out - exactly what is being asked of the model.
+    const dx = (lx - d.x) / d.scale, dy = (ly - d.y) / d.scale;
+    const grow = d.side === "right" ? dx : d.side === "left" ? -dx
+      : d.side === "bottom" ? dy : -dy;
+    const patch = {};
+    if (d.needsFlip) {
+      // The first movement of a ratio-mode drag switches to By side, carrying
+      // over the numbers the ratio had computed. Without carrying them the other
+      // three sides would snap to nothing the instant the user touched an edge.
+      d.needsFlip = false;
+      Object.assign(patch, d.pads, { mode: "sides" });
+    }
+    patch[d.side] = Math.max(0, Math.min(Math.round(d.pads[d.side] + grow), MAX_PAD));
+    writeState(node, patch);
+    // The mode chips and the Add space row only change on the flip; every other
+    // move is the picture alone, so do not rebuild the rows 120 times a second.
+    if (patch.mode) renderFace(node);
+    else requestPreviewRedraw(node);
+  });
+
+  const end = (e) => {
+    if (!node._pixOpDrag) return;
+    node._pixOpDrag = null;
+    try { prev.releasePointerCapture(e.pointerId); } catch (_e) { /* already released */ }
+    node.setDirtyCanvas?.(true, true);
+  };
+  prev.addEventListener("pointerup", end);
+  prev.addEventListener("pointercancel", end);
+  prev.addEventListener("pointerleave", () => {
+    if (!node._pixOpDrag) prev.style.cursor = "";
+  });
 }
 
 function renderFace(node) {
@@ -615,6 +746,10 @@ function setupNode(node) {
   node._pixOpZoomOff = installZoomRepaint(
     node, () => [prev.clientWidth, prev.clientHeight], () => renderPreview(node), "_pixOpZoomRaf");
 
+  // The listeners live on the persistent preview element, so this is wired once
+  // for the node's whole life - renderFace deliberately steps around it.
+  installDrag(node);
+
   // No custom computeSize and no getMaxHeight: either makes the widget
   // fixed-height in legacy, so the node grows but can never shrink. minWidth 1
   // or the saved node width will not round-trip.
@@ -684,6 +819,9 @@ app.registerExtension({
       this._pixOpRO = null;
       this._pixOpZoomOff?.();
       this._pixOpZoomOff = null;
+      if (this._pixOpRaf) cancelAnimationFrame(this._pixOpRaf);
+      this._pixOpRaf = null;
+      this._pixOpDrag = null;
       return _origRemoved?.apply(this, arguments);
     };
   },
