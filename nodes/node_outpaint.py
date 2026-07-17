@@ -11,6 +11,7 @@ functions in sequence instead. _resize_helpers.py is deliberately NOT
 modified - four other nodes depend on it.
 """
 import json
+import math
 import os
 import uuid
 
@@ -81,12 +82,16 @@ def _parse_state(state_json):
     for k in ("top", "bottom", "left", "right"):
         try:
             st[k] = max(0, min(int(raw.get(k, 0)), _MAX_PAD))
-        except (TypeError, ValueError):
+        # OverflowError matters: json.loads accepts the literal Infinity as a
+        # documented extension, and int(inf) raises OverflowError, NOT ValueError
+        # - so without it a hand-edited API file carrying Infinity would take the
+        # whole node down, breaking this function's "tolerate anything" promise.
+        except (TypeError, ValueError, OverflowError):
             st[k] = 0
     try:
         lim = float(raw.get("limit", 0))
         st["limit"] = lim if lim in _LIMITS else 0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         st["limit"] = 0
     c = raw.get("color")
     if isinstance(c, str) and len(c) == 7 and c[0] == "#":
@@ -98,7 +103,7 @@ def _parse_state(state_json):
     try:
         sn = int(raw.get("snap", 0))
         st["snap"] = sn if sn in _SNAPS else 0
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         st["snap"] = 0
     return st
 
@@ -110,7 +115,14 @@ def _parse_ratio(text):
     a, _, b = text.partition(":")
     try:
         rw, rh = float(a), float(b)
-    except ValueError:
+    except (TypeError, ValueError):
+        return None
+    # float() accepts "inf" and "nan"; core.mjs's FINITE_NUMBER regex does not,
+    # so without this the two sides disagree and the preview lies. Both would
+    # also slip past the guard below: inf is > 0, and nan fails EVERY comparison
+    # so "nan <= 0" is False. Reject them outright rather than padding by
+    # infinity or by nothing-in-particular.
+    if not math.isfinite(rw) or not math.isfinite(rh):
         return None
     if rw <= 0 or rh <= 0:
         return None
