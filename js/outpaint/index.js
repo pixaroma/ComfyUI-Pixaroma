@@ -18,7 +18,7 @@
 
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
-import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
   BRAND, DEFAULT_RATIOS, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
@@ -49,10 +49,14 @@ const ROW_GAP = 6;  // gap between rows
 // .pix-op-prev): the preview may shrink below this when the body is tight, which
 // is why measureFloor counts this constant rather than the element's real height.
 const PREVIEW_MIN = 120;
-// Four rows (148) + a gap + the preview at its minimum. Used ONLY while the root
-// is unmounted, so it must track the row set: any task that adds or removes a row
-// has to move this with it.
-const FLOOR_FALLBACK = 148 + ROW_GAP + PREVIEW_MIN;
+// Four rows (148) + a gap + the preview at its minimum, plus the cards strip in
+// Nodes 2.0 (where it is a real row rather than paint on the node body). Used
+// ONLY while the root is unmounted, so it must track the row set: any task that
+// adds or removes a row has to move this with it.
+const CARDS_H = 38;
+function floorFallback() {
+  return 148 + ROW_GAP + PREVIEW_MIN + (isVueNodes() ? CARDS_H + ROW_GAP : 0);
+}
 const FLOOR_MIN = 60;
 // A runaway guard, not a target (Save Image inflated to ~1830px without one).
 // Pitched well above the real floor - even with every row wrapped at a narrow
@@ -188,6 +192,10 @@ function injectCSS() {
     /* A readout of the fill colour, not a button (its picker is a later task). */
     .pix-op-swatch { flex:0 0 auto; width:26px; border-radius:5px;
       border:1px solid #444; cursor:default; }
+
+    /* Nodes 2.0 only - in legacy the same pixels are painted on the node body,
+       so this is display:none there and measureFloor skips it. */
+    .pix-op-cards { flex:0 0 auto; width:100%; height:${CARDS_H}px; display:block; }
 
     /* The one grower: flex:1 1 0 hands it every spare pixel the rows do not use.
        min-height MUST be 0, and the floor lives in measureFloor instead. A real
@@ -506,6 +514,104 @@ function renderPreview(node) {
   drawSizeBadge(ctx, cssW, cssH, finalSize(src.w, src.h, pads, st.limit, st.snap));
 }
 
+// ── size cards ─────────────────────────────────────────────────────────────
+// INPUT 1024 x 1024  ›  OUTPUT 1254 x 836, in the slot strip's dead space.
+//
+// ONE painter, two callers - the node's one deliberate renderer split, copied
+// from Load Image rather than invented. Legacy paints it straight onto the node
+// body beside the width/height rows; Nodes 2.0 renders that strip itself and
+// skips body painting entirely, so the same pixels go on a small canvas at the
+// top of our own panel. They are non-interactive pixels, which is the only
+// reason they can live there at all - anything clickable would need a canvas
+// hit-test in legacy plus a DOM button in Vue, two implementations of one thing.
+const CARD_GAP = 16;          // room for the chevron between the two cards
+const CARDS_LEFT = 12;
+// Rows 2-3 of the strip: row centres are TOP_PAD + i*SLOT_H + SLOT_H/2, so with
+// TOP_PAD 4 and SLOT_H 20 that is 14 / 34 / 54, and the pair centres at 44. Row
+// 1 is left alone because the "image" INPUT label lives there.
+const CARDS_MID_Y = 44;
+// The output labels are right-aligned, so the space they need has to be measured
+// from the RIGHT edge or the cards would collide with them the moment the user
+// narrows the node. "height" is the longest at ~38px, plus its dot and a gap.
+const CARDS_RIGHT_RESERVE = 74;
+
+function cardsInfo(node) {
+  const img = sourceImage(node);
+  if (!img) return { mode: "msg", text: hasWire(node) ? "Run once for sizes" : "Connect an image" };
+  const st = readState(node);
+  const src = { w: img.naturalWidth, h: img.naturalHeight };
+  const pads = padsForState(st, src.w, src.h);
+  const fin = finalSize(src.w, src.h, pads, st.limit, st.snap);
+  return { mode: "dual", inW: src.w, inH: src.h, outW: fin.w, outH: fin.h,
+    changed: fin.w !== src.w || fin.h !== src.h };
+}
+
+// Paints into ctx within [leftPad .. leftPad+pairW], centred on midY. All
+// coordinates are in the ctx's own CSS-pixel space, so the caller decides where
+// "here" is and this stays renderer-agnostic.
+function paintCardsInto(ctx, node, leftPad, midY, pairW) {
+  const info = cardsInfo(node);
+  const fam = "ui-sans-serif, system-ui, sans-serif";
+  ctx.save();
+  ctx.textBaseline = "middle";
+
+  if (info.mode === "msg") {
+    ctx.font = "11px " + fam;
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#6a6a6a";
+    ctx.fillText(info.text, leftPad, midY, pairW);
+    ctx.restore();
+    return;
+  }
+
+  const cardW = (pairW - CARD_GAP) / 2;
+  const y = midY - CARDS_H / 2;
+  const card = (x, label, w, h, accent) => {
+    roundRect(ctx, x + 0.5, y + 0.5, cardW - 1, CARDS_H - 1, 5);
+    ctx.fillStyle = "#1d1d1d"; ctx.fill();
+    ctx.strokeStyle = accent ? BRAND : "#444"; ctx.lineWidth = 1; ctx.stroke();
+    const cx = x + cardW / 2;
+    ctx.textAlign = "center";
+    ctx.font = "9px " + fam;
+    ctx.fillStyle = "#8a8a8a";
+    ctx.textBaseline = "middle";
+    ctx.fillText(label, cx, y + 12, cardW - 8);
+    ctx.font = "bold 11px " + fam;
+    ctx.fillStyle = accent ? BRAND : "#ccc";
+    // Digits again, so centre on the real glyph box (see fillTextVCenter).
+    fillTextVCenter(ctx, w + " × " + h, cx, y + 26);
+  };
+  // Only the OUTPUT card goes accent, and only when the size ACTUALLY changes -
+  // an accent that is always on says nothing.
+  card(leftPad, "INPUT", info.inW, info.inH, false);
+  card(leftPad + cardW + CARD_GAP, "OUTPUT", info.outW, info.outH, info.changed);
+
+  const ax = leftPad + cardW + CARD_GAP / 2;
+  ctx.strokeStyle = info.changed ? BRAND : "#6a6a6a";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(ax - 2.5, midY - 4);
+  ctx.lineTo(ax + 2.5, midY);
+  ctx.lineTo(ax - 2.5, midY + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The Nodes 2.0 caller: our own canvas, since there is no dead space to paint in.
+function renderCardsCanvas(node) {
+  const ui = node._pixOpUI;
+  if (!ui || !ui.cards || ui.cards.style.display === "none") return;
+  const cssW = ui.cards.clientWidth, cssH = ui.cards.clientHeight;
+  if (cssW <= 0 || cssH <= 0) return;
+  const s = canvasBackingScale(cssW, cssH);
+  const bw = Math.max(1, Math.round(cssW * s)), bh = Math.max(1, Math.round(cssH * s));
+  if (ui.cards.width !== bw || ui.cards.height !== bh) { ui.cards.width = bw; ui.cards.height = bh; }
+  const ctx = ui.cards.getContext("2d");
+  ctx.setTransform(s, 0, 0, s, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  paintCardsInto(ctx, node, 0, cssH / 2, cssW);
+}
+
 // A full canvas redraw per pointermove would be a synchronous repaint at
 // whatever rate the mouse reports (120Hz+ on plenty of hardware). Coalesce to
 // one per frame - the same lesson the Inpaint brush paid for.
@@ -636,16 +742,23 @@ function renderFace(node) {
   if (!ui) return;
   const inner = ui.inner;
   inner.style.setProperty("--pix-op-acc", BRAND); // the settings task makes this per-node
-  // Rebuild the ROWS only. The preview element is persistent: it owns a canvas
-  // and a ResizeObserver, so recreating it on every chip click would leak an
-  // observer per click and throw away a good backing store for nothing.
-  for (const el of [...inner.children]) if (el !== ui.prev) el.remove();
+  // Rebuild the ROWS only. The cards and preview elements are persistent: they
+  // own canvases (and the preview a ResizeObserver and the drag listeners), so
+  // recreating them on every chip click would leak an observer per click and
+  // throw away a good backing store for nothing.
+  for (const el of [...inner.children]) {
+    if (el !== ui.prev && el !== ui.cards) el.remove();
+  }
   renderModeRow(node, row(inner));
   renderRatioRow(node, row(inner));
   renderAnchorRow(node, row(inner));
   renderLimitRow(node, row(inner));
-  inner.appendChild(ui.prev); // appendChild MOVES an existing child, keeping it last
+  // Re-assert the order: cards on top, preview last. Both calls MOVE the
+  // existing child rather than adding a second one.
+  inner.insertBefore(ui.cards, inner.firstChild);
+  inner.appendChild(ui.prev);
   renderPreview(node);
+  renderCardsCanvas(node);
 }
 
 // ── height ─────────────────────────────────────────────────────────────────
@@ -656,7 +769,7 @@ function renderFace(node) {
 function measureFloor(node) {
   const ui = node._pixOpUI;
   if (!ui || !ui.root.isConnected || ui.root.clientWidth === 0) {
-    return ui?._floorCache ?? FLOOR_FALLBACK;
+    return ui?._floorCache ?? floorFallback();
   }
   let h = 0;
   let shown = 0;
@@ -670,7 +783,7 @@ function measureFloor(node) {
     h += (child === ui.prev) ? PREVIEW_MIN : child.offsetHeight;
     shown++;
   }
-  if (!shown) return ui._floorCache ?? FLOOR_FALLBACK;
+  if (!shown) return ui._floorCache ?? floorFallback();
   h += (shown - 1) * ROW_GAP + PAD * 2;
   ui._floorCache = Math.min(Math.max(Math.round(h / 4) * 4, FLOOR_MIN), FLOOR_CAP);
   return ui._floorCache;
@@ -725,26 +838,37 @@ function setupNode(node) {
   root.appendChild(inner);
 
   // Built once and reused for the node's whole life - renderFace deliberately
-  // steps around it rather than rebuilding it.
+  // steps around them rather than rebuilding them.
+  //
+  // Nodes 2.0 only: legacy paints the same cards onto the node body, where the
+  // slot strip has real dead space. Hidden rather than absent so measureFloor
+  // simply skips it (it skips display:none children).
+  const cards = document.createElement("canvas");
+  cards.className = "pix-op-cards";
+  cards.style.display = isVueNodes() ? "block" : "none";
+  inner.appendChild(cards);
+
   const prev = document.createElement("div");
   prev.className = "pix-op-prev";
   const canvas = document.createElement("canvas");
   prev.appendChild(canvas);
   inner.appendChild(prev);
 
-  node._pixOpUI = { root, inner, prev, canvas, _floorCache: FLOOR_FALLBACK };
+  node._pixOpUI = { root, inner, cards, prev, canvas, _floorCache: floorFallback() };
+
+  const repaintCanvases = () => { renderPreview(node); renderCardsCanvas(node); };
 
   // node.onResize does not fire reliably for a DOM widget (Vue Compat #13), so
   // the element is watched directly: this catches a node resize, a renderer
   // reflow and a tab switch alike, whatever caused them.
-  node._pixOpRO = new ResizeObserver(() => renderPreview(node));
+  node._pixOpRO = new ResizeObserver(repaintCanvases);
   node._pixOpRO.observe(prev);
 
   // A graph zoom changes no layout box, so the observer above never sees it -
-  // but it does change the backing scale, so without this the picture stays at
-  // the resolution it was first drawn at and goes soft when zoomed in.
+  // but it does change the backing scale, so without this the pixels stay at the
+  // resolution they were first drawn at and go soft when zoomed in.
   node._pixOpZoomOff = installZoomRepaint(
-    node, () => [prev.clientWidth, prev.clientHeight], () => renderPreview(node), "_pixOpZoomRaf");
+    node, () => [prev.clientWidth, prev.clientHeight], repaintCanvases, "_pixOpZoomRaf");
 
   // The listeners live on the persistent preview element, so this is wired once
   // for the node's whole life - renderFace deliberately steps around it.
@@ -795,6 +919,21 @@ app.registerExtension({
       // Paint only - renderFace touches no serialized state, and the anchor
       // remap inside it is gated on isGraphLoading().
       if (this._pixOpUI) { renderFace(this); watchSource(this); }
+      return r;
+    };
+
+    // LEGACY only: paint the size cards into the slot strip's dead space. Vue
+    // renders that strip itself and skips node-body painting entirely (so this
+    // would simply never show there) - the .pix-op-cards canvas carries the same
+    // pixels instead.
+    const _origDraw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _origDraw?.apply(this, arguments);
+      if (isVueNodes() || this.flags?.collapsed) return r;
+      const pairW = this.size[0] - CARDS_LEFT - CARDS_RIGHT_RESERVE;
+      // Too narrow to say anything useful: better blank than two clipped smears
+      // overlapping the output labels.
+      if (pairW >= 120) paintCardsInto(ctx, this, CARDS_LEFT, CARDS_MID_Y, pairW);
       return r;
     };
 
