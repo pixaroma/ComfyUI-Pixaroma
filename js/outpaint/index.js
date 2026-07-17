@@ -27,8 +27,19 @@ import {
 const CLASS = "PixaromaOutpaint";
 const HIDDEN_INPUT = "OutpaintState"; // must match node_outpaint.py's hidden input
 
-const DEFAULT_W = 322; // fits 6 ratio chips on one line; also the practical minimum
-const MIN_W = 322;
+// Measured on the user's own canvas, 2026-07-17: the size they actually drag an
+// Outpaint node to. Verified before adopting - 305 leaves the ratio row 267px and
+// six chips need 206, so even the widest set the settings panel allows still fits
+// on one line.
+const DEFAULT_W = 305;
+const MIN_W = 305;
+// Deliberately taller than the floor, which is what separates this from the
+// compact utility nodes where default == minimum (node UI convention #5). The
+// extra height goes to the preview - the picture is the point of the node, and at
+// the bare floor it gets ~121px where this gives it ~180. Safe against snapFresh,
+// which only ever grows a node UP to its floor, so a default above it is left
+// alone; and safe to drag smaller, since nothing here clamps the width or height.
+const DEFAULT_H = 421;
 
 // Height maths. These mirror the CSS below - keep them in lockstep.
 const PAD = 9;      // .pix-op-inner padding, top + bottom
@@ -602,9 +613,11 @@ function setupNode(node) {
   applyAdaptiveCanvasOnly(w);
 
   // Fresh nodes only, and SYNCHRONOUS: configure() runs after onNodeCreated and
-  // restores a loaded node's saved width over this. A microtask would run after
-  // configure() instead and clobber the user's size.
+  // restores a loaded node's saved size over this. A microtask would run after
+  // configure() instead and clobber the user's own size on every workflow open.
+  // Index-assign rather than replacing the array, which a reactive proxy may hold.
   if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+  if (node.size[1] < DEFAULT_H) node.size[1] = DEFAULT_H;
 
   // Defer the first paint past configure() so a restored workflow renders its
   // saved state, not the defaults (Vue Compat #8).
