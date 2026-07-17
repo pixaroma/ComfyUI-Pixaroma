@@ -17,6 +17,7 @@
 // then so they read as not-yet-live rather than broken.
 
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
@@ -73,13 +74,12 @@ function hasWire(node) {
   return !!slot && slot.link != null;
 }
 
-// The picture behind the wire, in two tiers (the Text Overlay pattern):
-//   1. upstream populates imgs[0] (Load Image, Preview Image) - instant, no Run
-//   2. it does not (a VAE Decode mid-chain) - the frame Python stashed to temp/
-//      on the last run, cached by the executed handler (Task 5 fills this in)
-// Both are gated on the wire existing: a stale base frame from a since-removed
-// upstream would be a picture of something the node no longer receives.
-function sourceImage(node) {
+// TIER 1 only: the picture the upstream node already holds (Load Image, Preview
+// Image). Kept separate from sourceImage because the executed handler must ask
+// this exact question - "does the browser already have it?" - and must NOT be
+// satisfied by our own cached base frame, or the second run would skip its
+// stash and the preview would sit on the first generated image for ever.
+function upstreamImage(node) {
   if (!hasWire(node)) return null;
   try {
     const slot = (node.inputs || []).find((i) => i && i.name === "image");
@@ -90,6 +90,19 @@ function sourceImage(node) {
     const img = link && graph.getNodeById?.(link.origin_id)?.imgs?.[0];
     if (img && img.naturalWidth > 0 && img.naturalHeight > 0) return img;
   } catch (_e) { /* an unresolved wire is not an error, just an unknown picture */ }
+  return null;
+}
+
+// The picture to draw, in two tiers (the Text Overlay pattern):
+//   1. upstream populates imgs[0] (Load Image, Preview Image) - instant, no Run
+//   2. it does not (a VAE Decode mid-chain) - the frame Python stashed to temp/
+//      on the last run, cached by the executed handler below
+// Both are gated on the wire existing: a base frame left over from a since
+// removed upstream would be a picture of something the node no longer receives.
+function sourceImage(node) {
+  if (!hasWire(node)) return null;
+  const up = upstreamImage(node);
+  if (up) return up;
   const base = node._pixOpBaseImg;
   return base && base.naturalWidth > 0 ? base : null;
 }
@@ -680,6 +693,51 @@ app.registerExtension({
     setupNode(node);
   },
 });
+
+// ── executed: pick up the stashed base frame ───────────────────────────────
+// Tier 2 of the preview. The node takes a tensor, so for a generated picture
+// (KSampler -> VAE Decode) nothing upstream ever populates imgs[0] and tier 1
+// finds nothing. Python writes the run's INPUT frame to temp/ and names it in
+// its ui payload; this turns that name into the picture the preview draws.
+if (!app._pixOpExecPatched) {
+  app._pixOpExecPatched = true;   // hot-reload guard: one listener, not one per load
+  api.addEventListener("executed", ({ detail }) => {
+    try {
+      const entry = detail?.output?.pixaroma_outpaint_base?.[0];
+      if (!entry || !entry.filename) return;
+      // Vue hands the node id over as a string, legacy as a number.
+      const graph = app.graph;
+      const node = graph?.getNodeById?.(detail.node) ??
+                   graph?.getNodeById?.(parseInt(detail.node, 10));
+      if (!node || node.comfyClass !== CLASS) return;
+      // Python cannot know whether the browser already has a picture, so it
+      // stashes on every run. Decode it only when TIER 1 came up empty: with a
+      // Load Image upstream the frame is already on screen, and decoding a
+      // full-size PNG each run to throw it away would be pure waste. Rewiring to
+      // a generated source simply means the next run supplies it.
+      // upstreamImage, NOT sourceImage: the latter counts our own cached base
+      // frame, so it would answer "already got one" from the second run onward
+      // and freeze the preview on the first generated image.
+      if (upstreamImage(node)) return;
+      const img = new Image();
+      img.onload = () => {
+        if (!node.graph) return; // deleted while it loaded
+        node._pixOpBaseImg = img;
+        // Keep the watcher in step, or it repaints the same picture again 400ms
+        // later for nothing.
+        node._pixOpSrcSig = sourceSig(node);
+        renderFace(node);
+      };
+      img.src = "/view?filename=" + encodeURIComponent(entry.filename) +
+        "&type=" + encodeURIComponent(entry.type || "temp") +
+        "&subfolder=" + encodeURIComponent(entry.subfolder || "");
+    } catch (e) {
+      // A preview is never worth breaking the executed handler for - every other
+      // node's listener runs off this same event.
+      console.warn("[Outpaint Pixaroma] base preview failed:", (e && e.message) || e);
+    }
+  });
+}
 
 // ── graphToPrompt: inject the per-node state ────────────────────────────────
 // INJECT ONLY - never prune here: Export (API) serialises this same output, so a

@@ -256,7 +256,39 @@ class PixaromaOutpaint:
             )
 
         out = torch.cat(out_frames, dim=0).to(image.device)
-        return (out, int(out_w), int(out_h))
+
+        # Tier 2 of the preview. The node takes a TENSOR, which the browser
+        # cannot see; when upstream is a Load Image the frontend has its own
+        # imgs[0] to draw, but a VAE Decode mid-chain populates nothing, so the
+        # preview would stay empty forever. Hand the input frame over through
+        # temp/ instead. Text Overlay does exactly this and is not an OUTPUT_NODE
+        # either, which is the proof a plain node's ui payload reaches the JS.
+        #
+        # FULL RESOLUTION on purpose. Downscaling would be cheaper, but the
+        # preview reads the picture's naturalWidth to work out both the pads and
+        # the size badge, so a smaller stash would quietly make both of them lie
+        # about what the run produces.
+        ui = {}
+        try:
+            if folder_paths is not None:
+                temp_dir = folder_paths.get_temp_directory()
+                os.makedirs(temp_dir, exist_ok=True)
+                # A fresh uuid per run doubles as the cache-buster: reusing one
+                # name would let the browser show the previous run's frame.
+                fname = "pixaroma_outpaint_base_%s.png" % uuid.uuid4().hex[:12]
+                pils[0].save(os.path.join(temp_dir, fname), "PNG", optimize=False)
+                ui["pixaroma_outpaint_base"] = [
+                    {"filename": fname, "subfolder": "", "type": "temp"}
+                ]
+        except Exception as e:
+            # A preview is never worth failing a real run over.
+            print("[Outpaint Pixaroma] base preview stash failed:", e)
+
+        # Everything in ui must be strict-JSON-safe. One NaN and the frontend's
+        # JSON.parse of the whole websocket message throws, silently dropping
+        # every other node's payload along with this one. Only plain strings
+        # reach it here, so there is nothing to sanitise.
+        return {"ui": ui, "result": (out, int(out_w), int(out_h))}
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaOutpaint": PixaromaOutpaint}
