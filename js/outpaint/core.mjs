@@ -153,6 +153,28 @@ export function padsForRatio(srcW, srcH, ratioText, anchor) {
   return { ...none, top: half, bottom: add - half };
 }
 
+// Mirrors _parse_state's per-side coercion: max(0, min(int(v), _MAX_PAD)).
+// This is a SEPARATE clamp from padPx above, and both are needed: Python clamps
+// the STATE on the way in (here, to _MAX_PAD) and the PAD on the way out (padPx,
+// to >= 0). A preview that skipped this one would happily paint a 99999px band
+// that the run is about to cut down to 8192.
+export function sidePad(v) {
+  const n = Number(v);
+  return isFinite(n) ? Math.max(0, Math.min(Math.trunc(n), MAX_PAD)) : 0;
+}
+
+// The four pads a run will apply, whichever mode is live. Mirrors outpaint()'s
+// own dispatch: ratio mode derives them from the shape, By side reads them off
+// the state. Lives here rather than in the face because it is the thing that
+// decides where the green goes - if it drifts from Python, the preview lies.
+export function padsForState(st, srcW, srcH) {
+  if (st && st.mode === "ratio") return padsForRatio(srcW, srcH, st.ratio, st.anchor);
+  return {
+    top: sidePad(st && st.top), bottom: sidePad(st && st.bottom),
+    left: sidePad(st && st.left), right: sidePad(st && st.right),
+  };
+}
+
 // Mirrors outpaint(): pad, then cap if a limit is set. Binary MP (1024*1024),
 // matching ComfyUI's ImageScaleToTotalPixels and _apply_max_mp.
 //
