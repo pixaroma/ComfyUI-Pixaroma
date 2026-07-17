@@ -1,7 +1,7 @@
 """
 Outpaint Pixaroma - pad an image with a solid colour for an outpaint LoRA.
 
-Pads each side with `color` (green by default), then optionally scales the
+Pads each side with `color` (mid grey by default), then optionally scales the
 padded result to a megapixel limit, and reports the final size. Replaces
 Load Image's Pad mode + Scale Image to Total Pixels + Get Image Size.
 
@@ -33,7 +33,11 @@ DEFAULT_STATE = {
     "anchor": "centre",
     "top": 0, "bottom": 0, "left": 0, "right": 0,
     "limit": 0,
-    "color": "#00ff00",
+    # Mid grey, not green: a LoRA trained on a green fill learns the colour as
+    # well as the shape and bleeds a green cast over the WHOLE generated image
+    # (reported from real use, 2026-07-17). Neutral grey has no hue to bleed.
+    # MUST match js/outpaint/core.mjs's DEFAULT_STATE.
+    "color": "#808080",
     "snap": 0,
     "collapsed": False,
 }
@@ -181,8 +185,10 @@ class PixaromaOutpaint:
         "Pads an image with a solid colour so an outpainting model can fill "
         "the new area in, then optionally scales the result down to a "
         "megapixel limit and reports the final size.\n\n"
-        "Green is the default fill because outpainting LoRAs are usually "
-        "trained to replace a solid green area, but any colour works.\n\n"
+        "Mid grey is the default fill. Any colour works, but a strongly "
+        "coloured fill can tint the whole generated image, because a model "
+        "trained to replace it learns the colour as well as the shape. Grey "
+        "is neutral, so it has no hue to bleed.\n\n"
         "To ratio grows the image to a target shape and the anchor decides "
         "which side the new space appears on. By side lets you set an exact "
         "number of pixels per edge. The megapixel limit is optional: with it "

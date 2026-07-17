@@ -66,7 +66,31 @@ const FLOOR_CAP = 460;
 // ── preview ────────────────────────────────────────────────────────────────
 const PREVIEW_INSET = 6;   // breathing room around the composition
 const BAND_TEXT_MIN = 24;  // below this the band cannot hold text, so it hops out
-const BAND_INK = "#0a3d0a"; // near-black ON the green: #00ff00 is far too bright for white
+
+// The ink for a pad number sitting ON a band. The fill is a USER setting, so a
+// fixed colour cannot work: #0a3d0a was tuned for bright green and would be
+// nearly invisible on a dark fill. Pick whichever of near-black / near-white
+// actually contrasts more, by WCAG relative luminance.
+//
+// A simple luminance THRESHOLD (the pickInk rule the node titles use, white
+// below 150) gets the important case wrong: mid grey #808080 - now the default -
+// lands at 128 and would take white, which is the WORSE choice there (3.95:1
+// against black's 5.32:1). Measuring the contrast picks black, and keeps working
+// for any colour the user chooses.
+function relLuminance(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+  if (!m) return 0.5; // unparseable: treat as mid, so neither ink is claimed
+  const n = parseInt(m[1], 16);
+  const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+  return 0.2126 * lin((n >> 16) & 255) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
+}
+
+function bandInk(fill) {
+  const L = relLuminance(fill);
+  const vsBlack = (L + 0.05) / 0.05;
+  const vsWhite = 1.05 / (L + 0.05);
+  return vsBlack >= vsWhite ? "#0f0f0f" : "#ffffff";
+}
 
 // ── source image ───────────────────────────────────────────────────────────
 // Is anything wired in? Kept separate from the picture itself, because the two
@@ -263,6 +287,15 @@ function renderModeRow(node, host) {
 
 function renderRatioRow(node, host) {
   const st = readState(node);
+
+  // By side mode ignores the ratio entirely - both engines branch on the mode
+  // and never read it there - so these chips would do nothing at all: click 3:2
+  // and the node does not move. Hide them, exactly as the Add space row already
+  // hides itself, rather than leaving dead controls on the face. The chosen
+  // ratio survives in state, so switching back to To ratio restores it.
+  host.style.display = st.mode === "ratio" ? "" : "none";
+  if (st.mode !== "ratio") return;
+
   // st.ratios is written by the settings task; fall back until it exists.
   const ratios = Array.isArray(st.ratios) && st.ratios.length ? st.ratios : DEFAULT_RATIOS;
   for (const r of ratios) {
@@ -400,25 +433,27 @@ function pill(ctx, text, cx, cyMid) {
   ctx.fillStyle = "rgba(0,0,0,.72)";
   roundRect(ctx, cx - w / 2, cyMid - PILL_H / 2, w, PILL_H, 3);
   ctx.fill();
-  ctx.fillStyle = "#eaffea";
+  // Neutral, not tinted: this sits on the PHOTO behind its own dark pill, so it
+  // has nothing to do with the fill colour and must not carry its hue.
+  ctx.fillStyle = "#f0f0f0";
   fillTextVCenter(ctx, text, cx, cyMid);
 }
 
 // One pad number. A band thick enough to hold text gets it ON the green in
 // near-black; a thin one cannot, so the number hops just inside the image on a
 // pill - which is what keeps a 32px pad readable instead of clipped to a smear.
-function bandNumber(ctx, px, thick, onCx, onCy, offCx, offCy) {
+function bandNumber(ctx, px, thick, onCx, onCy, offCx, offCy, ink) {
   if (px <= 0) return;
   const text = String(px);
   if (thick >= BAND_TEXT_MIN) {
-    ctx.fillStyle = BAND_INK;
+    ctx.fillStyle = ink;
     fillTextVCenter(ctx, text, onCx, onCy);
   } else {
     pill(ctx, text, offCx, offCy);
   }
 }
 
-function drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh) {
+function drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh, ink) {
   ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
   ctx.textAlign = "center";
   const midX = ox + dw / 2;
@@ -427,13 +462,13 @@ function drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh) {
   const l = pads.left * scale, r = pads.right * scale;
 
   bandNumber(ctx, pads.top, t, midX, oy + t / 2,
-    midX, oy + t + PILL_GAP + PILL_H / 2);
+    midX, oy + t + PILL_GAP + PILL_H / 2, ink);
   bandNumber(ctx, pads.bottom, b, midX, oy + dh - b / 2,
-    midX, oy + dh - b - PILL_GAP - PILL_H / 2);
+    midX, oy + dh - b - PILL_GAP - PILL_H / 2, ink);
   bandNumber(ctx, pads.left, l, ox + l / 2, midY,
-    ox + l + PILL_GAP + pillW(ctx, String(pads.left)) / 2, midY);
+    ox + l + PILL_GAP + pillW(ctx, String(pads.left)) / 2, midY, ink);
   bandNumber(ctx, pads.right, r, ox + dw - r / 2, midY,
-    ox + dw - r - PILL_GAP - pillW(ctx, String(pads.right)) / 2, midY);
+    ox + dw - r - PILL_GAP - pillW(ctx, String(pads.right)) / 2, midY, ink);
 }
 
 // The truth, as against the picture: after a megapixel cap the real output is
@@ -510,7 +545,7 @@ function renderPreview(node) {
   ctx.lineWidth = 1;
   ctx.strokeRect(ox + 0.5, oy + 0.5, Math.max(0, dw - 1), Math.max(0, dh - 1));
 
-  drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh);
+  drawBandNumbers(ctx, pads, scale, ox, oy, dw, dh, bandInk(st.color));
   drawSizeBadge(ctx, cssW, cssH, finalSize(src.w, src.h, pads, st.limit, st.snap));
 }
 

@@ -31,7 +31,11 @@ export const DEFAULT_STATE = {
   anchor: "centre",
   top: 0, bottom: 0, left: 0, right: 0,
   limit: 0,
-  color: "#00ff00",
+  // Mid grey, not green. A LoRA trained on a green fill learns the colour as
+  // well as the shape, and bleeds a green cast over the WHOLE generated image
+  // (reported from real use, 2026-07-17). Neutral grey has no hue to bleed.
+  // MUST match node_outpaint.py's DEFAULT_STATE - the node reads Python's copy.
+  color: "#808080",
   snap: 0,
   collapsed: false,
 };
