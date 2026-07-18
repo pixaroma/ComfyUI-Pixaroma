@@ -24,6 +24,7 @@ import {
   ACCENT_SETTING, BRAND, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
   anchorAxis, finalSize, padsForState, ratiosOf, readState, remapAnchor, writeState,
 } from "./core.mjs";
+import { openPixaromaColorPickerPopup, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
 import { openOutpaintSettings, closeOutpaintSettingsFor } from "./settings.mjs";
 
 // The node's accent: its own saved colour, else the global default, else BRAND.
@@ -222,14 +223,19 @@ function injectCSS() {
     .pix-op-chip.dim:hover { border-color:#444; color:#aaa; }
     .pix-op-chip.dim.on:hover { border-color:var(--pix-op-acc,${BRAND}); color:#fff; }
 
-    /* Chevron and gear: fixed, so the mode chips get every spare pixel. */
-    .pix-op-sq { flex:0 0 auto; width:26px; padding:6px 0; }
+    /* Chevron and gear: fixed, so the mode chips get every spare pixel. The
+       14px glyph (larger than the 11px chip text) matches the gear on Sizes
+       Pixaroma, so the settings button reads the same across the suite. */
+    .pix-op-sq { flex:0 0 auto; width:30px; padding:6px 0; font-size:14px; line-height:1; }
     .pix-op-alabel { flex:0 0 auto; display:flex; align-items:center;
       color:#8a8a8a; padding-right:1px; white-space:nowrap; }
 
-    /* A readout of the fill colour, not a button (its picker is a later task). */
+    /* The fill-colour swatch. Clickable on the limit row (opens the fill
+       picker); a plain readout in the folded summary. */
     .pix-op-swatch { flex:0 0 auto; width:26px; border-radius:5px;
       border:1px solid #444; cursor:default; }
+    .pix-op-swatch-btn { cursor:pointer; }
+    .pix-op-swatch-btn:hover { border-color:var(--pix-op-acc,${BRAND}); }
 
     /* Nodes 2.0 only - in legacy the same pixels are painted on the node body,
        so this is display:none there and measureFloor skips it. */
@@ -424,11 +430,34 @@ function renderLimitRow(node, host) {
     c.onclick = () => apply(node, { limit: v });
     host.appendChild(c);
   }
+  // The fill colour, and the one control that changes it. This is the colour the
+  // outpaint model repaints, NOT the accent - a picker here is deliberately
+  // separate from the settings panel's Button colour, and uses the full palette
+  // (neutrals AND vibrants) because a LoRA might want pure green, white or black.
   const sw = document.createElement("div");
-  sw.className = "pix-op-swatch";
+  sw.className = "pix-op-swatch pix-op-swatch-btn";
   sw.style.background = st.color;
-  sw.title = "Fill colour: " + st.color;
+  sw.title = "Fill colour (click to change): " + st.color;
+  sw.onclick = () => openFillPicker(node, sw);
   host.appendChild(sw);
+}
+
+// The node-face fill picker. Separate handle from the settings panel's accent
+// picker so neither closing the other; both are closed on node removal. Reset
+// goes to the neutral-grey default, since that is the safe no-tint fill.
+function openFillPicker(node, anchor) {
+  try { node._pixOpFillPicker?.close(); } catch (_e) { /* already gone */ }
+  node._pixOpFillPicker = openPixaromaColorPickerPopup(anchor, {
+    initialColor: readState(node).color,
+    swatches: PIXAROMA_PALETTE,
+    wide: true,
+    resetColor: DEFAULT_STATE.color, // #808080
+    onPick: (c) => {
+      writeState(node, { color: c || DEFAULT_STATE.color });
+      renderFace(node); // recolours the swatch AND the preview bands + ink
+      node.setDirtyCanvas?.(true, true);
+    },
+  });
 }
 
 // ── preview drawing ────────────────────────────────────────────────────────
@@ -1119,9 +1148,11 @@ app.registerExtension({
       if (this._pixOpRaf) cancelAnimationFrame(this._pixOpRaf);
       this._pixOpRaf = null;
       this._pixOpDrag = null;
-      // Close THIS node's settings panel if it was open, or its picker's window
-      // listeners would outlive the node.
+      // Close THIS node's settings panel and fill picker if either was open, or
+      // their window listeners would outlive the node.
       closeOutpaintSettingsFor(this);
+      try { this._pixOpFillPicker?.close(); } catch (_e) { /* already gone */ }
+      this._pixOpFillPicker = null;
       return _origRemoved?.apply(this, arguments);
     };
   },

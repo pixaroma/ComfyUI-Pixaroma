@@ -18,6 +18,50 @@
 import { registerNodeHelp } from "../shared/index.mjs";
 
 const HELP = {
+  "PixaromaOutpaint": {
+    title: "Outpaint Pixaroma",
+    tagline: "Add a solid-colour border around your image so an outpainting model can paint new scenery into it.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Outpainting means extending a picture beyond its edges. This node makes the room for that: it pads your image with a plain fill colour, and an outpainting model then replaces that fill by continuing the scene into it.\n\nThe fill is neutral grey by default. Grey is used because a strongly coloured fill can tint the whole result - a model trained to replace green tends to leave a green cast everywhere. You can change the fill by clicking the colour swatch, but grey is the safe choice.",
+      },
+      {
+        heading: "The two modes",
+        defs: [
+          ["To ratio", "Grow the image to a target shape, like 16:9 or 3:2. The node works out how much fill to add. Pick which ratios appear in the settings (the gear)."],
+          ["By side", "Add an exact number of pixels to a chosen edge. Drag a green edge in the preview to set it by hand; this also switches you to By side automatically."],
+        ],
+      },
+      {
+        heading: "Add space: which side gets the fill",
+        body: "In To ratio mode, only one direction ever grows. The Add space row picks the side the new fill goes on:",
+        bullets: [
+          "`Left` / `Right` (or `Top` / `Bottom`) put all the new fill on that one side, so the original image sits against the opposite edge.",
+          "`Both` splits the new space evenly across both sides, keeping the image centered.",
+          "If the ratio already matches your image, nothing grows and the row is greyed out.",
+        ],
+      },
+      {
+        heading: "Limit and the size cards",
+        body: "The limit chips optionally shrink the padded result to a megapixel target so it stays a sane size to generate. `Off` means no scaling at all - the output is exactly the padded size.\n\nThe INPUT and OUTPUT cards show the real sizes, and the OUTPUT card turns orange when the size changes. The badge on the preview always shows the true final numbers.",
+      },
+      {
+        heading: "Preview: picture vs badge",
+        body: "The preview draws the composition - your image with the fill bands around it, at the same proportions the output will have. After a megapixel limit the real output is smaller than the picture looks, so trust the badge for the true size. The picture shows the shape; the badge shows the numbers.\n\nBehind a Load Image the preview is live right away. Behind a generated image (a VAE Decode), it appears after one Run.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "Your image with the fill border added (and scaled to the limit, if one is set)."],
+          ["width", "The final width in pixels - the badge number."],
+          ["height", "The final height in pixels."],
+        ],
+      },
+    ],
+    footer: "This node only adds the fill area. The actual outpainting is done by your model or LoRA, which usually needs its own trigger words in the prompt to know it should fill the solid area - set those up with your prompt and loader nodes as that model requires.",
+  },
+
   "PixaromaSeed": {
     title: "Seed Pixaroma",
     tagline: "A seed source with one-click random and fixed control - wire it into any sampler's seed input.",
