@@ -15,7 +15,8 @@ export const STATE_VERSION = 1;
 // has never touched it. 0 = Off (no scaling) and is always present.
 export const LIMITS = [0, 1, 1.5, 2];
 export const MAX_MP = 64;      // _apply_max_mp's ceiling, mirrored from Python
-export const MAX_LIMITS = 8;   // more chips than this wrap the row awkwardly
+export const MAX_LIMITS = 6;   // 6 chips + the fill swatch fit the row on one line
+                               // at the node's width; more would wrap and grow it
 export const SNAPS = [0, 8, 16, 32, 64];
 export const RATIO_LIBRARY = [
   "1:1", "4:5", "5:4", "3:4", "4:3", "2:3",
