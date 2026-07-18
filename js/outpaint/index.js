@@ -21,9 +21,23 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
-  BRAND, DEFAULT_RATIOS, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
-  anchorAxis, finalSize, padsForState, readState, remapAnchor, writeState,
+  ACCENT_SETTING, BRAND, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
+  anchorAxis, finalSize, padsForState, ratiosOf, readState, remapAnchor, writeState,
 } from "./core.mjs";
+import { openOutpaintSettings, closeOutpaintSettingsFor } from "./settings.mjs";
+
+// The node's accent: its own saved colour, else the global default, else BRAND.
+// Lives here rather than core.mjs because it reads app.ui.settings, and core is
+// kept app-free so it stays unit-testable.
+function accentOf(node) {
+  const st = readState(node);
+  if (st.accent) return st.accent;
+  try {
+    const g = app.ui?.settings?.getSettingValue(ACCENT_SETTING);
+    if (g) return g;
+  } catch (_e) { /* settings not ready */ }
+  return BRAND;
+}
 
 const CLASS = "PixaromaOutpaint";
 const HIDDEN_INPUT = "OutpaintState"; // must match node_outpaint.py's hidden input
@@ -280,9 +294,21 @@ function renderModeRow(node, host) {
     host.appendChild(c);
   }
 
-  const gear = chip("⚙", false);
-  gear.classList.add("pix-op-sq", "dim"); // wired in the settings task
+  const gear = chip("⚙", false, "Choose ratios and the accent colour");
+  gear.classList.add("pix-op-sq");
+  gear.onclick = () => openSettings(node);
   host.appendChild(gear);
+}
+
+// Both ways into the settings panel - the gear and the right-click item - come
+// through here, so the single-open guard and the live-refresh wiring live in one
+// place. onChange repaints the whole face (a ratio change alters the chip row,
+// an accent change recolours everything).
+function openSettings(node) {
+  openOutpaintSettings(node, {
+    accentOf,
+    onChange: () => { renderFace(node); node.setDirtyCanvas?.(true, true); },
+  });
 }
 
 function renderRatioRow(node, host) {
@@ -296,9 +322,8 @@ function renderRatioRow(node, host) {
   host.style.display = st.mode === "ratio" ? "" : "none";
   if (st.mode !== "ratio") return;
 
-  // st.ratios is written by the settings task; fall back until it exists.
-  const ratios = Array.isArray(st.ratios) && st.ratios.length ? st.ratios : DEFAULT_RATIOS;
-  for (const r of ratios) {
+  // The chosen set (settings panel), clamped to the library and 1..6.
+  for (const r of ratiosOf(node)) {
     const c = chip(r, st.ratio === r, "Grow the image to " + r);
     c.onclick = () => apply(node, { ratio: r });
     host.appendChild(c);
@@ -586,6 +611,7 @@ function cardsInfo(node) {
 // "here" is and this stays renderer-agnostic.
 function paintCardsInto(ctx, node, leftPad, midY, pairW) {
   const info = cardsInfo(node);
+  const acc = accentOf(node); // the OUTPUT card follows the node's accent
   const fam = "ui-sans-serif, system-ui, sans-serif";
   ctx.save();
   ctx.textBaseline = "middle";
@@ -604,7 +630,7 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
   const card = (x, label, w, h, accent) => {
     roundRect(ctx, x + 0.5, y + 0.5, cardW - 1, CARDS_H - 1, 5);
     ctx.fillStyle = "#1d1d1d"; ctx.fill();
-    ctx.strokeStyle = accent ? BRAND : "#444"; ctx.lineWidth = 1; ctx.stroke();
+    ctx.strokeStyle = accent ? acc : "#444"; ctx.lineWidth = 1; ctx.stroke();
     const cx = x + cardW / 2;
     ctx.textAlign = "center";
     ctx.font = "9px " + fam;
@@ -612,7 +638,7 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
     ctx.textBaseline = "middle";
     ctx.fillText(label, cx, y + 12, cardW - 8);
     ctx.font = "bold 11px " + fam;
-    ctx.fillStyle = accent ? BRAND : "#ccc";
+    ctx.fillStyle = accent ? acc : "#ccc";
     // Digits again, so centre on the real glyph box (see fillTextVCenter).
     fillTextVCenter(ctx, w + " × " + h, cx, y + 26);
   };
@@ -622,7 +648,7 @@ function paintCardsInto(ctx, node, leftPad, midY, pairW) {
   card(leftPad + cardW + CARD_GAP, "OUTPUT", info.outW, info.outH, info.changed);
 
   const ax = leftPad + cardW + CARD_GAP / 2;
-  ctx.strokeStyle = info.changed ? BRAND : "#6a6a6a";
+  ctx.strokeStyle = info.changed ? acc : "#6a6a6a";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(ax - 2.5, midY - 4);
@@ -776,7 +802,7 @@ function renderFace(node) {
   const ui = node._pixOpUI;
   if (!ui) return;
   const inner = ui.inner;
-  inner.style.setProperty("--pix-op-acc", BRAND); // the settings task makes this per-node
+  inner.style.setProperty("--pix-op-acc", accentOf(node)); // per-node, from settings
   // Rebuild the ROWS only. The cards and preview elements are persistent: they
   // own canvases (and the preview a ResizeObserver and the drag listeners), so
   // recreating them on every chip click would leak an observer per click and
@@ -938,6 +964,17 @@ function setupNode(node) {
 app.registerExtension({
   name: "Pixaroma.Outpaint",
 
+  // The global default accent, so a fresh node without its own colour has one.
+  // Per-node overrides live in state; accentOf reads this only as the fallback.
+  settings: [{
+    id: ACCENT_SETTING,
+    name: "Default button colour",
+    type: "text",
+    defaultValue: BRAND,
+    tooltip: "The accent for new Outpaint nodes. Each node can override it in its own settings.",
+    category: ["👑 Pixaroma", "Outpaint"],
+  }],
+
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== CLASS) return;
     if (nodeType.prototype._pixOpPatched) return; // hot-reload guard
@@ -996,8 +1033,18 @@ app.registerExtension({
       if (this._pixOpRaf) cancelAnimationFrame(this._pixOpRaf);
       this._pixOpRaf = null;
       this._pixOpDrag = null;
+      // Close THIS node's settings panel if it was open, or its picker's window
+      // listeners would outlive the node.
+      closeOutpaintSettingsFor(this);
       return _origRemoved?.apply(this, arguments);
     };
+  },
+
+  // Right-click -> a second way into the same panel. The new context-menu API
+  // (Vue Compat #20), NOT the deprecated getNodeMenuOptions monkey-patch.
+  getNodeMenuItems(node) {
+    if (node?.comfyClass !== CLASS) return [];
+    return [null, { content: "⚙ Outpaint settings", callback: () => openSettings(node) }];
   },
 
   nodeCreated(node) {

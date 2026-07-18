@@ -18,6 +18,11 @@ export const RATIO_LIBRARY = [
 ];
 export const DEFAULT_RATIOS = ["1:1", "4:5", "3:2", "16:9", "9:16"];
 export const BRAND = "#f66744";
+export const ACCENT_SETTING = "Pixaroma.Outpaint.AccentColor";
+// The settings panel lets the user pick 1 to 6 chips from RATIO_LIBRARY. Fewer
+// than one would leave the To ratio row empty; more than six would wrap the row.
+export const MIN_RATIOS = 1;
+export const MAX_RATIOS = 6;
 
 // Mirrors _MAX_PAD in node_outpaint.py, which clamps every per-side value while
 // parsing state. Exported so the UI can clamp its own fields to the same ceiling:
@@ -220,4 +225,37 @@ export function writeState(node, patch) {
   if (!node.properties) node.properties = {};
   node.properties[STATE_PROP] = JSON.stringify(next);
   return next;
+}
+
+// The chips the To ratio row shows: the node's own set if one was saved, else
+// the DEFAULT_RATIOS fallback. Filtered to the library and clamped to 1..6, so a
+// hand-edited state cannot make the row show an unknown ratio or overflow.
+// (accentOf is NOT here - it reads app.ui.settings, and this file is kept
+// app-free so it stays unit-testable; index.js owns that one.)
+export function ratiosOf(node) {
+  const st = readState(node);
+  const chosen = Array.isArray(st.ratios)
+    ? st.ratios.filter((r) => RATIO_LIBRARY.includes(r))
+    : null;
+  const list = chosen && chosen.length ? chosen : DEFAULT_RATIOS;
+  return list.slice(0, MAX_RATIOS);
+}
+
+// Toggle one library ratio in a chosen set, honouring the 1..6 bounds. Returns
+// the new array, or null when the change is refused (last one off, or a seventh
+// on) so the caller can flash a message instead of silently doing nothing.
+export function toggleRatio(current, ratio) {
+  if (!RATIO_LIBRARY.includes(ratio)) return null;
+  const set = Array.isArray(current) && current.length
+    ? current.filter((r) => RATIO_LIBRARY.includes(r))
+    : DEFAULT_RATIOS.slice();
+  const at = set.indexOf(ratio);
+  if (at >= 0) {
+    if (set.length <= MIN_RATIOS) return null; // never empty the row
+    set.splice(at, 1);
+    return set;
+  }
+  if (set.length >= MAX_RATIOS) return null;   // never overflow it
+  // Keep library order so the row reads the same however chips were toggled.
+  return RATIO_LIBRARY.filter((r) => set.includes(r) || r === ratio);
 }
