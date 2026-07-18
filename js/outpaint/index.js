@@ -278,20 +278,47 @@ function apply(node, patch) {
   node.setDirtyCanvas?.(true, true);
 }
 
+function limitLabel(v) {
+  return v === 0 ? "Off" : (v === 1 ? "1 MP" : String(v));
+}
+
 function renderModeRow(node, host) {
   const st = readState(node);
+  const folded = !!st.collapsed;
 
-  const chevron = chip("▾", false);
-  chevron.classList.add("pix-op-sq", "dim"); // wired in the fold task
+  // ▾ open, ▸ folded. Always live - the one control fold must never hide.
+  const chevron = chip(folded ? "▸" : "▾", false,
+    folded ? "Expand the settings" : "Collapse to the picture");
+  chevron.classList.add("pix-op-sq");
+  chevron.onclick = () => toggleFold(node);
   host.appendChild(chevron);
 
-  for (const [value, text, tip] of [
-    ["ratio", "To ratio", "Grow the image to a target shape"],
-    ["sides", "By side", "Add an exact number of pixels per edge"],
-  ]) {
-    const c = chip(text, st.mode === value, tip);
-    c.onclick = () => apply(node, { mode: value });
-    host.appendChild(c);
+  if (folded) {
+    // A summary, not a blank: the folded node still says what it is set to. The
+    // chips are read-only here - the way to change them is to expand. Show the
+    // active shape (the ratio, or "By side"), the limit, and the fill swatch.
+    const shape = st.mode === "ratio" ? st.ratio : "By side";
+    const sc = chip(shape, true, "Current: " + (st.mode === "ratio" ? "grow to " + shape : "add by side"));
+    sc.style.cursor = "default";
+    host.appendChild(sc);
+    const lc = chip(limitLabel(st.limit), st.limit !== 0, st.limit === 0
+      ? "No megapixel limit" : "Capped at " + st.limit + " MP");
+    lc.style.cursor = "default";
+    host.appendChild(lc);
+    const sw = document.createElement("div");
+    sw.className = "pix-op-swatch";
+    sw.style.background = st.color;
+    sw.title = "Fill colour: " + st.color;
+    host.appendChild(sw);
+  } else {
+    for (const [value, text, tip] of [
+      ["ratio", "To ratio", "Grow the image to a target shape"],
+      ["sides", "By side", "Add an exact number of pixels per edge"],
+    ]) {
+      const c = chip(text, st.mode === value, tip);
+      c.onclick = () => apply(node, { mode: value });
+      host.appendChild(c);
+    }
   }
 
   const gear = chip("⚙", false, "Choose ratios and the accent colour");
@@ -811,15 +838,74 @@ function renderFace(node) {
     if (el !== ui.prev && el !== ui.cards) el.remove();
   }
   renderModeRow(node, row(inner));
-  renderRatioRow(node, row(inner));
-  renderAnchorRow(node, row(inner));
-  renderLimitRow(node, row(inner));
+  // Folded drops the three control rows and keeps the mode summary + cards +
+  // preview. The mode row above already rendered its summary form; skipping the
+  // rest is the whole of the collapse. renderFace reads collapsed on every path
+  // including onConfigure, so the fold shows on load with no extra step.
+  if (!readState(node).collapsed) {
+    renderRatioRow(node, row(inner));
+    renderAnchorRow(node, row(inner));
+    renderLimitRow(node, row(inner));
+  }
   // Re-assert the order: cards on top, preview last. Both calls MOVE the
   // existing child rather than adding a second one.
   inner.insertBefore(ui.cards, inner.firstChild);
   inner.appendChild(ui.prev);
   renderPreview(node);
   renderCardsCanvas(node);
+}
+
+// ── fold ───────────────────────────────────────────────────────────────────
+// A user action only. Folding remembers the open height so expanding restores
+// the same big preview rather than snapping to the bare floor; expanding reads
+// it back. Both writes are user-driven, so they never dirty a load (Vue Compat
+// #18). renderFace does the visual half; this does the height half.
+function toggleFold(node) {
+  const st = readState(node);
+  const collapsed = !st.collapsed;
+  writeState(node, collapsed
+    ? { collapsed: true, openH: node.size[1] } // stash before we shrink
+    : { collapsed: false });
+  renderFace(node);
+  fitFoldHeight(node);
+  node.setDirtyCanvas?.(true, true);
+}
+
+// Resize to match the fold state. NEVER on the load path (the saved height
+// already fits the saved fold state; writing size there reopens the workflow
+// "modified"), and never while LiteGraph title-collapsed (every child reads
+// invisible, so a measure returns just the chrome). setSize whole-array in both:
+// writing node.size[1] bypasses the Vue layout store, which only bridges the
+// size SETTER.
+function fitFoldHeight(node) {
+  if (isGraphLoading() || node.flags?.collapsed) return;
+  const st = readState(node);
+  const w = node.size[0];
+
+  // Expanding: go straight back to the height the node had before it folded, so
+  // the preview returns to its old big size rather than the bare floor.
+  if (!st.collapsed) {
+    node.setSize?.([w, st.openH || DEFAULT_H]);
+    node.setDirtyCanvas?.(true, true);
+    return;
+  }
+
+  // Folding: shrink to the content floor. A frame later so the hidden rows are
+  // actually gone, then adjust node.size by the deficit between the floor
+  // (measureFloor counts the preview at its MINIMUM, not the flex-grown height it
+  // shows for that one frame) and the current root height. This is snapFresh's
+  // deficit maths run bidirectionally, so it is renderer-agnostic - it reads the
+  // real root in whichever renderer instead of trusting computeSize (legacy
+  // chrome only) or a --node-height:0 probe (which collapses the preview to 0
+  // and would fold too short).
+  requestAnimationFrame(() => {
+    if (!node.graph) return;
+    const ui = node._pixOpUI;
+    if (!ui || !ui.root.isConnected || ui.root.clientWidth === 0) return;
+    const deficit = measureFloor(node) - ui.root.clientHeight;
+    node.setSize?.([w, Math.round(node.size[1] + deficit)]);
+    node.setDirtyCanvas?.(true, true);
+  });
 }
 
 // ── height ─────────────────────────────────────────────────────────────────
@@ -1044,7 +1130,12 @@ app.registerExtension({
   // (Vue Compat #20), NOT the deprecated getNodeMenuOptions monkey-patch.
   getNodeMenuItems(node) {
     if (node?.comfyClass !== CLASS) return [];
-    return [null, { content: "⚙ Outpaint settings", callback: () => openSettings(node) }];
+    const folded = !!readState(node).collapsed;
+    return [
+      null,
+      { content: folded ? "▸ Expand" : "▾ Collapse", callback: () => toggleFold(node) },
+      { content: "⚙ Outpaint settings", callback: () => openSettings(node) },
+    ];
   },
 
   nodeCreated(node) {
