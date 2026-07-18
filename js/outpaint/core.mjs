@@ -10,7 +10,12 @@
 
 export const STATE_PROP = "outpaintState";
 export const STATE_VERSION = 1;
+// The DEFAULT megapixel buttons. The settings panel lets the user manage their
+// own set now (add custom, remove), so this is only the fallback for a node that
+// has never touched it. 0 = Off (no scaling) and is always present.
 export const LIMITS = [0, 1, 1.5, 2];
+export const MAX_MP = 64;      // _apply_max_mp's ceiling, mirrored from Python
+export const MAX_LIMITS = 8;   // more chips than this wrap the row awkwardly
 export const SNAPS = [0, 8, 16, 32, 64];
 export const RATIO_LIBRARY = [
   "1:1", "4:5", "5:4", "3:4", "4:3", "2:3",
@@ -193,21 +198,29 @@ export function padsForState(st, srcW, srcH) {
 // _apply_pad, so an oversized pad is capped BEFORE the megapixel factor is
 // measured against it.
 export function finalSize(srcW, srcH, pads, limit, snap) {
+  // Coerce exactly as Python's _parse_state does, so the preview never disagrees
+  // with the run over an oddly-typed value: limit is any finite [0, MAX_MP] else
+  // Off (Number() so the string "0" reads as 0, not a truthy "on"); snap must be
+  // one of the fixed steps else no snap.
+  const lim = Number(limit);
+  const okLim = isFinite(lim) && lim > 0 && lim <= MAX_MP;
+  const sn = SNAPS.includes(Number(snap)) ? Number(snap) : 0;
+
   let w = srcW + padPx(pads?.left) + padPx(pads?.right);
   let h = srcH + padPx(pads?.top) + padPx(pads?.bottom);
 
-  [w, h] = snapTo(w, h, limit ? 0 : snap);
+  [w, h] = snapTo(w, h, okLim ? 0 : sn);
   [w, h] = clampDims(w, h);
-  if (!limit) return { w, h };
+  if (!okLim) return { w, h };
 
-  const target = Math.max(0.01, Math.min(limit, 64));
+  const target = Math.max(0.01, Math.min(lim, MAX_MP));
   const targetPx = target * 1024 * 1024;
   const cur = w * h;
   let factor = cur > 0 ? Math.sqrt(targetPx / cur) : 1;
   factor = Math.min(factor, 8);
   w = roundHalfUp(w * factor);
   h = roundHalfUp(h * factor);
-  [w, h] = snapTo(w, h, snap);
+  [w, h] = snapTo(w, h, sn);
   [w, h] = clampDims(w, h);
   return { w, h };
 }
@@ -258,4 +271,59 @@ export function toggleRatio(current, ratio) {
   if (set.length >= MAX_RATIOS) return null;   // never overflow it
   // Keep library order so the row reads the same however chips were toggled.
   return RATIO_LIBRARY.filter((r) => set.includes(r) || r === ratio);
+}
+
+// ── megapixel buttons (a managed list, unlike the fixed-library ratios) ──────
+// MP is a continuous quantity, so there is no library to toggle against - the
+// user builds their own set with add/remove/custom. A value is a number of
+// megapixels; 0 is Off (no scaling) and is ALWAYS present so the node can never
+// lose its "don't scale" option. Kept to 2 decimals (0.25, 1.3, ...), deduped,
+// sorted ascending (Off first), capped so the row does not overflow.
+function cleanMp(v) {
+  const n = Number(v);
+  if (!isFinite(n) || n < 0 || n > MAX_MP) return null;
+  return Math.round(n * 100) / 100;
+}
+
+function normalizeLimits(list) {
+  const seen = new Set();
+  const out = [];
+  for (const v of (Array.isArray(list) ? list : [])) {
+    const n = cleanMp(v);
+    if (n === null || seen.has(n)) continue;
+    seen.add(n);
+    out.push(n);
+  }
+  if (!seen.has(0)) out.push(0);          // Off is guaranteed
+  out.sort((a, b) => a - b);              // ascending puts 0 first
+  return out.slice(0, MAX_LIMITS);
+}
+
+// The chips the limit row shows: the node's saved set, else the default.
+export function limitsOf(node) {
+  const st = readState(node);
+  const src = Array.isArray(st.limits) && st.limits.length ? st.limits : LIMITS;
+  return normalizeLimits(src);
+}
+
+// Add a custom MP value. Returns the new list, or null when refused (not a valid
+// positive number, a duplicate, or the row is already full) so the caller can
+// say why. 0 cannot be "added" - it is always there.
+export function addLimit(current, value) {
+  const n = cleanMp(value);
+  if (n === null || n === 0) return null;
+  const base = normalizeLimits(Array.isArray(current) && current.length ? current : LIMITS);
+  if (base.includes(n)) return null;                       // duplicate
+  if (base.filter((v) => v > 0).length >= MAX_LIMITS - 1) return null; // full (Off aside)
+  return normalizeLimits([...base, n]);
+}
+
+// Remove an MP value. Off (0) cannot be removed. Returns the new list, or null
+// when nothing changed.
+export function removeLimit(current, value) {
+  const n = cleanMp(value);
+  if (n === null || n === 0) return null;
+  const base = normalizeLimits(Array.isArray(current) && current.length ? current : LIMITS);
+  const next = base.filter((v) => v !== n);
+  return next.length === base.length ? null : next;
 }

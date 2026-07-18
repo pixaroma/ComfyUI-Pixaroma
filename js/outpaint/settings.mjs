@@ -8,9 +8,15 @@ import { app } from "/scripts/app.js";
 import { isVueNodes } from "../shared/nodes2.mjs";
 import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_picker.mjs";
 import {
-  ACCENT_SETTING, BRAND, MAX_RATIOS, RATIO_LIBRARY, SNAPS,
-  ratiosOf, readState, toggleRatio, writeState,
+  ACCENT_SETTING, BRAND, MAX_LIMITS, MAX_MP, MAX_RATIOS, RATIO_LIBRARY, SNAPS,
+  addLimit, limitsOf, ratiosOf, readState, removeLimit, toggleRatio, writeState,
 } from "./core.mjs";
+
+// Same label as the node's limit row (kept local so settings.mjs need not import
+// index.js, which would be circular): "Off" for 0, "N MP" otherwise.
+function mpLabel(v) {
+  return v === 0 ? "Off" : v + " MP";
+}
 
 let _panel = null;
 let _panelNode = null;
@@ -63,6 +69,27 @@ function injectCSS() {
     .pix-opp-msg { font-size:11px; color:var(--acc,${BRAND}); min-height:14px;
       opacity:0; transition:opacity .12s; }
     .pix-opp-msg.show { opacity:1; }
+
+    /* Megapixel buttons: a wrap of list-member chips, each removable (except
+       Off), plus a custom-value add field. Neutral, not accent-filled - these
+       are list members, not a toggle-on state like the ratio grid. */
+    .pix-opp-mrow { display:flex; flex-wrap:wrap; gap:5px; }
+    .pix-opp-mchip { display:inline-flex; align-items:center; gap:5px; box-sizing:border-box;
+      padding:6px 8px; border-radius:5px; background:#1d1d1d; border:1px solid #444;
+      color:#ccc; font:11px 'Segoe UI',sans-serif; white-space:nowrap; }
+    .pix-opp-mchip .mx { color:#8a8a8a; cursor:pointer; font-size:12px; line-height:1;
+      padding:0 1px; border-radius:3px; }
+    .pix-opp-mchip .mx:hover { color:#fff; background:#e0604a; }
+    .pix-opp-add { display:flex; align-items:center; gap:8px; }
+    .pix-opp-add input { flex:1; min-width:0; box-sizing:border-box; background:#161616;
+      border:1px solid #4a4a4a; border-radius:6px; color:#fff; text-align:center;
+      font:13px 'Segoe UI',sans-serif; padding:7px 6px; outline:none; }
+    .pix-opp-add input:focus { border-color:var(--acc,${BRAND}); }
+    .pix-opp-add .unit { flex:0 0 auto; color:#8a8a8a; font-size:11px; }
+    .pix-opp-addbtn { flex:0 0 auto; background:var(--acc,${BRAND}); color:#fff; border:0;
+      border-radius:6px; padding:8px 14px; font:12px 'Segoe UI',sans-serif; cursor:pointer; }
+    .pix-opp-addbtn:hover { filter:brightness(1.08); }
+    .pix-opp-addbtn:disabled { opacity:.4; cursor:default; filter:none; }
 
     .pix-opp-seg { display:flex; gap:4px; }
     .pix-opp-seg button { flex:1; text-align:center; padding:6px 2px; border-radius:5px;
@@ -211,6 +238,16 @@ export function openOutpaintSettings(node, ctx) {
     clearTimeout(msgTimer);
     msgTimer = setTimeout(() => msgEl?.classList.remove("show"), 1600);
   }
+  // Its own line under the megapixel section, so a "can't add" reason shows there
+  // rather than up under the ratio grid.
+  let mMsgEl = null, mMsgTimer = null;
+  function showMMsg(text) {
+    if (!mMsgEl) return;
+    mMsgEl.textContent = text;
+    mMsgEl.classList.add("show");
+    clearTimeout(mMsgTimer);
+    mMsgTimer = setTimeout(() => mMsgEl?.classList.remove("show"), 1600);
+  }
 
   function buildBody() {
     body.innerHTML = "";
@@ -249,6 +286,74 @@ export function openOutpaintSettings(node, ctx) {
     rf.appendChild(msgEl);
     body.appendChild(rf);
 
+    // ── megapixel buttons (a managed list: remove any, add a custom value) ────
+    const mps = limitsOf(node);
+    const mf = el("div", "pix-opp-field");
+    const mlab = el("div", "pix-opp-lab");
+    mlab.append(el("span", null, "Megapixel buttons"),
+                el("span", "cnt", `${mps.length} of ${MAX_LIMITS}`));
+    mf.appendChild(mlab);
+
+    const mrow = el("div", "pix-opp-mrow");
+    for (const v of mps) {
+      const c = el("div", "pix-opp-mchip", mpLabel(v));
+      if (v === 0) {
+        c.title = "Off is always available";
+      } else {
+        c.title = `${mpLabel(v)} - click the x to remove`;
+        const x = el("span", "mx", "×"); // multiplication sign, not a CSS escape
+        x.title = "Remove " + mpLabel(v);
+        x.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const next = removeLimit(mps, v);
+          if (!next) return;
+          const patch = { limits: next };
+          // If the removed button was the active one, fall back to Off so the
+          // node is never left pointing at a limit it no longer shows.
+          if (Number(readState(node).limit) === v) patch.limit = 0;
+          writeState(node, patch);
+          fire();
+          buildBody();
+        });
+        c.appendChild(x);
+      }
+      mrow.appendChild(c);
+    }
+    mf.appendChild(mrow);
+
+    // Add a custom MP value.
+    const addRow = el("div", "pix-opp-add");
+    const inp = el("input");
+    inp.type = "text";
+    inp.placeholder = "e.g. 1.3";
+    inp.title = "A megapixel value to add";
+    inp.addEventListener("keydown", (e) => {
+      e.stopPropagation(); // keep typing out of the canvas shortcuts
+      if (e.key === "Enter") { e.preventDefault(); doAddMp(); }
+    });
+    const addBtn = el("button", "pix-opp-addbtn", "Add");
+    addBtn.disabled = mps.filter((v) => v > 0).length >= MAX_LIMITS - 1;
+    function doAddMp() {
+      const next = addLimit(mps, inp.value);
+      if (!next) {
+        const n = Number(inp.value);
+        showMMsg(!isFinite(n) || n <= 0 ? "Enter a number of megapixels"
+          : n > MAX_MP ? `At most ${MAX_MP} MP`
+          : mps.length >= MAX_LIMITS ? "The row is full" : "Already in the list");
+        return;
+      }
+      writeState(node, { limits: next });
+      inp.value = "";
+      fire();
+      buildBody();
+    }
+    addBtn.addEventListener("click", doAddMp);
+    addRow.append(inp, el("span", "unit", "MP"), addBtn);
+    mf.appendChild(addRow);
+    mMsgEl = el("div", "pix-opp-msg");
+    mf.appendChild(mMsgEl);
+    body.appendChild(mf);
+
     // ── accent ──────────────────────────────────────────────────────────────
     const af = el("div", "pix-opp-field");
     af.appendChild(el("div", "pix-opp-lab", "Button colour"));
@@ -281,6 +386,11 @@ export function openOutpaintSettings(node, ctx) {
   sw.title = "Pick the accent colour";
   sw.style.background = accent();
   sw.addEventListener("click", () => {
+    // Close any already-open picker before opening a new one - a second click
+    // while the first is up would otherwise orphan the first's window listeners
+    // (they only get released when _cpHandle is closed, and the reassign below
+    // loses the old handle). The node-face fill picker does the same.
+    try { _cpHandle?.close(); } catch (_e) { /* already gone */ }
     // The LIVE picker (roomy SV plane + hue + hex + BUTTON_PALETTE, whose
     // swatches keep white button text readable - PIXAROMA_PALETTE's pale ones do
     // not). No transparent tile: an accent is always a colour. onPick fires on

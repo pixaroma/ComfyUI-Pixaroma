@@ -21,8 +21,8 @@ import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, canvasBackingScale, installZoomRepaint, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import {
-  ACCENT_SETTING, BRAND, DEFAULT_STATE, LIMITS, MAX_PAD, STATE_PROP,
-  anchorAxis, finalSize, padsForState, ratiosOf, readState, remapAnchor, writeState,
+  ACCENT_SETTING, BRAND, DEFAULT_STATE, MAX_PAD, STATE_PROP,
+  anchorAxis, finalSize, limitsOf, padsForState, ratiosOf, readState, remapAnchor, writeState,
 } from "./core.mjs";
 import { openPixaromaColorPickerPopup, PIXAROMA_PALETTE } from "../shared/color_picker.mjs";
 import { openOutpaintSettings, closeOutpaintSettingsFor } from "./settings.mjs";
@@ -284,8 +284,10 @@ function apply(node, patch) {
   node.setDirtyCanvas?.(true, true);
 }
 
+// "Off" for 0, otherwise "N MP" - the MP suffix on every value, not just 1, so a
+// custom 1.3 reads as "1.3 MP" rather than a bare "1.3".
 function limitLabel(v) {
-  return v === 0 ? "Off" : (v === 1 ? "1 MP" : String(v));
+  return v === 0 ? "Off" : v + " MP";
 }
 
 function renderModeRow(node, host) {
@@ -422,9 +424,11 @@ function renderAnchorRow(node, host) {
 
 function renderLimitRow(node, host) {
   const st = readState(node);
-  for (const v of LIMITS) {
-    const text = v === 0 ? "Off" : (v === 1 ? "1 MP" : String(v));
-    const c = chip(text, st.limit === v, v === 0
+  // The user's own set of MP buttons (managed in the settings panel), else the
+  // default. Number(st.limit) so a value stored as a string still matches.
+  const active = Number(st.limit);
+  for (const v of limitsOf(node)) {
+    const c = chip(limitLabel(v), v === active, v === 0
       ? "Keep the padded size"
       : "Scale the padded image to " + v + " megapixels");
     c.onclick = () => apply(node, { limit: v });

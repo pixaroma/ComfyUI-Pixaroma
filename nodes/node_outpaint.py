@@ -42,10 +42,27 @@ DEFAULT_STATE = {
     "collapsed": False,
 }
 
-_LIMITS = (0, 1, 1.5, 2)
+_MAX_MP = 64  # _apply_max_mp's ceiling; a custom limit can be anything up to it
 _SNAPS = (0, 8, 16, 32, 64)
 _ANCHORS = ("left", "centre", "right", "top", "middle", "bottom")
 _MAX_PAD = 8192
+_MAX_DIM = 16384  # the engine's _clamp_dims ceiling; padding must not exceed it
+
+
+def _fit_pad(pad_a, pad_b, extent):
+    """Shrink two opposite-side pads so extent + pad_a + pad_b <= _MAX_DIM, the
+    same ceiling _apply_pad's result is clamped to. Keeps the split proportional
+    so the image stays where the anchor put it. Returns (pad_a, pad_b) unchanged
+    when they already fit. This runs BEFORE _apply_pad allocates the canvas, so
+    an absurd pad can no longer OOM the run (see outpaint)."""
+    room = max(0, _MAX_DIM - int(extent))
+    total = int(pad_a) + int(pad_b)
+    if total <= room:
+        return int(pad_a), int(pad_b)
+    if total <= 0:
+        return 0, 0
+    fa = int(pad_a) * room // total
+    return fa, room - fa
 
 
 def _tensor_to_pils(image_t):
@@ -56,9 +73,16 @@ def _tensor_to_pils(image_t):
     arr = image_t.detach().cpu().numpy()
     for i in range(arr.shape[0]):
         frame = np.clip(arr[i] * 255.0 + 0.5, 0, 255).astype(np.uint8)
-        if frame.shape[2] == 4:
-            frame = frame[:, :, :3]
-        elif frame.shape[2] == 1:
+        # ComfyUI's IMAGE is 3- or 4-channel, but a misbehaving upstream node can
+        # hand over 1, 2 or 5+ channels; Image.fromarray(..., "RGB") would then
+        # crash the run. Normalise every case to RGB, matching Save Image's own
+        # defensive coercion, rather than letting a bad wire kill the outpaint.
+        ch = frame.shape[2]
+        if ch >= 3:
+            frame = frame[:, :, :3]           # RGB, dropping alpha / extras
+        elif ch == 2:
+            frame = np.repeat(frame[:, :, :1], 3, axis=2)  # grey + a spare -> grey
+        else:  # ch == 1
             frame = np.repeat(frame, 3, axis=2)
         out.append(Image.fromarray(frame, "RGB"))
     return out
@@ -94,7 +118,10 @@ def _parse_state(state_json):
             st[k] = 0
     try:
         lim = float(raw.get("limit", 0))
-        st["limit"] = lim if lim in _LIMITS else 0
+        # Any megapixel target the user picks, not a fixed allowlist: the settings
+        # panel lets them add custom values now. Accept anything finite in
+        # [0, _MAX_MP] (0 = no scaling); _apply_max_mp clamps to the same ceiling.
+        st["limit"] = lim if (math.isfinite(lim) and 0 <= lim <= _MAX_MP) else 0
     except (TypeError, ValueError, OverflowError):
         st["limit"] = 0
     c = raw.get("color")
@@ -229,6 +256,18 @@ class PixaromaOutpaint:
             t, b, l, r = _pads_for_ratio(src_w, src_h, st["ratio"], st["anchor"])
         else:
             t, b, l, r = st["top"], st["bottom"], st["left"], st["right"]
+
+        # Cap the padded size to the engine ceiling BEFORE building the canvas.
+        # _apply_pad allocates Image.new at the full pre-clamp size and only
+        # _clamp_dims shrinks the RESULT - so an unbounded pad would allocate
+        # gigabytes and MemoryError the run before the clamp runs. This is
+        # reachable two ways: a hand-edited extreme ratio (1:1000 -> millions of
+        # px, _pads_for_ratio has no _MAX_PAD clamp), and plain sides mode with
+        # all four edges at the 8192 field max on a large source (up to 32768**2
+        # = 3 GB). The final size is clamped to 16384 either way, so fitting the
+        # pads down first loses nothing and just avoids the giant allocation.
+        t, b = _fit_pad(t, b, src_h)
+        l, r = _fit_pad(l, r, src_w)
 
         limit = st["limit"]
         # Snap must fire ONCE. With a limit on, the pad pass runs unsnapped and
