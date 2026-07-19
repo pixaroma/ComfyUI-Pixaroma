@@ -426,7 +426,7 @@ function buildRoot(node) {
   expandSw.title = "Preview the prompt with every @tag expanded";
   expandSw.innerHTML = '<span class="pix-prm-sw-dot"></span>Show expanded';
   const gearBtn = document.createElement("button");
-  gearBtn.type = "button"; gearBtn.className = "pix-prm-btn pix-prm-gear"; gearBtn.title = "Node settings (button colour)";
+  gearBtn.type = "button"; gearBtn.className = "pix-prm-btn pix-prm-gear"; gearBtn.title = "Node settings (button colour, default join order)";
   gearBtn.textContent = "⚙";
   bar.append(copyBtn, replaceBtn, clearBtn, tagsBtn, expandSw, gearBtn);
 
@@ -642,12 +642,14 @@ function wireEvents(node, root) {
 // ── Right-click menu on the prompt box (Copy / Save as tag) ─────────────────
 let _txtMenu = null;
 let _txtMenuOutside = null;
+let _txtMenuKey = null;
 function closeTextMenu() {
   if (_txtMenuOutside) {
     document.removeEventListener("pointerdown", _txtMenuOutside, true);
     document.removeEventListener("wheel", _txtMenuOutside, true);
     _txtMenuOutside = null;
   }
+  if (_txtMenuKey) { document.removeEventListener("keydown", _txtMenuKey, true); _txtMenuKey = null; }
   if (_txtMenu) { _txtMenu.remove(); _txtMenu = null; }
 }
 function openTextMenu(node, x, y, text, hasSel) {
@@ -676,9 +678,11 @@ function openTextMenu(node, x, y, text, hasSel) {
   menu.style.left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + "px";
   menu.style.top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + "px";
   _txtMenuOutside = (e) => { if (_txtMenu && !_txtMenu.contains(e.target)) closeTextMenu(); };
+  _txtMenuKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeTextMenu(); } };
   setTimeout(() => {
     document.addEventListener("pointerdown", _txtMenuOutside, true);
     document.addEventListener("wheel", _txtMenuOutside, true);
+    document.addEventListener("keydown", _txtMenuKey, true);
   }, 0);
 }
 // Open the fullscreen library. With `prefill`, the create form starts with that

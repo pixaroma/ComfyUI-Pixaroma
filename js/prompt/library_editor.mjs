@@ -26,7 +26,10 @@ let _search = "";
 let _undoGuardOff = null;
 let _catMenu = null;
 let _accent = BRAND;
-let _pendingPrefill = ""; // text to seed the create form with (the "save as tag" flow)
+// In-progress create-form values, kept alive across re-renders (clicking a sidebar
+// category or typing in search rebuilds the form) so a typed OR prefilled name/text
+// is never lost. Cleared on Create and on close.
+let _createDraft = { name: "", text: "" };
 
 function clone(d) { return { version: 1, categories: [...d.categories], tags: d.tags.map((t) => ({ ...t })) }; }
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -98,10 +101,10 @@ function injectCSS() {
     /* the CREATE form: fill name + text in one place and hit Create (no hunting for
        a button on the far side of the editor) */
     .pix-prled-create { display:flex; align-items:center; gap:8px; padding:11px 16px; background:#1e1e1e; border-bottom:1px solid #171717; }
-    .pix-prled-create input { background:#151515; border:1px solid #3a3a3a; border-radius:5px; color:#e6e6e6; font:12.5px monospace; padding:8px 9px; outline:none; height:36px; box-sizing:border-box; }
-    .pix-prled-create input:focus { border-color:var(--acc); }
+    .pix-prled-create input, .pix-prled-create textarea { background:#151515; border:1px solid #3a3a3a; border-radius:5px; color:#e6e6e6; font:12.5px monospace; padding:8px 9px; outline:none; height:36px; box-sizing:border-box; }
+    .pix-prled-create input:focus, .pix-prled-create textarea:focus { border-color:var(--acc); }
     .pix-prled-create .cnm { width:170px; flex:none; color:var(--acc); }
-    .pix-prled-create .ctx { flex:1; min-width:0; }
+    .pix-prled-create .ctx { flex:1; min-width:0; resize:none; line-height:1.5; white-space:pre-wrap; overflow-y:auto; }
     .pix-prled-create .ccat { flex:none; height:36px; }
     .pix-prled-create .ccat .car { font-size:9px; opacity:.85; margin-left:1px; }
     .pix-prled-create .cbtn { flex:none; background:var(--acc); border:none; color:#fff; border-radius:5px; padding:9px 15px; font:500 12.5px 'Segoe UI',sans-serif; cursor:pointer; height:36px; }
@@ -340,10 +343,14 @@ function buildCreateForm() {
   const form = document.createElement("div");
   form.className = "pix-prled-create";
   const nm = document.createElement("input"); nm.className = "cnm"; nm.placeholder = "new tag name"; nm.spellcheck = false;
-  const tx = document.createElement("input"); tx.className = "ctx"; tx.placeholder = "what it expands to - the full prompt text"; tx.spellcheck = false;
-  // Seed the text from a "save selection as a tag" request (consumed once so a
-  // re-render after Create leaves the form empty).
-  if (_pendingPrefill) { tx.value = _pendingPrefill; _pendingPrefill = ""; }
+  // A <textarea> (not <input>) so a multi-line "save selection as a tag" keeps its
+  // line breaks (a text input strips newlines on assignment).
+  const tx = document.createElement("textarea"); tx.className = "ctx"; tx.placeholder = "what it expands to - the full prompt text"; tx.spellcheck = false; tx.rows = 1;
+  // Seed from the in-progress draft so name + text survive a re-render (sidebar
+  // category click / search), then keep the draft in sync as the user types.
+  nm.value = _createDraft.name; tx.value = _createDraft.text;
+  nm.addEventListener("input", () => { _createDraft.name = nm.value; });
+  tx.addEventListener("input", () => { _createDraft.text = tx.value; });
   const catBtn = document.createElement("button"); catBtn.className = "pix-prled-pill ccat"; catBtn.title = "Category for the new tag - click to change";
   const paintCat = () => {
     const label = createCat || UNCATEGORIZED;
@@ -357,6 +364,7 @@ function buildCreateForm() {
     if (!name) { nm.focus(); return; }
     const uniq = uniqueNameExcept(name, null);
     _data.tags.unshift({ name: uniq, cat: createCat, text: tx.value });
+    _createDraft = { name: "", text: "" }; // tag saved -> next render's form is empty
     commit();
     render();
     const nf = _overlay && _overlay.querySelector(".pix-prled-create .cnm");
@@ -364,9 +372,9 @@ function buildCreateForm() {
     toast("success", "Created tag @" + uniq);
   };
   btn.addEventListener("click", doCreate);
-  const onKey = (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); doCreate(); } };
-  nm.addEventListener("keydown", onKey);
-  tx.addEventListener("keydown", onKey);
+  nm.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); doCreate(); } });
+  // Enter creates the tag; Shift+Enter inserts a newline (the text can be multi-line).
+  tx.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doCreate(); } });
   form.append(nm, tx, catBtn, btn);
   return form;
 }
@@ -493,7 +501,7 @@ export function openLibraryEditor(node, opts) {
   closeLibraryEditor();
   injectCSS();
   _node = node; _opts = opts || {}; _accent = _opts.accent || BRAND;
-  _pendingPrefill = (_opts.prefill || "").trim();
+  _createDraft = { name: "", text: (_opts.prefill || "").trim() };
   _data = clone(getLibrary());
   _curCat = "All"; _search = "";
 
@@ -559,6 +567,6 @@ export function closeLibraryEditor() {
   try { _undoGuardOff?.(); } catch { /* ignore */ }
   _undoGuardOff = null;
   if (_overlay) { try { _overlay.remove(); } catch { /* ignore */ } }
-  _overlay = null; _node = null; _opts = null; _data = null; _pendingPrefill = "";
+  _overlay = null; _node = null; _opts = null; _data = null; _createDraft = { name: "", text: "" };
 }
 export function closeLibraryEditorFor(node) { if (_node === node) closeLibraryEditor(); }
