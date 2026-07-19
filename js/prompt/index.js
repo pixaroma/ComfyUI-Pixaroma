@@ -17,11 +17,11 @@ import { openPromptSettings, closePromptSettingsFor, accentOf, ACCENT_SETTING } 
 const STATE_KEY = "promptState";
 const DEFAULT_STATE = { text: "", order: "mine", sep: ", ", accent: null, showExpanded: true };
 
-const DEFAULT_W = 460;
-const DEFAULT_H = 214;
+const DEFAULT_W = 470;
+const DEFAULT_H = 210;
 const MIN_W = 440;
-const MIN_H = 178;
-const WIDGET_MIN_H = 150;
+const MIN_H = 172;
+const WIDGET_MIN_H = 148;
 const TAWRAP_MIN = 64;
 
 // ── state (node.properties) ────────────────────────────────────────────────
@@ -48,20 +48,31 @@ function injectCSS() {
   _cssInjected = true;
   const style = document.createElement("style");
   style.textContent = `
-    .pix-prm-root { --acc:${BRAND}; display:flex; flex-direction:column; gap:6px; padding:6px;
+    .pix-prm-root { --acc:${BRAND}; position:relative; display:flex; flex-direction:column; gap:6px; padding:6px;
       width:100%; height:100%; box-sizing:border-box; color:#e0e0e0; font:12px 'Segoe UI',sans-serif; }
-    /* order control sits on the top line (only when the text input is wired) */
-    .pix-prm-portrow { display:none; align-items:center; justify-content:center; gap:8px; flex:0 0 auto;
-      flex-wrap:wrap; padding:1px 2px; user-select:none; }
+    /* order control floats ON the input/output slot row (only when the text input
+       is wired) so it never pushes the body down. Absolute + pointer-events:none on
+       the empty container so the slot dots underneath stay clickable/wireable;
+       only the actual controls capture clicks. Coloured with the node accent. */
+    .pix-prm-portrow { position:absolute; top:-26px; left:0; right:0; margin:0; z-index:3; pointer-events:none;
+      display:none; align-items:center; justify-content:center; gap:8px; user-select:none; }
     .pix-prm-portrow.on { display:flex; }
-    .pix-prm-portrow .cl { font-size:10.5px; color:#9cc4e6; display:inline-flex; align-items:center; gap:5px; }
-    .pix-prm-portrow .cl .wd { width:8px; height:8px; border-radius:50%; background:#5aa9e6; }
-    .pix-prm-seg { display:inline-flex; border:1px solid rgba(90,169,230,.5); border-radius:6px; overflow:hidden; }
-    .pix-prm-seg button { background:transparent; border:0; color:#9cc4e6; padding:4px 9px; font:500 11px 'Segoe UI',sans-serif; cursor:pointer; }
-    .pix-prm-seg button:hover { color:#fff; }
-    .pix-prm-seg button.on { background:#5aa9e6; color:#08243b; }
-    .pix-prm-sepsel { background:rgba(90,169,230,.10); border:1px solid rgba(90,169,230,.5); color:#9cc4e6;
-      border-radius:5px; font:11px 'Segoe UI',sans-serif; padding:3px 5px; outline:none; }
+    .pix-prm-portrow .cl { font-size:10.5px; color:var(--acc); display:inline-flex; align-items:center; gap:5px; }
+    .pix-prm-portrow .cl .wd { width:8px; height:8px; border-radius:50%; background:var(--acc); }
+    .pix-prm-seg { pointer-events:auto; display:inline-flex; border:1px solid var(--acc); border-radius:6px; overflow:hidden; background:#1d1d1d; }
+    .pix-prm-seg button { background:transparent; border:0; color:var(--acc); padding:4px 9px; font:500 11px 'Segoe UI',sans-serif; cursor:pointer; }
+    .pix-prm-seg button:hover { color:#fff; background:rgba(255,255,255,.06); }
+    .pix-prm-seg button.on { background:var(--acc); color:#fff; }
+    /* custom dark dropdown (never a native white select - house rule) */
+    .pix-prm-dd { pointer-events:auto; position:relative; display:inline-flex; }
+    .pix-prm-dd-btn { display:inline-flex; align-items:center; gap:6px; background:#1d1d1d; border:1px solid var(--acc);
+      border-radius:5px; color:var(--acc); font:11px 'Segoe UI',sans-serif; padding:3px 8px; cursor:pointer; white-space:nowrap; }
+    .pix-prm-dd-btn:hover { color:#fff; }
+    .pix-prm-dd-btn .car { font-size:9px; opacity:.85; }
+    .pix-prm-dd-pop { position:fixed; z-index:10032; background:#1d1d1d; border:1px solid #4a4a4a; border-radius:6px;
+      overflow:hidden; box-shadow:0 10px 26px rgba(0,0,0,.55); min-width:120px; }
+    .pix-prm-dd-item { padding:6px 11px; cursor:pointer; color:#cfcfcf; font:12px 'Segoe UI',sans-serif; }
+    .pix-prm-dd-item:hover, .pix-prm-dd-item.sel { background:#3a2a24; color:#fff; }
     .pix-prm-tawrap { position:relative; flex:1 1 auto; min-height:${TAWRAP_MIN}px; display:flex; }
     .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:1px solid transparent;
       font:12px/1.5 monospace; color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; pointer-events:none; box-sizing:border-box; }
@@ -78,7 +89,7 @@ function injectCSS() {
     .pix-prm-expand .note { color:#9cc4e6; }
     .pix-prm-bar { display:flex; align-items:center; flex:0 0 auto; gap:4px; flex-wrap:wrap; row-gap:4px; padding:0 2px; user-select:none; }
     .pix-prm-btn { box-sizing:border-box; user-select:none; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15);
-      border-radius:4px; color:rgba(255,255,255,.85); cursor:pointer; font:11px 'Segoe UI',sans-serif; padding:4px 11px;
+      border-radius:4px; color:rgba(255,255,255,.85); cursor:pointer; font:11px 'Segoe UI',sans-serif; padding:4px 9px;
       transition:background .1s,color .1s,border-color .1s; display:inline-flex; align-items:center; gap:5px; }
     .pix-prm-btn:hover { background:var(--acc); border-color:var(--acc); color:#fff; }
     .pix-prm-btn[disabled] { color:rgba(255,255,255,.3); cursor:default; background:rgba(255,255,255,.02); border-color:rgba(255,255,255,.08); }
@@ -91,7 +102,8 @@ function injectCSS() {
     .pix-prm-sw-dot { width:8px; height:8px; border-radius:50%; border:1.5px solid rgba(255,255,255,.55); background:transparent; box-sizing:border-box; }
     .pix-prm-sw.on { background:var(--acc); border-color:var(--acc); color:#fff; }
     .pix-prm-sw.on .pix-prm-sw-dot { background:#fff; border-color:#fff; }
-    .pix-prm-gear { margin-left:auto; padding:4px 8px; }
+    /* settings gear: bigger + more visible, matching Sizes Pixaroma's gear (30px, 15px glyph) */
+    .pix-prm-gear { flex:0 0 auto; width:30px; padding:0; justify-content:center; font-size:15px; line-height:1; }
     .pix-prm-lockhint { color:var(--acc); font:10px 'Segoe UI',sans-serif; font-style:italic; padding:0 2px; margin:0; flex:0 0 auto; user-select:none; display:none; }
     /* @-autocomplete popup (appended to <body> so the node never clips it) */
     .pix-prm-ac { position:fixed; z-index:10030; background:#1d1d1d; border:1px solid #4a4a4a; border-radius:7px;
@@ -173,6 +185,60 @@ function catColor(name) {
   const PAL = ["#e0894b", "#5aa9e6", "#8e7bd6", "#5fbf8f", "#d76b98", "#c9a24b", "#6fb3b8"];
   return PAL[i % PAL.length];
 }
+
+// A dark custom dropdown (never a native white <select> - house rule). Returns
+// { el, set(value) }. `options` is [{value,label}]; onChange(value) fires on pick.
+let _ddPop = null;
+let _ddOutside = null;
+function closeDD() {
+  if (_ddPop) { _ddPop.remove(); _ddPop = null; }
+  if (_ddOutside) {
+    document.removeEventListener("mousedown", _ddOutside, true);
+    document.removeEventListener("wheel", _ddOutside, true);
+    document.removeEventListener("keydown", _ddEsc, true);
+    _ddOutside = null;
+  }
+}
+function _ddEsc(e) { if (e.key === "Escape") closeDD(); }
+function makeDropdown(value, options, onChange) {
+  const wrap = document.createElement("div"); wrap.className = "pix-prm-dd";
+  const btn = document.createElement("div"); btn.className = "pix-prm-dd-btn";
+  const lbl = document.createElement("span"); lbl.className = "lbl";
+  const car = document.createElement("span"); car.className = "car"; car.textContent = "▾";
+  btn.append(lbl, car); wrap.appendChild(btn);
+  let cur = value;
+  const labelOf = (v) => { const o = options.find((o) => o.value === v); return o ? o.label : v; };
+  const set = (v) => { cur = v; lbl.textContent = labelOf(v); };
+  set(value);
+  btn.addEventListener("mousedown", (e) => e.stopPropagation());
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (_ddPop) { closeDD(); return; }
+    const pop = document.createElement("div"); pop.className = "pix-prm-dd-pop";
+    for (const o of options) {
+      const it = document.createElement("div");
+      it.className = "pix-prm-dd-item" + (o.value === cur ? " sel" : "");
+      it.textContent = o.label;
+      it.addEventListener("mousedown", (ev) => { ev.preventDefault(); ev.stopPropagation(); set(o.value); onChange(o.value); closeDD(); });
+      pop.appendChild(it);
+    }
+    document.body.appendChild(pop);
+    _ddPop = pop;
+    const r = btn.getBoundingClientRect();
+    pop.style.left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 8) + "px";
+    const below = window.innerHeight - r.bottom;
+    if (below < pop.offsetHeight + 8 && r.top > below) pop.style.top = (r.top - pop.offsetHeight - 4) + "px";
+    else pop.style.top = (r.bottom + 4) + "px";
+    _ddOutside = (ev) => { if (!pop.contains(ev.target) && !btn.contains(ev.target)) closeDD(); };
+    setTimeout(() => {
+      document.addEventListener("mousedown", _ddOutside, true);
+      document.addEventListener("wheel", _ddOutside, true);
+      document.addEventListener("keydown", _ddEsc, true);
+    }, 0);
+  });
+  return { el: wrap, set };
+}
+const SEP_OPTIONS = [{ value: ", ", label: ", comma" }, { value: " ", label: "space" }, { value: "\n", label: "new line" }];
 
 // ── @-autocomplete (single body-level popup) ───────────────────────────────
 const TAG_TOKEN_RE = /@([a-zA-Z0-9_\-]*)$/;
@@ -290,13 +356,9 @@ function buildRoot(node) {
   const bMine = document.createElement("button"); bMine.type = "button"; bMine.textContent = "My prompt first"; bMine.dataset.order = "mine";
   const bWired = document.createElement("button"); bWired.type = "button"; bWired.textContent = "Wired first"; bWired.dataset.order = "wired";
   seg.append(bMine, bWired);
-  const sepSel = document.createElement("select");
-  sepSel.className = "pix-prm-sepsel";
-  sepSel.title = "Separator between the two prompts";
-  [[", ", ", comma"], [" ", "space"], ["\n", "new line"]].forEach(([v, label]) => {
-    const o = document.createElement("option"); o.value = v; o.textContent = label; sepSel.appendChild(o);
-  });
-  portrow.append(cl, seg, sepSel);
+  const sepDD = makeDropdown(readState(node).sep, SEP_OPTIONS, (v) => { writeState(node, { sep: v }); renderExpand(node); });
+  sepDD.el.title = "Separator between the two prompts";
+  portrow.append(cl, seg, sepDD.el);
 
   const tawrap = document.createElement("div");
   tawrap.className = "pix-prm-tawrap";
@@ -336,7 +398,7 @@ function buildRoot(node) {
   bar.append(copyBtn, replaceBtn, clearBtn, tagsBtn, expandSw, gearBtn);
 
   root.append(portrow, tawrap, expand, lockHint, bar);
-  root._els = { portrow, seg, bMine, bWired, sepSel, tawrap, backdrop, ta, expand, lockHint, copyBtn, replaceBtn, clearBtn, tagsBtn, expandSw, gearBtn };
+  root._els = { portrow, seg, bMine, bWired, sepDD, tawrap, backdrop, ta, expand, lockHint, copyBtn, replaceBtn, clearBtn, tagsBtn, expandSw, gearBtn };
   return root;
 }
 
@@ -385,7 +447,7 @@ function applyOrderUI(node) {
   const st = readState(node);
   els.bMine.classList.toggle("on", st.order !== "wired");
   els.bWired.classList.toggle("on", st.order === "wired");
-  els.sepSel.value = st.sep;
+  els.sepDD.set(st.sep);
 }
 function applyAccent(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
@@ -483,8 +545,6 @@ function wireEvents(node, root) {
   });
   els.bMine.addEventListener("click", (e) => { e.stopPropagation(); writeState(node, { order: "mine" }); applyOrderUI(node); renderExpand(node); });
   els.bWired.addEventListener("click", (e) => { e.stopPropagation(); writeState(node, { order: "wired" }); applyOrderUI(node); renderExpand(node); });
-  els.sepSel.addEventListener("change", (e) => { e.stopPropagation(); writeState(node, { sep: els.sepSel.value }); renderExpand(node); });
-  els.sepSel.addEventListener("mousedown", (e) => e.stopPropagation());
 
   for (const b of [els.copyBtn, els.replaceBtn, els.clearBtn, els.tagsBtn, els.expandSw, els.gearBtn, els.bMine, els.bWired]) {
     b.addEventListener("pointerdown", (ev) => ev.stopPropagation());
@@ -495,6 +555,7 @@ function wireEvents(node, root) {
 // ── Save-selection-as-a-tag ────────────────────────────────────────────────
 let _saveSel = null; // { node, popup, input, a, b }
 function hideSaveSel() {
+  closeDD();
   if (_saveSel?.popup) _saveSel.popup.remove();
   _saveSel = null;
 }
@@ -511,33 +572,50 @@ function showSaveSel(node, a, b, selText) {
   hideSaveSel();
   const els = node._pixPromptRoot._els;
   const r = els.ta.getBoundingClientRect();
+  const acc = accentOf(node);
   const popup = document.createElement("div");
   popup.className = "pix-prm-ac"; // reuse the popup chrome
-  popup.style.cssText = `position:fixed;z-index:10031;display:block;padding:9px;min-width:250px;left:${Math.min(r.left, window.innerWidth - 270)}px;top:${r.top + 6}px;`;
-  popup.style.setProperty("--acc", accentOf(node));
-  const cats = getCategories().filter((c) => c !== "Uncategorized");
-  popup.innerHTML =
-    `<div style="font-size:10.5px;color:#8a8a8a;margin-bottom:7px">Save the selected text as a tag:</div>` +
-    `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px"><span style="color:${accentOf(node)};font-family:monospace">@</span>` +
-    `<input class="nm" placeholder="name" spellcheck="false" style="flex:1;background:#151515;border:1px solid #4a4a4a;border-radius:4px;color:#e0e0e0;font:12px monospace;padding:5px 7px;outline:none"></div>` +
-    `<div style="display:flex;gap:6px;align-items:center"><select class="cat" style="flex:1;background:#151515;border:1px solid #4a4a4a;border-radius:4px;color:#e0e0e0;font:12px 'Segoe UI';padding:5px 7px;outline:none">` +
-    cats.map((c) => `<option value="${escapeHTML(c)}">${escapeHTML(c)}</option>`).join("") +
-    `<option value="">Uncategorized</option></select>` +
-    `<button class="go" style="background:${accentOf(node)};border:none;color:#fff;border-radius:4px;padding:6px 11px;font:500 11.5px 'Segoe UI';cursor:pointer">Save</button></div>`;
+  popup.style.cssText = `position:fixed;z-index:10031;display:block;padding:9px;min-width:260px;overflow:visible;left:${Math.min(r.left, window.innerWidth - 280)}px;top:${r.top + 6}px;`;
+  popup.style.setProperty("--acc", acc);
+
+  const hint = document.createElement("div");
+  hint.style.cssText = "font-size:10.5px;color:#8a8a8a;margin-bottom:7px";
+  hint.textContent = "Save the selected text as a tag:";
+
+  const nameRow = document.createElement("div");
+  nameRow.style.cssText = "display:flex;gap:6px;align-items:center;margin-bottom:6px";
+  const at = document.createElement("span"); at.style.cssText = `color:${acc};font-family:monospace`; at.textContent = "@";
+  const input = document.createElement("input");
+  input.placeholder = "name"; input.spellcheck = false;
+  input.style.cssText = "flex:1;background:#151515;border:1px solid #4a4a4a;border-radius:4px;color:#e0e0e0;font:12px monospace;padding:5px 7px;outline:none";
+  nameRow.append(at, input);
+
+  const catRow = document.createElement("div");
+  catRow.style.cssText = "display:flex;gap:6px;align-items:center";
+  const catOpts = getCategories().filter((c) => c !== "Uncategorized").map((c) => ({ value: c, label: c }));
+  catOpts.push({ value: "", label: "Uncategorized" });
+  let chosenCat = catOpts[0].value;
+  const catDD = makeDropdown(chosenCat, catOpts, (v) => { chosenCat = v; });
+  catDD.el.style.flex = "1";
+  catDD.el.querySelector(".pix-prm-dd-btn").style.flex = "1";
+  const go = document.createElement("button");
+  go.textContent = "Save";
+  go.style.cssText = `background:${acc};border:none;color:#fff;border-radius:4px;padding:6px 11px;font:500 11.5px 'Segoe UI';cursor:pointer`;
+  catRow.append(catDD.el, go);
+
+  popup.append(hint, nameRow, catRow);
   document.body.appendChild(popup);
-  const input = popup.querySelector(".nm");
-  const catSel = popup.querySelector(".cat");
-  const go = popup.querySelector(".go");
   _saveSel = { node, popup, input, a, b };
+
   const commit = () => {
     const name = (input.value || "").replace(/[^a-zA-Z0-9_\-]/g, "");
     if (!name) { input.focus(); return; }
-    saveSelectionTag(node, name, catSel.value, selText, a, b);
+    saveSelectionTag(node, name, chosenCat, selText, a, b);
     hideSaveSel();
   };
   go.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
   input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") hideSaveSel(); });
-  [input, catSel, go].forEach((el) => el.addEventListener("mousedown", (e) => e.stopPropagation()));
+  [input, go].forEach((el) => el.addEventListener("mousedown", (e) => e.stopPropagation()));
   setTimeout(() => input.focus(), 0);
 }
 function saveSelectionTag(node, name, cat, selText, a, b) {
@@ -564,7 +642,8 @@ function measurePromptFloor(root) {
   const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
   let h = TAWRAP_MIN;
   let count = 1;
-  for (const sel of [".pix-prm-portrow", ".pix-prm-expand", ".pix-prm-lockhint", ".pix-prm-bar"]) {
+  // portrow is absolute (floats on the slot row) so it does NOT count toward flow height
+  for (const sel of [".pix-prm-expand", ".pix-prm-lockhint", ".pix-prm-bar"]) {
     const el = root.querySelector(sel);
     if (el && el.offsetParent !== null && getComputedStyle(el).display !== "none") { h += el.offsetHeight; count += 1; }
   }
@@ -675,6 +754,9 @@ app.registerExtension({
     const origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeHelpPopup();
+      closeAC();
+      closeDD();
+      hideSaveSel();
       closeLibraryEditorFor(this);
       closePromptSettingsFor(this);
       this._pixPromptFloorOff?.(); this._pixPromptFloorOff = null;
