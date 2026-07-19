@@ -30,8 +30,8 @@ import {
 import { openMiniSettings, closeMiniSettingsFor } from "./settings.mjs";
 
 const MINI_WIDGET = "pixaroma_load_image_mini_ui";
-const MIN_W = 232;
-const DEFAULT_W = 262;
+const MIN_W = 250;
+const DEFAULT_W = 286;
 const DEFAULT_H = 300;
 // Nodes 2.0 preview canvas floor (fills any extra node height) + the smaller
 // manual-resize floor so the node can be dragged compact (Load Image pattern).
@@ -45,6 +45,10 @@ const CARDS_H = 36;
 const CARDS_MID_Y = 24;
 const CARDS_LEFT = 12;
 const CARDS_RIGHT_RESERVE = 96;
+// Nodes 2.0: the cards canvas overlaps the output-slot band (via the nudge), so
+// its paint must stop clear of the right-aligned output labels. Measured: the
+// "image_info" slot element is ~108 layout px wide.
+const CARDS_VUE_RIGHT_RESERVE = 108;
 
 let _activeMiniNode = null;
 
@@ -68,7 +72,7 @@ function injectCSS() {
     /* INPUT -> OUTPUT size cards. In Classic they are PAINTED in the slot
        dead-space (onDrawForeground); in Nodes 2.0 this canvas carries the same
        pixels as a row. display:none in Classic so it takes no body height. */
-    .pix-lm-cards { flex:0 0 auto; width:100%; height:44px; display:block; }
+    .pix-lm-cards { flex:0 0 auto; width:100%; height:44px; display:block; pointer-events:none; }
 
     /* Toolbar: [Upload] [paste] [gear], each a proper button that hovers to the
        node accent with white text (Pixaroma convention: hover = full accent). */
@@ -118,7 +122,12 @@ function injectNodes2CSS() {
   s.id = "pix-lm-nodes2-css";
   s.textContent =
     ".lg-node:has(.pix-lm-root) .image-preview{display:none !important;}" +
-    ".lg-node:has(.pix-lm-root) .lg-node-widgets + div.flex-1{display:none !important;}";
+    ".lg-node:has(.pix-lm-root) .lg-node-widgets + div.flex-1{display:none !important;}" +
+    // The body rises over the output-slot band (nudge), so the widget root's
+    // opaque panel background would cover the "image" / "image_info" labels. The
+    // Vue node already has its own body background, so drop ours here (Classic
+    // keeps its #2a2a2a panel look).
+    ".pix-lm-root{background:transparent !important;}";
   document.head.appendChild(s);
 }
 
@@ -261,12 +270,79 @@ function renderCardsCanvas(node) {
   const cssW = cv.clientWidth, cssH = cv.clientHeight;
   if (cssW <= 0 || cssH <= 0) return;
   const ctx = sizeCanvas(cv, cssW, cssH);
-  paintCardsInto(ctx, node, 4, cssH / 2, cssW - 8);
+  // The canvas overlaps the output-slot band (nudge below), so reserve the right
+  // for the "image" / "image_info" labels; the reserved area is transparent, so
+  // the real dots show through (canvas is pointer-events:none).
+  const pairW = Math.max(96, cssW - CARDS_VUE_RIGHT_RESERVE);
+  paintCardsInto(ctx, node, 4, cssH / 2, pairW);
+}
+
+// ── Nodes 2.0 nudge: lift the body beside the output dots ────────────────────
+// Adapted from the Sliders output-dot recipe (.claude/patterns/sliders.md): the
+// Vue frontend has no native way to move an output or paint the slot dead-space,
+// so we pull the output-slot BLOCK out of the flow. The widget body (cards first)
+// then rises up to overlap the slot band, putting the cards in the LEFT
+// dead-space beside the dots - matching the Classic layout. Cosmetic + wrapped in
+// try/catch: if a future frontend defeats it, the cards fall back to a row below
+// the dots and the node still works.
+function miniSlotBlock(el) {
+  const out = el.querySelector(".lg-slot--output");
+  return out?.parentElement?.parentElement || null;
+}
+function isNudged(el) {
+  // Already pulled out of flow? A negative inline margin is our own mark. Vue
+  // REPLACES the element on re-render (fresh element, no inline style), so this
+  // correctly reads false again after a re-render and the poll re-applies it.
+  const block = miniSlotBlock(el);
+  if (!block) return false;
+  return parseFloat(block.style.marginBottom || "0") < 0;
+}
+// The widget wrapper adds a little top padding, so a bare -blockHeight leaves the
+// cards sitting a touch low. This extra lift centres the 44px cards canvas on the
+// 2-row slot band. Tuned against the live node (was ~10 layout px low).
+const NUDGE_EXTRA_LIFT = 8;
+function nudgeCardsIntoSlots(node) {
+  if (!isVueNodes()) return;
+  try {
+    const el = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
+    if (!el) return;
+    if (isNudged(el)) return; // steady state: one property read, no reflow
+    const block = miniSlotBlock(el);
+    const col = el.querySelector(".lg-slot--output")?.parentElement;
+    if (!block || !col) return;
+    // Reset first so the measure is against the natural layout, then pull the
+    // block out of flow so everything after it rises by (its height + a little).
+    block.style.marginBottom = "0px";
+    const h = block.offsetHeight;
+    if (h <= 0) return;
+    block.style.marginBottom = (-(h + NUDGE_EXTRA_LIFT)) + "px";
+    // The dots must stay draggable; the cards canvas over them is pointer-events:none.
+    block.style.pointerEvents = "none";
+    col.style.pointerEvents = "auto";
+    renderCardsCanvas(node);
+  } catch { /* nudge failed - cards stay a row below the dots, node still works */ }
+}
+// Vue REPLACES the node element on re-render (orphaning any observer) and can add
+// slots a frame late, so a self-heal poll is required (Sliders lesson). isNudged
+// makes the steady state a single rect read.
+function watchCardsNudge(node) {
+  if (!isVueNodes() || node._pixLmNudgePoll) return;
+  const tick = () => {
+    if (!node.graph) { clearInterval(node._pixLmNudgePoll); node._pixLmNudgePoll = null; return; }
+    nudgeCardsIntoSlots(node);
+  };
+  node._pixLmNudgePoll = setInterval(tick, 350);
+  nudgeCardsIntoSlots(node);
+  requestAnimationFrame(() => { nudgeCardsIntoSlots(node); setTimeout(() => nudgeCardsIntoSlots(node), 120); });
+}
+function unwatchCardsNudge(node) {
+  if (node._pixLmNudgePoll) clearInterval(node._pixLmNudgePoll);
+  node._pixLmNudgePoll = null;
 }
 
 // Refresh the cards on whichever surface applies.
 function renderCards(node) {
-  if (isVueNodes()) renderCardsCanvas(node);
+  if (isVueNodes()) { renderCardsCanvas(node); nudgeCardsIntoSlots(node); }
   node.setDirtyCanvas?.(true, true); // Classic repaints via onDrawForeground
 }
 
@@ -482,6 +558,7 @@ function setupNode(node) {
     widget.computeLayoutSize = () => ({ minHeight: measureContentHeight(), minWidth: 1 });
     createPreviewCanvas(node);
     injectNodes2CSS();
+    watchCardsNudge(node); // lift the cards beside the output dots (Sliders nudge)
   }
 
   // Fresh-node default size. SYNCHRONOUS so configure() overrides for saved
@@ -704,6 +781,7 @@ app.registerExtension({
       this._pixLmZoomRaf = null;
       try { this._pixLmFloorOff?.(); } catch {}
       this._pixLmFloorOff = null;
+      unwatchCardsNudge(this);
       if (_activeMiniNode === this) _activeMiniNode = null;
       return _origRemoved?.apply(this, arguments);
     };
