@@ -15,6 +15,7 @@ import {
 } from "./library.mjs";
 
 const PAL = ["#e0894b", "#5aa9e6", "#8e7bd6", "#5fbf8f", "#d76b98", "#c9a24b", "#6fb3b8"];
+const ICON_BASE = "/pixaroma/assets/icons/ui/";
 
 let _overlay = null;
 let _node = null;
@@ -85,12 +86,28 @@ function injectCSS() {
     .pix-prled-btn.pri { color:#fff; background:var(--acc); border-color:var(--acc); }
     .pix-prled-btn.pri:hover { filter:brightness(1.08); }
     .pix-prled-newcat .pix-prled-btn { width:100%; justify-content:center; }
-    .pix-prled-content { flex:1; display:flex; flex-direction:column; min-width:0; background:#212121; }
+    /* content column is CAPPED + centred so a tag's name, text, and actions stay
+       close together instead of spanning the whole (fullscreen-wide) editor */
+    .pix-prled-content { flex:1; display:flex; flex-direction:column; min-width:0; background:#212121; align-items:center; }
+    .pix-prled-chead, .pix-prled-create, .pix-prled-list { width:100%; max-width:960px; box-sizing:border-box; }
     .pix-prled-chead { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid #171717; }
     .pix-prled-chead .h { display:flex; align-items:center; gap:9px; font-size:15px; color:#fff; font-weight:500; }
     .pix-prled-chead .h .cd { width:12px; height:12px; border-radius:50%; }
     .pix-prled-chead .h .c { color:#767676; font-weight:400; font-size:12.5px; }
+    /* the CREATE form: fill name + text in one place and hit Create (no hunting for
+       a button on the far side of the editor) */
+    .pix-prled-create { display:flex; align-items:center; gap:8px; padding:11px 16px; background:#1e1e1e; border-bottom:1px solid #171717; }
+    .pix-prled-create input { background:#151515; border:1px solid #3a3a3a; border-radius:5px; color:#e6e6e6; font:12.5px monospace; padding:8px 9px; outline:none; height:36px; box-sizing:border-box; }
+    .pix-prled-create input:focus { border-color:var(--acc); }
+    .pix-prled-create .cnm { width:170px; flex:none; color:var(--acc); }
+    .pix-prled-create .ctx { flex:1; min-width:0; }
+    .pix-prled-create .chint { color:#767676; font-size:11.5px; white-space:nowrap; display:flex; align-items:center; gap:6px; }
+    .pix-prled-create .chint .cd { width:9px; height:9px; border-radius:50%; }
+    .pix-prled-create .cbtn { flex:none; background:var(--acc); border:none; color:#fff; border-radius:5px; padding:9px 15px; font:500 12.5px 'Segoe UI',sans-serif; cursor:pointer; height:36px; }
+    .pix-prled-create .cbtn:hover { filter:brightness(1.08); }
     .pix-prled-list { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+    .pix-prled-svg { display:block; width:15px; height:15px; background-color:currentColor;
+      -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; }
     .pix-prled-empty { color:#767676; font-size:13px; padding:24px; text-align:center; }
     .pix-prled-row { display:flex; gap:10px; align-items:stretch; background:#282828; border:1px solid #333; border-radius:8px; padding:10px; }
     .pix-prled-row .nm { width:150px; flex:none; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:5px; color:var(--acc); font:13.5px monospace; padding:8px 9px; outline:none; height:36px; }
@@ -102,9 +119,11 @@ function injectCSS() {
     .pix-prled-pill:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-pill .cd { width:10px; height:10px; border-radius:50%; flex:none; }
     .pix-prled-rowbtns { display:flex; gap:6px; }
-    .pix-prled-insert { flex:1; min-width:62px; height:30px; border-radius:5px; border:1px solid var(--acc); background:transparent;
-      color:var(--acc); cursor:pointer; font:12px 'Segoe UI',sans-serif; display:flex; align-items:center; justify-content:center; }
+    .pix-prled-insert { flex:1; min-width:74px; height:30px; border-radius:5px; border:1px solid var(--acc); background:transparent;
+      color:var(--acc); cursor:pointer; font:12px 'Segoe UI',sans-serif; display:flex; align-items:center; justify-content:center; gap:5px; }
     .pix-prled-insert:hover { background:var(--acc); color:#fff; }
+    .pix-prled-insert .pix-prled-svg { width:13px; height:13px; }
+    .pix-prled-insert.ok, .pix-prled-insert.ok:hover { background:#3ec371; border-color:#3ec371; color:#fff; }
     .pix-prled-ic { width:32px; height:30px; border-radius:5px; border:1px solid #4a4a4a; background:transparent; color:#a6a6a6; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; }
     .pix-prled-ic:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-ic.del:hover { background:#e2554a; border-color:#e2554a; color:#fff; }
@@ -197,10 +216,17 @@ function makeRow(tag) {
   const btns = document.createElement("div");
   btns.className = "pix-prled-rowbtns";
   const ins = document.createElement("button");
-  ins.className = "pix-prled-insert"; ins.title = "Insert this tag into your prompt"; ins.textContent = "Insert";
-  ins.addEventListener("click", () => { _opts?.onInsert?.(tag.name); });
+  ins.className = "pix-prled-insert"; ins.title = "Insert this tag into your prompt";
+  ins.innerHTML = `<span class="lbl">Insert</span>`;
+  ins.addEventListener("click", () => {
+    _opts?.onInsert?.(tag.name);
+    ins.classList.add("ok");
+    const l = ins.querySelector(".lbl"); if (l) l.textContent = "Inserted ✓";
+    setTimeout(() => { ins.classList.remove("ok"); const ll = ins.querySelector(".lbl"); if (ll) ll.textContent = "Insert"; }, 850);
+  });
   const del = document.createElement("button");
-  del.className = "pix-prled-ic del"; del.title = "Delete tag"; del.textContent = "🗑";
+  del.className = "pix-prled-ic del"; del.title = "Delete tag";
+  del.innerHTML = `<span class="pix-prled-svg" style="-webkit-mask-image:url(${ICON_BASE}delete.svg);mask-image:url(${ICON_BASE}delete.svg)"></span>`;
   del.addEventListener("click", () => { const i = _data.tags.indexOf(tag); if (i > -1) _data.tags.splice(i, 1); commit(); render(); });
   btns.append(ins, del);
   side.append(pill, btns);
@@ -273,25 +299,37 @@ function deleteCat(cat) {
   if (_curCat === cat) _curCat = "All";
   commit(); render();
 }
-function renderContent(content) {
-  content.innerHTML = "";
-  const head = document.createElement("div");
-  head.className = "pix-prled-chead";
-  const h = document.createElement("div");
-  h.className = "h";
-  if (_curCat === "All") h.innerHTML = `<span>All tags</span><span class="c">· ${_data.tags.length}</span>`;
-  else h.innerHTML = `<span class="cd" style="background:${colorOf(_curCat)}"></span><span>${esc(_curCat)}</span><span class="c">· ${tagsIn(_curCat).length} tags</span>`;
-  const add = document.createElement("button");
-  add.className = "pix-prled-btn pri"; add.style.marginLeft = "auto"; add.innerHTML = `<span>＋</span> New tag`;
-  add.title = "Create a brand-new tag in this category";
-  add.addEventListener("click", () => {
-    const cat = (_curCat !== "All" && _curCat !== UNCATEGORIZED) ? _curCat : "";
-    _data.tags.unshift({ name: uniqueNameExcept("newtag", null), cat, text: "" });
-    commit(); render();
-    const first = content.querySelector(".pix-prled-row .nm");
-    if (first) { first.focus(); first.select(); }
-  });
-  head.append(h, add);
+// A localized create form pinned at the top: fill name + text in one place and
+// hit Create - no bouncing to a button on the far side of the editor. New tags
+// land in the currently-selected category (Uncategorized when "All" is selected).
+function buildCreateForm() {
+  const targetCat = (_curCat !== "All" && _curCat !== UNCATEGORIZED) ? _curCat : "";
+  const form = document.createElement("div");
+  form.className = "pix-prled-create";
+  const nm = document.createElement("input"); nm.className = "cnm"; nm.placeholder = "new tag name"; nm.spellcheck = false;
+  const tx = document.createElement("input"); tx.className = "ctx"; tx.placeholder = "what it expands to - the full prompt text"; tx.spellcheck = false;
+  const hint = document.createElement("span"); hint.className = "chint";
+  hint.innerHTML = `<span class="cd" style="background:${colorOf(targetCat || UNCATEGORIZED)}"></span>into ${esc(targetCat || UNCATEGORIZED)}`;
+  const btn = document.createElement("button"); btn.className = "cbtn"; btn.textContent = "Create tag";
+  const doCreate = () => {
+    const name = sanitizeName(nm.value);
+    if (!name) { nm.focus(); return; }
+    const uniq = uniqueNameExcept(name, null);
+    _data.tags.unshift({ name: uniq, cat: targetCat, text: tx.value });
+    commit();
+    render();
+    const nf = _overlay && _overlay.querySelector(".pix-prled-create .cnm");
+    if (nf) nf.focus();
+    toast("success", "Created tag @" + uniq);
+  };
+  btn.addEventListener("click", doCreate);
+  const onKey = (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); doCreate(); } };
+  nm.addEventListener("keydown", onKey);
+  tx.addEventListener("keydown", onKey);
+  form.append(nm, tx, hint, btn);
+  return form;
+}
+function buildList() {
   const list = document.createElement("div");
   list.className = "pix-prled-list";
   const q = _search.toLowerCase();
@@ -301,10 +339,21 @@ function renderContent(content) {
   if (!rows.length) {
     const e = document.createElement("div");
     e.className = "pix-prled-empty";
-    e.textContent = _search ? "No tags match your search." : "No tags here yet — hit + Add tag.";
+    e.textContent = _search ? "No tags match your search." : "No tags here yet - create one above.";
     list.appendChild(e);
   } else for (const t of rows) list.appendChild(makeRow(t));
-  content.append(head, list);
+  return list;
+}
+function renderContent(content) {
+  content.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "pix-prled-chead";
+  const h = document.createElement("div");
+  h.className = "h";
+  if (_curCat === "All") h.innerHTML = `<span>All tags</span><span class="c">· ${_data.tags.length}</span>`;
+  else h.innerHTML = `<span class="cd" style="background:${colorOf(_curCat)}"></span><span>${esc(_curCat)}</span><span class="c">· ${tagsIn(_curCat).length} tags</span>`;
+  head.append(h);
+  content.append(head, buildCreateForm(), buildList());
 }
 function render() {
   if (!_overlay) return;

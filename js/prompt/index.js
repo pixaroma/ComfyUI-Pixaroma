@@ -102,11 +102,10 @@ function injectCSS() {
     .pix-prm-sw-dot { width:8px; height:8px; border-radius:50%; border:1.5px solid rgba(255,255,255,.55); background:transparent; box-sizing:border-box; }
     .pix-prm-sw.on { background:var(--acc); border-color:var(--acc); color:#fff; }
     .pix-prm-sw.on .pix-prm-sw-dot { background:#fff; border-color:#fff; }
-    /* settings gear: EXACTLY matches Sizes Pixaroma's gear (30x28 with a 15px glyph).
-       6px vertical padding gets it to 28 tall - a touch taller than the text buttons,
-       giving it the same prominent 'settings' look Sizes has. (padding:0 squashed it
-       to 13px; 4px matched the text buttons but read smaller than the Sizes gear.) */
-    .pix-prm-gear { flex:0 0 auto; width:30px; padding:6px 0; justify-content:center; font-size:15px; line-height:1; }
+    /* settings gear: a SQUARE at the SAME height as the text buttons (24x24) so it
+       doesn't stick out. Explicit height is required - padding:0 with no height
+       collapses it to 13px. */
+    .pix-prm-gear { flex:0 0 auto; width:24px; height:24px; padding:0; justify-content:center; font-size:14px; line-height:1; }
     .pix-prm-lockhint { color:var(--acc); font:10px 'Segoe UI',sans-serif; font-style:italic; padding:0 2px; margin:0; flex:0 0 auto; user-select:none; display:none; }
     /* @-autocomplete popup (appended to <body> so the node never clips it) */
     .pix-prm-ac { position:fixed; z-index:10030; background:#1d1d1d; border:1px solid #4a4a4a; border-radius:7px;
@@ -470,18 +469,18 @@ function renderExpand(node) {
   els.expand.style.display = "block";
   const mine = expandTags(els.ta.value).out;
   if (!wired) {
-    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(mine)}</span>`;
+    els.expand.innerHTML = `<span class="mine">${escapeHTML(mine)}</span>`;
     return;
   }
   const other = resolveWiredText(node);
   if (other != null) {
     // The wired text is readable now -> show the REAL combined result, in order.
     const combined = st.order === "wired" ? (other + st.sep + mine) : (mine + st.sep + other);
-    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(combined)}</span>`;
+    els.expand.innerHTML = `<span class="mine">${escapeHTML(combined)}</span>`;
   } else {
     // Wired from something the browser can't read yet (e.g. a model output not run).
     const where = st.order === "wired" ? "before" : "after";
-    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(mine)}</span> <span class="note">(+ wired text goes ${where}, shown here once it can be read)</span>`;
+    els.expand.innerHTML = `<span class="mine">${escapeHTML(mine)}</span> <span class="note">(+ wired text goes ${where}, shown here once it can be read)</span>`;
   }
 }
 function refreshBody(node) {
