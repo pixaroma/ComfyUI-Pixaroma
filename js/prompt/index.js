@@ -505,6 +505,12 @@ function renderBackdrop(node) {
     i = h.end;
   }
   html += escapeHTML(text.slice(i));
+  // A <div> with white-space:pre-wrap drops ONLY the single empty line after a
+  // TRAILING newline, but the textarea keeps it - so the invisible textarea would be
+  // taller than the visible backdrop and the caret would drift off the text you
+  // click. One trailing space puts content on that final line so both layers have
+  // identical height + wrapping (works for any number of trailing newlines).
+  if (text.endsWith("\n")) html += " ";
   els.backdrop.innerHTML = html;
 }
 function renderExpand(node) {
