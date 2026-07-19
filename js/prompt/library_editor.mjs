@@ -26,6 +26,7 @@ let _search = "";
 let _undoGuardOff = null;
 let _catMenu = null;
 let _accent = BRAND;
+let _pendingPrefill = ""; // text to seed the create form with (the "save as tag" flow)
 
 function clone(d) { return { version: 1, categories: [...d.categories], tags: d.tags.map((t) => ({ ...t })) }; }
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
@@ -64,7 +65,10 @@ function injectCSS() {
     .pix-prled-srch input { flex:1; background:transparent; border:0; outline:none; color:#e6e6e6; font:13px 'Segoe UI',sans-serif; }
     .pix-prled-srch .i { color:#767676; }
     .pix-prled-bar .priv { margin-left:6px; color:#767676; font-size:11.5px; }
-    .pix-prled-bar .x { margin-left:auto; color:#a6a6a6; cursor:pointer; font-size:20px; line-height:1; padding:3px 9px; border-radius:6px; }
+    .pix-prled-bar .help { margin-left:auto; width:30px; height:30px; display:flex; align-items:center; justify-content:center; color:#a6a6a6; cursor:pointer; border-radius:6px; }
+    .pix-prled-bar .help:hover { background:rgba(255,255,255,.08); color:#fff; }
+    .pix-prled-bar .help .pix-prled-svg { width:17px; height:17px; }
+    .pix-prled-bar .x { color:#a6a6a6; cursor:pointer; font-size:20px; line-height:1; padding:3px 9px; border-radius:6px; }
     .pix-prled-bar .x:hover { background:rgba(255,255,255,.08); color:#fff; }
     .pix-prled-main { flex:1; display:flex; min-height:0; }
     .pix-prled-side { width:220px; flex:none; background:#1b1b1b; border-right:1px solid #101010; padding:10px; overflow-y:auto; display:flex; flex-direction:column; gap:3px; }
@@ -149,6 +153,11 @@ function injectCSS() {
     .pix-prled-opt .t { font:500 13px 'Segoe UI',sans-serif; color:#fff; }
     .pix-prled-opt .t small { display:block; color:#a6a6a6; font-weight:400; font-size:11.5px; margin-top:1px; }
     .pix-prled-opt .rtag { margin-left:auto; font-size:10px; color:#3ec371; border:1px solid rgba(62,195,113,.4); border-radius:12px; padding:1px 8px; }
+    .pix-prled-help-card { width:560px; }
+    .pix-prled-help-card .mb { max-height:60vh; overflow-y:auto; }
+    .pix-prled-help-card .mb p { margin:0 0 11px; }
+    .pix-prled-help-card .mb p:last-child { margin-bottom:0; }
+    .pix-prled-help-foot { display:flex; justify-content:flex-end; padding:0 16px 16px; }
   `;
   document.head.appendChild(s);
 }
@@ -326,6 +335,9 @@ function buildCreateForm() {
   form.className = "pix-prled-create";
   const nm = document.createElement("input"); nm.className = "cnm"; nm.placeholder = "new tag name"; nm.spellcheck = false;
   const tx = document.createElement("input"); tx.className = "ctx"; tx.placeholder = "what it expands to - the full prompt text"; tx.spellcheck = false;
+  // Seed the text from a "save selection as a tag" request (consumed once so a
+  // re-render after Create leaves the form empty).
+  if (_pendingPrefill) { tx.value = _pendingPrefill; _pendingPrefill = ""; }
   const catBtn = document.createElement("button"); catBtn.className = "pix-prled-pill ccat"; catBtn.title = "Category for the new tag - click to change";
   const paintCat = () => {
     const label = createCat || UNCATEGORIZED;
@@ -447,11 +459,35 @@ function toast(sev, msg) {
   else console.warn("[Pixaroma.Prompt]", msg);
 }
 
+// A self-contained help panel, appended to the overlay (reuses the modal chrome so
+// it sits above the editor and closes on the X / click-outside / Escape via onKey).
+function showLibraryHelp() {
+  if (!_overlay) return;
+  const modal = document.createElement("div");
+  modal.className = "pix-prled-modal";
+  modal.innerHTML =
+    `<div class="pix-prled-mcard pix-prled-help-card"><div class="mh">How the tag library works</div>` +
+    `<div class="mb">` +
+    `<p><b>What it is.</b> Your personal, reusable prompt snippets. Type a short <b>@name</b> in a Prompt node and it becomes the full text at run time, so the box stays short. Your library is saved on your machine, stays private to you, and survives updating the plugin - it is never stored inside a workflow.</p>` +
+    `<p><b>Create a tag.</b> Fill in the name and the full prompt text along the top, pick a category, and press <b>Create tag</b>. New tags appear at the front.</p>` +
+    `<p><b>Edit a tag.</b> Click a card's name or its text and change it - your edits save on their own.</p>` +
+    `<p><b>Categories.</b> Make them in the left sidebar. Click a card's coloured pill to move that tag to another category. Rename or delete a category from the sidebar (its tags just become Uncategorized).</p>` +
+    `<p><b>Use a tag.</b> Type <b>@</b> in the prompt box for a searchable list, or press <b>Insert</b> on a card to drop it straight into your prompt.</p>` +
+    `<p><b>Share.</b> <b>Export library</b> saves your tags to a file you can share. <b>Import</b> brings a file in - if a name already exists you choose keep both, replace, or skip.</p>` +
+    `</div>` +
+    `<div class="pix-prled-help-foot"><button class="pix-prled-btn pri hgot">Got it</button></div>` +
+    `</div>`;
+  modal.addEventListener("mousedown", (e) => { if (e.target === modal) modal.remove(); });
+  modal.querySelector(".hgot").addEventListener("click", () => modal.remove());
+  _overlay.appendChild(modal);
+}
+
 // ── open / close ───────────────────────────────────────────────────────
 export function openLibraryEditor(node, opts) {
   closeLibraryEditor();
   injectCSS();
   _node = node; _opts = opts || {}; _accent = _opts.accent || BRAND;
+  _pendingPrefill = (_opts.prefill || "").trim();
   _data = clone(getLibrary());
   _curCat = "All"; _search = "";
 
@@ -463,6 +499,7 @@ export function openLibraryEditor(node, opts) {
     `<div class="ttl"><span class="cr">☲</span> Tag library</div>` +
     `<div class="pix-prled-srch"><span class="i">🔍</span><input placeholder="search tags and text"></div>` +
     `<span class="priv">private to you · survives plugin updates</span>` +
+    `<span class="help" title="How the tag library works"><span class="pix-prled-svg" style="-webkit-mask-image:url(${ICON_BASE}help.svg);mask-image:url(${ICON_BASE}help.svg)"></span></span>` +
     `<span class="x" title="Close">✕</span></div>` +
     `<div class="pix-prled-main"><div class="pix-prled-side"></div><div class="pix-prled-content"></div></div>` +
     `<div class="pix-prled-foot"><button class="pix-prled-btn imp-export"><span>⭳</span> Export library</button>` +
@@ -475,12 +512,20 @@ export function openLibraryEditor(node, opts) {
   search.addEventListener("input", () => { _search = search.value; renderContent(ov.querySelector(".pix-prled-content")); });
   search.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Escape" && _search) { _search = ""; search.value = ""; renderContent(ov.querySelector(".pix-prled-content")); e.stopImmediatePropagation(); } });
   ov.querySelector(".x").addEventListener("click", closeLibraryEditor);
+  ov.querySelector(".help").addEventListener("click", showLibraryHelp);
   ov.querySelector(".imp-done").addEventListener("click", closeLibraryEditor);
   ov.querySelector(".imp-export").addEventListener("click", doExport);
   ov.querySelector(".imp-import").addEventListener("click", pickImportFile);
 
   render();
-  search.focus();
+  // Coming from "save selection as a tag": the text is already in the create form,
+  // so focus the NAME field - the user only has to name it and hit Create.
+  if ((_opts.prefill || "").trim()) {
+    const nf = ov.querySelector(".pix-prled-create .cnm");
+    if (nf) { nf.focus(); }
+  } else {
+    search.focus();
+  }
 
   _undoGuardOff = installGraphUndoGuard(() => !!_overlay && _overlay.isConnected);
   window.addEventListener("keydown", onKey, true);
@@ -508,6 +553,6 @@ export function closeLibraryEditor() {
   try { _undoGuardOff?.(); } catch { /* ignore */ }
   _undoGuardOff = null;
   if (_overlay) { try { _overlay.remove(); } catch { /* ignore */ } }
-  _overlay = null; _node = null; _opts = null; _data = null;
+  _overlay = null; _node = null; _opts = null; _data = null; _pendingPrefill = "";
 }
 export function closeLibraryEditorFor(node) { if (_node === node) closeLibraryEditor(); }

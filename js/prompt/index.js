@@ -3,7 +3,7 @@ import {
   BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes,
   installResizeFloor, installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
-import { getTags, getCategories, findTag, subscribe, getLibrary as _getLib, setLibrary as _setLib } from "./library.mjs";
+import { getTags, getCategories, findTag, subscribe } from "./library.mjs";
 import { expandTags, hasTags, scanTags } from "./expand.mjs";
 import { openLibraryEditor, closeLibraryEditorFor } from "./library_editor.mjs";
 import { openPromptSettings, closePromptSettingsFor, accentOf, getDefaultOrder } from "./settings.mjs";
@@ -142,7 +142,7 @@ const PROMPT_HELP = {
     },
     {
       heading: "Save text as a tag",
-      body: "Select some text in the box and a `Save as tag` button appears - name it and pick a category, and that text becomes a reusable @tag on the spot.",
+      body: "Right-click the prompt box for `Copy` and `Save as tag`. Select some text first to act on just that part, or right-click with nothing selected to use the whole prompt. `Save as tag` opens the library with the text already filled in, so you just name it and pick a category.",
     },
     {
       heading: "The text input and output",
@@ -559,7 +559,6 @@ function wireEvents(node, root) {
     writeState(node, { text: els.ta.value });
     refreshBody(node);
     maybeAC(node, els.ta);
-    hideSaveSel();
   });
   els.ta.addEventListener("scroll", () => { els.backdrop.scrollTop = els.ta.scrollTop; els.backdrop.scrollLeft = els.ta.scrollLeft; });
   els.ta.addEventListener("keydown", (e) => {
@@ -574,18 +573,19 @@ function wireEvents(node, root) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return; // let ComfyUI run the workflow
     e.stopPropagation();
   });
-  // The "Save as tag" popup appears only after a deliberate DRAG-select - NOT on a
-  // click or a double-click (double-click just selects a word natively, no popup).
-  let dragStart = null;
-  els.ta.addEventListener("mousedown", (e) => { e.stopPropagation(); dragStart = { x: e.clientX, y: e.clientY }; });
-  els.ta.addEventListener("mouseup", (e) => {
-    const moved = dragStart && (Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y)) > 4;
-    dragStart = null;
-    setTimeout(() => { if (moved) onSelect(node); else hideSaveSel(); }, 0);
+  els.ta.addEventListener("mousedown", (e) => e.stopPropagation());
+  // Right-click the prompt box for Copy / Save as tag. Acts on the selection if
+  // there is one, else on the whole prompt. When there's nothing to act on (empty
+  // box), fall through to the browser's own menu so paste still works.
+  els.ta.addEventListener("contextmenu", (e) => {
+    const ta = els.ta;
+    const hasSel = ta.selectionEnd > ta.selectionStart;
+    const text = hasSel ? ta.value.slice(ta.selectionStart, ta.selectionEnd) : ta.value;
+    if (!text.trim()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    openTextMenu(node, e.clientX, e.clientY, text, hasSel);
   });
-  els.ta.addEventListener("dblclick", () => hideSaveSel()); // word-select only, never the popup
-  els.ta.addEventListener("keyup", (e) => { if (e.shiftKey) setTimeout(() => onSelect(node), 0); });
-  els.ta.addEventListener("blur", () => setTimeout(() => { if (!_saveSel || document.activeElement !== _saveSel.input) hideSaveSel(); }, 150));
 
   els.copyBtn.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -618,21 +618,7 @@ function wireEvents(node, root) {
   });
   els.tagsBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    openLibraryEditor(node, {
-      accent: accentOf(node),
-      onInsert: (name) => {
-        const ta = els.ta;
-        const p = ta.selectionStart;
-        const before = ta.value.slice(0, p);
-        const after = ta.value.slice(p);
-        const ins = tagSep(before) + "@" + name + tagTrail(after);
-        ta.value = before + ins + after;
-        ta.selectionStart = ta.selectionEnd = p + ins.length;
-        writeState(node, { text: ta.value });
-        refreshBody(node);
-        toast("info", "Inserted @" + name + " into the prompt");
-      },
-    });
+    openLibraryFor(node);
   });
   els.expandSw.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -653,101 +639,71 @@ function wireEvents(node, root) {
   }
 }
 
-// ── Save-selection-as-a-tag ────────────────────────────────────────────────
-let _saveSel = null; // { node, popup, input, a, b }
-let _saveSelOutside = null;
-function hideSaveSel() {
-  closeDD();
-  if (_saveSelOutside) { document.removeEventListener("pointerdown", _saveSelOutside, true); _saveSelOutside = null; }
-  if (_saveSel?.popup) _saveSel.popup.remove();
-  _saveSel = null;
+// ── Right-click menu on the prompt box (Copy / Save as tag) ─────────────────
+let _txtMenu = null;
+let _txtMenuOutside = null;
+function closeTextMenu() {
+  if (_txtMenuOutside) {
+    document.removeEventListener("pointerdown", _txtMenuOutside, true);
+    document.removeEventListener("wheel", _txtMenuOutside, true);
+    _txtMenuOutside = null;
+  }
+  if (_txtMenu) { _txtMenu.remove(); _txtMenu = null; }
 }
-function onSelect(node) {
-  const els = node._pixPromptRoot?._els; if (!els) return;
-  const ta = els.ta;
-  const a = ta.selectionStart, b = ta.selectionEnd;
-  if (b <= a) { hideSaveSel(); return; }
-  const text = ta.value.slice(a, b).trim();
-  if (!text) { hideSaveSel(); return; }
-  showSaveSel(node, a, b, ta.value.slice(a, b));
-}
-function showSaveSel(node, a, b, selText) {
-  hideSaveSel();
-  const els = node._pixPromptRoot._els;
-  const r = els.ta.getBoundingClientRect();
-  const acc = accentOf(node);
-  const popup = document.createElement("div");
-  popup.className = "pix-prm-ac"; // reuse the popup chrome
-  popup.style.cssText = `position:fixed;z-index:10031;display:block;padding:9px;min-width:260px;overflow:visible;left:${Math.min(r.left, window.innerWidth - 280)}px;top:${r.top + 6}px;`;
-  popup.style.setProperty("--acc", acc);
-
-  const hint = document.createElement("div");
-  hint.style.cssText = "font-size:10.5px;color:#8a8a8a;margin-bottom:7px";
-  hint.textContent = "Save the selected text as a tag:";
-
-  const nameRow = document.createElement("div");
-  nameRow.style.cssText = "display:flex;gap:6px;align-items:center;margin-bottom:6px";
-  const at = document.createElement("span"); at.style.cssText = `color:${acc};font-family:monospace`; at.textContent = "@";
-  const input = document.createElement("input");
-  input.placeholder = "name"; input.spellcheck = false;
-  input.style.cssText = "flex:1;background:#151515;border:1px solid #4a4a4a;border-radius:4px;color:#e0e0e0;font:12px monospace;padding:5px 7px;outline:none";
-  nameRow.append(at, input);
-
-  const catRow = document.createElement("div");
-  catRow.style.cssText = "display:flex;gap:6px;align-items:center";
-  const catOpts = getCategories().filter((c) => c !== "Uncategorized").map((c) => ({ value: c, label: c }));
-  catOpts.push({ value: "", label: "Uncategorized" });
-  let chosenCat = catOpts[0].value;
-  const catDD = makeDropdown(chosenCat, catOpts, (v) => { chosenCat = v; });
-  catDD.el.style.flex = "1";
-  catDD.el.querySelector(".pix-prm-dd-btn").style.flex = "1";
-  const go = document.createElement("button");
-  go.textContent = "Save";
-  go.style.cssText = `background:${acc};border:none;color:#fff;border-radius:4px;padding:6px 11px;font:500 11.5px 'Segoe UI';cursor:pointer`;
-  catRow.append(catDD.el, go);
-
-  popup.append(hint, nameRow, catRow);
-  document.body.appendChild(popup);
-  _saveSel = { node, popup, input, a, b };
-  // Dismiss when the user clicks anywhere outside the popup (mirrors the other
-  // body-appended popups). Deferred a tick so the click that opened it doesn't
-  // immediately close it.
-  // The category dropdown body-appends its own popup, so exclude it - else picking
-  // a category counts as an "outside" click and destroys the save popup.
-  _saveSelOutside = (e) => { if (_saveSel && !_saveSel.popup.contains(e.target) && !e.target.closest?.(".pix-prm-dd-pop")) hideSaveSel(); };
-  setTimeout(() => { if (_saveSel) document.addEventListener("pointerdown", _saveSelOutside, true); }, 0);
-
-  const commit = () => {
-    const name = (input.value || "").replace(/[^a-zA-Z0-9_\-]/g, "");
-    if (!name) { input.focus(); return; }
-    saveSelectionTag(node, name, chosenCat, selText, a, b);
-    hideSaveSel();
+function openTextMenu(node, x, y, text, hasSel) {
+  closeTextMenu();
+  const menu = document.createElement("div");
+  menu.className = "pix-prm-dd-pop";          // reuse the dark popup + item chrome
+  menu.style.setProperty("--acc", accentOf(node));
+  menu.style.minWidth = "184px";
+  const mkItem = (label, fn) => {
+    const it = document.createElement("div");
+    it.className = "pix-prm-dd-item";
+    it.textContent = label;
+    it.addEventListener("mousedown", (ev) => { ev.preventDefault(); ev.stopPropagation(); closeTextMenu(); fn(); });
+    menu.appendChild(it);
   };
-  go.addEventListener("click", (e) => { e.stopPropagation(); commit(); });
-  input.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); commit(); } if (e.key === "Escape") hideSaveSel(); });
-  [input, go].forEach((el) => el.addEventListener("mousedown", (e) => e.stopPropagation()));
-  setTimeout(() => input.focus(), 0);
+  mkItem(hasSel ? "Copy selection" : "Copy all", async () => {
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error("no clipboard");
+      await navigator.clipboard.writeText(text);
+      toast("info", "Copied to clipboard");
+    } catch { toast("warn", "Could not copy to clipboard"); }
+  });
+  mkItem(hasSel ? "Save selection as tag" : "Save all as tag", () => openLibraryFor(node, text));
+  document.body.appendChild(menu);
+  _txtMenu = menu;
+  menu.style.left = Math.max(8, Math.min(x, window.innerWidth - menu.offsetWidth - 8)) + "px";
+  menu.style.top = Math.max(8, Math.min(y, window.innerHeight - menu.offsetHeight - 8)) + "px";
+  _txtMenuOutside = (e) => { if (_txtMenu && !_txtMenu.contains(e.target)) closeTextMenu(); };
+  setTimeout(() => {
+    document.addEventListener("pointerdown", _txtMenuOutside, true);
+    document.addEventListener("wheel", _txtMenuOutside, true);
+  }, 0);
 }
-function saveSelectionTag(node, name, cat, selText, a, b) {
-  const wasExisting = !!findTag(name);
-  const data = getLibraryForEdit();
-  const existing = data.tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
-  if (existing) existing.text = selText;
-  else data.tags.unshift({ name, cat: cat || "", text: selText });
-  commitLib(data);
-  const els = node._pixPromptRoot._els;
-  const before = els.ta.value.slice(0, a);
-  const after = els.ta.value.slice(b);
-  const ins = tagSep(before) + "@" + name + tagTrail(after);
-  els.ta.value = before + ins + after;
-  els.ta.selectionStart = els.ta.selectionEnd = a + ins.length;
-  writeState(node, { text: els.ta.value });
-  refreshBody(node);
-  toast("success", (wasExisting ? "Updated tag @" : "Saved new tag @") + name);
+// Open the fullscreen library. With `prefill`, the create form starts with that
+// text so the user only types a name + picks a category + Create (the "save
+// selection as a tag" flow). Insert drops the chosen @tag back into the prompt.
+function openLibraryFor(node, prefill) {
+  const els = node._pixPromptRoot?._els;
+  openLibraryEditor(node, {
+    accent: accentOf(node),
+    prefill: prefill || "",
+    onInsert: (name) => {
+      if (!els) return;
+      const ta = els.ta;
+      const p = ta.selectionStart;
+      const before = ta.value.slice(0, p);
+      const after = ta.value.slice(p);
+      const ins = tagSep(before) + "@" + name + tagTrail(after);
+      ta.value = before + ins + after;
+      ta.selectionStart = ta.selectionEnd = p + ins.length;
+      writeState(node, { text: ta.value });
+      refreshBody(node);
+      toast("info", "Inserted @" + name + " into the prompt");
+    },
+  });
 }
-// small library-edit helpers kept local so save-selection doesn't import the editor
-function getLibraryForEdit() { const d = _getLib(); return { version: 1, categories: [...d.categories], tags: d.tags.map((t) => ({ ...t })) }; }
-function commitLib(d) { _setLib(d); }
 
 // ── resize floor ───────────────────────────────────────────────────────────
 function measurePromptFloor(root) {
@@ -870,7 +826,7 @@ app.registerExtension({
       closeHelpPopup();
       closeAC();
       closeDD();
-      hideSaveSel();
+      closeTextMenu();
       closeLibraryEditorFor(this);
       closePromptSettingsFor(this);
       this._pixPromptFloorOff?.(); this._pixPromptFloorOff = null;
