@@ -338,15 +338,21 @@ function updateACSel() {
 function tagSep(before) {
   return (before && /[\p{L}\p{N}\p{M}_@]$/u.test(before)) ? " " : "";
 }
+// A trailing space after an inserted tag (unless the next char already separates
+// it), so typing more text continues as a SEPARATE word instead of extending the
+// tag name (@goldenhour + "asdas" -> "@goldenhour asdas", not "@goldenhourasdas").
+function tagTrail(after) {
+  return (!after || /^[\p{L}\p{N}\p{M}_@]/u.test(after)) ? " " : "";
+}
 function pickAC(tag) {
   if (!_ac) return;
   const { node, ta, start } = _ac;
   const v = ta.value;
   const before = v.slice(0, start);
   const after = v.slice(ta.selectionStart);
-  const ins = tagSep(before) + "@" + tag.name;
+  const ins = tagSep(before) + "@" + tag.name + tagTrail(after);
   ta.value = before + ins + after;
-  const p = (before + ins).length;
+  const p = (before + ins).length; // cursor after the trailing space
   ta.selectionStart = ta.selectionEnd = p;
   closeAC();
   ta.focus();
@@ -610,8 +616,9 @@ function wireEvents(node, root) {
         const ta = els.ta;
         const p = ta.selectionStart;
         const before = ta.value.slice(0, p);
-        const ins = tagSep(before) + "@" + name;
-        ta.value = before + ins + ta.value.slice(p);
+        const after = ta.value.slice(p);
+        const ins = tagSep(before) + "@" + name + tagTrail(after);
+        ta.value = before + ins + after;
         ta.selectionStart = ta.selectionEnd = p + ins.length;
         writeState(node, { text: ta.value });
         refreshBody(node);
@@ -722,8 +729,9 @@ function saveSelectionTag(node, name, cat, selText, a, b) {
   commitLib(data);
   const els = node._pixPromptRoot._els;
   const before = els.ta.value.slice(0, a);
-  const ins = tagSep(before) + "@" + name;
-  els.ta.value = before + ins + els.ta.value.slice(b);
+  const after = els.ta.value.slice(b);
+  const ins = tagSep(before) + "@" + name + tagTrail(after);
+  els.ta.value = before + ins + after;
   els.ta.selectionStart = els.ta.selectionEnd = a + ins.length;
   writeState(node, { text: els.ta.value });
   refreshBody(node);
