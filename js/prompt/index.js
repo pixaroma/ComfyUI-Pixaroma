@@ -80,18 +80,23 @@ function injectCSS() {
     .pix-prm-tawrap { position:relative; flex:2 1 0; min-height:${TAWRAP_MIN}px; display:flex;
       background:#1d1d1d; border:1px solid #333; border-radius:4px; }
     .pix-prm-tawrap:focus-within { border-color:var(--acc); }
-    /* scrollbar-gutter:stable on BOTH so each always reserves the same scrollbar
-       gutter -> identical text width -> identical wrapping, so the highlight chips
-       line up with the real @tags even when the textarea shows a scrollbar (without
-       it the backdrop wraps ~15px wider and the chips drift onto the wrong text). */
+    /* The BACKDROP is the VISIBLE text layer (tags coloured, no boxes); the textarea
+       on top has TRANSPARENT text + a visible caret, so there is only ONE text layer
+       that can never double/ghost. scrollbar-gutter:stable on BOTH keeps their
+       wrapping identical so the caret + selection line up with the visible text
+       (the textarea's scrollbar would otherwise narrow it ~15px vs the backdrop). */
     .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:0;
-      font:12px/1.5 monospace; color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; scrollbar-gutter:stable; pointer-events:none; box-sizing:border-box; }
-    .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:#e0e0e0;
+      font:12px/1.5 monospace; color:#e0e0e0; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; scrollbar-gutter:stable; pointer-events:none; box-sizing:border-box; }
+    .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:transparent;
       border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; scrollbar-gutter:stable; caret-color:var(--acc); }
-    .pix-prm-chip { border-radius:3px; box-shadow:0 0 0 1px var(--acc) inset; background:rgba(246,103,68,.24); }
-    .pix-prm-chip.bad { box-shadow:0 0 0 1px rgba(226,85,74,.75) inset; background:rgba(226,85,74,.22); }
-    /* preview GROWS with the node (flex, no fixed cap) so a big node shows more */
-    .pix-prm-expand { flex:1 1 0; background:#151515; border:1px solid #262626; border-radius:4px; padding:6px 8px;
+    .pix-prm-ta::placeholder { color:#6a6a6a; }
+    /* tags: coloured TEXT, no box - orange when known, red when it looks like a typo */
+    .pix-prm-chip { color:var(--acc); }
+    .pix-prm-chip.bad { color:#e2554a; }
+    /* preview GROWS with the node (flex, no fixed cap) so a big node shows more.
+       LIGHTER gray (not the dark #1d1d1d of the editable inputs) so it reads as a
+       read-only preview, not another input box - the green text stays readable. */
+    .pix-prm-expand { flex:1 1 0; background:#2d2d2d; border:1px solid #3a3a3a; border-radius:4px; padding:6px 8px;
       font:11px/1.5 monospace; white-space:pre-wrap; min-height:30px; overflow-y:auto; }
     .pix-prm-expand .lbl { color:#6d6d6d; }
     .pix-prm-expand .mine { color:#9fd6b0; }
