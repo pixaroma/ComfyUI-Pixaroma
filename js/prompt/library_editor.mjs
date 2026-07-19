@@ -98,8 +98,8 @@ function injectCSS() {
     .pix-prled-create input:focus { border-color:var(--acc); }
     .pix-prled-create .cnm { width:170px; flex:none; color:var(--acc); }
     .pix-prled-create .ctx { flex:1; min-width:0; }
-    .pix-prled-create .chint { color:#767676; font-size:11.5px; white-space:nowrap; display:flex; align-items:center; gap:6px; }
-    .pix-prled-create .chint .cd { width:9px; height:9px; border-radius:50%; }
+    .pix-prled-create .ccat { flex:none; height:36px; }
+    .pix-prled-create .ccat .car { font-size:9px; opacity:.85; margin-left:1px; }
     .pix-prled-create .cbtn { flex:none; background:var(--acc); border:none; color:#fff; border-radius:5px; padding:9px 15px; font:500 12.5px 'Segoe UI',sans-serif; cursor:pointer; height:36px; }
     .pix-prled-create .cbtn:hover { filter:brightness(1.08); }
     /* CARD GRID: tags as compact cards that fill the width in columns - each card
@@ -155,7 +155,10 @@ function injectCSS() {
 
 function hideCatMenu() { if (_catMenu) { _catMenu.remove(); _catMenu = null; } }
 
-function openCatMenu(tag, anchor) {
+// Generic category picker: lists every category + Uncategorized + a New-category
+// row, and calls onPick(catValue) ("" = Uncategorized). Does NOT re-render - the
+// caller decides (so the create form keeps its typed name/text when picking).
+function openCategoryMenu(anchor, onPick) {
   hideCatMenu();
   const menu = document.createElement("div");
   menu.className = "pix-prled-menu";
@@ -164,7 +167,7 @@ function openCatMenu(tag, anchor) {
     const mi = document.createElement("div");
     mi.className = "mi";
     mi.innerHTML = `<span class="cd" style="background:${colorOf(c)}"></span>${esc(c)}`;
-    mi.addEventListener("click", () => { tag.cat = (c === UNCATEGORIZED ? "" : c); commit(); hideCatMenu(); render(); });
+    mi.addEventListener("click", () => { hideCatMenu(); onPick(c === UNCATEGORIZED ? "" : c); });
     menu.appendChild(mi);
   }
   const nc = document.createElement("div");
@@ -177,9 +180,9 @@ function openCatMenu(tag, anchor) {
     e.stopPropagation();
     if (e.key === "Enter") {
       const v = inp.value.trim();
-      if (v && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) _data.categories.push(v);
-      if (v) tag.cat = v;
-      commit(); hideCatMenu(); render();
+      if (v && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) { _data.categories.push(v); commit(); }
+      hideCatMenu();
+      if (v) onPick(v);
     }
     if (e.key === "Escape") hideCatMenu();
   });
@@ -189,6 +192,10 @@ function openCatMenu(tag, anchor) {
   menu.style.left = Math.min(r.left, window.innerWidth - menu.offsetWidth - 8) + "px";
   menu.style.top = Math.min(r.bottom + 4, window.innerHeight - menu.offsetHeight - 8) + "px";
   _catMenu = menu;
+}
+// Moving an existing tag between categories: persist + re-render.
+function openCatMenu(tag, anchor) {
+  openCategoryMenu(anchor, (c) => { tag.cat = c; commit(); render(); });
 }
 document.addEventListener("mousedown", (e) => {
   if (_catMenu && !_catMenu.contains(e.target) && !e.target.closest(".pix-prled-pill")) hideCatMenu();
@@ -302,19 +309,25 @@ function deleteCat(cat) {
 // hit Create - no bouncing to a button on the far side of the editor. New tags
 // land in the currently-selected category (Uncategorized when "All" is selected).
 function buildCreateForm() {
-  const targetCat = (_curCat !== "All" && _curCat !== UNCATEGORIZED) ? _curCat : "";
+  // Default to the selected sidebar category; the user can change it right here.
+  let createCat = (_curCat !== "All" && _curCat !== UNCATEGORIZED) ? _curCat : ""; // "" = Uncategorized
   const form = document.createElement("div");
   form.className = "pix-prled-create";
   const nm = document.createElement("input"); nm.className = "cnm"; nm.placeholder = "new tag name"; nm.spellcheck = false;
   const tx = document.createElement("input"); tx.className = "ctx"; tx.placeholder = "what it expands to - the full prompt text"; tx.spellcheck = false;
-  const hint = document.createElement("span"); hint.className = "chint";
-  hint.innerHTML = `<span class="cd" style="background:${colorOf(targetCat || UNCATEGORIZED)}"></span>into ${esc(targetCat || UNCATEGORIZED)}`;
+  const catBtn = document.createElement("button"); catBtn.className = "pix-prled-pill ccat"; catBtn.title = "Category for the new tag - click to change";
+  const paintCat = () => {
+    const label = createCat || UNCATEGORIZED;
+    catBtn.innerHTML = `<span class="cd" style="background:${colorOf(label)}"></span><span>${esc(label)}</span><span class="car">▾</span>`;
+  };
+  paintCat();
+  catBtn.addEventListener("click", (e) => { e.stopPropagation(); openCategoryMenu(catBtn, (c) => { createCat = c; paintCat(); }); });
   const btn = document.createElement("button"); btn.className = "cbtn"; btn.textContent = "Create tag";
   const doCreate = () => {
     const name = sanitizeName(nm.value);
     if (!name) { nm.focus(); return; }
     const uniq = uniqueNameExcept(name, null);
-    _data.tags.unshift({ name: uniq, cat: targetCat, text: tx.value });
+    _data.tags.unshift({ name: uniq, cat: createCat, text: tx.value });
     commit();
     render();
     const nf = _overlay && _overlay.querySelector(".pix-prled-create .cnm");
@@ -325,7 +338,7 @@ function buildCreateForm() {
   const onKey = (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); doCreate(); } };
   nm.addEventListener("keydown", onKey);
   tx.addEventListener("keydown", onKey);
-  form.append(nm, tx, hint, btn);
+  form.append(nm, tx, catBtn, btn);
   return form;
 }
 function buildGrid() {
