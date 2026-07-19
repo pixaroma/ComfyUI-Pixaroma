@@ -102,6 +102,9 @@ function injectCSS() {
     .pix-prled-pill:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-pill .cd { width:10px; height:10px; border-radius:50%; flex:none; }
     .pix-prled-rowbtns { display:flex; gap:6px; }
+    .pix-prled-insert { flex:1; min-width:62px; height:30px; border-radius:5px; border:1px solid var(--acc); background:transparent;
+      color:var(--acc); cursor:pointer; font:12px 'Segoe UI',sans-serif; display:flex; align-items:center; justify-content:center; }
+    .pix-prled-insert:hover { background:var(--acc); color:#fff; }
     .pix-prled-ic { width:32px; height:30px; border-radius:5px; border:1px solid #4a4a4a; background:transparent; color:#a6a6a6; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:14px; }
     .pix-prled-ic:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-ic.del:hover { background:#e2554a; border-color:#e2554a; color:#fff; }
@@ -194,7 +197,7 @@ function makeRow(tag) {
   const btns = document.createElement("div");
   btns.className = "pix-prled-rowbtns";
   const ins = document.createElement("button");
-  ins.className = "pix-prled-ic"; ins.title = "Insert this tag into the prompt"; ins.textContent = "↵";
+  ins.className = "pix-prled-insert"; ins.title = "Insert this tag into your prompt"; ins.textContent = "Insert";
   ins.addEventListener("click", () => { _opts?.onInsert?.(tag.name); });
   const del = document.createElement("button");
   del.className = "pix-prled-ic del"; del.title = "Delete tag"; del.textContent = "🗑";
@@ -279,7 +282,8 @@ function renderContent(content) {
   if (_curCat === "All") h.innerHTML = `<span>All tags</span><span class="c">· ${_data.tags.length}</span>`;
   else h.innerHTML = `<span class="cd" style="background:${colorOf(_curCat)}"></span><span>${esc(_curCat)}</span><span class="c">· ${tagsIn(_curCat).length} tags</span>`;
   const add = document.createElement("button");
-  add.className = "pix-prled-btn pri"; add.style.marginLeft = "auto"; add.innerHTML = `<span>＋</span> Add tag`;
+  add.className = "pix-prled-btn pri"; add.style.marginLeft = "auto"; add.innerHTML = `<span>＋</span> New tag`;
+  add.title = "Create a brand-new tag in this category";
   add.addEventListener("click", () => {
     const cat = (_curCat !== "All" && _curCat !== UNCATEGORIZED) ? _curCat : "";
     _data.tags.unshift({ name: uniqueNameExcept("newtag", null), cat, text: "" });

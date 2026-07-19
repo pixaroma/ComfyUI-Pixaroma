@@ -22,7 +22,7 @@ const DEFAULT_H = 210;
 const MIN_W = 440;
 const MIN_H = 172;
 const WIDGET_MIN_H = 148;
-const TAWRAP_MIN = 64;
+const TAWRAP_MIN = 40;
 
 // ── state (node.properties) ────────────────────────────────────────────────
 function readState(node) {
@@ -83,10 +83,10 @@ function injectCSS() {
     .pix-prm-chip { border-radius:3px; box-shadow:0 0 0 1px var(--acc) inset; background:rgba(246,103,68,.24); }
     .pix-prm-chip.bad { box-shadow:0 0 0 1px rgba(226,85,74,.75) inset; background:rgba(226,85,74,.22); }
     .pix-prm-expand { flex:0 0 auto; background:#151515; border:1px solid #262626; border-radius:4px; padding:6px 8px;
-      font:11px/1.5 monospace; white-space:pre-wrap; max-height:76px; overflow-y:auto; }
+      font:11px/1.5 monospace; white-space:pre-wrap; max-height:54px; overflow-y:auto; }
     .pix-prm-expand .lbl { color:#6d6d6d; }
     .pix-prm-expand .mine { color:#9fd6b0; }
-    .pix-prm-expand .note { color:#9cc4e6; }
+    .pix-prm-expand .note { color:#8a8a8a; font-style:italic; }
     .pix-prm-bar { display:flex; align-items:center; flex:0 0 auto; gap:4px; flex-wrap:wrap; row-gap:4px; padding:0 2px; user-select:none; }
     .pix-prm-btn { box-sizing:border-box; user-select:none; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15);
       border-radius:4px; color:rgba(255,255,255,.85); cursor:pointer; font:11px 'Segoe UI',sans-serif; padding:4px 9px;
@@ -102,8 +102,11 @@ function injectCSS() {
     .pix-prm-sw-dot { width:8px; height:8px; border-radius:50%; border:1.5px solid rgba(255,255,255,.55); background:transparent; box-sizing:border-box; }
     .pix-prm-sw.on { background:var(--acc); border-color:var(--acc); color:#fff; }
     .pix-prm-sw.on .pix-prm-sw-dot { background:#fff; border-color:#fff; }
-    /* settings gear: bigger + more visible, matching Sizes Pixaroma's gear (30px, 15px glyph) */
-    .pix-prm-gear { flex:0 0 auto; width:30px; padding:0; justify-content:center; font-size:15px; line-height:1; }
+    /* settings gear: EXACTLY matches Sizes Pixaroma's gear (30x28 with a 15px glyph).
+       6px vertical padding gets it to 28 tall - a touch taller than the text buttons,
+       giving it the same prominent 'settings' look Sizes has. (padding:0 squashed it
+       to 13px; 4px matched the text buttons but read smaller than the Sizes gear.) */
+    .pix-prm-gear { flex:0 0 auto; width:30px; padding:6px 0; justify-content:center; font-size:15px; line-height:1; }
     .pix-prm-lockhint { color:var(--acc); font:10px 'Segoe UI',sans-serif; font-style:italic; padding:0 2px; margin:0; flex:0 0 auto; user-select:none; display:none; }
     /* @-autocomplete popup (appended to <body> so the node never clips it) */
     .pix-prm-ac { position:fixed; z-index:10030; background:#1d1d1d; border:1px solid #4a4a4a; border-radius:7px;
@@ -194,6 +197,7 @@ function closeDD() {
   if (_ddPop) { _ddPop.remove(); _ddPop = null; }
   if (_ddOutside) {
     document.removeEventListener("mousedown", _ddOutside, true);
+    document.removeEventListener("pointerdown", _ddOutside, true);
     document.removeEventListener("wheel", _ddOutside, true);
     document.removeEventListener("keydown", _ddEsc, true);
     _ddOutside = null;
@@ -231,7 +235,10 @@ function makeDropdown(value, options, onChange) {
     else pop.style.top = (r.bottom + 4) + "px";
     _ddOutside = (ev) => { if (!pop.contains(ev.target) && !btn.contains(ev.target)) closeDD(); };
     setTimeout(() => {
+      // pointerdown (capture) also fires when you start dragging the node or panning
+      // the canvas, so the popup closes instead of hanging in place.
       document.addEventListener("mousedown", _ddOutside, true);
+      document.addEventListener("pointerdown", _ddOutside, true);
       document.addEventListener("wheel", _ddOutside, true);
       document.addEventListener("keydown", _ddEsc, true);
     }, 0);
@@ -412,6 +419,42 @@ function isWired(node) {
 function relabelInputSlot(node) {
   for (const inp of (node.inputs || [])) if (inp && inp.name === "text_in" && inp.label !== "text") inp.label = "text";
 }
+
+// Best-effort: read the text feeding the wired input SO THE PREVIEW CAN SHOW THE
+// REAL combined result. Works for plain-text sources (Text Pixaroma, another
+// Prompt Pixaroma, or any node with a readable string widget). Returns null when
+// the value can't be known in the browser (e.g. a model / LLM output not run yet),
+// in which case the preview shows a note instead.
+function resolveWiredText(node) {
+  const inp = (node.inputs || []).find((i) => i && i.name === "text_in");
+  if (!inp || inp.link == null) return null;
+  let link = app.graph.links?.[inp.link];
+  if (!link && typeof app.graph.links?.get === "function") link = app.graph.links.get(inp.link);
+  if (!link) return null;
+  const src = app.graph.getNodeById ? app.graph.getNodeById(link.origin_id) : (app.graph._nodes || []).find((n) => n.id === link.origin_id);
+  return src ? readNodeText(src, 0) : null;
+}
+function readNodeText(src, depth) {
+  if (!src || depth > 4) return null;
+  const cls = src.comfyClass || src.type;
+  if (cls === "PixaromaPrompt") {
+    const t = src.properties?.promptState?.text;
+    return typeof t === "string" ? expandTags(t).out : null; // its own typed text, tags resolved
+  }
+  const readW = (names) => {
+    for (const name of names) {
+      const w = (src.widgets || []).find((w) => w && w.name === name && typeof w.value === "string");
+      if (w) return w.value;
+    }
+    return null;
+  };
+  if (cls === "PixaromaText") { const v = readW(["text"]); if (v != null) return v; }
+  const byName = readW(["text", "string", "value", "prompt", "wildcard_text", "t"]);
+  if (byName != null) return byName;
+  const strs = (src.widgets || []).filter((w) => w && typeof w.value === "string");
+  if (strs.length === 1) return strs[0].value;
+  return null;
+}
 function renderBackdrop(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
   els.backdrop.innerHTML = escapeHTML(els.ta.value).replace(/@([a-zA-Z0-9_\-]+)/g, (m, n) => {
@@ -422,16 +465,24 @@ function renderBackdrop(node) {
 function renderExpand(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
   const st = readState(node);
-  if (!st.showExpanded || !hasTags(els.ta.value)) { els.expand.style.display = "none"; return; }
+  const wired = isWired(node);
+  if (!st.showExpanded || (!hasTags(els.ta.value) && !wired)) { els.expand.style.display = "none"; return; }
   els.expand.style.display = "block";
-  const { out } = expandTags(els.ta.value);
-  let html = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(out)}</span>`;
-  if (isWired(node)) {
-    html += st.order === "wired"
-      ? ` <span class="note">(wired text goes before this)</span>`
-      : ` <span class="note">(wired text goes after this)</span>`;
+  const mine = expandTags(els.ta.value).out;
+  if (!wired) {
+    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(mine)}</span>`;
+    return;
   }
-  els.expand.innerHTML = html;
+  const other = resolveWiredText(node);
+  if (other != null) {
+    // The wired text is readable now -> show the REAL combined result, in order.
+    const combined = st.order === "wired" ? (other + st.sep + mine) : (mine + st.sep + other);
+    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(combined)}</span>`;
+  } else {
+    // Wired from something the browser can't read yet (e.g. a model output not run).
+    const where = st.order === "wired" ? "before" : "after";
+    els.expand.innerHTML = `<span class="lbl">sent → </span><span class="mine">${escapeHTML(mine)}</span> <span class="note">(+ wired text goes ${where}, shown here once it can be read)</span>`;
+  }
 }
 function refreshBody(node) {
   renderBackdrop(node);
@@ -530,6 +581,7 @@ function wireEvents(node, root) {
         ta.selectionStart = ta.selectionEnd = p + name.length + 1;
         writeState(node, { text: ta.value });
         refreshBody(node);
+        toast("info", "Inserted @" + name + " into the prompt");
       },
     });
   });
@@ -619,8 +671,9 @@ function showSaveSel(node, a, b, selText) {
   setTimeout(() => input.focus(), 0);
 }
 function saveSelectionTag(node, name, cat, selText, a, b) {
+  const wasExisting = !!findTag(name);
   const data = getLibraryForEdit();
-  const existing = findTag(name);
+  const existing = data.tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
   if (existing) existing.text = selText;
   else data.tags.unshift({ name, cat: cat || "", text: selText });
   commitLib(data);
@@ -629,6 +682,7 @@ function saveSelectionTag(node, name, cat, selText, a, b) {
   els.ta.selectionStart = els.ta.selectionEnd = a + name.length + 1;
   writeState(node, { text: els.ta.value });
   refreshBody(node);
+  toast("success", (wasExisting ? "Updated tag @" : "Saved new tag @") + name);
 }
 // small library-edit helpers kept local so save-selection doesn't import the editor
 function getLibraryForEdit() { const d = _getLib(); return { version: 1, categories: [...d.categories], tags: d.tags.map((t) => ({ ...t })) }; }
