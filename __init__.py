@@ -60,6 +60,8 @@ from .nodes.node_seed import NODE_CLASS_MAPPINGS as _MAPS_SEED
 from .nodes.node_seed import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SEED
 from .nodes.node_text import NODE_CLASS_MAPPINGS as _MAPS_TEXT
 from .nodes.node_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT
+from .nodes.node_prompt import NODE_CLASS_MAPPINGS as _MAPS_PROMPT
+from .nodes.node_prompt import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT
 from .nodes.node_prompt_stack import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_STACK
 from .nodes.node_prompt_stack import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_STACK
 from .nodes.node_prompt_multi import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_MULTI
@@ -151,6 +153,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SLIDERS,
     **_MAPS_SEED,
     **_MAPS_TEXT,
+    **_MAPS_PROMPT,
     **_MAPS_PROMPT_STACK,
     **_MAPS_PROMPT_MULTI,
     **_MAPS_PROMPT_FROM_LIST,
@@ -207,6 +210,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SLIDERS,
     **_NAMES_SEED,
     **_NAMES_TEXT,
+    **_NAMES_PROMPT,
     **_NAMES_PROMPT_STACK,
     **_NAMES_PROMPT_MULTI,
     **_NAMES_PROMPT_FROM_LIST,
