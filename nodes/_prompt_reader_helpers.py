@@ -192,6 +192,13 @@ _PROMPT_PACK_CLASS = "PixaromaPromptPack"
 # `prompts` input back to the upstream Multi and indexes rowTexts.
 _PROMPT_FROM_LIST_CLASS = "PixaromaPromptFromList"
 
+# Prompt Pixaroma: a prompt box whose typed text (with @tags ALREADY expanded at
+# submit time by js/prompt/index.js's graphToPrompt hook) lives in the hidden
+# PromptState STRING input {"text": str, "order": "mine"|"wired", "sep": str},
+# plus an OPTIONAL wired `text_in` it JOINS with. The walker reads PromptState AND
+# follows text_in, combining exactly like nodes/node_prompt.py run().
+_PROMPT_CLASS = "PixaromaPrompt"
+
 # Switch Source Pixaroma: N-output A/B bank switcher. The hidden
 # SwitchSourceState carries active side + row count, and the walker follows
 # whichever side it names - so this works whether or not the inactive side is
@@ -458,6 +465,49 @@ def _pix_prompt_pack_extract(inputs: dict) -> Optional[str]:
     return txt or None
 
 
+def _pix_prompt_parse_state(inputs: dict):
+    """Parse a PixaromaPrompt's hidden PromptState into (mine, order, sep).
+
+    Mirrors nodes/node_prompt.py _parse_state: `mine` is the typed prompt with
+    @tags ALREADY expanded (baked at submit time), `order` is "mine"|"wired",
+    `sep` the join separator. Defaults on any malformed / missing state.
+    """
+    raw = inputs.get("PromptState")
+    if not isinstance(raw, str) or not raw:
+        return "", "mine", ", "
+    try:
+        state = json.loads(raw)
+    except (ValueError, TypeError):
+        return "", "mine", ", "
+    if not isinstance(state, dict):
+        return "", "mine", ", "
+    mine = state.get("text", "")
+    if not isinstance(mine, str):
+        mine = ""
+    order = state.get("order")
+    order = order if order in ("mine", "wired") else "mine"
+    sep = state.get("sep")
+    if not isinstance(sep, str) or len(sep) > 16:
+        sep = ", "
+    return mine, order, sep
+
+
+def _pix_prompt_join(mine, other, order: str, sep: str) -> Optional[str]:
+    """Combine a PixaromaPrompt's typed text with its wired text_in, exactly
+    like nodes/node_prompt.py run(): nothing wired -> just mine; empty mine ->
+    just other; else join in the chosen order with the chosen separator.
+    Returns the stripped result, or None when both are empty.
+    """
+    mine = mine if isinstance(mine, str) else ""
+    other = other if isinstance(other, str) else ""
+    if not other.strip():
+        return mine.strip() or None
+    if not mine.strip():
+        return other.strip() or None
+    combined = (other + sep + mine) if order == "wired" else (mine + sep + other)
+    return combined.strip() or None
+
+
 def _rgthree_any_switch_active_link(inputs: dict):
     """Return the active-input link tuple [upstream_id, upstream_output_slot]
     of rgthree's Any Switch.
@@ -627,6 +677,28 @@ def _walk_for_text(
         text = _pix_prompt_from_list_resolve(node, nodes)
         if text:
             captured.append(text)
+        return
+
+    # Prompt Pixaroma: the typed prompt (with @tags already expanded) lives in
+    # the hidden PromptState; an OPTIONAL wired text_in is JOINED with it. Read
+    # PromptState, resolve text_in via a sub-walk, and combine exactly like the
+    # Python node does at run-time. (Without this, PromptState isn't a text key
+    # so the walker would return empty for an unwired node, or only the wired
+    # half for a wired one.)
+    if cls == _PROMPT_CLASS:
+        mine, order, sep = _pix_prompt_parse_state(inputs)
+        other = ""
+        ti = inputs.get("text_in")
+        if isinstance(ti, list) and len(ti) >= 1:
+            sub: list = []
+            _walk_for_text(
+                ti[0], nodes, sub, visited, depth + 1, chase_depth,
+                origin_slot=ti[1] if len(ti) >= 2 else None,
+            )
+            other = sep.join(s for s in sub if s)
+        combined = _pix_prompt_join(mine, other, order, sep)
+        if combined:
+            captured.append(combined)
         return
 
     # Single pass over inputs. For each one, classify as text-carrying
