@@ -37,6 +37,14 @@ const DEFAULT_H = 300;
 // manual-resize floor so the node can be dragged compact (Load Image pattern).
 const LM_PREVIEW_FILL_MIN = 164;
 const LM_PREVIEW_FLOOR_MIN = 56;
+// INPUT->OUTPUT cards: painted in the LEFT slot dead-space in Classic (like
+// Outpaint), or on a canvas row in Nodes 2.0. CARDS_MID_Y centres them across
+// the two output rows; RIGHT_RESERVE keeps them clear of the right-aligned
+// output labels ("image_info" is the longest).
+const CARDS_H = 36;
+const CARDS_MID_Y = 24;
+const CARDS_LEFT = 12;
+const CARDS_RIGHT_RESERVE = 96;
 
 let _activeMiniNode = null;
 
@@ -57,34 +65,26 @@ function injectCSS() {
     .pix-lm-inner { position:absolute; inset:0; overflow:hidden; display:flex; flex-direction:column;
       gap:7px; padding:6px 8px 8px; box-sizing:border-box; }
 
-    /* INPUT -> OUTPUT size cards (small, Outpaint style). FIXED height so the
-       measured widget height does NOT change when the image loads async (the
-       placeholder is one line, the loaded cards two) - a changing measure on the
-       load path would flag a clean saved workflow "modified" (Vue Compat #18). */
-    .pix-lm-cards { display:flex; align-items:center; gap:6px; flex:0 0 auto; height:40px; }
-    .pix-lm-card { flex:1 1 0; min-width:70px; box-sizing:border-box; background:#1d1d1d; border:1px solid #444;
-      border-radius:6px; padding:5px 6px; text-align:center; }
-    .pix-lm-card .cap { font-size:8.5px; letter-spacing:.1em; color:#8a8a8a; }
-    .pix-lm-card .dim { font-size:11px; font-weight:700; color:#cfcfcf; margin-top:2px; white-space:nowrap;
-      font-family: ui-monospace, "Cascadia Code", monospace; }
-    .pix-lm-card.out.changed { border-color:var(--pix-lm-acc,${BRAND}); }
-    .pix-lm-card.out.changed .dim { color:var(--pix-lm-acc,${BRAND}); }
-    .pix-lm-chev { flex:0 0 auto; color:#8a8a8a; font-size:14px; }
-    .pix-lm-cardmsg { flex:1 1 auto; background:#1d1d1d; border-radius:6px; padding:6px 10px;
-      font-size:11px; color:var(--pix-lm-acc,${BRAND}); }
+    /* INPUT -> OUTPUT size cards. In Classic they are PAINTED in the slot
+       dead-space (onDrawForeground); in Nodes 2.0 this canvas carries the same
+       pixels as a row. display:none in Classic so it takes no body height. */
+    .pix-lm-cards { flex:0 0 auto; width:100%; height:44px; display:block; }
 
-    /* Toolbar: flat [Upload] | [paste] [gear] (Version B). */
-    .pix-lm-toolbar { display:flex; align-items:center; gap:5px; flex-wrap:wrap; flex:0 0 auto;
-      background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.09); border-radius:9px; padding:5px; }
-    .pix-lm-upload { flex:1 1 auto; min-width:96px; display:flex; align-items:center; justify-content:center; gap:8px;
-      background:transparent; border:0; border-radius:7px; color:var(--pix-lm-acc,${BRAND}); height:32px;
-      font:600 12px ui-sans-serif, system-ui, sans-serif; cursor:pointer; transition:background .1s; }
-    .pix-lm-upload .lbl { color:#e7e7ea; }
-    .pix-lm-upload:hover { background:rgba(246,103,68,.14); }
-    .pix-lm-sep { width:1px; align-self:stretch; margin:3px 1px; background:rgba(255,255,255,.14); flex:0 0 auto; }
-    .pix-lm-ibtn { width:32px; height:32px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
-      background:transparent; border:0; border-radius:7px; color:#b6b6bd; cursor:pointer; transition:background .1s, color .1s; }
-    .pix-lm-ibtn:hover { background:rgba(255,255,255,.08); color:#fff; }
+    /* Toolbar: [Upload] [paste] [gear], each a proper button that hovers to the
+       node accent with white text (Pixaroma convention: hover = full accent). */
+    .pix-lm-toolbar { display:flex; align-items:stretch; gap:6px; flex:0 0 auto; flex-wrap:wrap; }
+    .pix-lm-upload { flex:1 1 auto; min-width:104px; display:flex; align-items:center; justify-content:center; gap:8px;
+      background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); border-radius:7px;
+      color:var(--pix-lm-acc,${BRAND}); height:34px;
+      font:600 12px ui-sans-serif, system-ui, sans-serif; cursor:pointer;
+      transition:background .1s, border-color .1s, color .1s; }
+    .pix-lm-upload .lbl { color:#dcdce0; transition:color .1s; }
+    .pix-lm-upload:hover { background:var(--pix-lm-acc,${BRAND}); border-color:var(--pix-lm-acc,${BRAND}); color:#fff; }
+    .pix-lm-upload:hover .lbl { color:#fff; }
+    .pix-lm-ibtn { width:34px; height:34px; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+      background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.14); border-radius:7px;
+      color:#c2c2c8; cursor:pointer; transition:background .1s, border-color .1s, color .1s; }
+    .pix-lm-ibtn:hover { background:var(--pix-lm-acc,${BRAND}); border-color:var(--pix-lm-acc,${BRAND}); color:#fff; }
     .pix-lm-toolbar svg { display:block; pointer-events:none; }
 
     /* File row [<] [ dropdown ] [>] - reuses the visual language of Load Image. */
@@ -140,10 +140,12 @@ function buildRoot() {
   inner.className = "pix-lm-inner";
   root.appendChild(inner);
 
-  // Cards row.
-  const cards = document.createElement("div");
+  // Cards canvas. In Classic the cards are painted in the slot dead-space
+  // instead (display:none here so they take no body height); in Nodes 2.0 this
+  // canvas carries them as a row.
+  const cards = document.createElement("canvas");
   cards.className = "pix-lm-cards";
-  cards.dataset.role = "cards";
+  cards.style.display = isVueNodes() ? "block" : "none";
   inner.appendChild(cards);
 
   // Toolbar.
@@ -154,13 +156,11 @@ function buildRoot() {
   up.className = "pix-lm-upload";
   up.dataset.role = "upload";
   up.innerHTML = ICONS.upload + '<span class="lbl">Upload</span>';
-  const sep = document.createElement("div");
-  sep.className = "pix-lm-sep";
   const paste = ibtn("paste", "Paste from clipboard (Ctrl+V)");
   paste.dataset.role = "paste";
   const gear = ibtn("gear", "Resize & settings");
   gear.dataset.role = "gear";
-  bar.append(up, sep, paste, gear);
+  bar.append(up, paste, gear);
   inner.appendChild(bar);
 
   // File row.
@@ -194,40 +194,85 @@ function currentImage(node) {
   return (b?.complete && b.naturalWidth) ? b : null;
 }
 
-// Rebuild the INPUT -> OUTPUT cards from the loaded image + resize state.
-function updateCards(node) {
-  const cards = node._pixLmCards;
-  if (!cards) return;
-  cards.innerHTML = "";
+// ── INPUT -> OUTPUT cards (painted, Outpaint style) ──────────────────────────
+function cardsInfo(node) {
   const img = currentImage(node);
-  if (!img) {
-    const msg = document.createElement("div");
-    msg.className = "pix-lm-cardmsg";
-    msg.textContent = "Upload or pick an image";
-    cards.classList.add("msg");
-    cards.appendChild(msg);
-    return;
-  }
-  cards.classList.remove("msg");
+  if (!img) return { mode: "msg", text: "Upload or pick an image" };
   const inW = img.naturalWidth, inH = img.naturalHeight;
   const { w: outW, h: outH } = previewResize(inW, inH, readState(node));
-  const changed = inW !== outW || inH !== outH;
+  return { mode: "dual", inW, inH, outW, outH, changed: inW !== outW || inH !== outH };
+}
 
-  const card = (cls, cap, w, h) => {
-    const c = document.createElement("div");
-    c.className = "pix-lm-card " + cls + (cls === "out" && changed ? " changed" : "");
-    c.innerHTML = `<div class="cap">${cap}</div><div class="dim">${w} × ${h}</div>`;
-    return c;
+function roundRectP(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (typeof ctx.roundRect === "function") { ctx.roundRect(x, y, w, h, r); return; }
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// Paint the cards into ctx within [leftPad .. leftPad+pairW], centred on midY.
+// CSS-pixel space, so it is renderer-agnostic: the same function paints the
+// Classic dead-space AND the Nodes 2.0 canvas (the Outpaint pattern).
+function paintCardsInto(ctx, node, leftPad, midY, pairW) {
+  const info = cardsInfo(node);
+  const acc = accentOf(node);
+  const fam = "ui-sans-serif, system-ui, sans-serif";
+  ctx.save();
+  ctx.textBaseline = "middle";
+  if (info.mode === "msg") {
+    ctx.font = "11px " + fam;
+    ctx.textAlign = "left";
+    ctx.fillStyle = acc;
+    ctx.fillText(info.text, leftPad, midY, pairW);
+    ctx.restore();
+    return;
+  }
+  const GAP = 16; // room for the chevron between the two cards
+  const cardW = (pairW - GAP) / 2;
+  const y = midY - CARDS_H / 2;
+  const card = (x, label, w, h, accent) => {
+    roundRectP(ctx, x + 0.5, y + 0.5, cardW - 1, CARDS_H - 1, 5);
+    ctx.fillStyle = "#1d1d1d"; ctx.fill();
+    ctx.strokeStyle = accent ? acc : "#444"; ctx.lineWidth = 1; ctx.stroke();
+    const cx = x + cardW / 2;
+    ctx.textAlign = "center";
+    ctx.font = "8.5px " + fam; ctx.fillStyle = "#8a8a8a";
+    ctx.fillText(label, cx, y + 11, cardW - 8);
+    ctx.font = "bold 11px " + fam; ctx.fillStyle = accent ? acc : "#cfcfcf";
+    ctx.fillText(w + " × " + h, cx, y + 25, cardW - 8);
   };
-  const chev = document.createElement("span");
-  chev.className = "pix-lm-chev";
-  chev.textContent = "›";
-  cards.append(card("in", "INPUT", inW, inH), chev, card("out", "OUTPUT", outW, outH));
+  card(leftPad, "INPUT", info.inW, info.inH, false);
+  card(leftPad + cardW + GAP, "OUTPUT", info.outW, info.outH, info.changed);
+  const ax = leftPad + cardW + GAP / 2;
+  ctx.strokeStyle = info.changed ? acc : "#8a8a8a"; ctx.lineWidth = 1.5;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  ctx.beginPath();
+  ctx.moveTo(ax - 2.5, midY - 4); ctx.lineTo(ax + 2.5, midY); ctx.lineTo(ax - 2.5, midY + 4);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Nodes 2.0: paint the cards canvas row. Classic hides that canvas and paints in
+// the slot dead-space via onDrawForeground instead.
+function renderCardsCanvas(node) {
+  const cv = node._pixLmCards;
+  if (!cv || cv.style.display === "none") return;
+  const cssW = cv.clientWidth, cssH = cv.clientHeight;
+  if (cssW <= 0 || cssH <= 0) return;
+  const ctx = sizeCanvas(cv, cssW, cssH);
+  paintCardsInto(ctx, node, 4, cssH / 2, cssW - 8);
+}
+
+// Refresh the cards on whichever surface applies.
+function renderCards(node) {
+  if (isVueNodes()) renderCardsCanvas(node);
+  node.setDirtyCanvas?.(true, true); // Classic repaints via onDrawForeground
 }
 
 function refreshFace(node) {
   applyAccent(node);
-  updateCards(node);
+  renderCards(node);
   if (isVueNodes()) renderPreviewCanvas(node);
   node.setDirtyCanvas?.(true, true);
 }
@@ -312,7 +357,7 @@ function updatePreview(node) {
       const src = `/view?filename=${encodeURIComponent(filename)}&type=input&subfolder=${encodeURIComponent(subfolder)}&t=${Date.now()}`;
       let elImg = node._pixLmPreviewImgEl;
       if (!elImg) { elImg = new Image(); node._pixLmPreviewImgEl = elImg; }
-      elImg.onload = () => { updateCards(node); renderPreviewCanvas(node); node.setDirtyCanvas?.(true, true); };
+      elImg.onload = () => { renderCards(node); renderPreviewCanvas(node); node.setDirtyCanvas?.(true, true); };
       if (elImg.src !== src) elImg.src = src;
     }
   }
@@ -328,17 +373,20 @@ function createPreviewCanvas(node) {
   inner.appendChild(cv);
   node._pixLmImageCanvas = cv;
 
-  const ro = new ResizeObserver(() => renderPreviewCanvas(node));
+  // Both canvases are full-width, so a node resize changes both - repaint the
+  // cards row alongside the preview.
+  const repaint = () => { renderCardsCanvas(node); renderPreviewCanvas(node); };
+  const ro = new ResizeObserver(repaint);
   ro.observe(cv);
   node._pixLmPreviewRO = ro;
 
   node._pixLmZoomOff = installZoomRepaint(
     node,
     () => [cv.clientWidth || 0, cv.clientHeight || 0],
-    () => renderPreviewCanvas(node),
+    repaint,
     "_pixLmZoomRaf",
   );
-  requestAnimationFrame(() => updatePreview(node));
+  requestAnimationFrame(() => { updatePreview(node); renderCardsCanvas(node); });
 }
 
 // ── no inputs (Load Image Pattern #17) ───────────────────────────────────────
@@ -451,7 +499,7 @@ function setupNode(node) {
   node._pixLiOnFilenameChanged = () => refreshDropdown(node);
 
   function onImageReady() {
-    updateCards(node);
+    renderCards(node);
     updatePreview(node);
     node.setDirtyCanvas?.(true, true);
   }
@@ -553,7 +601,7 @@ function setupNode(node) {
   // saved state, not the defaults.
   queueMicrotask(() => {
     refreshDropdown(node);
-    updateCards(node);
+    renderCards(node);
     applyAccent(node);
     if (isVueNodes() && node._pixLiImageWidget?.value && !node.imgs?.[0]?.naturalWidth) {
       updateNativePreview(node, node._pixLiImageWidget.value);
@@ -604,14 +652,18 @@ app.registerExtension({
       return _origResize?.apply(this, arguments);
     };
 
-    // Legacy-only min-width self-heal (Vue Compat #18: setDirtyCanvas is a
-    // redraw flag, not a dirty-tracker trip; gated off in Nodes 2.0).
+    // Classic: paint the INPUT->OUTPUT cards in the LEFT slot dead-space (like
+    // Outpaint) + a min-width self-heal (Vue Compat #18: setDirtyCanvas is a
+    // redraw flag, not a dirty-tracker trip). Nodes 2.0 skips body painting and
+    // carries the cards on the DOM canvas instead.
     const _origDraw = nodeType.prototype.onDrawForeground;
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origDraw?.apply(this, arguments);
-      if (!isVueNodes() && !this.flags?.collapsed && this.size[0] < MIN_W) {
-        this.size[0] = MIN_W; this.setDirtyCanvas(true, true);
-      }
+      if (isVueNodes() || this.flags?.collapsed) return r;
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
+      const pairW = this.size[0] - CARDS_LEFT - CARDS_RIGHT_RESERVE;
+      // Too narrow to say anything useful - better blank than clipped smears.
+      if (pairW >= 120) paintCardsInto(ctx, this, CARDS_LEFT, CARDS_MID_Y, pairW);
       return r;
     };
 
@@ -631,10 +683,10 @@ app.registerExtension({
           this._pixLiSelectedFilename = w.value;
           if (!/clipspace/i.test(w.value)) this._pixLiOrigName = w.value;
         }
-        updateCards(this);
+        renderCards(this);
         applyAccent(this);
       });
-      setTimeout(() => { updateCards(this); if (isVueNodes()) updatePreview(this); }, 600);
+      setTimeout(() => { renderCards(this); if (isVueNodes()) updatePreview(this); }, 600);
       return r;
     };
 

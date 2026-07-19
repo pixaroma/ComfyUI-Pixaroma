@@ -57,7 +57,10 @@ function injectCSS() {
        design-language overrides apply exactly as they do on the real node. */
     .pix-lmset-resize.pix-li-root { background:transparent; padding:0; display:flex;
       flex-direction:column; gap:9px; }
-    .pix-lmset-chips { display:grid; grid-template-columns:repeat(4,1fr); gap:5px; }
+    /* 7 mode chips: flex-wrap so they fill each row (4 + 3) with no trailing
+       gap, rather than a fixed 4-col grid that leaves an empty cell. */
+    .pix-lmset-chips { display:flex; flex-wrap:wrap; gap:5px; }
+    .pix-lmset-chips > .pix-li-chip { flex:1 1 64px; min-width:64px; box-sizing:border-box; }
     .pix-lmset-acc { display:flex; align-items:center; gap:10px; }
     .pix-lmset-sw { width:30px; height:22px; border-radius:5px; border:1px solid #555; cursor:pointer; flex:none; }
     .pix-lmset-sw:hover { border-color:#fff; }
@@ -211,7 +214,7 @@ export function openMiniSettings(node, ctx) {
     const resize = el("div", "pix-lmset-resize pix-li-root");
 
     // ── mode chips (no Pad) ──
-    const chips = el("div", "pix-lmset-chips pix-li-chips");
+    const chips = el("div", "pix-lmset-chips");
     for (const c of MODE_CHIPS) {
       const chip = el("div", "pix-li-chip" + (state.mode === c.id ? " active" : ""), c.label);
       chip.title = c.title;
