@@ -486,6 +486,13 @@ function onKey(e) {
 export function closeLibraryEditor() {
   window.removeEventListener("keydown", onKey, true);
   hideCatMenu();
+  // Recover any card left with an empty/duplicate name before persisting - the
+  // per-card blur recovery is bypassed when closing via Escape / the X, and an
+  // empty name is dropped by normalize (the tag would be lost otherwise).
+  if (_data) {
+    for (const t of _data.tags) { const u = uniqueNameExcept(t.name, t); if (u !== t.name) t.name = u; }
+    try { commitLibrary(_data); } catch { /* ignore */ }
+  }
   try { flushLibrary(); } catch { /* ignore */ }
   try { _undoGuardOff?.(); } catch { /* ignore */ }
   _undoGuardOff = null;

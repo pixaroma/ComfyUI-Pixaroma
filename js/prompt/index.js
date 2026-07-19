@@ -334,7 +334,7 @@ function updateACSel() {
 // previous @tag, so inserts never produce "@a@b" (which reads badly and is
 // awkward to edit). See expand.mjs - chained tags DO expand, but a space is cleaner.
 function tagSep(before) {
-  return (before && /[\w@]$/.test(before)) ? " " : "";
+  return (before && /[\p{L}\p{N}_@]$/u.test(before)) ? " " : "";
 }
 function pickAC(tag) {
   if (!_ac) return;
@@ -538,6 +538,8 @@ function wireEvents(node, root) {
   els.ta.addEventListener("scroll", () => { els.backdrop.scrollTop = els.ta.scrollTop; els.backdrop.scrollLeft = els.ta.scrollLeft; });
   els.ta.addEventListener("keydown", (e) => {
     if (_ac && _acEl && _acEl.style.display === "block") {
+      // Ctrl/Cmd+Enter always runs the workflow (close the list, let it bubble).
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { closeAC(); return; }
       if (e.key === "ArrowDown") { e.preventDefault(); _ac.sel = Math.min(_ac.sel + 1, _ac.items.length - 1); updateACSel(); return; }
       if (e.key === "ArrowUp") { e.preventDefault(); _ac.sel = Math.max(_ac.sel - 1, 0); updateACSel(); return; }
       if ((e.key === "Enter" || e.key === "Tab") && _ac.items.length) { e.preventDefault(); e.stopPropagation(); pickAC(_ac.items[_ac.sel]); return; }
@@ -618,8 +620,10 @@ function wireEvents(node, root) {
 
 // ── Save-selection-as-a-tag ────────────────────────────────────────────────
 let _saveSel = null; // { node, popup, input, a, b }
+let _saveSelOutside = null;
 function hideSaveSel() {
   closeDD();
+  if (_saveSelOutside) { document.removeEventListener("pointerdown", _saveSelOutside, true); _saveSelOutside = null; }
   if (_saveSel?.popup) _saveSel.popup.remove();
   _saveSel = null;
 }
@@ -670,6 +674,11 @@ function showSaveSel(node, a, b, selText) {
   popup.append(hint, nameRow, catRow);
   document.body.appendChild(popup);
   _saveSel = { node, popup, input, a, b };
+  // Dismiss when the user clicks anywhere outside the popup (mirrors the other
+  // body-appended popups). Deferred a tick so the click that opened it doesn't
+  // immediately close it.
+  _saveSelOutside = (e) => { if (_saveSel && !_saveSel.popup.contains(e.target)) hideSaveSel(); };
+  setTimeout(() => { if (_saveSel) document.addEventListener("pointerdown", _saveSelOutside, true); }, 0);
 
   const commit = () => {
     const name = (input.value || "").replace(/[^a-zA-Z0-9_\-]/g, "");

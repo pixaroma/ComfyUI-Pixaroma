@@ -20,7 +20,9 @@ function scan(text) {
   while ((m = TAG_RE.exec(text))) {
     const at = m.index;
     const prev = at > 0 ? text[at - 1] : "";
-    const isTag = !prev || !/\w/.test(prev) || at === lastEnd;
+    // Unicode-aware: a letter/number/_ before @ (incl. accented/CJK) means it's
+    // part of an email local part, not a tag - unless we're chaining off a real tag.
+    const isTag = !prev || !/[\p{L}\p{N}_]/u.test(prev) || at === lastEnd;
     if (isTag) {
       out.push({ name: m[1], start: at, end: at + m[0].length, raw: m[0] });
       lastEnd = at + m[0].length; // a following @ can chain off this one

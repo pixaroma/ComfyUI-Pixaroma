@@ -204,16 +204,26 @@ export function applyImport(parsed, mode) {
   const cur = getLibrary();
   const tags = cur.tags.map((t) => ({ ...t }));
   const byKey = new Map(tags.map((t) => [t.name.toLowerCase(), t]));
+  // Unique against the WORKING set (live + already-added), not just the live
+  // library - else a "keep both" rename could collide with another incoming tag
+  // (e.g. importing both `portrait` and `portrait-2`) and normalize would drop one.
+  const uniqueIn = (base) => {
+    let n = base, i = 2;
+    while (byKey.has(n.toLowerCase())) { n = base + "-" + i; i++; }
+    return n;
+  };
   const toAdd = [];
   for (const inc of parsed.data.tags) {
     const key = inc.name.toLowerCase();
-    if (!byKey.has(key)) { toAdd.push({ ...inc }); continue; }
-    if (mode === "replace") byKey.get(key).text = inc.text;
-    else if (mode === "both") {
-      const nn = uniqueTagName(inc.name);
+    if (!byKey.has(key)) {
+      const t = { ...inc };
+      toAdd.push(t); byKey.set(key, t);
+    } else if (mode === "replace") {
+      byKey.get(key).text = inc.text;
+    } else if (mode === "both") {
+      const nn = uniqueIn(inc.name);
       const t = { ...inc, name: nn };
-      toAdd.push(t);
-      byKey.set(nn.toLowerCase(), t);
+      toAdd.push(t); byKey.set(nn.toLowerCase(), t);
     }
     // "skip": do nothing
   }
