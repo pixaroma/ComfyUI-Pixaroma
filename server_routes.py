@@ -17,6 +17,7 @@ from .nodes._save_helpers import (
     _safe_prefix,
 )
 from .nodes._prompt_reader_helpers import read_prompt_from_image, resolve_input_image_name
+from .nodes._cache_bust_helpers import stamp_import_urls
 from .nodes._bg_removal_helpers import (
     get_birefnet_inventory,
     is_birefnet_model_id,
@@ -55,17 +56,34 @@ PIXAROMA_VENDOR_DIR = os.path.realpath(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Browser-cache fix for our .mjs files.
-# ComfyUI core's cache middleware sets "Cache-Control: no-store" on .js/.css
-# responses, but it checks request.path.endswith(".js") - which does NOT match our
-# .mjs ES modules (we serve almost all code as .mjs at /extensions/<folder>/...). So
-# the browser heuristically caches them, and after a plugin update users see the node
-# but not the new .mjs code until a hard refresh. Mirror ComfyUI's behavior for OUR
-# OWN .mjs/.js files via an on_response_prepare hook, so a normal reload picks up
-# updates. Python change -> needs a full ComfyUI restart. Only touches this plugin's
+# Browser-cache fix for our .mjs files - TWO layers, both needed.
+#
+# Layer 1 (headers): ComfyUI core's cache middleware sets "Cache-Control:
+# no-store" on .js/.css responses, but it checks request.path.endswith(".js") -
+# which does NOT match our .mjs ES modules. Mirror it for OUR OWN .mjs/.js via
+# an on_response_prepare hook so freshly-fetched files are never cached.
+#
+# Layer 2 (import-URL version stamping): headers only help when the browser
+# actually ASKS the server. A browser that heuristically cached a pre-fix .mjs
+# treats it as fresh and never re-requests it, so those users stayed stale
+# until a manual hard refresh - and lazily-imported modules (editors, icons)
+# needed MORE hard refreshes. The middleware below serves our .js/.mjs files
+# with every relative .mjs import rewritten to "./x.mjs?v=<plugin version>".
+# Entry index.js files are always refetched (core sends no-store for .js), so
+# after an update the bumped version makes every internal module URL brand new
+# and the whole tree loads fresh - no user action, on browser/Desktop/Mac.
+# See nodes/_cache_bust_helpers.py for the rewrite rules.
+#
+# Python change -> needs a full ComfyUI restart. Only touches this plugin's
 # files; the served folder name is auto-derived so a renamed install still works.
 _PIX_DIR = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 _PIX_PREFIX = "/extensions/" + _PIX_DIR + "/"
+# WEB_DIRECTORY is "./js", so /extensions/<dir>/X maps to <plugin>/js/X.
+_PIX_JS_ROOT = os.path.realpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "js")
+)
+_PIX_PYPROJECT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "pyproject.toml")
+_pix_stamp_version_cache = {"mtime": None, "version": "0"}
 
 
 async def _pixaroma_no_cache(request, response):
@@ -74,16 +92,68 @@ async def _pixaroma_no_cache(request, response):
         response.headers["Cache-Control"] = "no-store"
 
 
-def _pixaroma_install_no_cache():
+def _pixaroma_stamp_version():
+    """Plugin version for import-URL stamping, refreshed when pyproject.toml
+    changes on disk (an update swaps files without restarting the server; the
+    stamp must reflect the NEW version immediately, same lesson as
+    _read_pixaroma_version). Cached by mtime so serving ~150 modules per page
+    load does not re-parse the TOML each time."""
     try:
-        inst = getattr(PromptServer, "instance", None)
-        app = getattr(inst, "app", None) if inst else None
-        if app is None or getattr(app, "_pixaroma_no_cache_installed", False):
-            return
-        app.on_response_prepare.append(_pixaroma_no_cache)
-        app._pixaroma_no_cache_installed = True
+        mt = os.path.getmtime(_PIX_PYPROJECT)
+        if _pix_stamp_version_cache["mtime"] != mt:
+            _pix_stamp_version_cache["version"] = _read_pixaroma_version()
+            _pix_stamp_version_cache["mtime"] = mt
+    except Exception:
+        pass
+    return _pix_stamp_version_cache["version"]
+
+
+@web.middleware
+async def _pixaroma_stamp_imports_mw(request, handler):
+    p = request.path
+    if (
+        request.method == "GET"
+        and p.startswith(_PIX_PREFIX)
+        and (p.endswith(".mjs") or p.endswith(".js"))
+    ):
+        try:
+            rel = p[len(_PIX_PREFIX):]
+            file_path = os.path.realpath(os.path.join(_PIX_JS_ROOT, rel))
+            if file_path.startswith(_PIX_JS_ROOT + os.sep) and os.path.isfile(file_path):
+                with open(file_path, "r", encoding="utf-8") as f:
+                    text = f.read()
+                text = stamp_import_urls(text, _pixaroma_stamp_version())
+                return web.Response(
+                    text=text,
+                    content_type="application/javascript",
+                    charset="utf-8",
+                    headers={"Cache-Control": "no-store"},
+                )
+        except Exception as e:
+            # Fall through to the native static handler (unstamped but served);
+            # log loudly because a partial fallback can double-instance modules.
+            print("[Pixaroma] import-stamp serve failed, falling back:", e)
+    return await handler(request)
+
+
+def _pixaroma_install_no_cache():
+    # Two independent installs: if one fails the other still protects users.
+    inst = getattr(PromptServer, "instance", None)
+    app = getattr(inst, "app", None) if inst else None
+    if app is None:
+        return
+    try:
+        if not getattr(app, "_pixaroma_no_cache_installed", False):
+            app.on_response_prepare.append(_pixaroma_no_cache)
+            app._pixaroma_no_cache_installed = True
     except Exception as e:
         print("[Pixaroma] no-cache hook not installed:", e)
+    try:
+        if not getattr(app, "_pixaroma_import_stamp_installed", False):
+            app.middlewares.append(_pixaroma_stamp_imports_mw)
+            app._pixaroma_import_stamp_installed = True
+    except Exception as e:
+        print("[Pixaroma] import-stamp middleware not installed:", e)
 
 
 _pixaroma_install_no_cache()
