@@ -121,7 +121,9 @@ function injectCSS() {
     .pix-prled-svg { display:block; width:15px; height:15px; background-color:currentColor;
       -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; }
     .pix-prled-empty { color:#767676; font-size:13px; padding:24px; text-align:center; }
-    .pix-prled-pill { display:inline-flex; align-items:center; gap:7px; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:20px; padding:6px 11px; font:12px 'Segoe UI',sans-serif; color:#cfcfcf; cursor:pointer; white-space:nowrap; overflow:hidden; }
+    /* Lighter gray (node-like), NOT the #1d1d1d of the editable inputs, so the
+       category chip reads as a clickable label rather than a text field. */
+    .pix-prled-pill { display:inline-flex; align-items:center; gap:7px; background:#3a3a3a; border:1px solid #4a4a4a; border-radius:20px; padding:6px 11px; font:12px 'Segoe UI',sans-serif; color:#d6d6d6; cursor:pointer; white-space:nowrap; overflow:hidden; }
     .pix-prled-pill:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-pill .cd { width:10px; height:10px; border-radius:50%; flex:none; }
     .pix-prled-insert { flex:1; min-width:74px; height:30px; border-radius:5px; border:1px solid var(--acc); background:transparent;
@@ -304,6 +306,10 @@ function startRenameCat(row, cat) {
   const inp = document.createElement("input");
   inp.className = "catinput"; inp.value = cat;
   nmSpan.replaceWith(inp); inp.focus(); inp.select();
+  // Clicking inside the field to place the cursor / select letters must NOT bubble
+  // to the row's click handler (which re-renders the sidebar and destroys the field).
+  inp.addEventListener("mousedown", (e) => e.stopPropagation());
+  inp.addEventListener("click", (e) => e.stopPropagation());
   const commitRename = () => {
     const v = inp.value.trim();
     if (v && v.toLowerCase() !== cat.toLowerCase() && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) {
