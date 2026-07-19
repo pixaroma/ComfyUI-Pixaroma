@@ -6,17 +6,31 @@
 
 import { getTags } from "./library.mjs";
 
-// A tag is @ followed by letters/digits/_/- . The @ must not sit right after a
-// word char or another @, so an email like user@oilpainting is left alone.
+// A tag is @ followed by letters/digits/_/- .
 const TAG_RE = /@([a-zA-Z0-9_\-]+)/g;
 
-function boundaryOk(prev) {
-  return !(prev && /[\w@]/.test(prev));
+// Is this @ a real tag-start? Yes when it's at the very start, after a NON-word
+// char (space, comma, ...), OR immediately after another tag (a chain like
+// @a@b). This lets adjacent tags expand while still leaving an email's
+// "user@name" alone (its @ sits after a word char with no preceding tag).
+function scan(text) {
+  const out = [];
+  TAG_RE.lastIndex = 0;
+  let m, lastEnd = -1;
+  while ((m = TAG_RE.exec(text))) {
+    const at = m.index;
+    const prev = at > 0 ? text[at - 1] : "";
+    const isTag = !prev || !/\w/.test(prev) || at === lastEnd;
+    if (isTag) {
+      out.push({ name: m[1], start: at, end: at + m[0].length, raw: m[0] });
+      lastEnd = at + m[0].length; // a following @ can chain off this one
+    }
+    // a non-tag @token does NOT set lastEnd, so it can't start a chain
+  }
+  return out;
 }
 
-// Expand every @tag in `text`. Returns { out, unknown, known }. `unknown` lists
-// tag names with no matching snippet (left literal in `out`); `known` lists the
-// names that were expanded. Pass `tags` to reuse a snapshot; else the live list.
+// Expand every @tag in `text`. Returns { out, unknown, known }.
 export function expandTags(text, tags) {
   if (typeof text !== "string" || text.indexOf("@") === -1) {
     return { out: typeof text === "string" ? text : "", unknown: [], known: [] };
@@ -25,15 +39,19 @@ export function expandTags(text, tags) {
   const map = new Map();
   for (const t of list) map.set(t.name.toLowerCase(), t.text);
 
+  const hits = scan(text);
   const unknown = [];
   const known = [];
-  const out = text.replace(TAG_RE, (m, name, offset, full) => {
-    if (!boundaryOk(offset > 0 ? full[offset - 1] : "")) return m;
-    const v = map.get(name.toLowerCase());
-    if (v == null) { unknown.push(name); return m; }
-    known.push(name);
-    return v;
-  });
+  let out = "";
+  let i = 0;
+  for (const h of hits) {
+    out += text.slice(i, h.start);
+    const v = map.get(h.name.toLowerCase());
+    if (v != null) { out += v; known.push(h.name); }
+    else { out += h.raw; unknown.push(h.name); } // unknown tag left literal
+    i = h.end;
+  }
+  out += text.slice(i);
   return { out, unknown, known };
 }
 
@@ -41,10 +59,5 @@ export function expandTags(text, tags) {
 // expanded-preview line is worth showing.
 export function hasTags(text) {
   if (typeof text !== "string" || text.indexOf("@") === -1) return false;
-  TAG_RE.lastIndex = 0;
-  let m;
-  while ((m = TAG_RE.exec(text))) {
-    if (boundaryOk(m.index > 0 ? text[m.index - 1] : "")) return true;
-  }
-  return false;
+  return scan(text).length > 0;
 }

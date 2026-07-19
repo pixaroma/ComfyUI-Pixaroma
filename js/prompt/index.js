@@ -22,7 +22,8 @@ const DEFAULT_H = 210;
 const MIN_W = 440;
 const MIN_H = 172;
 const WIDGET_MIN_H = 148;
-const TAWRAP_MIN = 40;
+const TAWRAP_MIN = 44;
+const EXPAND_MIN = 30;
 
 // ── state (node.properties) ────────────────────────────────────────────────
 function readState(node) {
@@ -73,17 +74,21 @@ function injectCSS() {
       overflow:hidden; box-shadow:0 10px 26px rgba(0,0,0,.55); min-width:120px; }
     .pix-prm-dd-item { padding:6px 11px; cursor:pointer; color:#cfcfcf; font:12px 'Segoe UI',sans-serif; }
     .pix-prm-dd-item:hover, .pix-prm-dd-item.sel { background:#3a2a24; color:#fff; }
-    .pix-prm-tawrap { position:relative; flex:1 1 auto; min-height:${TAWRAP_MIN}px; display:flex; }
-    .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:1px solid transparent;
+    /* The DARK background + border live on the WRAPPER (not the textarea) so the
+       prompt area reads dark like Text Pixaroma while the textarea stays
+       transparent for the highlight backdrop to show through. */
+    .pix-prm-tawrap { position:relative; flex:2 1 0; min-height:${TAWRAP_MIN}px; display:flex;
+      background:#1d1d1d; border:1px solid #333; border-radius:4px; }
+    .pix-prm-tawrap:focus-within { border-color:var(--acc); }
+    .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:0;
       font:12px/1.5 monospace; color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; pointer-events:none; box-sizing:border-box; }
     .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:#e0e0e0;
-      border:1px solid #333; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; caret-color:var(--acc); }
-    .pix-prm-ta:focus { border-color:var(--acc); }
-    .pix-prm-ta.pix-prm-locked { color:#888; font-style:italic; background:#161616; }
+      border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; caret-color:var(--acc); }
     .pix-prm-chip { border-radius:3px; box-shadow:0 0 0 1px var(--acc) inset; background:rgba(246,103,68,.24); }
     .pix-prm-chip.bad { box-shadow:0 0 0 1px rgba(226,85,74,.75) inset; background:rgba(226,85,74,.22); }
-    .pix-prm-expand { flex:0 0 auto; background:#151515; border:1px solid #262626; border-radius:4px; padding:6px 8px;
-      font:11px/1.5 monospace; white-space:pre-wrap; max-height:54px; overflow-y:auto; }
+    /* preview GROWS with the node (flex, no fixed cap) so a big node shows more */
+    .pix-prm-expand { flex:1 1 0; background:#151515; border:1px solid #262626; border-radius:4px; padding:6px 8px;
+      font:11px/1.5 monospace; white-space:pre-wrap; min-height:30px; overflow-y:auto; }
     .pix-prm-expand .lbl { color:#6d6d6d; }
     .pix-prm-expand .mine { color:#9fd6b0; }
     .pix-prm-expand .note { color:#8a8a8a; font-style:italic; }
@@ -325,13 +330,19 @@ function updateACSel() {
   const sel = _acEl.querySelector(".pix-prm-ac-i.sel");
   if (sel) sel.scrollIntoView({ block: "nearest" });
 }
+// A leading space when the char before would jam the tag against a word or a
+// previous @tag, so inserts never produce "@a@b" (which reads badly and is
+// awkward to edit). See expand.mjs - chained tags DO expand, but a space is cleaner.
+function tagSep(before) {
+  return (before && /[\w@]$/.test(before)) ? " " : "";
+}
 function pickAC(tag) {
   if (!_ac) return;
   const { node, ta, start } = _ac;
   const v = ta.value;
   const before = v.slice(0, start);
   const after = v.slice(ta.selectionStart);
-  const ins = "@" + tag.name;
+  const ins = tagSep(before) + "@" + tag.name;
   ta.value = before + ins + after;
   const p = (before + ins).length;
   ta.selectionStart = ta.selectionEnd = p;
@@ -576,8 +587,10 @@ function wireEvents(node, root) {
       onInsert: (name) => {
         const ta = els.ta;
         const p = ta.selectionStart;
-        ta.value = ta.value.slice(0, p) + "@" + name + ta.value.slice(p);
-        ta.selectionStart = ta.selectionEnd = p + name.length + 1;
+        const before = ta.value.slice(0, p);
+        const ins = tagSep(before) + "@" + name;
+        ta.value = before + ins + ta.value.slice(p);
+        ta.selectionStart = ta.selectionEnd = p + ins.length;
         writeState(node, { text: ta.value });
         refreshBody(node);
         toast("info", "Inserted @" + name + " into the prompt");
@@ -677,8 +690,10 @@ function saveSelectionTag(node, name, cat, selText, a, b) {
   else data.tags.unshift({ name, cat: cat || "", text: selText });
   commitLib(data);
   const els = node._pixPromptRoot._els;
-  els.ta.value = els.ta.value.slice(0, a) + "@" + name + els.ta.value.slice(b);
-  els.ta.selectionStart = els.ta.selectionEnd = a + name.length + 1;
+  const before = els.ta.value.slice(0, a);
+  const ins = tagSep(before) + "@" + name;
+  els.ta.value = before + ins + els.ta.value.slice(b);
+  els.ta.selectionStart = els.ta.selectionEnd = a + ins.length;
   writeState(node, { text: els.ta.value });
   refreshBody(node);
   toast("success", (wasExisting ? "Updated tag @" : "Saved new tag @") + name);
@@ -693,13 +708,16 @@ function measurePromptFloor(root) {
   const cs = getComputedStyle(root);
   const gap = parseFloat(cs.rowGap || cs.gap) || 0;
   const padV = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  let h = TAWRAP_MIN;
+  let h = TAWRAP_MIN;   // textarea at its min
   let count = 1;
-  // portrow is absolute (floats on the slot row) so it does NOT count toward flow height
-  for (const sel of [".pix-prm-expand", ".pix-prm-lockhint", ".pix-prm-bar"]) {
-    const el = root.querySelector(sel);
-    if (el && el.offsetParent !== null && getComputedStyle(el).display !== "none") { h += el.offsetHeight; count += 1; }
-  }
+  // portrow is absolute (floats on the slot row) so it does NOT count toward flow height.
+  // The preview flexes, so use its MIN not its grown height (else the node can't shrink).
+  const expand = root.querySelector(".pix-prm-expand");
+  if (expand && getComputedStyle(expand).display !== "none") { h += EXPAND_MIN; count += 1; }
+  const hint = root.querySelector(".pix-prm-lockhint");
+  if (hint && hint.offsetParent !== null && getComputedStyle(hint).display !== "none") { h += hint.offsetHeight; count += 1; }
+  const bar = root.querySelector(".pix-prm-bar");
+  if (bar) { h += bar.offsetHeight; count += 1; }
   if (count > 1) h += gap * (count - 1);
   return h + padV;
 }
