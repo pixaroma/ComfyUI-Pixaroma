@@ -21,7 +21,7 @@ import {
   setSelectedImage, updateNativePreview, pickAndUploadFile, pasteFromClipboard,
   uploadImageToInput, splitFilenameSubfolder,
 } from "../load_image/api.mjs";
-import { openImageDropdown } from "../load_image/ui.mjs";
+import { openImageDropdown, injectCSS as injectLiCSS } from "../load_image/ui.mjs";
 import { previewResize } from "../load_image/resize_modes.mjs";
 import {
   ACCENT_SETTING, BRAND, CLASS, DEFAULT_STATE, HIDDEN_INPUT, STATE_PROP,
@@ -504,6 +504,10 @@ function hideNativeCombo(node) {
 
 function setupNode(node) {
   injectCSS();
+  // The file dropdown (openImageDropdown) builds .pix-li-* elements but doesn't
+  // self-inject its CSS - inject it now so the popup is styled even when the gear
+  // panel was never opened and no full Load Image node exists (idempotent).
+  injectLiCSS();
   hideJsonWidget(node.widgets, HIDDEN_INPUT);
 
   const imageWidget = hideNativeCombo(node);
@@ -827,16 +831,26 @@ window.addEventListener("keydown", (e) => {
 // ── graphToPrompt: inject state + orig_name + clipspace-safe filename sync ───
 function buildIndex() {
   const index = new Map();
-  const visit = (graph) => {
+  const visit = (graph, prefix) => {
     if (!graph) return;
     for (const n of graph._nodes || graph.nodes || []) {
       if (!n) continue;
-      if (n.comfyClass === CLASS || n.type === CLASS) index.set(String(n.id), n);
+      // Composite id (prefix "" at top level, "instance:" inside a subgraph) so a
+      // subgraph node exact-matches its "5:3"-style prompt id and can't collide
+      // with a top-level node that happens to share the bare id.
+      const cid = String(prefix) + n.id;
+      if (n.comfyClass === CLASS || n.type === CLASS) {
+        index.set(cid, n);
+        // Bare id, FIRST-write-wins (top level is visited first), so a subgraph
+        // node never clobbers a top-level node's exact-id resolution; also keeps
+        // the tail-match fallback working if the id scheme ever differs.
+        if (!index.has(String(n.id))) index.set(String(n.id), n);
+      }
       const inner = n.subgraph || n.graph || n._graph;
-      if (inner && inner !== graph) visit(inner);
+      if (inner && inner !== graph) visit(inner, cid + ":");
     }
   };
-  visit(app.graph);
+  visit(app.graph, "");
   return index;
 }
 function findNode(index, id) {

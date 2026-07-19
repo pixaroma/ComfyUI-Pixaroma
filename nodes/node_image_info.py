@@ -54,17 +54,23 @@ class PixaromaImageInfo:
         if not isinstance(image, torch.Tensor):
             image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         if not isinstance(mask, torch.Tensor):
-            mask = torch.zeros((1, image.shape[1] if image.ndim >= 3 else 64,
-                                image.shape[2] if image.ndim >= 3 else 64), dtype=torch.float32)
+            # Match the image's batch + H/W (H/W are the last-two spatial dims,
+            # so this is correct for a batched [B,H,W,C] AND a bare [H,W,C]) - a
+            # batched image must never yield a batch-1 mask (downstream mismatch).
+            b = image.shape[0] if image.ndim == 4 else 1
+            h = int(image.shape[-3]) if image.ndim >= 3 else 64
+            w = int(image.shape[-2]) if image.ndim >= 3 else 64
+            mask = torch.zeros((b, h, w), dtype=torch.float32)
 
         # Prefer the bundled dims; fall back to the tensor shape so the outputs
-        # are always right even if a future producer forgets to set them.
+        # are always right even if a future producer forgets to set them. H/W are
+        # the last-two spatial dims (works for [B,H,W,C] and [H,W,C]).
         width = image_info.get("width")
         height = image_info.get("height")
         if not isinstance(width, int) or width <= 0:
-            width = int(image.shape[2]) if image.ndim >= 3 else 0
+            width = int(image.shape[-2]) if image.ndim >= 3 else 0
         if not isinstance(height, int) or height <= 0:
-            height = int(image.shape[1]) if image.ndim >= 3 else 0
+            height = int(image.shape[-3]) if image.ndim >= 3 else 0
         filename = image_info.get("filename")
         if not isinstance(filename, str):
             filename = ""
