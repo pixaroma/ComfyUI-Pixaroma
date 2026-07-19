@@ -87,7 +87,7 @@ app.registerExtension({
     nodeType.prototype.onDrawForeground = function (ctx) {
       const r = _origDraw?.apply(this, arguments);
       if (isVueNodes()) return r;
-      if (!isVueNodes() && this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
+      if (this.size[0] < MIN_W) { this.size[0] = MIN_W; this.setDirtyCanvas(true, true); }
       paintReadout(this, ctx);
       return r;
     };
@@ -110,7 +110,12 @@ if (!app._pixInfoExecPatched) {
       const entry = detail?.output?.pixaroma_image_info?.[0];
       if (!entry) return;
       const graph = app.graph;
-      const node = graph?.getNodeById?.(detail.node) ?? graph?.getNodeById?.(parseInt(detail.node, 10));
+      // Exact lookup handles string AND numeric ids (getNodeById keys by
+      // string-coerced id). Only fall back to parseInt for a plain numeric id,
+      // NOT a subgraph exec id like "5:12" (parseInt would resolve node 5).
+      const rawId = detail.node;
+      let node = graph?.getNodeById?.(rawId);
+      if (!node && !String(rawId).includes(":")) node = graph?.getNodeById?.(parseInt(rawId, 10));
       if (!node || node.comfyClass !== CLASS) return;
       node._pixInfoData = { width: entry.width, height: entry.height, filename: entry.filename };
       node.setDirtyCanvas?.(true, true);

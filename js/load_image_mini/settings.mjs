@@ -229,9 +229,12 @@ export function openMiniSettings(node, ctx) {
     resize.appendChild(chips);
 
     // ── per-mode panel (imported from Load Image) ──
-    const live = node.imgs?.[0]?.naturalWidth
-      ? { w: node.imgs[0].naturalWidth, h: node.imgs[0].naturalHeight }
-      : null;
+    // Input dims for the cover/fit preview - from node.imgs OR the fetched
+    // preview image (restored-workflow case), matching the node face's
+    // currentImage() so the preview isn't blank on a restored node.
+    const srcImg = node.imgs?.[0]?.naturalWidth ? node.imgs[0]
+      : (node._pixLmPreviewImgEl?.naturalWidth ? node._pixLmPreviewImgEl : null);
+    const live = srcImg ? { w: srcImg.naturalWidth, h: srcImg.naturalHeight } : null;
     // onChange is NON-destructive: refresh the face only, never rebuild the
     // panel (or a focused numeric input would be destroyed mid-edit - Load
     // Image Pattern #5).

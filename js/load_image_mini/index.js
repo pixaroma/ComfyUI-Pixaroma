@@ -125,9 +125,12 @@ function injectNodes2CSS() {
     ".lg-node:has(.pix-lm-root) .lg-node-widgets + div.flex-1{display:none !important;}" +
     // The body rises over the output-slot band (nudge), so the widget root's
     // opaque panel background would cover the "image" / "image_info" labels. The
-    // Vue node already has its own body background, so drop ours here (Classic
-    // keeps its #2a2a2a panel look).
-    ".pix-lm-root{background:transparent !important;}";
+    // Vue node already has its own body background, so drop ours here. SCOPE to
+    // .lg-node (like the two rules above) so it self-disables in Classic - a
+    // LIVE renderer toggle (Nodes 2.0 -> Classic, no reload) leaves this
+    // stylesheet in <head>, and a bare .pix-lm-root would then blank the Classic
+    // panel bg. Classic has no .lg-node, so the scoped rule is inert there.
+    ".lg-node:has(.pix-lm-root) .pix-lm-root{background:transparent !important;}";
   document.head.appendChild(s);
 }
 
@@ -770,7 +773,11 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       document.querySelector(".pix-li-popup")?._pixClose?.();
+      document.querySelector(".pix-li-rs-popup")?.remove(); // resample popup opened from the gear
       closeMiniSettingsFor(this);
+      // Detach any in-flight /view preview fetch so its onload can't fire on a
+      // torn-down node (harmless no-op, but tidy).
+      if (this._pixLmPreviewImgEl) this._pixLmPreviewImgEl.onload = null;
       if (this._pixLmImgPoll) clearInterval(this._pixLmImgPoll);
       this._pixLmImgPoll = null;
       try { this._pixLmPreviewRO?.disconnect(); } catch {}
