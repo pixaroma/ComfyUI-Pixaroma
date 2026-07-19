@@ -90,9 +90,12 @@ function injectCSS() {
     .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:transparent;
       border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; scrollbar-gutter:stable; caret-color:var(--acc); }
     .pix-prm-ta::placeholder { color:#6a6a6a; }
-    /* tags: coloured TEXT, no box - orange when known, red when it looks like a typo */
+    /* tags: coloured TEXT, no box - orange when known, a clearly-different bright red
+       when it looks like a typo (the old #e2554a was too close to the orange). NO
+       font-weight/decoration change: it must stay the SAME width as the transparent
+       textarea glyphs or the caret drifts (see the wrapping-parity note). */
     .pix-prm-chip { color:var(--acc); }
-    .pix-prm-chip.bad { color:#e2554a; }
+    .pix-prm-chip.bad { color:#ff4d4d; }
     /* preview GROWS with the node (flex, no fixed cap) so a big node shows more.
        LIGHTER gray (not the dark #1d1d1d of the editable inputs) so it reads as a
        read-only preview, not another input box - the green text stays readable. */
@@ -284,6 +287,20 @@ function closeAC() {
   if (_acEl) _acEl.style.display = "none";
   _ac = null;
 }
+// The popup only re-evaluates on 'input'; clicking or arrow-keying the caret OFF a
+// tag doesn't fire 'input', so it would linger. Watch caret moves and close/refresh
+// it. One singleton document listener (no per-node leak); no-ops when no AC is open.
+let _acSelInstalled = false;
+function installACSelWatch() {
+  if (_acSelInstalled) return;
+  _acSelInstalled = true;
+  document.addEventListener("selectionchange", () => {
+    if (!_ac) return;
+    const ta = _ac.ta;
+    if (!ta || document.activeElement !== ta) { closeAC(); return; }
+    maybeAC(_ac.node, ta);
+  });
+}
 function maybeAC(node, ta) {
   const pos = ta.selectionStart;
   const m = TAG_TOKEN_RE.exec(ta.value.slice(0, pos));
@@ -297,6 +314,7 @@ function maybeAC(node, ta) {
   openAC(node, ta, start, q);
 }
 function openAC(node, ta, start, q) {
+  installACSelWatch();
   const el = acPopup();
   el.style.setProperty("--acc", accentOf(node));
   const tags = getTags().filter((t) => t.name.toLowerCase().includes(q));
@@ -576,6 +594,9 @@ function wireEvents(node, root) {
     maybeAC(node, els.ta);
   });
   els.ta.addEventListener("scroll", () => { els.backdrop.scrollTop = els.ta.scrollTop; els.backdrop.scrollLeft = els.ta.scrollLeft; });
+  // Focus leaves the field -> close the autocomplete (its item clicks preventDefault
+  // mousedown so they don't blur; a real click-away does, and should dismiss it).
+  els.ta.addEventListener("blur", () => closeAC());
   els.ta.addEventListener("keydown", (e) => {
     if (_ac && _acEl && _acEl.style.display === "block") {
       // Ctrl/Cmd+Enter always runs the workflow (close the list, let it bubble).
