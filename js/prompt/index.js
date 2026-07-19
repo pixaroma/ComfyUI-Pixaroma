@@ -16,6 +16,7 @@ import { openPromptSettings, closePromptSettingsFor, accentOf, ACCENT_SETTING } 
 
 const STATE_KEY = "promptState";
 const DEFAULT_STATE = { text: "", order: "mine", sep: ", ", accent: null, showExpanded: true };
+const ORDER_SETTING = "Pixaroma.Prompt.DefaultOrder";
 
 const DEFAULT_W = 470;
 const DEFAULT_H = 210;
@@ -40,6 +41,18 @@ function writeState(node, patch) {
   node.properties = node.properties || {};
   const cur = readState(node);
   node.properties[STATE_KEY] = { ...cur, ...patch };
+}
+
+// Global default join order for NEW nodes, frozen at creation. A saved node has no
+// order at nodeCreated time either, but configure() overwrites its promptState right
+// after, so only genuinely fresh nodes keep this default (same shape as the size
+// default). Order is a functional choice, so it freezes at creation rather than
+// staying live-linked to the setting like the cosmetic accent does.
+function defaultOrder() {
+  try {
+    if (app.ui?.settings?.getSettingValue?.(ORDER_SETTING) === "Wired first") return "wired";
+  } catch { /* fall through to mine */ }
+  return "mine";
 }
 
 // ── CSS ────────────────────────────────────────────────────────────────────
@@ -147,10 +160,10 @@ const PROMPT_HELP = {
     {
       heading: "The text input and output",
       body:
-        "The `text` output carries your finished prompt. The optional `text` input lets you wire in another prompt:",
+        "The `text` output carries your finished prompt. The optional `text` input lets you wire in another prompt (you can set which order new nodes start in from ComfyUI Settings > Pixaroma > Prompt):",
       bullets: [
         "Nothing wired in: the output is just your prompt.",
-        "Wired in: it is joined with your prompt. A small control on the top line lets you choose `My prompt first` or `Wired first`, and the separator (comma, space, or new line).",
+        "Wired in: it is joined with your prompt. A small control on the top line lets you choose `My prompt first` or `Wired first`, and the separator (comma, space, new line, blank line, pipe, period, or BREAK).",
       ],
     },
     {
@@ -249,7 +262,15 @@ function makeDropdown(value, options, onChange) {
   });
   return { el: wrap, set };
 }
-const SEP_OPTIONS = [{ value: ", ", label: ", comma" }, { value: " ", label: "space" }, { value: "\n", label: "new line" }];
+const SEP_OPTIONS = [
+  { value: ", ", label: ", comma" },
+  { value: " ", label: "space" },
+  { value: "\n", label: "new line" },
+  { value: "\n\n", label: "blank line" },
+  { value: " | ", label: "| pipe" },
+  { value: ". ", label: ". period" },
+  { value: " BREAK ", label: "BREAK" },
+];
 
 // ── @-autocomplete (single body-level popup) ───────────────────────────────
 const TAG_TOKEN_RE = /@([a-zA-Z0-9_\-]*)$/;
@@ -767,6 +788,10 @@ function setupNode(node) {
   const root = buildRoot(node);
   node._pixPromptRoot = root;
 
+  // Fresh node picks up the global default join order (configure() restores a saved
+  // node's own order after this, so this only sticks for genuinely new nodes).
+  if (node.properties?.[STATE_KEY]?.order == null) writeState(node, { order: defaultOrder() });
+
   const st = readState(node);
   root._els.ta.value = st.text;
 
@@ -810,6 +835,15 @@ app.registerExtension({
       defaultValue: "",
       tooltip: "Hex colour (e.g. #f66744) for the buttons on new Prompt nodes. Blank = Pixaroma orange. Each node can override it from its gear.",
       category: ["👑 Pixaroma", "Prompt", "Default button colour"],
+    },
+    {
+      id: ORDER_SETTING,
+      name: "Prompt Pixaroma - default join order",
+      type: "combo",
+      defaultValue: "My prompt first",
+      options: ["My prompt first", "Wired first"],
+      tooltip: "When a prompt is wired into a NEW Prompt node, which one comes first. Each node can still change it on its top line. Existing nodes keep their own choice.",
+      category: ["👑 Pixaroma", "Prompt", "Default join order"],
     },
   ],
 
