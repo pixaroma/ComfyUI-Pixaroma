@@ -18,6 +18,63 @@
 import { registerNodeHelp } from "../shared/index.mjs";
 
 const HELP = {
+  "PixaromaLoadImageMini": {
+    title: "Load Image Mini Pixaroma",
+    tagline: "A compact Load Image: upload, pick, preview, and just two outputs. All the resize controls tuck into the gear.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "This is the small version of Load Image Pixaroma. It loads a picture from ComfyUI's input folder and gives you a clean, minimal node - a toolbar, the file picker, and a preview - with only two outputs so it does not clutter the canvas.\n\nEverything the full Load Image can do is still here. The upload, paste and drag-drop all work, and Open in MaskEditor and Copy/Paste (Clipspace) behave exactly as they do on the full node.",
+      },
+      {
+        heading: "The toolbar",
+        defs: [
+          ["Upload", "Choose an image file from your computer."],
+          ["Paste", "Paste an image from the clipboard (or press Ctrl+V while the node is selected)."],
+          ["Gear", "Open the settings panel: the resize modes, snap, resample, upscaling, and this node's accent colour."],
+        ],
+      },
+      {
+        heading: "Picking a file",
+        body: "Use the arrows to flip through the images in your input folder one at a time (PageUp / PageDown also work), or click the filename to open the picker and choose from thumbnails. You can also drag an image straight onto the node.",
+      },
+      {
+        heading: "Resize lives in the gear",
+        body: "To keep the face small, all the resizing lives in the gear settings panel: Max megapixels, Longest side, Scale by, Fit inside, Crop to fill, and Match ratio, plus snap and the resample filter. It is the same resize engine as the full Load Image. Padding is not here on purpose - use Outpaint Pixaroma for that.\n\nThe two small cards on the face show the input size and the resulting output size so you can see the resize at a glance.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The loaded picture, after any resize you set in the gear."],
+          ["image_info", "A small bundle carrying the mask, width, height and filename. Wire it into Image Info Pixaroma only when you need those extras - that is what keeps this loader small."],
+        ],
+      },
+    ],
+    footer: "Need the mask, width, height or filename? Add an Image Info Pixaroma node and wire image_info into it.",
+  },
+
+  "PixaromaImageInfo": {
+    title: "Image Info Pixaroma",
+    tagline: "Unpacks the image_info bundle from Load Image Mini into the mask, size and filename you need.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Load Image Mini keeps its face small by sending everything except the image through a single image_info output. This node opens that bundle back up. Wire it in only when you actually need the extras, so the loader itself stays compact.\n\nThe width, height and filename also show on this node's own face (in the Classic renderer), so a quick glance often saves you from pulling any wires at all.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The picture (the same one the loader's image output carries)."],
+          ["mask", "The mask from the image's transparency, ready for inpainting. Blank if the image has no alpha."],
+          ["width", "The image width in pixels, after any resize."],
+          ["height", "The image height in pixels."],
+          ["filename", "The image's file name."],
+        ],
+      },
+    ],
+    footer: "Connect the image_info output of a Load Image Mini Pixaroma node into this node's image_info input.",
+  },
+
   "PixaromaOutpaint": {
     title: "Outpaint Pixaroma",
     tagline: "Add a solid-colour border around your image so an outpainting model can paint new scenery into it.",

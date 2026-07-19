@@ -22,6 +22,10 @@ from .nodes.node_label import NODE_CLASS_MAPPINGS as _MAPS_LABEL
 from .nodes.node_label import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LABEL
 from .nodes.node_load_image import NODE_CLASS_MAPPINGS as _MAPS_LOAD_IMAGE
 from .nodes.node_load_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_IMAGE
+from .nodes.node_load_image_mini import NODE_CLASS_MAPPINGS as _MAPS_LOAD_IMAGE_MINI
+from .nodes.node_load_image_mini import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_IMAGE_MINI
+from .nodes.node_image_info import NODE_CLASS_MAPPINGS as _MAPS_IMAGE_INFO
+from .nodes.node_image_info import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_IMAGE_INFO
 from .nodes.node_paint import NODE_CLASS_MAPPINGS as _MAPS_PAINT
 from .nodes.node_paint import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAINT
 from .nodes.node_preview import NODE_CLASS_MAPPINGS as _MAPS_PREVIEW
@@ -132,6 +136,8 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_INPAINT_STITCH,
     **_MAPS_LABEL,
     **_MAPS_LOAD_IMAGE,
+    **_MAPS_LOAD_IMAGE_MINI,
+    **_MAPS_IMAGE_INFO,
     **_MAPS_NOTE,
     **_MAPS_NOTIFY,
     **_MAPS_SAVE_MP4,
@@ -186,6 +192,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_INPAINT_STITCH,
     **_NAMES_LABEL,
     **_NAMES_LOAD_IMAGE,
+    **_NAMES_LOAD_IMAGE_MINI,
+    **_NAMES_IMAGE_INFO,
     **_NAMES_NOTE,
     **_NAMES_NOTIFY,
     **_NAMES_SAVE_MP4,
