@@ -583,6 +583,23 @@ function refreshWireLock(node) {
   els.portrow.classList.toggle("on", wired);
   renderExpand(node);
 }
+// The expanded preview reads the UPSTREAM wired node's text, but that node changing
+// fires no event on THIS node (Vue Compat #1: no cross-node change hook). Poll so the
+// preview follows an upstream edit live. Cheap: re-renders ONLY when the resolved
+// wired text actually changes, and no-ops when unwired or the preview is hidden.
+function startWiredPoll(node) {
+  stopWiredPoll(node);
+  node._pixLastWired = undefined;
+  node._pixPromptPoll = setInterval(() => {
+    if (!node._pixPromptRoot) return;
+    if (!isWired(node) || !readState(node).showExpanded) { node._pixLastWired = undefined; return; }
+    const cur = resolveWiredText(node);
+    if (cur !== node._pixLastWired) { node._pixLastWired = cur; renderExpand(node); }
+  }, 400);
+}
+function stopWiredPoll(node) {
+  if (node._pixPromptPoll) { clearInterval(node._pixPromptPoll); node._pixPromptPoll = null; }
+}
 
 // ── events ─────────────────────────────────────────────────────────────────
 function wireEvents(node, root) {
@@ -791,6 +808,8 @@ function setupNode(node) {
 
   // Re-highlight / re-preview when the library changes (edited in the editor).
   node._pixPromptUnsub = subscribe(() => { refreshBody(node); });
+  // Keep the preview in step with an upstream wired node being edited.
+  startWiredPoll(node);
 
   if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
   if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
@@ -871,6 +890,7 @@ app.registerExtension({
       closePromptSettingsFor(this);
       this._pixPromptFloorOff?.(); this._pixPromptFloorOff = null;
       this._pixPromptUnsub?.(); this._pixPromptUnsub = null;
+      stopWiredPoll(this);
       this._pixPromptRoot = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
