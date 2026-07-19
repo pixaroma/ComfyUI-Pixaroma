@@ -560,8 +560,16 @@ function wireEvents(node, root) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return; // let ComfyUI run the workflow
     e.stopPropagation();
   });
-  els.ta.addEventListener("mousedown", (e) => e.stopPropagation());
-  els.ta.addEventListener("mouseup", () => setTimeout(() => onSelect(node), 0));
+  // The "Save as tag" popup appears only after a deliberate DRAG-select - NOT on a
+  // click or a double-click (double-click just selects a word natively, no popup).
+  let dragStart = null;
+  els.ta.addEventListener("mousedown", (e) => { e.stopPropagation(); dragStart = { x: e.clientX, y: e.clientY }; });
+  els.ta.addEventListener("mouseup", (e) => {
+    const moved = dragStart && (Math.abs(e.clientX - dragStart.x) + Math.abs(e.clientY - dragStart.y)) > 4;
+    dragStart = null;
+    setTimeout(() => { if (moved) onSelect(node); else hideSaveSel(); }, 0);
+  });
+  els.ta.addEventListener("dblclick", () => hideSaveSel()); // word-select only, never the popup
   els.ta.addEventListener("keyup", (e) => { if (e.shiftKey) setTimeout(() => onSelect(node), 0); });
   els.ta.addEventListener("blur", () => setTimeout(() => { if (!_saveSel || document.activeElement !== _saveSel.input) hideSaveSel(); }, 150));
 
