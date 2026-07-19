@@ -274,9 +274,12 @@ function renderCardsCanvas(node) {
   if (cssW <= 0 || cssH <= 0) return;
   const ctx = sizeCanvas(cv, cssW, cssH);
   // The canvas overlaps the output-slot band (nudge below), so reserve the right
-  // for the "image" / "image_info" labels; the reserved area is transparent, so
-  // the real dots show through (canvas is pointer-events:none).
-  const pairW = Math.max(96, cssW - CARDS_VUE_RIGHT_RESERVE);
+  // for the "image" / "image_info" labels. Too narrow -> paint NOTHING (the
+  // canvas is already cleared + transparent, so the labels show through) rather
+  // than flooring the width and painting opaque cards OVER the labels. Mirrors
+  // the Classic dead-space paint's pairW>=120 blank-gate.
+  const pairW = cssW - CARDS_VUE_RIGHT_RESERVE - 4;
+  if (pairW < 120) return;
   paintCardsInto(ctx, node, 4, cssH / 2, pairW);
 }
 
@@ -876,13 +879,14 @@ if (!app._pixLmPromptPatched) {
           const node = findNode(index, id);
           const stateStr = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
           entry.inputs = entry.inputs || {};
-          if (node?._pixLiOrigName) {
-            let obj; try { obj = JSON.parse(stateStr); } catch { obj = { ...DEFAULT_STATE }; }
-            obj.orig_name = node._pixLiOrigName;
-            entry.inputs[HIDDEN_INPUT] = JSON.stringify(obj);
-          } else {
-            entry.inputs[HIDDEN_INPUT] = stateStr;
-          }
+          // Strip the frontend-only accent before injecting: it is a pure UI
+          // colour, but it lives inside the state object and IS_CHANGED hashes the
+          // injected string - so leaving it in makes a cosmetic colour pick
+          // invalidate the cache and re-run the loader + everything downstream.
+          let obj; try { obj = JSON.parse(stateStr); } catch { obj = { ...DEFAULT_STATE }; }
+          delete obj.accent;
+          if (node?._pixLiOrigName) obj.orig_name = node._pixLiOrigName;
+          entry.inputs[HIDDEN_INPUT] = JSON.stringify(obj);
           const w = node?._pixLiImageWidget;
           const live = entry.inputs.image;
           if (typeof live === "string" && /clipspace/i.test(live)) {

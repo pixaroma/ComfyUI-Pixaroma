@@ -13,6 +13,7 @@ loaders can never drift apart. See .claude/patterns/load-image.md.
 """
 
 import hashlib
+import json
 import os
 
 import numpy as np
@@ -171,7 +172,15 @@ class PixaromaLoadImageMini:
         m = hashlib.sha256()
         with open(image_path, "rb") as f:
             m.update(f.read())
-        m.update((LoadImageMiniState or "").encode("utf-8"))
+        # Hash only the RESIZE-relevant state (canonical) + the original-name
+        # field, NOT the raw string. A purely-cosmetic frontend key (the accent
+        # colour) lives inside the state object; hashing the raw string would let
+        # a colour pick invalidate the cache and force a needless re-decode +
+        # full downstream re-run. _parse_state keeps only backend keys (accent is
+        # not among them); _parse_orig_name preserves the filename-output field.
+        state = _parse_state(LoadImageMiniState)
+        m.update(json.dumps(state, sort_keys=True).encode("utf-8"))
+        m.update((_parse_orig_name(LoadImageMiniState) or "").encode("utf-8"))
         return m.hexdigest()
 
     @classmethod
