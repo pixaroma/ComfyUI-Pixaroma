@@ -159,6 +159,7 @@ export function openPromptSettings(node, onChange) {
   body.appendChild(row);
 
   sw.addEventListener("click", () => {
+    try { _cpHandle?.close(); } catch { /* ignore */ } // re-click: close the previous picker (else it leaks)
     _cpHandle = openPixaromaColorPickerPopup(sw, {
       initialColor: accentOf(node),
       swatches: BUTTON_PALETTE,

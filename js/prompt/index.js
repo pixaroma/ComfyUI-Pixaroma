@@ -4,7 +4,7 @@ import {
   installResizeFloor, installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 import { getTags, getCategories, findTag, subscribe, getLibrary as _getLib, setLibrary as _setLib } from "./library.mjs";
-import { expandTags, hasTags } from "./expand.mjs";
+import { expandTags, hasTags, scanTags } from "./expand.mjs";
 import { openLibraryEditor, closeLibraryEditorFor } from "./library_editor.mjs";
 import { openPromptSettings, closePromptSettingsFor, accentOf, ACCENT_SETTING } from "./settings.mjs";
 
@@ -56,7 +56,7 @@ function injectCSS() {
        the empty container so the slot dots underneath stay clickable/wireable;
        only the actual controls capture clicks. Coloured with the node accent. */
     .pix-prm-portrow { position:absolute; top:-26px; left:0; right:0; margin:0; z-index:3; pointer-events:none;
-      display:none; align-items:center; justify-content:center; gap:8px; user-select:none; }
+      display:none; align-items:center; justify-content:center; gap:8px; user-select:none; overflow:hidden; }
     .pix-prm-portrow.on { display:flex; }
     .pix-prm-portrow .cl { font-size:10.5px; color:var(--acc); display:inline-flex; align-items:center; gap:5px; }
     .pix-prm-portrow .cl .wd { width:8px; height:8px; border-radius:50%; background:var(--acc); }
@@ -272,9 +272,10 @@ function maybeAC(node, ta) {
   const m = TAG_TOKEN_RE.exec(ta.value.slice(0, pos));
   if (!m) { closeAC(); return; }
   const start = pos - m[0].length;
-  // Boundary: the char before @ must not be a word char / another @.
+  // Boundary (Unicode-consistent with scanTags): don't autocomplete when @ sits
+  // after a letter/number/mark/_ (an email) or another @.
   const prev = start > 0 ? ta.value[start - 1] : "";
-  if (prev && /[\w@]/.test(prev)) { closeAC(); return; }
+  if (prev && /[\p{L}\p{N}\p{M}_@]/u.test(prev)) { closeAC(); return; }
   const q = m[1].toLowerCase();
   openAC(node, ta, start, q);
 }
@@ -318,10 +319,11 @@ function openAC(node, ta, start, q) {
   const r = ta.getBoundingClientRect();
   el.style.display = "block";
   el.style.minWidth = Math.max(260, Math.min(360, r.width)) + "px";
-  // Place below the field, flipping above if it would run off the bottom.
+  // Place below the field, flipping above if the FULL popup would run off the bottom.
   const below = window.innerHeight - r.bottom;
-  el.style.left = Math.min(r.left, window.innerWidth - el.offsetWidth - 8) + "px";
-  if (below < 200 && r.top > below) { el.style.top = ""; el.style.bottom = (window.innerHeight - r.top + 4) + "px"; }
+  const need = Math.min(el.offsetHeight || 230, 230);
+  el.style.left = Math.max(8, Math.min(r.left, window.innerWidth - el.offsetWidth - 8)) + "px";
+  if (below < need && r.top > below) { el.style.top = ""; el.style.bottom = (window.innerHeight - r.top + 4) + "px"; }
   else { el.style.bottom = ""; el.style.top = (r.bottom + 4) + "px"; }
 }
 function updateACSel() {
@@ -334,7 +336,7 @@ function updateACSel() {
 // previous @tag, so inserts never produce "@a@b" (which reads badly and is
 // awkward to edit). See expand.mjs - chained tags DO expand, but a space is cleaner.
 function tagSep(before) {
-  return (before && /[\p{L}\p{N}_@]$/u.test(before)) ? " " : "";
+  return (before && /[\p{L}\p{N}\p{M}_@]$/u.test(before)) ? " " : "";
 }
 function pickAC(tag) {
   if (!_ac) return;
@@ -467,10 +469,20 @@ function readNodeText(src, depth) {
 }
 function renderBackdrop(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
-  els.backdrop.innerHTML = escapeHTML(els.ta.value).replace(/@([a-zA-Z0-9_\-]+)/g, (m, n) => {
-    const known = !!findTag(n);
-    return `<span class="pix-prm-chip${known ? "" : " bad"}">${m}</span>`;
-  });
+  // Chip ONLY the @tokens scanTags counts as real tags (so an email's @name is
+  // left plain, matching the preview + the run). Known = accent chip, unknown = red.
+  const text = els.ta.value;
+  const hits = scanTags(text);
+  let html = "";
+  let i = 0;
+  for (const h of hits) {
+    html += escapeHTML(text.slice(i, h.start));
+    const known = !!findTag(h.name);
+    html += `<span class="pix-prm-chip${known ? "" : " bad"}">${escapeHTML(h.raw)}</span>`;
+    i = h.end;
+  }
+  html += escapeHTML(text.slice(i));
+  els.backdrop.innerHTML = html;
 }
 function renderExpand(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
@@ -677,7 +689,9 @@ function showSaveSel(node, a, b, selText) {
   // Dismiss when the user clicks anywhere outside the popup (mirrors the other
   // body-appended popups). Deferred a tick so the click that opened it doesn't
   // immediately close it.
-  _saveSelOutside = (e) => { if (_saveSel && !_saveSel.popup.contains(e.target)) hideSaveSel(); };
+  // The category dropdown body-appends its own popup, so exclude it - else picking
+  // a category counts as an "outside" click and destroys the save popup.
+  _saveSelOutside = (e) => { if (_saveSel && !_saveSel.popup.contains(e.target) && !e.target.closest?.(".pix-prm-dd-pop")) hideSaveSel(); };
   setTimeout(() => { if (_saveSel) document.addEventListener("pointerdown", _saveSelOutside, true); }, 0);
 
   const commit = () => {

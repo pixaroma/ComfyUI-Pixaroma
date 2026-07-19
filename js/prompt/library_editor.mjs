@@ -180,9 +180,12 @@ function openCategoryMenu(anchor, onPick) {
     e.stopPropagation();
     if (e.key === "Enter") {
       const v = inp.value.trim();
-      if (v && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) { _data.categories.push(v); commit(); }
+      // If it case-collides with an existing category, use the EXISTING (canonical)
+      // one - never assign the tag a wrong-case category that no sidebar row matches.
+      const existing = v ? _data.categories.find((c) => c.toLowerCase() === v.toLowerCase()) : null;
+      if (v && !existing) { _data.categories.push(v); commit(); }
       hideCatMenu();
-      if (v) onPick(v);
+      if (v) onPick(existing || v);
     }
     if (e.key === "Escape") hideCatMenu();
   });
@@ -208,7 +211,15 @@ function makeCard(tag) {
   const top = document.createElement("div"); top.className = "ctop";
   const nm = document.createElement("input");
   nm.className = "cnm"; nm.value = tag.name; nm.spellcheck = false;
-  nm.addEventListener("input", () => { tag.name = sanitizeName(nm.value); nm.value = tag.name; commit(); });
+  nm.addEventListener("input", () => {
+    tag.name = sanitizeName(nm.value); nm.value = tag.name;
+    // Only persist a VALID name. An empty or duplicate name is dropped by normalize,
+    // so committing it would briefly remove the tag from the store + every node (a
+    // concurrent Run would miss it) and could persist the loss on an abrupt quit.
+    // The blur handler recovers an invalid name to a unique one.
+    const dup = _data.tags.some((o) => o !== tag && o.name.toLowerCase() === tag.name.toLowerCase());
+    if (tag.name && !dup) commit();
+  });
   nm.addEventListener("blur", () => { const u = uniqueNameExcept(nm.value, tag); if (u !== tag.name) { tag.name = u; nm.value = u; } commit(); });
   nm.addEventListener("keydown", (e) => e.stopPropagation());
   const cc = tag.cat || UNCATEGORIZED;

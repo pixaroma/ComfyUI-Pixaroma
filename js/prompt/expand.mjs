@@ -13,16 +13,20 @@ const TAG_RE = /@([a-zA-Z0-9_\-]+)/g;
 // char (space, comma, ...), OR immediately after another tag (a chain like
 // @a@b). This lets adjacent tags expand while still leaving an email's
 // "user@name" alone (its @ sits after a word char with no preceding tag).
-function scan(text) {
+// Returns the @tags that are REAL tag-starts, as [{name, start, end, raw}].
+// Shared by expandTags / hasTags AND the node's highlight backdrop so all three
+// agree on exactly which @tokens count.
+export function scanTags(text) {
   const out = [];
   TAG_RE.lastIndex = 0;
   let m, lastEnd = -1;
   while ((m = TAG_RE.exec(text))) {
     const at = m.index;
     const prev = at > 0 ? text[at - 1] : "";
-    // Unicode-aware: a letter/number/_ before @ (incl. accented/CJK) means it's
-    // part of an email local part, not a tag - unless we're chaining off a real tag.
-    const isTag = !prev || !/[\p{L}\p{N}_]/u.test(prev) || at === lastEnd;
+    // Unicode-aware: a letter/number/combining-mark/_ before @ (incl. accented/
+    // CJK, precomposed OR decomposed) means it's an email local part, not a tag -
+    // unless we're chaining off a real tag.
+    const isTag = !prev || !/[\p{L}\p{N}\p{M}_]/u.test(prev) || at === lastEnd;
     if (isTag) {
       out.push({ name: m[1], start: at, end: at + m[0].length, raw: m[0] });
       lastEnd = at + m[0].length; // a following @ can chain off this one
@@ -41,7 +45,7 @@ export function expandTags(text, tags) {
   const map = new Map();
   for (const t of list) map.set(t.name.toLowerCase(), t.text);
 
-  const hits = scan(text);
+  const hits = scanTags(text);
   const unknown = [];
   const known = [];
   let out = "";
@@ -61,5 +65,5 @@ export function expandTags(text, tags) {
 // expanded-preview line is worth showing.
 export function hasTags(text) {
   if (typeof text !== "string" || text.indexOf("@") === -1) return false;
-  return scan(text).length > 0;
+  return scanTags(text).length > 0;
 }

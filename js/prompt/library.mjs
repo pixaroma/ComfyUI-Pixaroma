@@ -75,6 +75,17 @@ function normalize(raw) {
     if (cat === UNCATEGORIZED) cat = "";
     out.tags.push({ name, cat, text: typeof t.text === "string" ? t.text : "" });
   }
+  // Reconcile every tag's category to the canonical (case-matching) entry in the
+  // list; a category a tag references but the list forgot is added - so the editor
+  // sidebar (exact match) and the node's category list never disagree, and a
+  // case-variant ("styles" vs "Styles") can't orphan a tag.
+  const catByKey = new Map(out.categories.map((c) => [c.toLowerCase(), c]));
+  for (const t of out.tags) {
+    if (!t.cat) continue;
+    const canon = catByKey.get(t.cat.toLowerCase());
+    if (canon) t.cat = canon;
+    else { out.categories.push(t.cat); catByKey.set(t.cat.toLowerCase(), t.cat); }
+  }
   return out;
 }
 
