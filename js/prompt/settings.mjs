@@ -11,7 +11,24 @@ import { BRAND } from "../shared/utils.mjs";
 import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_picker.mjs";
 
 export const ACCENT_SETTING = "Pixaroma.Prompt.AccentColor";
+export const ORDER_SETTING = "Pixaroma.Prompt.DefaultOrder";
 const STATE_KEY = "promptState";
+
+// Global default JOIN ORDER for new nodes. Stored in an UNREGISTERED setting (no
+// row in the global Settings panel - it is changed from the node's gear instead;
+// unregistered settings still persist, Vue Compat #20). Read accepts the legacy
+// "Wired first" string; write is canonical "mine"/"wired".
+export function getDefaultOrder() {
+  try {
+    const v = app.ui?.settings?.getSettingValue?.(ORDER_SETTING);
+    if (v === "wired" || v === "Wired first") return "wired";
+  } catch { /* fall through to mine */ }
+  return "mine";
+}
+export async function setDefaultOrder(order) {
+  try { await app.ui?.settings?.setSettingValueAsync?.(ORDER_SETTING, order === "wired" ? "wired" : "mine"); }
+  catch { /* ignore */ }
+}
 
 function globalDefaultAccent() {
   try {
@@ -60,6 +77,15 @@ function injectCSS() {
     .pix-prmset-row .sub { font-size:11px; color:#8a8a8a; }
     .pix-prmset-sw { width:34px; height:24px; border-radius:6px; border:1px solid #555; cursor:pointer; flex:none; }
     .pix-prmset-sw:hover { border-color:#fff; }
+    .pix-prmset-block { display:flex; flex-direction:column; gap:5px; }
+    .pix-prmset-block .lab { font-size:12px; color:#cfcfcf; }
+    .pix-prmset-block .sub { font-size:11px; color:#8a8a8a; }
+    .pix-prmset-seg { display:flex; border:1px solid #555; border-radius:6px; overflow:hidden; margin-top:2px; }
+    .pix-prmset-seg button { flex:1; background:#1d1d1d; border:0; color:#cfcfcf; padding:6px 8px;
+      font:11px 'Segoe UI',sans-serif; cursor:pointer; transition:background .1s,color .1s; }
+    .pix-prmset-seg button + button { border-left:1px solid #444; }
+    .pix-prmset-seg button:hover:not(.on) { color:#fff; }
+    .pix-prmset-seg button.on { background:#f66744; color:#fff; }
     .pix-prmset-f { display:flex; gap:8px; padding:10px 12px; border-top:1px solid #333; background:#1f1f1f; }
     .pix-prmset-btn { border:1px solid #444; background:rgba(255,255,255,.04); color:#d8d8d8; border-radius:5px; padding:5px 12px;
       font:12px 'Segoe UI',sans-serif; cursor:pointer; }
@@ -154,9 +180,32 @@ export function openPromptSettings(node, onChange) {
   sw.style.background = accentOf(node);
   const txt = el("div");
   txt.appendChild(el("div", "lab", "Button colour"));
-  txt.appendChild(el("div", "sub", "This node. Set the default for new ones below."));
+  txt.appendChild(el("div", "sub", "This node's buttons."));
   row.append(sw, txt);
   body.appendChild(row);
+
+  // Default join order for NEW nodes - lives here on the node's gear, not in the
+  // global Settings panel (picking writes the unregistered default immediately).
+  const jblock = el("div", "pix-prmset-block");
+  jblock.appendChild(el("div", "lab", "Default join order"));
+  jblock.appendChild(el("div", "sub", "How new Prompt nodes start. Each node still sets its own on the top line."));
+  const jseg = el("div", "pix-prmset-seg");
+  const jMine = el("button", null, "My prompt first");
+  const jWired = el("button", null, "Wired first");
+  jMine.title = "New Prompt nodes put your typed prompt before the wired one";
+  jWired.title = "New Prompt nodes put the wired prompt before yours";
+  jseg.append(jMine, jWired);
+  jblock.appendChild(jseg);
+  body.appendChild(jblock);
+  // Update the highlight from the CHOSEN value (optimistic) - getSettingValue does
+  // not reflect setSettingValueAsync immediately, so re-reading it here would lag.
+  const applyJoinUI = (cur) => {
+    jMine.classList.toggle("on", cur !== "wired");
+    jWired.classList.toggle("on", cur === "wired");
+  };
+  applyJoinUI(getDefaultOrder());
+  jMine.addEventListener("click", () => { applyJoinUI("mine"); setDefaultOrder("mine"); });
+  jWired.addEventListener("click", () => { applyJoinUI("wired"); setDefaultOrder("wired"); });
 
   sw.addEventListener("click", () => {
     try { _cpHandle?.close(); } catch { /* ignore */ } // re-click: close the previous picker (else it leaks)
@@ -174,13 +223,13 @@ export function openPromptSettings(node, onChange) {
   });
 
   const foot = el("div", "pix-prmset-f");
-  const mkDefault = el("button", "pix-prmset-btn", "Set as default");
+  const mkDefault = el("button", "pix-prmset-btn", "Colour default");
   mkDefault.title = "Use this node's colour for every new Prompt node";
   mkDefault.addEventListener("click", async () => {
     try {
       await app.ui.settings.setSettingValueAsync(ACCENT_SETTING, accentOf(node));
-      mkDefault.textContent = "Saved as default";
-      setTimeout(() => { mkDefault.textContent = "Set as default"; }, 1200);
+      mkDefault.textContent = "Saved";
+      setTimeout(() => { mkDefault.textContent = "Colour default"; }, 1200);
     } catch { /* ignore */ }
   });
   const reset = el("button", "pix-prmset-btn", "Reset");
