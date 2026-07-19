@@ -80,10 +80,14 @@ function injectCSS() {
     .pix-prm-tawrap { position:relative; flex:2 1 0; min-height:${TAWRAP_MIN}px; display:flex;
       background:#1d1d1d; border:1px solid #333; border-radius:4px; }
     .pix-prm-tawrap:focus-within { border-color:var(--acc); }
+    /* scrollbar-gutter:stable on BOTH so each always reserves the same scrollbar
+       gutter -> identical text width -> identical wrapping, so the highlight chips
+       line up with the real @tags even when the textarea shows a scrollbar (without
+       it the backdrop wraps ~15px wider and the chips drift onto the wrong text). */
     .pix-prm-backdrop { position:absolute; inset:0; padding:6px 8px; border:0;
-      font:12px/1.5 monospace; color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; pointer-events:none; box-sizing:border-box; }
+      font:12px/1.5 monospace; color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow:hidden; scrollbar-gutter:stable; pointer-events:none; box-sizing:border-box; }
     .pix-prm-ta { flex:1 1 auto; width:100%; height:100%; box-sizing:border-box; background:transparent; color:#e0e0e0;
-      border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; caret-color:var(--acc); }
+      border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; scrollbar-gutter:stable; caret-color:var(--acc); }
     .pix-prm-chip { border-radius:3px; box-shadow:0 0 0 1px var(--acc) inset; background:rgba(246,103,68,.24); }
     .pix-prm-chip.bad { box-shadow:0 0 0 1px rgba(226,85,74,.75) inset; background:rgba(226,85,74,.22); }
     /* preview GROWS with the node (flex, no fixed cap) so a big node shows more */
