@@ -9,7 +9,7 @@ stays compact.
 
 The resize engine lives in nodes/_resize_helpers.py (shared with Load Image and
 Image Resize), and the state parsing is imported from node_load_image so the two
-loaders can never drift apart. See .claude/patterns/load-image.md.
+loaders can never drift apart.
 """
 
 import hashlib

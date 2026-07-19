@@ -284,7 +284,7 @@ function renderCardsCanvas(node) {
 }
 
 // ── Nodes 2.0 nudge: lift the body beside the output dots ────────────────────
-// Adapted from the Sliders output-dot recipe (.claude/patterns/sliders.md): the
+// Adapted from the Sliders output-dot recipe: the
 // Vue frontend has no native way to move an output or paint the slot dead-space,
 // so we pull the output-slot BLOCK out of the flow. The widget body (cards first)
 // then rises up to overlap the slot band, putting the cards in the LEFT
