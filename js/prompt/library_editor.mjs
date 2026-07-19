@@ -86,10 +86,7 @@ function injectCSS() {
     .pix-prled-btn.pri { color:#fff; background:var(--acc); border-color:var(--acc); }
     .pix-prled-btn.pri:hover { filter:brightness(1.08); }
     .pix-prled-newcat .pix-prled-btn { width:100%; justify-content:center; }
-    /* content column is CAPPED + centred so a tag's name, text, and actions stay
-       close together instead of spanning the whole (fullscreen-wide) editor */
-    .pix-prled-content { flex:1; display:flex; flex-direction:column; min-width:0; background:#212121; align-items:center; }
-    .pix-prled-chead, .pix-prled-create, .pix-prled-list { width:100%; max-width:960px; box-sizing:border-box; }
+    .pix-prled-content { flex:1; display:flex; flex-direction:column; min-width:0; background:#212121; }
     .pix-prled-chead { display:flex; align-items:center; gap:10px; padding:12px 16px; border-bottom:1px solid #171717; }
     .pix-prled-chead .h { display:flex; align-items:center; gap:9px; font-size:15px; color:#fff; font-weight:500; }
     .pix-prled-chead .h .cd { width:12px; height:12px; border-radius:50%; }
@@ -105,20 +102,24 @@ function injectCSS() {
     .pix-prled-create .chint .cd { width:9px; height:9px; border-radius:50%; }
     .pix-prled-create .cbtn { flex:none; background:var(--acc); border:none; color:#fff; border-radius:5px; padding:9px 15px; font:500 12.5px 'Segoe UI',sans-serif; cursor:pointer; height:36px; }
     .pix-prled-create .cbtn:hover { filter:brightness(1.08); }
-    .pix-prled-list { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px; }
+    /* CARD GRID: tags as compact cards that fill the width in columns - each card
+       keeps its name, text, and actions together (no reaching across the editor). */
+    .pix-prled-grid { flex:1; overflow-y:auto; padding:13px 15px; display:grid;
+      grid-template-columns:repeat(auto-fill, minmax(255px, 1fr)); gap:11px; align-content:start; }
+    .pix-prled-card { background:#282828; border:1px solid #333; border-radius:9px; padding:10px; display:flex; flex-direction:column; gap:7px; min-width:0; }
+    .pix-prled-card .ctop { display:flex; align-items:center; gap:6px; }
+    .pix-prled-card .cnm { flex:1; min-width:0; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:5px; color:var(--acc); font:13px monospace; padding:6px 8px; outline:none; }
+    .pix-prled-card .cnm:focus { border-color:var(--acc); }
+    .pix-prled-card .ctop .pix-prled-pill { flex:none; max-width:52%; }
+    .pix-prled-card .ctx { background:#1d1d1d; border:1px solid #3a3a3a; border-radius:5px; color:#e0e0e0; font:11.5px/1.45 monospace; padding:7px 8px; outline:none; resize:vertical; min-height:66px; }
+    .pix-prled-card .ctx:focus { border-color:var(--acc); }
+    .pix-prled-card .cfoot { display:flex; gap:6px; }
     .pix-prled-svg { display:block; width:15px; height:15px; background-color:currentColor;
       -webkit-mask-repeat:no-repeat; mask-repeat:no-repeat; -webkit-mask-position:center; mask-position:center; -webkit-mask-size:contain; mask-size:contain; }
     .pix-prled-empty { color:#767676; font-size:13px; padding:24px; text-align:center; }
-    .pix-prled-row { display:flex; gap:10px; align-items:stretch; background:#282828; border:1px solid #333; border-radius:8px; padding:10px; }
-    .pix-prled-row .nm { width:150px; flex:none; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:5px; color:var(--acc); font:13.5px monospace; padding:8px 9px; outline:none; height:36px; }
-    .pix-prled-row .nm:focus { border-color:var(--acc); }
-    .pix-prled-row .ex { flex:1; min-width:0; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:5px; color:#e0e0e0; font:12.5px/1.5 monospace; padding:8px 10px; outline:none; resize:vertical; min-height:52px; }
-    .pix-prled-row .ex:focus { border-color:var(--acc); }
-    .pix-prled-row .side { display:flex; flex-direction:column; gap:6px; justify-content:space-between; }
-    .pix-prled-pill { display:inline-flex; align-items:center; gap:7px; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:20px; padding:6px 11px; font:12px 'Segoe UI',sans-serif; color:#cfcfcf; cursor:pointer; white-space:nowrap; }
+    .pix-prled-pill { display:inline-flex; align-items:center; gap:7px; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:20px; padding:6px 11px; font:12px 'Segoe UI',sans-serif; color:#cfcfcf; cursor:pointer; white-space:nowrap; overflow:hidden; }
     .pix-prled-pill:hover { border-color:var(--acc); color:#fff; }
     .pix-prled-pill .cd { width:10px; height:10px; border-radius:50%; flex:none; }
-    .pix-prled-rowbtns { display:flex; gap:6px; }
     .pix-prled-insert { flex:1; min-width:74px; height:30px; border-radius:5px; border:1px solid var(--acc); background:transparent;
       color:var(--acc); cursor:pointer; font:12px 'Segoe UI',sans-serif; display:flex; align-items:center; justify-content:center; gap:5px; }
     .pix-prled-insert:hover { background:var(--acc); color:#fff; }
@@ -194,27 +195,26 @@ document.addEventListener("mousedown", (e) => {
 }, true);
 
 // ── render ─────────────────────────────────────────────────────────────
-function makeRow(tag) {
-  const row = document.createElement("div");
-  row.className = "pix-prled-row";
+function makeCard(tag) {
+  const card = document.createElement("div");
+  card.className = "pix-prled-card";
+  const top = document.createElement("div"); top.className = "ctop";
   const nm = document.createElement("input");
-  nm.className = "nm"; nm.value = tag.name; nm.spellcheck = false;
+  nm.className = "cnm"; nm.value = tag.name; nm.spellcheck = false;
   nm.addEventListener("input", () => { tag.name = sanitizeName(nm.value); nm.value = tag.name; commit(); });
   nm.addEventListener("blur", () => { const u = uniqueNameExcept(nm.value, tag); if (u !== tag.name) { tag.name = u; nm.value = u; } commit(); });
   nm.addEventListener("keydown", (e) => e.stopPropagation());
-  const ex = document.createElement("textarea");
-  ex.className = "ex"; ex.value = tag.text; ex.spellcheck = false; ex.rows = 2;
-  ex.addEventListener("input", () => { tag.text = ex.value; commit(); });
-  ex.addEventListener("keydown", (e) => e.stopPropagation());
-  const side = document.createElement("div");
-  side.className = "side";
   const cc = tag.cat || UNCATEGORIZED;
   const pill = document.createElement("button");
   pill.className = "pix-prled-pill"; pill.title = "Move to another category";
   pill.innerHTML = `<span class="cd" style="background:${colorOf(cc)}"></span><span>${esc(cc)}</span>`;
   pill.addEventListener("click", (e) => { e.stopPropagation(); openCatMenu(tag, pill); });
-  const btns = document.createElement("div");
-  btns.className = "pix-prled-rowbtns";
+  top.append(nm, pill);
+  const tx = document.createElement("textarea");
+  tx.className = "ctx"; tx.value = tag.text; tx.spellcheck = false; tx.rows = 3;
+  tx.addEventListener("input", () => { tag.text = tx.value; commit(); });
+  tx.addEventListener("keydown", (e) => e.stopPropagation());
+  const foot = document.createElement("div"); foot.className = "cfoot";
   const ins = document.createElement("button");
   ins.className = "pix-prled-insert"; ins.title = "Insert this tag into your prompt";
   ins.innerHTML = `<span class="lbl">Insert</span>`;
@@ -228,10 +228,9 @@ function makeRow(tag) {
   del.className = "pix-prled-ic del"; del.title = "Delete tag";
   del.innerHTML = `<span class="pix-prled-svg" style="-webkit-mask-image:url(${ICON_BASE}delete.svg);mask-image:url(${ICON_BASE}delete.svg)"></span>`;
   del.addEventListener("click", () => { const i = _data.tags.indexOf(tag); if (i > -1) _data.tags.splice(i, 1); commit(); render(); });
-  btns.append(ins, del);
-  side.append(pill, btns);
-  row.append(nm, ex, side);
-  return row;
+  foot.append(ins, del);
+  card.append(top, tx, foot);
+  return card;
 }
 
 function renderSidebar(side) {
@@ -329,20 +328,20 @@ function buildCreateForm() {
   form.append(nm, tx, hint, btn);
   return form;
 }
-function buildList() {
-  const list = document.createElement("div");
-  list.className = "pix-prled-list";
+function buildGrid() {
+  const grid = document.createElement("div");
+  grid.className = "pix-prled-grid";
   const q = _search.toLowerCase();
   const rows = _data.tags.filter((t) =>
     (_curCat === "All" || (t.cat || UNCATEGORIZED) === _curCat) &&
     (!q || t.name.toLowerCase().includes(q) || t.text.toLowerCase().includes(q)));
   if (!rows.length) {
     const e = document.createElement("div");
-    e.className = "pix-prled-empty";
+    e.className = "pix-prled-empty"; e.style.gridColumn = "1 / -1";
     e.textContent = _search ? "No tags match your search." : "No tags here yet - create one above.";
-    list.appendChild(e);
-  } else for (const t of rows) list.appendChild(makeRow(t));
-  return list;
+    grid.appendChild(e);
+  } else for (const t of rows) grid.appendChild(makeCard(t));
+  return grid;
 }
 function renderContent(content) {
   content.innerHTML = "";
@@ -353,7 +352,7 @@ function renderContent(content) {
   if (_curCat === "All") h.innerHTML = `<span>All tags</span><span class="c">· ${_data.tags.length}</span>`;
   else h.innerHTML = `<span class="cd" style="background:${colorOf(_curCat)}"></span><span>${esc(_curCat)}</span><span class="c">· ${tagsIn(_curCat).length} tags</span>`;
   head.append(h);
-  content.append(head, buildCreateForm(), buildList());
+  content.append(head, buildCreateForm(), buildGrid());
 }
 function render() {
   if (!_overlay) return;
