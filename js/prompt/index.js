@@ -147,7 +147,7 @@ const PROMPT_HELP = {
     {
       heading: "The text input and output",
       body:
-        "The `text` output carries your finished prompt. The optional `text` input lets you wire in another prompt (you can set which order new nodes start in from ComfyUI Settings > Pixaroma > Prompt):",
+        "The `text` output carries your finished prompt. The optional `text` input lets you wire in another prompt:",
       bullets: [
         "Nothing wired in: the output is just your prompt.",
         "Wired in: it is joined with your prompt. A small control on the top line lets you choose `My prompt first` or `Wired first`, and the separator (comma, space, new line, blank line, pipe, period, or BREAK).",
@@ -160,8 +160,8 @@ const PROMPT_HELP = {
         "Your library is saved in ComfyUI's own settings, so it is private to you and survives updating the plugin - it is never saved into a workflow. Share it on purpose with `Export` / `Import` (Import lets you keep both, replace, or skip when a name already exists).",
     },
     {
-      heading: "Colours",
-      body: "The gear opens node settings where you can change the button colour, and set it as the default for new Prompt nodes.",
+      heading: "Gear settings",
+      body: "The gear (settings) button opens this node's own settings: change the button colour and set it as the default for new nodes, and choose the default join order (My prompt first / Wired first) for new Prompt nodes.",
     },
     {
       heading: "Good to know",
@@ -399,7 +399,7 @@ function buildRoot(node) {
   backdrop.className = "pix-prm-backdrop";
   const ta = document.createElement("textarea");
   ta.className = "pix-prm-ta";
-  ta.placeholder = "your prompt — type @ to insert a tag";
+  ta.placeholder = "your prompt - type @ to insert a tag";
   ta.title = "Type your prompt. @name inserts a tag. Ctrl+Enter runs the workflow.";
   ta.spellcheck = false;
   tawrap.append(backdrop, ta);
