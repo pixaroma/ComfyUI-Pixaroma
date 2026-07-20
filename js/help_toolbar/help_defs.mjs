@@ -154,7 +154,7 @@ const HELP = {
       },
       {
         heading: "Sliders and the dots",
-        body: "Feather and Color Match are sliders: drag across one to set it, or double-click to type an exact number (hold Shift while dragging for fine control). Each has a small dot on the left of its row, so you can wire a number node straight into it (a wired value overrides the slider). Right-click the node and choose Slider colour to recolour the sliders, and you can save that colour as the default for every new Outpaint Stitch node.",
+        body: "Feather and Color Match are sliders: drag across one to set it, or double-click to type an exact number (hold Shift while dragging for fine control). Each has a small dot on the left of its row, so you can wire a number node straight into it. When you do, that slider greys out and locks - the connected number is in charge, and the dimmed value shown is just the slider's own fallback. Unplug the wire to use the slider again. Right-click the node and choose Slider colour to recolour the sliders, and you can save that colour as the default for every new Outpaint Stitch node.",
       },
       {
         heading: "Outputs",
