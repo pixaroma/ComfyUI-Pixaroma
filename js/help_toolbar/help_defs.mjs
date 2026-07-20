@@ -146,11 +146,11 @@ const HELP = {
       },
       {
         heading: "Color match",
-        body: "On a plain background (a flat wall, sky, or studio backdrop) you can sometimes see a faint tone step where the new area meets your original, because the model matched a slightly shifted copy of your image. `color match` fixes it: it reads your original's colour right along the seam and gently nudges the generated area to the same tone, so the join disappears. It only evens out overall tone, never texture or detail, so it cannot add artefacts.\n\nStarts at 60. Turn it up toward 100 if a step still shows, down toward 0 to leave the model's colours exactly as they are (handy if the new area has genuinely different content you do not want shifted).",
+        body: "On a plain background (a flat wall, sky, floor, or studio backdrop) you can sometimes see a tone step where the new area meets your original, because the model matched a slightly shifted copy of your image. `color match` fixes it by continuing your original's colour along the seam out into the new area, so the join disappears. It follows the background per region, so it evens out a scene with a light wall over a darker floor, not just a single flat colour. It only shifts overall tone, never texture or detail, so it cannot add artefacts.\n\nStarts at 100, which is a full match and usually the sweet spot. Turn it down toward 0 to leave the model's colours as they are (handy if the new area has genuinely different content you do not want shifted). You can push above 100 for the rare case a faint step still shows, but that starts to over-match.",
       },
       {
         heading: "About the seam",
-        body: "This will not always be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area matches a slightly shifted version of your original. Feather blends the edge and color match evens out the tone, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable.",
+        body: "This will not always be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area is a slightly shifted version of your original. Color match evens out the tone (per region) and feather blends the edge, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable. If a background is very smooth and a step still shows, raise feather and nudge color match up.",
       },
       {
         heading: "Outputs",

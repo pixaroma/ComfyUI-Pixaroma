@@ -26,11 +26,14 @@ import torch.nn.functional as F
 # chain, exactly like PIXAROMA_CROP_INFO across node_crop.py / node_uncrop.py.
 PIXAROMA_OUTPAINT_INFO = "PIXAROMA_OUTPAINT_INFO"
 
-# Depth (px) of the seam band sampled for colour matching: a thin strip of the
-# pristine original just inside each padded edge vs the generated strip just
-# outside it. Deep enough to average out noise on a flat background, shallow
-# enough to stay local to the seam. Clamped per side to the pad / original size.
-_MATCH_BAND = 24
+# Colour-match blur radius, as a fraction of the original's SMALLER side. ~0.21
+# was the benchmark sweet spot (D:\Claude Tests\_outpaint_colormatch_bench.py):
+# large enough to average out the generated area's own texture, small enough to
+# still follow a wall/floor tone boundary. Scale-invariant, so one factor works
+# at any resolution. Clamped so tiny/huge images stay sane.
+_MATCH_BLUR_FRAC = 0.21
+_MATCH_BLUR_MIN = 12
+_MATCH_BLUR_MAX = 800
 
 
 class PixaromaOutpaintStitch:
@@ -49,12 +52,13 @@ class PixaromaOutpaintStitch:
         "to a re-encoded copy of the original rather than the pristine one, so a "
         "little feather usually looks best. Only the edges next to the new area "
         "are softened; the real picture edges stay sharp.\n\n"
-        "'color match' fixes the faint tone step you can sometimes see where the "
-        "new area meets the original on a plain background. It reads the colour "
-        "of the original right along the seam and gently shifts the generated "
-        "area to match, so the join disappears. 0 turns it off; higher matches "
-        "more strongly. It only evens out overall tone, never texture or detail, "
-        "so it cannot add artefacts.\n\n"
+        "'color match' fixes the colour/tone step you can sometimes see where "
+        "the new area meets the original, by continuing the original's colour "
+        "along the seam into the new area. It follows the background per region, "
+        "so it evens out a light-wall / dark-floor scene, not only a single flat "
+        "colour. 0 turns it off, 100 is a full match (the usual sweet spot), "
+        "above 100 over-matches for the rare stubborn step. It only evens out "
+        "tone, never texture or detail, so it cannot add artefacts.\n\n"
         "Outputs the recombined full-resolution image, plus a mask marking the "
         "newly generated area (white) versus the untouched original (black) - "
         "handy if you want to run a light refine pass on just the new part later."
@@ -87,7 +91,7 @@ class PixaromaOutpaintStitch:
                     ),
                 }),
                 "feather": ("INT", {
-                    "default": 32, "min": 0, "max": 1024, "step": 1,
+                    "default": 64, "min": 0, "max": 1024, "step": 1,
                     "tooltip": (
                         "Softens the seam between the original and the newly "
                         "generated area by this many pixels, fading the original "
@@ -97,16 +101,18 @@ class PixaromaOutpaintStitch:
                     ),
                 }),
                 "color_match": ("INT", {
-                    "default": 60, "min": 0, "max": 100, "step": 1,
+                    "default": 100, "min": 0, "max": 200, "step": 1,
                     "display": "slider",
                     "tooltip": (
-                        "Removes the faint colour/tone step that can show where "
-                        "the newly generated area meets the original on a plain "
-                        "background. Samples the original's colour along the seam "
-                        "and shifts the generated area to match. 0 = off (leave "
-                        "the model's colours untouched), 100 = match fully. It "
-                        "only evens out overall tone, so it never changes texture "
-                        "or detail and cannot add artefacts."
+                        "Removes the colour/tone step that can show where the "
+                        "newly generated area meets the original, by continuing "
+                        "the original's colour along the seam into the new area. "
+                        "It follows the background per region, so it fixes a "
+                        "light-wall / dark-floor scene, not just a single flat "
+                        "colour. 0 = off, 100 = full match (the usual sweet "
+                        "spot); above 100 over-matches, for the rare case a step "
+                        "still shows. It only evens out tone, never texture or "
+                        "detail, so it cannot add artefacts."
                     ),
                 }),
             },
@@ -173,55 +179,79 @@ class PixaromaOutpaintStitch:
             return torch.zeros((b, h, w), dtype=torch.float32, device=dev)
         return torch.zeros((1, 1, 1), dtype=torch.float32, device=dev)
 
-    def _seam_color_delta(self, canvas, orig_use, left, top, right, bottom, band):
-        """Per-channel tone offset [b,1,1,C] that makes the GENERATED area match
-        the PRISTINE original along the seams. For every padded side, sample a
-        thin band of the pristine original just INSIDE the seam and the generated
-        strip just OUTSIDE it, then return (mean_original - mean_generated) per
-        channel per batch item. Adding this to the generated area removes the
-        soft tone step that shows on flat backgrounds (the model blended the new
-        strip to a re-encoded, downscaled copy of the original, not the pristine
-        one). Mean only - no contrast/texture change, so it cannot add artefacts.
+    def _box_blur_axis(self, x, R, dim):
+        """One-axis box blur of x along `dim` in O(N) via a cumulative sum
+        (integral image), so a LARGE radius is as cheap as a small one. Edge =
+        shrinking window (average of the pixels actually present), which needs no
+        padding. R is in pixels."""
+        n = int(x.shape[dim])
+        if R < 1 or n < 2:
+            return x
+        R = min(int(R), n - 1)
+        cs = torch.cumsum(x, dim=dim)
+        zero = torch.zeros_like(x.narrow(dim, 0, 1))
+        cs = torch.cat([zero, cs], dim=dim)  # len n+1, cs[k] = sum(x[0:k])
+        idx = torch.arange(n, device=x.device)
+        hi = torch.clamp(idx + R + 1, max=n)
+        lo = torch.clamp(idx - R, min=0)
+        cnt = (hi - lo).to(x.dtype).clamp(min=1.0)
+        hi_v = torch.index_select(cs, dim, hi)
+        lo_v = torch.index_select(cs, dim, lo)
+        shape = [1] * x.dim()
+        shape[dim] = n
+        return (hi_v - lo_v) / cnt.view(shape)
 
-        One GLOBAL offset from all seams (not per-side): the tone step on a flat
-        fill is uniform, and a single offset keeps left/right/top/bottom in step
-        with each other. Longer sides contribute more pixels, so they weigh more.
-        Returns None when there is no padded side to sample from.
+    def _box_blur(self, x, R, passes=2):
+        """Separable box blur of [B,H,W,C]. 2 passes approximate a gaussian.
+        Ports the numpy blur in the colour-match benchmark 1:1."""
+        out = x
+        for _ in range(int(passes)):
+            out = self._box_blur_axis(out, R, 1)  # H
+            out = self._box_blur_axis(out, R, 2)  # W
+        return out
 
-        Both bands are read from tensors already channel-matched and batch-paired
-        to `canvas`, and every slice is clamped to the pad / original size so it
-        can never run off the edge. `orig_use` is the pristine original at native
-        size sitting at (left, top) in the canvas; its own edges ARE the seam."""
-        b = int(canvas.shape[0])
+    def _color_match(self, canvas, orig_use, left, top, right, bottom, strength01):
+        """Masked low-frequency colour match: shift the GENERATED area's smooth
+        tone to continue the pristine original's edge, killing the seam step even
+        when the background has more than one region (a light wall over a dark
+        floor - the case a single global offset physically cannot fix; picked by
+        the benchmark, see .claude/patterns/outpaint.md).
+
+        - `ref` = the pristine original with its border smeared OUTWARD to fill
+          the whole padded canvas (nearest-edge extrapolation). Every generated
+          pixel thus gets the tone of the nearest original edge - per line AND at
+          the corners, for free.
+        - `gen_lf` = the generated area's own low-frequency tone, estimated from
+          GENERATED pixels only (masked/normalised blur) so original-region
+          pixels never leak across the seam (that leak was the tiny flat-
+          background residual of the plain version).
+        - delta = lowpass(ref) - gen_lf, added to the generated area only. It
+          shifts smooth tone, never texture or detail, so it cannot add
+          artefacts, and reduces EXACTLY to a uniform offset on a flat scene.
+
+        No padded side -> nothing to continue -> returns canvas unchanged."""
+        if not (left > 0 or top > 0 or right > 0 or bottom > 0):
+            return canvas
+        H, W = int(canvas.shape[1]), int(canvas.shape[2])
         oh, ow = int(orig_use.shape[1]), int(orig_use.shape[2])
-        ch = int(canvas.shape[3])
-        gen_parts, orig_parts = [], []
-        if left > 0:
-            bw = max(1, min(int(band), int(left), ow))
-            gen_parts.append(canvas[:, top:top + oh, left - bw:left, :])
-            orig_parts.append(orig_use[:, :, 0:bw, :])
-        if right > 0:
-            bw = max(1, min(int(band), int(right), ow))
-            gen_parts.append(canvas[:, top:top + oh, left + ow:left + ow + bw, :])
-            orig_parts.append(orig_use[:, :, ow - bw:ow, :])
-        if top > 0:
-            bh = max(1, min(int(band), int(top), oh))
-            gen_parts.append(canvas[:, top - bh:top, left:left + ow, :])
-            orig_parts.append(orig_use[:, 0:bh, :, :])
-        if bottom > 0:
-            bh = max(1, min(int(band), int(bottom), oh))
-            gen_parts.append(canvas[:, top + oh:top + oh + bh, left:left + ow, :])
-            orig_parts.append(orig_use[:, oh - bh:oh, :, :])
-        if not gen_parts:
-            return None
-        gen_flat = torch.cat([p.reshape(b, -1, ch) for p in gen_parts], dim=1)
-        orig_flat = torch.cat([p.reshape(b, -1, ch) for p in orig_parts], dim=1)
-        if gen_flat.shape[1] == 0 or orig_flat.shape[1] == 0:
-            return None
-        delta = orig_flat.mean(dim=1) - gen_flat.mean(dim=1)  # [b, ch]
-        return delta.view(b, 1, 1, ch)
+        dev, dt = canvas.device, canvas.dtype
 
-    def stitch(self, image, outpaint_info=None, feather=32, color_match=60):
+        ys = (torch.arange(H, device=dev) - int(top)).clamp(0, oh - 1)
+        xs = (torch.arange(W, device=dev) - int(left)).clamp(0, ow - 1)
+        ref = orig_use.index_select(1, ys).index_select(2, xs)  # [b,H,W,C]
+
+        # G = 1 over the generated area (outside the original rect), else 0.
+        G = torch.ones((1, H, W, 1), device=dev, dtype=dt)
+        G[:, top:top + oh, left:left + ow, :] = 0.0
+
+        R = int(min(_MATCH_BLUR_MAX, max(_MATCH_BLUR_MIN,
+                                         round(_MATCH_BLUR_FRAC * min(oh, ow)))))
+        gen_lf = self._box_blur(canvas * G, R) / self._box_blur(G, R).clamp_min(1e-6)
+        target = self._box_blur(ref, R)
+        delta = (target - gen_lf) * G  # shift ONLY the generated area
+        return canvas + delta * float(strength01)
+
+    def stitch(self, image, outpaint_info=None, feather=64, color_match=100):
         # No/invalid outpaint_info -> nothing to stitch, so pass the image through
         # with a black mask (never crash on a mis-wire, matching Uncrop).
         if (not isinstance(outpaint_info, dict)
@@ -281,21 +311,19 @@ class PixaromaOutpaintStitch:
                 b = n
         orig_use = orig_use.to(canvas.device, canvas.dtype)
 
-        # Optional colour match: BEFORE the paste, nudge the generated area's
-        # tone to the pristine original along the seams, killing the soft tone
-        # step that shows on flat backgrounds. Mean offset only (see the helper),
-        # so no texture/detail change and no artefacts; the feather smooths the
-        # rest. strength 0 -> skipped entirely, so the output is byte-identical
-        # to the pre-feature node. Shifting the WHOLE canvas is fine: the paste
-        # overwrites the original's interior with the pristine copy, and in the
-        # feather band the shifted (now tone-matched) generated pixels are
-        # exactly what should show through.
-        cm = max(0, min(100, int(color_match)))
+        # Optional colour match: BEFORE the paste, continue the pristine
+        # original's edge tone into the generated area so the seam step vanishes -
+        # even across a light-wall / dark-floor background, which a single global
+        # offset cannot fix (see _color_match + the benchmark). It shifts smooth
+        # tone only, never texture, so it adds no artefacts and only touches the
+        # generated area (the paste writes the untouched original back on top).
+        # 100 = full match (the sweet spot); >100 overshoots, useful only if a
+        # stubborn step remains. 0 -> skipped, so the output is byte-identical to
+        # the pre-feature node.
+        cm = max(0, min(200, int(color_match)))
         if cm > 0:
-            delta = self._seam_color_delta(
-                canvas, orig_use, left, top, right, bottom, _MATCH_BAND)
-            if delta is not None:
-                canvas = canvas + delta * (cm / 100.0)
+            canvas = self._color_match(
+                canvas, orig_use, left, top, right, bottom, cm / 100.0)
 
         # Edge-selective feather: fade ONLY the padded sides into the new area.
         alpha = self._feather_sides(oh, ow, feather,
