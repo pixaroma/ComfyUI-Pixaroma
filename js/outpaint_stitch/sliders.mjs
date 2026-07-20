@@ -34,7 +34,7 @@ export function injectCSS() {
   s.id = "pix-ops-css";
   s.textContent = `
     .pix-ops-root { width:100%; box-sizing:border-box; display:flex; flex-direction:column;
-      gap:${ROW_GAP}px; padding:${PAD}px 0; }
+      gap:${ROW_GAP}px; padding:2px 0 ${PAD}px; }
 
     /* Heights must be DEFINITE, not 100% - everything inside is absolutely
        positioned, so a min-content grid track (Nodes 2.0) would collapse the row
@@ -203,6 +203,10 @@ export function paintRoot(node) {
   if (!root) return;
   const acc = accentOf(node);
   root.style.setProperty("--acc", acc);
+  // Pull the block up under the input slots. LEGACY insets a DOM widget by a
+  // 10px margin (BaseDOMWidgetImpl.DEFAULT_MARGIN), which reads as a gap between
+  // the slots and the sliders; Nodes 2.0 has no such margin, so pull only there.
+  root.style.marginTop = window.LiteGraph?.vueNodesMode ? "0px" : "-9px";
   for (const row of root.querySelectorAll(".pix-ops-row")) {
     const cfg = row._cfg;
     const w = widgetOf(node, cfg.name);
