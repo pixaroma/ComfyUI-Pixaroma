@@ -153,6 +153,10 @@ const HELP = {
         body: "This will not always be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area is a slightly shifted version of your original. Color match evens out the tone (per region) and feather blends the edge, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable. If a background is very smooth and a step still shows, raise feather and nudge color match up.",
       },
       {
+        heading: "Appearance",
+        body: "Feather and Color Match are sliders: drag across one to set it, or double-click to type an exact number (hold Shift while dragging for fine control). Right-click the node and choose Slider colour to recolour them, and you can save that colour as the default for every new Outpaint Stitch node.",
+      },
+      {
         heading: "Outputs",
         defs: [
           ["image", "The full-size image: the model's new area with your pristine original pasted back over its region."],
