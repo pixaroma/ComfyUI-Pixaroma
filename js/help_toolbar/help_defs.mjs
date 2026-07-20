@@ -108,15 +108,55 @@ const HELP = {
         body: "The preview draws the composition - your image with the fill bands around it, at the same proportions the output will have. After a megapixel limit the real output is smaller than the picture looks, so trust the badge for the true size. The picture shows the shape; the badge shows the numbers.\n\nBehind a Load Image the preview is live right away. Behind a generated image (a VAE Decode), it appears after one Run.",
       },
       {
+        heading: "Keeping the original at full quality",
+        body: "When you scale a large image down with the limit so the model can handle it, the whole picture goes through the model and the original half comes back a little softer and smaller. If you want the original part back at full quality, wire the `outpaint_info` output into an Outpaint Stitch Pixaroma node along with the finished image. It puts your original back exactly and keeps only the new area the model made. This is optional - if you do not wire it, nothing changes.",
+      },
+      {
         heading: "Outputs",
         defs: [
           ["image", "Your image with the fill border added (and scaled to the limit, if one is set)."],
           ["width", "The final width in pixels - the badge number."],
           ["height", "The final height in pixels."],
+          ["outpaint_info", "Optional. Carries your original image and where it sits, for Outpaint Stitch Pixaroma. Leave it unused if you do not need the original restored."],
         ],
       },
     ],
     footer: "This node only adds the fill area. The actual outpainting is done by your model or LoRA, which usually needs its own trigger words in the prompt to know it should fill the solid area - set those up with your prompt and loader nodes as that model requires.",
+  },
+
+  "PixaromaOutpaintStitch": {
+    title: "Outpaint Stitch Pixaroma",
+    tagline: "Put your pristine original back onto an outpaint result, keeping only the newly generated area.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "When you outpaint a large image, you usually have to scale it down first so the model can handle it. That sends the whole picture - including the part you wanted to keep - through the model, which softens it. This node fixes that: it scales the finished result back up to full size and drops your original image back over its own area, pixel-for-pixel. Only the new area the model painted is kept from the generated image.",
+      },
+      {
+        heading: "How to wire it",
+        bullets: [
+          "Wire the `outpaint_info` output of Outpaint Pixaroma into `outpaint_info` here.",
+          "Wire the finished image (after VAE Decode) into `image`.",
+          "That is it - the node knows where the original goes from the info.",
+        ],
+      },
+      {
+        heading: "Feather",
+        body: "`feather` softens the join between your original and the new area, fading the original edge into the generated part over that many pixels. A little usually looks best, because the new area was blended to a re-encoded copy of your original, not the exact one, so there can be a faint step at the seam. Set it to 0 for a hard edge. Only the edges next to the new area are softened - the real picture edges stay sharp.",
+      },
+      {
+        heading: "About the seam",
+        body: "This will not be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area matches a slightly shifted version of your original. Feather hides most of it, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable.",
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["image", "The full-size image: the model's new area with your pristine original pasted back over its region."],
+          ["mask", "White marks the new area, black the untouched original. Feed it into a refine or inpaint pass if you want to sharpen just the new part."],
+        ],
+      },
+    ],
+    footer: "Optional companion to Outpaint Pixaroma. Skip it and the plain Outpaint result works fine; add it when you scaled a big image down and want the original half back at full quality.",
   },
 
   "PixaromaSeed": {

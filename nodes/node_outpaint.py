@@ -26,6 +26,13 @@ try:
 except ImportError:  # keeps the module importable in a bare test harness
     folder_paths = None
 
+# Custom wire type carrying everything Outpaint Stitch Pixaroma needs to put the
+# pristine original back onto the outpaint result: the FULL original image plus
+# the pad amounts per side (so the stitch knows where the original sits in the
+# padded canvas). A plain duplicated string so node_outpaint_stitch.py's matching
+# constant stays decoupled (no cross-file import chain), like PIXAROMA_CROP_INFO.
+PIXAROMA_OUTPAINT_INFO = "PIXAROMA_OUTPAINT_INFO"
+
 DEFAULT_STATE = {
     "version": 1,
     "mode": "ratio",
@@ -227,6 +234,10 @@ class PixaromaOutpaint:
         "The padded image, scaled to the megapixel limit when one is set.",
         "Final width in pixels, after padding and any scaling.",
         "Final height in pixels, after padding and any scaling.",
+        "Info for Outpaint Stitch Pixaroma - carries the pristine original and "
+        "where it sits in the padded canvas, so after the model fills the new "
+        "area you can put the original back at full quality. Optional; wire it "
+        "into Outpaint Stitch Pixaroma, or leave it unused.",
     )
 
     @classmethod
@@ -240,8 +251,8 @@ class PixaromaOutpaint:
             "hidden": {"OutpaintState": ("STRING", {"default": ""})},
         }
 
-    RETURN_TYPES = ("IMAGE", "INT", "INT")
-    RETURN_NAMES = ("image", "width", "height")
+    RETURN_TYPES = ("IMAGE", "INT", "INT", PIXAROMA_OUTPAINT_INFO)
+    RETURN_NAMES = ("image", "width", "height", "outpaint_info")
     FUNCTION = "outpaint"
     CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
 
@@ -249,7 +260,7 @@ class PixaromaOutpaint:
         st = _parse_state(OutpaintState)
         pils = _tensor_to_pils(image)
         if not pils:
-            return (image, 0, 0)
+            return (image, 0, 0, None)
 
         src_w, src_h = pils[0].size
         if st["mode"] == "ratio":
@@ -333,7 +344,20 @@ class PixaromaOutpaint:
         # JSON.parse of the whole websocket message throws, silently dropping
         # every other node's payload along with this one. Only plain strings
         # reach it here, so there is nothing to sanitise.
-        return {"ui": ui, "result": (out, int(out_w), int(out_h))}
+        #
+        # outpaint_info carries the PRISTINE original (the untouched input tensor)
+        # and the per-side pads AFTER _fit_pad, so Outpaint Stitch Pixaroma knows
+        # exactly where the original sits in the padded canvas (l, t) and its full
+        # size (src_w, src_h). canvas_w/h are what _apply_pad built, pre-max_mp -
+        # the size the stitch scales the result back up to. The info never leaves
+        # Python (it is a typed wire, not part of ui), so a tensor here is fine.
+        info = {
+            "original": image,
+            "left": int(l), "top": int(t), "right": int(r), "bottom": int(b),
+            "orig_w": int(src_w), "orig_h": int(src_h),
+            "canvas_w": int(src_w + l + r), "canvas_h": int(src_h + t + b),
+        }
+        return {"ui": ui, "result": (out, int(out_w), int(out_h), info)}
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaOutpaint": PixaromaOutpaint}
