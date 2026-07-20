@@ -211,44 +211,43 @@ class PixaromaOutpaintStitch:
         return out
 
     def _color_match(self, canvas, orig_use, left, top, right, bottom, strength01):
-        """Masked low-frequency colour match: shift the GENERATED area's smooth
-        tone to continue the pristine original's edge, killing the seam step even
-        when the background has more than one region (a light wall over a dark
-        floor - the case a single global offset physically cannot fix; picked by
-        the benchmark, see .claude/patterns/outpaint.md).
+        """CONTINUOUS low-frequency colour match: shift the whole image's smooth
+        tone toward the pristine original's edge continued outward, so the
+        generated area picks up the original's tone (per region) without a seam.
 
-        - `ref` = the pristine original with its border smeared OUTWARD to fill
-          the whole padded canvas (nearest-edge extrapolation). Every generated
-          pixel thus gets the tone of the nearest original edge - per line AND at
-          the corners, for free.
-        - `gen_lf` = the generated area's own low-frequency tone, estimated from
-          GENERATED pixels only (masked/normalised blur) so original-region
-          pixels never leak across the seam (that leak was the tiny flat-
-          background residual of the plain version).
-        - delta = lowpass(ref) - gen_lf, added to the generated area only. It
-          shifts smooth tone, never texture or detail, so it cannot add
-          artefacts, and reduces EXACTLY to a uniform offset on a flat scene.
+        `ref` = the pristine original with its border smeared OUTWARD to fill the
+        padded canvas (nearest-edge extrapolation), so every pixel has a target
+        tone (per line AND corners, for free). `delta = lowpass(ref) -
+        lowpass(canvas)` is added to the WHOLE canvas. It shifts smooth tone only,
+        never texture, and is naturally ~0 wherever the model already blended well
+        (so a good result is left alone) and non-zero where the strip's tone
+        drifted.
+
+        ⚠️ MUST stay CONTINUOUS across the seam - do NOT re-add a hard `* G` mask
+        that shifts only the generated area. That left the feather band's soft
+        pixels UNSHIFTED while the strip beside them WAS shifted, so a HARD EDGE
+        appeared at the seam and grew with strength (user report 2026-07-20, the
+        exact opposite of what colour match is for). Applying delta to the whole
+        canvas keeps the strip and the feather band moving together, so the join
+        stays smooth. Deep inside the original the shift self-cancels
+        (`lowpass(ref) == lowpass(canvas)` there), and the pristine original is
+        pasted back on top afterwards, so the interior stays pixel-exact; only the
+        feather band carries a smooth remnant that ramps to the pristine copy.
 
         No padded side -> nothing to continue -> returns canvas unchanged."""
         if not (left > 0 or top > 0 or right > 0 or bottom > 0):
             return canvas
         H, W = int(canvas.shape[1]), int(canvas.shape[2])
         oh, ow = int(orig_use.shape[1]), int(orig_use.shape[2])
-        dev, dt = canvas.device, canvas.dtype
+        dev = canvas.device
 
         ys = (torch.arange(H, device=dev) - int(top)).clamp(0, oh - 1)
         xs = (torch.arange(W, device=dev) - int(left)).clamp(0, ow - 1)
         ref = orig_use.index_select(1, ys).index_select(2, xs)  # [b,H,W,C]
 
-        # G = 1 over the generated area (outside the original rect), else 0.
-        G = torch.ones((1, H, W, 1), device=dev, dtype=dt)
-        G[:, top:top + oh, left:left + ow, :] = 0.0
-
         R = int(min(_MATCH_BLUR_MAX, max(_MATCH_BLUR_MIN,
                                          round(_MATCH_BLUR_FRAC * min(oh, ow)))))
-        gen_lf = self._box_blur(canvas * G, R) / self._box_blur(G, R).clamp_min(1e-6)
-        target = self._box_blur(ref, R)
-        delta = (target - gen_lf) * G  # shift ONLY the generated area
+        delta = self._box_blur(ref, R) - self._box_blur(canvas, R)   # continuous
         return canvas + delta * float(strength01)
 
     def stitch(self, image, outpaint_info=None, feather=64, color_match=100):
