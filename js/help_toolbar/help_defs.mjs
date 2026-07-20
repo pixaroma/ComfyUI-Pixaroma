@@ -145,8 +145,12 @@ const HELP = {
         body: "`feather` softens the join between your original and the new area, fading the original edge into the generated part over that many pixels. A little usually looks best, because the new area was blended to a re-encoded copy of your original, not the exact one, so there can be a faint step at the seam. Set it to 0 for a hard edge. Only the edges next to the new area are softened - the real picture edges stay sharp.",
       },
       {
+        heading: "Color match",
+        body: "On a plain background (a flat wall, sky, or studio backdrop) you can sometimes see a faint tone step where the new area meets your original, because the model matched a slightly shifted copy of your image. `color match` fixes it: it reads your original's colour right along the seam and gently nudges the generated area to the same tone, so the join disappears. It only evens out overall tone, never texture or detail, so it cannot add artefacts.\n\nStarts at 60. Turn it up toward 100 if a step still shows, down toward 0 to leave the model's colours exactly as they are (handy if the new area has genuinely different content you do not want shifted).",
+      },
+      {
         heading: "About the seam",
-        body: "This will not be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area matches a slightly shifted version of your original. Feather hides most of it, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable.",
+        body: "This will not always be as invisible as Image Uncrop, and that is expected. The whole picture went through the model, so the generated area matches a slightly shifted version of your original. Feather blends the edge and color match evens out the tone, and for extending scenery (sky, ground, walls, water) the join is usually not noticeable.",
       },
       {
         heading: "Outputs",
