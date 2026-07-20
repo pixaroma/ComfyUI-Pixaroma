@@ -1,21 +1,55 @@
 import { app } from "/scripts/app.js";
-import { CLASS, BRAND, ACCENT_SETTING, ACCENT_PROP } from "./core.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { CLASS, BRAND, ACCENT_SETTING, ACCENT_PROP, widgetOf } from "./core.mjs";
 import {
-  injectCSS, installSliders, uninstallSliders, paintRoot, MIN_W, DEFAULT_W,
+  injectCSS, installSliders, uninstallSliders, paintRows, bindInputDots,
+  alignInputsLegacy, bodyComputeSize, bodyHeight, MIN_W, DEFAULT_W, SLIDERS,
 } from "./sliders.mjs";
 import { openOpsPanel, closeOpsPanelFor } from "./settings.mjs";
 
-// Outpaint Stitch Pixaroma - gives the two native INT widgets (feather,
-// color_match) the recess-slider look of Sliders Pixaroma, plus a per-node
-// accent colour (right-click -> Slider colour, with a global default). The
-// native widgets stay the source of truth, so the Python contract is untouched.
+// Outpaint Stitch Pixaroma - the two native INT widgets (feather, color_match)
+// become Sliders-Pixaroma-style sliders, EACH with a real input dot on its row
+// (widget-socket in Nodes 2.0, the Sliders output-dot recipe mirrored for inputs
+// in legacy). Value flows through the native hidden widget + a graphToPrompt
+// inject, so wiring a number node overrides the slider.
+
+const NODE_SLOT_H = 20;
+// widgets start right after the two REAL inputs (image, outpaint_info); the two
+// slider inputs live ON the slider rows, not in the top column.
+const WIDGETS_START_Y = 2 * NODE_SLOT_H + 4;
+
+function isSliderInput(name) {
+  return SLIDERS.some((s) => s.name === name);
+}
+
+// Legacy layout: pin the rows under the real inputs and own the height, then park
+// each slider input's dot on its row. USER-action safe (never resizes on load).
+function applyLegacyLayout(node) {
+  if (isVueNodes()) return;
+  node.widgets_start_y = WIDGETS_START_Y;
+  node.computeSize = function () { return bodyComputeSize(this); };
+}
+
+// LEGACY self-heal: the slider row centres are only known once the DOM is laid
+// out (and can shift on resize / re-render), so measure + re-park the dots on a
+// light poll. alignInputsLegacy early-returns true once aligned, so the steady
+// state is one rect read per tick. Node deleted -> stop. Nodes 2.0 uses the
+// widget-socket instead, so no poll there.
+function watchAlign(node) {
+  if (isVueNodes() || node._pixOpsPoll) return;
+  node._pixOpsPoll = setInterval(() => {
+    if (!node.graph) { clearInterval(node._pixOpsPoll); node._pixOpsPoll = null; return; }
+    if (!alignInputsLegacy(node)) node.setDirtyCanvas?.(true, true);
+  }, 350);
+}
+function unwatchAlign(node) {
+  if (node._pixOpsPoll) { clearInterval(node._pixOpsPoll); node._pixOpsPoll = null; }
+}
 
 app.registerExtension({
   name: "Pixaroma.OutpaintStitch",
 
-  // A plain hex field: ComfyUI's settings dialog has no colour input, and the
-  // pretty picker lives in the node's own panel anyway (which also writes this
-  // value via its "Colour as default" button).
   settings: [
     {
       id: ACCENT_SETTING,
@@ -27,7 +61,7 @@ app.registerExtension({
       onChange: () => {
         try {
           for (const n of app.graph?._nodes || []) {
-            if (n?.comfyClass === CLASS && !n.properties?.[ACCENT_PROP]) paintRoot(n);
+            if (n?.comfyClass === CLASS && !n.properties?.[ACCENT_PROP]) paintRows(n);
           }
         } catch {}
       },
@@ -36,7 +70,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== CLASS) return;
-    if (nodeType.prototype._pixOpsPatched) return;   // hot-reload guard
+    if (nodeType.prototype._pixOpsPatched) return;
     nodeType.prototype._pixOpsPatched = true;
 
     injectCSS();
@@ -45,36 +79,130 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       _created?.apply(this, arguments);
       installSliders(this);
-      // Fresh default width (configure() restores the saved size for loaded /
-      // duplicated nodes, running AFTER this - Vue Compat #8).
+      applyLegacyLayout(this);
       if (!this.size || this.size[0] < MIN_W) this.size[0] = DEFAULT_W;
-      queueMicrotask(() => paintRoot(this));   // pick up restored widget values
+      queueMicrotask(() => { bindInputDots(this); paintRows(this); watchAlign(this); this.setDirtyCanvas?.(true, true); });
     };
 
     const _configure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
       const r = _configure?.apply(this, arguments);
-      installSliders(this);                    // idempotent - repaints if built
-      queueMicrotask(() => paintRoot(this));
+      installSliders(this);
+      applyLegacyLayout(this);
+      queueMicrotask(() => { bindInputDots(this); paintRows(this); watchAlign(this); this.setDirtyCanvas?.(true, true); });
       return r;
+    };
+
+    // Re-bind when a slider input is connected/disconnected so its dot state (and,
+    // in Nodes 2.0, the reactive marker) stays fresh. Never mutates serialized
+    // state here, so no configure/loading guard is needed - but keep it cheap.
+    const _conn = nodeType.prototype.onConnectionsChange;
+    nodeType.prototype.onConnectionsChange = function (type, slotIndex, isConnected, link, ioSlot) {
+      const res = _conn?.apply(this, arguments);
+      if (type === 1 /* INPUT */ && ioSlot && isSliderInput(ioSlot.name)) {
+        bindInputDots(this);
+        paintRows(this);
+      }
+      return res;
+    };
+
+    // LEGACY: arrange() computes widget.y; re-run it once the dot positions are set
+    // so the slots re-measure with our pos in place.
+    const _arrange = nodeType.prototype.arrange;
+    nodeType.prototype.arrange = function () {
+      const r = _arrange?.apply(this, arguments);
+      if (!isVueNodes()) alignInputsLegacy(this);   // best-effort; the poll heals
+      return r;
+    };
+
+    // Keep our render-time slot geometry + marker out of the saved file (rebuilt on
+    // load): legacy writes input.pos, Nodes 2.0 writes the widget marker; either
+    // would differ per renderer and flag a clean workflow "modified".
+    const _serialize = nodeType.prototype.serialize;
+    nodeType.prototype.serialize = function () {
+      const o = _serialize?.apply(this, arguments);
+      if (o?.inputs) {
+        for (const inp of o.inputs) {
+          if (inp && isSliderInput(inp.name)) {
+            delete inp.pos;
+            delete inp.widget;
+            if (inp.label === "​") delete inp.label;
+          }
+        }
+      }
+      return o;
     };
 
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeOpsPanelFor(this);
+      unwatchAlign(this);
       uninstallSliders(this);
       return _removed?.apply(this, arguments);
     };
   },
 
-  // Right-click (the current context-menu API, so it shows in both renderers).
   getNodeMenuItems(node) {
     if (node?.comfyClass !== CLASS) return [];
     return [
       {
         content: "⚙ Slider colour",
-        callback: () => openOpsPanel(node, () => paintRoot(node)),
+        callback: () => openOpsPanel(node, () => paintRows(node)),
       },
     ];
   },
 });
+
+// ── graphToPrompt: feed the slider value unless the input is wired ───────────
+function buildIndex() {
+  const index = new Map();
+  const visit = (graph) => {
+    if (!graph) return;
+    const nodes = graph._nodes || graph.nodes || [];
+    for (const n of nodes) {
+      if (!n) continue;
+      if (n.comfyClass === CLASS || n.type === CLASS) index.set(String(n.id), n);
+      const inner = n.subgraph || n.graph || n._graph;
+      if (inner && inner !== graph) visit(inner);
+    }
+  };
+  visit(app.graph);
+  return index;
+}
+function findNode(index, id) {
+  const s = String(id);
+  if (index.has(s)) return index.get(s);
+  const tail = s.includes(":") ? s.slice(s.lastIndexOf(":") + 1) : null;
+  return tail && index.has(tail) ? index.get(tail) : null;
+}
+
+const _origGraphToPrompt = app.graphToPrompt.bind(app);
+app.graphToPrompt = async function (...args) {
+  const result = await _origGraphToPrompt(...args);
+  try {
+    const out = result?.output;
+    if (out) {
+      let index = null;
+      for (const id in out) {
+        const entry = out[id];
+        if (!entry || entry.class_type !== CLASS) continue;
+        if (!index) index = buildIndex();
+        const node = findNode(index, id);
+        if (!node) continue;
+        entry.inputs = entry.inputs || {};
+        for (const cfg of SLIDERS) {
+          const inp = node.inputs?.find((i) => i.name === cfg.name);
+          const connected = inp && inp.link != null;
+          if (connected) continue;                 // leave ComfyUI's link in place
+          const w = widgetOf(node, cfg.name);
+          let v = Math.round(Number(w?.value));
+          if (!Number.isFinite(v)) v = cfg.name === "feather" ? 64 : 100;
+          entry.inputs[cfg.name] = v;               // inject the slider value
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[Outpaint Stitch Pixaroma] could not inject slider values:", (e && e.message) || e);
+  }
+  return result;
+};

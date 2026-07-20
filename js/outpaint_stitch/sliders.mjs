@@ -1,28 +1,39 @@
 // Outpaint Stitch Pixaroma - the slider face. Two recess-style sliders (Feather,
 // Color Match) matching Sliders Pixaroma's look, bound to the node's native INT
-// widgets. Renders in BOTH renderers (DOM widget). See js/sliders/ui.mjs for the
-// original of this look; the CSS values are copied verbatim so the pack reads as
-// one design (a future refactor could promote it to a shared slider helper).
+// widgets, EACH with a real input dot ON ITS ROW so a number node can be wired in.
+//
+// One DOM widget PER slider (needed so each input's dot lands on its own row):
+//   NODES 2.0  the widget-socket model (js/switch/vue_list.mjs): input.widget =
+//              {name: rowWidget} moves the real dot onto the row.
+//   LEGACY     the Sliders output-dot recipe mirrored for inputs
+//              (.claude/patterns/sliders.md): the widget marker is REMOVED (so the
+//              dot draws), input.pos parks it on the row, widgets_start_y pins the
+//              rows, and computeSize owns the height so no slot row is reserved.
+// The value always flows through the native hidden widget + a graphToPrompt inject
+// (index.js), so the dot gymnastics never touch the number that reaches Python.
 
 import { app } from "/scripts/app.js";
 import { widgetOf, accentOf } from "./core.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 
-export const ROW_H = 23;    // one slider row (matches Sliders Pixaroma)
+export const ROW_H = 23;
 export const ROW_GAP = 6;
-export const PAD = 5;       // top+bottom padding inside the root
+export const PAD = 5;
 export const MIN_W = 210;
 export const DEFAULT_W = 274;
+export const ZW = "​";          // zero-width space: suppress the slot label paint
+const DOT_X = 10;                    // legacy input-dot x (matches image/outpaint_info)
+const LEFT_INSET = 15;               // legacy: room on the row's left for the dot
 
-const WIDGET_TYPE = "pixaroma_ops_sliders";   // namespaced (Nodes 2.0 dispatch)
-const WIDGET_NAME = "pixops_sliders";
+const WIDGET_TYPE = "pixaroma_ops_row";
 
-// Each slider drives one native INT widget. min/max mirror node_outpaint_stitch.py.
+// Each slider drives one native INT widget + one input of the same name.
 const SLIDERS = [
   { name: "feather", label: "Feather", min: 0, max: 1024 },
   { name: "color_match", label: "Color Match", min: 0, max: 200 },
 ];
+const ROW_WIDGET_NAME = (name) => `pixops_row_${name}`;
 
 export function bodyHeight() {
   return SLIDERS.length * ROW_H + (SLIDERS.length - 1) * ROW_GAP + PAD * 2;
@@ -33,28 +44,18 @@ export function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-ops-css";
   s.textContent = `
-    .pix-ops-root { width:100%; box-sizing:border-box; display:flex; flex-direction:column;
-      gap:${ROW_GAP}px; padding:2px 0 ${PAD}px; }
+    .pix-ops-row-w { width:100%; box-sizing:border-box; }
+    /* Heights must be DEFINITE (Sliders Pattern #2) or the min-content Vue row
+       collapses (content is absolutely positioned). */
+    .pix-ops-row { position:relative; width:100%; height:${ROW_H}px; min-height:${ROW_H}px; box-sizing:border-box; }
 
-    /* Heights must be DEFINITE, not 100% - everything inside is absolutely
-       positioned, so a min-content grid track (Nodes 2.0) would collapse the row
-       to ~2px (Sliders Pattern #2). */
-    .pix-ops-row { width:100%; height:${ROW_H}px; min-height:${ROW_H}px; box-sizing:border-box; }
-
-    /* The EMPTY part is a translucent DENT (darkens whatever colour the node is),
-       not a fixed dark slab, so a recoloured node still looks right. */
     .pix-ops-sl {
       position:relative; width:100%; height:${ROW_H}px; border-radius:5px; overflow:hidden;
       background:rgba(0,0,0,0.28); border:1px solid rgba(255,255,255,0.14);
       cursor:ew-resize; box-sizing:border-box; user-select:none;
     }
     .pix-ops-sl:hover { border-color:var(--acc,#f66744); }
-
-    /* The FILL is SOLID accent (a translucent orange over dark mixes to brown). */
     .pix-ops-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--acc,#f66744); }
-
-    /* Two clipped copies of the line: the ink flips to white where the fill has
-       passed under it, so the label stays readable at any value. */
     .pix-ops-lay {
       position:absolute; inset:0; display:flex; align-items:center; gap:6px; padding:0 8px;
       pointer-events:none; font:11.5px 'Segoe UI',-apple-system,sans-serif;
@@ -66,8 +67,6 @@ export function injectCSS() {
     .pix-ops-base .nm { color:rgba(255,255,255,0.72); }
     .pix-ops-base .nu { color:var(--acc,#f66744); }
     .pix-ops-over .nm, .pix-ops-over .nu { color:#fff; }
-
-    /* Type an exact value (double-click the row). */
     .pix-ops-edit {
       position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box; display:none;
       background:#1d1d1d; border:1px solid var(--acc,#f66744); border-radius:5px; outline:none;
@@ -76,21 +75,15 @@ export function injectCSS() {
     }
     .pix-ops-sl.editing .pix-ops-edit { display:block; }
 
-    /* Nodes 2.0 only: each widget row reserves a 12px widget-input dot column.
-       Our sliders are not widget-socket inputs, so collapse it - otherwise the
-       rows are indented 12px from the left. */
-    .lg-node:has(.pix-ops-root) .lg-node-widget > div:first-child {
-      width:0 !important; min-width:0 !important; overflow:hidden !important;
-    }
+    /* NODES 2.0: the widget-socket paints a dot in column 1 of the row, at opacity
+       0 until hovered/wired. Our rows ARE inputs, so keep the dot always visible. */
+    .lg-node-widget:has(.pix-ops-row) > div:first-child { opacity:1 !important; }
   `;
   document.head.appendChild(s);
 }
 
 function hideNativeWidget(w) {
   if (!w) return;
-  // Keep the widget as the value store, just stop it rendering: hidden + a
-  // zero computeSize collapse the legacy row; canvasOnly keeps it out of the
-  // Nodes 2.0 body AND the Parameters tab. Value still serializes + prompts.
   w.hidden = true;
   w.computeSize = () => [0, -4];
   if (!w.options) w.options = {};
@@ -98,6 +91,8 @@ function hideNativeWidget(w) {
 }
 
 function makeSliderRow(node, cfg) {
+  const wrap = document.createElement("div");
+  wrap.className = "pix-ops-row-w";
   const row = document.createElement("div");
   row.className = "pix-ops-row";
   const sl = document.createElement("div");
@@ -116,8 +111,9 @@ function makeSliderRow(node, cfg) {
   edit.spellcheck = false;
   sl.append(fill, base, over, edit);
   row.appendChild(sl);
-  row._cfg = cfg;
-  row._sl = sl;
+  wrap.appendChild(row);
+  wrap._cfg = cfg;
+  wrap._sl = sl;
 
   const getW = () => widgetOf(node, cfg.name);
   const setVal = (v, live) => {
@@ -130,11 +126,10 @@ function makeSliderRow(node, cfg) {
       w.value = n;
       try { w.callback?.(n, app?.canvas, node); } catch {}
     }
-    paintRoot(node);
+    paintRows(node);
     if (!live) node.graph?.setDirtyCanvas?.(true, true);
   };
 
-  // Drag maps the cursor across the track; Shift = quarter-speed relative nudge.
   let startX = 0, startV = 0;
   const valFromX = (clientX, shift) => {
     const r = sl.getBoundingClientRect();
@@ -148,7 +143,7 @@ function makeSliderRow(node, cfg) {
 
   sl.addEventListener("pointerdown", (e) => {
     if (sl.classList.contains("editing") || e.button !== 0) return;
-    e.stopPropagation();   // never start a node drag
+    e.stopPropagation();
     e.preventDefault();
     const w = getW();
     if (!w) return;
@@ -185,73 +180,141 @@ function makeSliderRow(node, cfg) {
       if (Number.isFinite(v)) setVal(v, false);
     }
     sl.classList.remove("editing");
-    paintRoot(node);
+    paintRows(node);
   };
   edit.addEventListener("keydown", (e) => {
-    e.stopPropagation();   // keep typing out of the canvas shortcuts
+    e.stopPropagation();
     if (e.key === "Enter") { e.preventDefault(); closeEdit(true); }
     else if (e.key === "Escape") { e.preventDefault(); closeEdit(false); }
   });
   edit.addEventListener("blur", () => closeEdit(true));
   edit.addEventListener("pointerdown", (e) => e.stopPropagation());
-  return row;
+  return wrap;
 }
 
-// Repaint both rows from the native widget values (cheap; called every drag frame).
-export function paintRoot(node) {
-  const root = node._pixOpsRoot;
-  if (!root) return;
+export function paintRows(node) {
+  const wraps = node._pixOpsWraps || [];
+  const vue = isVueNodes();
   const acc = accentOf(node);
-  root.style.setProperty("--acc", acc);
-  // Pull the block up under the input slots. LEGACY insets a DOM widget by a
-  // 10px margin (BaseDOMWidgetImpl.DEFAULT_MARGIN), which reads as a gap between
-  // the slots and the sliders; Nodes 2.0 has no such margin, so pull only there.
-  root.style.marginTop = window.LiteGraph?.vueNodesMode ? "0px" : "-9px";
-  for (const row of root.querySelectorAll(".pix-ops-row")) {
-    const cfg = row._cfg;
+  for (const wrap of wraps) {
+    const cfg = wrap._cfg;
+    // Legacy: leave room on the left for the input dot (the computeSize override
+    // already tucks the rows under the slots). Nodes 2.0: the socket owns the
+    // left column, so no inset.
+    wrap.style.paddingLeft = vue ? "0px" : LEFT_INSET + "px";
     const w = widgetOf(node, cfg.name);
     let val = Math.round(Number(w?.value));
     if (!Number.isFinite(val)) val = cfg.min;
     val = Math.min(cfg.max, Math.max(cfg.min, val));
     const span = (cfg.max - cfg.min) || 1;
     const p = Math.min(100, Math.max(0, ((val - cfg.min) / span) * 100));
-    const sl = row._sl;
+    const sl = wrap._sl;
     sl.style.setProperty("--p", p + "%");
     sl.style.setProperty("--acc", acc);
-    row.querySelector(".pix-ops-fill").style.width = p + "%";
-    row.querySelectorAll(".pix-ops-lay").forEach((lay) => {
+    wrap.querySelector(".pix-ops-fill").style.width = p + "%";
+    wrap.querySelectorAll(".pix-ops-lay").forEach((lay) => {
       lay.querySelector(".nm").textContent = cfg.label;
       lay.querySelector(".nu").textContent = String(val);
     });
-    sl.title = `${cfg.label}  ${cfg.min} - ${cfg.max}   (drag, Shift for fine, double-click to type)`;
+    sl.title = `${cfg.label}  ${cfg.min} - ${cfg.max}   (drag, Shift for fine, double-click to type; the dot on the left takes a number wire)`;
   }
 }
 
-// Hide the native widgets, build the slider root, add it as ONE DOM widget.
-// Idempotent: on a second call (onConfigure) it just repaints.
+// Bind each slider's input dot to its row. Branches on renderer (opposite marker
+// treatment). Called on create/configure and from the self-heal poll.
+export function bindInputDots(node) {
+  const vue = isVueNodes();
+  let changed = false;
+  for (const cfg of SLIDERS) {
+    const inp = node.inputs?.find((i) => i.name === cfg.name);
+    const w = node._pixOpsRowWidgets?.[cfg.name];
+    if (!inp || !w) continue;
+    if (vue) {
+      const nm = ROW_WIDGET_NAME(cfg.name);
+      if (inp.widget?.name !== nm) { inp.widget = { name: nm }; changed = true; }
+      if (inp._widget !== w) inp._widget = w;
+      if (inp.label) { inp.label = undefined; }
+    } else {
+      if (inp.widget) { delete inp.widget; changed = true; }
+      if (inp._widget) delete inp._widget;
+      if (inp.label !== ZW) inp.label = ZW;   // suppress the "feather" name paint
+      // pos is set in alignInputsLegacy (needs widget.y from arrange)
+    }
+  }
+  // shallowReactive tracks only the array, not a field inside a slot.
+  if (vue && changed && node.inputs) node.inputs = node.inputs.slice();
+}
+
+// LEGACY: park each slider's input dot on its row. The DOM-widget offset is not a
+// clean constant (margin + row-reserve interplay), so MEASURE the rendered slider
+// centre and place the dot there - robust at any zoom (pos is node-local, so it is
+// zoom-independent once set). Returns true when both dots are already aligned, so
+// the self-heal poll settles to a no-op. Feather/color_match carry an explicit pos
+// so LiteGraph does NOT stack them, hence setting pos can't feed back into widget.y.
+export function alignInputsLegacy(node) {
+  if (isVueNodes()) return true;
+  const c = app.canvas;
+  if (!c?.canvas || !node?.pos || !node._pixOpsWraps) return false;
+  let rect;
+  try { rect = c.canvas.getBoundingClientRect(); } catch (_e) { return false; }
+  const s = c.ds?.scale || 1;
+  const oy = c.ds?.offset?.[1] || 0;
+  const toLocalY = (screenY) => (screenY - rect.top) / s - oy - node.pos[1];
+  let aligned = true;
+  for (const cfg of SLIDERS) {
+    const inp = node.inputs?.find((i) => i.name === cfg.name);
+    const wrap = node._pixOpsWraps.find((w) => w._cfg === cfg);
+    const sl = wrap?.querySelector(".pix-ops-sl");
+    if (!inp || !sl) continue;
+    const b = sl.getBoundingClientRect();
+    if (!b.height) { aligned = false; continue; }
+    const cy = (toLocalY(b.top) + toLocalY(b.bottom)) / 2;
+    if (!inp.pos || inp.pos[0] !== DOT_X || Math.abs(inp.pos[1] - cy) > 0.75) {
+      inp.pos = [DOT_X, cy];
+      aligned = false;
+    }
+  }
+  return aligned;
+}
+
 export function installSliders(node) {
-  if (node._pixOpsRoot) { paintRoot(node); return; }
+  if (node._pixOpsWraps) { paintRows(node); return; }
   for (const cfg of SLIDERS) hideNativeWidget(widgetOf(node, cfg.name));
 
-  const root = document.createElement("div");
-  root.className = "pix-ops-root";
-  for (const cfg of SLIDERS) root.appendChild(makeSliderRow(node, cfg));
-  node._pixOpsRoot = root;
-
-  const w = node.addDOMWidget(WIDGET_NAME, WIDGET_TYPE, root, {
-    serialize: false,
-    getMinHeight: () => bodyHeight(),
-  });
-  w.serialize = false;
-  w.computeSize = () => [node.size?.[0] || DEFAULT_W, bodyHeight()];   // fixed height, legacy
-  w.computeLayoutSize = undefined;                                     // min-content row, Nodes 2.0
-  applyAdaptiveCanvasOnly(w);
-  node._pixOpsWidget = w;
-  node._pixOpsFloorOff = installResizeFloor(root, () => bodyHeight());
-  paintRoot(node);
+  node._pixOpsWraps = [];
+  node._pixOpsRowWidgets = {};
+  for (const cfg of SLIDERS) {
+    const wrap = makeSliderRow(node, cfg);
+    const w = node.addDOMWidget(ROW_WIDGET_NAME(cfg.name), WIDGET_TYPE, wrap, {
+      serialize: false,
+      getMinHeight: () => ROW_H + (cfg === SLIDERS[0] ? PAD : ROW_GAP),
+    });
+    w.serialize = false;
+    w.computeLayoutSize = undefined;   // hug content (Nodes 2.0)
+    applyAdaptiveCanvasOnly(w);
+    node._pixOpsWraps.push(wrap);
+    node._pixOpsRowWidgets[cfg.name] = w;
+    node._pixOpsFloorOff = installResizeFloor(wrap, () => ROW_H + PAD);
+  }
+  bindInputDots(node);
+  paintRows(node);
 }
 
 export function uninstallSliders(node) {
   try { node._pixOpsFloorOff?.(); } catch {}
   node._pixOpsFloorOff = null;
 }
+
+// Legacy: our two slider rows own the widget area, but the node still has the two
+// REAL input slots (image, outpaint_info) above them - feather/color_match are on
+// the slider rows, so they must NOT reserve a slot row too. Return
+// max(real-inputs, outputs) slot rows + the slider area. MIN_W, never the live
+// width (that would pin the drag-min at the current width so the node only grows).
+export function bodyComputeSize(node) {
+  const realInputs = (node.inputs || []).filter(
+    (i) => !SLIDERS.some((s) => s.name === i.name)).length;
+  const slotRows = Math.max(realInputs, (node.outputs || []).length, 1);
+  return [MIN_W, slotRows * 20 + bodyHeight()];
+}
+
+export { SLIDERS };
