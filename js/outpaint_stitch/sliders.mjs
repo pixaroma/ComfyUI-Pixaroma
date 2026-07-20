@@ -309,7 +309,11 @@ export function installSliders(node) {
     applyAdaptiveCanvasOnly(w);
     node._pixOpsWraps.push(wrap);
     node._pixOpsRowWidgets[cfg.name] = w;
-    node._pixOpsFloorOffs.push(installResizeFloor(wrap, () => ROW_H + PAD));
+    // Pin to the wrap's ACTUAL rendered height (not ROW_H+PAD, which was TALLER
+    // than the wrap, so arming the floor grew the row and shifted the sliders
+    // down during a node RESIZE). offsetHeight at arm-time is the natural height,
+    // so the pin causes zero growth yet still blocks collapse on drag-small.
+    node._pixOpsFloorOffs.push(installResizeFloor(wrap, (root) => root.offsetHeight || ROW_H));
   }
   bindInputDots(node);
   paintRows(node);
