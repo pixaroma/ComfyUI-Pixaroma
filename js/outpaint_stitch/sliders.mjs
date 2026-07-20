@@ -25,6 +25,10 @@ export const DEFAULT_W = 274;
 export const ZW = "​";          // zero-width space: suppress the slot label paint
 const DOT_X = 10;                    // legacy input-dot x (matches image/outpaint_info)
 const LEFT_INSET = 15;               // legacy: room on the row's left for the dot
+const LEGACY_PULL = 7;               // legacy: tuck the sliders up under the slots
+                                     // (the ~10px DOM-widget margin reads as a gap);
+                                     // the dot Y and the node height follow it below.
+                                     // Nodes 2.0 has no such margin, so it is 0 there.
 
 const WIDGET_TYPE = "pixaroma_ops_row";
 
@@ -198,10 +202,11 @@ export function paintRows(node) {
   const acc = accentOf(node);
   for (const wrap of wraps) {
     const cfg = wrap._cfg;
-    // Legacy: leave room on the left for the input dot (the computeSize override
-    // already tucks the rows under the slots). Nodes 2.0: the socket owns the
-    // left column, so no inset.
+    // Legacy: leave room on the left for the input dot, and pull the row up under
+    // the slots (compensating the DOM-widget margin). Nodes 2.0: the socket owns
+    // the left column and there is no margin, so no inset / no pull.
     wrap.style.paddingLeft = vue ? "0px" : LEFT_INSET + "px";
+    wrap.style.marginTop = vue ? "0px" : (-LEGACY_PULL) + "px";
     const w = widgetOf(node, cfg.name);
     let val = Math.round(Number(w?.value));
     if (!Number.isFinite(val)) val = cfg.min;
@@ -245,36 +250,26 @@ export function bindInputDots(node) {
   if (vue && changed && node.inputs) node.inputs = node.inputs.slice();
 }
 
-// LEGACY: park each slider's input dot on its row. The DOM-widget offset is not a
-// clean constant (margin + row-reserve interplay), so MEASURE the rendered slider
-// centre and place the dot there - robust at any zoom (pos is node-local, so it is
-// zoom-independent once set). Returns true when both dots are already aligned, so
-// the self-heal poll settles to a no-op. Feather/color_match carry an explicit pos
-// so LiteGraph does NOT stack them, hence setting pos can't feed back into widget.y.
+// LEGACY: park each slider's input dot on its row, at a STABLE node-local Y so it
+// never wiggles on pan / zoom / move. The dot centre = widget.y + margin + ROW_H/2
+// - a pure node-local formula (measured empirically as a constant 21.5 = margin 10
+// + ROW_H/2 11.5; do NOT measure the live DOM, whose screen->local conversion reads
+// the changing canvas transform mid-gesture and makes the dot jitter). widget.y is
+// set by arrange and only changes on relayout (never on pan/zoom), so the dot holds
+// still. Feather/color_match carry an explicit pos, so LiteGraph does NOT stack
+// them -> no pos->slotbounds->widget.y feedback loop.
 export function alignInputsLegacy(node) {
-  if (isVueNodes()) return true;
-  const c = app.canvas;
-  if (!c?.canvas || !node?.pos || !node._pixOpsWraps) return false;
-  let rect;
-  try { rect = c.canvas.getBoundingClientRect(); } catch (_e) { return false; }
-  const s = c.ds?.scale || 1;
-  const oy = c.ds?.offset?.[1] || 0;
-  const toLocalY = (screenY) => (screenY - rect.top) / s - oy - node.pos[1];
-  let aligned = true;
+  if (isVueNodes() || !node._pixOpsRowWidgets) return;
   for (const cfg of SLIDERS) {
     const inp = node.inputs?.find((i) => i.name === cfg.name);
-    const wrap = node._pixOpsWraps.find((w) => w._cfg === cfg);
-    const sl = wrap?.querySelector(".pix-ops-sl");
-    if (!inp || !sl) continue;
-    const b = sl.getBoundingClientRect();
-    if (!b.height) { aligned = false; continue; }
-    const cy = (toLocalY(b.top) + toLocalY(b.bottom)) / 2;
-    if (!inp.pos || inp.pos[0] !== DOT_X || Math.abs(inp.pos[1] - cy) > 0.75) {
-      inp.pos = [DOT_X, cy];
-      aligned = false;
+    const w = node._pixOpsRowWidgets[cfg.name];
+    if (!inp || !w || !Number.isFinite(w.y)) continue;
+    const margin = Number.isFinite(w.margin) ? w.margin : 10;
+    const y = w.y + margin + ROW_H * 0.5 - LEGACY_PULL;   // follows the CSS pull
+    if (!inp.pos || inp.pos[0] !== DOT_X || Math.abs(inp.pos[1] - y) > 0.25) {
+      inp.pos = [DOT_X, y];
     }
   }
-  return aligned;
 }
 
 export function installSliders(node) {
@@ -314,7 +309,7 @@ export function bodyComputeSize(node) {
   const realInputs = (node.inputs || []).filter(
     (i) => !SLIDERS.some((s) => s.name === i.name)).length;
   const slotRows = Math.max(realInputs, (node.outputs || []).length, 1);
-  return [MIN_W, slotRows * 20 + bodyHeight()];
+  return [MIN_W, slotRows * 20 + bodyHeight() - LEGACY_PULL];  // rows tucked up
 }
 
 export { SLIDERS };

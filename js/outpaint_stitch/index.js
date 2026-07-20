@@ -31,20 +31,16 @@ function applyLegacyLayout(node) {
   node.computeSize = function () { return bodyComputeSize(this); };
 }
 
-// LEGACY self-heal: the slider row centres are only known once the DOM is laid
-// out (and can shift on resize / re-render), so measure + re-park the dots on a
-// light poll. alignInputsLegacy early-returns true once aligned, so the steady
-// state is one rect read per tick. Node deleted -> stop. Nodes 2.0 uses the
-// widget-socket instead, so no poll there.
-function watchAlign(node) {
-  if (isVueNodes() || node._pixOpsPoll) return;
-  node._pixOpsPoll = setInterval(() => {
-    if (!node.graph) { clearInterval(node._pixOpsPoll); node._pixOpsPoll = null; return; }
-    if (!alignInputsLegacy(node)) node.setDirtyCanvas?.(true, true);
-  }, 350);
-}
-function unwatchAlign(node) {
-  if (node._pixOpsPoll) { clearInterval(node._pixOpsPoll); node._pixOpsPoll = null; }
+// LEGACY: the dot Y = widget.y + a constant, so it only needs (re)setting when
+// widget.y changes - which is on layout, NOT on pan/zoom. The wrapped arrange
+// covers relayout; this one-shot just settles the FIRST paint (widget.y is set by
+// then). NO continuous poll - a poll re-parks the dots every tick and, because the
+// old measure-based version read the live canvas transform, made them wiggle.
+function scheduleAlignLegacy(node) {
+  if (isVueNodes()) return;
+  const go = () => { if (node.graph) { alignInputsLegacy(node); node.setDirtyCanvas?.(true, true); } };
+  requestAnimationFrame(go);
+  setTimeout(go, 150);
 }
 
 app.registerExtension({
@@ -81,7 +77,7 @@ app.registerExtension({
       installSliders(this);
       applyLegacyLayout(this);
       if (!this.size || this.size[0] < MIN_W) this.size[0] = DEFAULT_W;
-      queueMicrotask(() => { bindInputDots(this); paintRows(this); watchAlign(this); this.setDirtyCanvas?.(true, true); });
+      queueMicrotask(() => { bindInputDots(this); paintRows(this); scheduleAlignLegacy(this); this.setDirtyCanvas?.(true, true); });
     };
 
     const _configure = nodeType.prototype.onConfigure;
@@ -89,7 +85,7 @@ app.registerExtension({
       const r = _configure?.apply(this, arguments);
       installSliders(this);
       applyLegacyLayout(this);
-      queueMicrotask(() => { bindInputDots(this); paintRows(this); watchAlign(this); this.setDirtyCanvas?.(true, true); });
+      queueMicrotask(() => { bindInputDots(this); paintRows(this); scheduleAlignLegacy(this); this.setDirtyCanvas?.(true, true); });
       return r;
     };
 
@@ -136,7 +132,6 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeOpsPanelFor(this);
-      unwatchAlign(this);
       uninstallSliders(this);
       return _removed?.apply(this, arguments);
     };
