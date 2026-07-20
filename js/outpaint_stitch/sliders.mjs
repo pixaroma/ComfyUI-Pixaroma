@@ -297,6 +297,7 @@ export function installSliders(node) {
 
   node._pixOpsWraps = [];
   node._pixOpsRowWidgets = {};
+  node._pixOpsFloorOffs = [];
   for (const cfg of SLIDERS) {
     const wrap = makeSliderRow(node, cfg);
     const w = node.addDOMWidget(ROW_WIDGET_NAME(cfg.name), WIDGET_TYPE, wrap, {
@@ -308,15 +309,15 @@ export function installSliders(node) {
     applyAdaptiveCanvasOnly(w);
     node._pixOpsWraps.push(wrap);
     node._pixOpsRowWidgets[cfg.name] = w;
-    node._pixOpsFloorOff = installResizeFloor(wrap, () => ROW_H + PAD);
+    node._pixOpsFloorOffs.push(installResizeFloor(wrap, () => ROW_H + PAD));
   }
   bindInputDots(node);
   paintRows(node);
 }
 
 export function uninstallSliders(node) {
-  try { node._pixOpsFloorOff?.(); } catch {}
-  node._pixOpsFloorOff = null;
+  try { (node._pixOpsFloorOffs || []).forEach((off) => off?.()); } catch {}
+  node._pixOpsFloorOffs = [];
 }
 
 // Legacy: our two slider rows own the widget area, but the node still has the two

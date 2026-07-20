@@ -56,6 +56,12 @@ export function installResizeFloor(root, measureFn) {
 
   const onDown = (e) => {
     if (!isVueNodes() || !root.isConnected) return;
+    // A press on WIDGET CONTENT is never a node resize - the resize handles live
+    // on the node frame, not inside a widget. Skip it, or a widget that legitimately
+    // uses a *-resize cursor (e.g. an ew-resize drag-slider) would falsely arm the
+    // floor and make the node jump/shift on every drag, snapping back on release
+    // (Outpaint Stitch Pixaroma sliders, Nodes 2.0).
+    if (e.target?.closest?.(".lg-node-widget")) return;
     // A resize handle shows a *-resize cursor; anything else (title-bar move,
     // widget click) is not a resize, so leave the floor off.
     let cur = "";
