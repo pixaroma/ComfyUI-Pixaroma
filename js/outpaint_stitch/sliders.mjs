@@ -59,6 +59,10 @@ export function injectCSS() {
       cursor:ew-resize; box-sizing:border-box; user-select:none;
     }
     .pix-ops-sl:hover { border-color:var(--acc,#f66744); }
+    /* Wire-driven: locked + grayed. Desaturate the accent to gray so it clearly
+       reads as inactive, dim it, and drop the ew-resize cursor + hover accent. */
+    .pix-ops-sl.wired { cursor:default; opacity:0.5; filter:grayscale(0.9); }
+    .pix-ops-sl.wired:hover { border-color:rgba(255,255,255,0.14); }
     .pix-ops-fill { position:absolute; left:0; top:0; bottom:0; width:0; background:var(--acc,#f66744); }
     .pix-ops-lay {
       position:absolute; inset:0; display:flex; align-items:center; gap:6px; padding:0 8px;
@@ -84,6 +88,13 @@ export function injectCSS() {
     .lg-node-widget:has(.pix-ops-row) > div:first-child { opacity:1 !important; }
   `;
   document.head.appendChild(s);
+}
+
+// True when this slider's input is wired - then a number node drives it and the
+// slider is a locked, grayed-out fallback display (the wire overrides it at run).
+function isWired(node, name) {
+  const inp = node.inputs?.find((i) => i.name === name);
+  return !!(inp && inp.link != null);
 }
 
 function hideNativeWidget(w) {
@@ -147,6 +158,7 @@ function makeSliderRow(node, cfg) {
 
   sl.addEventListener("pointerdown", (e) => {
     if (sl.classList.contains("editing") || e.button !== 0) return;
+    if (isWired(node, cfg.name)) return;   // wire-driven -> locked (let node handle the click)
     e.stopPropagation();
     e.preventDefault();
     const w = getW();
@@ -168,6 +180,7 @@ function makeSliderRow(node, cfg) {
   });
 
   sl.addEventListener("dblclick", (e) => {
+    if (isWired(node, cfg.name)) return;   // wire-driven -> not editable
     e.stopPropagation();
     e.preventDefault();
     const w = getW();
@@ -221,7 +234,13 @@ export function paintRows(node) {
       lay.querySelector(".nm").textContent = cfg.label;
       lay.querySelector(".nu").textContent = String(val);
     });
-    sl.title = `${cfg.label}  ${cfg.min} - ${cfg.max}   (drag, Shift for fine, double-click to type; the dot on the left takes a number wire)`;
+    // Wired: lock + gray out (a number node drives it; the slider is a dimmed
+    // fallback display). The value shown is the fallback the wire overrides.
+    const wired = isWired(node, cfg.name);
+    sl.classList.toggle("wired", wired);
+    sl.title = wired
+      ? `${cfg.label} is set by the connected node - unplug the wire to use the slider (the dimmed number is the slider's own value)`
+      : `${cfg.label}  ${cfg.min} - ${cfg.max}   (drag, Shift for fine, double-click to type; the dot on the left takes a number wire)`;
   }
 }
 
