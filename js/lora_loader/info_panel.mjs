@@ -46,6 +46,17 @@ function injectCSS() {
     .pix-ll-chip.sel { background:rgba(246,103,68,0.18); border-color:${BRAND}; color:#f8a48c; }
     .pix-ll-chip.sel::before { content:"✓"; font-size:9px; }
     .pix-ll-chip-none { color:#777; font-size:11px; }
+    .pix-ll-chip .cx { margin-left:1px; color:#f8a48c; cursor:pointer; opacity:.6; font-size:10px; }
+    .pix-ll-chip .cx:hover { opacity:1; }
+    .pix-ll-addtrig { display:flex; gap:5px; margin-top:8px; }
+    .pix-ll-addtrig input { flex:1; min-width:0; box-sizing:border-box; background:#161616;
+      border:1px solid rgba(255,255,255,0.14); border-radius:6px; color:#fff; font:11px 'Segoe UI';
+      padding:5px 8px; outline:none; }
+    .pix-ll-addtrig input:focus { border-color:${BRAND}; }
+    .pix-ll-addtrig button { flex:0 0 auto; background:rgba(255,255,255,0.06);
+      border:1px solid rgba(255,255,255,0.14); color:#ccc; border-radius:6px; padding:5px 11px;
+      font:11px 'Segoe UI'; cursor:pointer; }
+    .pix-ll-addtrig button:hover { border-color:${BRAND}; color:#fff; }
     .pix-ll-strip { margin:0 12px 11px; border-radius:7px; padding:9px 10px; font-size:11px; line-height:1.5;
       display:flex; gap:9px; align-items:flex-start; }
     .pix-ll-strip .st-ic { flex:none; width:18px; height:18px; border-radius:50%; color:#fff; font-size:11px;
@@ -131,16 +142,49 @@ export async function openInfoPanel(node, id, refresh) {
     renderBody();
   }
 
-  function currentChips() {
+  // Chips shown: the LoRA's own words (file / sidecar / Civitai) + the user's custom
+  // words + anything currently selected, de-duped. Custom words carry a remove ✕.
+  function chipList() {
     const civTriggers = civ?.state === "found" ? (civ.info?.triggers || []) : [];
     const src = civTriggers.length ? civTriggers : (info.triggers || []);
-    const out = [];
-    const seen = new Set();
-    for (const w of [...src, ...(readState(node).loras.find((e) => e.id === id)?.triggers || [])]) {
+    const row = readState(node).loras.find((e) => e.id === id);
+    const custom = row?.custom || [];
+    const selected = row?.triggers || [];
+    const out = []; const seen = new Set();
+    const push = (w, isCustom) => {
       const k = w.toLowerCase();
-      if (w && !seen.has(k)) { seen.add(k); out.push(w); }
-    }
+      if (w && !seen.has(k)) { seen.add(k); out.push({ w, isCustom }); }
+    };
+    for (const w of src) push(w, false);
+    for (const w of custom) push(w, true);
+    for (const w of selected) push(w, false);
     return out;
+  }
+
+  function addCustom(word) {
+    const w = (word || "").trim();
+    if (!w) return;
+    const e = readState(node).loras.find((x) => x.id === id);
+    if (!e) return;
+    const key = w.toLowerCase();
+    const custom = (e.custom || []).some((x) => x.toLowerCase() === key) ? e.custom : [...(e.custom || []), w];
+    const trig = (e.triggers || []).some((x) => x.toLowerCase() === key) ? e.triggers : [...(e.triggers || []), w];
+    patchLora(node, id, { custom, triggers: trig }); // added = selected, so it reaches the output
+    refresh?.(false);
+    renderBody();
+    setTimeout(() => panel.querySelector(".pix-ll-addtrig input")?.focus(), 0);
+  }
+
+  function removeCustom(word) {
+    const key = (word || "").toLowerCase();
+    const e = readState(node).loras.find((x) => x.id === id);
+    if (!e) return;
+    patchLora(node, id, {
+      custom: (e.custom || []).filter((x) => x.toLowerCase() !== key),
+      triggers: (e.triggers || []).filter((x) => x.toLowerCase() !== key),
+    });
+    refresh?.(false);
+    renderBody();
   }
 
   function thumb() {
@@ -200,7 +244,7 @@ export async function openInfoPanel(node, id, refresh) {
     head.appendChild(el("span", null, "Trigger words"));
     const all = el("span", "qa", "all");
     all.title = "Select every word";
-    all.addEventListener("click", () => setWords(currentChips()));
+    all.addEventListener("click", () => setWords(chipList().map((c) => c.w)));
     const none = el("span", "qa", "none");
     none.title = "Clear selection";
     none.addEventListener("click", () => setWords([]));
@@ -213,18 +257,40 @@ export async function openInfoPanel(node, id, refresh) {
       "Tap the ones you want. Only these, and only if the LoRA is on, reach the triggers output."));
 
     const chips = el("div", "pix-ll-chips");
-    const list = currentChips();
+    const list = chipList();
     if (!list.length) {
       chips.appendChild(el("span", "pix-ll-chip-none",
-        "No trigger words in this file." + (civitaiOn ? " Try the Civitai lookup below." : "")));
+        "No trigger words in this file - add your own below" + (civitaiOn ? ", or try Civitai." : ".")));
     } else {
-      for (const w of list) {
-        const c = el("span", "pix-ll-chip" + (sel.has(w.toLowerCase()) ? " sel" : ""), w);
+      for (const { w, isCustom } of list) {
+        const c = el("span", "pix-ll-chip" + (sel.has(w.toLowerCase()) ? " sel" : ""));
+        c.appendChild(document.createTextNode(w));
         c.addEventListener("click", () => toggleWord(w));
+        if (isCustom) {
+          const x = el("span", "cx", "✕");
+          x.title = "Remove this custom word";
+          x.addEventListener("click", (ev) => { ev.stopPropagation(); removeCustom(w); });
+          c.appendChild(x);
+        }
         chips.appendChild(c);
       }
     }
     sec.appendChild(chips);
+
+    // ── add your own trigger word (persists on this LoRA) ────────────────────
+    const addRow = el("div", "pix-ll-addtrig");
+    const inp = el("input");
+    inp.type = "text";
+    inp.placeholder = "add your own trigger word…";
+    inp.addEventListener("keydown", (ev) => {
+      ev.stopPropagation();
+      if (ev.key === "Enter") { ev.preventDefault(); addCustom(inp.value); }
+    });
+    const addBtn = el("button", null, "Add");
+    addBtn.addEventListener("click", () => addCustom(inp.value));
+    addRow.append(inp, addBtn);
+    sec.appendChild(addRow);
+
     panel.appendChild(sec);
 
     // ── footer ───────────────────────────────────────────────────────────

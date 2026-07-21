@@ -237,8 +237,9 @@ registerNodeHelp(CLASS, {
       body:
         "Click the i on a row to see the LoRA's info and its trigger words, read straight from the file - " +
         "no internet needed. Tap the words you want; the switched-on picks come out of the triggers output " +
-        "as plain text you can wire into your prompt. If a LoRA has no words in its file, the optional " +
-        "Civitai button can look them up online (only when you click it) and save them for next time.",
+        "as plain text you can wire into your prompt. If a LoRA has no words in its file, you can type your " +
+        "own in the box at the bottom of the panel (it's saved on that LoRA), or use the optional Civitai " +
+        "button to look them up online (only when you click it) and save them for next time.",
     },
     {
       heading: "Buttons and settings",

@@ -68,6 +68,12 @@ function normLora(e, prefs) {
     triggers: Array.isArray(e.triggers)
       ? e.triggers.map((w) => String(w)).filter((w) => w.trim()).slice(0, 64)
       : [],
+    // Words the user typed in themselves for this LoRA (available as chips even when
+    // the file has none). UI-only - the SELECTED ones live in `triggers` (which is
+    // what reaches the output); `custom` is stripped from promptState.
+    custom: Array.isArray(e.custom)
+      ? e.custom.map((w) => String(w)).filter((w) => w.trim()).slice(0, 64)
+      : [],
   };
 }
 
@@ -141,7 +147,11 @@ export function duplicateLora(node, id) {
   const st = readState(node);
   const i = st.loras.findIndex((e) => e.id === id);
   if (i < 0 || st.loras.length >= MAX_LORAS) return null;
-  const clone = { ...st.loras[i], id: newId(), triggers: [...st.loras[i].triggers] };
+  const clone = {
+    ...st.loras[i], id: newId(),
+    triggers: [...st.loras[i].triggers],
+    custom: [...(st.loras[i].custom || [])],
+  };
   st.loras.splice(i + 1, 0, clone);
   return writeState(node, st);
 }
