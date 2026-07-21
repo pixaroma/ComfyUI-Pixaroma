@@ -1,7 +1,7 @@
 // Text Join Pixaroma - the text-field face. One multi-line box PER piece, EACH
 // with a real input dot ON ITS ROW so another node's text can be wired in, plus
-// a per-field copy/paste that appears on hover. A gear footer row opens the
-// settings panel.
+// a per-field copy/paste that appears on hover. Separator / skip-empty settings
+// open from the node's right-click menu (see index.js + settings.mjs).
 //
 // The fields FILL the node body and GROW when the node is resized (like a native
 // multiline / concatenate widget): each field box shares the body height equally.
@@ -281,8 +281,9 @@ export function bindInputDots(node) {
 }
 
 // LEGACY: park each field's input dot at the vertical CENTRE of its (growing) box,
-// at a STABLE node-local Y (widget.y + boxHeight/2). widget.y changes only on
-// relayout, so the dot holds still on pan/zoom.
+// at a STABLE node-local Y. ComfyUI renders the DOM widget ~w.margin px BELOW its
+// w.y, so the box centre is w.y + margin + boxHeight/2 (mirrors Outpaint Stitch).
+// widget.y changes only on relayout, so the dot holds still on pan/zoom.
 export function alignInputsLegacy(node) {
   if (isVueNodes() || !node._pixTjRowWidgets) return;
   const h = fieldSlotH(node);
@@ -290,7 +291,8 @@ export function alignInputsLegacy(node) {
     const inp = node.inputs?.find((i) => i.name === cfg.name);
     const w = node._pixTjRowWidgets[cfg.name];
     if (!inp || !w || !Number.isFinite(w.y)) continue;
-    const y = w.y + h * 0.5;
+    const margin = Number.isFinite(w.margin) ? w.margin : 10;
+    const y = w.y + margin + h * 0.5;
     if (!inp.pos || inp.pos[0] !== DOT_X || Math.abs(inp.pos[1] - y) > 0.25) {
       inp.pos = [DOT_X, y];
     }

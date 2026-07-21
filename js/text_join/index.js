@@ -8,11 +8,11 @@ import {
 } from "./fields.mjs";
 import { openTextJoinPanel, closeTextJoinPanelFor } from "./settings.mjs";
 
-// Text Join Two / Three Pixaroma - two or three multi-line text boxes, EACH with
-// a real input dot on its row (type OR wire), joined into one `text` output with
-// a separator picked in the gear panel. Value + settings flow through hidden
-// widgets + a graphToPrompt inject, so wiring a text node overrides the box.
-// Structural recipe ported from Outpaint Stitch Pixaroma.
+// Text Join Two / Three / Four Pixaroma - two to four multi-line text boxes, EACH
+// with a real input dot on its row (type OR wire), joined into one `text` output.
+// The separator / skip-empty settings open from the node's right-click menu.
+// Value + settings flow through hidden widgets + a graphToPrompt inject, so wiring
+// a text node overrides the box. Structural recipe ported from Outpaint Stitch.
 
 const NODE_SLOT_H = 20;
 
