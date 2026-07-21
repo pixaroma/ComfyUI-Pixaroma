@@ -142,22 +142,28 @@ export async function openInfoPanel(node, id, refresh) {
     renderBody();
   }
 
-  // Chips shown: the LoRA's own words (file / sidecar / Civitai) + the user's custom
-  // words + anything currently selected, de-duped. Custom words carry a remove ✕.
-  function chipList() {
+  // The LoRA's own words (file / sidecar / Civitai) for the current view.
+  function sourceWords() {
     const civTriggers = civ?.state === "found" ? (civ.info?.triggers || []) : [];
-    const src = civTriggers.length ? civTriggers : (info.triggers || []);
+    return civTriggers.length ? civTriggers : (info.triggers || []);
+  }
+
+  // Chips shown: source words + the user's custom words + anything selected, de-duped.
+  // `isCustom` is by MEMBERSHIP in `custom` (not push order), so a custom word that also
+  // becomes a source word (e.g. after a Civitai lookup) still carries a removable ✕.
+  function chipList() {
+    const src = sourceWords();
     const row = readState(node).loras.find((e) => e.id === id);
     const custom = row?.custom || [];
-    const selected = row?.triggers || [];
+    const customSet = new Set(custom.map((w) => w.toLowerCase()));
     const out = []; const seen = new Set();
-    const push = (w, isCustom) => {
+    const push = (w) => {
       const k = w.toLowerCase();
-      if (w && !seen.has(k)) { seen.add(k); out.push({ w, isCustom }); }
+      if (w && !seen.has(k)) { seen.add(k); out.push({ w, isCustom: customSet.has(k) }); }
     };
-    for (const w of src) push(w, false);
-    for (const w of custom) push(w, true);
-    for (const w of selected) push(w, false);
+    for (const w of src) push(w);
+    for (const w of custom) push(w);
+    for (const w of (row?.triggers || [])) push(w);
     return out;
   }
 
@@ -167,7 +173,11 @@ export async function openInfoPanel(node, id, refresh) {
     const e = readState(node).loras.find((x) => x.id === id);
     if (!e) return;
     const key = w.toLowerCase();
-    const custom = (e.custom || []).some((x) => x.toLowerCase() === key) ? e.custom : [...(e.custom || []), w];
+    // If the file / Civitai already offers this word, just select it - don't also stash
+    // it in `custom` (that would be a hidden duplicate of a source word).
+    const inSrc = sourceWords().some((x) => x.toLowerCase() === key);
+    const custom = (inSrc || (e.custom || []).some((x) => x.toLowerCase() === key))
+      ? (e.custom || []) : [...(e.custom || []), w];
     const trig = (e.triggers || []).some((x) => x.toLowerCase() === key) ? e.triggers : [...(e.triggers || []), w];
     patchLora(node, id, { custom, triggers: trig }); // added = selected, so it reaches the output
     refresh?.(false);

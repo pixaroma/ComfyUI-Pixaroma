@@ -12,7 +12,7 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import {
-  HIDDEN_INPUT, DEFAULT_STATE, MAX_LORAS,
+  HIDDEN_INPUT, DEFAULT_STATE,
   readState, loadDefaults, promptState,
 } from "./core.mjs";
 import { injectCSS, renderNode, contentHeight } from "./render.mjs";

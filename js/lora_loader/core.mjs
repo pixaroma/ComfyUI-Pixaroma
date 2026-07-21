@@ -186,9 +186,9 @@ export function patchLora(node, id, patch) {
   e.id = keepId; // a patch must never change the row's identity
   if (patch.sm != null) e.sm = roundStrength(patch.sm);
   if (patch.sc != null) e.sc = roundStrength(patch.sc);
-  // Picking a DIFFERENT LoRA clears the trigger words - they belonged to the old file
-  // and would otherwise flow into the triggers output describing the wrong LoRA.
-  if (patch.name != null && patch.name !== oldName) e.triggers = [];
+  // Picking a DIFFERENT LoRA clears both the selected AND the custom words - they
+  // belonged to the old file (custom words are "for this LoRA" too).
+  if (patch.name != null && patch.name !== oldName) { e.triggers = []; e.custom = []; }
   // When strengths are linked, a model-strength change mirrors to clip.
   if (st.linkStrength && patch.sm != null && patch.sc == null) e.sc = e.sm;
   return writeState(node, st);

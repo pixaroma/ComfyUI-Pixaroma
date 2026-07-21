@@ -23,14 +23,6 @@ from . import _lora_helpers as H
 _NO_LORAS = "(put LoRAs in models/loras)"
 
 
-def _lora_list():
-    try:
-        files = list(folder_paths.get_filename_list("loras"))
-    except Exception:
-        files = []
-    return files or [_NO_LORAS]
-
-
 class PixaromaLoraLoader:
     DESCRIPTION = (
         "Stack as many LoRAs as you want in one node. Each LoRA has its own on/off "
