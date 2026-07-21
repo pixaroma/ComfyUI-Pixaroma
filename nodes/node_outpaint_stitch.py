@@ -35,6 +35,13 @@ _MATCH_BLUR_FRAC = 0.21
 _MATCH_BLUR_MIN = 12
 _MATCH_BLUR_MAX = 800
 
+# Colour-match seam-sampling band, as a fraction of the blur radius. The generated
+# side's tone is read from a THIN band right at the seam (not the whole strip), so
+# a subject the model drew a little way inside the generated area is NOT sampled and
+# cannot drive the correction (the glow bug). Kept thin (~0.2R): wide enough to be
+# stable after the along-seam low-pass, narrow enough to dodge a near-seam subject.
+_MATCH_SEAM_BAND_FRAC = 0.2
+
 
 class PixaromaOutpaintStitch:
     DESCRIPTION = (
@@ -211,28 +218,43 @@ class PixaromaOutpaintStitch:
         return out
 
     def _color_match(self, canvas, orig_use, left, top, right, bottom, strength01):
-        """CONTINUOUS low-frequency colour match: shift the whole image's smooth
-        tone toward the pristine original's edge continued outward, so the
-        generated area picks up the original's tone (per region) without a seam.
+        """CONTINUOUS, CONTENT-BLIND low-frequency colour match: shift the whole
+        image's smooth tone toward the pristine original's edge continued outward,
+        so the generated area picks up the original's tone (per region) without a
+        seam - WITHOUT reacting to whatever new content the model drew.
 
         `ref` = the pristine original with its border smeared OUTWARD to fill the
-        padded canvas (nearest-edge extrapolation), so every pixel has a target
-        tone (per line AND corners, for free). `delta = lowpass(ref) -
-        lowpass(canvas)` is added to the WHOLE canvas. It shifts smooth tone only,
-        never texture, and is naturally ~0 wherever the model already blended well
-        (so a good result is left alone) and non-zero where the strip's tone
-        drifted.
+        padded canvas (nearest-edge extrapolation): the TARGET tone at every pixel
+        (per line AND corners, for free).
+
+        `src` = the canvas with each generated strip REPLACED by its own seam-edge
+        band, smeared outward. This is the crux: it reads the generated tone ONLY at
+        the seam boundary (which is background on a clean outpaint), so a subject the
+        model drew INSIDE the generated area never enters the low-pass and cannot
+        drive the correction.
+
+        `delta = lowpass(ref) - lowpass(src)` is added to the WHOLE canvas. Because
+        both ref and src are seam-anchored smears, delta is (per region) the tone
+        STEP at the seam, roughly constant across the generated strip - a gentle,
+        uniform, region-following nudge, never a content-shaped bloom.
+
+        ⚠️ MUST subtract `lowpass(src)` (the seam-band smear), NOT `lowpass(canvas)`.
+        Blurring the RAW canvas drags the model's NEW content into the low-pass: a
+        dark/bright subject in the generated area then makes delta huge over and
+        around it, so colour match paints a broad glow that washes the subject out
+        and grows with strength (user report 2026-07-21: the dark dancer climbed to
+        near-wall brightness at cm 64/127/200). The seam-band `src` fixes it - the
+        subject is left alone while the background step is still corrected.
 
         ⚠️ MUST stay CONTINUOUS across the seam - do NOT re-add a hard `* G` mask
         that shifts only the generated area. That left the feather band's soft
         pixels UNSHIFTED while the strip beside them WAS shifted, so a HARD EDGE
-        appeared at the seam and grew with strength (user report 2026-07-20, the
-        exact opposite of what colour match is for). Applying delta to the whole
-        canvas keeps the strip and the feather band moving together, so the join
-        stays smooth. Deep inside the original the shift self-cancels
-        (`lowpass(ref) == lowpass(canvas)` there), and the pristine original is
-        pasted back on top afterwards, so the interior stays pixel-exact; only the
-        feather band carries a smooth remnant that ramps to the pristine copy.
+        appeared at the seam and grew with strength (earlier bug, 2026-07-20).
+        Applying the smooth whole-canvas delta keeps strip and feather band moving
+        together. Deep inside the original the shift self-cancels
+        (`lowpass(ref) == lowpass(src)` there), and the pristine original is pasted
+        back on top afterwards, so the interior stays pixel-exact; only the feather
+        band carries a smooth remnant that ramps to the pristine copy.
 
         No padded side -> nothing to continue -> returns canvas unchanged."""
         if not (left > 0 or top > 0 or right > 0 or bottom > 0):
@@ -247,7 +269,30 @@ class PixaromaOutpaintStitch:
 
         R = int(min(_MATCH_BLUR_MAX, max(_MATCH_BLUR_MIN,
                                          round(_MATCH_BLUR_FRAC * min(oh, ow)))))
-        delta = self._box_blur(ref, R) - self._box_blur(canvas, R)   # continuous
+
+        # Build src: canvas with each padded (generated) strip filled by the mean of
+        # a THIN band at its seam, smeared across the strip. The band is taken from
+        # the GENERATED side of each seam and capped to that side's pad width so it
+        # never spills past the strip. Reading only the seam boundary keeps the
+        # correction blind to any subject sitting inside the generated area.
+        ox0, ox1 = int(left), int(left) + ow          # original rect, x span (canvas)
+        oy0, oy1 = int(top), int(top) + oh            # original rect, y span (canvas)
+        bw = max(2, int(round(R * _MATCH_SEAM_BAND_FRAC)))
+        src = canvas.clone()
+        if right > 0:
+            k = max(1, min(bw, int(right)))
+            src[:, :, ox1:W, :] = canvas[:, :, ox1:ox1 + k, :].mean(dim=2, keepdim=True)
+        if left > 0:
+            k = max(1, min(bw, int(left)))
+            src[:, :, 0:ox0, :] = canvas[:, :, ox0 - k:ox0, :].mean(dim=2, keepdim=True)
+        if top > 0:
+            k = max(1, min(bw, int(top)))
+            src[:, 0:oy0, :, :] = canvas[:, oy0 - k:oy0, :, :].mean(dim=1, keepdim=True)
+        if bottom > 0:
+            k = max(1, min(bw, int(bottom)))
+            src[:, oy1:H, :, :] = canvas[:, oy1:oy1 + k, :, :].mean(dim=1, keepdim=True)
+
+        delta = self._box_blur(ref, R) - self._box_blur(src, R)   # continuous + content-blind
         return canvas + delta * float(strength01)
 
     def stitch(self, image, outpaint_info=None, feather=64, color_match=100):
