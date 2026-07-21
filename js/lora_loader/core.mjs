@@ -198,6 +198,21 @@ export async function saveDefaults(prefs) {
   } catch { return false; }
 }
 
+// The EXECUTION-relevant subset that goes into the prompt. Python only reads the
+// loras (name/on/sm/sc/triggers) and the separator, so cosmetic prefs (accent,
+// thumbs, civitai, step, defStrength, linkStrength, id) are stripped - otherwise a
+// colour pick or a settings toggle would change the node's cache signature and
+// needlessly re-run it (documented recurring trap).
+export function promptState(state) {
+  return {
+    version: 1,
+    sep: state.sep,
+    loras: state.loras.map((e) => ({
+      name: e.name, on: !!e.on, sm: e.sm, sc: e.sc, triggers: e.triggers,
+    })),
+  };
+}
+
 export function accentOf(node) {
   const st = readState(node);
   if (st.accent) return st.accent;

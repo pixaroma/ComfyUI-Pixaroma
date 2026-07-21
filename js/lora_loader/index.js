@@ -12,8 +12,8 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import {
-  STATE_PROP, HIDDEN_INPUT, DEFAULT_STATE, MAX_LORAS,
-  readState, loadDefaults,
+  HIDDEN_INPUT, DEFAULT_STATE, MAX_LORAS,
+  readState, loadDefaults, promptState,
 } from "./core.mjs";
 import { injectCSS, renderNode, contentHeight } from "./render.mjs";
 import { attachInteractions } from "./interaction.mjs";
@@ -182,9 +182,9 @@ app.graphToPrompt = async function (...args) {
         if (!entry || entry.class_type !== CLASS) continue;
         if (!index) index = buildIndex();
         const node = findNode(index, id);
-        const state = node?.properties?.[STATE_PROP] || JSON.stringify({ ...DEFAULT_STATE, ...loadDefaults() });
+        const st = node ? readState(node) : { ...DEFAULT_STATE, ...loadDefaults(), loras: [] };
         entry.inputs = entry.inputs || {};
-        entry.inputs[HIDDEN_INPUT] = state;
+        entry.inputs[HIDDEN_INPUT] = JSON.stringify(promptState(st));
       }
     }
   } catch (e) {
