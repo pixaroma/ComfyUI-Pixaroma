@@ -205,6 +205,17 @@ registerNodeHelp(CLASS, {
         "several of these nodes if you like.",
     },
     {
+      heading: "Model and CLIP",
+      body:
+        "A LoRA can change two things: the image model (the drawing side, the required " +
+        "model input) and CLIP (the part that reads your prompt words, the optional clip " +
+        "input). Most of a LoRA's look comes from the model side, so it works with only " +
+        "model connected. Connect clip too (checkpoint clip through this node and on to " +
+        "your text encode) when you want the LoRA to also tune how its trigger words are " +
+        "read - it matters most for trigger-word LoRAs. Leave clip unwired only in " +
+        "model-only setups.",
+    },
+    {
       heading: "Each row",
       bullets: [
         "The name box opens a searchable list of your LoRAs (grouped by subfolder).",

@@ -51,7 +51,7 @@ class PixaromaLoraLoader:
                 "model": ("MODEL", {"tooltip": "The diffusion model every switched-on LoRA is applied to."}),
             },
             "optional": {
-                "clip": ("CLIP", {"tooltip": "The CLIP (text encoder) the LoRAs are applied to. Optional - leave it unwired for a model-only setup."}),
+                "clip": ("CLIP", {"tooltip": "The CLIP (text encoder) the LoRAs are applied to. Optional, but recommended: connect it (checkpoint CLIP into here, and the CLIP output on to your text encode) so LoRAs can also tune how your trigger words are read. It matters most for LoRAs that use a trigger word. Leave it unwired only for a model-only setup."}),
             },
             "hidden": {"LoraLoaderState": ("STRING", {"default": "{}"})},
         }
@@ -81,8 +81,11 @@ class PixaromaLoraLoader:
 
     def apply(self, model, clip=None, LoraLoaderState="{}"):
         state = H.parse_state(LoraLoaderState)
-        triggers = H.collect_triggers(state)
 
+        # Rows whose LoRA file actually resolved. Only these contribute trigger words,
+        # so the triggers output never claims words for a LoRA that isn't really there
+        # (a missing / renamed file is skipped and adds nothing).
+        resolved = []
         used_paths = set()
         applied = 0
         for entry in state["loras"]:
@@ -99,11 +102,12 @@ class PixaromaLoraLoader:
                 print("[LoRA Loader Pixaroma] skipped (not found): {}".format(name))
                 continue
 
+            resolved.append(entry)  # file present -> its picked triggers count
             sm = float(entry.get("sm", 0.0))
             sc = float(entry.get("sc", 0.0)) if clip is not None else 0.0
             if sm == 0 and sc == 0:
                 # Nothing to apply, but keep the file cached in case a later run
-                # raises the strength; its triggers already went into `triggers`.
+                # raises the strength; its triggers still count (the file is present).
                 used_paths.add(path)
                 continue
             try:
@@ -115,6 +119,10 @@ class PixaromaLoraLoader:
                 applied += 1
             except Exception as exc:
                 print("[LoRA Loader Pixaroma] failed to apply {}: {}".format(name, exc))
+
+        # Triggers come only from resolved rows (collect_triggers gates on `on`; every
+        # resolved row is on, so it dedups + joins their picked words).
+        triggers = H.collect_triggers({"loras": resolved, "sep": state.get("sep", ", ")})
 
         # Free cache entries for LoRAs the user removed, so memory tracks the node.
         for path in list(self._cache):

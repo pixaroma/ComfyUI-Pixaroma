@@ -212,6 +212,7 @@ export function openLoraPanel(node, refresh) {
   sw.style.background = accentOf(node);
   sw.title = "Pick the highlight colour";
   sw.addEventListener("click", () => {
+    try { _cpHandle?.close(); } catch {} // don't stack pickers on repeated clicks
     _cpHandle = openPixaromaColorPickerPopup(sw, {
       initialColor: accentOf(node),
       swatches: BUTTON_PALETTE,

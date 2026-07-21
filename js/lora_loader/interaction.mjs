@@ -5,7 +5,7 @@
 
 import {
   readState, patchLora, addLora, removeLora, duplicateLora, moveLora,
-  setAllOn, countOn, accentOf,
+  setAllOn, countOn, accentOf, MAX_LORAS,
 } from "./core.mjs";
 import { openLoraDropdown } from "./dropdown.mjs";
 import { openInfoPanel } from "./info_panel.mjs";
@@ -65,9 +65,14 @@ function openRowMenu(node, id, x, y, refresh) {
     sep(),
     item("↑", "Move up", () => { moveLora(node, id, -1); refresh(true); }, { dis: idx === 0 }),
     item("↓", "Move down", () => { moveLora(node, id, +1); refresh(true); }, { dis: idx === st.loras.length - 1 }),
-    item("⧉", "Duplicate", () => { duplicateLora(node, id); refresh(true); }),
+    item("⧉", "Duplicate", () => { duplicateLora(node, id); refresh(true); },
+      { dis: st.loras.length >= MAX_LORAS }),
     item(e.on ? "◉" : "○", e.on ? "Disable" : "Enable",
-      () => { patchLora(node, id, { on: !e.on }); refresh(false); }),
+      () => {
+        const cur = readState(node).loras.find((x) => x.id === id); // re-read at click time
+        patchLora(node, id, { on: !cur?.on });
+        refresh(false);
+      }),
     sep(),
     item("⌫", "Remove", () => { removeLora(node, id); refresh(true); }, { danger: true }),
   );
@@ -107,7 +112,7 @@ function stepWeight(node, id, dir, which, refresh) {
 export function attachInteractions(node, widgetEl, refresh) {
   widgetEl.addEventListener("click", (ev) => {
     const t = ev.target;
-    if (t?.dataset?.act === "wval" || t?.tagName === "INPUT") return; // let the field focus
+    if (t?.dataset?.act === "wval" || t?.dataset?.act === "wcval") return; // let the weight field focus
     const act = t.closest?.("[data-act]")?.dataset?.act;
     if (!act) return;
     ev.stopPropagation();

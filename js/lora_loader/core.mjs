@@ -85,6 +85,17 @@ function normalize(raw) {
     .map((e) => normLora(e, st))
     .filter(Boolean)
     .slice(0, MAX_LORAS);
+  // Linked-strength invariant: when a single strength drives both, clip ALWAYS equals
+  // model. Enforced on every write/load, so toggling "separate" off can never leave a
+  // stale clip strength that would silently apply a mismatched CLIP weight at run time.
+  if (st.linkStrength) st.loras.forEach((e) => { e.sc = e.sm; });
+  // De-dup ids so a hand-edited / duplicated state can't make a row unreachable by id
+  // (every id-based op uses find(), which would otherwise always hit the first match).
+  const seenIds = new Set();
+  for (const e of st.loras) {
+    if (seenIds.has(e.id)) e.id = newId();
+    seenIds.add(e.id);
+  }
   return st;
 }
 
@@ -159,9 +170,15 @@ export function patchLora(node, id, patch) {
   const st = readState(node);
   const e = st.loras.find((x) => x.id === id);
   if (!e) return null;
+  const oldName = e.name;
+  const keepId = e.id;
   Object.assign(e, patch);
+  e.id = keepId; // a patch must never change the row's identity
   if (patch.sm != null) e.sm = roundStrength(patch.sm);
   if (patch.sc != null) e.sc = roundStrength(patch.sc);
+  // Picking a DIFFERENT LoRA clears the trigger words - they belonged to the old file
+  // and would otherwise flow into the triggers output describing the wrong LoRA.
+  if (patch.name != null && patch.name !== oldName) e.triggers = [];
   // When strengths are linked, a model-strength change mirrors to clip.
   if (st.linkStrength && patch.sm != null && patch.sc == null) e.sc = e.sm;
   return writeState(node, st);
