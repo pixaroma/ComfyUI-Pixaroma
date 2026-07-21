@@ -1,17 +1,17 @@
 """
-Text Join Pixaroma - join two or three pieces of text into one.
+Text Join Pixaroma - join a few pieces of text into one.
 
 Each text field can be typed into on the node, OR a wire can be dragged onto its
-dot to pull text from another node (the wire wins when connected). A gear panel
-picks the separator that goes between the pieces and whether to skip empty
-fields so you never get a stray separator.
+dot to pull text from another node (the wire wins when connected). Right-clicking
+the node opens the settings: the separator that goes between the pieces and
+whether to skip empty fields so you never get a stray separator.
 
-Two nodes share this file: Text Join Two Pixaroma (two fields) and Text Join
-Three Pixaroma (three fields). The separator / skip-empty choice rides along in
-a hidden JoinState input, injected by the frontend (Vue Compat #9), so changing
-it in the panel needs no widget on the node face. The text values flow through
-the node's own STRING widgets (hidden behind the custom fields) plus the same
-graphToPrompt inject, exactly like Outpaint Stitch Pixaroma's sliders.
+Three nodes share this file: Text Join Two / Three / Four Pixaroma (two, three or
+four fields). They only differ by field count, so they share the _TextJoinBase
+below. The separator / skip-empty choice rides along in a hidden JoinState input,
+injected by the frontend (Vue Compat #9), so it needs no widget on the node face.
+The text values flow through the node's own STRING widgets (hidden behind the
+custom fields) plus the same graphToPrompt inject, like Outpaint Stitch's sliders.
 """
 import json
 
@@ -19,6 +19,7 @@ import json
 # Maps the separator picker key to the actual string placed between pieces.
 _SEP_MAP = {"comma": ", ", "space": " ", "newline": "\n", "none": ""}
 _DEFAULT_STATE = {"sep": "comma", "customSep": "", "skipEmpty": True}
+_WORDS = {2: "two", 3: "three", 4: "four"}
 
 
 def _parse_state(raw):
@@ -77,85 +78,78 @@ def _text_input(n):
     })
 
 
-class PixaromaTextJoinTwo:
-    DESCRIPTION = (
-        "Joins two pieces of text into one. Type in each field, or wire another "
-        "node's text into its dot (the wire wins when connected). A separator, "
-        "set in the gear panel, goes between the pieces, and empty pieces are "
-        "skipped so you never get a stray separator. Handy for building a prompt "
-        "from a fixed part plus a variable part."
+def _description(n):
+    word = _WORDS[n]
+    return (
+        "Joins %s pieces of text into one. Type in each field, or wire another "
+        "node's text into its dot (the wire wins when connected). A separator "
+        "(comma, space, new line, none, or your own) goes between the pieces, and "
+        "empty pieces are skipped so you never get a stray separator. Right-click "
+        "the node for the separator and skip-empty settings." % word
     )
+
+
+class _TextJoinBase:
+    """Shared logic for the Two / Three / Four nodes. Subclasses set N (the field
+    count) plus their own DESCRIPTION / OUTPUT_TOOLTIPS. Inputs and outputs are
+    built from N, so text_1..text_N reach join()/IS_CHANGED() as keyword args."""
+
+    N = 2
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("text",)
+    FUNCTION = "join"
+    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "optional": {
-                "text_1": _text_input("1"),
-                "text_2": _text_input("2"),
+                "text_%d" % i: _text_input(str(i)) for i in range(1, cls.N + 1)
             },
             "hidden": {
                 "JoinState": ("STRING", {"default": ""}),
             },
         }
 
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
+    @classmethod
+    def _pieces(cls, kw):
+        return [kw.get("text_%d" % i, "") for i in range(1, cls.N + 1)]
+
+    @classmethod
+    def IS_CHANGED(cls, JoinState="", **kw):
+        return json.dumps([*cls._pieces(kw), _parse_state(JoinState)],
+                          sort_keys=True, default=str)
+
+    def join(self, JoinState="", **kw):
+        return (_join(self._pieces(kw), JoinState),)
+
+
+class PixaromaTextJoinTwo(_TextJoinBase):
+    N = 2
+    DESCRIPTION = _description(2)
     OUTPUT_TOOLTIPS = ("The two pieces joined with your separator.",)
-    FUNCTION = "join"
-    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
-
-    @classmethod
-    def IS_CHANGED(cls, text_1="", text_2="", JoinState="", **kw):
-        return json.dumps([text_1, text_2, _parse_state(JoinState)],
-                          sort_keys=True, default=str)
-
-    def join(self, text_1="", text_2="", JoinState="", **kw):
-        return (_join([text_1, text_2], JoinState),)
 
 
-class PixaromaTextJoinThree:
-    DESCRIPTION = (
-        "Joins three pieces of text into one. Type in each field, or wire "
-        "another node's text into its dot (the wire wins when connected). A "
-        "separator, set in the gear panel, goes between the pieces, and empty "
-        "pieces are skipped so you never get a stray separator. Handy for "
-        "building a prompt from several parts, some fixed and some wired in."
-    )
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "optional": {
-                "text_1": _text_input("1"),
-                "text_2": _text_input("2"),
-                "text_3": _text_input("3"),
-            },
-            "hidden": {
-                "JoinState": ("STRING", {"default": ""}),
-            },
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("text",)
+class PixaromaTextJoinThree(_TextJoinBase):
+    N = 3
+    DESCRIPTION = _description(3)
     OUTPUT_TOOLTIPS = ("The three pieces joined with your separator.",)
-    FUNCTION = "join"
-    CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
 
-    @classmethod
-    def IS_CHANGED(cls, text_1="", text_2="", text_3="", JoinState="", **kw):
-        return json.dumps([text_1, text_2, text_3, _parse_state(JoinState)],
-                          sort_keys=True, default=str)
 
-    def join(self, text_1="", text_2="", text_3="", JoinState="", **kw):
-        return (_join([text_1, text_2, text_3], JoinState),)
+class PixaromaTextJoinFour(_TextJoinBase):
+    N = 4
+    DESCRIPTION = _description(4)
+    OUTPUT_TOOLTIPS = ("The four pieces joined with your separator.",)
 
 
 NODE_CLASS_MAPPINGS = {
     "PixaromaTextJoinTwo": PixaromaTextJoinTwo,
     "PixaromaTextJoinThree": PixaromaTextJoinThree,
+    "PixaromaTextJoinFour": PixaromaTextJoinFour,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PixaromaTextJoinTwo": "Text Join Two Pixaroma",
     "PixaromaTextJoinThree": "Text Join Three Pixaroma",
+    "PixaromaTextJoinFour": "Text Join Four Pixaroma",
 }

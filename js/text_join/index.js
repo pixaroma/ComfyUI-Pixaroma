@@ -27,6 +27,12 @@ const CLASSES = {
     { name: "text_2", label: "text 2" },
     { name: "text_3", label: "text 3" },
   ],
+  PixaromaTextJoinFour: [
+    { name: "text_1", label: "text 1" },
+    { name: "text_2", label: "text 2" },
+    { name: "text_3", label: "text 3" },
+    { name: "text_4", label: "text 4" },
+  ],
 };
 
 function fieldNamesFor(className) {
@@ -226,10 +232,11 @@ const HELP_SECTIONS = [
       "Type directly, or wire a text source onto the dot on its row.",
       "Hover a field for a copy and a paste button in its corner.",
       "A wired field locks and greys - unplug the wire to type again.",
+      "The fields grow when you make the node bigger.",
     ],
   },
   {
-    heading: "The gear (settings)",
+    heading: "Settings (right-click the node)",
     defs: [
       ["Separator", "What goes between the pieces: comma, space, new line, none, or your own custom text."],
       ["Skip empty fields", "On by default, so a blank piece never leaves a stray separator."],
@@ -242,11 +249,17 @@ registerNodeHelp("PixaromaTextJoinTwo", {
   title: "Text Join Two Pixaroma",
   tagline: "Join two pieces of text into one (type or wire each).",
   sections: HELP_SECTIONS,
-  footer: "Need three pieces? Use Text Join Three Pixaroma.",
+  footer: "Need more pieces? Use Text Join Three or Four Pixaroma.",
 });
 registerNodeHelp("PixaromaTextJoinThree", {
   title: "Text Join Three Pixaroma",
   tagline: "Join three pieces of text into one (type or wire each).",
   sections: HELP_SECTIONS,
-  footer: "Only need two pieces? Use Text Join Two Pixaroma.",
+  footer: "Need two or four pieces? Use Text Join Two or Four Pixaroma.",
+});
+registerNodeHelp("PixaromaTextJoinFour", {
+  title: "Text Join Four Pixaroma",
+  tagline: "Join four pieces of text into one (type or wire each).",
+  sections: HELP_SECTIONS,
+  footer: "Need fewer pieces? Use Text Join Two or Three Pixaroma.",
 });
