@@ -285,23 +285,38 @@ class PixaromaOutpaintStitch:
         ox0, ox1 = int(left), int(left) + ow          # original rect, x span (canvas)
         oy0, oy1 = int(top), int(top) + oh            # original rect, y span (canvas)
         bw = max(2, int(round(R * _MATCH_SEAM_BAND_FRAC)))
+        # Anchor maps clamp each band's smear to the ORIGINAL's span so a band pushed
+        # into a CORNER continues the nearest STRAIGHT-EDGE seam tone (which is
+        # anchored to real original-adjacent background) instead of sampling the
+        # corner's OWN content. Without this, a subject the model drew in a corner
+        # would taint that corner's bands and reintroduce the glow there. For a
+        # single-axis pad the perpendicular span is the full canvas, so the clamp is
+        # the identity (no change) - only true corners (two adjacent sides padded)
+        # are affected. `row_anchor` fixes the left/right (per-row) bands; `col_anchor`
+        # the top/bottom (per-col) bands.
+        row_anchor = torch.arange(H, device=dev).clamp(oy0, oy1 - 1)
+        col_anchor = torch.arange(W, device=dev).clamp(ox0, ox1 - 1)
         acc = torch.zeros_like(canvas)
         cnt = torch.zeros((canvas.shape[0], H, W, 1), device=dev, dtype=canvas.dtype)
         if right > 0:
             k = max(1, min(bw, int(right)))
-            acc[:, :, ox1:W, :] += canvas[:, :, ox1:ox1 + k, :].mean(dim=2, keepdim=True)
+            band = canvas[:, :, ox1:ox1 + k, :].mean(dim=2, keepdim=True).index_select(1, row_anchor)
+            acc[:, :, ox1:W, :] += band
             cnt[:, :, ox1:W, :] += 1.0
         if left > 0:
             k = max(1, min(bw, int(left)))
-            acc[:, :, 0:ox0, :] += canvas[:, :, ox0 - k:ox0, :].mean(dim=2, keepdim=True)
+            band = canvas[:, :, ox0 - k:ox0, :].mean(dim=2, keepdim=True).index_select(1, row_anchor)
+            acc[:, :, 0:ox0, :] += band
             cnt[:, :, 0:ox0, :] += 1.0
         if top > 0:
             k = max(1, min(bw, int(top)))
-            acc[:, 0:oy0, :, :] += canvas[:, oy0 - k:oy0, :, :].mean(dim=1, keepdim=True)
+            band = canvas[:, oy0 - k:oy0, :, :].mean(dim=1, keepdim=True).index_select(2, col_anchor)
+            acc[:, 0:oy0, :, :] += band
             cnt[:, 0:oy0, :, :] += 1.0
         if bottom > 0:
             k = max(1, min(bw, int(bottom)))
-            acc[:, oy1:H, :, :] += canvas[:, oy1:oy1 + k, :, :].mean(dim=1, keepdim=True)
+            band = canvas[:, oy1:oy1 + k, :, :].mean(dim=1, keepdim=True).index_select(2, col_anchor)
+            acc[:, oy1:H, :, :] += band
             cnt[:, oy1:H, :, :] += 1.0
         # Averaged band where any side covered the pixel, else the raw canvas.
         src = torch.where(cnt > 0, acc / cnt.clamp(min=1.0), canvas)
