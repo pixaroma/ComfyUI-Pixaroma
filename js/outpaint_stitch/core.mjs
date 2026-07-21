@@ -1,11 +1,16 @@
 // Outpaint Stitch Pixaroma - shared bits for the slider face + colour settings.
 //
-// The node is otherwise pure-Python with two native INT widgets (feather,
-// color_match). Those widgets stay the SOURCE OF TRUTH - they serialize into the
-// workflow and go into the prompt exactly as before - and the custom sliders
-// just read and write their `.value`. So there is no hidden state, no
-// graphToPrompt hook, and no risk to the Python contract; this file only adds a
-// prettier face + a per-node accent colour (matching Sliders Pixaroma).
+// The node has two native INT widgets (feather, color_match) that hold the VALUE.
+// The custom sliders read and write their `.value`, so the widgets stay the value
+// store. BUT the natives are HIDDEN (sliders.mjs `hideNativeWidget` sets
+// `hidden` + `canvasOnly`) so the pretty slider replaces their face AND so a real
+// input dot can sit on each slider row - which means the value NO LONGER reaches
+// Python by itself. Two load-bearing pieces make it work, do NOT remove them in a
+// refactor: (1) sliders.mjs `hideNativeWidget` hides the natives (+ flags them
+// `pixSweepable` so XY Plot can still sweep them); (2) index.js installs an
+// `app.graphToPrompt` hook that injects each slider's `.value` into
+// `entry.inputs` when the input is unwired (and defers to a queue-driver sweep).
+// This file only adds the accent-colour plumbing.
 
 import { app } from "/scripts/app.js";
 

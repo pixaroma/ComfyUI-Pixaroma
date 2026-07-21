@@ -270,27 +270,41 @@ class PixaromaOutpaintStitch:
         R = int(min(_MATCH_BLUR_MAX, max(_MATCH_BLUR_MIN,
                                          round(_MATCH_BLUR_FRAC * min(oh, ow)))))
 
-        # Build src: canvas with each padded (generated) strip filled by the mean of
-        # a THIN band at its seam, smeared across the strip. The band is taken from
-        # the GENERATED side of each seam and capped to that side's pad width so it
-        # never spills past the strip. Reading only the seam boundary keeps the
+        # Build src: start from canvas, then in each padded (generated) strip replace
+        # the tone with the mean of a THIN band read from the GENERATED side of that
+        # seam, smeared across the strip. The band is capped to that side's pad width
+        # so it never spills past the strip. Reading only the seam boundary keeps the
         # correction blind to any subject sitting inside the generated area.
+        #
+        # Corners: where a horizontal AND a vertical pad overlap (e.g. top + right),
+        # both bands cover the corner. ACCUMULATE each side's contribution + a count,
+        # then divide, so the corner is the AVERAGE of the two bands - order-
+        # independent, not last-write-wins. cnt is 1 in a plain strip (so src = that
+        # band, identical to a single-side pad), 2 in a corner, 0 in the original
+        # region (where src stays = canvas, so delta self-cancels there).
         ox0, ox1 = int(left), int(left) + ow          # original rect, x span (canvas)
         oy0, oy1 = int(top), int(top) + oh            # original rect, y span (canvas)
         bw = max(2, int(round(R * _MATCH_SEAM_BAND_FRAC)))
-        src = canvas.clone()
+        acc = torch.zeros_like(canvas)
+        cnt = torch.zeros((canvas.shape[0], H, W, 1), device=dev, dtype=canvas.dtype)
         if right > 0:
             k = max(1, min(bw, int(right)))
-            src[:, :, ox1:W, :] = canvas[:, :, ox1:ox1 + k, :].mean(dim=2, keepdim=True)
+            acc[:, :, ox1:W, :] += canvas[:, :, ox1:ox1 + k, :].mean(dim=2, keepdim=True)
+            cnt[:, :, ox1:W, :] += 1.0
         if left > 0:
             k = max(1, min(bw, int(left)))
-            src[:, :, 0:ox0, :] = canvas[:, :, ox0 - k:ox0, :].mean(dim=2, keepdim=True)
+            acc[:, :, 0:ox0, :] += canvas[:, :, ox0 - k:ox0, :].mean(dim=2, keepdim=True)
+            cnt[:, :, 0:ox0, :] += 1.0
         if top > 0:
             k = max(1, min(bw, int(top)))
-            src[:, 0:oy0, :, :] = canvas[:, oy0 - k:oy0, :, :].mean(dim=1, keepdim=True)
+            acc[:, 0:oy0, :, :] += canvas[:, oy0 - k:oy0, :, :].mean(dim=1, keepdim=True)
+            cnt[:, 0:oy0, :, :] += 1.0
         if bottom > 0:
             k = max(1, min(bw, int(bottom)))
-            src[:, oy1:H, :, :] = canvas[:, oy1:oy1 + k, :, :].mean(dim=1, keepdim=True)
+            acc[:, oy1:H, :, :] += canvas[:, oy1:oy1 + k, :, :].mean(dim=1, keepdim=True)
+            cnt[:, oy1:H, :, :] += 1.0
+        # Averaged band where any side covered the pixel, else the raw canvas.
+        src = torch.where(cnt > 0, acc / cnt.clamp(min=1.0), canvas)
 
         delta = self._box_blur(ref, R) - self._box_blur(src, R)   # continuous + content-blind
         return canvas + delta * float(strength01)
