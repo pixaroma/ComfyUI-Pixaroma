@@ -104,6 +104,7 @@ function stepWeight(node, id, dir, which, refresh) {
   const st = readState(node);
   const e = st.loras.find((x) => x.id === id);
   if (!e) return;
+  if (which === "c" && st.linkStrength) return; // clip follows model when linked (defensive)
   if (which === "c") patchLora(node, id, { sc: e.sc + dir * st.step });
   else patchLora(node, id, { sm: e.sm + dir * st.step });
   refresh(false);
@@ -159,7 +160,10 @@ export function attachInteractions(node, widgetEl, refresh) {
     if (act !== "wval" && act !== "wcval") return;
     const id = rowIdOf(ev.target);
     if (!id) return;
-    patchLora(node, id, act === "wcval" ? { sc: ev.target.value } : { sm: ev.target.value });
+    const raw = parseFloat(ev.target.value);
+    if (!Number.isFinite(raw)) { refresh(false); return; } // garbage typed -> revert to stored value
+    if (act === "wcval" && readState(node).linkStrength) { refresh(false); return; } // linked: clip follows model
+    patchLora(node, id, act === "wcval" ? { sc: raw } : { sm: raw });
     refresh(false);
   });
 

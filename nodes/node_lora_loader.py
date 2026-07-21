@@ -82,9 +82,10 @@ class PixaromaLoraLoader:
     def apply(self, model, clip=None, LoraLoaderState="{}"):
         state = H.parse_state(LoraLoaderState)
 
-        # Rows whose LoRA file actually resolved. Only these contribute trigger words,
-        # so the triggers output never claims words for a LoRA that isn't really there
-        # (a missing / renamed file is skipped and adds nothing).
+        # Rows whose LoRA was actually applied (or deliberately parked at strength 0).
+        # ONLY these contribute trigger words, so the triggers output never claims words
+        # for a LoRA that isn't really in the model - a missing/renamed file OR a file
+        # that fails to load (corrupt / incompatible) adds nothing.
         resolved = []
         used_paths = set()
         applied = 0
@@ -102,13 +103,13 @@ class PixaromaLoraLoader:
                 print("[LoRA Loader Pixaroma] skipped (not found): {}".format(name))
                 continue
 
-            resolved.append(entry)  # file present -> its picked triggers count
             sm = float(entry.get("sm", 0.0))
             sc = float(entry.get("sc", 0.0)) if clip is not None else 0.0
             if sm == 0 and sc == 0:
-                # Nothing to apply, but keep the file cached in case a later run
-                # raises the strength; its triggers still count (the file is present).
+                # Deliberate no-op (file present, strengths zero): keep it cached and let
+                # its picked trigger words count (the user turned it on on purpose).
                 used_paths.add(path)
+                resolved.append(entry)
                 continue
             try:
                 lora, meta = self._get_lora(path)
@@ -117,7 +118,9 @@ class PixaromaLoraLoader:
                 )
                 used_paths.add(path)
                 applied += 1
+                resolved.append(entry)  # actually applied -> its triggers count
             except Exception as exc:
+                # Load failed -> NOT resolved, so its words don't reach the output.
                 print("[LoRA Loader Pixaroma] failed to apply {}: {}".format(name, exc))
 
         # Triggers come only from resolved rows (collect_triggers gates on `on`; every
