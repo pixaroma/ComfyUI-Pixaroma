@@ -160,7 +160,7 @@ const PROMPT_HELP = {
     {
       heading: "Random slots (wildcards)",
       body:
-        "Type `*` then a category name to drop in a RANDOM tag from that category - a fresh one every time you run. For example `*Styles` becomes a different saved Style each run. Type `*` to get a list of your categories.\n\n" +
+        "Type `*` then a category name to drop in a RANDOM tag from that category - a fresh one every time you run. For example `*Styles` becomes a different saved Style each run. Type `*` to get a list of your categories (only single-word names - letters, numbers, `-` or `_` - can be used with `*`; a category with a space in its name still works everywhere else).\n\n" +
         "A working `*category` glows violet; an unknown or empty one glows red. `Show expanded` shows it as `[random: Styles]` because the real pick only happens when you run - wire a Show Text Pixaroma to the output to see exactly what was chosen. Tip: with a fixed seed the picture only changes when the pick changes, so use a random seed if you want a new image every run.",
     },
     {
@@ -372,15 +372,14 @@ function openAC(node, ta, start, q, mode) {
   const sym = mode === "wild" ? "*" : "@";
 
   if (mode === "wild") {
-    // *wildcards list CATEGORIES THAT ACTUALLY HAVE TAGS (an empty one can't roll
-    // anything, so offering it would insert a wildcard that renders red + never
-    // resolves). Count matches wildCat's pool exactly (Uncategorized fallback +
-    // string-text). Picking one inserts *Category (rolls at run time).
-    const all = getTags();
-    const countOf = (c) => all.filter((t) => (t.cat || "Uncategorized").toLowerCase() === c.toLowerCase() && typeof t.text === "string").length;
+    // *wildcards list only categories that (a) can be TYPED as one *token - the token
+    // grammar is [A-Za-z0-9_-]+, but a category name may contain spaces/symbols a
+    // *token can't capture (offering "Sci Fi" would insert *Sci Fi and leave garbage);
+    // AND (b) actually have at least one tag. Count comes straight from wildCat so the
+    // number shown is exactly the pool it rolls from. Picking inserts *Category.
     const cats = getCategories()
-      .filter((c) => c && c.toLowerCase().includes(q))
-      .map((c) => ({ name: c, count: countOf(c) }))
+      .filter((c) => c && c.toLowerCase().includes(q) && /^[a-zA-Z0-9_\-]+$/.test(c))
+      .map((c) => ({ name: c, count: (wildCat(c)?.pool.length) || 0 }))
       .filter((c) => c.count > 0);
     if (!cats.length) {
       const e = document.createElement("div");

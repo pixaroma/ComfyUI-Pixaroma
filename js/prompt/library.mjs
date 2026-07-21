@@ -56,7 +56,9 @@ function normalize(raw) {
   const seenCat = new Set();
   for (const c of cats) {
     const name = String(c || "").trim();
-    if (!name || name === UNCATEGORIZED) continue;
+    // Reserved bucket is case-INSENSITIVE: a user-typed "uncategorized" must not
+    // survive as a separate category that then merges with the synthetic bucket.
+    if (!name || name.toLowerCase() === UNCATEGORIZED.toLowerCase()) continue;
     const key = name.toLowerCase();
     if (seenCat.has(key)) continue;
     seenCat.add(key);
@@ -72,7 +74,7 @@ function normalize(raw) {
     if (seenTag.has(key)) continue;
     seenTag.add(key);
     let cat = String(t.cat || "").trim();
-    if (cat === UNCATEGORIZED) cat = "";
+    if (cat.toLowerCase() === UNCATEGORIZED.toLowerCase()) cat = "";
     out.tags.push({ name, cat, text: typeof t.text === "string" ? t.text : "" });
   }
   // Reconcile every tag's category to the canonical (case-matching) entry in the
@@ -132,7 +134,7 @@ export function getCategories() {
     if (!t.cat) { hasUncat = true; continue; }
     if (!have.has(t.cat.toLowerCase())) { have.add(t.cat.toLowerCase()); out.push(t.cat); }
   }
-  if (hasUncat) out.push(UNCATEGORIZED);
+  if (hasUncat && !have.has(UNCATEGORIZED.toLowerCase())) out.push(UNCATEGORIZED);
   return out;
 }
 
