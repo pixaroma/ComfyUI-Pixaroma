@@ -31,11 +31,21 @@ function injectCSS() {
       border-bottom:1px solid #333; cursor:grab; user-select:none; color:${BRAND}; }
     .pix-tjp-t .x { margin-left:auto; color:#8a8a8a; cursor:pointer; padding:0 4px; }
     .pix-tjp-t .x:hover { color:#fff; }
-    .pix-tjp-b { padding:12px; display:flex; flex-direction:column; gap:14px; }
+    .pix-tjp-b { padding:12px; display:flex; flex-direction:column; gap:14px; max-height:74vh; overflow-y:auto; }
 
     .pix-tjp-field { display:flex; flex-direction:column; gap:6px; }
     .pix-tjp-lab { font-size:12px; color:#9a9a9a; }
     .pix-tjp-hint { font-size:11px; color:#7a7a7a; }
+
+    .pix-tjp-names { display:flex; flex-direction:column; gap:5px; }
+    .pix-tjp-namerow { display:flex; align-items:center; gap:8px; }
+    .pix-tjp-namenum { flex:none; width:14px; text-align:center; color:#7a7a7a; font-size:11px;
+      font-variant-numeric:tabular-nums; }
+    .pix-tjp-nameinput { flex:1; min-width:0; box-sizing:border-box; background:#161616;
+      border:1px solid #3a3a3a; border-radius:6px; color:#fff; font:12px 'Segoe UI',sans-serif;
+      padding:7px 9px; outline:none; }
+    .pix-tjp-nameinput:focus { border-color:${BRAND}; }
+    .pix-tjp-nameinput::placeholder { color:#666; }
 
     .pix-tjp-ddv { display:flex; align-items:center; gap:8px; background:#1d1d1d; border:1px solid #3a3a3a;
       border-radius:6px; padding:8px 10px; cursor:pointer; }
@@ -221,6 +231,36 @@ export function openTextJoinPanel(node, onChange) {
     body.innerHTML = "";
     const st = readState(node);
     const opt = SEP_OPTIONS.find((o) => o.key === st.sep) || SEP_OPTIONS[0];
+
+    // Field names (rename each box, per node). Purely a display label - the
+    // wiring/output is unchanged, so this is cosmetic and never re-runs the node.
+    const fields = node._pixTjFields || [];
+    const nameField = el("div", "pix-tjp-field");
+    nameField.appendChild(el("div", "pix-tjp-lab", "Field names (rename each box)"));
+    const nameList = el("div", "pix-tjp-names");
+    fields.forEach((cfg, i) => {
+      const row = el("div", "pix-tjp-namerow");
+      row.appendChild(el("span", "pix-tjp-namenum", String(i + 1)));
+      const inp = el("input", "pix-tjp-nameinput");
+      inp.type = "text";
+      inp.maxLength = 40;
+      inp.value = (st.labels && typeof st.labels[i] === "string") ? st.labels[i] : "";
+      inp.placeholder = cfg.label;   // the default, e.g. "text 1"
+      inp.title = "Shown on this box. Leave blank for the default (" + cfg.label + ").";
+      inp.addEventListener("keydown", (e) => e.stopPropagation());
+      inp.addEventListener("input", () => {
+        const s = readState(node);
+        const labels = Array.isArray(s.labels) ? s.labels.slice() : [];
+        labels[i] = inp.value;
+        writeState(node, { ...s, labels });
+        fire();
+      });
+      row.appendChild(inp);
+      nameList.appendChild(row);
+    });
+    nameField.appendChild(nameList);
+    nameField.appendChild(el("div", "pix-tjp-hint", "e.g. trigger words, prompt, camera, lighting"));
+    body.appendChild(nameField);
 
     // Separator picker (custom dark dropdown).
     const sepField = el("div", "pix-tjp-field");

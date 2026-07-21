@@ -24,19 +24,34 @@ export const SEP_OPTIONS = [
   { key: "custom", label: "Custom", hint: "type your own separator" },
 ];
 
-export const DEFAULT_STATE = { sep: "comma", customSep: "", skipEmpty: true };
+export const MAX_FIELDS = 4;          // Text Join Four is the largest
+// `labels` are per-field custom names (cosmetic, UI-only). They live in the
+// persisted state but are DROPPED from promptState (below), so renaming a field
+// never changes the injected JoinState and never re-runs the node.
+export const DEFAULT_STATE = { sep: "comma", customSep: "", skipEmpty: true, labels: [] };
 
-// Normalize to EXACTLY the execution-relevant keys (no cosmetic fields, no
-// version) so the injected JoinState string is cache-stable
+// Normalize to a clean state. The execution keys (sep/customSep/skipEmpty) plus
+// the cosmetic `labels` array; promptState (below) keeps only the execution keys
+// so the injected JoinState stays cache-stable
 // (reference_cosmetic_key_in_injected_state_recaches).
 function normalize(st) {
   const s = { ...DEFAULT_STATE, ...(st || {}) };
   if (!SEP_OPTIONS.some((o) => o.key === s.sep)) s.sep = "comma";
+  const labels = Array.isArray(s.labels)
+    ? s.labels.slice(0, MAX_FIELDS).map((x) => (typeof x === "string" ? x : ""))
+    : [];
   return {
     sep: s.sep,
     customSep: typeof s.customSep === "string" ? s.customSep : "",
     skipEmpty: !!s.skipEmpty,
+    labels,
   };
+}
+
+// The custom label for field index i (0-based), else the given default ("text N").
+export function labelFor(state, i, fallback) {
+  const v = state && state.labels ? state.labels[i] : null;
+  return (typeof v === "string" && v.trim()) ? v.trim() : fallback;
 }
 
 // Fresh-node defaults: the user's saved global default, else the built-ins.

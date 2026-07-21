@@ -15,7 +15,7 @@
 // (index.js), so the dot gymnastics never touch the text reaching Python.
 
 import { app } from "/scripts/app.js";
-import { widgetOf, BRAND } from "./core.mjs";
+import { widgetOf, BRAND, readState, labelFor } from "./core.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, installResizeFloor } from "../shared/index.mjs";
 
 export const MIN_FIELD_H = 56;     // smallest a single field box can shrink to
@@ -154,6 +154,16 @@ export function reseedFields(node) {
   for (const wrap of node._pixTjWraps || []) seedField(node, wrap);
 }
 
+// Set each field box's display label from state (custom name, else "text N").
+// Cheap; called from paintRows and directly on a settings edit for a live update.
+export function applyLabels(node) {
+  const st = readState(node);
+  (node._pixTjWraps || []).forEach((wrap, i) => {
+    const lbl = wrap._field?.querySelector(".pix-tj-lbl");
+    if (lbl) lbl.textContent = labelFor(st, i, wrap._cfg.label);
+  });
+}
+
 async function doCopy(iconEl, ta) {
   const txt = ta.value || "";
   if (!txt) { toast("info", "Nothing to copy"); return; }
@@ -242,8 +252,12 @@ function makeFieldRow(node, cfg) {
 export function paintRows(node) {
   const wraps = node._pixTjWraps || [];
   const vue = isVueNodes();
-  for (const wrap of wraps) {
+  const st = readState(node);
+  wraps.forEach((wrap, i) => {
     const cfg = wrap._cfg;
+    const name = labelFor(st, i, cfg.label);   // custom field name, else "text N"
+    const lbl = wrap._field.querySelector(".pix-tj-lbl");
+    if (lbl) lbl.textContent = name;
     // Legacy: inset the field so the dot on the left has room. Vue: the socket
     // owns the left column, so no inset.
     wrap._field.style.left = vue ? "0px" : LEFT_INSET + "px";
@@ -252,9 +266,9 @@ export function paintRows(node) {
     wrap._ta.disabled = wired;
     wrap._ta.placeholder = wired ? "text comes from the wired node" : "type here or wire";
     wrap._field.title = wired
-      ? `${cfg.label} is set by the connected node - unplug the wire to type here (the dimmed text is this box's own value)`
+      ? `${name} is set by the connected node - unplug the wire to type here (the dimmed text is this box's own value)`
       : "";
-  }
+  });
 }
 
 // Bind each field's input dot to its row. Opposite marker treatment per renderer.

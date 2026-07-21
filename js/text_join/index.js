@@ -4,7 +4,7 @@ import { HIDDEN_INPUT, promptState, widgetOf } from "./core.mjs";
 import {
   injectCSS, installFields, uninstallFields, reseedFields, paintRows,
   bindInputDots, alignInputsLegacy, bodyComputeSize, defaultNodeHeight,
-  MIN_W, DEFAULT_W, ZW,
+  applyLabels, MIN_W, DEFAULT_W, ZW,
 } from "./fields.mjs";
 import { openTextJoinPanel, closeTextJoinPanelFor } from "./settings.mjs";
 
@@ -158,7 +158,10 @@ app.registerExtension({
     return [
       {
         content: "⚙ Text Join settings",
-        callback: () => openTextJoinPanel(node, () => node.setDirtyCanvas?.(true, true)),
+        callback: () => openTextJoinPanel(node, () => {
+          applyLabels(node);                 // live-update the box names as you type
+          node.setDirtyCanvas?.(true, true);
+        }),
       },
     ];
   },
@@ -239,9 +242,10 @@ const HELP_SECTIONS = [
   {
     heading: "Settings (right-click the node)",
     defs: [
+      ["Field names", "Rename each box (e.g. trigger words, prompt, camera, lighting). Just a label - the wiring and output don't change."],
       ["Separator", "What goes between the pieces: comma, space, new line, none, or your own custom text."],
       ["Skip empty fields", "On by default, so a blank piece never leaves a stray separator."],
-      ["Set as default", "Remember these settings for every new Text Join node."],
+      ["Set as default", "Remember these settings (and names) for every new Text Join node."],
     ],
   },
 ];
