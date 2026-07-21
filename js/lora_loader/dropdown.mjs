@@ -229,5 +229,5 @@ export async function openLoraDropdown(anchorEl, opts) {
     document.removeEventListener("wheel", onWheel, true);
     document.removeEventListener("keydown", onKey, true);
   };
-  _pop = pop;
+  // (_pop was already set right after append, so the "closed mid-fetch" guard works.)
 }

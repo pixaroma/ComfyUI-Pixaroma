@@ -25,6 +25,9 @@ const EMPTY_H = 46;
 const BAND_H = ADD_H + TOP_GAP + TOPROW_H; // 59
 // Classic float: node-local px. The widget body starts ~66px below the node top; the
 // 3-output slot band spans ~4..64, so lift the band ~62px to land it in that band.
+// NOTE: these are calibrated to this node's slot layout (2 inputs / 3 outputs) - if a
+// MODEL/CLIP/triggers slot is ever added or removed, re-tune these AND `CHROME` in
+// index.js, or the band drifts out of the dead-band.
 const CLASSIC_BAND_TOP = -62;
 const CLASSIC_RSV_L = 64;   // clear the model / clip labels on the left
 const CLASSIC_RSV_R = 80;   // clear the MODEL / CLIP / triggers labels on the right

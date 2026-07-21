@@ -56,6 +56,18 @@ def read_safetensors_metadata(path):
     return meta if isinstance(meta, dict) else {}
 
 
+def _clean_id(v):
+    """A Civitai model/version id -> a clean int, or None. Rejects dicts/lists/garbage
+    from a hand-edited sidecar so the frontend never builds a junk civitai.com URL."""
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str) and v.isdigit():
+        return int(v)
+    return None
+
+
 def _as_json(val):
     """A safetensors metadata value is always a string; structured ones are JSON
     strings that need a second parse. Return the parsed object, or None."""
@@ -170,10 +182,12 @@ def read_sidecar_info(lora_path):
         if obj.get("baseModel"):
             info["base_model"] = str(obj["baseModel"])
         # modelId / version id let the frontend link to the Civitai model page.
-        if obj.get("modelId") is not None:
-            info["model_id"] = obj.get("modelId")
-        if obj.get("id") is not None:
-            info["version_id"] = obj.get("id")
+        mid = _clean_id(obj.get("modelId"))
+        if mid is not None:
+            info["model_id"] = mid
+        vid = _clean_id(obj.get("id"))
+        if vid is not None:
+            info["version_id"] = vid
         if info:
             return info
     return {}
@@ -329,10 +343,12 @@ def parse_civitai_modelversion(obj):
             out["name"] = str(model["name"])
         if model.get("type"):
             out["type"] = str(model["type"])
-    if obj.get("modelId") is not None:
-        out["model_id"] = obj.get("modelId")
-    if obj.get("id") is not None:
-        out["version_id"] = obj.get("id")
+    mid = _clean_id(obj.get("modelId"))
+    if mid is not None:
+        out["model_id"] = mid
+    vid = _clean_id(obj.get("id"))
+    if vid is not None:
+        out["version_id"] = vid
     imgs = obj.get("images")
     if isinstance(imgs, list):
         fallback = None

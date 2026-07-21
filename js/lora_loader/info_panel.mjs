@@ -169,11 +169,13 @@ export async function openInfoPanel(node, id, refresh) {
     const meta = el("div", "pix-ll-info-meta");
     meta.innerHTML = (metaBits.join(" · ") || "&nbsp;") + "<br>" + escapeHtml(name || "");
     h.append(title, meta);
-    // Link to the Civitai model page when we know the id (from a live lookup or a
-    // previously-cached sidecar).
-    const mid = (civ?.state === "found" && civ.info?.model_id) || info.model_id;
-    const vid = (civ?.state === "found" && civ.info?.version_id) || info.version_id;
-    if (mid) {
+    // Link to the Civitai model page when we know the id. Take BOTH ids from ONE
+    // source (a live lookup, else the offline/cached info) so the model+version pair
+    // can't be mixed across sources.
+    const idSrc = (civ?.state === "found") ? civ.info : info;
+    const mid = idSrc?.model_id;
+    const vid = idSrc?.version_id;
+    if (mid != null) {
       const link = el("span", "pix-ll-civlink", "View on Civitai ↗");
       link.addEventListener("click", () => {
         const u = "https://civitai.com/models/" + mid + (vid ? "?modelVersionId=" + vid : "");
@@ -260,8 +262,11 @@ export async function openInfoPanel(node, id, refresh) {
     if (res.ok && res.found) {
       civ = { state: "found", info: res.info || {} };
       invalidateInfo(name);
-      // refresh offline info so the source badge / sidecar reflect the new cache
-      loraInfo(name, true).then((j) => { if (j.ok && j.info) { info = j.info; } });
+      // refresh offline info so the source badge / cached ids reflect the new sidecar,
+      // then repaint (the panel may have been closed meanwhile - guard on isConnected).
+      loraInfo(name, true).then((j) => {
+        if (j.ok && j.info && panel.isConnected) { info = j.info; renderBody(); }
+      });
     } else if (res.reason === "notfound") {
       civ = { state: "nofind" };
     } else {
