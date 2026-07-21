@@ -4,7 +4,7 @@ import { HIDDEN_INPUT, promptState, widgetOf } from "./core.mjs";
 import {
   injectCSS, installFields, uninstallFields, reseedFields, paintRows,
   bindInputDots, alignInputsLegacy, bodyComputeSize, defaultNodeHeight,
-  applyLabels, MIN_W, DEFAULT_W, ZW,
+  MIN_W, DEFAULT_W, ZW,
 } from "./fields.mjs";
 import { openTextJoinPanel, closeTextJoinPanelFor } from "./settings.mjs";
 
@@ -159,7 +159,7 @@ app.registerExtension({
       {
         content: "⚙ Text Join settings",
         callback: () => openTextJoinPanel(node, () => {
-          applyLabels(node);                 // live-update the box names as you type
+          paintRows(node);                   // live-refresh box names + tooltips as you type
           node.setDirtyCanvas?.(true, true);
         }),
       },

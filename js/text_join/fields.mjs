@@ -154,16 +154,6 @@ export function reseedFields(node) {
   for (const wrap of node._pixTjWraps || []) seedField(node, wrap);
 }
 
-// Set each field box's display label from state (custom name, else "text N").
-// Cheap; called from paintRows and directly on a settings edit for a live update.
-export function applyLabels(node) {
-  const st = readState(node);
-  (node._pixTjWraps || []).forEach((wrap, i) => {
-    const lbl = wrap._field?.querySelector(".pix-tj-lbl");
-    if (lbl) lbl.textContent = labelFor(st, i, wrap._cfg.label);
-  });
-}
-
 async function doCopy(iconEl, ta) {
   const txt = ta.value || "";
   if (!txt) { toast("info", "Nothing to copy"); return; }
