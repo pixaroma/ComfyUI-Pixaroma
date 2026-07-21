@@ -167,6 +167,7 @@ async function doCopy(iconEl, ta) {
 async function doPaste(node, cfg, iconEl, ta) {
   try {
     if (!navigator.clipboard?.readText) throw new Error("no clipboard");
+    ta.focus();                                  // readText needs the document focused
     const txt = await navigator.clipboard.readText();
     // Empty covers BOTH an empty clipboard AND an image-only one (Chrome returns
     // "" there) - bail instead of wiping the field.
@@ -175,7 +176,13 @@ async function doPaste(node, cfg, iconEl, ta) {
     mirror(node, cfg, ta);
     node.graph?.setDirtyCanvas?.(true, true);
     flashIcon(iconEl);
-  } catch { toast("warn", "Could not paste from clipboard"); }
+  } catch {
+    // The clipboard-read permission can be blocked (denied, or a locked-down
+    // preview browser). Native paste is NOT gated by it, so focus the field and
+    // point the user at Ctrl+V, which always works.
+    ta.focus();
+    toast("warn", "Can't read the clipboard - click the field and press Ctrl+V");
+  }
 }
 
 function mkIcon(svg, title) {
