@@ -1,6 +1,7 @@
 import { app } from "/scripts/app.js";
 import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { isQueueLoopActive } from "../shared/queue_drivers.mjs";
 import { CLASS, BRAND, ACCENT_SETTING, ACCENT_PROP, widgetOf } from "./core.mjs";
 import {
   injectCSS, installSliders, uninstallSliders, paintRows, bindInputDots,
@@ -189,6 +190,14 @@ app.graphToPrompt = async function (...args) {
           const inp = node.inputs?.find((i) => i.name === cfg.name);
           const connected = inp && inp.link != null;
           if (connected) continue;                 // leave ComfyUI's link in place
+          // Don't clobber a value a queue driver (XY Plot) is sweeping into this
+          // input. While a sweep loop is active, a finite number already in the
+          // field was injected for this cell - leave it. Works regardless of which
+          // graphToPrompt hook (ours or XY's) runs last. Normal runs (no loop) are
+          // unaffected: we always inject the slider value as before.
+          if (isQueueLoopActive()
+              && typeof entry.inputs[cfg.name] === "number"
+              && Number.isFinite(entry.inputs[cfg.name])) continue;
           const w = widgetOf(node, cfg.name);
           let v = Math.round(Number(w?.value));
           if (!Number.isFinite(v)) v = cfg.name === "feather" ? 64 : 100;

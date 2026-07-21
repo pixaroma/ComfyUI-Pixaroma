@@ -103,6 +103,11 @@ function hideNativeWidget(w) {
   w.computeSize = () => [0, -4];
   if (!w.options) w.options = {};
   w.options.canvasOnly = true;
+  // The native INT is still the REAL, sweepable parameter - it is hidden only
+  // because the DOM slider replaces its face. Flag it so XY Plot's picker keeps
+  // listing it (XY skips hidden / canvasOnly widgets to avoid JSON-state blobs;
+  // this flag is the opt-out for a genuine hidden-but-sweepable numeric param).
+  w.pixSweepable = true;
 }
 
 function makeSliderRow(node, cfg) {

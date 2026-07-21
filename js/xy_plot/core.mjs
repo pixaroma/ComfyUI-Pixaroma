@@ -225,9 +225,14 @@ export function classifyWidget(w) {
   if (typeof t === "string" && t.startsWith("pixaroma_")) return null;
   // Skip hidden / internal serialized-state widgets (e.g. Note's note_json,
   // Label's label_json) - they're hidden via hideJsonWidget (w.hidden = true)
-  // and hold a JSON blob, not a parameter anyone would sweep.
-  if (w.hidden || t === "hidden") return null;
-  if (w.options && w.options.canvasOnly === true) return null;
+  // and hold a JSON blob, not a parameter anyone would sweep. EXCEPTION: a widget
+  // flagged w.pixSweepable is a genuine numeric parameter that is hidden only
+  // because a DOM slider replaced its face (Outpaint Stitch's feather /
+  // color_match) - it stays pickable.
+  if (!w.pixSweepable) {
+    if (w.hidden || t === "hidden") return null;
+    if (w.options && w.options.canvasOnly === true) return null;
+  }
   // Object-valued lora rows are handled by classifyWidgetEntries (they yield MULTIPLE
   // plottable axes: the lora name + its strength[s]); classifyWidget only handles
   // single-value number/combo/text widgets, so bail for those here.
@@ -296,8 +301,10 @@ export function classifyWidgetEntries(w) {
   if (name.startsWith("$$")) return [];
   const t = w.type;
   if (typeof t === "string" && t.startsWith("pixaroma_")) return [];
-  if (w.hidden || t === "hidden") return [];
-  if (w.options && w.options.canvasOnly === true) return [];
+  if (!w.pixSweepable) {                 // see classifyWidget for the exception
+    if (w.hidden || t === "hidden") return [];
+    if (w.options && w.options.canvasOnly === true) return [];
+  }
   if (isLoraRowValue(w.value)) return loraRowEntries(name, w.value);
   const single = classifyWidget(w);
   return single ? [single] : [];
