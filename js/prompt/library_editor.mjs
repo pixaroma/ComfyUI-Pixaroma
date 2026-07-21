@@ -194,12 +194,15 @@ function openCategoryMenu(anchor, onPick) {
     e.stopPropagation();
     if (e.key === "Enter") {
       const v = inp.value.trim();
+      // The reserved bucket is NOT a real category: typing it just files the tag as
+      // Uncategorized (never push it -> a phantom duplicate sidebar row).
+      const reserved = v && v.toLowerCase() === UNCATEGORIZED.toLowerCase();
       // If it case-collides with an existing category, use the EXISTING (canonical)
       // one - never assign the tag a wrong-case category that no sidebar row matches.
-      const existing = v ? _data.categories.find((c) => c.toLowerCase() === v.toLowerCase()) : null;
-      if (v && !existing) { _data.categories.push(v); commit(); }
+      const existing = (v && !reserved) ? _data.categories.find((c) => c.toLowerCase() === v.toLowerCase()) : null;
+      if (v && !reserved && !existing) { _data.categories.push(v); commit(); }
       hideCatMenu();
-      if (v) onPick(existing || v);
+      if (v) onPick(reserved ? "" : (existing || v));
     }
     if (e.key === "Escape") hideCatMenu();
   });
@@ -297,7 +300,7 @@ function renderSidebar(side) {
     b.style.display = "none"; nc.appendChild(inp); inp.focus();
     inp.addEventListener("keydown", (e) => {
       e.stopPropagation();
-      if (e.key === "Enter") { const v = inp.value.trim(); if (v && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) { _data.categories.push(v); _curCat = v; commit(); } render(); }
+      if (e.key === "Enter") { const v = inp.value.trim(); if (v && v.toLowerCase() !== UNCATEGORIZED.toLowerCase() && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) { _data.categories.push(v); _curCat = v; commit(); } render(); }
       if (e.key === "Escape") render();
     });
     inp.addEventListener("blur", () => setTimeout(() => { if (inp.isConnected) render(); }, 120));
@@ -315,7 +318,7 @@ function startRenameCat(row, cat) {
   inp.addEventListener("click", (e) => e.stopPropagation());
   const commitRename = () => {
     const v = inp.value.trim();
-    if (v && v.toLowerCase() !== cat.toLowerCase() && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) {
+    if (v && v.toLowerCase() !== cat.toLowerCase() && v.toLowerCase() !== UNCATEGORIZED.toLowerCase() && !_data.categories.some((c) => c.toLowerCase() === v.toLowerCase())) {
       const idx = _data.categories.indexOf(cat);
       if (idx > -1) _data.categories[idx] = v;
       for (const t of _data.tags) if (t.cat === cat) t.cat = v;

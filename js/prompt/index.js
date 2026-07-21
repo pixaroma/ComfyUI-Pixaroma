@@ -3,7 +3,7 @@ import {
   BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes,
   installResizeFloor, installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
-import { getTags, getCategories, findTag, subscribe } from "./library.mjs";
+import { getTags, getCategories, findTag, subscribe, UNCATEGORIZED } from "./library.mjs";
 import { expandAll, hasTags, hasWilds, scanTokens } from "./expand.mjs";
 import { openLibraryEditor, closeLibraryEditorFor } from "./library_editor.mjs";
 import { openPromptSettings, closePromptSettingsFor, accentOf, getDefaultOrder } from "./settings.mjs";
@@ -211,7 +211,7 @@ function escapeHTML(s) {
 function catColor(name) {
   const cats = getCategories();
   const i = cats.indexOf(name);
-  if (name === "Uncategorized" || i < 0) return "#7a7a7a";
+  if (name === UNCATEGORIZED || i < 0) return "#7a7a7a";
   const PAL = ["#e0894b", "#5aa9e6", "#8e7bd6", "#5fbf8f", "#d76b98", "#c9a24b", "#6fb3b8"];
   return PAL[i % PAL.length];
 }
@@ -227,7 +227,7 @@ function wildCat(name) {
   // (library normalize), while getCategories() surfaces it as the label "Uncategorized"
   // - so fall the empty cat back to that label before comparing. Only string-text tags
   // can be rolled (a corrupted import could carry a non-string text).
-  const pool = getTags().filter((t) => (t.cat || "Uncategorized").toLowerCase() === canonical.toLowerCase() && typeof t.text === "string");
+  const pool = getTags().filter((t) => (t.cat || UNCATEGORIZED).toLowerCase() === canonical.toLowerCase() && typeof t.text === "string");
   return pool.length ? { canonical, pool } : null;
 }
 // RUN resolver: a fresh random tag's text (Math.random at queue time -> new each run).
@@ -407,7 +407,7 @@ function openAC(node, ta, start, q, mode) {
     const tags = getTags().filter((t) => t.name.toLowerCase().includes(q));
     const byCat = new Map();
     for (const t of tags) {
-      const c = t.cat || "Uncategorized";
+      const c = t.cat || UNCATEGORIZED;
       if (!byCat.has(c)) byCat.set(c, []);
       byCat.get(c).push(t);
     }
@@ -1029,19 +1029,24 @@ app.graphToPrompt = async function (...args) {
     if (prompt && typeof prompt === "object") {
       let index = null;
       for (const key of Object.keys(prompt)) {
-        const entry = prompt[key];
-        if (!entry || entry.class_type !== "PixaromaPrompt") continue;
-        if (!index) index = buildPromptNodeIndex();
-        const node = findPromptNode(index, key);
-        const st = node ? readState(node) : { text: "", order: "mine", sep: ", " };
-        // Roll every *wildcard to a random tag NOW (queue time), so each run gets a
-        // fresh pick; @tags expand deterministically. A different pick changes this
-        // string -> the cache key changes -> re-run (no nonce needed, invariant #3).
-        const expanded = expandAll(st.text, { resolveWild: pickWild }).out;
-        entry.inputs = entry.inputs || {};
-        // Cosmetic keys (accent, showExpanded) are DELIBERATELY excluded so a colour
-        // pick can't change the run's cache key (project note on injected state).
-        entry.inputs.PromptState = JSON.stringify({ text: expanded, order: st.order, sep: st.sep });
+        try {
+          const entry = prompt[key];
+          if (!entry || entry.class_type !== "PixaromaPrompt") continue;
+          if (!index) index = buildPromptNodeIndex();
+          const node = findPromptNode(index, key);
+          const st = node ? readState(node) : { text: "", order: "mine", sep: ", " };
+          // Roll every *wildcard to a random tag NOW (queue time), so each run gets a
+          // fresh pick; @tags expand deterministically. A different pick changes this
+          // string -> the cache key changes -> re-run (no nonce needed, invariant #3).
+          const expanded = expandAll(st.text, { resolveWild: pickWild }).out;
+          entry.inputs = entry.inputs || {};
+          // Cosmetic keys (accent, showExpanded) are DELIBERATELY excluded so a colour
+          // pick can't change the run's cache key (project note on injected state).
+          entry.inputs.PromptState = JSON.stringify({ text: expanded, order: st.order, sep: st.sep });
+        } catch (nodeErr) {
+          // Per-node guard: one bad node must not suppress PromptState injection for the rest.
+          console.error("Pixaroma.Prompt: graphToPrompt node failed", key, nodeErr);
+        }
       }
     }
   } catch (err) {
