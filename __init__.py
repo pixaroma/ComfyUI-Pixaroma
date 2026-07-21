@@ -108,6 +108,8 @@ from .nodes.node_group_switch import NODE_CLASS_MAPPINGS as _MAPS_GROUP_SWITCH
 from .nodes.node_group_switch import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_GROUP_SWITCH
 from .nodes.node_run_timer import NODE_CLASS_MAPPINGS as _MAPS_RUN_TIMER
 from .nodes.node_run_timer import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RUN_TIMER
+from .nodes.node_run_log import NODE_CLASS_MAPPINGS as _MAPS_RUN_LOG
+from .nodes.node_run_log import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_RUN_LOG
 from .nodes.node_save_image import NODE_CLASS_MAPPINGS as _MAPS_SAVE_IMAGE
 from .nodes.node_save_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SAVE_IMAGE
 from .nodes.node_krea_lora_convert import NODE_CLASS_MAPPINGS as _MAPS_KREA_LORA_CONVERT
@@ -181,6 +183,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_COMBINE,
     **_MAPS_GROUP_SWITCH,
     **_MAPS_RUN_TIMER,
+    **_MAPS_RUN_LOG,
     **_MAPS_SAVE_IMAGE,
     **_MAPS_KREA_LORA_CONVERT,
     **_MAPS_SIZES,
@@ -243,6 +246,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_COMBINE,
     **_NAMES_GROUP_SWITCH,
     **_NAMES_RUN_TIMER,
+    **_NAMES_RUN_LOG,
     **_NAMES_SAVE_IMAGE,
     **_NAMES_KREA_LORA_CONVERT,
     **_NAMES_SIZES,
