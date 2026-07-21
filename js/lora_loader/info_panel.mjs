@@ -389,6 +389,7 @@ export async function openInfoPanel(node, id, refresh) {
     if (!panel.isConnected) return;
     if (res.ok && res.found) {
       civ = { state: "found", info: res.info || {} };
+      viewSource = "civitai";               // found on Civitai -> switch the view to its words
       invalidateInfo(name);
       // refresh offline info so the source badge / cached ids reflect the new sidecar,
       // then repaint (the panel may have been closed meanwhile - guard on isConnected).

@@ -46,6 +46,15 @@ function baseName(name) {
   return i < 0 ? name : name.slice(i + 1);
 }
 
+// Strip a trailing KNOWN model extension only (allowlist, not "everything after the
+// last dot") so a versioned name like "MoXin_v1.0" keeps its ".0". Used for display
+// only - the row's title keeps the real file name.
+const LORA_EXT_RE = /\.(safetensors|safetensor|ckpt|pt|pth|bin|sft)$/i;
+function displayName(name, hideExt) {
+  const b = baseName(name);
+  return hideExt ? b.replace(LORA_EXT_RE, "") : b;
+}
+
 // One weight box: a typeable value + a ▲▼ spinner. `which` is "m" (model) or "c"
 // (clip); the data-act values let the delegated handler know which strength to set.
 function weightBox(value, which) {
@@ -242,7 +251,7 @@ export function renderNode(node) {
     name.dataset.act = "name";
     const nm = document.createElement("span");
     nm.className = "nm";
-    nm.textContent = e.name ? baseName(e.name) : NO_LORAS;
+    nm.textContent = e.name ? displayName(e.name, st.hideExt) : NO_LORAS;
     nm.title = e.name || "Pick a LoRA";
     const car = document.createElement("span"); car.className = "car"; car.textContent = "▾";
     name.append(nm, car);

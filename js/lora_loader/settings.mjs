@@ -200,6 +200,8 @@ export function openLoraPanel(node, refresh) {
   sepRow.appendChild(sepIn);
   body.appendChild(sepRow);
 
+  body.appendChild(toggleRow("Hide file extension",
+    "Show the LoRA name without .safetensors", "hideExt"));
   body.appendChild(toggleRow("Civitai lookup button",
     "Show the optional online lookup in the info panel", "civitai"));
   body.appendChild(toggleRow("Show preview thumbnails",

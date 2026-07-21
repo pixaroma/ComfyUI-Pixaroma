@@ -25,6 +25,7 @@ export const DEFAULT_PREFS = {
   linkStrength: true, // one strength drives both model + clip
   civitai: true,      // allow the optional Civitai lookup button
   thumbs: true,       // show preview thumbnails in the info panel
+  hideExt: true,      // show "MoXin" instead of "MoXin.safetensors" on the rows
   accent: null,       // highlight colour; null = the Pixaroma orange
 };
 
@@ -86,6 +87,7 @@ function normalize(raw) {
   st.linkStrength = st.linkStrength == null ? true : !!st.linkStrength;
   st.civitai = st.civitai == null ? true : !!st.civitai;
   st.thumbs = st.thumbs == null ? true : !!st.thumbs;
+  st.hideExt = st.hideExt == null ? true : !!st.hideExt;
   if (st.accent != null && typeof st.accent !== "string") st.accent = null;
   st.loras = (Array.isArray(st.loras) ? st.loras : [])
     .map((e) => normLora(e, st))
