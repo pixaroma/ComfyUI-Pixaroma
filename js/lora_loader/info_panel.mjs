@@ -286,8 +286,11 @@ export async function openInfoPanel(node, id, refresh) {
     none.title = "Clear selection";
     none.addEventListener("click", () => setWords([]));
     head.append(all, none);
-    // Source: a File / Civitai toggle when BOTH sets exist, else a plain badge.
-    if (civitaiAvailable() && fileWords().length) {
+    // Source: a File / Civitai toggle only when the file has its OWN words AND Civitai
+    // words exist (gate on file_triggers, NOT fileWords() - the latter falls back to the
+    // merged sidecar list, which for a sidecar-only LoRA would show a bogus "File" tab
+    // holding Civitai words). Otherwise a plain badge.
+    if (civitaiAvailable() && (info.file_triggers?.length || 0) > 0) {
       const es = effectiveSource();
       const seg = el("div", "pix-ll-srctoggle");
       const fBtn = el("span", "sg" + (es === "file" ? " on" : ""), "File");
