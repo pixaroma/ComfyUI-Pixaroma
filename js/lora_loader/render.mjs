@@ -151,12 +151,16 @@ export function injectCSS() {
 
 export function ensureRoot(node) {
   const held = node._pixLlRoot;
-  if (held && held.isConnected) return held;
+  if (held && held.isConnected) { node._pixLlRootMounted = true; return held; }
   const w = (node.widgets || []).find((x) => x.name === "loras_ui");
   const el = w?.element;
   const elRoot = el?.classList?.contains?.("pix-ll-root") ? el : el?.querySelector?.(".pix-ll-root");
-  if (elRoot) { node._pixLlRoot = elRoot; return elRoot; }
-  return held || null; // populate the held root now; it shows when it mounts
+  if (elRoot) { node._pixLlRoot = elRoot; node._pixLlRootMounted = true; return elRoot; }
+  // Paint into a not-yet-connected root ONLY on the first paint (before it mounts, so
+  // it shows the moment it does). If it was mounted before and is now lost + can't be
+  // re-resolved, return null so renderNode no-ops instead of painting a detached
+  // corpse - it re-resolves on the next event/poll.
+  return node._pixLlRootMounted ? null : (held || null);
 }
 
 export function renderNode(node) {

@@ -101,7 +101,6 @@ export async function openInfoPanel(node, id, refresh) {
   if (!entry0) return;
   const name = entry0.name;
   const accent = accentOf(node);
-  const civitaiOn = readState(node).civitai;
 
   const panel = el("div", "pix-ll-info-p");
   panel.style.borderColor = accent;
@@ -134,7 +133,7 @@ export async function openInfoPanel(node, id, refresh) {
 
   function currentChips() {
     const civTriggers = civ?.state === "found" ? (civ.info?.triggers || []) : [];
-    const src = civTriggers.length ? civTriggers : info.triggers;
+    const src = civTriggers.length ? civTriggers : (info.triggers || []);
     const out = [];
     const seen = new Set();
     for (const w of [...src, ...(readState(node).loras.find((e) => e.id === id)?.triggers || [])]) {
@@ -153,12 +152,15 @@ export async function openInfoPanel(node, id, refresh) {
   function renderBody() {
     panel.innerHTML = "";
     const sel = selected();
+    const civitaiOn = readState(node).civitai; // re-read so a settings toggle isn't stale
 
     // ── header ───────────────────────────────────────────────────────────
     const top = el("div", "pix-ll-info-top");
     const th = el("div", "pix-ll-info-th");
     const turl = thumb();
-    if (turl) th.style.backgroundImage = `url("${turl}")`;
+    // Strip quotes/backslashes so a stray char in a Civitai image URL can't break the
+    // CSS url() value (thumbUrl(name) is already percent-encoded; civ.info.thumbnail is raw).
+    if (turl) th.style.backgroundImage = `url("${String(turl).replace(/["\\]/g, "")}")`;
     const h = el("div", "pix-ll-info-h");
     const title = el("h3", null, (civ?.state === "found" && civ.info?.name) || info.title || "LoRA");
     const metaBits = [];
@@ -167,7 +169,8 @@ export async function openInfoPanel(node, id, refresh) {
     if (info.num_images) metaBits.push(info.num_images + " imgs");
     if (info.date) metaBits.push(String(info.date).slice(0, 10));
     const meta = el("div", "pix-ll-info-meta");
-    meta.innerHTML = (metaBits.join(" · ") || "&nbsp;") + "<br>" + escapeHtml(name || "");
+    meta.innerHTML = (metaBits.length ? escapeHtml(metaBits.join(" · ")) : "&nbsp;") +
+      "<br>" + escapeHtml(name || "");
     h.append(title, meta);
     // Link to the Civitai model page when we know the id. Take BOTH ids from ONE
     // source (a live lookup, else the offline/cached info) so the model+version pair
@@ -297,6 +300,7 @@ export async function openInfoPanel(node, id, refresh) {
   const onDown = (e) => { if (!panel.contains(e.target) && !e.target.closest?.(".pix-ll-dd")) closeInfoPanel(); };
   const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeInfoPanel(); } };
   setTimeout(() => {
+    if (_panel !== panel) return; // closed/replaced in the same tick - don't orphan listeners
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("keydown", onKey, true);
   }, 0);
@@ -307,8 +311,11 @@ export async function openInfoPanel(node, id, refresh) {
 }
 
 function dragBy(panel) {
-  const handle = panel.querySelector(".pix-ll-info-top") || panel;
-  handle.addEventListener("pointerdown", (e) => {
+  // Delegate on the PERSISTENT panel: renderBody() rebuilds the header on every
+  // re-render (chip tick / Civitai state change), so wiring the header element itself
+  // would go dead after the first re-render.
+  panel.addEventListener("pointerdown", (e) => {
+    if (!e.target.closest?.(".pix-ll-info-top")) return;
     if (e.target.closest(".pix-ll-info-x")) return;
     const r = panel.getBoundingClientRect();
     const ox = e.clientX - r.left, oy = e.clientY - r.top;
