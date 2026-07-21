@@ -30,14 +30,15 @@ const NODE_NAME = "PixaromaRunLog";
 const HIST_PROP = "runLogHistory";
 const HISTORY_MAX = 10;
 
-// Default = a comfortable panel showing all 10 rows. MIN lets the user shrink it
-// (the screen clips extra rows, never spills out of the frame). WIDGET_MIN_H is a
-// CONSTANT (dirty-on-load safe — byte-identical every save/load, never creeps).
+// The panel always shows all 10 rows — the MIN height fits caption + 10 rows +
+// footer, so the node can't be dragged small enough to clip runs (user feedback).
+// Default = minimum (convention #5); width is still free, taller is harmless. Both
+// heights are CONSTANTS → dirty-on-load safe (byte-identical every save/load).
 const DEFAULT_W = 240;
-const DEFAULT_H = 292;
+const DEFAULT_H = 282;
 const MIN_W = 200;
-const MIN_H = 168;
-const WIDGET_MIN_H = 120;
+const MIN_H = 282;        // node floor: can't shrink below all 10 rows + footer
+const WIDGET_MIN_H = 258; // widget content floor: caption + 10 rows + footer
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -79,6 +80,11 @@ function renderList(node) {
   const status = node._pixRlStatus;
   if (!screen) return;
   const hist = getHist(node);
+
+  // footer buttons are dead when there's nothing to export / clear
+  const has = hist.length > 0;
+  if (node._pixRlExportBtn) node._pixRlExportBtn.disabled = !has;
+  if (node._pixRlClearBtn) node._pixRlClearBtn.disabled = !has;
 
   if (status) {
     if (node._rlRunning) {
@@ -182,6 +188,36 @@ function copyTimes(node) {
   if (!hist.length) return;
   copyText(hist.map((ms, i) => (i + 1) + ". " + fmtTime(ms)).join("\n"));
 }
+// Save the list as a plain .txt (user-initiated download of their OWN data).
+function exportTxt(node) {
+  const hist = getHist(node);
+  if (!hist.length) return;
+  const body = hist.map((ms, i) => String(i + 1).padStart(2, "0") + ".  " + fmtTime(ms)).join("\n");
+  const text = "Run Log - last " + hist.length + (hist.length === 1 ? " run" : " runs") + "\n" + body + "\n";
+  try {
+    const blob = new Blob([text], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "run-log.txt";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_e) {} }, 1000);
+  } catch (e) {
+    // Fallback (rare): copy to clipboard so the times aren't lost.
+    copyText(text);
+  }
+}
+
+// A subtle footer icon button (grey mask icon → brand orange on hover). Reuses the
+// shared UI SVGs served at /pixaroma/assets/icons/ui/.
+function iconBtn(iconFile, title) {
+  const b = el("button", "pix-rl-fbtn");
+  b.type = "button"; b.title = title;
+  const ico = el("span", "pix-rl-ico");
+  const url = "url(/pixaroma/assets/icons/ui/" + iconFile + ")";
+  ico.style.webkitMaskImage = url; ico.style.maskImage = url;
+  b.appendChild(ico);
+  return b;
+}
 
 // ── CSS (no backticks inside the strings — house convention) ────────────────
 let _cssDone = false;
@@ -213,6 +249,15 @@ function injectCSS() {
     ".pix-rl-empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;}",
     ".pix-rl-empty-t{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:13px;color:#7a776f;}",
     ".pix-rl-empty-s{font-size:11px;color:#57544d;}",
+    // Footer: two subtle icon buttons, right-aligned (Export .txt, Clear). Grey
+    // icon → brand orange on hover (Pixaroma UI convention #13).
+    ".pix-rl-foot{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;height:20px;padding:0 2px;}",
+    ".pix-rl-fbtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border:0;background:transparent;cursor:pointer;border-radius:4px;padding:0;}",
+    ".pix-rl-fbtn:hover{background:rgba(255,255,255,0.06);}",
+    ".pix-rl-fbtn:disabled{opacity:0.3;cursor:default;}",
+    ".pix-rl-fbtn:disabled:hover{background:transparent;}",
+    ".pix-rl-ico{width:13px;height:13px;background-color:#7a776f;-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain;transition:background-color 0.12s;}",
+    ".pix-rl-fbtn:hover:not(:disabled) .pix-rl-ico{background-color:#f66744;}",
     "@media (prefers-reduced-motion:reduce){.pix-rl-rdot{animation:none;}}",
     // Hide any native widget-input dot column beside our DOM widget in Nodes 2.0
     // (the node has no inputs, so there is nothing to plug in).
@@ -232,11 +277,19 @@ function setupNode(node) {
   const status = el("span", "pix-rl-status");
   cap.appendChild(lbl); cap.appendChild(status);
   const screen = el("div", "pix-rl-screen");
-  root.appendChild(cap); root.appendChild(screen);
+  const foot = el("div", "pix-rl-foot");
+  const exportBtn = iconBtn("download.svg", "Export the times as a .txt file");
+  const clearBtn = iconBtn("delete.svg", "Clear the list");
+  exportBtn.addEventListener("click", (e) => { e.stopPropagation(); exportTxt(node); });
+  clearBtn.addEventListener("click", (e) => { e.stopPropagation(); clearHistory(node); });
+  foot.appendChild(exportBtn); foot.appendChild(clearBtn);
+  root.appendChild(cap); root.appendChild(screen); root.appendChild(foot);
 
   node._pixRlRoot = root;
   node._pixRlScreen = screen;
   node._pixRlStatus = status;
+  node._pixRlExportBtn = exportBtn;
+  node._pixRlClearBtn = clearBtn;
 
   installCanvasZoomPassthrough(root);
   const widget = node.addDOMWidget("run_log_ui", "pixaroma_run_log", root, {
@@ -273,11 +326,13 @@ const HELP = {
     { heading: "What it does", body: "A companion to Run Timer. Every time you press Run it times the whole workflow and adds the finished time to the top of the list. It keeps the last 10, newest first, so you can watch a workflow get faster over a session or notice when a change has made it slower." },
     { heading: "Reading the list", body: "The newest run sits at the top and is highlighted in orange. The fastest of the ten is marked with a lightning bolt in green. Times under a minute show as seconds (for example 14.8s); longer runs show as minutes and seconds (for example 1:23). While a run is going a small green 'running' marker shows in the corner, and the new time drops in on top the moment it finishes." },
     { heading: "This workflow only", body: "The list lives on the node and is saved inside the workflow, so it is only the times for this workflow and it stays with it. Open the workflow again another day and the list is still there. A different workflow keeps its own separate list." },
+    { heading: "The two buttons", body: "In the bottom-right corner are two small buttons. The download icon exports the list as a plain .txt file you can save or share. The trash icon clears the list back to 'No runs yet'. The same actions are also on the right-click menu, along with Copy times." },
     { heading: "Right-click options", defs: [
       ["Copy times", "Copies the whole list as plain text, so you can paste it into notes or a message."],
-      ["Clear Run Log", "Empties the list for this node, back to 'No runs yet'."],
+      ["Export as .txt", "Saves the list as a plain text file (same as the download button)."],
+      ["Clear Run Log", "Empties the list for this node, back to 'No runs yet' (same as the trash button)."],
     ]},
-    { heading: "Good to know", body: "It does not need to be wired to anything; just drop it on the canvas. Only completed runs are logged; a run you stop or that errors out is skipped. Because the list is saved with the workflow, a small 'unsaved changes' dot appears on the tab after a run, which is normal. It works the same in both the classic and the new node interface." },
+    { heading: "Good to know", body: "It does not need to be wired to anything; just drop it on the canvas. The node always shows all ten slots and cannot be made too small to read them. Only completed runs are logged; a run you stop or that errors out is skipped. Because the list is saved with the workflow, a small 'unsaved changes' dot appears on the tab after a run, which is normal. It works the same in both the classic and the new node interface." },
   ],
 };
 
@@ -295,6 +350,7 @@ app.registerExtension({
     return [
       null,
       { content: "📋 Copy times", disabled: empty, callback: () => copyTimes(node) },
+      { content: "💾 Export as .txt", disabled: empty, callback: () => exportTxt(node) },
       { content: "🧹 Clear Run Log", disabled: empty, callback: () => clearHistory(node) },
     ];
   },
