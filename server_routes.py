@@ -28,6 +28,13 @@ from .nodes._font_catalog import (
     get_custom_fonts_dir as _font_custom_dir,
     resolve_custom_file as _font_resolve_custom,
 )
+from .nodes._lora_helpers import (
+    build_lora_info as _lora_build_info,
+    file_sha256 as _lora_file_sha256,
+    find_preview_path as _lora_find_preview,
+    parse_civitai_modelversion as _lora_parse_civitai,
+    save_sidecar_cache as _lora_save_sidecar,
+)
 from .nodes.node_krea_lora_convert import (
     inspect_lora as _krea_lora_inspect,
     resolve_and_convert as _krea_lora_convert,
@@ -1979,3 +1986,117 @@ async def api_save_image_open_folder(request):
         return web.json_response({"ok": True})
     except Exception as e:
         return web.json_response({"ok": False, "message": str(e)})
+
+
+# ── LoRA Loader Pixaroma ─────────────────────────────────────────────────────
+# Back the multi-LoRA loader: the file list, the offline info + trigger-word
+# readout, preview thumbnails, and the OPTIONAL (user-clicked) Civitai lookup.
+# Everything except /civitai is fully offline. Every route realpath-guards to the
+# configured loras directories so a crafted ?name= can't read outside them.
+
+def _lora_dirs():
+    try:
+        return list(folder_paths.get_folder_paths("loras"))
+    except Exception:
+        return []
+
+
+def _resolve_lora_path(name):
+    """Resolve a LoRA filename (as listed, incl. any subfolder) to a real path that
+    is guaranteed to live inside a configured loras directory, or None."""
+    if not name or not isinstance(name, str):
+        return None
+    try:
+        p = folder_paths.get_full_path("loras", name)
+    except Exception:
+        p = None
+    if not p or not os.path.isfile(p):
+        return None
+    roots = _lora_dirs()
+    if roots and not _is_path_under(p, *roots):
+        return None
+    return p
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/lora/list")
+async def api_lora_list(request):
+    """Every LoRA filename ComfyUI knows about (names include any subfolder prefix)."""
+    try:
+        files = list(folder_paths.get_filename_list("loras"))
+    except Exception:
+        files = []
+    return web.json_response({"loras": files})
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/lora/info")
+async def api_lora_info(request):
+    """Offline info + trigger words for one LoRA (the info panel). Always 200 so the
+    frontend never branches on HTTP status; reads only the file header + sidecars."""
+    name = request.query.get("name", "")
+    path = _resolve_lora_path(name)
+    if not path:
+        return web.json_response({"ok": False, "message": "LoRA not found."})
+    try:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        # Header read is small but hashing/sidecar I/O is disk-bound - keep it off
+        # the aiohttp event loop.
+        info = await loop.run_in_executor(None, _lora_build_info, path)
+    except Exception as exc:
+        return web.json_response({"ok": False, "message": "Could not read: {}".format(exc)})
+    return web.json_response({"ok": True, "info": info})
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/lora/thumb")
+async def api_lora_thumb(request):
+    """Serve the LoRA's local preview image (.preview.png etc.), or 404."""
+    name = request.query.get("name", "")
+    path = _resolve_lora_path(name)
+    if not path:
+        return web.Response(status=404)
+    prev = _lora_find_preview(path)
+    roots = _lora_dirs()
+    if not prev or (roots and not _is_path_under(prev, *roots)):
+        return web.Response(status=404)
+    return web.FileResponse(prev, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/lora/civitai")
+async def api_lora_civitai(request):
+    """OPTIONAL online lookup (only when the user clicks the Civitai button).
+
+    Fingerprints the file (SHA256), asks Civitai for an exact-file match, and caches
+    the raw response next to the LoRA so future reads are instant and offline. Always
+    200; `reason` tells the frontend which card to show: found / notfound / offline.
+    """
+    name = request.query.get("name", "")
+    path = _resolve_lora_path(name)
+    if not path:
+        return web.json_response({"ok": False, "reason": "notfound", "message": "LoRA not found."})
+    import asyncio
+    loop = asyncio.get_event_loop()
+    try:
+        sha = await loop.run_in_executor(None, _lora_file_sha256, path)
+    except Exception as exc:
+        return web.json_response({"ok": False, "reason": "offline",
+                                  "message": "Could not read the file: {}".format(exc)})
+    url = "https://civitai.com/api/v1/model-versions/by-hash/{}".format(sha)
+    try:
+        import aiohttp
+        timeout = aiohttp.ClientTimeout(total=12)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers={"User-Agent": "ComfyUI-Pixaroma"}) as resp:
+                if resp.status == 404:
+                    return web.json_response({"ok": True, "found": False, "reason": "notfound"})
+                if resp.status != 200:
+                    return web.json_response({"ok": False, "reason": "offline",
+                                              "message": "Civitai returned {}.".format(resp.status)})
+                data = await resp.json()
+    except Exception:
+        return web.json_response({"ok": False, "reason": "offline",
+                                  "message": "Could not reach Civitai."})
+    parsed = _lora_parse_civitai(data)
+    if not parsed.get("triggers") and not parsed.get("name"):
+        return web.json_response({"ok": True, "found": False, "reason": "notfound"})
+    await loop.run_in_executor(None, _lora_save_sidecar, path, data)
+    return web.json_response({"ok": True, "found": True, "info": parsed})

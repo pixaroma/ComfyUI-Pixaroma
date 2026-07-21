@@ -219,6 +219,78 @@ def build_lora_info(lora_path):
     return info
 
 
+_STATE_MAX_STRENGTH = 100.0
+
+
+def _clamp_strength(v):
+    """A strength value from the (possibly hand-edited) state JSON -> a finite float
+    in [-100, 100]. Garbage / nan / inf -> 0.0."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError, OverflowError):
+        return 0.0
+    if f != f or f in (float("inf"), float("-inf")):
+        return 0.0
+    return max(-_STATE_MAX_STRENGTH, min(_STATE_MAX_STRENGTH, f))
+
+
+def parse_state(state_str):
+    """Normalize the hidden LoraLoaderState JSON into {'loras': [...], 'sep': str}.
+
+    Forgiving by design (a hand-edited API workflow must still run): bad/empty input
+    -> {'loras': [], 'sep': ', '}; nameless or non-dict entries are dropped; each
+    kept entry is {name, on, sm, sc, triggers}. sc defaults to sm when absent (single
+    strength drives both). Never raises.
+    """
+    try:
+        obj = json.loads(state_str) if isinstance(state_str, str) else (state_str or {})
+    except Exception:
+        obj = {}
+    if not isinstance(obj, dict):
+        obj = {}
+    sep = obj.get("sep")
+    if not isinstance(sep, str):
+        sep = ", "
+    loras = []
+    raw = obj.get("loras")
+    if isinstance(raw, list):
+        for e in raw:
+            if not isinstance(e, dict):
+                continue
+            name = e.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            base_str = e.get("sm", e.get("strength", 1.0))
+            trg = e.get("triggers")
+            loras.append({
+                "name": name,
+                "on": bool(e.get("on", True)),
+                "sm": _clamp_strength(base_str),
+                "sc": _clamp_strength(e.get("sc", base_str)),
+                "triggers": [str(w).strip() for w in trg if str(w).strip()]
+                            if isinstance(trg, list) else [],
+            })
+    return {"loras": loras, "sep": sep}
+
+
+def collect_triggers(state):
+    """Joined, de-duped (case-insensitive) trigger words from ENABLED loras only,
+    using state['sep'] as the separator. Order follows first appearance."""
+    out, seen = [], set()
+    for e in state.get("loras", []):
+        if not e.get("on"):
+            continue
+        for w in e.get("triggers", []):
+            k = w.lower()
+            if w and k not in seen:
+                seen.add(k)
+                out.append(w)
+    sep = state.get("sep")
+    if not isinstance(sep, str):
+        sep = ", "
+    return sep.join(out)
+
+
 def file_sha256(path):
     """Full SHA256 hex digest of a file (streamed). Used to look the LoRA up on
     Civitai by exact-file match. The server route calls this; this module never
