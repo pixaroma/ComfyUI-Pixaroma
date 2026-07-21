@@ -35,10 +35,14 @@ const HISTORY_MAX = 10;
 // Default = minimum (convention #5); width is still free, taller is harmless. Both
 // heights are CONSTANTS → dirty-on-load safe (byte-identical every save/load).
 const DEFAULT_W = 240;
-const DEFAULT_H = 282;
+const DEFAULT_H = 286;
 const MIN_W = 200;
-const MIN_H = 282;        // node floor: can't shrink below all 10 rows + footer
-const WIDGET_MIN_H = 258; // widget content floor: caption + 10 rows + footer
+const MIN_H = 286;        // node floor: can't shrink below all 10 rows + footer
+// Widget content floor: caption(14) + gap(6) + screen(10 rows*20 + 10 pad = 210) +
+// gap(6) + footer(20) = 256, plus a 6px buffer. This is the REAL protector: it is
+// the DOM widget getMinHeight, so the classic node auto-grows to honor it on any
+// build (even one with a taller title bar) → the 10th row can never be clipped.
+const WIDGET_MIN_H = 262;
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -48,10 +52,12 @@ function el(tag, cls) { const e = document.createElement(tag); if (cls) e.classN
 // (1:23). Math.floor so a float ms never leaks raw decimals.
 function fmtTime(ms) {
   const s = ms / 1000;
-  if (s < 60) return s.toFixed(1) + "s";
-  const m = Math.floor(s / 60);
-  const rem = Math.floor(s - m * 60);
-  return m + ":" + String(rem).padStart(2, "0");
+  // Decide the format on the ROUNDED value: a hair under a minute (e.g. 59.96s)
+  // would otherwise show "60.0s" (toFixed(1) rounds up) instead of flipping to "1:00".
+  const r = Math.round(s * 10) / 10;
+  if (r < 60) return r.toFixed(1) + "s";
+  const total = Math.round(s);
+  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
 }
 
 // ── history (per node, on node.properties) ──────────────────────────────────
@@ -128,8 +134,10 @@ function renderList(node) {
 }
 
 // ── run lifecycle (drives every Run Log on the canvas) ──────────────────────
-// One shared run origin. On a finish we record performance.now() - _runStart on
-// each live node, so every Run Log shows the same whole-workflow duration.
+// Each live node captures the run origin AT START on itself (node._rlRunStart), the
+// same way Run Timer does (node._rtStart). Reading a shared module var at finish
+// would skew an in-flight run's time if a second execution_start overwrote it first
+// (overlapping / back-to-back queued runs).
 const _logs = new Set();
 let _runStart = null;
 
@@ -137,18 +145,18 @@ function startRun() {
   _runStart = performance.now();
   for (const node of _logs) {
     node._rlRunning = true;
+    node._rlRunStart = _runStart; // per-node copy — immune to a later overlapping start
     renderList(node);
     if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   }
 }
 function finishRun(success) {
-  const start = _runStart;
   for (const node of _logs) {
     if (!node._rlRunning) continue;   // idempotent: first finish wins (some builds
                                       // fire BOTH 'executing'(null) AND success)
     node._rlRunning = false;
     // Successes only — an interrupted / errored run gives a partial, misleading time.
-    if (success && start != null) pushHistory(node, performance.now() - start);
+    if (success && node._rlRunStart != null) pushHistory(node, performance.now() - node._rlRunStart);
     renderList(node);
     if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   }
@@ -270,6 +278,7 @@ function injectCSS() {
 function setupNode(node) {
   injectCSS();
   node._rlRunning = false;
+  node._rlRunStart = null;
 
   const root = el("div", "pix-rl-root");
   const cap = el("div", "pix-rl-cap");
