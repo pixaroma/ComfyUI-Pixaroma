@@ -2093,7 +2093,13 @@ async def api_lora_civitai(request):
                 if resp.status != 200:
                     return web.json_response({"ok": False, "reason": "offline",
                                               "message": "Civitai returned {}.".format(resp.status)})
-                data = await resp.json()
+                # Cap the body so a malfunctioning endpoint can't spike memory (a real
+                # model-version response is tens of KB).
+                body = await resp.content.read(4 * 1024 * 1024 + 1)
+                if len(body) > 4 * 1024 * 1024:
+                    return web.json_response({"ok": False, "reason": "offline",
+                                              "message": "Civitai response too large."})
+                data = json.loads(body)
     except Exception:
         return web.json_response({"ok": False, "reason": "offline",
                                   "message": "Could not reach Civitai."})

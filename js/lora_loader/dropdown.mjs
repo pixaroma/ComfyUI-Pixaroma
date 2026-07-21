@@ -220,6 +220,7 @@ export async function openLoraDropdown(anchorEl, opts) {
   const onWheel = (e) => { if (!pop.contains(e.target)) closeLoraDropdown(); };
   const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeLoraDropdown(); } };
   setTimeout(() => {
+    if (_pop !== pop) return; // closed in the same tick - don't attach orphan listeners
     document.addEventListener("pointerdown", onDown, true);
     document.addEventListener("wheel", onWheel, true);
     document.addEventListener("keydown", onKey, true);

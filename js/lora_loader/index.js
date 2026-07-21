@@ -150,17 +150,25 @@ app.registerExtension({
 // ── graphToPrompt: inject the per-node state (INJECT ONLY, never prune) ──────
 function buildIndex() {
   const index = new Map();
-  const visit = (graph) => {
+  const visit = (graph, prefix) => {
     if (!graph) return;
-    const nodes = graph._nodes || graph.nodes || [];
-    for (const n of nodes) {
+    for (const n of graph._nodes || graph.nodes || []) {
       if (!n) continue;
-      if (n.comfyClass === CLASS || n.type === CLASS) index.set(String(n.id), n);
+      // Composite id (prefix "" at top level, "5:"-style inside a subgraph) so a
+      // subgraph node exact-matches its "5:3" prompt id and can't collide with a
+      // top-level node that happens to share the bare id (Load Image Mini fix).
+      const cid = String(prefix) + n.id;
+      if (n.comfyClass === CLASS || n.type === CLASS) {
+        index.set(cid, n);
+        // Bare id, FIRST-write-wins (top level visited first) so a subgraph node
+        // never clobbers a top-level node's exact-id resolution.
+        if (!index.has(String(n.id))) index.set(String(n.id), n);
+      }
       const inner = n.subgraph || n.graph || n._graph;
-      if (inner && inner !== graph) visit(inner);
+      if (inner && inner !== graph) visit(inner, cid + ":");
     }
   };
-  visit(app.graph);
+  visit(app.graph, "");
   return index;
 }
 function findNode(index, id) {
