@@ -57,7 +57,9 @@ function fmtTime(ms) {
   const r = Math.round(s * 10) / 10;
   if (r < 60) return r.toFixed(1) + "s";
   const total = Math.round(s);
-  return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  const m = Math.floor(total / 60), sec = total % 60;
+  if (m < 60) return m + ":" + String(sec).padStart(2, "0");
+  return Math.floor(m / 60) + ":" + String(m % 60).padStart(2, "0") + ":" + String(sec).padStart(2, "0");
 }
 
 // ── history (per node, on node.properties) ──────────────────────────────────
@@ -124,7 +126,7 @@ function renderList(node) {
     const row = el("div", "pix-rl-row" + (isNow ? " pix-rl-row--now" : (isBest ? " pix-rl-row--best" : "")));
     const idx = el("span", "pix-rl-idx"); idx.textContent = String(i + 1).padStart(2, "0");
     const meta = el("span", "pix-rl-meta");
-    if (isNow) meta.textContent = isBest ? "last  ⚡" : "last";
+    if (isNow) meta.textContent = isBest ? "last ⚡" : "last";
     else if (isBest) meta.textContent = "⚡ best";
     else meta.textContent = "";
     const time = el("span", "pix-rl-time"); time.textContent = fmtTime(ms);
@@ -134,10 +136,10 @@ function renderList(node) {
 }
 
 // ── run lifecycle (drives every Run Log on the canvas) ──────────────────────
-// Each live node captures the run origin AT START on itself (node._rlRunStart), the
-// same way Run Timer does (node._rtStart). Reading a shared module var at finish
-// would skew an in-flight run's time if a second execution_start overwrote it first
-// (overlapping / back-to-back queued runs).
+// Each live node stamps the run origin on itself at start (node._rlRunStart), the
+// same way Run Timer does (node._rtStart), so a node's recorded time is always
+// measured from the origin captured when its own run began. ComfyUI runs the queue
+// sequentially (one execution_start per finish), so runs don't overlap in practice.
 const _logs = new Set();
 let _runStart = null;
 
@@ -145,7 +147,7 @@ function startRun() {
   _runStart = performance.now();
   for (const node of _logs) {
     node._rlRunning = true;
-    node._rlRunStart = _runStart; // per-node copy — immune to a later overlapping start
+    node._rlRunStart = _runStart; // stamp the origin on the node (Run Timer parity)
     renderList(node);
     if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   }
