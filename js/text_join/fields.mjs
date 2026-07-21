@@ -68,8 +68,12 @@ export function injectCSS() {
   s.id = "pix-tj-css";
   s.textContent = `
     /* The wrap is sized by the renderer (legacy: we set its height in computeSize;
-       Vue: the grid cell). The field fills it with an absolute layer so it grows. */
-    .pix-tj-row { position:relative; width:100%; height:100%; min-height:${MIN_FIELD_H}px; box-sizing:border-box; }
+       Vue: it flex-fills its grid row). The field fills it with an absolute layer. */
+    .pix-tj-row { position:relative; width:100%; box-sizing:border-box; }
+    /* Nodes 2.0: flex-fill the grid row, but with a REAL min-height floor (not 0):
+       the field is absolute (no in-flow content) so min-height:0 would collapse it.
+       N such rows split the node's spare height equally and grow with the node. */
+    .pix-tj-row.pix-tj-vue { flex:1 1 auto; min-height:${MIN_FIELD_H}px; }
     .pix-tj-field { position:absolute; top:0; right:0; bottom:0; left:0; box-sizing:border-box;
       background:#1d1d1d; border:1px solid #333; border-radius:5px; overflow:hidden; }
     .pix-tj-field:focus-within { border-color:${BRAND}; }
@@ -93,7 +97,7 @@ export function injectCSS() {
     .pix-tj-field.wired .pix-tj-icons { display:none !important; }
     .pix-tj-field.wired:focus-within { border-color:#333; }
 
-    .pix-tj-foot { position:relative; width:100%; height:100%; display:flex;
+    .pix-tj-foot { position:relative; width:100%; min-height:${FOOTER_H}px; display:flex;
       align-items:center; justify-content:flex-end; box-sizing:border-box; }
     .pix-tj-gear { width:22px; height:22px; border-radius:5px; display:flex; align-items:center;
       justify-content:center; cursor:pointer; font-size:14px; color:#bdbdbd;
@@ -320,15 +324,22 @@ export function installFields(node, openPanel) {
       getMinHeight: () => MIN_FIELD_H,
     });
     w.serialize = false;
-    // Legacy: drive the slot height AND the DOM wrap height from node.size so the
-    // box fills the body and grows with it. (computeSize is called each draw.)
-    w.computeSize = () => {
-      const h = fieldSlotH(node);
-      if (!isVueNodes() && wrap.style.height !== h + "px") wrap.style.height = h + "px";
-      return [node.size?.[0] || MIN_W, h];
-    };
-    // Nodes 2.0: an 'auto' grid row that splits the node's spare height.
-    w.computeLayoutSize = () => ({ minHeight: MIN_FIELD_H, minWidth: 1 });
+    // The two renderers fill differently (renderer is fixed per page load):
+    if (isVueNodes()) {
+      // Nodes 2.0: an 'auto' grid row (via computeLayoutSize) + a minHeight floor;
+      // the element flex-fills its row. N such rows split the spare height equally.
+      // NO custom computeSize here - it makes the row fixed-height in the grid.
+      wrap.classList.add("pix-tj-vue");
+      w.computeLayoutSize = () => ({ minHeight: MIN_FIELD_H, minWidth: 1 });
+    } else {
+      // Legacy: drive the slot AND the DOM wrap height from node.size so the box
+      // fills the body and grows with it (computeSize is called each draw).
+      w.computeSize = () => {
+        const h = fieldSlotH(node);
+        if (wrap.style.height !== h + "px") wrap.style.height = h + "px";
+        return [node.size?.[0] || MIN_W, h];
+      };
+    }
     applyAdaptiveCanvasOnly(w);
     node._pixTjWraps.push(wrap);
     node._pixTjRowWidgets[cfg.name] = w;
@@ -343,11 +354,11 @@ export function installFields(node, openPanel) {
     getMinHeight: () => FOOTER_H,
   });
   fw.serialize = false;
-  fw.computeSize = () => {
-    if (!isVueNodes() && footWrap.style.height !== FOOTER_H + "px") footWrap.style.height = FOOTER_H + "px";
-    return [node.size?.[0] || MIN_W, FOOTER_H];
-  };
-  fw.computeLayoutSize = undefined;   // min-content (do NOT grow)
+  if (isVueNodes()) {
+    fw.computeLayoutSize = undefined;   // min-content row (fixed, never grows)
+  } else {
+    fw.computeSize = () => [node.size?.[0] || MIN_W, FOOTER_H];
+  }
   applyAdaptiveCanvasOnly(fw);
   node._pixTjFooter = footWrap;
 
