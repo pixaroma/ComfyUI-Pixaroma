@@ -24,6 +24,9 @@ function injectCSS() {
     .pix-ll-info-h { min-width:0; flex:1; }
     .pix-ll-info-h h3 { margin:0 0 4px; font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pix-ll-info-meta { font:10px monospace; color:#7a7a7a; line-height:1.7; }
+    .pix-ll-civlink { display:inline-block; margin-top:5px; font:10.5px 'Segoe UI'; color:#8fc0ff;
+      cursor:pointer; }
+    .pix-ll-civlink:hover { color:#b8d8ff; text-decoration:underline; }
     .pix-ll-info-x { margin-left:auto; color:#8a8a8a; cursor:pointer; align-self:flex-start; }
     .pix-ll-info-x:hover { color:#fff; }
     .pix-ll-info-sec { padding:11px 12px; }
@@ -166,6 +169,18 @@ export async function openInfoPanel(node, id, refresh) {
     const meta = el("div", "pix-ll-info-meta");
     meta.innerHTML = (metaBits.join(" · ") || "&nbsp;") + "<br>" + escapeHtml(name || "");
     h.append(title, meta);
+    // Link to the Civitai model page when we know the id (from a live lookup or a
+    // previously-cached sidecar).
+    const mid = (civ?.state === "found" && civ.info?.model_id) || info.model_id;
+    const vid = (civ?.state === "found" && civ.info?.version_id) || info.version_id;
+    if (mid) {
+      const link = el("span", "pix-ll-civlink", "View on Civitai ↗");
+      link.addEventListener("click", () => {
+        const u = "https://civitai.com/models/" + mid + (vid ? "?modelVersionId=" + vid : "");
+        window.open(u, "_blank", "noopener");
+      });
+      h.appendChild(link);
+    }
     const x = el("span", "pix-ll-info-x", "✕");
     x.addEventListener("click", closeInfoPanel);
     top.append(th, h, x);

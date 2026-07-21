@@ -169,6 +169,11 @@ def read_sidecar_info(lora_path):
             info["name"] = str(model["name"])
         if obj.get("baseModel"):
             info["base_model"] = str(obj["baseModel"])
+        # modelId / version id let the frontend link to the Civitai model page.
+        if obj.get("modelId") is not None:
+            info["model_id"] = obj.get("modelId")
+        if obj.get("id") is not None:
+            info["version_id"] = obj.get("id")
         if info:
             return info
     return {}
@@ -216,6 +221,10 @@ def build_lora_info(lora_path):
         info["title"] = side["name"]
     if side.get("base_model") and not info["base_model"]:
         info["base_model"] = side["base_model"]
+    if side.get("model_id") is not None:
+        info["model_id"] = side["model_id"]
+    if side.get("version_id") is not None:
+        info["version_id"] = side["version_id"]
     return info
 
 
@@ -320,6 +329,10 @@ def parse_civitai_modelversion(obj):
             out["name"] = str(model["name"])
         if model.get("type"):
             out["type"] = str(model["type"])
+    if obj.get("modelId") is not None:
+        out["model_id"] = obj.get("modelId")
+    if obj.get("id") is not None:
+        out["version_id"] = obj.get("id")
     imgs = obj.get("images")
     if isinstance(imgs, list):
         fallback = None
