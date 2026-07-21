@@ -238,7 +238,11 @@ export function classifyWidget(w) {
   // single-value number/combo/text widgets, so bail for those here.
   if (isLoraRowValue(w.value)) return null;
   const cur = previewValue(w);
-  if (t === "number") {
+  // "slider" is a numeric widget too (an INT/FLOAT declared with display:"slider").
+  // It carries the same min/max/step/precision, so sweep it exactly like a number -
+  // e.g. Outpaint Stitch's color_match. Classify it AS "number" so the whole axis
+  // pipeline (range/list entry, rounding, injection) treats it uniformly.
+  if (t === "number" || t === "slider") {
     const opts = w.options || {};
     let step = opts.step;
     if (typeof step !== "number" || step <= 0) {
