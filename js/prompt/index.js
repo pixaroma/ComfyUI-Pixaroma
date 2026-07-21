@@ -223,7 +223,11 @@ function catColor(name) {
 function wildCat(name) {
   const canonical = getCategories().find((c) => c && c.toLowerCase() === String(name).toLowerCase());
   if (!canonical) return null;
-  const pool = getTags().filter((t) => (t.cat || "").toLowerCase() === canonical.toLowerCase());
+  // Match the "Uncategorized" bucket too: an uncategorized tag is stored with cat ""
+  // (library normalize), while getCategories() surfaces it as the label "Uncategorized"
+  // - so fall the empty cat back to that label before comparing. Only string-text tags
+  // can be rolled (a corrupted import could carry a non-string text).
+  const pool = getTags().filter((t) => (t.cat || "Uncategorized").toLowerCase() === canonical.toLowerCase() && typeof t.text === "string");
   return pool.length ? { canonical, pool } : null;
 }
 // RUN resolver: a fresh random tag's text (Math.random at queue time -> new each run).
@@ -368,12 +372,20 @@ function openAC(node, ta, start, q, mode) {
   const sym = mode === "wild" ? "*" : "@";
 
   if (mode === "wild") {
-    // *wildcards list CATEGORIES; picking one inserts *Category (rolls at run time).
-    const cats = getCategories().filter((c) => c && c.toLowerCase().includes(q));
+    // *wildcards list CATEGORIES THAT ACTUALLY HAVE TAGS (an empty one can't roll
+    // anything, so offering it would insert a wildcard that renders red + never
+    // resolves). Count matches wildCat's pool exactly (Uncategorized fallback +
+    // string-text). Picking one inserts *Category (rolls at run time).
+    const all = getTags();
+    const countOf = (c) => all.filter((t) => (t.cat || "Uncategorized").toLowerCase() === c.toLowerCase() && typeof t.text === "string").length;
+    const cats = getCategories()
+      .filter((c) => c && c.toLowerCase().includes(q))
+      .map((c) => ({ name: c, count: countOf(c) }))
+      .filter((c) => c.count > 0);
     if (!cats.length) {
       const e = document.createElement("div");
       e.className = "pix-prm-ac-empty";
-      e.textContent = q ? `No category matches "*${q}". Open Tags to add one.` : "No categories yet. Open Tags to add one.";
+      e.textContent = q ? `No category matches "*${q}".` : "No categories with tags yet. Open Tags to add one.";
       el.appendChild(e);
     } else {
       const h = document.createElement("div");
@@ -381,13 +393,12 @@ function openAC(node, ta, start, q, mode) {
       h.innerHTML = `<span class="cd" style="background:#b98cff"></span>random from category`;
       el.appendChild(h);
       for (const c of cats) {
-        const count = getTags().filter((t) => (t.cat || "").toLowerCase() === c.toLowerCase()).length;
         const idx = flat.length;
-        flat.push({ name: c });
+        flat.push({ name: c.name });
         const d = document.createElement("div");
         d.className = "pix-prm-ac-i wild" + (idx === 0 ? " sel" : "");
         d.dataset.i = String(idx);
-        d.innerHTML = `<div class="pix-prm-ac-n">*${escapeHTML(c)}</div><div class="pix-prm-ac-d">${count} tag${count === 1 ? "" : "s"} · random each run</div>`;
+        d.innerHTML = `<div class="pix-prm-ac-n">*${escapeHTML(c.name)}</div><div class="pix-prm-ac-d">${c.count} tag${c.count === 1 ? "" : "s"} · random each run</div>`;
         d.addEventListener("mousedown", (e) => { e.preventDefault(); pickAC(flat[idx]); });
         el.appendChild(d);
       }

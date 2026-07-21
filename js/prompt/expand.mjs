@@ -25,19 +25,25 @@ export function scanTokens(text) {
   const out = [];
   if (typeof text !== "string" || !/[@*]/.test(text)) return out;
   TOKEN_RE.lastIndex = 0;
-  let m, lastEnd = -1;
+  let m, lastEnd = -1, lastKind = null;
   while ((m = TOKEN_RE.exec(text))) {
     const at = m.index;
+    const kind = m[1] === "@" ? "tag" : "wild";
     const prev = at > 0 ? text[at - 1] : "";
     // Unicode-aware: a letter/number/combining-mark/_ before the symbol (incl.
     // accented / CJK, precomposed OR decomposed) means it's an email local part or
-    // arithmetic, not a token - unless we're chaining off a real token.
-    const isTok = !prev || !/[\p{L}\p{N}\p{M}_]/u.test(prev) || at === lastEnd;
+    // arithmetic, not a token - UNLESS it chains off a SAME-KIND token immediately
+    // before it (@a@b, *a*b). Cross-kind is deliberately NOT chained: an unknown
+    // *wildcard must never promote a following @tag into expanding (or vice-versa) -
+    // that would silently rewrite the prompt. Adjacency like @tag*Cat just needs a space.
+    const chains = at === lastEnd && kind === lastKind;
+    const isTok = !prev || !/[\p{L}\p{N}\p{M}_]/u.test(prev) || chains;
     if (isTok) {
-      out.push({ kind: m[1] === "@" ? "tag" : "wild", sym: m[1], name: m[2], start: at, end: at + m[0].length, raw: m[0] });
-      lastEnd = at + m[0].length; // a following @/* can chain off this one
+      out.push({ kind, sym: m[1], name: m[2], start: at, end: at + m[0].length, raw: m[0] });
+      lastEnd = at + m[0].length; // a following SAME-KIND token can chain off this one
+      lastKind = kind;
     }
-    // a non-token @/* does NOT set lastEnd, so it can't start a chain
+    // a non-token @/* does NOT update lastEnd/lastKind, so it can't start a chain
   }
   return out;
 }
