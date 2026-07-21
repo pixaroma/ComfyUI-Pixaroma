@@ -3,23 +3,37 @@
 // dispatches on the data-act attributes this module stamps. index.js owns sizing
 // and calls renderNode().
 
+import { isVueNodes } from "../shared/nodes2.mjs";
 import { BRAND, readState, accentOf, countOn, MAX_LORAS } from "./core.mjs";
 
 // Height constants - kept in lockstep with the CSS so the node hugs its content
 // with no bottom gap and no scrollbar (getMinHeight in index.js reads contentHeight).
 const PAD = 9;
-const ADD_H = 30;
-const TOP_GAP = 6;
-const TOPROW_H = 28;
+const ADD_H = 28;
+const TOP_GAP = 5;
+const TOPROW_H = 26;
 const AFTER_TOP = 9;
 export const ROW_H = 32;
 const ROW_GAP = 6;
 const EMPTY_H = 46;
 
+// The Add/All/gear cluster ("band"). In CLASSIC it FLOATS up out of flow into the
+// empty band between the input dots (left) and output dots (right) - see the offset
+// + reserves below - so it costs zero node height. In Nodes 2.0 (where floating a
+// child above the widget top gets clipped by the node body) it stays in normal flow
+// at the top. Branch is in renderNode.
+const BAND_H = ADD_H + TOP_GAP + TOPROW_H; // 59
+// Classic float: node-local px. The widget body starts ~66px below the node top; the
+// 3-output slot band spans ~4..64, so lift the band ~62px to land it in that band.
+const CLASSIC_BAND_TOP = -62;
+const CLASSIC_RSV_L = 64;   // clear the model / clip labels on the left
+const CLASSIC_RSV_R = 80;   // clear the MODEL / CLIP / triggers labels on the right
+
 export function contentHeight(state) {
   const n = state.loras.length;
   const rowsH = n ? n * ROW_H + (n - 1) * ROW_GAP : EMPTY_H;
-  return PAD + ADD_H + TOP_GAP + TOPROW_H + AFTER_TOP + rowsH + PAD;
+  const bandInFlow = isVueNodes() ? BAND_H + AFTER_TOP : 0; // Classic floats it (free)
+  return PAD + bandInFlow + rowsH + PAD;
 }
 
 const NO_LORAS = "(put LoRAs in models/loras)";
@@ -57,10 +71,17 @@ export function injectCSS() {
   s.id = "pix-ll-css";
   s.textContent = `
     .pix-ll-root { width:100%; box-sizing:border-box; background:#1d1d1d; border-radius:4px;
-      color:#ddd; font-family:ui-sans-serif,system-ui,sans-serif; font-size:11px; }
+      color:#ddd; font-family:ui-sans-serif,system-ui,sans-serif; font-size:11px; position:relative; }
     /* Plain block flow (NOT flex, NOT absolute) so the list can never be squeezed
        (Sizes Pattern #4). Each child takes its natural height. */
     .pix-ll-inner { box-sizing:border-box; padding:${PAD}px; }
+
+    /* The Add / All / gear cluster. Floated (Classic) = lifted out of flow into the
+       slot dead-band; in-flow (Nodes 2.0) = a normal top cluster. */
+    .pix-ll-band { display:flex; flex-direction:column; gap:${TOP_GAP}px; }
+    .pix-ll-band:not(.floated) { margin-bottom:${AFTER_TOP}px; }
+    .pix-ll-band.floated { position:absolute; pointer-events:none; z-index:2; }
+    .pix-ll-band.floated > * { pointer-events:auto; }
 
     .pix-ll-add { box-sizing:border-box; width:100%; height:${ADD_H}px; border:0; border-radius:6px;
       background:var(--acc,${BRAND}); color:#fff; font:600 12px 'Segoe UI',sans-serif; cursor:pointer;
@@ -68,7 +89,7 @@ export function injectCSS() {
     .pix-ll-add:hover { filter:brightness(1.08); }
     .pix-ll-add:disabled { opacity:.4; cursor:default; filter:none; }
 
-    .pix-ll-toprow { display:flex; align-items:stretch; gap:6px; margin-top:${TOP_GAP}px; height:${TOPROW_H}px; }
+    .pix-ll-toprow { display:flex; align-items:stretch; gap:6px; height:${TOPROW_H}px; }
     .pix-ll-all { flex:1; min-width:0; display:flex; align-items:center; gap:8px;
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14); border-radius:5px;
       padding:0 9px; color:#a8a8a8; cursor:pointer; user-select:none; }
@@ -79,7 +100,7 @@ export function injectCSS() {
       color:#bbb; font-size:14px; cursor:pointer; user-select:none; }
     .pix-ll-gear:hover { border-color:var(--acc,${BRAND}); color:#fff; }
 
-    .pix-ll-rows { margin-top:${AFTER_TOP}px; display:flex; flex-direction:column; gap:${ROW_GAP}px; }
+    .pix-ll-rows { display:flex; flex-direction:column; gap:${ROW_GAP}px; }
     .pix-ll-row { box-sizing:border-box; height:${ROW_H}px; display:flex; align-items:center; gap:6px;
       background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.12); border-radius:6px;
       padding:0 6px; }
@@ -118,7 +139,7 @@ export function injectCSS() {
     .pix-ll-sw.on { background:var(--acc,${BRAND}); }
     .pix-ll-sw.on::after { left:15px; background:#fff; }
 
-    .pix-ll-empty { box-sizing:border-box; height:${EMPTY_H}px; margin-top:${AFTER_TOP}px;
+    .pix-ll-empty { box-sizing:border-box; height:${EMPTY_H}px;
       display:flex; align-items:center; justify-content:center; text-align:center; color:#777;
       font-size:11px; background:rgba(0,0,0,0.2); border:1px dashed #3a3a3a; border-radius:6px; padding:0 10px; }
   `;
@@ -151,14 +172,24 @@ export function renderNode(node) {
   inner.style.setProperty("--acc", acc);
   inner.innerHTML = "";
 
-  // ── Add LoRA (full width) ────────────────────────────────────────────────
+  // ── the Add / All / gear band (floats into the slot dead-band in Classic) ──
+  const band = document.createElement("div");
+  band.className = "pix-ll-band";
+  const classic = !isVueNodes();
+  if (classic) {
+    band.classList.add("floated");
+    band.style.top = CLASSIC_BAND_TOP + "px";
+    band.style.left = CLASSIC_RSV_L + "px";
+    band.style.right = CLASSIC_RSV_R + "px";
+  }
+
   const add = document.createElement("button");
   add.className = "pix-ll-add";
   add.dataset.act = "add";
   add.textContent = "＋ Add LoRA";
   add.disabled = st.loras.length >= MAX_LORAS;
   add.title = st.loras.length >= MAX_LORAS ? `Up to ${MAX_LORAS} LoRAs per node` : "Add a LoRA row";
-  inner.appendChild(add);
+  band.appendChild(add);
 
   // ── All on/off + count, and the gear ─────────────────────────────────────
   const on = countOn(st), total = st.loras.length;
@@ -180,7 +211,8 @@ export function renderNode(node) {
   gear.textContent = "⚙";
   gear.title = "LoRA Loader settings";
   toprow.append(all, gear);
-  inner.appendChild(toprow);
+  band.appendChild(toprow);
+  inner.appendChild(band);
 
   // ── rows, or the empty state ─────────────────────────────────────────────
   if (!st.loras.length) {
