@@ -2012,8 +2012,10 @@ def _resolve_lora_path(name):
         p = None
     if not p or not os.path.isfile(p):
         return None
+    # Fail CLOSED: if the loras dirs can't be determined (empty / folder_paths error),
+    # refuse rather than serve an unverified path.
     roots = _lora_dirs()
-    if roots and not _is_path_under(p, *roots):
+    if not roots or not _is_path_under(p, *roots):
         return None
     return p
 
@@ -2056,7 +2058,7 @@ async def api_lora_thumb(request):
         return web.Response(status=404)
     prev = _lora_find_preview(path)
     roots = _lora_dirs()
-    if not prev or (roots and not _is_path_under(prev, *roots)):
+    if not prev or not roots or not _is_path_under(prev, *roots):
         return web.Response(status=404)
     return web.FileResponse(prev, headers={"Cache-Control": "public, max-age=3600"})
 

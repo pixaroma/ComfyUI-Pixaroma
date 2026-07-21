@@ -8,6 +8,7 @@ import { loraInfo, thumbUrl, civitaiLookup, invalidateInfo } from "./api.mjs";
 
 let _panel = null;
 let _cleanup = null;
+let _ownerNode = null;
 
 function injectCSS() {
   if (document.getElementById("pix-ll-info-css")) return;
@@ -68,7 +69,12 @@ export function closeInfoPanel() {
   _cleanup = null;
   if (_panel) { try { _panel.remove(); } catch {} }
   _panel = null;
+  _ownerNode = null;
 }
+
+// Close only when THIS node owns the open panel (so deleting an unrelated LoRA
+// Loader node doesn't yank away another node's open info panel).
+export function closeInfoPanelFor(node) { if (_ownerNode === node) closeInfoPanel(); }
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -98,6 +104,7 @@ export async function openInfoPanel(node, id, refresh) {
   panel.style.borderColor = accent;
   document.body.appendChild(panel);
   _panel = panel;
+  _ownerNode = node;
 
   // view data for this panel session
   let info = { title: name || "LoRA", triggers: [], source: "file", has_preview: false };

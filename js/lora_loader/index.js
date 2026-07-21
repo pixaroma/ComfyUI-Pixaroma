@@ -18,7 +18,7 @@ import {
 import { injectCSS, renderNode, contentHeight } from "./render.mjs";
 import { attachInteractions } from "./interaction.mjs";
 import { openLoraPanel, closeLoraPanelFor } from "./settings.mjs";
-import { closeInfoPanel } from "./info_panel.mjs";
+import { closeInfoPanelFor } from "./info_panel.mjs";
 import { closeLoraDropdown } from "./dropdown.mjs";
 import { closeRowMenu } from "./interaction.mjs";
 
@@ -68,7 +68,7 @@ function setupNode(node) {
   inner.className = "pix-ll-inner";
   root.appendChild(inner);
 
-  const widget = node.addDOMWidget("loras_ui", "custom", root, {
+  const widget = node.addDOMWidget("loras_ui", "pixaroma_lora_loader", root, {
     getValue: () => readState(node),
     setValue: () => {},
     getMinHeight: () => widgetH(node),
@@ -83,7 +83,10 @@ function setupNode(node) {
   node._pixLlInner = inner;
 
   // Fresh default size (configure() overrides this for a loaded node, Vue Compat #8).
-  node.size = [Math.max(node.size?.[0] || 0, 336), fitNodeH(node)];
+  // Mutate in place rather than replacing the array (Vue may hold a reactive proxy).
+  if (!Array.isArray(node.size)) node.size = [336, 0];
+  node.size[0] = Math.max(node.size[0] || 0, 336);
+  node.size[1] = fitNodeH(node);
 
   attachInteractions(node, widget.element || root, makeRefresh(node));
 
@@ -111,16 +114,21 @@ app.registerExtension({
 
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (this.size[0] < MIN_W) this.size[0] = MIN_W;
-      this.size[1] = fitNodeH(this);
+      // Legacy ONLY: in Nodes 2.0 the rendered size lives in the Vue layout store and
+      // getMinHeight/computeLayoutSize already lock the height - clamping node.size
+      // here would desync and pop on a workflow-tab switch (Nodes 2.0 resize rule).
+      if (!isVueNodes()) {
+        if (this.size[0] < MIN_W) this.size[0] = MIN_W;
+        this.size[1] = fitNodeH(this);
+      }
       if (_origResize) return _origResize.call(this, size);
     };
 
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeLoraPanelFor(this);
-      closeInfoPanel();
-      closeLoraDropdown();
+      closeInfoPanelFor(this);
+      closeLoraDropdown(); // transient - also auto-closes on the canvas click that deletes
       closeRowMenu();
       return _origRemoved?.apply(this, arguments);
     };

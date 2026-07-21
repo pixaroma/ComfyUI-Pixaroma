@@ -76,6 +76,7 @@ export async function openLoraDropdown(anchorEl, opts) {
   list.className = "pix-ll-dd-list";
   pop.append(srch, list);
   document.body.appendChild(pop);
+  _pop = pop; // set BEFORE the await so a mid-fetch reopen closes THIS popup, not nothing
 
   const r = anchorEl.getBoundingClientRect();
   pop.style.width = Math.min(Math.max(r.width, 240), 360) + "px";
