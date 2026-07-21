@@ -4,7 +4,7 @@ import {
   installResizeFloor, installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
 import { getTags, getCategories, findTag, subscribe } from "./library.mjs";
-import { expandTags, hasTags, scanTags } from "./expand.mjs";
+import { expandAll, hasTags, hasWilds, scanTokens } from "./expand.mjs";
 import { openLibraryEditor, closeLibraryEditorFor } from "./library_editor.mjs";
 import { openPromptSettings, closePromptSettingsFor, accentOf, getDefaultOrder } from "./settings.mjs";
 
@@ -96,6 +96,10 @@ function injectCSS() {
        textarea glyphs or the caret drifts (see the wrapping-parity note). */
     .pix-prm-chip { color:var(--acc); }
     .pix-prm-chip.bad { color:#ff4d4d; }
+    /* *wildcards: a distinct violet (clearly not the orange @tag), red when the
+       category is unknown/empty. Colour only - same glyph width so the caret can't drift. */
+    .pix-prm-wild { color:#b98cff; }
+    .pix-prm-wild.bad { color:#ff4d4d; }
     /* preview GROWS with the node (flex, no fixed cap) so a big node shows more.
        LIGHTER gray (not the dark #1d1d1d of the editable inputs) so it reads as a
        read-only preview, not another input box - the green text stays readable. */
@@ -135,6 +139,7 @@ function injectCSS() {
     .pix-prm-ac-i { padding:6px 11px; cursor:pointer; }
     .pix-prm-ac-i.sel, .pix-prm-ac-i:hover { background:#3a2a24; }
     .pix-prm-ac-n { font:12px monospace; color:var(--acc, ${BRAND}); }
+    .pix-prm-ac-i.wild .pix-prm-ac-n { color:#b98cff; }
     .pix-prm-ac-d { font-size:10.5px; color:#767676; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:320px; }
     .pix-prm-ac-empty { padding:9px 11px; color:#767676; font-size:11.5px; }
   `;
@@ -151,6 +156,12 @@ const PROMPT_HELP = {
       body:
         "Type your prompt in the box. To reuse a chunk you type a lot, save it once as a tag and then type `@name` for it. Type `@` to get a searchable list grouped by category - arrow keys and Enter to insert.\n\n" +
         "Known tags glow in your accent colour; an unknown `@tag` glows red so you spot a typo. At run time each `@tag` is swapped for its full text, so the box stays short. `Show expanded` previews exactly what will be sent.",
+    },
+    {
+      heading: "Random slots (wildcards)",
+      body:
+        "Type `*` then a category name to drop in a RANDOM tag from that category - a fresh one every time you run. For example `*Styles` becomes a different saved Style each run. Type `*` to get a list of your categories.\n\n" +
+        "A working `*category` glows violet; an unknown or empty one glows red. `Show expanded` shows it as `[random: Styles]` because the real pick only happens when you run - wire a Show Text Pixaroma to the output to see exactly what was chosen. Tip: with a fixed seed the picture only changes when the pick changes, so use a random seed if you want a new image every run.",
     },
     {
       heading: "Save text as a tag",
@@ -177,7 +188,7 @@ const PROMPT_HELP = {
     },
     {
       heading: "Good to know",
-      body: "A tag expands to plain text (one level, no tag-inside-a-tag). A workflow run without a browser (pure API) cannot expand @tags or read your library - type into a plain Text node for those, or wire the text input.",
+      body: "A tag expands to plain text (one level, no tag-inside-a-tag), and a *wildcard drops in one tag's text (also one level). A workflow run without a browser (pure API) cannot expand @tags, roll *wildcards, or read your library - type into a plain Text node for those, or wire the text input.",
     },
   ],
 };
@@ -203,6 +214,28 @@ function catColor(name) {
   if (name === "Uncategorized" || i < 0) return "#7a7a7a";
   const PAL = ["#e0894b", "#5aa9e6", "#8e7bd6", "#5fbf8f", "#d76b98", "#c9a24b", "#6fb3b8"];
   return PAL[i % PAL.length];
+}
+
+// ── *wildcard resolution (a random tag from a category) ─────────────────────
+// One category lookup shared by the highlight, the preview, and the run so they
+// agree on which *categories are "live". Case-insensitive; returns {canonical, pool}
+// or null (unknown OR empty category -> the *token is left literal).
+function wildCat(name) {
+  const canonical = getCategories().find((c) => c && c.toLowerCase() === String(name).toLowerCase());
+  if (!canonical) return null;
+  const pool = getTags().filter((t) => (t.cat || "").toLowerCase() === canonical.toLowerCase());
+  return pool.length ? { canonical, pool } : null;
+}
+// RUN resolver: a fresh random tag's text (Math.random at queue time -> new each run).
+function pickWild(name) {
+  const w = wildCat(name);
+  return w ? w.pool[Math.floor(Math.random() * w.pool.length)].text : null;
+}
+// PREVIEW resolver: a STABLE placeholder (the real pick happens at run time, so the
+// preview must not flicker a different sample on every keystroke).
+function previewWild(name) {
+  const w = wildCat(name);
+  return w ? `[random: ${w.canonical}]` : null;
 }
 
 // A dark custom dropdown (never a native white <select> - house rule). Returns
@@ -273,6 +306,7 @@ const SEP_OPTIONS = [
 
 // ── @-autocomplete (single body-level popup) ───────────────────────────────
 const TAG_TOKEN_RE = /@([a-zA-Z0-9_\-]*)$/;
+const WILD_TOKEN_RE = /\*([a-zA-Z0-9_\-]*)$/;
 let _acEl = null;
 let _ac = null; // { node, ta, start, items, sel }
 
@@ -303,54 +337,97 @@ function installACSelWatch() {
 }
 function maybeAC(node, ta) {
   const pos = ta.selectionStart;
-  const m = TAG_TOKEN_RE.exec(ta.value.slice(0, pos));
-  if (!m) { closeAC(); return; }
-  const start = pos - m[0].length;
-  // Boundary (Unicode-consistent with scanTags): don't autocomplete when @ sits
-  // after a letter/number/mark/_ (an email) or another @.
-  const prev = start > 0 ? ta.value[start - 1] : "";
-  if (prev && /[\p{L}\p{N}\p{M}_@]/u.test(prev)) { closeAC(); return; }
-  const q = m[1].toLowerCase();
-  openAC(node, ta, start, q);
+  const upto = ta.value.slice(0, pos);
+  // @tag autocomplete. Boundary (Unicode-consistent with scanTokens): don't open
+  // when @ sits after a letter/number/mark/_ (an email) or another @.
+  const mt = TAG_TOKEN_RE.exec(upto);
+  if (mt) {
+    const start = pos - mt[0].length;
+    const prev = start > 0 ? ta.value[start - 1] : "";
+    if (prev && /[\p{L}\p{N}\p{M}_@]/u.test(prev)) { closeAC(); return; }
+    openAC(node, ta, start, mt[1].toLowerCase(), "tag");
+    return;
+  }
+  // *wildcard (category) autocomplete - same boundary so "2*2" doesn't trigger.
+  const mw = WILD_TOKEN_RE.exec(upto);
+  if (mw) {
+    const start = pos - mw[0].length;
+    const prev = start > 0 ? ta.value[start - 1] : "";
+    if (prev && /[\p{L}\p{N}\p{M}_*]/u.test(prev)) { closeAC(); return; }
+    openAC(node, ta, start, mw[1].toLowerCase(), "wild");
+    return;
+  }
+  closeAC();
 }
-function openAC(node, ta, start, q) {
+function openAC(node, ta, start, q, mode) {
   installACSelWatch();
   const el = acPopup();
   el.style.setProperty("--acc", accentOf(node));
-  const tags = getTags().filter((t) => t.name.toLowerCase().includes(q));
-  const byCat = new Map();
-  for (const t of tags) {
-    const c = t.cat || "Uncategorized";
-    if (!byCat.has(c)) byCat.set(c, []);
-    byCat.get(c).push(t);
-  }
-  const order = getCategories().filter((c) => byCat.has(c));
   el.innerHTML = "";
   const flat = [];
-  if (!tags.length) {
-    const e = document.createElement("div");
-    e.className = "pix-prm-ac-empty";
-    e.textContent = q ? `No tag matches "@${q}". Open Tags to add one.` : "No tags yet. Open Tags to add one.";
-    el.appendChild(e);
-  } else {
-    for (const c of order) {
+  const sym = mode === "wild" ? "*" : "@";
+
+  if (mode === "wild") {
+    // *wildcards list CATEGORIES; picking one inserts *Category (rolls at run time).
+    const cats = getCategories().filter((c) => c && c.toLowerCase().includes(q));
+    if (!cats.length) {
+      const e = document.createElement("div");
+      e.className = "pix-prm-ac-empty";
+      e.textContent = q ? `No category matches "*${q}". Open Tags to add one.` : "No categories yet. Open Tags to add one.";
+      el.appendChild(e);
+    } else {
       const h = document.createElement("div");
       h.className = "pix-prm-ac-h";
-      h.innerHTML = `<span class="cd" style="background:${catColor(c)}"></span>${escapeHTML(c)}`;
+      h.innerHTML = `<span class="cd" style="background:#b98cff"></span>random from category`;
       el.appendChild(h);
-      for (const t of byCat.get(c)) {
+      for (const c of cats) {
+        const count = getTags().filter((t) => (t.cat || "").toLowerCase() === c.toLowerCase()).length;
         const idx = flat.length;
-        flat.push(t);
+        flat.push({ name: c });
         const d = document.createElement("div");
-        d.className = "pix-prm-ac-i" + (idx === 0 ? " sel" : "");
+        d.className = "pix-prm-ac-i wild" + (idx === 0 ? " sel" : "");
         d.dataset.i = String(idx);
-        d.innerHTML = `<div class="pix-prm-ac-n">@${escapeHTML(t.name)}</div><div class="pix-prm-ac-d">${escapeHTML(t.text)}</div>`;
-        d.addEventListener("mousedown", (e) => { e.preventDefault(); pickAC(t); });
+        d.innerHTML = `<div class="pix-prm-ac-n">*${escapeHTML(c)}</div><div class="pix-prm-ac-d">${count} tag${count === 1 ? "" : "s"} · random each run</div>`;
+        d.addEventListener("mousedown", (e) => { e.preventDefault(); pickAC(flat[idx]); });
         el.appendChild(d);
       }
     }
+  } else {
+    // @tags, grouped by category.
+    const tags = getTags().filter((t) => t.name.toLowerCase().includes(q));
+    const byCat = new Map();
+    for (const t of tags) {
+      const c = t.cat || "Uncategorized";
+      if (!byCat.has(c)) byCat.set(c, []);
+      byCat.get(c).push(t);
+    }
+    const order = getCategories().filter((c) => byCat.has(c));
+    if (!tags.length) {
+      const e = document.createElement("div");
+      e.className = "pix-prm-ac-empty";
+      e.textContent = q ? `No tag matches "@${q}". Open Tags to add one.` : "No tags yet. Open Tags to add one.";
+      el.appendChild(e);
+    } else {
+      for (const c of order) {
+        const h = document.createElement("div");
+        h.className = "pix-prm-ac-h";
+        h.innerHTML = `<span class="cd" style="background:${catColor(c)}"></span>${escapeHTML(c)}`;
+        el.appendChild(h);
+        for (const t of byCat.get(c)) {
+          const idx = flat.length;
+          flat.push(t);
+          const d = document.createElement("div");
+          d.className = "pix-prm-ac-i" + (idx === 0 ? " sel" : "");
+          d.dataset.i = String(idx);
+          d.innerHTML = `<div class="pix-prm-ac-n">@${escapeHTML(t.name)}</div><div class="pix-prm-ac-d">${escapeHTML(t.text)}</div>`;
+          d.addEventListener("mousedown", (e) => { e.preventDefault(); pickAC(flat[idx]); });
+          el.appendChild(d);
+        }
+      }
+    }
   }
-  _ac = { node, ta, start, items: flat, sel: 0 };
+
+  _ac = { node, ta, start, items: flat, sel: 0, sym };
   const r = ta.getBoundingClientRect();
   el.style.display = "block";
   el.style.minWidth = Math.max(260, Math.min(360, r.width)) + "px";
@@ -371,21 +448,21 @@ function updateACSel() {
 // previous @tag, so inserts never produce "@a@b" (which reads badly and is
 // awkward to edit). See expand.mjs - chained tags DO expand, but a space is cleaner.
 function tagSep(before) {
-  return (before && /[\p{L}\p{N}\p{M}_@]$/u.test(before)) ? " " : "";
+  return (before && /[\p{L}\p{N}\p{M}_@*]$/u.test(before)) ? " " : "";
 }
 // A trailing space after an inserted tag (unless the next char already separates
 // it), so typing more text continues as a SEPARATE word instead of extending the
 // tag name (@goldenhour + "asdas" -> "@goldenhour asdas", not "@goldenhourasdas").
 function tagTrail(after) {
-  return (!after || /^[\p{L}\p{N}\p{M}_@]/u.test(after)) ? " " : "";
+  return (!after || /^[\p{L}\p{N}\p{M}_@*]/u.test(after)) ? " " : "";
 }
-function pickAC(tag) {
+function pickAC(item) {
   if (!_ac) return;
-  const { node, ta, start } = _ac;
+  const { node, ta, start, sym } = _ac;
   const v = ta.value;
   const before = v.slice(0, start);
   const after = v.slice(ta.selectionStart);
-  const ins = tagSep(before) + "@" + tag.name + tagTrail(after);
+  const ins = tagSep(before) + sym + item.name + tagTrail(after);
   ta.value = before + ins + after;
   const p = (before + ins).length; // cursor after the trailing space
   ta.selectionStart = ta.selectionEnd = p;
@@ -426,8 +503,8 @@ function buildRoot(node) {
   backdrop.className = "pix-prm-backdrop";
   const ta = document.createElement("textarea");
   ta.className = "pix-prm-ta";
-  ta.placeholder = "your prompt - type @ to insert a tag";
-  ta.title = "Type your prompt. @name inserts a tag. Ctrl+Enter runs the workflow.";
+  ta.placeholder = "your prompt - @ inserts a tag, * a random from a category";
+  ta.title = "Type your prompt. @name inserts a tag, *category picks a random tag each run. Ctrl+Enter runs the workflow.";
   ta.spellcheck = false;
   tawrap.append(backdrop, ta);
 
@@ -492,7 +569,7 @@ function readNodeText(src, depth) {
   const cls = src.comfyClass || src.type;
   if (cls === "PixaromaPrompt") {
     const t = src.properties?.promptState?.text;
-    return typeof t === "string" ? expandTags(t).out : null; // its own typed text, tags resolved
+    return typeof t === "string" ? expandAll(t, { resolveWild: previewWild }).out : null; // its own typed text, tags + wildcards shown
   }
   const readW = (names) => {
     for (const name of names) {
@@ -510,16 +587,22 @@ function readNodeText(src, depth) {
 }
 function renderBackdrop(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
-  // Chip ONLY the @tokens scanTags counts as real tags (so an email's @name is
-  // left plain, matching the preview + the run). Known = accent chip, unknown = red.
+  // Colour the @tags AND *wildcards scanTokens counts (an email's @name / arithmetic
+  // *2 stay plain, matching the preview + the run). @tag: known=accent / unknown=red.
+  // *wildcard: known (category has tags)=violet / unknown-or-empty=red.
   const text = els.ta.value;
-  const hits = scanTags(text);
+  const toks = scanTokens(text);
   let html = "";
   let i = 0;
-  for (const h of hits) {
+  for (const h of toks) {
     html += escapeHTML(text.slice(i, h.start));
-    const known = !!findTag(h.name);
-    html += `<span class="pix-prm-chip${known ? "" : " bad"}">${escapeHTML(h.raw)}</span>`;
+    if (h.kind === "tag") {
+      const known = !!findTag(h.name);
+      html += `<span class="pix-prm-chip${known ? "" : " bad"}">${escapeHTML(h.raw)}</span>`;
+    } else {
+      const known = !!wildCat(h.name);
+      html += `<span class="pix-prm-wild${known ? "" : " bad"}">${escapeHTML(h.raw)}</span>`;
+    }
     i = h.end;
   }
   html += escapeHTML(text.slice(i));
@@ -535,9 +618,10 @@ function renderExpand(node) {
   const els = node._pixPromptRoot?._els; if (!els) return;
   const st = readState(node);
   const wired = isWired(node);
-  if (!st.showExpanded || (!hasTags(els.ta.value) && !wired)) { els.expand.style.display = "none"; return; }
+  const v = els.ta.value;
+  if (!st.showExpanded || (!hasTags(v) && !hasWilds(v) && !wired)) { els.expand.style.display = "none"; return; }
   els.expand.style.display = "block";
-  const mine = expandTags(els.ta.value).out;
+  const mine = expandAll(v, { resolveWild: previewWild }).out;
   if (!wired) {
     els.expand.innerHTML = `<span class="mine">${escapeHTML(mine)}</span>`;
     return;
@@ -940,7 +1024,10 @@ app.graphToPrompt = async function (...args) {
         if (!index) index = buildPromptNodeIndex();
         const node = findPromptNode(index, key);
         const st = node ? readState(node) : { text: "", order: "mine", sep: ", " };
-        const expanded = expandTags(st.text).out;
+        // Roll every *wildcard to a random tag NOW (queue time), so each run gets a
+        // fresh pick; @tags expand deterministically. A different pick changes this
+        // string -> the cache key changes -> re-run (no nonce needed, invariant #3).
+        const expanded = expandAll(st.text, { resolveWild: pickWild }).out;
         entry.inputs = entry.inputs || {};
         // Cosmetic keys (accent, showExpanded) are DELIBERATELY excluded so a colour
         // pick can't change the run's cache key (project note on injected state).
