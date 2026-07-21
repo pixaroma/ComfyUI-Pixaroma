@@ -20,8 +20,12 @@ import { applyAdaptiveCanvasOnly, isVueNodes, installResizeFloor } from "../shar
 
 export const MIN_FIELD_H = 56;     // smallest a single field box can shrink to
 const DEF_FIELD_H = 84;            // comfortable default per field on a fresh node
-const OUTPUT_ROW = 24;             // the single `text` output slot row (widgets_start_y)
-const WIDGET_MARGIN = 4;           // legacy inter-widget vertical gap (measured)
+// Legacy vertical budget, measured against ComfyUI's DOM-widget layout (it places
+// the first widget ~10px below widgets_start_y and adds a small gap between rows).
+// Reserving these keeps the field boxes INSIDE the node frame (no spill).
+const TOP_RESERVE = 34;            // node body top -> first field box
+const ROW_GAP = 4;                 // gap between field boxes
+const BOTTOM_RESERVE = 12;         // keep the last field off the frame's bottom edge
 export const MIN_W = 220;
 export const DEFAULT_W = 264;
 export const ZW = "​";          // zero-width space: suppress the slot label paint
@@ -45,17 +49,17 @@ export function fieldsOf(node) { return node._pixTjFields || []; }
 
 // Fresh-node default height (fields at the comfortable size).
 export function defaultNodeHeight(n) {
-  return OUTPUT_ROW + n * DEF_FIELD_H + n * WIDGET_MARGIN;
+  return TOP_RESERVE + n * DEF_FIELD_H + (n - 1) * ROW_GAP + BOTTOM_RESERVE;
 }
 // Minimum node height (fields at MIN_FIELD_H) - the node can't be dragged smaller.
 function minNodeHeight(n) {
-  return OUTPUT_ROW + n * MIN_FIELD_H + n * WIDGET_MARGIN;
+  return TOP_RESERVE + n * MIN_FIELD_H + (n - 1) * ROW_GAP + BOTTOM_RESERVE;
 }
 // Height each field box gets for the current node size: the body's spare height
 // shared equally across the fields, never below MIN_FIELD_H. Grows with the node.
 function fieldSlotH(node) {
   const n = fieldsOf(node).length || 1;
-  const avail = (node.size?.[1] || 0) - OUTPUT_ROW - n * WIDGET_MARGIN;
+  const avail = (node.size?.[1] || 0) - TOP_RESERVE - (n - 1) * ROW_GAP - BOTTOM_RESERVE;
   return Math.max(MIN_FIELD_H, Math.floor(avail / n));
 }
 
@@ -82,9 +86,6 @@ export function injectCSS() {
     .pix-tj-ta::placeholder { color:#5c5c5c; font-style:italic; }
     .pix-tj-icons { position:absolute; top:3px; right:5px; z-index:3; display:none; gap:3px; }
     .pix-tj-field:hover .pix-tj-icons { display:flex; }
-    /* On the row that carries the gear, shift the hover copy/paste left so they
-       clear the always-on gear in the corner. */
-    .pix-tj-hasgear .pix-tj-icons { right:30px; }
     .pix-tj-ic { width:19px; height:19px; border-radius:4px; display:flex; align-items:center;
       justify-content:center; cursor:pointer; background:rgba(255,255,255,0.06);
       border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.72); }
@@ -96,15 +97,6 @@ export function injectCSS() {
     .pix-tj-field.wired .pix-tj-ta { cursor:default; }
     .pix-tj-field.wired .pix-tj-icons { display:none !important; }
     .pix-tj-field.wired:focus-within { border-color:#333; }
-
-    /* The gear floats in the top-right corner of the first field, just under the
-       text output - a sibling of .pix-tj-field so the field's wired-grey never
-       dims it (settings stay reachable even when the field is wired). */
-    .pix-tj-gear { position:absolute; top:3px; right:6px; z-index:4; width:19px; height:19px;
-      border-radius:4px; display:flex; align-items:center; justify-content:center; cursor:pointer;
-      font-size:12px; color:rgba(255,255,255,0.6); background:rgba(255,255,255,0.06);
-      border:1px solid rgba(255,255,255,0.14); }
-    .pix-tj-gear:hover { background:${BRAND}; border-color:${BRAND}; color:#fff; }
 
     /* NODES 2.0: the widget-socket paints a dot in column 1 of the row at opacity
        0 until hovered/wired. Our rows ARE inputs, so keep the dot always visible. */
@@ -194,7 +186,7 @@ function mkIcon(svg, title) {
   return b;
 }
 
-function makeFieldRow(node, cfg, openPanel) {
+function makeFieldRow(node, cfg) {
   const wrap = document.createElement("div");
   wrap.className = "pix-tj-row";
   const field = document.createElement("div");
@@ -217,20 +209,6 @@ function makeFieldRow(node, cfg, openPanel) {
 
   field.append(lbl, icons, ta);
   wrap.appendChild(field);
-
-  // The settings gear rides in this row's top-right corner (only the first row
-  // gets it). It's a SIBLING of the field so the field's wired-grey never dims it.
-  if (openPanel) {
-    wrap.classList.add("pix-tj-hasgear");
-    const gear = document.createElement("div");
-    gear.className = "pix-tj-gear";
-    gear.textContent = "⚙";
-    gear.title = "Text Join settings (separator, skip empty)";
-    gear.addEventListener("pointerdown", (e) => e.stopPropagation());
-    gear.addEventListener("click", (e) => { e.stopPropagation(); openPanel(); });
-    wrap.appendChild(gear);
-  }
-
   wrap._cfg = cfg;
   wrap._field = field;
   wrap._ta = ta;
@@ -312,7 +290,7 @@ export function alignInputsLegacy(node) {
   }
 }
 
-export function installFields(node, openPanel) {
+export function installFields(node) {
   if (node._pixTjWraps) { paintRows(node); return; }
   const fields = fieldsOf(node);
   for (const cfg of fields) hideNativeWidget(widgetOf(node, cfg.name));
@@ -320,9 +298,8 @@ export function installFields(node, openPanel) {
   node._pixTjWraps = [];
   node._pixTjRowWidgets = {};
   node._pixTjFloorOffs = [];
-  fields.forEach((cfg, i) => {
-    // Only the first field carries the settings gear in its corner.
-    const wrap = makeFieldRow(node, cfg, i === 0 ? openPanel : null);
+  fields.forEach((cfg) => {
+    const wrap = makeFieldRow(node, cfg);
     const w = node.addDOMWidget(ROW_WIDGET_NAME(cfg.name), WIDGET_TYPE, wrap, {
       serialize: false,
       getMinHeight: () => MIN_FIELD_H,

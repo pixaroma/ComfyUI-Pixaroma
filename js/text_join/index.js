@@ -67,7 +67,7 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       _created?.apply(this, arguments);
       this._pixTjFields = FIELDS;
-      installFields(this, () => openTextJoinPanel(this, () => this.setDirtyCanvas?.(true, true)));
+      installFields(this);
       applyLegacyLayout(this);
       // Fresh-node default size (configure overrides it for saved workflows).
       if (!this.size || this.size[0] < MIN_W) this.size[0] = DEFAULT_W;
@@ -83,7 +83,7 @@ app.registerExtension({
     nodeType.prototype.onConfigure = function (info) {
       const r = _configure?.apply(this, arguments);
       this._pixTjFields = FIELDS;
-      installFields(this, () => openTextJoinPanel(this, () => this.setDirtyCanvas?.(true, true)));
+      installFields(this);
       applyLegacyLayout(this);
       queueMicrotask(() => {
         reseedFields(this); bindInputDots(this); paintRows(this); scheduleAlignLegacy(this);
