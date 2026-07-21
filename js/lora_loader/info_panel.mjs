@@ -4,7 +4,7 @@
 // (searching / found / not found / offline). Selections persist on the row.
 
 import { readState, patchLora, accentOf, BRAND } from "./core.mjs";
-import { loraInfo, thumbUrl, civitaiLookup, invalidateInfo } from "./api.mjs";
+import { loraInfo, thumbUrl, civitaiLookup, invalidateInfo, deleteCivitai } from "./api.mjs";
 
 let _panel = null;
 let _cleanup = null;
@@ -15,7 +15,7 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-ll-info-css";
   s.textContent = `
-    .pix-ll-info-p { position:fixed; z-index:10025; width:280px; max-width:94vw; background:#2b2b2b;
+    .pix-ll-info-p { position:fixed; z-index:10025; width:340px; max-width:94vw; background:#2b2b2b;
       border:1px solid ${BRAND}; border-radius:10px; box-shadow:0 14px 44px rgba(0,0,0,0.6);
       overflow:hidden; font:12px 'Segoe UI',system-ui,sans-serif; color:#ddd; }
     .pix-ll-info-top { display:flex; gap:11px; padding:12px; border-bottom:1px solid #1c1c1c; cursor:grab; }
@@ -39,15 +39,22 @@ function injectCSS() {
       color:#9a9a9a; cursor:pointer; }
     .pix-ll-info-sec h4 .qa:hover { color:${BRAND}; }
     .pix-ll-info-note { font-size:10px; color:#7a7a7a; margin:0 0 8px; }
-    .pix-ll-chips { display:flex; flex-wrap:wrap; gap:5px; }
+    .pix-ll-chips { display:flex; flex-wrap:wrap; gap:5px; max-height:36vh; overflow-y:auto; padding-right:2px; }
+    .pix-ll-chips::-webkit-scrollbar { width:7px; }
+    .pix-ll-chips::-webkit-scrollbar-thumb { background:#555; border-radius:3px; }
     .pix-ll-chip { font:10.5px 'Segoe UI'; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.14);
-      color:#b8b8b8; border-radius:99px; padding:3px 9px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:4px; }
+      color:#b8b8b8; border-radius:99px; padding:3px 9px; cursor:pointer; user-select:none; display:flex; align-items:center; gap:4px; max-width:100%; }
     .pix-ll-chip:hover { border-color:${BRAND}; }
     .pix-ll-chip.sel { background:rgba(246,103,68,0.18); border-color:${BRAND}; color:#f8a48c; }
-    .pix-ll-chip.sel::before { content:"✓"; font-size:9px; }
+    .pix-ll-chip.sel::before { content:"✓"; font-size:9px; flex:none; }
+    .pix-ll-chip .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .pix-ll-chip-none { color:#777; font-size:11px; }
-    .pix-ll-chip .cx { margin-left:1px; color:#f8a48c; cursor:pointer; opacity:.6; font-size:10px; }
+    .pix-ll-chip .cx { margin-left:1px; color:#f8a48c; cursor:pointer; opacity:.6; font-size:10px; flex:none; }
     .pix-ll-chip .cx:hover { opacity:1; }
+    .pix-ll-srctoggle { margin-left:auto; display:flex; border:1px solid #444; border-radius:99px; overflow:hidden; }
+    .pix-ll-srctoggle .sg { font:9px 'Segoe UI'; text-transform:none; letter-spacing:0; color:#9a9a9a; padding:2px 9px; cursor:pointer; }
+    .pix-ll-srctoggle .sg:hover { color:#ddd; }
+    .pix-ll-srctoggle .sg.on { background:${BRAND}; color:#fff; }
     .pix-ll-addtrig { display:flex; gap:5px; margin-top:8px; }
     .pix-ll-addtrig input { flex:1; min-width:0; box-sizing:border-box; background:#161616;
       border:1px solid rgba(255,255,255,0.14); border-radius:6px; color:#fff; font:11px 'Segoe UI';
@@ -74,6 +81,8 @@ function injectCSS() {
     .pix-ll-info-foot .b.gh { border:1px solid rgba(255,255,255,0.14); color:#b8b8b8; }
     .pix-ll-info-foot .b.gh:hover { border-color:${BRAND}; color:#fff; }
     .pix-ll-info-foot .b.dis { opacity:.4; pointer-events:none; }
+    .pix-ll-info-foot .b.del { flex:0 0 auto; min-width:38px; border:1px solid rgba(255,255,255,0.14); color:#c9736a; }
+    .pix-ll-info-foot .b.del:hover { border-color:#e0604a; color:#fff; background:rgba(224,96,74,0.12); }
   `;
   document.head.appendChild(s);
 }
@@ -120,8 +129,12 @@ export async function openInfoPanel(node, id, refresh) {
   _ownerNode = node;
 
   // view data for this panel session
-  let info = { title: name || "LoRA", triggers: [], source: "file", has_preview: false };
+  let info = { title: name || "LoRA", triggers: [], file_triggers: [], sidecar_triggers: [], source: "file", has_preview: false };
   let civ = null; // { state:"searching"|"found"|"nofind"|"offline", info?, message? }
+  // Which set of candidate words to SHOW: "file" | "civitai". null = auto (Civitai
+  // when a saved sidecar / fresh lookup exists, else the file's own words). The
+  // user's SELECTED words persist regardless of the view (they live in row.triggers).
+  let viewSource = null;
 
   const selected = () => new Set((readState(node).loras.find((e) => e.id === id)?.triggers || []).map((w) => w.toLowerCase()));
 
@@ -142,10 +155,24 @@ export async function openInfoPanel(node, id, refresh) {
     renderBody();
   }
 
-  // The LoRA's own words (file / sidecar / Civitai) for the current view.
+  // True when we have Civitai words available (a saved sidecar or a just-fetched result).
+  function civitaiAvailable() {
+    return (info.sidecar_triggers?.length || 0) > 0 || civ?.state === "found";
+  }
+  function fileWords() { return info.file_triggers?.length ? info.file_triggers : (info.triggers || []); }
+  function civitaiWords() {
+    if (info.sidecar_triggers?.length) return info.sidecar_triggers;
+    if (civ?.state === "found") return civ.info?.triggers || [];
+    return [];
+  }
+  // The active view source: honour the user's toggle, else auto.
+  function effectiveSource() {
+    if (viewSource === "file" || viewSource === "civitai") return viewSource;
+    return civitaiAvailable() ? "civitai" : "file";
+  }
+  // The candidate words shown for the current view.
   function sourceWords() {
-    const civTriggers = civ?.state === "found" ? (civ.info?.triggers || []) : [];
-    return civTriggers.length ? civTriggers : (info.triggers || []);
+    return effectiveSource() === "civitai" ? (civitaiWords().length ? civitaiWords() : fileWords()) : fileWords();
   }
 
   // Chips shown: source words + the user's custom words + anything selected, de-duped.
@@ -259,9 +286,23 @@ export async function openInfoPanel(node, id, refresh) {
     none.title = "Clear selection";
     none.addEventListener("click", () => setWords([]));
     head.append(all, none);
-    const srcBadge = el("span", "src" + (info.source === "civitai" ? " net" : ""),
-      civ?.state === "found" ? "from Civitai" : info.source === "sidecar" ? "from Civitai (saved)" : "from file");
-    head.appendChild(srcBadge);
+    // Source: a File / Civitai toggle when BOTH sets exist, else a plain badge.
+    if (civitaiAvailable() && fileWords().length) {
+      const es = effectiveSource();
+      const seg = el("div", "pix-ll-srctoggle");
+      const fBtn = el("span", "sg" + (es === "file" ? " on" : ""), "File");
+      fBtn.title = "Show the LoRA's own words (from the file)";
+      fBtn.addEventListener("click", () => { viewSource = "file"; renderBody(); });
+      const cBtn = el("span", "sg" + (es === "civitai" ? " on" : ""), "Civitai");
+      cBtn.title = "Show the saved Civitai words";
+      cBtn.addEventListener("click", () => { viewSource = "civitai"; renderBody(); });
+      seg.append(fBtn, cBtn);
+      head.appendChild(seg);
+    } else {
+      const srcBadge = el("span", "src" + (info.source === "civitai" ? " net" : ""),
+        civ?.state === "found" ? "from Civitai" : info.source === "sidecar" ? "from Civitai (saved)" : "from file");
+      head.appendChild(srcBadge);
+    }
     sec.appendChild(head);
     sec.appendChild(el("p", "pix-ll-info-note",
       "Tap the ones you want. Only these, and only if the LoRA is on, reach the triggers output."));
@@ -274,7 +315,8 @@ export async function openInfoPanel(node, id, refresh) {
     } else {
       for (const { w, isCustom } of list) {
         const c = el("span", "pix-ll-chip" + (sel.has(w.toLowerCase()) ? " sel" : ""));
-        c.appendChild(document.createTextNode(w));
+        c.title = w;                              // full text on hover (chips truncate to one line)
+        c.appendChild(el("span", "ct", w));
         c.addEventListener("click", () => toggleWord(w));
         if (isCustom) {
           const x = el("span", "cx", "✕");
@@ -314,6 +356,13 @@ export async function openInfoPanel(node, id, refresh) {
       if (!searching) cbtn.addEventListener("click", runCivitai);
       foot.appendChild(cbtn);
     }
+    // Delete the saved Civitai info (only when a sidecar exists) - reverts to the file's words.
+    if ((info.sidecar_triggers?.length || 0) > 0) {
+      const del = el("div", "b del", "🗑");
+      del.title = "Delete the saved Civitai info (back to the file's own words)";
+      del.addEventListener("click", runDeleteCivitai);
+      foot.appendChild(del);
+    }
     panel.appendChild(foot);
   }
 
@@ -351,6 +400,18 @@ export async function openInfoPanel(node, id, refresh) {
     } else {
       civ = { state: "offline", message: res.message };
     }
+    renderBody();
+  }
+
+  async function runDeleteCivitai() {
+    await deleteCivitai(name);
+    if (!panel.isConnected) return;
+    invalidateInfo(name);                 // drop the cached (sidecar-flavoured) info
+    civ = null;
+    viewSource = "file";                  // nothing to toggle to now - show the file words
+    const fresh = await loraInfo(name, true);
+    if (!panel.isConnected) return;
+    if (fresh.ok && fresh.info) info = fresh.info;
     renderBody();
   }
 

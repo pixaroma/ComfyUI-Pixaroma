@@ -216,6 +216,7 @@ def build_lora_info(lora_path):
     date, triggers, source ('file' | 'sidecar'), has_preview. Sidecar data (from a
     prior Civitai fetch) wins over file-derived data when present. Never raises."""
     meta = read_safetensors_metadata(lora_path)
+    file_triggers = derive_trigger_words(meta)
     info = {
         "title": _title_from_meta(meta, lora_path),
         "base_model": base_model_family(meta),
@@ -223,12 +224,19 @@ def build_lora_info(lora_path):
         "alpha": meta.get("ss_network_alpha", "") or "",
         "num_images": meta.get("ss_num_train_images", "") or "",
         "date": meta.get("modelspec.date", "") or "",
-        "triggers": derive_trigger_words(meta),
+        "triggers": file_triggers,
+        # Both sets are returned SEPARATELY so the info panel can offer a File /
+        # Civitai toggle. `triggers` stays the merged default (sidecar wins) for
+        # back-compat; `file_triggers` is always the file's own words; and
+        # `sidecar_triggers` holds the saved Civitai words when a sidecar exists.
+        "file_triggers": file_triggers,
+        "sidecar_triggers": [],
         "source": "file",
         "has_preview": find_preview_path(lora_path) is not None,
     }
     side = read_sidecar_info(lora_path)
     if side.get("triggers"):
+        info["sidecar_triggers"] = side["triggers"]
         info["triggers"] = side["triggers"]
         info["source"] = "sidecar"
     if side.get("name"):
@@ -374,6 +382,19 @@ def save_sidecar_cache(lora_path, civitai_obj):
         base = os.path.splitext(lora_path)[0]
         with open(base + ".civitai.info", "w", encoding="utf-8") as f:
             json.dump(civitai_obj, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
+
+
+def delete_sidecar_cache(lora_path):
+    """Delete the cached Civitai sidecar (<base>.civitai.info) next to the LoRA, so its
+    info reverts to the file's own words (or a fresh lookup). Returns True if it's gone
+    (deleted or already absent). Never raises. Leaves a user's own <base>.json alone."""
+    try:
+        p = os.path.splitext(lora_path)[0] + ".civitai.info"
+        if os.path.isfile(p):
+            os.remove(p)
         return True
     except Exception:
         return False

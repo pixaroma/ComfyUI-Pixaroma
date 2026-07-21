@@ -34,6 +34,7 @@ from .nodes._lora_helpers import (
     find_preview_path as _lora_find_preview,
     parse_civitai_modelversion as _lora_parse_civitai,
     save_sidecar_cache as _lora_save_sidecar,
+    delete_sidecar_cache as _lora_delete_sidecar,
 )
 from .nodes.node_krea_lora_convert import (
     inspect_lora as _krea_lora_inspect,
@@ -2108,3 +2109,23 @@ async def api_lora_civitai(request):
         return web.json_response({"ok": True, "found": False, "reason": "notfound"})
     await loop.run_in_executor(None, _lora_save_sidecar, path, data)
     return web.json_response({"ok": True, "found": True, "info": parsed})
+
+
+@PromptServer.instance.routes.post("/pixaroma/api/lora/civitai_delete")
+async def api_lora_civitai_delete(request):
+    """Delete the cached Civitai sidecar (<base>.civitai.info) next to the LoRA, so the
+    info reverts to the file's own words. POST {name}. Path-guarded to the loras dirs;
+    always 200."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = {}
+    name = (data or {}).get("name", "") or request.query.get("name", "")
+    path = _resolve_lora_path(name)
+    roots = _lora_dirs()
+    if not path or not roots or not _is_path_under(path, *roots):
+        return web.json_response({"ok": False, "message": "LoRA not found."})
+    import asyncio
+    loop = asyncio.get_event_loop()
+    ok = await loop.run_in_executor(None, _lora_delete_sidecar, path)
+    return web.json_response({"ok": bool(ok)})

@@ -69,3 +69,18 @@ export async function civitaiLookup(name) {
     return { ok: false, reason: "offline", message: "Could not reach Civitai." };
   }
 }
+
+// Delete the saved Civitai sidecar (<base>.civitai.info) next to the LoRA, so its
+// info reverts to the file's own words. Caller should invalidateInfo(name) after.
+export async function deleteCivitai(name) {
+  try {
+    const r = await fetch("/pixaroma/api/lora/civitai_delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    return await r.json();
+  } catch {
+    return { ok: false, message: "Could not reach the server." };
+  }
+}
