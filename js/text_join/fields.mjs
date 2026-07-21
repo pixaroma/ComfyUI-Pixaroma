@@ -3,29 +3,31 @@
 // a per-field copy/paste that appears on hover. A gear footer row opens the
 // settings panel.
 //
-// The dot-on-row + value-flow machinery is ported straight from Outpaint Stitch
-// Pixaroma (js/outpaint_stitch/sliders.mjs):
-//   NODES 2.0  the widget-socket model - input.widget = {name: rowWidget} moves
-//              the real dot onto the row; a :has() rule keeps it always visible.
-//   LEGACY     the marker is REMOVED (so the dot draws), input.pos parks it on
-//              the row, widgets_start_y pins the rows, computeSize owns height.
-// The value flows through the node's own hidden STRING widget + a graphToPrompt
-// inject (index.js), so the dot gymnastics never touch the text reaching Python.
+// The fields FILL the node body and GROW when the node is resized (like a native
+// multiline / concatenate widget): each field box shares the body height equally.
+//   LEGACY     each field widget's `computeSize` returns node-size-driven height,
+//              and sets its DOM wrap height to match, so the boxes fill + grow.
+//   NODES 2.0  each field widget is an 'auto' grid row (computeLayoutSize defined)
+//              so the rows split the node's spare height; a :has() rule keeps the
+//              always-on input dot visible.
+// Dot-on-row + value-flow machinery is ported from Outpaint Stitch Pixaroma. The
+// value flows through the node's own hidden STRING widget + a graphToPrompt inject
+// (index.js), so the dot gymnastics never touch the text reaching Python.
 
 import { app } from "/scripts/app.js";
 import { widgetOf, BRAND } from "./core.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, installResizeFloor } from "../shared/index.mjs";
 
-export const ROW_H = 64;             // one field box (label + a few lines of text)
-export const ROW_GAP = 6;
-export const PAD = 6;
-export const FOOTER_H = 24;          // the gear row
+export const MIN_FIELD_H = 56;     // smallest a single field box can shrink to
+const DEF_FIELD_H = 84;            // comfortable default per field on a fresh node
+export const FOOTER_H = 22;        // the gear row (fixed, never grows)
+const OUTPUT_ROW = 24;             // the single `text` output slot row (widgets_start_y)
+const WIDGET_MARGIN = 4;           // legacy inter-widget vertical gap (measured)
 export const MIN_W = 220;
-export const DEFAULT_W = 250;
+export const DEFAULT_W = 264;
 export const ZW = "​";          // zero-width space: suppress the slot label paint
 const DOT_X = 10;                    // legacy input-dot x (matches native slots)
 const LEFT_INSET = 15;               // legacy: room on the row's left for the dot
-const LEGACY_PULL = 7;               // legacy: tuck the rows up under the output slot
 const WIDGET_TYPE = "pixaroma_tj_row";
 const FOOTER_TYPE = "pixaroma_tj_footer";
 const ROW_WIDGET_NAME = (name) => `pixtj_row_${name}`;
@@ -44,9 +46,20 @@ const PASTE_SVG =
 
 export function fieldsOf(node) { return node._pixTjFields || []; }
 
-export function bodyHeight(node) {
+// Fresh-node default height (fields at the comfortable size).
+export function defaultNodeHeight(n) {
+  return OUTPUT_ROW + n * DEF_FIELD_H + FOOTER_H + (n + 1) * WIDGET_MARGIN;
+}
+// Minimum node height (fields at MIN_FIELD_H) - the node can't be dragged smaller.
+function minNodeHeight(n) {
+  return OUTPUT_ROW + n * MIN_FIELD_H + FOOTER_H + (n + 1) * WIDGET_MARGIN;
+}
+// Height each field box gets for the current node size: the body's spare height
+// shared equally across the fields, never below MIN_FIELD_H. Grows with the node.
+function fieldSlotH(node) {
   const n = fieldsOf(node).length || 1;
-  return n * ROW_H + (n - 1) * ROW_GAP + PAD * 2 + FOOTER_H;
+  const avail = (node.size?.[1] || 0) - OUTPUT_ROW - FOOTER_H - (n + 1) * WIDGET_MARGIN;
+  return Math.max(MIN_FIELD_H, Math.floor(avail / n));
 }
 
 export function injectCSS() {
@@ -54,34 +67,34 @@ export function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-tj-css";
   s.textContent = `
-    .pix-tj-row-w { width:100%; box-sizing:border-box; }
-    /* Heights must be DEFINITE or the min-content Vue row collapses. */
-    .pix-tj-row { position:relative; width:100%; height:${ROW_H}px; min-height:${ROW_H}px; box-sizing:border-box; }
-    .pix-tj-field { position:relative; width:100%; height:100%; box-sizing:border-box;
+    /* The wrap is sized by the renderer (legacy: we set its height in computeSize;
+       Vue: the grid cell). The field fills it with an absolute layer so it grows. */
+    .pix-tj-row { position:relative; width:100%; height:100%; min-height:${MIN_FIELD_H}px; box-sizing:border-box; }
+    .pix-tj-field { position:absolute; top:0; right:0; bottom:0; left:0; box-sizing:border-box;
       background:#1d1d1d; border:1px solid #333; border-radius:5px; overflow:hidden; }
     .pix-tj-field:focus-within { border-color:${BRAND}; }
-    .pix-tj-lbl { position:absolute; top:3px; left:8px; z-index:2; pointer-events:none;
+    .pix-tj-lbl { position:absolute; top:4px; left:9px; z-index:2; pointer-events:none;
       font:10px 'Segoe UI',-apple-system,sans-serif; color:#8f8f8f; }
     .pix-tj-ta { position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box;
       background:transparent; color:#e0e0e0; border:0; outline:none; resize:none;
-      font:12px monospace; padding:17px 8px 6px; }
+      font:12px monospace; padding:19px 8px 7px; }
     .pix-tj-ta::placeholder { color:#5c5c5c; font-style:italic; }
-    .pix-tj-icons { position:absolute; top:2px; right:4px; z-index:3; display:none; gap:3px; }
+    .pix-tj-icons { position:absolute; top:3px; right:5px; z-index:3; display:none; gap:3px; }
     .pix-tj-field:hover .pix-tj-icons { display:flex; }
     .pix-tj-ic { width:19px; height:19px; border-radius:4px; display:flex; align-items:center;
       justify-content:center; cursor:pointer; background:rgba(255,255,255,0.06);
       border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.72); }
     .pix-tj-ic:hover { background:${BRAND}; border-color:${BRAND}; color:#fff; }
     .pix-tj-ic.ok, .pix-tj-ic.ok:hover { background:#3ec371; border-color:#3ec371; color:#fff; }
-    /* Wire-driven: locked + grayed. A number/text node drives it; the box is a
-       dimmed, disabled fallback (the typed text the wire overrides). */
+    /* Wire-driven: locked + grayed (the wired node drives it; the box is a dimmed,
+       disabled fallback showing the typed text the wire overrides). */
     .pix-tj-field.wired { opacity:0.5; filter:grayscale(0.9); }
     .pix-tj-field.wired .pix-tj-ta { cursor:default; }
     .pix-tj-field.wired .pix-tj-icons { display:none !important; }
     .pix-tj-field.wired:focus-within { border-color:#333; }
 
-    .pix-tj-foot-w { width:100%; box-sizing:border-box; }
-    .pix-tj-foot { display:flex; align-items:center; justify-content:flex-end; height:${FOOTER_H}px; }
+    .pix-tj-foot { position:relative; width:100%; height:100%; display:flex;
+      align-items:center; justify-content:flex-end; box-sizing:border-box; }
     .pix-tj-gear { width:22px; height:22px; border-radius:5px; display:flex; align-items:center;
       justify-content:center; cursor:pointer; font-size:14px; color:#bdbdbd;
       background:#232323; border:1px solid #3a3a3a; }
@@ -105,16 +118,15 @@ function flashIcon(iconEl) {
   setTimeout(() => iconEl.classList.remove("ok"), 700);
 }
 
-// True when this field's input is wired - then another node drives the text and
-// the box is a locked, grayed-out fallback display.
+// True when this field's input is wired - then another node drives the text.
 function isWired(node, name) {
   const inp = node.inputs?.find((i) => i.name === name);
   return !!(inp && inp.link != null);
 }
 
 // Hide the native STRING widget (its own DOM textarea too) - it stays the VALUE
-// store, but the pretty box replaces its face AND a real input dot sits on the
-// row. Value then reaches Python via the graphToPrompt inject (index.js).
+// store, but the pretty box replaces its face. Value then reaches Python via the
+// graphToPrompt inject (index.js).
 function hideNativeWidget(w) {
   if (!w) return;
   w.hidden = true;
@@ -178,9 +190,7 @@ function mkIcon(svg, title) {
 
 function makeFieldRow(node, cfg) {
   const wrap = document.createElement("div");
-  wrap.className = "pix-tj-row-w";
-  const row = document.createElement("div");
-  row.className = "pix-tj-row";
+  wrap.className = "pix-tj-row";
   const field = document.createElement("div");
   field.className = "pix-tj-field";
 
@@ -200,8 +210,7 @@ function makeFieldRow(node, cfg) {
   ta.placeholder = "type here or wire";
 
   field.append(lbl, icons, ta);
-  row.appendChild(field);
-  wrap.appendChild(row);
+  wrap.appendChild(field);
   wrap._cfg = cfg;
   wrap._field = field;
   wrap._ta = ta;
@@ -225,31 +234,27 @@ function makeFieldRow(node, cfg) {
 
 function makeFooter(node, openPanel) {
   const wrap = document.createElement("div");
-  wrap.className = "pix-tj-foot-w";
-  const foot = document.createElement("div");
-  foot.className = "pix-tj-foot";
+  wrap.className = "pix-tj-foot";
   const gear = document.createElement("div");
   gear.className = "pix-tj-gear";
   gear.textContent = "⚙";
   gear.title = "Text Join settings (separator, skip empty)";
   gear.addEventListener("pointerdown", (e) => e.stopPropagation());
   gear.addEventListener("click", (e) => { e.stopPropagation(); openPanel?.(); });
-  foot.appendChild(gear);
-  wrap.appendChild(foot);
+  wrap.appendChild(gear);
   return wrap;
 }
 
-// Refresh per-row state (wired lock, legacy inset/pull). Does NOT touch the
+// Refresh per-row state (wired lock, legacy dot inset). Does NOT touch the
 // textarea text - that is seeded on install/configure only, so typing is safe.
 export function paintRows(node) {
   const wraps = node._pixTjWraps || [];
   const vue = isVueNodes();
   for (const wrap of wraps) {
     const cfg = wrap._cfg;
-    // Legacy: leave room on the left for the dot + pull the row up under the
-    // output slot. Nodes 2.0: the socket owns the left column, no margin.
-    wrap.style.paddingLeft = vue ? "0px" : LEFT_INSET + "px";
-    wrap.style.marginTop = vue ? "0px" : (-LEGACY_PULL) + "px";
+    // Legacy: inset the field so the dot on the left has room. Vue: the socket
+    // owns the left column, so no inset.
+    wrap._field.style.left = vue ? "0px" : LEFT_INSET + "px";
     const wired = isWired(node, cfg.name);
     wrap._field.classList.toggle("wired", wired);
     wrap._ta.disabled = wired;
@@ -283,16 +288,17 @@ export function bindInputDots(node) {
   if (vue && changed && node.inputs) node.inputs = node.inputs.slice();
 }
 
-// LEGACY: park each field's input dot on its row at a STABLE node-local Y (never
-// measures the live DOM, whose screen->local conversion jitters on pan/zoom).
+// LEGACY: park each field's input dot at the vertical CENTRE of its (growing) box,
+// at a STABLE node-local Y (widget.y + boxHeight/2). widget.y changes only on
+// relayout, so the dot holds still on pan/zoom.
 export function alignInputsLegacy(node) {
   if (isVueNodes() || !node._pixTjRowWidgets) return;
+  const h = fieldSlotH(node);
   for (const cfg of fieldsOf(node)) {
     const inp = node.inputs?.find((i) => i.name === cfg.name);
     const w = node._pixTjRowWidgets[cfg.name];
     if (!inp || !w || !Number.isFinite(w.y)) continue;
-    const margin = Number.isFinite(w.margin) ? w.margin : 10;
-    const y = w.y + margin + ROW_H * 0.5 - LEGACY_PULL;   // dot centre, follows the pull
+    const y = w.y + h * 0.5;
     if (!inp.pos || inp.pos[0] !== DOT_X || Math.abs(inp.pos[1] - y) > 0.25) {
       inp.pos = [DOT_X, y];
     }
@@ -307,32 +313,43 @@ export function installFields(node, openPanel) {
   node._pixTjWraps = [];
   node._pixTjRowWidgets = {};
   node._pixTjFloorOffs = [];
-  fields.forEach((cfg, i) => {
+  for (const cfg of fields) {
     const wrap = makeFieldRow(node, cfg);
     const w = node.addDOMWidget(ROW_WIDGET_NAME(cfg.name), WIDGET_TYPE, wrap, {
       serialize: false,
-      getMinHeight: () => ROW_H + (i === 0 ? PAD : ROW_GAP),
+      getMinHeight: () => MIN_FIELD_H,
     });
     w.serialize = false;
-    w.computeLayoutSize = undefined;   // hug content (Nodes 2.0)
+    // Legacy: drive the slot height AND the DOM wrap height from node.size so the
+    // box fills the body and grows with it. (computeSize is called each draw.)
+    w.computeSize = () => {
+      const h = fieldSlotH(node);
+      if (!isVueNodes() && wrap.style.height !== h + "px") wrap.style.height = h + "px";
+      return [node.size?.[0] || MIN_W, h];
+    };
+    // Nodes 2.0: an 'auto' grid row that splits the node's spare height.
+    w.computeLayoutSize = () => ({ minHeight: MIN_FIELD_H, minWidth: 1 });
     applyAdaptiveCanvasOnly(w);
     node._pixTjWraps.push(wrap);
     node._pixTjRowWidgets[cfg.name] = w;
-    node._pixTjFloorOffs.push(installResizeFloor(wrap, (root) => root.offsetHeight || ROW_H));
+    node._pixTjFloorOffs.push(installResizeFloor(wrap, () => MIN_FIELD_H));
     seedField(node, wrap);
-  });
+  }
 
-  // Gear footer row (no input dot).
+  // Gear footer row (no input dot, fixed height, never grows).
   const footWrap = makeFooter(node, openPanel);
   const fw = node.addDOMWidget(FOOTER_WIDGET_NAME, FOOTER_TYPE, footWrap, {
     serialize: false,
-    getMinHeight: () => FOOTER_H + PAD,
+    getMinHeight: () => FOOTER_H,
   });
   fw.serialize = false;
-  fw.computeLayoutSize = undefined;
+  fw.computeSize = () => {
+    if (!isVueNodes() && footWrap.style.height !== FOOTER_H + "px") footWrap.style.height = FOOTER_H + "px";
+    return [node.size?.[0] || MIN_W, FOOTER_H];
+  };
+  fw.computeLayoutSize = undefined;   // min-content (do NOT grow)
   applyAdaptiveCanvasOnly(fw);
   node._pixTjFooter = footWrap;
-  node._pixTjFloorOffs.push(installResizeFloor(footWrap, (root) => root.offsetHeight || FOOTER_H));
 
   // Vue can rebuild a hidden multiline widget's DOM a frame later - re-hide it.
   requestAnimationFrame(() => {
@@ -352,12 +369,9 @@ export function uninstallFields(node) {
   node._pixTjFloorOffs = [];
 }
 
-// Legacy: our field rows own the widget area; the node's only slots are the
-// text_* inputs (which live ON the rows) + the single `text` output. So reserve
-// max(non-field inputs, outputs) slot rows + the body. MIN_W, never live width.
+// Legacy: the node's MIN size (fields at MIN_FIELD_H). node.size can be larger
+// (user drag); the fields fill it via their computeSize. MIN_W, never live width.
 export function bodyComputeSize(node) {
-  const fieldNames = new Set(fieldsOf(node).map((f) => f.name));
-  const realInputs = (node.inputs || []).filter((i) => !fieldNames.has(i.name)).length;
-  const slotRows = Math.max(realInputs, (node.outputs || []).length, 1);
-  return [MIN_W, slotRows * 20 + bodyHeight(node) - LEGACY_PULL];
+  const n = fieldsOf(node).length || 1;
+  return [MIN_W, minNodeHeight(n)];
 }

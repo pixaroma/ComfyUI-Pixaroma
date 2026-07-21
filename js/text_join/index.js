@@ -3,7 +3,8 @@ import { isVueNodes, registerNodeHelp } from "../shared/index.mjs";
 import { HIDDEN_INPUT, promptState, widgetOf } from "./core.mjs";
 import {
   injectCSS, installFields, uninstallFields, reseedFields, paintRows,
-  bindInputDots, alignInputsLegacy, bodyComputeSize, MIN_W, DEFAULT_W, ZW,
+  bindInputDots, alignInputsLegacy, bodyComputeSize, defaultNodeHeight,
+  MIN_W, DEFAULT_W, ZW,
 } from "./fields.mjs";
 import { openTextJoinPanel, closeTextJoinPanelFor } from "./settings.mjs";
 
@@ -68,7 +69,10 @@ app.registerExtension({
       this._pixTjFields = FIELDS;
       installFields(this, () => openTextJoinPanel(this, () => this.setDirtyCanvas?.(true, true)));
       applyLegacyLayout(this);
+      // Fresh-node default size (configure overrides it for saved workflows).
       if (!this.size || this.size[0] < MIN_W) this.size[0] = DEFAULT_W;
+      const defH = defaultNodeHeight(FIELDS.length);
+      if (!this.size[1] || this.size[1] < defH) this.size[1] = defH;
       queueMicrotask(() => {
         bindInputDots(this); paintRows(this); scheduleAlignLegacy(this);
         this.setDirtyCanvas?.(true, true);
@@ -104,6 +108,15 @@ app.registerExtension({
     const _arrange = nodeType.prototype.arrange;
     nodeType.prototype.arrange = function () {
       const r = _arrange?.apply(this, arguments);
+      if (!isVueNodes()) alignInputsLegacy(this);
+      return r;
+    };
+
+    // Legacy: as the node is resized the fields grow (via each row widget's
+    // computeSize); re-park the dots at their new centres. Never resizes on load.
+    const _resize = nodeType.prototype.onResize;
+    nodeType.prototype.onResize = function (size) {
+      const r = _resize?.apply(this, arguments);
       if (!isVueNodes()) alignInputsLegacy(this);
       return r;
     };
