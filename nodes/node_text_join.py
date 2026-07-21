@@ -63,7 +63,10 @@ def _join(parts, raw_state):
     sep = _resolve_sep(state)
     pieces = [_as_text(p) for p in parts]
     if state["skipEmpty"]:
-        pieces = [p for p in pieces if p != ""]
+        # Skip blank AND whitespace-only pieces (so the "never a stray separator"
+        # promise holds), but keep each kept piece's text verbatim - only the
+        # emptiness TEST strips, not the value.
+        pieces = [p for p in pieces if p.strip() != ""]
     return sep.join(pieces)
 
 

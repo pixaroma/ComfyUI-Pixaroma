@@ -167,14 +167,15 @@ app.registerExtension({
 // ── graphToPrompt: feed each unwired field's typed text + the JoinState ───────
 function buildIndex() {
   const index = new Map();
+  const seen = new Set();   // guard against any (theoretical) subgraph cycle
   const visit = (graph) => {
-    if (!graph) return;
+    if (!graph || seen.has(graph)) return;
+    seen.add(graph);
     const nodes = graph._nodes || graph.nodes || [];
     for (const n of nodes) {
       if (!n) continue;
       if (CLASSES[n.comfyClass] || CLASSES[n.type]) index.set(String(n.id), n);
-      const inner = n.subgraph || n.graph || n._graph;
-      if (inner && inner !== graph) visit(inner);
+      visit(n.subgraph || n.graph || n._graph);
     }
   };
   visit(app.graph);

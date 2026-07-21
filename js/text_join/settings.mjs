@@ -240,8 +240,8 @@ export function openTextJoinPanel(node, onChange) {
       const custom = el("input", "pix-tjp-custom");
       custom.type = "text";
       custom.value = st.customSep;
-      custom.placeholder = "e.g.  \\n   or   |   or   ,";
-      custom.title = "Typed exactly as-is between the pieces (spaces count).";
+      custom.placeholder = "e.g.  |   or   -   or   /";
+      custom.title = "Typed exactly as-is between the pieces (spaces count). For a line break, pick New line instead.";
       custom.addEventListener("keydown", (e) => e.stopPropagation());
       custom.addEventListener("input", () => {
         writeState(node, { ...readState(node), customSep: custom.value });
