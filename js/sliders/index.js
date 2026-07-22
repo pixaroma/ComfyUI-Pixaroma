@@ -173,6 +173,11 @@ app.registerExtension({
         normalizeSliders(this);
         syncOutputs(this);
         refresh(this);          // rebuild the rows for the restored sliders
+        // Heal a node saved with the old oversized default (sizing bug, 2026-07-22).
+        // Only fires when the saved height is way past the content, so a correctly
+        // sized node is untouched (no dirty); a buggy one snaps down once.
+        const wantH = bodyHeight(this) + (isVueNodes() ? 52 : 0);
+        if (Array.isArray(this.size) && this.size[1] > wantH + 24) this.size[1] = wantH;
         queueMicrotask(() => {
           watchAlign(this);
           scheduleAlign(this);
