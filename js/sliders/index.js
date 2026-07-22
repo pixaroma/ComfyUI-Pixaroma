@@ -4,7 +4,7 @@ import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import {
   ACCENT_SETTING, BRAND, MAX_SLIDERS,
-  readState, normalizeSliders, syncOutputs, addSlider, resolveAutoType,
+  readState, normalizeSliders, syncOutputs, addSlider, resolveAutoType, resetRowOnDisconnect,
 } from "./core.mjs";
 import {
   injectCSS, syncRowWidgets, renderAll, alignOutputsLegacy, watchAlign, unwatchAlign, scheduleAlign,
@@ -156,8 +156,20 @@ app.registerExtension({
     // the link replay on load must never rewrite a saved type.
     const _conn = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function (type, slotIndex, isConnected, link) {
-      if (type === 2 /* OUTPUT */ && isConnected && !this._pixSldConfiguring && !isGraphLoading()) {
-        if (resolveAutoType(this, slotIndex, link)) refresh(this);
+      if (type === 2 /* OUTPUT */ && !this._pixSldConfiguring && !isGraphLoading()) {
+        if (isConnected) {
+          if (resolveAutoType(this, slotIndex, link)) refresh(this);
+        } else {
+          // Unplugged: a number slider drops back to auto so it can be re-wired
+          // to a boolean (and become a switch) or a different number. LiteGraph
+          // clears output.links AFTER this callback returns, so defer the check
+          // one tick until the slot's remaining connections have settled.
+          const self = this;
+          setTimeout(() => {
+            if (!self.graph || isGraphLoading()) return;
+            if (resetRowOnDisconnect(self, slotIndex)) refresh(self);
+          }, 0);
+        }
       }
       return _conn?.apply(this, arguments);
     };

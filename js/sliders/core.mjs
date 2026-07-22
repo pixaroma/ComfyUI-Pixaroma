@@ -243,15 +243,14 @@ export function resolveAutoType(node, slotIndex, link) {
   const s = st.sliders[slotIndex];
   if (!s || !link) return false;
   if (s.type === "toggle") return resolveToggleOut(node, s, slotIndex, link);
-  if (s.type !== "auto") return false;
 
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
   const t = String(inp?.type || "").toUpperCase();
 
-  // A BOOLEAN target turns an Auto row into a Toggle switch - a slider makes no
-  // sense for true / false. It adopts the target's name (while untouched) and its
-  // current on/off state, so connecting never silently flips the flag.
+  // A BOOLEAN target turns ANY slider row (auto / int / float) into a Toggle - a
+  // slider makes no sense for true / false. It adopts the target's name (while
+  // untouched) and its current on/off state, so connecting never flips the flag.
   if (t === "BOOLEAN") {
     s.type = "toggle";
     ensureToggle(s);
@@ -265,6 +264,10 @@ export function resolveAutoType(node, slotIndex, link) {
     return true;
   }
 
+  // Number target: only an as-yet-untyped (auto) row resolves; a row already set
+  // to int/float keeps its type and range. A disconnect drops a number slider
+  // back to auto (resetRowOnDisconnect), so re-wiring it re-resolves cleanly.
+  if (s.type !== "auto") return false;
   if (t !== "INT" && t !== "FLOAT") return false;
 
   s.type = t === "INT" ? "int" : "float";
@@ -302,4 +305,28 @@ export function resolveAutoType(node, slotIndex, link) {
   s.value = clampValue(s, s.value);
   syncOutputs(node);
   return true;
+}
+
+// When an output loses its LAST wire, free the row so it can be re-wired to a
+// different kind of input: a slider you unplug from a number can then go onto a
+// boolean and become a switch. A number slider drops back to "auto" (its output
+// slot returns to "*", so a boolean input will now accept it); a toggle stays a
+// toggle but forgets its adopted bool/int so it re-adopts on the next wire. Only
+// the type/out is touched - never the name, range, value or labels the user set.
+// Gated by the caller on !configuring && !isGraphLoading, so a workflow load
+// (which never replays disconnects) can't trip it.
+export function resetRowOnDisconnect(node, slotIndex) {
+  const st = readState(node);
+  const s = st.sliders[slotIndex];
+  if (!s) return false;
+  const o = node.outputs?.[slotIndex];
+  if (o && Array.isArray(o.links) && o.links.length > 0) return false; // still wired elsewhere
+  let changed = false;
+  if (s.type === "toggle") {
+    if (s.out !== "auto") { s.out = "auto"; changed = true; }
+  } else if (s.type === "int" || s.type === "float") {
+    s.type = "auto"; changed = true;
+  }
+  if (changed) syncOutputs(node);
+  return changed;
 }
