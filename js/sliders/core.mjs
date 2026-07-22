@@ -587,10 +587,15 @@ export function resolveAutoType(node, slotIndex, link) {
 // the type/out is touched - never the name, range, value or labels the user set.
 // Gated by the caller on !configuring && !isGraphLoading, so a workflow load
 // (which never replays disconnects) can't trip it.
-export function resetRowOnDisconnect(node, slotIndex, prevTarget) {
+export function resetRowOnDisconnect(node, row, prevTarget) {
   const st = readState(node);
-  const s = st.sliders[slotIndex];
-  if (!s) return false;
+  // Re-find the row by IDENTITY, not the index captured when the reset was
+  // scheduled: a row delete between schedule and this deferred fire shifts the
+  // array, so the old index could now point at a DIFFERENT row (and reset it by
+  // mistake). If the row was itself deleted, indexOf is -1 -> no-op.
+  const slotIndex = row ? st.sliders.indexOf(row) : -1;
+  if (slotIndex < 0) return false;
+  const s = row;
   const o = node.outputs?.[slotIndex];
   if (o && Array.isArray(o.links) && o.links.length > 0) return false; // still wired elsewhere
   if (s.type === "auto") return false;

@@ -64,6 +64,18 @@ function rowWiredToTypedTarget(node, i) {
   return resolved === 0;   // couldn't resolve any target -> be safe and keep it locked
 }
 
+// Whether the type picker should be LOCKED (shown as a read-only chip) for this
+// row. Seed / Text / Dropdown are WIRE-DERIVED types the free 5-pill picker
+// can't represent (there is no Seed/Text pill, and converting a dropdown away
+// via a pill zeroes its value) - so they always lock, even when UNWIRED (the one
+// normal way to reach an unwired-yet-typed row is a single-node copy-paste, which
+// keeps the type but drops the wire). Other types lock only while wired to a
+// concrete-typed input; an unwired auto/int/float/toggle keeps the free picker.
+function isRowTypeLocked(node, i, s) {
+  if (s.type === "seed" || s.type === "text" || s.type === "combo") return true;
+  return s.type !== "auto" && rowWiredToTypedTarget(node, i);
+}
+
 function injectCSS() {
   if (document.getElementById("pix-sldp-css")) return;
   const s = document.createElement("style");
@@ -148,7 +160,9 @@ function injectCSS() {
 
 function getNodeScreenRect(node) {
   if (isVueNodes() && node && node.id != null) {
-    const e = document.querySelector(`[data-node-id="${node.id}"]`);
+    // scope to .lg-node (matching alignOutputs) so a breadcrumb / minimap element
+    // that happens to carry data-node-id can't anchor the panel to the wrong spot
+    const e = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
     if (e) return e.getBoundingClientRect();
   }
   const c = app.canvas;
@@ -394,12 +408,12 @@ export function openSlidersPanel(node, onChange) {
       // dropdown into a number, etc. (user-reported). A row still "auto" (not
       // wired, or wired to a "*" pass-through that dictates no type) keeps the
       // free picker so you can set up a control before wiring it.
-      const typeLocked = s.type !== "auto" && rowWiredToTypedTarget(node, i);
+      const typeLocked = isRowTypeLocked(node, i, s);
       let seg;
       if (typeLocked) {
         seg = el("div", "pix-sldp-typelock");
         seg.append(el("span", "lk", "🔒"), el("span", null, TYPE_LABEL[s.type] || s.type));
-        seg.title = "This control's type is set by the input it is wired to. Unplug it to change the type.";
+        seg.title = "This control's type follows the input you plug it into. Wire it (or delete and re-add) to change the type.";
       } else {
         seg = el("div", "pix-sldp-seg");
         [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"], ["combo", "List"]].forEach(([key, label]) => {
@@ -413,9 +427,9 @@ export function openSlidersPanel(node, onChange) {
           b.addEventListener("click", () => {
             // Re-check the lock at CLICK time, not just build time: a wire could
             // have been made on the canvas while a panel field kept focus (which
-            // skips the rebuild), leaving this stale free picker over a now-wired
-            // row. Don't retype a live-wired row - rebuild to its locked chip.
-            if (s.type !== "auto" && rowWiredToTypedTarget(node, i)) { buildRows(); return; }
+            // skips the rebuild), leaving this stale free picker over a now-locked
+            // row. Don't retype a locked row - rebuild to its locked chip.
+            if (isRowTypeLocked(node, i, s)) { buildRows(); return; }
             if (s.type === key) return;
             s.type = key;
             if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)

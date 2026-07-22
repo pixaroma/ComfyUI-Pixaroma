@@ -204,12 +204,18 @@ app.registerExtension({
             // CONDITIONING, ...); drop it on the next tick and tell the user.
             const self = this, lk = link;
             setTimeout(() => {
-              if (!self.graph) return;   // node was deleted - nothing to drop or warn about
+              if (!self.graph || isGraphLoading()) return;   // node gone / a load replay - leave it
               try {
-                self.graph.getNodeById?.(lk.target_id)?.disconnectInput?.(lk.target_slot);
-                self.setDirtyCanvas?.(true, true);
+                const tgt = self.graph.getNodeById?.(lk.target_id);
+                const inp = tgt?.inputs?.[lk.target_slot];
+                // Only sever if that slot STILL holds the exact link we refused - a
+                // fast rewire / undo could have put a VALID wire there meanwhile.
+                if (tgt && inp && inp.link === lk.id) {
+                  tgt.disconnectInput(lk.target_slot);
+                  self.setDirtyCanvas?.(true, true);
+                  showPanelToast("A Control Panel drives numbers, on/off switches, and dropdowns - not that kind of input.");
+                }
               } catch {}
-              showPanelToast("A Control Panel drives numbers, on/off switches, and dropdowns - not that kind of input.");
             }, 0);
           } else {
             // A valid connection that did not re-type the row (re-wired to the
@@ -231,9 +237,17 @@ app.registerExtension({
           // a re-wire to a DIFFERENT input re-adopts it (pattern #19).
           const self = this;
           const prevTarget = link ? { id: link.target_id, slot: link.target_slot } : null;
+          // The reported slotIndex is UNRELIABLE on a disconnect: disconnectInput
+          // and removeLink (both real unwire paths) report the origin output as
+          // slot 0 no matter which row was actually unwired - only disconnectOutput
+          // reports it correctly. The link object carries the true origin_slot, so
+          // trust that. Then capture the ROW object (not the index) so a later row
+          // delete can't retarget the deferred reset onto a shifted-in row.
+          const outSlot = (link && Number.isInteger(link.origin_slot)) ? link.origin_slot : slotIndex;
+          const row = readState(this).sliders[outSlot] || null;
           setTimeout(() => {
             if (!self.graph || isGraphLoading()) return;
-            if (resetRowOnDisconnect(self, slotIndex, prevTarget)) refresh(self);
+            if (resetRowOnDisconnect(self, row, prevTarget)) refresh(self);
             rebuildSlidersPanelFor(self);   // the row dropped to auto: unlock its type in the open panel
           }, 0);
         }
