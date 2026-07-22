@@ -192,6 +192,27 @@ export function addSlider(node) {
   return true;
 }
 
+// The runtime, index-keyed hint maps (value-preservation on re-wire, the rolled
+// seed shown on the face) must shift with the rows when one is removed, or a
+// stale entry leaks onto whatever row later lands on that index (a fresh row
+// wired after a delete could inherit the deleted row's type or seed). Runtime
+// only - never serialized, so this never touches the saved workflow.
+function reindexRuntimeMaps(node, removedIndex) {
+  for (const key of ["_pixWasType", "_pixWasTarget", "_pixSeedRun"]) {
+    const m = node[key];
+    if (!m || typeof m !== "object") continue;
+    const next = {};
+    for (const k of Object.keys(m)) {
+      const ki = Number(k);
+      if (!Number.isInteger(ki)) continue;
+      if (ki < removedIndex) next[ki] = m[k];
+      else if (ki > removedIndex) next[ki - 1] = m[k];
+      // ki === removedIndex: the deleted row's entry is dropped
+    }
+    node[key] = next;
+  }
+}
+
 export function removeSlider(node, index) {
   const st = readState(node);
   if (index < 0 || index >= st.sliders.length) return false;
@@ -199,6 +220,7 @@ export function removeSlider(node, index) {
   // Drop the matching output (and any wire on it) before the state shifts down.
   if (node.outputs && index < node.outputs.length) node.removeOutput(index);
   st.sliders.splice(index, 1);
+  reindexRuntimeMaps(node, index);
   syncOutputs(node);
   return true;
 }
@@ -364,20 +386,29 @@ export function resolveAutoType(node, slotIndex, link) {
     : null;
   if (!twant) return false;   // not a value input - refused in onConnectionsChange
 
-  // If this row was just unplugged from the SAME kind of input, restore its type
-  // (runtime hint from resetRowOnDisconnect, not serialized) so the branch below
-  // RE-ADOPTS and keeps the value the user set, instead of a fresh conversion
-  // that would overwrite it. A re-wire to a DIFFERENT kind is left as "auto" and
-  // converts fresh (adopting the new target's value, which is correct there).
+  // Keep the value the user set ONLY when the SAME wire is replugged - i.e. the
+  // row is re-connected to the exact same target input it was just unplugged
+  // from. Then restore its type (a runtime hint from resetRowOnDisconnect, never
+  // serialized) so the branch below RE-ADOPTS in place instead of a fresh
+  // conversion that would overwrite the value. A re-wire to a DIFFERENT input
+  // (even of the same kind - steps -> cfg, one boolean -> another) must fully
+  // re-adopt that input's name, range and value (pattern #19), so it is left
+  // "auto" and converts fresh. When the previous target is unknown (older builds
+  // don't hand us the removed link on disconnect), fall back to the same-kind
+  // restore so value-preservation still works.
   const wasType = node._pixWasType && node._pixWasType[slotIndex];
+  const wasTarget = node._pixWasTarget && node._pixWasTarget[slotIndex];
   if (node._pixWasType) delete node._pixWasType[slotIndex];
-  if (s.type === "auto" && wasType && (
+  if (node._pixWasTarget) delete node._pixWasTarget[slotIndex];
+  const sameKind =
     (twant === "toggle" && wasType === "toggle") ||
     (twant === "combo" && wasType === "combo") ||
     (twant === "seed" && wasType === "seed") ||
     (twant === "text" && wasType === "text") ||
-    (twant === "number" && (wasType === "int" || wasType === "float"))
-  )) {
+    (twant === "number" && (wasType === "int" || wasType === "float"));
+  const sameTarget = !!(wasTarget && wasTarget.id != null &&
+    String(wasTarget.id) === String(link.target_id) && wasTarget.slot === link.target_slot);
+  if (s.type === "auto" && wasType && sameKind && (sameTarget || !wasTarget)) {
     s.type = wasType;
   }
 
@@ -526,20 +557,23 @@ export function resolveAutoType(node, slotIndex, link) {
 // the type/out is touched - never the name, range, value or labels the user set.
 // Gated by the caller on !configuring && !isGraphLoading, so a workflow load
 // (which never replays disconnects) can't trip it.
-export function resetRowOnDisconnect(node, slotIndex) {
+export function resetRowOnDisconnect(node, slotIndex, prevTarget) {
   const st = readState(node);
   const s = st.sliders[slotIndex];
   if (!s) return false;
   const o = node.outputs?.[slotIndex];
   if (o && Array.isArray(o.links) && o.links.length > 0) return false; // still wired elsewhere
   if (s.type === "auto") return false;
-  // Remember the kind (RUNTIME only, never serialized) so a re-wire to the SAME
-  // kind restores it and KEEPS the value the user set (resolveAutoType reads it).
-  // Then drop the row to "auto" so its output slot returns to "*" and it can be
-  // re-wired to ANY input - a seed's INT slot / a toggle's BOOLEAN slot would
-  // otherwise refuse a wire to a different family. All the OTHER fields (value,
-  // labels, options, seed mode) are left untouched.
+  // Remember the kind AND the exact input we were unplugged from (RUNTIME only,
+  // never serialized) so a replug to that SAME input restores the type and KEEPS
+  // the value the user set (resolveAutoType reads both); a re-wire elsewhere
+  // re-adopts fresh. Then drop the row to "auto" so its output slot returns to
+  // "*" and it can be re-wired to ANY input - a seed's INT slot / a toggle's
+  // BOOLEAN slot would otherwise refuse a wire to a different family. All the
+  // OTHER fields (value, labels, options, seed mode) are left untouched.
   (node._pixWasType = node._pixWasType || {})[slotIndex] = s.type;
+  (node._pixWasTarget = node._pixWasTarget || {})[slotIndex] =
+    prevTarget && prevTarget.id != null ? { id: prevTarget.id, slot: prevTarget.slot } : null;
   s.type = "auto";
   syncOutputs(node);
   return true;

@@ -28,6 +28,16 @@ function el(tag, cls, text) {
   return e;
 }
 
+// The word shown on a locked row's type chip (a seed/text/list row has no pill
+// of its own in the picker, so map every kind to a readable label).
+const TYPE_LABEL = { toggle: "Toggle", combo: "List", seed: "Seed", text: "Text", int: "Int", float: "Float", auto: "Auto" };
+
+// A row is "wired" when its output slot still holds at least one link.
+function rowIsWired(node, i) {
+  const o = node.outputs && node.outputs[i];
+  return !!(o && Array.isArray(o.links) && o.links.length > 0);
+}
+
 function injectCSS() {
   if (document.getElementById("pix-sldp-css")) return;
   const s = document.createElement("style");
@@ -83,6 +93,11 @@ function injectCSS() {
       font:10px 'Segoe UI',sans-serif; padding:4px 0; cursor:pointer; }
     .pix-sldp-seg button:hover { color:#ddd; }
     .pix-sldp-seg button.on { background:var(--acc,${BRAND}); color:#fff; font-weight:600; }
+    /* a wired row's type is fixed by what it is plugged into - shown, not editable */
+    .pix-sldp-typelock { display:flex; align-items:center; justify-content:center; gap:6px;
+      border:1px solid rgba(255,255,255,0.10); border-radius:5px; background:rgba(255,255,255,0.03);
+      color:#9a9a9a; font:11px 'Segoe UI',sans-serif; padding:5px 0; cursor:default; user-select:none; }
+    .pix-sldp-typelock .lk { font-size:10px; opacity:.65; }
     .pix-sldp-del { background:none; border:0; color:#6b6b6b; cursor:pointer; font-size:13px; padding:0; }
     .pix-sldp-del:hover { color:#e0604a; }
     .pix-sldp-del:disabled { opacity:.3; cursor:default; }
@@ -330,25 +345,39 @@ export function openSlidersPanel(node, onChange) {
       name.addEventListener("change", applyName);
       name.addEventListener("blur", applyName);
 
-      const seg = el("div", "pix-sldp-seg");
-      [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"], ["combo", "List"]].forEach(([key, label]) => {
-        const b = el("button", s.type === key ? "on" : null, label);
-        b.title =
-          key === "auto" ? "Decide from the first input this row is connected to"
-          : key === "int" ? "Always send a whole number"
-          : key === "float" ? "Always send a decimal"
-          : key === "toggle" ? "An on / off switch instead of a slider"
-          : "A dropdown - wire it to a picker (sampler, scheduler, ...) to fill its list";
-        b.addEventListener("click", () => {
-          if (s.type === key) return;
-          s.type = key;
-          if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)
-          if (key === "combo") ensureCombo(s);
-          fire();
-          buildRows();
+      // The type follows whatever the row is wired to, and re-types on a re-wire
+      // (pattern #19). While it is CONNECTED the type is LOCKED - shown as a plain
+      // chip, not the pill picker - so a seed can't be turned into a switch, a
+      // dropdown into a number, etc. (user-reported). A row still "auto" (not
+      // wired, or wired to a "*" pass-through that dictates no type) keeps the
+      // free picker so you can set up a control before wiring it.
+      const typeLocked = s.type !== "auto" && rowIsWired(node, i);
+      let seg;
+      if (typeLocked) {
+        seg = el("div", "pix-sldp-typelock");
+        seg.append(el("span", "lk", "🔒"), el("span", null, TYPE_LABEL[s.type] || s.type));
+        seg.title = "This control's type is set by the input it is wired to. Unplug it to change the type.";
+      } else {
+        seg = el("div", "pix-sldp-seg");
+        [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"], ["combo", "List"]].forEach(([key, label]) => {
+          const b = el("button", s.type === key ? "on" : null, label);
+          b.title =
+            key === "auto" ? "Decide from the first input this row is connected to"
+            : key === "int" ? "Always send a whole number"
+            : key === "float" ? "Always send a decimal"
+            : key === "toggle" ? "An on / off switch instead of a slider"
+            : "A dropdown - wire it to a picker (sampler, scheduler, ...) to fill its list";
+          b.addEventListener("click", () => {
+            if (s.type === key) return;
+            s.type = key;
+            if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)
+            if (key === "combo") ensureCombo(s);
+            fire();
+            buildRows();
+          });
+          seg.appendChild(b);
         });
-        seg.appendChild(b);
-      });
+      }
 
       const del = el("button", "pix-sldp-del", "✕");
       del.title = st.sliders.length > 1 ? "Remove this row" : "A panel keeps at least one row";

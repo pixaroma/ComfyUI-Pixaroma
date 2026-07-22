@@ -219,10 +219,14 @@ app.registerExtension({
           // to a boolean (and become a switch) or a different number. LiteGraph
           // clears output.links AFTER this callback returns, so defer the check
           // one tick until the slot's remaining connections have settled.
+          // Capture the input we were just unplugged from (LiteGraph hands us the
+          // removed link here) so a replug to the SAME input keeps the value while
+          // a re-wire to a DIFFERENT input re-adopts it (pattern #19).
           const self = this;
+          const prevTarget = link ? { id: link.target_id, slot: link.target_slot } : null;
           setTimeout(() => {
             if (!self.graph || isGraphLoading()) return;
-            if (resetRowOnDisconnect(self, slotIndex)) refresh(self);
+            if (resetRowOnDisconnect(self, slotIndex, prevTarget)) refresh(self);
           }, 0);
         }
       }
