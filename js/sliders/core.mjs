@@ -5,7 +5,11 @@
 //
 //   { version, accent, sliders: [ { name, type, min, max, step, value } ] }
 //
-//   type   "auto" until the slider is first connected, then "int" | "float".
+//   type   "auto" until first connected, then "int" | "float" (a number slider),
+//          or "toggle" (an on/off switch). A toggle row also carries: value 0/1,
+//          def 0/1 (reset target), out "auto"|"bool"|"int" (adopted output kind),
+//          onLabel / offLabel (display-only state words). min/max/step are ignored
+//          for a toggle.
 //   accent null = follow the global default setting; a hex string overrides it.
 
 import { app } from "/scripts/app.js";
@@ -96,8 +100,11 @@ export function clampValue(s, v) {
 // in onLabel / offLabel, and the output kind it has adopted in `out` ("auto"
 // until it is wired, then "bool" | "int"). min / max / step are ignored for it.
 export function ensureToggle(s) {
-  s.value = Number(s.value) ? 1 : 0;
-  s.def = Number(s.def) ? 1 : 0;
+  const v = Number(s.value), d = Number(s.def);
+  // Non-finite / garbage -> Off, matching Python's _value_of (a hand-edited file
+  // could carry "Infinity"; normal UI writes only 0/1).
+  s.value = (Number.isFinite(v) && v !== 0) ? 1 : 0;
+  s.def = (Number.isFinite(d) && d !== 0) ? 1 : 0;
   if (typeof s.onLabel !== "string") s.onLabel = "On";
   if (typeof s.offLabel !== "string") s.offLabel = "Off";
   if (s.out !== "bool" && s.out !== "int") s.out = "auto";
