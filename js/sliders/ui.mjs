@@ -392,7 +392,14 @@ function makeRowEl(node, index) {
     e.stopPropagation();
     const s = slider();
     if (!s || s.type !== "seed") return;
+    const goingFixed = s.mode === "random";   // R is turning randomize OFF
     s.mode = s.mode === "random" ? "fixed" : "random";
+    // Lock in the seed that JUST RAN (the last rolled value shown on the face),
+    // not the older stored one - matches ComfyUI's native randomize -> fixed.
+    if (goingFixed) {
+      const rolled = node._pixSeedRun?.[index];
+      if (Number.isFinite(rolled)) { s.value = rolled; if (node._pixSeedRun) delete node._pixSeedRun[index]; }
+    }
     paintRow(node, index);
     node.graph?.setDirtyCanvas?.(true, true);
   });

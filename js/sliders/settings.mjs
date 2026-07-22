@@ -411,6 +411,11 @@ export function openSlidersPanel(node, onChange) {
             : key === "toggle" ? "An on / off switch instead of a slider"
             : "A dropdown - wire it to a picker (sampler, scheduler, ...) to fill its list";
           b.addEventListener("click", () => {
+            // Re-check the lock at CLICK time, not just build time: a wire could
+            // have been made on the canvas while a panel field kept focus (which
+            // skips the rebuild), leaving this stale free picker over a now-wired
+            // row. Don't retype a live-wired row - rebuild to its locked chip.
+            if (s.type !== "auto" && rowWiredToTypedTarget(node, i)) { buildRows(); return; }
             if (s.type === key) return;
             s.type = key;
             if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)

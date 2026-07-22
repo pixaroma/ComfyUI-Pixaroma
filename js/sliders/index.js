@@ -131,15 +131,18 @@ app.registerExtension({
       _created?.apply(this, arguments);
       readState(this);
       syncOutputs(this);
-      refresh(this);
 
-      // Pin the rows to the top of the body. WITHOUT this, _arrangeWidgets
+      // Pin the rows to the top of the body - set BEFORE the first refresh
+      // (matching onConfigure) so no synchronous legacy layout pass can compute
+      // widget.y from the old slot-bound formula. WITHOUT this, _arrangeWidgets
       // starts the widgets below the measured slot bounds - and since we park
       // each output ON a row, the slot bounds then depend on widget.y, which
-      // depends on the slot bounds... a feedback loop that walks the node
-      // taller on every frame (measured: 62 -> 102px and climbing). This is the
-      // field litegraph itself points at for custom slot layouts.
+      // depends on the slot bounds... a feedback loop that walks the node taller
+      // on every frame (measured: 62 -> 102px and climbing). This is the field
+      // litegraph itself points at for custom slot layouts.
       this.widgets_start_y = 2;
+
+      refresh(this);
 
       // Legacy reserves a slot row per output; our dots live on the rows, so we
       // own the size. MIN_W (not the live width) keeps the drag-min honest -
@@ -294,14 +297,16 @@ app.registerExtension({
 // INJECT ONLY - never prune here (Export (API) serialises this same output).
 function buildIndex() {
   const index = new Map();
+  const seen = new Set();
   const visit = (graph) => {
-    if (!graph) return;
+    if (!graph || seen.has(graph)) return;   // guard against a subgraph-reference cycle (would stack-overflow)
+    seen.add(graph);
     const nodes = graph._nodes || graph.nodes || [];
     for (const n of nodes) {
       if (!n) continue;
       if (n.comfyClass === CLASS || n.type === CLASS) index.set(String(n.id), n);
       const inner = n.subgraph || n.graph || n._graph;
-      if (inner && inner !== graph) visit(inner);
+      if (inner) visit(inner);
     }
   };
   visit(app.graph);

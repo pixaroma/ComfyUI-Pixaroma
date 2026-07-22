@@ -43,14 +43,16 @@ export function readState(node) {
     node.properties[STATE_PROP] = st;
   }
   if (!Array.isArray(st.sliders) || !st.sliders.length) st.sliders = [defaultSlider(1)];
-  // Drop any non-object row a hand-edited / corrupt file could carry (null, a
+  // Heal any non-object row a hand-edited / corrupt file could carry (null, a
   // string, ...): normalizeSliders and the graphToPrompt map both do `s.type` and
   // would throw on `null.type` - and that throw aborts the whole-graph injection
-  // loop, silently skipping OTHER Control Panel nodes. Guarded by .some so a clean
-  // file is never rewritten (byte-stable on load).
+  // loop, silently skipping OTHER Control Panel nodes. REPLACE in place (keep the
+  // position + row count) rather than filter it out: syncOutputs trims outputs
+  // from the tail, so DROPPING a middle row would re-pair a wired output with the
+  // wrong row's data. Guarded by .some so a clean file is never rewritten (byte-
+  // stable on load).
   if (st.sliders.some((s) => !s || typeof s !== "object")) {
-    st.sliders = st.sliders.filter((s) => s && typeof s === "object");
-    if (!st.sliders.length) st.sliders = [defaultSlider(1)];
+    st.sliders = st.sliders.map((s, i) => (s && typeof s === "object") ? s : defaultSlider(i + 1));
   }
   if (st.accent === undefined) st.accent = null;
   return st;
