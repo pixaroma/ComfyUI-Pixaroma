@@ -15,6 +15,9 @@ function isValueTarget(node, link) {
   const inp = target?.inputs?.[link.target_slot];
   const t = String(inp?.type || "").toUpperCase();
   if (t === "INT" || t === "FLOAT" || t === "BOOLEAN" || t === "COMBO" || t === "STRING") return true;
+  // "*" or no type = a pass-through / any input (Reroute, Set, Preview) - a valid,
+  // common routing target, so never sever it.
+  if (t === "*" || t === "") return true;
   return !!comboOptionsOf(target, inp?.widget?.name || inp?.name);
 }
 
@@ -173,11 +176,6 @@ app.registerExtension({
         normalizeSliders(this);
         syncOutputs(this);
         refresh(this);          // rebuild the rows for the restored sliders
-        // Heal a node saved with the old oversized default (sizing bug, 2026-07-22).
-        // Only fires when the saved height is way past the content, so a correctly
-        // sized node is untouched (no dirty); a buggy one snaps down once.
-        const wantH = bodyHeight(this) + (isVueNodes() ? 52 : 0);
-        if (Array.isArray(this.size) && this.size[1] > wantH + 24) this.size[1] = wantH;
         queueMicrotask(() => {
           watchAlign(this);
           scheduleAlign(this);
@@ -202,12 +200,19 @@ app.registerExtension({
             // CONDITIONING, ...); drop it on the next tick and tell the user.
             const self = this, lk = link;
             setTimeout(() => {
+              if (!self.graph) return;   // node was deleted - nothing to drop or warn about
               try {
-                self.graph?.getNodeById?.(lk.target_id)?.disconnectInput?.(lk.target_slot);
+                self.graph.getNodeById?.(lk.target_id)?.disconnectInput?.(lk.target_slot);
                 self.setDirtyCanvas?.(true, true);
               } catch {}
               showPanelToast("A Control Panel drives numbers, on/off switches, and dropdowns - not that kind of input.");
             }, 0);
+          } else {
+            // A valid connection that did not re-type the row (re-wired to the
+            // SAME kind, or a "*" pass-through): re-narrow the freed output slot
+            // and repaint (it may have shown as an auto slider while unplugged).
+            syncOutputs(this);
+            refresh(this);
           }
         } else {
           // Unplugged: a number slider drops back to auto so it can be re-wired

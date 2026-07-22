@@ -167,14 +167,15 @@ function makeDraggable(panel, handle) {
 function outsideClose(e) {
   if (!_panel) return;
   if (_panel.contains(e.target)) return;
-  // the colour picker and the combo filter popup live outside the panel
-  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop")) return;
+  // the colour picker, the combo filter popup, and a node-face dropdown popup all
+  // live outside the panel
+  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop, .pix-sld-cpop")) return;
   closeSlidersPanel();
 }
 function escClose(e) {
   if (e.key === "Escape" && _panel) {
-    // let the colour picker / filter popup take Escape first
-    if (document.querySelector(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop")) return;
+    // let the colour picker / filter popup / dropdown popup take Escape first
+    if (document.querySelector(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop, .pix-sld-cpop")) return;
     e.stopPropagation();
     closeSlidersPanel();
   }

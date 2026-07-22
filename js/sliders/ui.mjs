@@ -20,7 +20,7 @@
 //             return to the top-right corner and the node keeps working.
 
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
-import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible, randomSeed } from "./core.mjs";
+import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible, randomSeed, MAX_SLIDERS } from "./core.mjs";
 
 export const ROW_H = 23;    // height of one slider row
 export const ROW_GAP = 6;   // gap between rows (matches the Vue widgets grid gap-y-1 + our own)
@@ -680,9 +680,9 @@ export function renderAll(node) {
   for (let i = 0; i < (node._pixSldRows?.length || 0); i++) paintRow(node, i);
   const addEl = node._pixSldAdd?.element;
   if (addEl) {
-    const full = st.sliders.length >= 16;
+    const full = st.sliders.length >= MAX_SLIDERS;
     addEl.classList.toggle("full", full);
-    addEl.textContent = full ? "16 controls max" : "+ Add control";
+    addEl.textContent = full ? `${MAX_SLIDERS} controls max` : "+ Add control";
     addEl.style.setProperty("--acc", accentOf(node));
   }
   scheduleAlign(node);

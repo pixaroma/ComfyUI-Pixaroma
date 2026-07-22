@@ -124,8 +124,12 @@ export function ensureCombo(s) {
   if (!Array.isArray(s.options)) s.options = [];
   if (!Array.isArray(s.allowed)) s.allowed = [];
   const vis = comboVisible(s);
-  if (typeof s.value !== "string" || !vis.includes(s.value)) s.value = vis[0] || "";
-  if (typeof s.def !== "string" || !vis.includes(s.def)) s.def = vis[0] || "";
+  // Keep the current pick if it is still a VALID option, even when it has been
+  // filtered out of the visible list - narrowing the Show-options filter must not
+  // silently change what the workflow runs. Only fall back when it is not an
+  // option at all (e.g. the picker's list changed on a re-wire).
+  if (typeof s.value !== "string" || !s.options.includes(s.value)) s.value = vis[0] || s.options[0] || "";
+  if (typeof s.def !== "string" || !s.options.includes(s.def)) s.def = vis[0] || s.options[0] || "";
 }
 
 // Read a target input's dropdown option list, whether it is still a live combo
@@ -149,7 +153,9 @@ export function randomSeed() { return Math.floor(Math.random() * 0x100000000); }
 export function ensureSeed(s) {
   let v = Number(s.value);
   if (!Number.isFinite(v) || v < 0) v = randomSeed();
-  s.value = Math.floor(v);
+  // Cap at Python's own value clamp (1e12) so a hand-typed huge seed shows the
+  // same number JS serialises and Python actually runs with.
+  s.value = Math.min(Math.floor(v), 1e12);
   if (s.mode !== "random") s.mode = "fixed";
 }
 
@@ -357,6 +363,24 @@ export function resolveAutoType(node, slotIndex, link) {
     : t === "STRING" ? "text"
     : null;
   if (!twant) return false;   // not a value input - refused in onConnectionsChange
+
+  // If this row was just unplugged from the SAME kind of input, restore its type
+  // (runtime hint from resetRowOnDisconnect, not serialized) so the branch below
+  // RE-ADOPTS and keeps the value the user set, instead of a fresh conversion
+  // that would overwrite it. A re-wire to a DIFFERENT kind is left as "auto" and
+  // converts fresh (adopting the new target's value, which is correct there).
+  const wasType = node._pixWasType && node._pixWasType[slotIndex];
+  if (node._pixWasType) delete node._pixWasType[slotIndex];
+  if (s.type === "auto" && wasType && (
+    (twant === "toggle" && wasType === "toggle") ||
+    (twant === "combo" && wasType === "combo") ||
+    (twant === "seed" && wasType === "seed") ||
+    (twant === "text" && wasType === "text") ||
+    (twant === "number" && (wasType === "int" || wasType === "float"))
+  )) {
+    s.type = wasType;
+  }
+
   if (s.type === "toggle" && twant === "toggle") return resolveToggleOut(node, s, slotIndex, link);
   if (s.type === "combo" && twant === "combo") return resolveComboOptions(node, s, slotIndex, link);
   if (s.type === "seed" && twant === "seed") return resolveSeedRewire(node, s, slotIndex, link);
@@ -454,7 +478,10 @@ export function resolveAutoType(node, slotIndex, link) {
   const w = target?.widgets?.find((x) => x.name === wname);
   const o = w?.options || {};
 
-  if (isUntouched(s, slotIndex)) {
+  // Adopt the target's range only when the row's range is still the default
+  // 0..1 / 0.01 - NAME-INDEPENDENT (a name adopted from an earlier connection
+  // must not block range adoption on a later number conversion).
+  if (Number(s.min) === 0 && Number(s.max) === 1 && Number(s.step) === 0.01) {
     // step2 is the true increment; `step` is inflated x10 by ComfyUI.
     let step = Number(o.step2);
     if (!Number.isFinite(step) || step <= 0) step = s.type === "int" ? 1 : 0.01;
@@ -506,12 +533,13 @@ export function resetRowOnDisconnect(node, slotIndex) {
   const o = node.outputs?.[slotIndex];
   if (o && Array.isArray(o.links) && o.links.length > 0) return false; // still wired elsewhere
   if (s.type === "auto") return false;
-  // Free the row: drop to "auto" so its output slot returns to "*" and it can be
-  // re-wired to ANY input - a switch you unplug can then go onto a seed, a number,
-  // a picker, etc. (A seed's INT slot / a toggle's BOOLEAN slot would otherwise
-  // refuse the new wire.) Adopted fields - the switch labels, the dropdown
-  // options, the seed mode - stay on the object and come back if it is re-wired
-  // to the same kind of input.
+  // Remember the kind (RUNTIME only, never serialized) so a re-wire to the SAME
+  // kind restores it and KEEPS the value the user set (resolveAutoType reads it).
+  // Then drop the row to "auto" so its output slot returns to "*" and it can be
+  // re-wired to ANY input - a seed's INT slot / a toggle's BOOLEAN slot would
+  // otherwise refuse a wire to a different family. All the OTHER fields (value,
+  // labels, options, seed mode) are left untouched.
+  (node._pixWasType = node._pixWasType || {})[slotIndex] = s.type;
   s.type = "auto";
   syncOutputs(node);
   return true;
