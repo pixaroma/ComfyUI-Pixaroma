@@ -216,11 +216,13 @@ app.registerExtension({
             refresh(this);
             rebuildSlidersPanelFor(this);
           }
-        } else {
-          // Unplugged: a number slider drops back to auto so it can be re-wired
-          // to a boolean (and become a switch) or a different number. LiteGraph
-          // clears output.links AFTER this callback returns, so defer the check
-          // one tick until the slot's remaining connections have settled.
+        } else if (!this._pixSldRemovingRow) {
+          // Unplugged BY THE USER (not our own removeOutput during a row delete,
+          // whose stale slotIndex would reset whatever row shifted into it).
+          // A number slider drops back to auto so it can be re-wired to a boolean
+          // (and become a switch) or a different number. LiteGraph clears
+          // output.links AFTER this callback returns, so defer the check one tick
+          // until the slot's remaining connections have settled.
           // Capture the input we were just unplugged from (LiteGraph hands us the
           // removed link here) so a replug to the SAME input keeps the value while
           // a re-wire to a DIFFERENT input re-adopts it (pattern #19).
@@ -340,7 +342,10 @@ app.graphToPrompt = async function (...args) {
               // Random mode rolls a fresh seed each run; the rolled value lives in
               // a RUNTIME field (never node.properties) so a run can't dirty the
               // saved workflow - only shown on the node face.
-              let v = Math.floor(Number(s.value) || 0);
+              // Clamp to the seed contract (0 .. 1e12) - matches ensureSeed, in
+              // case a value slipped past normalize (e.g. an external script wrote
+              // node.properties directly). Python clamps magnitude but not sign.
+              let v = Math.max(0, Math.min(Math.floor(Number(s.value) || 0), 1e12));
               if (s.mode === "random") {
                 v = randomSeed();
                 (node._pixSeedRun = node._pixSeedRun || {})[i] = v;

@@ -36,11 +36,22 @@ function defaultState() {
 export function readState(node) {
   if (!node.properties) node.properties = {};
   let st = node.properties[STATE_PROP];
-  if (!st || typeof st !== "object") {
+  // typeof [] === "object", so exclude arrays too (a hand-edited array-shaped
+  // state would otherwise slip past and never heal).
+  if (!st || typeof st !== "object" || Array.isArray(st)) {
     st = defaultState();
     node.properties[STATE_PROP] = st;
   }
   if (!Array.isArray(st.sliders) || !st.sliders.length) st.sliders = [defaultSlider(1)];
+  // Drop any non-object row a hand-edited / corrupt file could carry (null, a
+  // string, ...): normalizeSliders and the graphToPrompt map both do `s.type` and
+  // would throw on `null.type` - and that throw aborts the whole-graph injection
+  // loop, silently skipping OTHER Control Panel nodes. Guarded by .some so a clean
+  // file is never rewritten (byte-stable on load).
+  if (st.sliders.some((s) => !s || typeof s !== "object")) {
+    st.sliders = st.sliders.filter((s) => s && typeof s === "object");
+    if (!st.sliders.length) st.sliders = [defaultSlider(1)];
+  }
   if (st.accent === undefined) st.accent = null;
   return st;
 }
@@ -177,8 +188,9 @@ export function normalizeSliders(node) {
       // A whole-number slider must have a whole-number step: <1 or non-finite
       // becomes 1, and a typed 2.5 is rounded (else clampValue snaps to a
       // fractional grid and the integer ladder comes out uneven: 3,5,8,10,...).
-      const st = Number(s.step);
-      s.step = (!Number.isFinite(st) || st < 1) ? 1 : Math.round(st);
+      // (Named stp, not st, so it doesn't shadow the outer readState result.)
+      const stp = Number(s.step);
+      s.step = (!Number.isFinite(stp) || stp < 1) ? 1 : Math.round(stp);
       s.min = Math.round(Number(s.min) || 0);
       s.max = Math.round(Number(s.max) || 0);
     }
@@ -220,11 +232,21 @@ export function removeSlider(node, index) {
   const st = readState(node);
   if (index < 0 || index >= st.sliders.length) return false;
   if (st.sliders.length <= 1) return false; // always keep one
-  // Drop the matching output (and any wire on it) before the state shifts down.
-  if (node.outputs && index < node.outputs.length) node.removeOutput(index);
-  st.sliders.splice(index, 1);
-  reindexRuntimeMaps(node, index);
-  syncOutputs(node);
+  // removeOutput on a WIRED row fires onConnectionsChange (disconnect), whose
+  // reset is deferred one tick (pattern #13) closed over THIS index - but the
+  // splice below shifts every higher row down, so a tick later that index points
+  // at a different (shifted-in) row and would wrongly reset its type. Flag the
+  // delete so onConnectionsChange skips the reset for our own removeOutput.
+  node._pixSldRemovingRow = true;
+  try {
+    // Drop the matching output (and any wire on it) before the state shifts down.
+    if (node.outputs && index < node.outputs.length) node.removeOutput(index);
+    st.sliders.splice(index, 1);
+    reindexRuntimeMaps(node, index);
+    syncOutputs(node);
+  } finally {
+    node._pixSldRemovingRow = false;
+  }
   return true;
 }
 

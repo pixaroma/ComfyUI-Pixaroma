@@ -490,7 +490,10 @@ function openComboPopup(node, index, anchorEl) {
     item.addEventListener("click", (e) => {
       e.stopPropagation();
       const ss = readState(node).sliders[index];
-      if (ss) { ss.value = opt; paintRow(node, index); node.graph?.setDirtyCanvas?.(true, true); }
+      // Guard the type: a sibling row may have been deleted while this popup was
+      // open, shifting a different row into `index` - never stamp an option string
+      // into a non-combo row (it would break that row's Number() math).
+      if (ss && ss.type === "combo") { ss.value = opt; paintRow(node, index); node.graph?.setDirtyCanvas?.(true, true); }
       closeComboPopup();
     });
     pop.appendChild(item);
@@ -635,6 +638,10 @@ export function paintRow(node, index) {
 export function syncRowWidgets(node, onAdd) {
   const st = readState(node);
   const rows = node._pixSldRows || (node._pixSldRows = []);
+
+  // A shrink (a row was deleted) shifts every index below it; any open node-face
+  // option popup captured a now-stale index, so close it before the rows change.
+  if (rows.length > st.sliders.length) closeComboPopup();
 
   while (rows.length > st.sliders.length) {
     const w = rows.pop();

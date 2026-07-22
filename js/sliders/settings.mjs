@@ -50,17 +50,18 @@ function rowWiredToTypedTarget(node, i) {
     if (!lk && typeof graph?.links?.get === "function") lk = graph.links.get(lid);
     return lk;
   };
-  let inspected = 0;
+  let resolved = 0;
   for (const lid of links) {
     const lk = getLink(lid);
     if (!lk) continue;
-    inspected++;
-    const tgt = graph.getNodeById?.(lk.target_id);
+    const tgt = graph?.getNodeById?.(lk.target_id);
     const inp = tgt?.inputs?.[lk.target_slot];
-    const t = String(inp?.type || "").toUpperCase();
-    if ((t && t !== "*") || comboOptionsOf(tgt, inp?.widget?.name || inp?.name)) return true;
+    if (!tgt || !inp) continue;   // dangling / unresolvable target - inconclusive, don't count
+    resolved++;
+    const t = String(inp.type || "").toUpperCase();
+    if ((t && t !== "*") || comboOptionsOf(tgt, inp.widget?.name || inp.name)) return true;
   }
-  return inspected === 0;   // couldn't inspect any link -> be safe and keep it locked
+  return resolved === 0;   // couldn't resolve any target -> be safe and keep it locked
 }
 
 function injectCSS() {
@@ -245,6 +246,11 @@ export function closeSlidersPanelFor(node) {
 // (unlocked) picker on a now-wired row, bypassing the type lock.
 export function rebuildSlidersPanelFor(node) {
   if (_panel && _panelNode === node && _rebuildRows) {
+    // Don't tear the rows down while the user is mid-edit in a panel field: a
+    // canvas wire change firing this would destroy the focused input and lose the
+    // characters they just typed. The lock state refreshes on the next open/edit.
+    const ae = document.activeElement;
+    if (ae && _panel.contains(ae) && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA")) return;
     try { _rebuildRows(); } catch {}
   }
 }
@@ -535,6 +541,11 @@ export function openSlidersPanel(node, onChange) {
   sw.title = "Pick the colour these controls paint with";
   sw.style.background = accentOf(node);
   sw.addEventListener("click", () => {
+    // Close any picker already open on this swatch first - a repeat click won't
+    // self-close it (the picker exempts its own anchor), so without this each
+    // click stacks another live popup and only the last is tracked for teardown.
+    try { _cpHandle?.close(); } catch {}
+    _cpHandle = null;
     // The LIVE picker (roomy SV plane + hue + hex + button-safe swatches) so the
     // sliders recolour live as you drag, like the Group Colors picker. No
     // transparent tile - an accent is always a colour.
