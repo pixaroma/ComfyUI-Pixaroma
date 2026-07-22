@@ -12,7 +12,7 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_picker.mjs";
 import {
   readState, normalizeSliders, addSlider, removeSlider, syncOutputs,
-  accentOf, BRAND, ACCENT_SETTING, MAX_SLIDERS, clampValue,
+  accentOf, BRAND, ACCENT_SETTING, MAX_SLIDERS, clampValue, ensureToggle,
 } from "./core.mjs";
 
 let _panel = null;
@@ -33,7 +33,7 @@ function injectCSS() {
   s.id = "pix-sldp-css";
   s.textContent = `
     .pix-sldp {
-      position:fixed; z-index:10010; width:530px; max-width:94vw; background:#1a1a1a;
+      position:fixed; z-index:10010; width:560px; max-width:94vw; background:#1a1a1a;
       border:1px solid #3a3a3a; border-radius:10px; box-shadow:0 18px 50px rgba(0,0,0,0.6);
       color:#d8d8d8; font:12px 'Segoe UI',-apple-system,sans-serif; overflow:hidden;
     }
@@ -43,9 +43,9 @@ function injectCSS() {
     .pix-sldp-t .x:hover { color:#fff; }
     .pix-sldp-b { padding:12px; display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow-y:auto; }
 
-    .pix-sldp-head { display:grid; grid-template-columns:1fr 96px 56px 56px 56px 22px; gap:8px;
-      font-size:9.5px; letter-spacing:.08em; text-transform:uppercase; color:#7a7a7a; padding:0 6px; }
-    .pix-sldp-row { display:grid; grid-template-columns:1fr 96px 56px 56px 56px 22px; gap:8px; align-items:center;
+    .pix-sldp-head { display:grid; grid-template-columns:1fr 140px 58px 58px 58px 22px; gap:8px;
+      font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:#7a7a7a; padding:0 6px; }
+    .pix-sldp-row { display:grid; grid-template-columns:1fr 140px 58px 58px 58px 22px; gap:8px; align-items:center;
       background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:6px; padding:6px; }
     .pix-sldp-row input {
       width:100%; box-sizing:border-box; background:#1d1d1d; border:1px solid #444; border-radius:4px;
@@ -201,7 +201,7 @@ export function openSlidersPanel(node, onChange) {
     const st = readState(node);
 
     const head = el("div", "pix-sldp-head");
-    ["Name", "Type", "Min", "Max", "Step", ""].forEach((h) => head.appendChild(el("span", null, h)));
+    ["Name", "Type", "Min · On", "Max · Off", "Step · Def", ""].forEach((h) => head.appendChild(el("span", null, h)));
     body.appendChild(head);
 
     st.sliders.forEach((s, i) => {
@@ -217,54 +217,92 @@ export function openSlidersPanel(node, onChange) {
       name.addEventListener("blur", () => { s.name = name.value.trim(); fire(); });
 
       const seg = el("div", "pix-sldp-seg");
-      [["auto", "Auto"], ["int", "Int"], ["float", "Float"]].forEach(([key, label]) => {
+      [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"]].forEach(([key, label]) => {
         const b = el("button", s.type === key ? "on" : null, label);
-        b.title = key === "auto"
-          ? "Decide from the first input this slider is connected to"
-          : key === "int" ? "Always send a whole number" : "Always send a decimal";
+        b.title =
+          key === "auto" ? "Decide from the first input this row is connected to"
+          : key === "int" ? "Always send a whole number"
+          : key === "float" ? "Always send a decimal"
+          : "An on / off switch instead of a slider";
         b.addEventListener("click", () => {
+          if (s.type === key) return;
           s.type = key;
+          if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)
           fire();
           buildRows();
         });
         seg.appendChild(b);
       });
 
-      const num = (key) => {
-        const inp = el("input");
-        inp.type = "text";
-        inp.value = String(s[key]);
-        inp.addEventListener("keydown", (e) => e.stopPropagation());
-        const apply = () => {
-          const v = parseFloat(inp.value);
-          if (Number.isFinite(v)) s[key] = v;
-          // Put a back-to-front range the right way round and STORE it. Every
-          // reader (the fill, the drag mapping) has to agree on which end is
-          // which, or the slider paints from the wrong side and drags backwards.
-          if (Number(s.min) > Number(s.max)) {
-            const t = s.min; s.min = s.max; s.max = t;
-          }
-          fire();                       // re-clamps the value into the new range
-          inp.value = String(s[key]);
-          minInput.value = String(s.min);
-          maxInput.value = String(s.max);
-        };
-        inp.addEventListener("change", apply);
-        inp.addEventListener("blur", apply);
-        return inp;
-      };
-      const minInput = num("min");
-      const maxInput = num("max");
-      const stepInput = num("step");
-
       const del = el("button", "pix-sldp-del", "✕");
-      del.title = st.sliders.length > 1 ? "Remove this slider" : "A panel keeps at least one slider";
+      del.title = st.sliders.length > 1 ? "Remove this row" : "A panel keeps at least one row";
       del.disabled = st.sliders.length <= 1;
       del.addEventListener("click", () => {
         if (removeSlider(node, i)) { fire(); buildRows(); }
       });
 
-      row.append(name, seg, minInput, maxInput, stepInput, del);
+      // The last three columns follow the row's type: numbers for a slider,
+      // the two state words + a default for a toggle.
+      let c3, c4, c5;
+      if (s.type === "toggle") {
+        const txt = (key, ph) => {
+          const inp = el("input");
+          inp.type = "text";
+          inp.value = String(s[key] ?? "");
+          inp.placeholder = ph;
+          inp.maxLength = 16;
+          inp.addEventListener("keydown", (e) => e.stopPropagation());
+          const apply = () => { s[key] = inp.value; fire(); };  // labels are display-only
+          inp.addEventListener("change", apply);
+          inp.addEventListener("blur", apply);
+          return inp;
+        };
+        c3 = txt("onLabel", "On");
+        c4 = txt("offLabel", "Off");
+
+        c5 = el("div", "pix-sldp-seg");
+        [["0", "Off"], ["1", "On"]].forEach(([v, label]) => {
+          const b = el("button", String(Number(s.def) || 0) === v ? "on" : null, label);
+          b.title = "The state this switch starts in and returns to on Reset";
+          b.addEventListener("click", () => {
+            s.def = Number(v);
+            s.value = s.def;                 // reflect the choice on the node face now
+            fire();
+            buildRows();
+          });
+          c5.appendChild(b);
+        });
+      } else {
+        const num = (key) => {
+          const inp = el("input");
+          inp.type = "text";
+          inp.value = String(s[key]);
+          inp.addEventListener("keydown", (e) => e.stopPropagation());
+          const apply = () => {
+            const v = parseFloat(inp.value);
+            if (Number.isFinite(v)) s[key] = v;
+            // Put a back-to-front range the right way round and STORE it. Every
+            // reader (the fill, the drag mapping) has to agree on which end is
+            // which, or the slider paints from the wrong side and drags backwards.
+            if (Number(s.min) > Number(s.max)) {
+              const t = s.min; s.min = s.max; s.max = t;
+            }
+            fire();                       // re-clamps the value into the new range
+            inp.value = String(s[key]);
+            minInput.value = String(s.min);
+            maxInput.value = String(s.max);
+          };
+          inp.addEventListener("change", apply);
+          inp.addEventListener("blur", apply);
+          return inp;
+        };
+        const minInput = num("min");
+        const maxInput = num("max");
+        const stepInput = num("step");
+        c3 = minInput; c4 = maxInput; c5 = stepInput;
+      }
+
+      row.append(name, seg, c3, c4, c5, del);
       body.appendChild(row);
     });
 
@@ -323,10 +361,13 @@ export function openSlidersPanel(node, onChange) {
   });
 
   const reset = el("button", "pix-sldp-btn", "Reset values");
-  reset.title = "Send every slider back to the middle of its range";
+  reset.title = "Send every slider to the middle of its range, and every switch to its default";
   reset.addEventListener("click", () => {
     const st = readState(node);
-    for (const s of st.sliders) s.value = clampValue(s, (Number(s.min) + Number(s.max)) / 2);
+    for (const s of st.sliders) {
+      if (s.type === "toggle") { s.value = Number(s.def) ? 1 : 0; continue; }
+      s.value = clampValue(s, (Number(s.min) + Number(s.max)) / 2);
+    }
     fire();
   });
 

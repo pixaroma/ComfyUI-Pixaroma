@@ -91,11 +91,24 @@ export function clampValue(s, v) {
   return Number(n.toFixed(decimalsOf(s)));
 }
 
+// A toggle row is a slider row with type "toggle". It stores its live state in
+// `value` (0 / 1), the state it resets to in `def` (0 / 1), its two state words
+// in onLabel / offLabel, and the output kind it has adopted in `out` ("auto"
+// until it is wired, then "bool" | "int"). min / max / step are ignored for it.
+export function ensureToggle(s) {
+  s.value = Number(s.value) ? 1 : 0;
+  s.def = Number(s.def) ? 1 : 0;
+  if (typeof s.onLabel !== "string") s.onLabel = "On";
+  if (typeof s.offLabel !== "string") s.offLabel = "Off";
+  if (s.out !== "bool" && s.out !== "int") s.out = "auto";
+}
+
 // Re-clamp every slider (after a range or type edit in the settings panel).
 export function normalizeSliders(node) {
   const st = readState(node);
   if (st.sliders.length > MAX_SLIDERS) st.sliders.length = MAX_SLIDERS;
   for (const s of st.sliders) {
+    if (s.type === "toggle") { ensureToggle(s); continue; }
     if (s.type === "int") {
       // A whole-number slider stepping by 0.1 makes no sense.
       if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
@@ -147,7 +160,15 @@ export function syncOutputs(node) {
     // The slider row already shows the name, so the slot must draw no text of
     // its own - it would land on top of the row.
     if (o.label !== ZW) o.label = ZW;
-    const want_t = s.type === "int" ? "INT" : s.type === "float" ? "FLOAT" : "*";
+    // A toggle narrows to BOOLEAN or INT once it has adopted an output kind;
+    // a slider narrows to INT / FLOAT. Anything still "auto" stays "*" so it can
+    // connect to either family, and the wire itself refuses a wrong target.
+    let want_t;
+    if (s.type === "toggle") {
+      want_t = s.out === "bool" ? "BOOLEAN" : s.out === "int" ? "INT" : "*";
+    } else {
+      want_t = s.type === "int" ? "INT" : s.type === "float" ? "FLOAT" : "*";
+    }
     if (o.type !== want_t) o.type = want_t;
   }
 }
@@ -182,10 +203,40 @@ function usefulRange(min, max, step, value) {
 //
 // Only ever called for a real user connection (index.js gates it on
 // isGraphLoading), so a workflow load can never rewrite the saved type.
+// A toggle -> bool / 1-0, decided by the first thing it is plugged into: a
+// BOOLEAN input makes it send true / false, a numeric input makes it send 1 / 0.
+// While the row is still untouched it also adopts that input's name (and, for a
+// boolean, its current state) so connecting never silently flips a flag.
+function resolveToggleOut(node, s, slotIndex, link) {
+  if (s.out === "bool" || s.out === "int") return false;   // already resolved
+
+  const target = node.graph?.getNodeById?.(link.target_id);
+  const inp = target?.inputs?.[link.target_slot];
+  const t = String(inp?.type || "").toUpperCase();
+  if (t === "BOOLEAN") s.out = "bool";
+  else if (t === "INT" || t === "FLOAT") s.out = "int";
+  else return false;   // unknown target family: leave it auto
+
+  const wname = inp?.widget?.name || inp?.name;
+  if (s.name === `Value ${slotIndex + 1}` && wname) {
+    s.name = String(wname).replace(/_/g, " ");
+    if (t === "BOOLEAN") {
+      const w = target?.widgets?.find((x) => x.name === wname);
+      if (w && typeof w.value === "boolean") { s.value = w.value ? 1 : 0; s.def = s.value; }
+    }
+  }
+
+  ensureToggle(s);
+  syncOutputs(node);
+  return true;
+}
+
 export function resolveAutoType(node, slotIndex, link) {
   const st = readState(node);
   const s = st.sliders[slotIndex];
-  if (!s || s.type !== "auto" || !link) return false;
+  if (!s || !link) return false;
+  if (s.type === "toggle") return resolveToggleOut(node, s, slotIndex, link);
+  if (s.type !== "auto") return false;
 
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];

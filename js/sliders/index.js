@@ -255,9 +255,14 @@ app.graphToPrompt = async function (...args) {
         entry.inputs = entry.inputs || {};
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({
           version: 1,
-          sliders: st.sliders.slice(0, MAX_SLIDERS).map((s) => ({
-            type: s.type, value: s.value,
-          })),
+          // Only what changes the OUTPUT goes in here - a toggle also sends its
+          // adopted kind (out). The state words / default are display-only and
+          // are deliberately left out, so renaming a state never re-runs the node.
+          sliders: st.sliders.slice(0, MAX_SLIDERS).map((s) => (
+            s.type === "toggle"
+              ? { type: "toggle", value: s.value ? 1 : 0, out: s.out || "auto" }
+              : { type: s.type, value: s.value }
+          )),
         });
       }
     }
@@ -269,22 +274,31 @@ app.graphToPrompt = async function (...args) {
 
 registerNodeHelp(CLASS, {
   title: "Sliders Pixaroma",
-  tagline: "One panel of sliders that drives numbers all over your workflow.",
+  tagline: "One panel of sliders and on / off switches that drives your whole workflow.",
   sections: [
     {
       heading: "What it does",
       body:
-        "Add a slider, name it, give it a range, then wire its output to any number input: steps, cfg, " +
-        "denoise, a LoRA strength, a width. Instead of hunting through the graph for the value you want " +
-        "to tweak, you keep every dial you care about in one place.",
+        "Add a row, name it, then wire its output to any input: steps, cfg, denoise, a LoRA strength, a width " +
+        "for the sliders, or an on / off setting for the switches. Instead of hunting through the graph for the " +
+        "value you want to tweak, you keep every dial and switch you care about in one place. A row can be a " +
+        "slider or a toggle (a boolean switch), and you can mix both in the same node.",
     },
     {
       heading: "Using a slider",
       bullets: [
         "Drag across a slider to set it. Hold Shift while dragging for fine control.",
         "Double-click a slider to type an exact value.",
-        "Each slider has its own output dot, sitting on its own row.",
+        "Each row has its own output dot, sitting on its own row.",
       ],
+    },
+    {
+      heading: "Using a switch (on / off)",
+      body:
+        "In the settings, set a row's type to Toggle and it becomes an on / off switch instead of a slider. " +
+        "Click the row to flip it. Like a slider it adopts what it is plugged into: wire it to a true / false " +
+        "input and it sends a boolean, wire it to a number input and it sends 1 or 0. You can rename its two " +
+        "states (for example Yes / No) and set which state it starts in.",
     },
     {
       heading: "Whole numbers or decimals",
@@ -296,10 +310,11 @@ registerNodeHelp(CLASS, {
     {
       heading: "Settings",
       body:
-        "Right-click the node for the settings panel. There you can add and remove sliders, rename them, " +
-        "set each one's range and step, and pick the colour the sliders paint with. That colour is per node, " +
-        "and you can save it as the default for every new Sliders node you add.",
+        "Right-click the node for the settings panel. There you can add and remove rows, rename them, choose " +
+        "each row's type (Auto, Int, Float, or Toggle), set a slider's range and step or a switch's two labels " +
+        "and default, and pick the colour the node paints with. That colour is per node, and you can save it as " +
+        "the default for every new Sliders node you add.",
     },
   ],
-  footer: "Up to 16 sliders per node. Add as many panels as you like.",
+  footer: "Up to 16 rows per node - sliders and switches, mixed freely. Add as many panels as you like.",
 });

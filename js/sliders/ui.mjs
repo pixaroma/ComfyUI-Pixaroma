@@ -71,6 +71,41 @@ export function injectCSS() {
     .pix-sld-base .nu { color:var(--acc,#f66744); }
     .pix-sld-over .nm, .pix-sld-over .nu { color:#fff; }
 
+    /* ── Toggle (switch) row - style A: an iOS-style slide switch ────────────
+       A toggle is just another kind of row: same height, same output dot. The
+       track is the same translucent dent the slider uses, so a recoloured node
+       still reads, and the ON state fills with the node's accent. */
+    .pix-sld-tog {
+      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px;
+      box-sizing:border-box; padding:0 8px; border-radius:5px;
+      background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12);
+      cursor:pointer; user-select:none;
+    }
+    .pix-sld-tog:hover { border-color:var(--acc,#f66744); }
+    .pix-sld-tog .tnm {
+      flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+      font:11.5px 'Segoe UI',-apple-system,sans-serif; color:rgba(255,255,255,0.72);
+    }
+    .pix-sld-tog[data-on="1"] .tnm { color:#f2f2f2; }
+    .pix-sld-tog .tst {
+      flex:none; font:9.5px 'Segoe UI',sans-serif; font-weight:600; letter-spacing:.03em;
+      color:rgba(255,255,255,0.42); max-width:70px; white-space:nowrap; overflow:hidden;
+      text-overflow:ellipsis; text-align:right;
+    }
+    .pix-sld-tog[data-on="1"] .tst { color:var(--acc,#f66744); }
+    .pix-sld-tsw {
+      position:relative; flex:none; width:32px; height:16px; border-radius:8px;
+      background:rgba(0,0,0,0.30); border:1px solid rgba(255,255,255,0.16);
+      transition:background .15s, border-color .15s;
+    }
+    .pix-sld-tsw::after {
+      content:""; position:absolute; top:1px; left:2px; width:12px; height:12px; border-radius:50%;
+      background:#cfcfcf; transition:transform .15s, background .15s;
+    }
+    .pix-sld-tog[data-on="1"] .pix-sld-tsw { background:var(--acc,#f66744); border-color:var(--acc,#f66744); }
+    .pix-sld-tog[data-on="1"] .pix-sld-tsw::after { transform:translateX(14px); background:#fff; }
+    @media (prefers-reduced-motion:reduce){ .pix-sld-tsw,.pix-sld-tsw::after{transition:none;} }
+
     /* Type an exact value (double-click the row). */
     .pix-sld-edit {
       position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box; display:none;
@@ -130,7 +165,16 @@ function makeRowEl(node, index) {
   edit.spellcheck = false;
 
   sl.append(fill, base, over, edit);
-  row.appendChild(sl);
+
+  // The toggle control shares the row. Only one of the two (slider / toggle) is
+  // ever displayed - paintRow decides from the row's type - so a row can switch
+  // between a slider and a switch with no widget churn.
+  const tog = document.createElement("div");
+  tog.className = "pix-sld-tog";
+  tog.style.display = "none";
+  tog.innerHTML = '<span class="tnm"></span><span class="tst"></span><span class="pix-sld-tsw"></span>';
+
+  row.append(sl, tog);
 
   const slider = () => readState(node).sliders[index];
 
@@ -209,6 +253,18 @@ function makeRowEl(node, index) {
   edit.addEventListener("blur", () => closeEdit(true));
   edit.addEventListener("pointerdown", (e) => e.stopPropagation());
 
+  // Toggle: a click anywhere on the row flips it. pointerdown is swallowed so it
+  // never starts a node drag (same guard the slider uses).
+  tog.addEventListener("pointerdown", (e) => e.stopPropagation());
+  tog.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = slider();
+    if (!s || s.type !== "toggle") return;
+    s.value = s.value ? 0 : 1;
+    paintRow(node, index);
+    node.graph?.setDirtyCanvas?.(true, true);
+  });
+
   return row;
 }
 
@@ -219,15 +275,37 @@ export function paintRow(node, index) {
   const s = readState(node).sliders[index];
   if (!el || !s) return;
 
+  const sl = el.querySelector(".pix-sld-sl");
+  const tog = el.querySelector(".pix-sld-tog");
+  const acc = accentOf(node);
+
+  // ── Toggle row ──
+  if (s.type === "toggle") {
+    if (sl) sl.style.display = "none";
+    if (tog) {
+      tog.style.display = "flex";
+      const on = Number(s.value) ? 1 : 0;
+      tog.setAttribute("data-on", String(on));
+      tog.style.setProperty("--acc", acc);
+      tog.querySelector(".tnm").textContent = s.name || `Value ${index + 1}`;
+      tog.querySelector(".tst").textContent = on ? (s.onLabel || "On") : (s.offLabel || "Off");
+      tog.title = `${s.name || `Value ${index + 1}`}  (click to switch ${on ? "off" : "on"})`;
+    }
+    return;
+  }
+
+  // ── Slider row ──
+  if (tog) tog.style.display = "none";
+  if (sl) sl.style.display = "block";
+
   const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0
   const span = (max - min) || 1;
   const p = Math.min(100, Math.max(0, ((Number(s.value) - min) / span) * 100));
   const dec = decimalsOf(s);
   const txt = Number(s.value).toFixed(dec);
 
-  const sl = el.querySelector(".pix-sld-sl");
   sl.style.setProperty("--p", p + "%");
-  sl.style.setProperty("--acc", accentOf(node));
+  sl.style.setProperty("--acc", acc);
   el.querySelector(".pix-sld-fill").style.width = p + "%";
   el.querySelectorAll(".pix-sld-lay").forEach((lay) => {
     lay.querySelector(".nm").textContent = s.name || `Value ${index + 1}`;

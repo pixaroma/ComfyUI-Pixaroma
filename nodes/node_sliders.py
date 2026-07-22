@@ -36,17 +36,18 @@ class PixaromaSliders:
     RETURN_TYPES = tuple([ANY] * MAX_SLIDERS)
     RETURN_NAMES = tuple("value_%d" % (i + 1) for i in range(MAX_SLIDERS))
     OUTPUT_TOOLTIPS = tuple(
-        "The current value of slider %d." % (i + 1) for i in range(MAX_SLIDERS)
+        "The current value or on/off state of row %d." % (i + 1) for i in range(MAX_SLIDERS)
     )
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔢 Values"
     DESCRIPTION = (
-        "A panel of sliders that feeds numbers to the rest of the workflow. Add a slider, "
-        "name it, give it a range, then wire its output to any number input - steps, cfg, "
-        "denoise, a LoRA strength. Each slider is Auto until you connect it: the first input "
-        "you plug it into decides whether it sends a whole number or a decimal, so it cannot "
-        "send the wrong kind. Right-click the node for the settings, where you set the ranges, "
-        "add or remove sliders, and pick the slider colour."
+        "A panel of sliders and on/off switches that feeds values to the rest of the workflow. "
+        "Add a row, name it, then wire its output to any input - steps, cfg, denoise, a LoRA "
+        "strength for a slider, or a true/false setting for a switch. Each row adopts what you "
+        "plug it into: a slider sends a whole number or a decimal, a switch (toggle) sends a "
+        "boolean or 1/0, so it cannot send the wrong kind. Right-click the node for the settings, "
+        "where you set ranges, switch labels, add or remove rows, and pick the colour. Find it by "
+        "searching for slider, switch, toggle, boolean, or on/off."
     )
 
     @staticmethod
@@ -66,7 +67,16 @@ class PixaromaSliders:
         if not math.isfinite(value):
             value = 0.0
         value = max(-1e12, min(1e12, value))
-        if str(slider.get("type") or "auto").lower() == "int":
+
+        kind = str(slider.get("type") or "auto").lower()
+        if kind == "toggle":
+            # A switch stores 0 / 1 in value; it emits a boolean, or 1 / 0 when
+            # it has adopted an INT target ("out"). "auto"/"bool" -> boolean.
+            on = bool(round(value))
+            if str(slider.get("out") or "auto").lower() == "int":
+                return 1 if on else 0
+            return on
+        if kind == "int":
             return int(round(value))
         return float(value)
 
