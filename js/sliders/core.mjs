@@ -331,13 +331,31 @@ export function resolveAutoType(node, slotIndex, link) {
   const st = readState(node);
   const s = st.sliders[slotIndex];
   if (!s || !link) return false;
-  if (s.type === "toggle") return resolveToggleOut(node, s, slotIndex, link);
-  if (s.type === "combo") return resolveComboOptions(node, s, slotIndex, link);
-  if (s.type === "seed") return resolveSeedRewire(node, s, slotIndex, link);
 
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
   const t = String(inp?.type || "").toUpperCase();
+  const twname = inp?.widget?.name || inp?.name;
+
+  // The control ALWAYS follows its target: decide the kind the target calls for,
+  // re-adopt in place when the row is already that kind, else let the branches
+  // below re-type it. (So a switch unplugged and dropped on a seed becomes a
+  // Seed, not a leftover switch - user-reported.)
+  const twombo = comboOptionsOf(target, twname);
+  const twant = t === "BOOLEAN" ? "toggle"
+    : (twombo && twombo.length) ? "combo"
+    : (t === "INT" && /seed/i.test(twname || "")) ? "seed"
+    : (t === "INT" || t === "FLOAT") ? "number"
+    : null;
+  if (!twant) return false;   // not a value input - refused in onConnectionsChange
+  if (s.type === "toggle" && twant === "toggle") return resolveToggleOut(node, s, slotIndex, link);
+  if (s.type === "combo" && twant === "combo") return resolveComboOptions(node, s, slotIndex, link);
+  if (s.type === "seed" && twant === "seed") return resolveSeedRewire(node, s, slotIndex, link);
+  // Kind mismatch: a seed or number target only re-types an "auto" row, so drop a
+  // non-matching row to auto first (a toggle/combo target's branch converts any row).
+  if (twant === "seed" || (twant === "number" && s.type !== "int" && s.type !== "float")) {
+    s.type = "auto"; s.min = 0; s.max = 1; s.step = 0.01;
+  }
 
   // A BOOLEAN target turns ANY slider row (auto / int / float) into a Toggle - a
   // slider makes no sense for true / false. It adopts the target's name (while
@@ -458,12 +476,14 @@ export function resetRowOnDisconnect(node, slotIndex) {
   if (!s) return false;
   const o = node.outputs?.[slotIndex];
   if (o && Array.isArray(o.links) && o.links.length > 0) return false; // still wired elsewhere
-  let changed = false;
-  if (s.type === "toggle") {
-    if (s.out !== "auto") { s.out = "auto"; changed = true; }
-  } else if (s.type === "int" || s.type === "float") {
-    s.type = "auto"; changed = true;
-  }
-  if (changed) syncOutputs(node);
-  return changed;
+  if (s.type === "auto") return false;
+  // Free the row: drop to "auto" so its output slot returns to "*" and it can be
+  // re-wired to ANY input - a switch you unplug can then go onto a seed, a number,
+  // a picker, etc. (A seed's INT slot / a toggle's BOOLEAN slot would otherwise
+  // refuse the new wire.) Adopted fields - the switch labels, the dropdown
+  // options, the seed mode - stay on the object and come back if it is re-wired
+  // to the same kind of input.
+  s.type = "auto";
+  syncOutputs(node);
+  return true;
 }
