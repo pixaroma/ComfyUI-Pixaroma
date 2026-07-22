@@ -41,13 +41,14 @@ class PixaromaSliders:
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔢 Values"
     DESCRIPTION = (
-        "A panel of sliders and on/off switches that feeds values to the rest of the workflow. "
-        "Add a row, name it, then wire its output to any input - steps, cfg, denoise, a LoRA "
-        "strength for a slider, or a true/false setting for a switch. Each row adopts what you "
-        "plug it into: a slider sends a whole number or a decimal, a switch (toggle) sends a "
-        "boolean or 1/0, so it cannot send the wrong kind. Right-click the node for the settings, "
-        "where you set ranges, switch labels, add or remove rows, and pick the colour. Find it by "
-        "searching for slider, switch, toggle, boolean, or on/off."
+        "A control panel that gathers the dials and switches you care about into one node and "
+        "wires each straight to where it belongs. Add a control, name it, then connect its output "
+        "to any input - a slider for numbers like steps, cfg, denoise or a LoRA strength, or a "
+        "switch for a true/false setting. Each control adopts what you plug it into: a slider "
+        "sends a whole number or a decimal, a switch (toggle) sends a boolean or 1/0, so it "
+        "cannot send the wrong kind. Right-click the node for the settings, where you add or "
+        "remove controls, set ranges and switch labels, and pick the colour. Find it by searching "
+        "for control panel, slider, switch, toggle, boolean, or on/off."
     )
 
     @staticmethod
@@ -102,4 +103,4 @@ class PixaromaSliders:
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaSliders": PixaromaSliders}
-NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaSliders": "Sliders Pixaroma"}
+NODE_DISPLAY_NAME_MAPPINGS = {"PixaromaSliders": "Control Panel Pixaroma"}

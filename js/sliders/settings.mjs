@@ -178,7 +178,7 @@ export function openSlidersPanel(node, onChange) {
   panel.style.setProperty("--acc", accentOf(node));
 
   const title = el("div", "pix-sldp-t");
-  title.append(el("span", null, "⚙"), el("span", null, "Slider settings"));
+  title.append(el("span", null, "⚙"), el("span", null, "Control settings"));
   const x = el("span", "x", "✕");
   x.addEventListener("click", closeSlidersPanel);
   title.appendChild(x);
@@ -317,7 +317,7 @@ export function openSlidersPanel(node, onChange) {
     // ── accent colour ──────────────────────────────────────────────────────
     const acc = el("div", "pix-sldp-acc");
     const txt = el("div");
-    txt.appendChild(el("div", "lab", "Slider colour"));
+    txt.appendChild(el("div", "lab", "Control colour"));
     txt.appendChild(el("div", "sub", "This node only. Set the default for new ones below."));
     acc.append(sw, txt);
     body.appendChild(acc);
@@ -325,7 +325,7 @@ export function openSlidersPanel(node, onChange) {
 
   // the swatch is built once so the picker never loses its anchor
   const sw = el("div", "pix-sldp-sw");
-  sw.title = "Pick the colour these sliders paint with";
+  sw.title = "Pick the colour these controls paint with";
   sw.style.background = accentOf(node);
   sw.addEventListener("click", () => {
     // The LIVE picker (roomy SV plane + hue + hex + button-safe swatches) so the
@@ -346,7 +346,7 @@ export function openSlidersPanel(node, onChange) {
   });
 
   // Built BEFORE buildRows(), which re-reads its disabled state on every rebuild.
-  const add = el("button", "pix-sldp-btn primary", "+ Add slider");
+  const add = el("button", "pix-sldp-btn primary", "+ Add control");
   add.addEventListener("click", () => {
     if (addSlider(node)) { fire(); buildRows(); }
   });
@@ -354,7 +354,7 @@ export function openSlidersPanel(node, onChange) {
   buildRows();
 
   const mkDefault = el("button", "pix-sldp-btn", "Colour as default");
-  mkDefault.title = "Use this node's colour for every new Sliders node";
+  mkDefault.title = "Use this node's colour for every new Control Panel node";
   mkDefault.addEventListener("click", async () => {
     try {
       await app.ui.settings.setSettingValueAsync(ACCENT_SETTING, accentOf(node));

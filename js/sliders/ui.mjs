@@ -344,7 +344,7 @@ export function syncRowWidgets(node, onAdd) {
   if (!node._pixSldAdd) {
     const el = document.createElement("div");
     el.className = "pix-sld-add";
-    el.textContent = "+ Add slider";
+    el.textContent = "+ Add control";
     el.addEventListener("pointerdown", (e) => e.stopPropagation());
     el.addEventListener("click", (e) => { e.stopPropagation(); onAdd?.(); });
     const w = node.addDOMWidget(ADD_NAME, ROW_TYPE, el, {
@@ -372,7 +372,7 @@ export function renderAll(node) {
   if (addEl) {
     const full = st.sliders.length >= 16;
     addEl.classList.toggle("full", full);
-    addEl.textContent = full ? "16 sliders max" : "+ Add slider";
+    addEl.textContent = full ? "16 controls max" : "+ Add control";
     addEl.style.setProperty("--acc", accentOf(node));
   }
   scheduleAlign(node);

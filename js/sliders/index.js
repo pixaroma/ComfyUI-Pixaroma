@@ -69,10 +69,10 @@ app.registerExtension({
   settings: [
     {
       id: ACCENT_SETTING,
-      name: "Default slider colour (hex)",
+      name: "Default control colour (hex)",
       type: "text",
       defaultValue: BRAND,
-      tooltip: "The colour new Sliders nodes paint with, e.g. #f66744. Each node can override it in its own settings.",
+      tooltip: "The colour new Control Panel nodes paint with, e.g. #f66744. Each node can override it in its own settings.",
       category: ["👑 Pixaroma", "Sliders"],
       // Repaint every node that FOLLOWS the default (accent unset), so changing
       // it is visible immediately instead of at the next interaction.
@@ -218,7 +218,7 @@ app.registerExtension({
     if (node?.comfyClass !== CLASS) return [];
     return [
       {
-        content: "⚙ Slider settings",
+        content: "⚙ Control settings",
         callback: () => openSlidersPanel(node, () => { refresh(node); fitNode(node); }),
       },
     ];
@@ -285,8 +285,8 @@ app.graphToPrompt = async function (...args) {
 };
 
 registerNodeHelp(CLASS, {
-  title: "Sliders Pixaroma",
-  tagline: "One panel of sliders and on / off switches that drives your whole workflow.",
+  title: "Control Panel Pixaroma",
+  tagline: "Every dial and switch you care about, gathered into one panel that drives your whole workflow.",
   sections: [
     {
       heading: "What it does",
@@ -325,7 +325,7 @@ registerNodeHelp(CLASS, {
         "Right-click the node for the settings panel. There you can add and remove rows, rename them, choose " +
         "each row's type (Auto, Int, Float, or Toggle), set a slider's range and step or a switch's two labels " +
         "and default, and pick the colour the node paints with. That colour is per node, and you can save it as " +
-        "the default for every new Sliders node you add.",
+        "the default for every new Control Panel node you add.",
     },
   ],
   footer: "Up to 16 rows per node - sliders and switches, mixed freely. Add as many panels as you like.",
