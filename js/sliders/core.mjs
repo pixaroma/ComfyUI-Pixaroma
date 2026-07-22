@@ -241,6 +241,23 @@ export function resolveAutoType(node, slotIndex, link) {
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
   const t = String(inp?.type || "").toUpperCase();
+
+  // A BOOLEAN target turns an Auto row into a Toggle switch - a slider makes no
+  // sense for true / false. It adopts the target's name (while untouched) and its
+  // current on/off state, so connecting never silently flips the flag.
+  if (t === "BOOLEAN") {
+    s.type = "toggle";
+    ensureToggle(s);
+    s.out = "bool";
+    const wname = inp?.widget?.name || inp?.name;
+    const w = target?.widgets?.find((x) => x.name === wname);
+    s.value = (w && typeof w.value === "boolean") ? (w.value ? 1 : 0) : 0;
+    s.def = s.value;
+    if (wname && s.name === `Value ${slotIndex + 1}`) s.name = String(wname).replace(/_/g, " ");
+    syncOutputs(node);
+    return true;
+  }
+
   if (t !== "INT" && t !== "FLOAT") return false;
 
   s.type = t === "INT" ? "int" : "float";
