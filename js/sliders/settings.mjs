@@ -13,6 +13,7 @@ import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_pi
 import {
   readState, normalizeSliders, addSlider, removeSlider, syncOutputs,
   accentOf, BRAND, ACCENT_SETTING, MAX_SLIDERS, clampValue, ensureToggle,
+  ensureCombo, comboVisible,
 } from "./core.mjs";
 
 let _panel = null;
@@ -33,7 +34,7 @@ function injectCSS() {
   s.id = "pix-sldp-css";
   s.textContent = `
     .pix-sldp {
-      position:fixed; z-index:10010; width:560px; max-width:94vw; background:#1a1a1a;
+      position:fixed; z-index:10010; width:600px; max-width:94vw; background:#1a1a1a;
       border:1px solid #3a3a3a; border-radius:10px; box-shadow:0 18px 50px rgba(0,0,0,0.6);
       color:#d8d8d8; font:12px 'Segoe UI',-apple-system,sans-serif; overflow:hidden;
     }
@@ -43,10 +44,34 @@ function injectCSS() {
     .pix-sldp-t .x:hover { color:#fff; }
     .pix-sldp-b { padding:12px; display:flex; flex-direction:column; gap:8px; max-height:60vh; overflow-y:auto; }
 
-    .pix-sldp-head { display:grid; grid-template-columns:1fr 140px 58px 58px 58px 22px; gap:8px;
+    .pix-sldp-head { display:grid; grid-template-columns:1fr 174px 56px 56px 56px 22px; gap:8px;
       font-size:9.5px; letter-spacing:.06em; text-transform:uppercase; color:#7a7a7a; padding:0 6px; }
-    .pix-sldp-row { display:grid; grid-template-columns:1fr 140px 58px 58px 58px 22px; gap:8px; align-items:center;
+    .pix-sldp-row { display:grid; grid-template-columns:1fr 174px 56px 56px 56px 22px; gap:8px; align-items:center;
       background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.10); border-radius:6px; padding:6px; }
+
+    /* a combo row's filter button spans the three value columns */
+    .pix-sldp-filter { grid-column:3 / 6; box-sizing:border-box; width:100%; background:#1d1d1d;
+      border:1px solid #444; border-radius:4px; color:#cfcfcf; font:11.5px 'Segoe UI',sans-serif;
+      padding:5px 9px; cursor:pointer; text-align:left; display:flex; align-items:center; gap:8px; }
+    .pix-sldp-filter:hover { border-color:var(--acc,${BRAND}); color:#fff; }
+    .pix-sldp-filter .cnt { margin-left:auto; color:var(--acc,${BRAND}); font-weight:600; font-variant-numeric:tabular-nums; }
+
+    /* the filter popup (which options to show + the default) */
+    .pix-sldp-fpop { position:fixed; z-index:10040; width:280px; max-height:60vh; overflow:hidden; background:#1a1a1a;
+      border:1px solid #3a3a3a; border-radius:9px; box-shadow:0 16px 44px rgba(0,0,0,0.6); display:flex; flex-direction:column; }
+    .pix-sldp-fpop .fh { display:flex; align-items:center; gap:8px; padding:9px 11px; background:#232323; border-bottom:1px solid #333; font-size:11px; color:#cfcfcf; }
+    .pix-sldp-fpop .fh .fa { margin-left:auto; font-size:10.5px; color:var(--acc,${BRAND}); cursor:pointer; }
+    .pix-sldp-fpop .fh .fa:hover { text-decoration:underline; }
+    .pix-sldp-flist { overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:3px; }
+    .pix-sldp-fopt { display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:5px; cursor:pointer;
+      font-size:12px; color:#bdbdbd; border:1px solid transparent; }
+    .pix-sldp-fopt:hover { border-color:rgba(255,255,255,0.12); }
+    .pix-sldp-fopt .ck { width:15px; height:15px; border-radius:4px; border:1.5px solid #555; flex:none;
+      display:grid; place-items:center; font-size:10px; color:#fff; }
+    .pix-sldp-fopt[data-on="1"] { color:#fff; }
+    .pix-sldp-fopt[data-on="1"] .ck { background:var(--acc,${BRAND}); border-color:var(--acc,${BRAND}); }
+    .pix-sldp-fopt .star { margin-left:auto; font-size:13px; color:#5a5a5a; cursor:pointer; flex:none; }
+    .pix-sldp-fopt[data-def="1"] .star { color:var(--acc,${BRAND}); }
     .pix-sldp-row input {
       width:100%; box-sizing:border-box; background:#1d1d1d; border:1px solid #444; border-radius:4px;
       color:#e0e0e0; font:12px 'Segoe UI',sans-serif; padding:3px 6px; outline:none;
@@ -142,12 +167,14 @@ function makeDraggable(panel, handle) {
 function outsideClose(e) {
   if (!_panel) return;
   if (_panel.contains(e.target)) return;
-  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop")) return; // the colour picker
+  // the colour picker and the combo filter popup live outside the panel
+  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop")) return;
   closeSlidersPanel();
 }
 function escClose(e) {
   if (e.key === "Escape" && _panel) {
-    if (document.querySelector(".pix-cp-popup, .pix-cp-modal-backdrop")) return;
+    // let the colour picker / filter popup take Escape first
+    if (document.querySelector(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-sldp-fpop")) return;
     e.stopPropagation();
     closeSlidersPanel();
   }
@@ -156,6 +183,7 @@ function escClose(e) {
 export function closeSlidersPanel() {
   try { _cpHandle?.close(); } catch {}
   _cpHandle = null;
+  closeFilterPopup();
   if (_panel) { try { _panel.remove(); } catch {} }
   _panel = null;
   _panelNode = null;
@@ -166,6 +194,88 @@ export function closeSlidersPanel() {
 
 export function closeSlidersPanelFor(node) {
   if (_panelNode === node) closeSlidersPanel();
+}
+
+// ── Combo filter popup (which options a dropdown shows + its default) ─────────
+let _filterPop = null;
+function _filterOutside(e) { if (_filterPop && !_filterPop.contains(e.target)) closeFilterPopup(); }
+function _filterEsc(e) { if (e.key === "Escape" && _filterPop) { e.stopPropagation(); closeFilterPopup(); } }
+export function closeFilterPopup() {
+  if (_filterPop) { try { _filterPop.remove(); } catch {} _filterPop = null; }
+  document.removeEventListener("pointerdown", _filterOutside, true);
+  document.removeEventListener("wheel", _filterOutside, true);
+  document.removeEventListener("keydown", _filterEsc, true);
+}
+
+function openFilterPopup(node, s, anchorEl, onChange) {
+  closeFilterPopup();
+  const opts = Array.isArray(s.options) ? s.options : [];
+
+  const pop = el("div", "pix-sldp-fpop");
+  pop.style.setProperty("--acc", accentOf(node));
+  const fh = el("div", "fh");
+  const allBtn = el("span", "fa", "All");
+  const noneBtn = el("span", "fa", "None");
+  fh.append(el("span", null, "Show these options"), allBtn, noneBtn);
+  const list = el("div", "pix-sldp-flist");
+  pop.append(fh, list);
+
+  // empty allowed = show all
+  const shown = () => { const a = Array.isArray(s.allowed) ? s.allowed : []; return a.length ? new Set(a) : new Set(opts); };
+  const commit = (set) => {
+    if (set.size >= opts.length) s.allowed = [];
+    else s.allowed = opts.filter((o) => set.has(o));
+    ensureCombo(s);
+    onChange && onChange();
+  };
+
+  function rebuild() {
+    list.innerHTML = "";
+    const set = shown();
+    opts.forEach((o) => {
+      const r = el("div", "pix-sldp-fopt");
+      r.setAttribute("data-on", set.has(o) ? "1" : "0");
+      r.setAttribute("data-def", s.def === o ? "1" : "0");
+      const lab = el("span", null, o);
+      lab.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      r.append(el("span", "ck", set.has(o) ? "✓" : ""), lab, el("span", "star", "★"));
+      const star = r.querySelector(".star");
+      star.title = "Set as the default";
+      r.addEventListener("click", (e) => {
+        if (e.target === star) return;
+        const set2 = shown();
+        if (set2.has(o)) set2.delete(o); else set2.add(o);
+        if (!set2.size) set2.add(o);   // keep at least one shown
+        commit(set2);
+        rebuild();
+      });
+      star.addEventListener("click", (e) => {
+        e.stopPropagation();
+        s.def = o;
+        const set2 = shown();
+        if (!set2.has(o)) set2.add(o);   // a default must be shown
+        commit(set2);
+        rebuild();
+      });
+      list.append(r);
+    });
+  }
+  allBtn.addEventListener("click", () => { commit(new Set(opts)); rebuild(); });
+  noneBtn.addEventListener("click", () => { commit(new Set(opts.length ? [opts[0]] : [])); rebuild(); });
+  rebuild();
+
+  document.body.appendChild(pop);
+  const rc = anchorEl.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(rc.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
+  let top = rc.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, window.innerHeight - pop.offsetHeight - 8);
+  pop.style.top = top + "px";
+  _filterPop = pop;
+  setTimeout(() => {
+    document.addEventListener("pointerdown", _filterOutside, true);
+    document.addEventListener("wheel", _filterOutside, true);
+    document.addEventListener("keydown", _filterEsc, true);
+  }, 0);
 }
 
 export function openSlidersPanel(node, onChange) {
@@ -220,17 +330,19 @@ export function openSlidersPanel(node, onChange) {
       name.addEventListener("blur", applyName);
 
       const seg = el("div", "pix-sldp-seg");
-      [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"]].forEach(([key, label]) => {
+      [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"], ["combo", "List"]].forEach(([key, label]) => {
         const b = el("button", s.type === key ? "on" : null, label);
         b.title =
           key === "auto" ? "Decide from the first input this row is connected to"
           : key === "int" ? "Always send a whole number"
           : key === "float" ? "Always send a decimal"
-          : "An on / off switch instead of a slider";
+          : key === "toggle" ? "An on / off switch instead of a slider"
+          : "A dropdown - wire it to a picker (sampler, scheduler, ...) to fill its list";
         b.addEventListener("click", () => {
           if (s.type === key) return;
           s.type = key;
           if (key === "toggle") { ensureToggle(s); s.value = s.def; }   // start at its default (Off)
+          if (key === "combo") ensureCombo(s);
           fire();
           buildRows();
         });
@@ -243,6 +355,25 @@ export function openSlidersPanel(node, onChange) {
       del.addEventListener("click", () => {
         if (removeSlider(node, i)) { fire(); buildRows(); }
       });
+
+      // A dropdown row: one filter button (spanning the value columns) opens the
+      // "which options to show + default" popup.
+      if (s.type === "combo") {
+        const vis = comboVisible(s);
+        const filterBtn = el("button", "pix-sldp-filter");
+        filterBtn.append(
+          document.createTextNode("Show options"),
+          el("span", "cnt", `${vis.length} / ${(s.options || []).length}`),
+        );
+        filterBtn.title = "Choose which options this dropdown offers, and the default";
+        filterBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          openFilterPopup(node, s, filterBtn, () => { fire(); buildRows(); });
+        });
+        row.append(name, seg, filterBtn, del);
+        body.appendChild(row);
+        return;
+      }
 
       // The last three columns follow the row's type: numbers for a slider,
       // the two state words + a default for a toggle.

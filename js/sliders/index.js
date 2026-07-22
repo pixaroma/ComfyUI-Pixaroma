@@ -8,7 +8,7 @@ import {
 } from "./core.mjs";
 import {
   injectCSS, syncRowWidgets, renderAll, alignOutputsLegacy, watchAlign, unwatchAlign, scheduleAlign,
-  ROW_H, ROW_GAP, ADD_H, MIN_W, DEFAULT_W,
+  closeComboPopup, ROW_H, ROW_GAP, ADD_H, MIN_W, DEFAULT_W,
 } from "./ui.mjs";
 import { openSlidersPanel, closeSlidersPanelFor } from "./settings.mjs";
 
@@ -207,6 +207,7 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       closeSlidersPanelFor(this);
+      closeComboPopup();
       unwatchAlign(this);
       return _removed?.apply(this, arguments);
     };

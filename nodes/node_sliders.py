@@ -53,9 +53,16 @@ class PixaromaSliders:
 
     @staticmethod
     def _value_of(slider):
-        """One slider dict -> the number Python should emit."""
+        """One control dict -> the value Python should emit."""
         if not isinstance(slider, dict):
             return 0
+        kind = str(slider.get("type") or "auto").lower()
+
+        # A dropdown emits its selected option string directly (no numeric parse).
+        if kind == "combo":
+            v = slider.get("value")
+            return v if isinstance(v, str) else ("" if v is None else str(v))
+
         try:
             # OverflowError matters: a bare 400-digit integer in the JSON parses
             # as an arbitrary-precision Python int, and float() then raises.
@@ -69,7 +76,6 @@ class PixaromaSliders:
             value = 0.0
         value = max(-1e12, min(1e12, value))
 
-        kind = str(slider.get("type") or "auto").lower()
         if kind == "toggle":
             # A switch stores 0 / 1 in value; it emits a boolean, or 1 / 0 when
             # it has adopted an INT target ("out"). "auto"/"bool" -> boolean.

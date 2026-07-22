@@ -20,7 +20,7 @@
 //             return to the top-right corner and the node keeps working.
 
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
-import { readState, accentOf, clampValue, decimalsOf, rangeOf } from "./core.mjs";
+import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible } from "./core.mjs";
 
 export const ROW_H = 23;    // height of one slider row
 export const ROW_GAP = 6;   // gap between rows (matches the Vue widgets grid gap-y-1 + our own)
@@ -106,6 +106,39 @@ export function injectCSS() {
     .pix-sld-tog[data-on="1"] .pix-sld-tsw::after { transform:translateX(14px); background:#fff; }
     @media (prefers-reduced-motion:reduce){ .pix-sld-tsw,.pix-sld-tsw::after{transition:none;} }
 
+    /* ── Dropdown (combo) row - the Pixaroma dark picker, never a native select.
+       Value with prev/next arrows; click the value for the full list. */
+    .pix-sld-combo {
+      display:flex; align-items:center; gap:5px; width:100%; height:${ROW_H}px;
+      box-sizing:border-box; padding:0 6px 0 11px; border-radius:5px;
+      background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12); user-select:none;
+    }
+    .pix-sld-combo:hover { border-color:var(--acc,#f66744); }
+    .pix-sld-combo .cnm {
+      flex:1; min-width:0; font:11.5px 'Segoe UI',sans-serif; color:rgba(255,255,255,0.72);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+    }
+    .pix-sld-cnav { flex:none; width:13px; text-align:center; color:var(--acc,#f66744); font-size:10px; cursor:pointer; }
+    .pix-sld-cnav:hover { color:#fff; }
+    .pix-sld-cval {
+      flex:none; max-width:145px; display:flex; align-items:center; gap:5px; cursor:pointer;
+      font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff;
+    }
+    .pix-sld-cval .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pix-sld-cval::after { content:"▾"; font-size:9px; color:rgba(255,255,255,0.5); flex:none; }
+    .pix-sld-combo.empty .cnm { color:rgba(255,255,255,0.4); }
+    .pix-sld-combo.empty .cval { color:rgba(255,255,255,0.4); font-weight:400; font-style:italic; }
+    .pix-sld-combo.empty .pix-sld-cnav { color:rgba(255,255,255,0.22); cursor:default; }
+
+    .pix-sld-cpop {
+      position:fixed; z-index:10030; background:#1d1d1d; border:1px solid #3a3a3a; border-radius:7px;
+      box-shadow:0 14px 40px rgba(0,0,0,0.55); padding:4px; max-height:280px; overflow-y:auto;
+      min-width:150px; font:12px 'Segoe UI',sans-serif;
+    }
+    .pix-sld-copt { padding:5px 10px; border-radius:4px; color:#d8d8d8; cursor:pointer; white-space:nowrap; }
+    .pix-sld-copt:hover { background:#2a2a2a; }
+    .pix-sld-copt.on { color:#fff; background:var(--acc,#f66744); }
+
     /* Type an exact value (double-click the row). */
     .pix-sld-edit {
       position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box; display:none;
@@ -174,7 +207,17 @@ function makeRowEl(node, index) {
   tog.style.display = "none";
   tog.innerHTML = '<span class="tnm"></span><span class="tst"></span><span class="pix-sld-tsw"></span>';
 
-  row.append(sl, tog);
+  // The dropdown control shares the row too (only one of slider/toggle/combo shows).
+  const combo = document.createElement("div");
+  combo.className = "pix-sld-combo";
+  combo.style.display = "none";
+  combo.innerHTML =
+    '<span class="cnm"></span>' +
+    '<span class="pix-sld-cnav" data-dir="-1">◀</span>' +
+    '<span class="cval"><span class="ct"></span></span>' +
+    '<span class="pix-sld-cnav" data-dir="1">▶</span>';
+
+  row.append(sl, tog, combo);
 
   const slider = () => readState(node).sliders[index];
 
@@ -265,7 +308,84 @@ function makeRowEl(node, index) {
     node.graph?.setDirtyCanvas?.(true, true);
   });
 
+  // Combo: arrows cycle the visible options; clicking the value opens the list.
+  combo.addEventListener("pointerdown", (e) => e.stopPropagation());
+  combo.querySelectorAll(".pix-sld-cnav").forEach((nav) => {
+    nav.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const s = slider();
+      if (!s || s.type !== "combo") return;
+      const vis = comboVisible(s);
+      if (!vis.length) return;
+      const dir = Number(nav.getAttribute("data-dir")) || 1;
+      let i = vis.indexOf(s.value);
+      if (i < 0) i = 0;
+      s.value = vis[(i + dir + vis.length) % vis.length];
+      paintRow(node, index);
+      node.graph?.setDirtyCanvas?.(true, true);
+    });
+  });
+  combo.querySelector(".cval").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = slider();
+    if (!s || s.type !== "combo") return;
+    if (!comboVisible(s).length) return;
+    openComboPopup(node, index, combo.querySelector(".cval"));
+  });
+
   return row;
+}
+
+// ── Dropdown option popup ────────────────────────────────────────────────────
+let _comboPopup = null;
+function _comboOutside(e) { if (_comboPopup && !_comboPopup.contains(e.target)) closeComboPopup(); }
+function _comboEsc(e) { if (e.key === "Escape" && _comboPopup) { e.stopPropagation(); closeComboPopup(); } }
+
+export function closeComboPopup() {
+  if (_comboPopup) { try { _comboPopup.remove(); } catch {} _comboPopup = null; }
+  document.removeEventListener("pointerdown", _comboOutside, true);
+  document.removeEventListener("wheel", _comboOutside, true);   // wheel OUTSIDE closes; inside scrolls
+  document.removeEventListener("keydown", _comboEsc, true);
+}
+
+function openComboPopup(node, index, anchorEl) {
+  closeComboPopup();
+  const s = readState(node).sliders[index];
+  if (!s) return;
+  const vis = comboVisible(s);
+  if (!vis.length) return;
+
+  const pop = document.createElement("div");
+  pop.className = "pix-sld-cpop";
+  pop.style.setProperty("--acc", accentOf(node));
+  vis.forEach((opt) => {
+    const item = document.createElement("div");
+    item.className = "pix-sld-copt" + (opt === s.value ? " on" : "");
+    item.textContent = opt;
+    item.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const ss = readState(node).sliders[index];
+      if (ss) { ss.value = opt; paintRow(node, index); node.graph?.setDirtyCanvas?.(true, true); }
+      closeComboPopup();
+    });
+    pop.appendChild(item);
+  });
+  document.body.appendChild(pop);
+
+  const r = anchorEl.getBoundingClientRect();
+  pop.style.left = Math.max(8, Math.min(r.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
+  let top = r.bottom + 4;
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = r.top - pop.offsetHeight - 4;
+  pop.style.top = Math.max(8, top) + "px";
+  pop.querySelector(".pix-sld-copt.on")?.scrollIntoView({ block: "nearest" });
+
+  _comboPopup = pop;
+  // wheel handler gates on !contains, so scrolling INSIDE the list never closes it.
+  setTimeout(() => {
+    document.addEventListener("pointerdown", _comboOutside, true);
+    document.addEventListener("wheel", _comboOutside, true);
+    document.addEventListener("keydown", _comboEsc, true);
+  }, 0);
 }
 
 // Repaint one row from state (cheap: called on every drag frame).
@@ -277,11 +397,13 @@ export function paintRow(node, index) {
 
   const sl = el.querySelector(".pix-sld-sl");
   const tog = el.querySelector(".pix-sld-tog");
+  const combo = el.querySelector(".pix-sld-combo");
   const acc = accentOf(node);
 
   // ── Toggle row ──
   if (s.type === "toggle") {
     if (sl) sl.style.display = "none";
+    if (combo) combo.style.display = "none";
     if (tog) {
       tog.style.display = "flex";
       const on = Number(s.value) ? 1 : 0;
@@ -294,8 +416,28 @@ export function paintRow(node, index) {
     return;
   }
 
+  // ── Dropdown (combo) row ──
+  if (s.type === "combo") {
+    if (sl) sl.style.display = "none";
+    if (tog) tog.style.display = "none";
+    if (combo) {
+      combo.style.display = "flex";
+      combo.style.setProperty("--acc", acc);
+      const vis = comboVisible(s);
+      const empty = !vis.length;
+      combo.classList.toggle("empty", empty);
+      combo.querySelector(".cnm").textContent = s.name || `Value ${index + 1}`;
+      combo.querySelector(".cval .ct").textContent = empty ? "connect a picker" : (s.value || vis[0] || "");
+      combo.title = empty
+        ? "Wire this to a dropdown input (sampler, scheduler, checkpoint, ...) to fill it"
+        : `${s.name || `Value ${index + 1}`}: ${s.value}`;
+    }
+    return;
+  }
+
   // ── Slider row ──
   if (tog) tog.style.display = "none";
+  if (combo) combo.style.display = "none";
   if (sl) sl.style.display = "block";
 
   const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0

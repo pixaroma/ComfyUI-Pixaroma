@@ -110,12 +110,43 @@ export function ensureToggle(s) {
   if (s.out !== "bool" && s.out !== "int") s.out = "auto";
 }
 
+// A combo (dropdown) row is created by wiring an Auto row to a picker input
+// (sampler, scheduler, checkpoint, ...); it adopts that picker's whole option
+// list into `options`. `allowed` is the subset the user ticked to show (empty =
+// show all); `value` is the current pick, `def` the default. All are strings.
+export function comboVisible(s) {
+  const opts = Array.isArray(s.options) ? s.options : [];
+  const allow = Array.isArray(s.allowed) ? s.allowed.filter((o) => opts.includes(o)) : [];
+  return allow.length ? allow : opts;
+}
+
+export function ensureCombo(s) {
+  if (!Array.isArray(s.options)) s.options = [];
+  if (!Array.isArray(s.allowed)) s.allowed = [];
+  const vis = comboVisible(s);
+  if (typeof s.value !== "string" || !vis.includes(s.value)) s.value = vis[0] || "";
+  if (typeof s.def !== "string" || !vis.includes(s.def)) s.def = vis[0] || "";
+}
+
+// Read a target input's dropdown option list, whether it is still a live combo
+// widget or a converted combo input (options then live in the node definition).
+export function comboOptionsOf(target, inputName) {
+  if (!target || !inputName) return null;
+  const w = target.widgets?.find((x) => x.name === inputName);
+  if (Array.isArray(w?.options?.values) && w.options.values.length) return w.options.values.slice();
+  const def = target.constructor?.nodeData?.input;
+  const spec = def?.required?.[inputName] || def?.optional?.[inputName];
+  if (Array.isArray(spec) && Array.isArray(spec[0]) && spec[0].length) return spec[0].slice();
+  return null;
+}
+
 // Re-clamp every slider (after a range or type edit in the settings panel).
 export function normalizeSliders(node) {
   const st = readState(node);
   if (st.sliders.length > MAX_SLIDERS) st.sliders.length = MAX_SLIDERS;
   for (const s of st.sliders) {
     if (s.type === "toggle") { ensureToggle(s); continue; }
+    if (s.type === "combo") { ensureCombo(s); continue; }
     if (s.type === "int") {
       // A whole-number slider stepping by 0.1 makes no sense.
       if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
@@ -173,6 +204,10 @@ export function syncOutputs(node) {
     let want_t;
     if (s.type === "toggle") {
       want_t = s.out === "bool" ? "BOOLEAN" : s.out === "int" ? "INT" : "*";
+    } else if (s.type === "combo") {
+      // A dropdown sends a validated option string; "*" so it connects to any
+      // picker input (each picker's type is its own option list).
+      want_t = "*";
     } else {
       want_t = s.type === "int" ? "INT" : s.type === "float" ? "FLOAT" : "*";
     }
@@ -243,11 +278,31 @@ function resolveToggleOut(node, s, slotIndex, link) {
   return true;
 }
 
+// An existing dropdown re-wired to another picker re-adopts its option list,
+// drops any filtered options that no longer exist, and fixes the current pick.
+function resolveComboOptions(node, s, slotIndex, link) {
+  const target = node.graph?.getNodeById?.(link.target_id);
+  const inp = target?.inputs?.[link.target_slot];
+  const wname = inp?.widget?.name || inp?.name;
+  const opts = comboOptionsOf(target, wname);
+  if (!opts || !opts.length) return false;
+  s.options = opts;
+  if (Array.isArray(s.allowed)) s.allowed = s.allowed.filter((o) => opts.includes(o));
+  if (wname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+    s.name = String(wname).replace(/_/g, " ");
+    s.autoName = true;
+  }
+  ensureCombo(s);
+  syncOutputs(node);
+  return true;
+}
+
 export function resolveAutoType(node, slotIndex, link) {
   const st = readState(node);
   const s = st.sliders[slotIndex];
   if (!s || !link) return false;
   if (s.type === "toggle") return resolveToggleOut(node, s, slotIndex, link);
+  if (s.type === "combo") return resolveComboOptions(node, s, slotIndex, link);
 
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
@@ -266,6 +321,27 @@ export function resolveAutoType(node, slotIndex, link) {
     s.def = s.value;
     if (wname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
       s.name = String(wname).replace(/_/g, " ");
+      s.autoName = true;
+    }
+    syncOutputs(node);
+    return true;
+  }
+
+  // A picker (combo) target turns the row into a Dropdown that adopts the
+  // picker's whole option list (samplers, schedulers, checkpoints, ...).
+  const cwname = inp?.widget?.name || inp?.name;
+  const comboOpts = comboOptionsOf(target, cwname);
+  if (comboOpts && comboOpts.length) {
+    s.type = "combo";
+    s.options = comboOpts;
+    if (!Array.isArray(s.allowed)) s.allowed = [];
+    const cw = target?.widgets?.find((x) => x.name === cwname);
+    const cur = (cw && typeof cw.value === "string" && comboOpts.includes(cw.value)) ? cw.value : comboOpts[0];
+    s.value = cur;
+    s.def = cur;
+    ensureCombo(s);
+    if (cwname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+      s.name = String(cwname).replace(/_/g, " ");
       s.autoName = true;
     }
     syncOutputs(node);
