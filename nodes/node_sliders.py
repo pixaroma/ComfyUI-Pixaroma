@@ -36,19 +36,19 @@ class PixaromaSliders:
     RETURN_TYPES = tuple([ANY] * MAX_SLIDERS)
     RETURN_NAMES = tuple("value_%d" % (i + 1) for i in range(MAX_SLIDERS))
     OUTPUT_TOOLTIPS = tuple(
-        "The current value or on/off state of row %d." % (i + 1) for i in range(MAX_SLIDERS)
+        "The value of control %d." % (i + 1) for i in range(MAX_SLIDERS)
     )
     FUNCTION = "run"
     CATEGORY = "👑 Pixaroma/🔢 Values"
     DESCRIPTION = (
-        "A control panel that gathers the dials and switches you care about into one node and "
-        "wires each straight to where it belongs. Add a control, name it, then connect its output "
-        "to any input - a slider for numbers like steps, cfg, denoise or a LoRA strength, or a "
-        "switch for a true/false setting. Each control adopts what you plug it into: a slider "
-        "sends a whole number or a decimal, a switch (toggle) sends a boolean or 1/0, so it "
-        "cannot send the wrong kind. Right-click the node for the settings, where you add or "
-        "remove controls, set ranges and switch labels, and pick the colour. Find it by searching "
-        "for control panel, slider, switch, toggle, boolean, or on/off."
+        "A control panel that gathers the dials, switches and settings you care about into one "
+        "node and wires each straight to where it belongs. Add a control, name it, then connect "
+        "its output to any input. Each control becomes whatever you plug it into: a slider for a "
+        "number (steps, cfg, denoise, a LoRA strength), a switch for a true/false setting, a "
+        "dropdown for a picker (sampler, scheduler, checkpoint) that you can trim to just the "
+        "options you use, a seed with randomize, or a text field for a prompt. Re-wire a control "
+        "and it changes to match. Right-click the node for the settings. Find it by searching for "
+        "control panel, slider, switch, toggle, dropdown, combo, seed, or text."
     )
 
     @staticmethod

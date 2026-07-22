@@ -355,42 +355,35 @@ registerNodeHelp(CLASS, {
     {
       heading: "What it does",
       body:
-        "Add a row, name it, then wire its output to any input: steps, cfg, denoise, a LoRA strength, a width " +
-        "for the sliders, or an on / off setting for the switches. Instead of hunting through the graph for the " +
-        "value you want to tweak, you keep every dial and switch you care about in one place. A row can be a " +
-        "slider or a toggle (a boolean switch), and you can mix both in the same node.",
+        "Gather every dial, switch and setting you care about into one node and wire each straight to where it " +
+        "belongs, instead of hunting through the graph. Add a control, name it, then connect its output to any " +
+        "input. Each control becomes whatever you plug it into, and changes to match if you re-wire it elsewhere.",
     },
     {
-      heading: "Using a slider",
-      bullets: [
-        "Drag across a slider to set it. Hold Shift while dragging for fine control.",
-        "Double-click a slider to type an exact value.",
-        "Each row has its own output dot, sitting on its own row.",
+      heading: "The kinds of control",
+      defs: [
+        ["Slider", "For a number: steps, cfg, denoise, a LoRA strength, a width. Drag it (hold Shift for fine control) or double-click to type. Whole number or decimal is decided by the input you plug it into."],
+        ["Switch", "For a true / false setting. Click to flip it. Sends true / false, or 1 / 0 for a number input. You can rename its two states and set which one it starts in."],
+        ["Dropdown", "For a picker: sampler, scheduler, checkpoint, VAE, a LoRA name. It learns the whole list from the input; in the settings you tick which options to show, so it only offers the ones you actually use."],
+        ["Seed", "For a seed input. R randomizes it on every run, N rolls a new fixed one, or click the number to type an exact seed."],
+        ["Text", "For words: a prompt, a filename, a style tag. Type straight into it on the node."],
       ],
     },
     {
-      heading: "Using a switch (on / off)",
+      heading: "It matches whatever you plug it into",
       body:
-        "In the settings, set a row's type to Toggle and it becomes an on / off switch instead of a slider. " +
-        "Click the row to flip it. Like a slider it adopts what it is plugged into: wire it to a true / false " +
-        "input and it sends a boolean, wire it to a number input and it sends 1 or 0. You can rename its two " +
-        "states (for example Yes / No) and set which state it starts in.",
-    },
-    {
-      heading: "Whole numbers or decimals",
-      body:
-        "A new slider is set to Auto. The first input you connect it to decides: plug it into steps and it " +
-        "sends whole numbers, plug it into denoise and it sends decimals. That way it can never send the " +
-        "wrong kind of number. You can also set it by hand in the settings.",
+        "A fresh control is blank until you connect it. Wire it to a number and it is a slider, to a true / false " +
+        "and it is a switch, to a picker and it is a dropdown, to a seed and it is a seed, to a text box and it is " +
+        "a text field. Unplug it and wire it somewhere else and it changes to match. It will not connect to things " +
+        "it cannot drive, like a model or an image - it tells you if you try.",
     },
     {
       heading: "Settings",
       body:
-        "Right-click the node for the settings panel. There you can add and remove rows, rename them, choose " +
-        "each row's type (Auto, Int, Float, or Toggle), set a slider's range and step or a switch's two labels " +
-        "and default, and pick the colour the node paints with. That colour is per node, and you can save it as " +
-        "the default for every new Control Panel node you add.",
+        "Right-click the node for the settings panel: add and remove controls, rename them, set a slider's range, " +
+        "choose which options a dropdown shows, and pick the colour the node paints with. That colour is per node, " +
+        "and you can save it as the default for every new Control Panel node you add.",
     },
   ],
-  footer: "Up to 16 rows per node - sliders and switches, mixed freely. Add as many panels as you like.",
+  footer: "Up to 16 controls per node - sliders, switches, dropdowns, seeds and text, mixed freely.",
 });
