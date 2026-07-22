@@ -20,7 +20,7 @@
 //             return to the top-right corner and the node keeps working.
 
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
-import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible } from "./core.mjs";
+import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible, randomSeed } from "./core.mjs";
 
 export const ROW_H = 23;    // height of one slider row
 export const ROW_GAP = 6;   // gap between rows (matches the Vue widgets grid gap-y-1 + our own)
@@ -139,6 +139,25 @@ export function injectCSS() {
     .pix-sld-copt:hover { background:#2a2a2a; }
     .pix-sld-copt.on { color:#fff; background:var(--acc,#f66744); }
 
+    /* ── Seed row - a number with Randomize (R) + New-seed (N) buttons ─────── */
+    .pix-sld-seed {
+      display:flex; align-items:center; gap:6px; width:100%; height:${ROW_H}px;
+      box-sizing:border-box; padding:0 6px 0 11px; border-radius:5px;
+      background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12); user-select:none;
+    }
+    .pix-sld-seed:hover { border-color:var(--acc,#f66744); }
+    .pix-sld-seed .snm { flex:1; min-width:0; font:11.5px 'Segoe UI',sans-serif; color:rgba(255,255,255,0.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pix-sld-seed .sv { flex:none; max-width:120px; font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; cursor:text; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pix-sld-seed.random .sv { color:rgba(255,255,255,0.5); font-style:italic; }
+    .pix-sld-sbtn { flex:none; min-width:18px; height:16px; padding:0 4px; border-radius:4px; border:1px solid rgba(255,255,255,0.18);
+      display:grid; place-items:center; font:9.5px 'Segoe UI',sans-serif; font-weight:700; color:rgba(255,255,255,0.6); cursor:pointer; }
+    .pix-sld-sbtn:hover { border-color:var(--acc,#f66744); color:#fff; }
+    .pix-sld-seed.random .sr { background:var(--acc,#f66744); border-color:var(--acc,#f66744); color:#fff; }
+    .pix-sld-sedit { display:none; flex:none; width:112px; background:#1d1d1d; border:1px solid var(--acc,#f66744); border-radius:4px;
+      color:#e8e8e8; font:11.5px 'Segoe UI',sans-serif; text-align:right; padding:1px 6px; outline:none; font-variant-numeric:tabular-nums; }
+    .pix-sld-seed.editing .sv { display:none; }
+    .pix-sld-seed.editing .pix-sld-sedit { display:block; }
+
     /* Type an exact value (double-click the row). */
     .pix-sld-edit {
       position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box; display:none;
@@ -217,7 +236,18 @@ function makeRowEl(node, index) {
     '<span class="cval"><span class="ct"></span></span>' +
     '<span class="pix-sld-cnav" data-dir="1">▶</span>';
 
-  row.append(sl, tog, combo);
+  // The seed control shares the row too.
+  const seed = document.createElement("div");
+  seed.className = "pix-sld-seed";
+  seed.style.display = "none";
+  seed.innerHTML =
+    '<span class="snm"></span>' +
+    '<span class="sv"></span>' +
+    '<input class="pix-sld-sedit" type="text" spellcheck="false">' +
+    '<span class="pix-sld-sbtn sr" title="Randomize the seed on every run">R</span>' +
+    '<span class="pix-sld-sbtn sn" title="Roll a new fixed seed now">N</span>';
+
+  row.append(sl, tog, combo, seed);
 
   const slider = () => readState(node).sliders[index];
 
@@ -333,6 +363,60 @@ function makeRowEl(node, index) {
     openComboPopup(node, index, combo.querySelector(".cval"));
   });
 
+  // Seed: R toggles randomize-each-run; N rolls a new fixed seed; click the
+  // number to type an exact one.
+  seed.addEventListener("pointerdown", (e) => e.stopPropagation());
+  seed.querySelector(".sr").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = slider();
+    if (!s || s.type !== "seed") return;
+    s.mode = s.mode === "random" ? "fixed" : "random";
+    paintRow(node, index);
+    node.graph?.setDirtyCanvas?.(true, true);
+  });
+  seed.querySelector(".sn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = slider();
+    if (!s || s.type !== "seed") return;
+    s.value = randomSeed();
+    s.mode = "fixed";
+    if (node._pixSeedRun) delete node._pixSeedRun[index];
+    paintRow(node, index);
+    node.graph?.setDirtyCanvas?.(true, true);
+  });
+  const sedit = seed.querySelector(".pix-sld-sedit");
+  seed.querySelector(".sv").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const s = slider();
+    if (!s || s.type !== "seed") return;
+    sedit.value = String(s.value);
+    seed.classList.add("editing");
+    sedit.focus();
+    sedit.select();
+  });
+  const commitSeed = (apply) => {
+    if (!seed.classList.contains("editing")) return;
+    if (apply) {
+      const v = parseInt(sedit.value, 10);
+      const s = slider();
+      if (s && Number.isFinite(v) && v >= 0) {
+        s.value = Math.floor(v);
+        s.mode = "fixed";
+        if (node._pixSeedRun) delete node._pixSeedRun[index];
+      }
+    }
+    seed.classList.remove("editing");
+    paintRow(node, index);
+    node.graph?.setDirtyCanvas?.(true, true);
+  };
+  sedit.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); commitSeed(true); }
+    else if (e.key === "Escape") { e.preventDefault(); commitSeed(false); }
+  });
+  sedit.addEventListener("blur", () => commitSeed(true));
+  sedit.addEventListener("pointerdown", (e) => e.stopPropagation());
+
   return row;
 }
 
@@ -398,12 +482,14 @@ export function paintRow(node, index) {
   const sl = el.querySelector(".pix-sld-sl");
   const tog = el.querySelector(".pix-sld-tog");
   const combo = el.querySelector(".pix-sld-combo");
+  const seed = el.querySelector(".pix-sld-seed");
   const acc = accentOf(node);
 
   // ── Toggle row ──
   if (s.type === "toggle") {
     if (sl) sl.style.display = "none";
     if (combo) combo.style.display = "none";
+    if (seed) seed.style.display = "none";
     if (tog) {
       tog.style.display = "flex";
       const on = Number(s.value) ? 1 : 0;
@@ -420,6 +506,7 @@ export function paintRow(node, index) {
   if (s.type === "combo") {
     if (sl) sl.style.display = "none";
     if (tog) tog.style.display = "none";
+    if (seed) seed.style.display = "none";
     if (combo) {
       combo.style.display = "flex";
       combo.style.setProperty("--acc", acc);
@@ -435,9 +522,32 @@ export function paintRow(node, index) {
     return;
   }
 
+  // ── Seed row ──
+  if (s.type === "seed") {
+    if (sl) sl.style.display = "none";
+    if (tog) tog.style.display = "none";
+    if (combo) combo.style.display = "none";
+    if (seed) {
+      seed.style.display = "flex";
+      seed.style.setProperty("--acc", acc);
+      const random = s.mode === "random";
+      seed.classList.toggle("random", random);
+      seed.querySelector(".snm").textContent = s.name || `Value ${index + 1}`;
+      const runVal = node._pixSeedRun?.[index];
+      seed.querySelector(".sv").textContent = random
+        ? (Number.isFinite(runVal) ? String(runVal) : "random")
+        : String(s.value);
+      seed.title = random
+        ? `${s.name || "Seed"}: a new random seed every run (R on). N rolls a fixed one.`
+        : `${s.name || "Seed"}: ${s.value}  (R = randomize each run, N = new seed)`;
+    }
+    return;
+  }
+
   // ── Slider row ──
   if (tog) tog.style.display = "none";
   if (combo) combo.style.display = "none";
+  if (seed) seed.style.display = "none";
   if (sl) sl.style.display = "block";
 
   const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0

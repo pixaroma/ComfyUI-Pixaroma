@@ -140,6 +140,19 @@ export function comboOptionsOf(target, inputName) {
   return null;
 }
 
+// A seed control is an INT row (name like "seed") with a randomize mode. `value`
+// is the current seed; `mode` is "fixed" (keep it) or "random" (a fresh seed each
+// run, rolled at submit time - see graphToPrompt). Kept < 1e12 so Python's value
+// clamp never touches it, while still giving billions of seeds.
+export function randomSeed() { return Math.floor(Math.random() * 0x100000000); }
+
+export function ensureSeed(s) {
+  let v = Number(s.value);
+  if (!Number.isFinite(v) || v < 0) v = randomSeed();
+  s.value = Math.floor(v);
+  if (s.mode !== "random") s.mode = "fixed";
+}
+
 // Re-clamp every slider (after a range or type edit in the settings panel).
 export function normalizeSliders(node) {
   const st = readState(node);
@@ -147,6 +160,7 @@ export function normalizeSliders(node) {
   for (const s of st.sliders) {
     if (s.type === "toggle") { ensureToggle(s); continue; }
     if (s.type === "combo") { ensureCombo(s); continue; }
+    if (s.type === "seed") { ensureSeed(s); continue; }
     if (s.type === "int") {
       // A whole-number slider stepping by 0.1 makes no sense.
       if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
@@ -208,6 +222,8 @@ export function syncOutputs(node) {
       // A dropdown sends a validated option string; "*" so it connects to any
       // picker input (each picker's type is its own option list).
       want_t = "*";
+    } else if (s.type === "seed") {
+      want_t = "INT";
     } else {
       want_t = s.type === "int" ? "INT" : s.type === "float" ? "FLOAT" : "*";
     }
@@ -297,12 +313,27 @@ function resolveComboOptions(node, s, slotIndex, link) {
   return true;
 }
 
+// A seed re-wired to another input just re-adopts the name (it stays a seed).
+function resolveSeedRewire(node, s, slotIndex, link) {
+  const target = node.graph?.getNodeById?.(link.target_id);
+  const inp = target?.inputs?.[link.target_slot];
+  const wname = inp?.widget?.name || inp?.name;
+  if (wname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+    s.name = String(wname).replace(/_/g, " ");
+    s.autoName = true;
+  }
+  ensureSeed(s);
+  syncOutputs(node);
+  return true;
+}
+
 export function resolveAutoType(node, slotIndex, link) {
   const st = readState(node);
   const s = st.sliders[slotIndex];
   if (!s || !link) return false;
   if (s.type === "toggle") return resolveToggleOut(node, s, slotIndex, link);
   if (s.type === "combo") return resolveComboOptions(node, s, slotIndex, link);
+  if (s.type === "seed") return resolveSeedRewire(node, s, slotIndex, link);
 
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
@@ -353,6 +384,21 @@ export function resolveAutoType(node, slotIndex, link) {
   // back to auto (resetRowOnDisconnect), so re-wiring it re-resolves cleanly.
   if (s.type !== "auto") return false;
   if (t !== "INT" && t !== "FLOAT") return false;
+
+  // An INT input named like "seed" becomes a Seed control (randomize), not a slider.
+  if (t === "INT" && /seed/i.test(cwname || "")) {
+    s.type = "seed";
+    const cur = Number(target?.widgets?.find((x) => x.name === cwname)?.value);
+    s.value = Number.isFinite(cur) ? Math.floor(cur) : randomSeed();
+    s.mode = "fixed";
+    ensureSeed(s);
+    if (cwname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+      s.name = String(cwname).replace(/_/g, " ");
+      s.autoName = true;
+    }
+    syncOutputs(node);
+    return true;
+  }
 
   s.type = t === "INT" ? "int" : "float";
 

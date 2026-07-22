@@ -5,7 +5,7 @@ import { registerNodeHelp } from "../shared/help.mjs";
 import {
   ACCENT_SETTING, BRAND, MAX_SLIDERS,
   readState, normalizeSliders, syncOutputs, addSlider, resolveAutoType, resetRowOnDisconnect,
-  comboOptionsOf,
+  comboOptionsOf, randomSeed,
 } from "./core.mjs";
 
 // A Control Panel can only drive widget-style value inputs. STRING is deliberately
@@ -310,18 +310,31 @@ app.graphToPrompt = async function (...args) {
         const node = findNode(index, id);
         if (!node) continue;
         const st = readState(node);
+        let seedRolled = false;
         entry.inputs = entry.inputs || {};
         entry.inputs[HIDDEN_INPUT] = JSON.stringify({
           version: 1,
           // Only what changes the OUTPUT goes in here - a toggle also sends its
-          // adopted kind (out). The state words / default are display-only and
-          // are deliberately left out, so renaming a state never re-runs the node.
-          sliders: st.sliders.slice(0, MAX_SLIDERS).map((s) => (
-            s.type === "toggle"
-              ? { type: "toggle", value: s.value ? 1 : 0, out: s.out || "auto" }
-              : { type: s.type, value: s.value }
-          )),
+          // adopted kind (out). The state words / default / dropdown options are
+          // display-only and are deliberately left out, so renaming never re-runs.
+          sliders: st.sliders.slice(0, MAX_SLIDERS).map((s, i) => {
+            if (s.type === "toggle") return { type: "toggle", value: s.value ? 1 : 0, out: s.out || "auto" };
+            if (s.type === "seed") {
+              // Random mode rolls a fresh seed each run; the rolled value lives in
+              // a RUNTIME field (never node.properties) so a run can't dirty the
+              // saved workflow - only shown on the node face.
+              let v = Math.floor(Number(s.value) || 0);
+              if (s.mode === "random") {
+                v = randomSeed();
+                (node._pixSeedRun = node._pixSeedRun || {})[i] = v;
+                seedRolled = true;
+              }
+              return { type: "seed", value: v };
+            }
+            return { type: s.type, value: s.value };
+          }),
         });
+        if (seedRolled) queueMicrotask(() => { try { renderAll(node); } catch {} });
       }
     }
   } catch (e) {

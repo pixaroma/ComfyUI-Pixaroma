@@ -83,7 +83,7 @@ class PixaromaSliders:
             if str(slider.get("out") or "auto").lower() == "int":
                 return 1 if on else 0
             return on
-        if kind == "int":
+        if kind in ("int", "seed"):
             return int(round(value))
         return float(value)
 
