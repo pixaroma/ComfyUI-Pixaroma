@@ -51,8 +51,8 @@ export function readState(node) {
   // from the tail, so DROPPING a middle row would re-pair a wired output with the
   // wrong row's data. Guarded by .some so a clean file is never rewritten (byte-
   // stable on load).
-  if (st.sliders.some((s) => !s || typeof s !== "object")) {
-    st.sliders = st.sliders.map((s, i) => (s && typeof s === "object") ? s : defaultSlider(i + 1));
+  if (st.sliders.some((s) => !s || typeof s !== "object" || Array.isArray(s))) {
+    st.sliders = st.sliders.map((s, i) => (s && typeof s === "object" && !Array.isArray(s)) ? s : defaultSlider(i + 1));
   }
   if (st.accent === undefined) st.accent = null;
   return st;

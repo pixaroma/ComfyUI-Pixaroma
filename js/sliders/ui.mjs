@@ -76,7 +76,7 @@ export function injectCSS() {
        track is the same translucent dent the slider uses, so a recoloured node
        still reads, and the ON state fills with the node's accent. */
     .pix-sld-tog {
-      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px;
+      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px; overflow:hidden;
       box-sizing:border-box; padding:0 8px; border-radius:5px;
       background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12);
       cursor:pointer; user-select:none;
@@ -109,7 +109,7 @@ export function injectCSS() {
     /* ── Dropdown (combo) row - the Pixaroma dark picker, never a native select.
        Value with prev/next arrows; click the value for the full list. */
     .pix-sld-combo {
-      display:flex; align-items:center; gap:5px; width:100%; height:${ROW_H}px;
+      display:flex; align-items:center; gap:5px; width:100%; height:${ROW_H}px; overflow:hidden;
       box-sizing:border-box; padding:0 6px 0 11px; border-radius:5px;
       background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12); user-select:none;
     }
@@ -124,7 +124,7 @@ export function injectCSS() {
        via the parent so they actually match (a bare .pix-sld-cval never did, so
        a long option used to overflow the row with no caret + no ellipsis). */
     .pix-sld-combo .cval {
-      flex:none; max-width:145px; display:flex; align-items:center; gap:5px; cursor:pointer;
+      flex:0 1 auto; min-width:0; max-width:145px; display:flex; align-items:center; gap:5px; cursor:pointer;
       font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff;
     }
     .pix-sld-combo .cval .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -144,13 +144,13 @@ export function injectCSS() {
 
     /* ── Seed row - a number with Randomize (R) + New-seed (N) buttons ─────── */
     .pix-sld-seed {
-      display:flex; align-items:center; gap:6px; width:100%; height:${ROW_H}px;
+      display:flex; align-items:center; gap:6px; width:100%; height:${ROW_H}px; overflow:hidden;
       box-sizing:border-box; padding:0 6px 0 11px; border-radius:5px;
       background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12); user-select:none;
     }
     .pix-sld-seed:hover { border-color:var(--acc,#f66744); }
     .pix-sld-seed .snm { flex:1; min-width:0; font:11.5px 'Segoe UI',sans-serif; color:rgba(255,255,255,0.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .pix-sld-seed .sv { flex:none; max-width:120px; font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; cursor:text; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pix-sld-seed .sv { flex:0 1 auto; min-width:0; max-width:120px; font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff; font-variant-numeric:tabular-nums; cursor:text; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pix-sld-seed.random .sv { color:rgba(255,255,255,0.5); font-style:italic; }
     .pix-sld-sbtn { flex:none; min-width:18px; height:16px; padding:0 4px; border-radius:4px; border:1px solid rgba(255,255,255,0.18);
       display:grid; place-items:center; font:9.5px 'Segoe UI',sans-serif; font-weight:700; color:rgba(255,255,255,0.6); cursor:pointer; }
@@ -163,7 +163,7 @@ export function injectCSS() {
 
     /* ── Text row - a single-line field for a prompt / filename / tag ──────── */
     .pix-sld-text {
-      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px;
+      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px; overflow:hidden;
       box-sizing:border-box; padding:0 8px 0 11px; border-radius:5px;
       background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12);
     }
@@ -629,7 +629,8 @@ export function paintRow(node, index) {
   const span = (max - min) || 1;
   const p = Math.min(100, Math.max(0, ((Number(s.value) - min) / span) * 100));
   const dec = decimalsOf(s);
-  const txt = Number(s.value).toFixed(dec);
+  let txt = Number(s.value).toFixed(dec);
+  if (/^-0(\.0+)?$/.test(txt)) txt = txt.slice(1);   // float drift can land on -0; show 0, not "-0.00"
 
   sl.style.setProperty("--p", p + "%");
   sl.style.setProperty("--acc", acc);

@@ -403,8 +403,10 @@ registerNodeHelp(CLASS, {
       heading: "Settings",
       body:
         "Right-click the node for the settings panel: add and remove controls, rename them, set a slider's range, " +
-        "choose which options a dropdown shows, and pick the colour the node paints with. That colour is per node, " +
-        "and you can save it as the default for every new Control Panel node you add.",
+        "choose which options a dropdown shows, and pick the colour the node paints with (per node, and you can save " +
+        "it as the default for every new Control Panel node). Reset values sends the sliders to the middle of their " +
+        "range and the switches and dropdowns to their default, leaving seeds and text as they are. Once a control " +
+        "is wired its type is fixed to match that input, so unplug it if you want to change the type.",
     },
   ],
   footer: "Up to 16 controls per node - sliders, switches, dropdowns, seeds and text, mixed freely.",
