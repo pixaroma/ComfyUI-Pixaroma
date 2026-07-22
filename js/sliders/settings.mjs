@@ -356,6 +356,15 @@ export function openSlidersPanel(node, onChange) {
         if (removeSlider(node, i)) { fire(); buildRows(); }
       });
 
+      // Seed / Text rows have no min/max/step - a short hint spans those columns.
+      if (s.type === "seed" || s.type === "text") {
+        const note = el("span", null, s.type === "seed" ? "randomize with R / N on the node" : "type into it on the node");
+        note.style.cssText = "grid-column:3 / 6; color:#7a7a7a; font-size:11px; padding-left:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;";
+        row.append(name, seg, note, del);
+        body.appendChild(row);
+        return;
+      }
+
       // A dropdown row: one filter button (spanning the value columns) opens the
       // "which options to show + default" popup.
       if (s.type === "combo") {

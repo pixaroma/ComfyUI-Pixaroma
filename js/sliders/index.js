@@ -8,13 +8,13 @@ import {
   comboOptionsOf, randomSeed,
 } from "./core.mjs";
 
-// A Control Panel can only drive widget-style value inputs. STRING is deliberately
-// left out until the Text control ships (Phase 3).
+// A Control Panel can only drive widget-style value inputs (numbers, on/off,
+// dropdowns, seeds, text) - never structural pipes (MODEL, LATENT, ...).
 function isValueTarget(node, link) {
   const target = node.graph?.getNodeById?.(link.target_id);
   const inp = target?.inputs?.[link.target_slot];
   const t = String(inp?.type || "").toUpperCase();
-  if (t === "INT" || t === "FLOAT" || t === "BOOLEAN" || t === "COMBO") return true;
+  if (t === "INT" || t === "FLOAT" || t === "BOOLEAN" || t === "COMBO" || t === "STRING") return true;
   return !!comboOptionsOf(target, inp?.widget?.name || inp?.name);
 }
 

@@ -158,6 +158,19 @@ export function injectCSS() {
     .pix-sld-seed.editing .sv { display:none; }
     .pix-sld-seed.editing .pix-sld-sedit { display:block; }
 
+    /* ── Text row - a single-line field for a prompt / filename / tag ──────── */
+    .pix-sld-text {
+      display:flex; align-items:center; gap:8px; width:100%; height:${ROW_H}px;
+      box-sizing:border-box; padding:0 8px 0 11px; border-radius:5px;
+      background:rgba(255,255,255,0.045); border:1px solid rgba(255,255,255,0.12);
+    }
+    .pix-sld-text:hover, .pix-sld-text:focus-within { border-color:var(--acc,#f66744); }
+    .pix-sld-text .txnm { flex:none; max-width:45%; font:11.5px 'Segoe UI',sans-serif;
+      color:rgba(255,255,255,0.72); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .pix-sld-txin { flex:1; min-width:0; background:transparent; border:0; outline:none; color:#fff;
+      font:11.5px 'Segoe UI',sans-serif; text-align:left; padding:0; }
+    .pix-sld-txin::placeholder { color:rgba(255,255,255,0.32); font-style:italic; }
+
     /* Type an exact value (double-click the row). */
     .pix-sld-edit {
       position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box; display:none;
@@ -247,7 +260,13 @@ function makeRowEl(node, index) {
     '<span class="pix-sld-sbtn sr" title="Randomize the seed on every run">R</span>' +
     '<span class="pix-sld-sbtn sn" title="Roll a new fixed seed now">N</span>';
 
-  row.append(sl, tog, combo, seed);
+  // The text control shares the row too.
+  const text = document.createElement("div");
+  text.className = "pix-sld-text";
+  text.style.display = "none";
+  text.innerHTML = '<span class="txnm"></span><input class="pix-sld-txin" type="text" spellcheck="false">';
+
+  row.append(sl, tog, combo, seed, text);
 
   const slider = () => readState(node).sliders[index];
 
@@ -417,6 +436,21 @@ function makeRowEl(node, index) {
   sedit.addEventListener("blur", () => commitSeed(true));
   sedit.addEventListener("pointerdown", (e) => e.stopPropagation());
 
+  // Text: type into the field; the field IS the value.
+  const txin = text.querySelector(".pix-sld-txin");
+  text.addEventListener("pointerdown", (e) => e.stopPropagation());
+  txin.addEventListener("pointerdown", (e) => e.stopPropagation());
+  txin.addEventListener("keydown", (e) => e.stopPropagation());   // keep typing out of canvas shortcuts
+  txin.addEventListener("input", () => {
+    const s = slider();
+    if (s && s.type === "text") s.value = txin.value;
+  });
+  txin.addEventListener("change", () => {
+    const s = slider();
+    if (s && s.type === "text") s.value = txin.value;
+    node.graph?.setDirtyCanvas?.(true, true);
+  });
+
   return row;
 }
 
@@ -483,6 +517,7 @@ export function paintRow(node, index) {
   const tog = el.querySelector(".pix-sld-tog");
   const combo = el.querySelector(".pix-sld-combo");
   const seed = el.querySelector(".pix-sld-seed");
+  const text = el.querySelector(".pix-sld-text");
   const acc = accentOf(node);
 
   // ── Toggle row ──
@@ -490,6 +525,7 @@ export function paintRow(node, index) {
     if (sl) sl.style.display = "none";
     if (combo) combo.style.display = "none";
     if (seed) seed.style.display = "none";
+    if (text) text.style.display = "none";
     if (tog) {
       tog.style.display = "flex";
       const on = Number(s.value) ? 1 : 0;
@@ -507,6 +543,7 @@ export function paintRow(node, index) {
     if (sl) sl.style.display = "none";
     if (tog) tog.style.display = "none";
     if (seed) seed.style.display = "none";
+    if (text) text.style.display = "none";
     if (combo) {
       combo.style.display = "flex";
       combo.style.setProperty("--acc", acc);
@@ -527,6 +564,7 @@ export function paintRow(node, index) {
     if (sl) sl.style.display = "none";
     if (tog) tog.style.display = "none";
     if (combo) combo.style.display = "none";
+    if (text) text.style.display = "none";
     if (seed) {
       seed.style.display = "flex";
       seed.style.setProperty("--acc", acc);
@@ -544,10 +582,30 @@ export function paintRow(node, index) {
     return;
   }
 
+  // ── Text row ──
+  if (s.type === "text") {
+    if (sl) sl.style.display = "none";
+    if (tog) tog.style.display = "none";
+    if (combo) combo.style.display = "none";
+    if (seed) seed.style.display = "none";
+    if (text) {
+      text.style.display = "flex";
+      text.style.setProperty("--acc", acc);
+      text.querySelector(".txnm").textContent = s.name || `Value ${index + 1}`;
+      const txin = text.querySelector(".pix-sld-txin");
+      txin.placeholder = "type text";
+      // never clobber what the user is currently typing
+      if (document.activeElement !== txin) txin.value = typeof s.value === "string" ? s.value : "";
+      text.title = `${s.name || `Value ${index + 1}`}: text`;
+    }
+    return;
+  }
+
   // ── Slider row ──
   if (tog) tog.style.display = "none";
   if (combo) combo.style.display = "none";
   if (seed) seed.style.display = "none";
+  if (text) text.style.display = "none";
   if (sl) sl.style.display = "block";
 
   const [min, max] = rangeOf(s);   // a user may have typed Min 100 / Max 0

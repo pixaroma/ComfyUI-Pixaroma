@@ -58,8 +58,8 @@ class PixaromaSliders:
             return 0
         kind = str(slider.get("type") or "auto").lower()
 
-        # A dropdown emits its selected option string directly (no numeric parse).
-        if kind == "combo":
+        # A dropdown or a text field emits its string directly (no numeric parse).
+        if kind in ("combo", "text"):
             v = slider.get("value")
             return v if isinstance(v, str) else ("" if v is None else str(v))
 

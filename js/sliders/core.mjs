@@ -153,6 +153,11 @@ export function ensureSeed(s) {
   if (s.mode !== "random") s.mode = "fixed";
 }
 
+// A text control is a STRING row: `value` is the typed text (single line).
+export function ensureText(s) {
+  if (typeof s.value !== "string") s.value = s.value == null ? "" : String(s.value);
+}
+
 // Re-clamp every slider (after a range or type edit in the settings panel).
 export function normalizeSliders(node) {
   const st = readState(node);
@@ -161,6 +166,7 @@ export function normalizeSliders(node) {
     if (s.type === "toggle") { ensureToggle(s); continue; }
     if (s.type === "combo") { ensureCombo(s); continue; }
     if (s.type === "seed") { ensureSeed(s); continue; }
+    if (s.type === "text") { ensureText(s); continue; }
     if (s.type === "int") {
       // A whole-number slider stepping by 0.1 makes no sense.
       if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
@@ -224,6 +230,8 @@ export function syncOutputs(node) {
       want_t = "*";
     } else if (s.type === "seed") {
       want_t = "INT";
+    } else if (s.type === "text") {
+      want_t = "STRING";
     } else {
       want_t = s.type === "int" ? "INT" : s.type === "float" ? "FLOAT" : "*";
     }
@@ -346,6 +354,7 @@ export function resolveAutoType(node, slotIndex, link) {
     : (twombo && twombo.length) ? "combo"
     : (t === "INT" && /seed/i.test(twname || "")) ? "seed"
     : (t === "INT" || t === "FLOAT") ? "number"
+    : t === "STRING" ? "text"
     : null;
   if (!twant) return false;   // not a value input - refused in onConnectionsChange
   if (s.type === "toggle" && twant === "toggle") return resolveToggleOut(node, s, slotIndex, link);
@@ -372,6 +381,26 @@ export function resolveAutoType(node, slotIndex, link) {
       s.name = String(wname).replace(/_/g, " ");
       s.autoName = true;
     }
+    syncOutputs(node);
+    return true;
+  }
+
+  // A STRING target turns the row into a Text field. A fresh conversion adopts
+  // the input's current text (so connecting never wipes a running prompt); a
+  // re-wire keeps the text the user typed.
+  if (t === "STRING") {
+    const fresh = s.type !== "text";
+    s.type = "text";
+    ensureText(s);
+    if (fresh) {
+      const w = target?.widgets?.find((x) => x.name === twname);
+      if (typeof w?.value === "string") s.value = w.value;
+    }
+    if (twname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+      s.name = String(twname).replace(/_/g, " ");
+      s.autoName = true;
+    }
+    ensureText(s);
     syncOutputs(node);
     return true;
   }
