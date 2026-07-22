@@ -174,8 +174,11 @@ export function normalizeSliders(node) {
     if (s.type === "seed") { ensureSeed(s); continue; }
     if (s.type === "text") { ensureText(s); continue; }
     if (s.type === "int") {
-      // A whole-number slider stepping by 0.1 makes no sense.
-      if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
+      // A whole-number slider must have a whole-number step: <1 or non-finite
+      // becomes 1, and a typed 2.5 is rounded (else clampValue snaps to a
+      // fractional grid and the integer ladder comes out uneven: 3,5,8,10,...).
+      const st = Number(s.step);
+      s.step = (!Number.isFinite(st) || st < 1) ? 1 : Math.round(st);
       s.min = Math.round(Number(s.min) || 0);
       s.max = Math.round(Number(s.max) || 0);
     }
@@ -393,9 +396,12 @@ export function resolveAutoType(node, slotIndex, link) {
   // conversion that would overwrite the value. A re-wire to a DIFFERENT input
   // (even of the same kind - steps -> cfg, one boolean -> another) must fully
   // re-adopt that input's name, range and value (pattern #19), so it is left
-  // "auto" and converts fresh. When the previous target is unknown (older builds
-  // don't hand us the removed link on disconnect), fall back to the same-kind
-  // restore so value-preservation still works.
+  // "auto" and converts fresh. NO same-kind fallback: when the previous target
+  // is unknown, a fresh convert (which re-adopts everything) is the SAFE outcome
+  // - a stale-name/wrong-range row driving the wrong input is worse than losing a
+  // custom value on replug. The current frontend always hands us the removed link
+  // on disconnect (verified), so preservation works; a hypothetical build that
+  // doesn't just degrades to always-fresh-convert.
   const wasType = node._pixWasType && node._pixWasType[slotIndex];
   const wasTarget = node._pixWasTarget && node._pixWasTarget[slotIndex];
   if (node._pixWasType) delete node._pixWasType[slotIndex];
@@ -408,7 +414,7 @@ export function resolveAutoType(node, slotIndex, link) {
     (twant === "number" && (wasType === "int" || wasType === "float"));
   const sameTarget = !!(wasTarget && wasTarget.id != null &&
     String(wasTarget.id) === String(link.target_id) && wasTarget.slot === link.target_slot);
-  if (s.type === "auto" && wasType && sameKind && (sameTarget || !wasTarget)) {
+  if (s.type === "auto" && wasType && sameKind && sameTarget) {
     s.type = wasType;
   }
 

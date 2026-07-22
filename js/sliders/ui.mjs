@@ -120,12 +120,15 @@ export function injectCSS() {
     }
     .pix-sld-cnav { flex:none; width:13px; text-align:center; color:var(--acc,#f66744); font-size:10px; cursor:pointer; }
     .pix-sld-cnav:hover { color:#fff; }
-    .pix-sld-cval {
+    /* the value element carries class "cval" (not "pix-sld-cval") - scope these
+       via the parent so they actually match (a bare .pix-sld-cval never did, so
+       a long option used to overflow the row with no caret + no ellipsis). */
+    .pix-sld-combo .cval {
       flex:none; max-width:145px; display:flex; align-items:center; gap:5px; cursor:pointer;
       font:11.5px 'Segoe UI',sans-serif; font-weight:600; color:#fff;
     }
-    .pix-sld-cval .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pix-sld-cval::after { content:"▾"; font-size:9px; color:rgba(255,255,255,0.5); flex:none; }
+    .pix-sld-combo .cval .ct { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .pix-sld-combo .cval::after { content:"▾"; font-size:9px; color:rgba(255,255,255,0.5); flex:none; }
     .pix-sld-combo.empty .cnm { color:rgba(255,255,255,0.4); }
     .pix-sld-combo.empty .cval { color:rgba(255,255,255,0.4); font-weight:400; font-style:italic; }
     .pix-sld-combo.empty .pix-sld-cnav { color:rgba(255,255,255,0.22); cursor:default; }
@@ -419,7 +422,11 @@ function makeRowEl(node, index) {
       const v = parseInt(sedit.value, 10);
       const s = slider();
       if (s && Number.isFinite(v) && v >= 0) {
-        s.value = Math.floor(v);
+        // Cap at Python's own value clamp (1e12) - same as ensureSeed - so the
+        // face shows exactly the number that runs (an uncapped 13-digit seed
+        // displayed one value while Python clamped to another), and reopening the
+        // saved workflow doesn't re-clamp it and flag the file "modified".
+        s.value = Math.min(Math.floor(v), 1e12);
         s.mode = "fixed";
         if (node._pixSeedRun) delete node._pixSeedRun[index];
       }

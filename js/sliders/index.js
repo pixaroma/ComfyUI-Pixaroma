@@ -42,7 +42,7 @@ import {
   injectCSS, syncRowWidgets, renderAll, alignOutputsLegacy, watchAlign, unwatchAlign, scheduleAlign,
   closeComboPopup, ROW_H, ROW_GAP, ADD_H, MIN_W, DEFAULT_W,
 } from "./ui.mjs";
-import { openSlidersPanel, closeSlidersPanelFor } from "./settings.mjs";
+import { openSlidersPanel, closeSlidersPanelFor, rebuildSlidersPanelFor } from "./settings.mjs";
 
 // Sliders Pixaroma - a panel of sliders that drives numbers across the workflow.
 //
@@ -195,6 +195,7 @@ app.registerExtension({
         if (isConnected) {
           if (resolveAutoType(this, slotIndex, link)) {
             refresh(this);
+            rebuildSlidersPanelFor(this);   // the row just became wired: relock its type in the open panel
           } else if (link && !isValueTarget(this, link)) {
             // Refuse a wire to an input the panel can't drive (MODEL, LATENT,
             // CONDITIONING, ...); drop it on the next tick and tell the user.
@@ -213,6 +214,7 @@ app.registerExtension({
             // and repaint (it may have shown as an auto slider while unplugged).
             syncOutputs(this);
             refresh(this);
+            rebuildSlidersPanelFor(this);
           }
         } else {
           // Unplugged: a number slider drops back to auto so it can be re-wired
@@ -227,6 +229,7 @@ app.registerExtension({
           setTimeout(() => {
             if (!self.graph || isGraphLoading()) return;
             if (resetRowOnDisconnect(self, slotIndex, prevTarget)) refresh(self);
+            rebuildSlidersPanelFor(self);   // the row dropped to auto: unlock its type in the open panel
           }, 0);
         }
       }

@@ -13,13 +13,14 @@ import { openPixaromaColorPickerPopup, BUTTON_PALETTE } from "../shared/color_pi
 import {
   readState, normalizeSliders, addSlider, removeSlider, syncOutputs,
   accentOf, BRAND, ACCENT_SETTING, MAX_SLIDERS, clampValue, ensureToggle,
-  ensureCombo, comboVisible,
+  ensureCombo, comboVisible, comboOptionsOf,
 } from "./core.mjs";
 
 let _panel = null;
 let _panelNode = null;
 let _onChange = null;
 let _cpHandle = null; // open colour-picker popup, so the panel can close it too
+let _rebuildRows = null; // rebuild the open panel's rows (e.g. after a wire change)
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -32,10 +33,34 @@ function el(tag, cls, text) {
 // of its own in the picker, so map every kind to a readable label).
 const TYPE_LABEL = { toggle: "Toggle", combo: "List", seed: "Seed", text: "Text", int: "Int", float: "Float", auto: "Auto" };
 
-// A row is "wired" when its output slot still holds at least one link.
-function rowIsWired(node, i) {
+// The type is LOCKED only when the wire actually DICTATES it - i.e. the row's
+// output reaches at least one concrete-typed input (INT / FLOAT / BOOLEAN /
+// STRING, or a dropdown/COMBO). A row wired ONLY through "*" pass-throughs
+// (Reroute / Set / Preview) dictates no type, so it stays freely editable (else
+// picking a type on such a row would instantly lock it with no way back). If a
+// link can't be resolved we fall back to locked - a wired row should not be
+// re-typed just because we failed to inspect its target.
+function rowWiredToTypedTarget(node, i) {
   const o = node.outputs && node.outputs[i];
-  return !!(o && Array.isArray(o.links) && o.links.length > 0);
+  const links = o && Array.isArray(o.links) ? o.links.filter((x) => x != null) : [];
+  if (!links.length) return false;
+  const graph = node.graph;
+  const getLink = (lid) => {
+    let lk = graph?.links?.[lid];
+    if (!lk && typeof graph?.links?.get === "function") lk = graph.links.get(lid);
+    return lk;
+  };
+  let inspected = 0;
+  for (const lid of links) {
+    const lk = getLink(lid);
+    if (!lk) continue;
+    inspected++;
+    const tgt = graph.getNodeById?.(lk.target_id);
+    const inp = tgt?.inputs?.[lk.target_slot];
+    const t = String(inp?.type || "").toUpperCase();
+    if ((t && t !== "*") || comboOptionsOf(tgt, inp?.widget?.name || inp?.name)) return true;
+  }
+  return inspected === 0;   // couldn't inspect any link -> be safe and keep it locked
 }
 
 function injectCSS() {
@@ -204,12 +229,24 @@ export function closeSlidersPanel() {
   _panel = null;
   _panelNode = null;
   _onChange = null;
+  _rebuildRows = null;
   document.removeEventListener("pointerdown", outsideClose, true);
   document.removeEventListener("keydown", escClose, true);
 }
 
 export function closeSlidersPanelFor(node) {
   if (_panelNode === node) closeSlidersPanel();
+}
+
+// Rebuild the open panel's rows if it belongs to this node - called when a wire
+// on the node changes, so a row that just became wired (or was unplugged) shows
+// the correct locked-chip / free-picker state. Without this the panel is a
+// snapshot from when it opened and a canvas wire change could leave a stale
+// (unlocked) picker on a now-wired row, bypassing the type lock.
+export function rebuildSlidersPanelFor(node) {
+  if (_panel && _panelNode === node && _rebuildRows) {
+    try { _rebuildRows(); } catch {}
+  }
 }
 
 // ── Combo filter popup (which options a dropdown shows + its default) ─────────
@@ -351,7 +388,7 @@ export function openSlidersPanel(node, onChange) {
       // dropdown into a number, etc. (user-reported). A row still "auto" (not
       // wired, or wired to a "*" pass-through that dictates no type) keeps the
       // free picker so you can set up a control before wiring it.
-      const typeLocked = s.type !== "auto" && rowIsWired(node, i);
+      const typeLocked = s.type !== "auto" && rowWiredToTypedTarget(node, i);
       let seg;
       if (typeLocked) {
         seg = el("div", "pix-sldp-typelock");
@@ -534,11 +571,19 @@ export function openSlidersPanel(node, onChange) {
   });
 
   const reset = el("button", "pix-sldp-btn", "Reset values");
-  reset.title = "Send every slider to the middle of its range, and every switch to its default";
+  reset.title = "Sliders to the middle of their range, switches and dropdowns to their default. Seeds and text are left as they are.";
   reset.addEventListener("click", () => {
     const st = readState(node);
     for (const s of st.sliders) {
+      // Only sliders have a meaningful "middle of the range". The old code sent
+      // EVERY non-toggle row to (min+max)/2 = 0.5, which wiped a text field to
+      // "0.5", zeroed a seed, and knocked a dropdown off its chosen default.
       if (s.type === "toggle") { s.value = Number(s.def) ? 1 : 0; continue; }
+      if (s.type === "combo") {
+        if (typeof s.def === "string" && (s.options || []).includes(s.def)) s.value = s.def;
+        continue;
+      }
+      if (s.type === "seed" || s.type === "text") continue;   // no "middle" - leave the user's value
       s.value = clampValue(s, (Number(s.min) + Number(s.max)) / 2);
     }
     fire();
@@ -560,4 +605,5 @@ export function openSlidersPanel(node, onChange) {
     document.addEventListener("keydown", escClose, true);
   }, 0);
   _panel = panel;
+  _rebuildRows = buildRows;   // let a wire change repaint the rows (lock state)
 }
