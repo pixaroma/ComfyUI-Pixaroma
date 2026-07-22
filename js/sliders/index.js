@@ -5,7 +5,36 @@ import { registerNodeHelp } from "../shared/help.mjs";
 import {
   ACCENT_SETTING, BRAND, MAX_SLIDERS,
   readState, normalizeSliders, syncOutputs, addSlider, resolveAutoType, resetRowOnDisconnect,
+  comboOptionsOf,
 } from "./core.mjs";
+
+// A Control Panel can only drive widget-style value inputs. STRING is deliberately
+// left out until the Text control ships (Phase 3).
+function isValueTarget(node, link) {
+  const target = node.graph?.getNodeById?.(link.target_id);
+  const inp = target?.inputs?.[link.target_slot];
+  const t = String(inp?.type || "").toUpperCase();
+  if (t === "INT" || t === "FLOAT" || t === "BOOLEAN" || t === "COMBO") return true;
+  return !!comboOptionsOf(target, inp?.widget?.name || inp?.name);
+}
+
+// A small self-contained toast (no dependency on ComfyUI's toast API, which varies).
+function showPanelToast(msg) {
+  let t = document.getElementById("pix-sld-toast");
+  if (!t) {
+    t = document.createElement("div");
+    t.id = "pix-sld-toast";
+    t.style.cssText =
+      "position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:11000;background:#1d1d1d;" +
+      "border:1px solid #f66744;border-radius:8px;color:#fff;font:13px 'Segoe UI',sans-serif;padding:10px 16px;" +
+      "box-shadow:0 8px 30px rgba(0,0,0,0.5);max-width:80vw;text-align:center;pointer-events:none;opacity:0;transition:opacity .2s;";
+    document.body.appendChild(t);
+  }
+  t.textContent = msg;
+  t.style.opacity = "1";
+  clearTimeout(t._hideT);
+  t._hideT = setTimeout(() => { t.style.opacity = "0"; }, 3500);
+}
 import {
   injectCSS, syncRowWidgets, renderAll, alignOutputsLegacy, watchAlign, unwatchAlign, scheduleAlign,
   closeComboPopup, ROW_H, ROW_GAP, ADD_H, MIN_W, DEFAULT_W,
@@ -117,10 +146,13 @@ app.registerExtension({
         this.computeSize = function () { return [MIN_W, bodyHeight(this)]; };
       }
 
-      if (!this.size || this.size[0] < MIN_W) {
-        this.size[0] = DEFAULT_W;
-        this.size[1] = bodyHeight(this) + (isVueNodes() ? 52 : 0);
-      }
+      // Always snap a FRESH node to its content height. (Gating this on width let
+      // ComfyUI's default size through whenever its default width was >= MIN_W,
+      // leaving a giant empty body - user-reported.) configure() restores a saved
+      // size immediately after onNodeCreated, so saved / duplicated nodes keep theirs.
+      if (!Array.isArray(this.size)) this.size = [DEFAULT_W, DEFAULT_W];
+      this.size[0] = DEFAULT_W;
+      this.size[1] = bodyHeight(this) + (isVueNodes() ? 52 : 0);
 
       queueMicrotask(() => {
         normalizeSliders(this);
@@ -158,7 +190,20 @@ app.registerExtension({
     nodeType.prototype.onConnectionsChange = function (type, slotIndex, isConnected, link) {
       if (type === 2 /* OUTPUT */ && !this._pixSldConfiguring && !isGraphLoading()) {
         if (isConnected) {
-          if (resolveAutoType(this, slotIndex, link)) refresh(this);
+          if (resolveAutoType(this, slotIndex, link)) {
+            refresh(this);
+          } else if (link && !isValueTarget(this, link)) {
+            // Refuse a wire to an input the panel can't drive (MODEL, LATENT,
+            // CONDITIONING, ...); drop it on the next tick and tell the user.
+            const self = this, lk = link;
+            setTimeout(() => {
+              try {
+                self.graph?.getNodeById?.(lk.target_id)?.disconnectInput?.(lk.target_slot);
+                self.setDirtyCanvas?.(true, true);
+              } catch {}
+              showPanelToast("A Control Panel drives numbers, on/off switches, and dropdowns - not that kind of input.");
+            }, 0);
+          }
         } else {
           // Unplugged: a number slider drops back to auto so it can be re-wired
           // to a boolean (and become a switch) or a different number. LiteGraph
