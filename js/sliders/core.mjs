@@ -225,12 +225,17 @@ function resolveToggleOut(node, s, slotIndex, link) {
   else return false;   // unknown target family: leave it auto
 
   const wname = inp?.widget?.name || inp?.name;
-  if (s.name === `Value ${slotIndex + 1}` && wname) {
+  const pristine = s.name === `Value ${slotIndex + 1}`;
+  // The name follows the new target unless the user named it themselves.
+  if (wname && (pristine || s.autoName)) {
     s.name = String(wname).replace(/_/g, " ");
-    if (t === "BOOLEAN") {
-      const w = target?.widgets?.find((x) => x.name === wname);
-      if (w && typeof w.value === "boolean") { s.value = w.value ? 1 : 0; s.def = s.value; }
-    }
+    s.autoName = true;
+  }
+  // Only a pristine toggle adopts the target's current on/off, so re-wiring never
+  // silently flips a switch the user set.
+  if (t === "BOOLEAN" && pristine) {
+    const w = target?.widgets?.find((x) => x.name === wname);
+    if (w && typeof w.value === "boolean") { s.value = w.value ? 1 : 0; s.def = s.value; }
   }
 
   ensureToggle(s);
@@ -259,7 +264,10 @@ export function resolveAutoType(node, slotIndex, link) {
     const w = target?.widgets?.find((x) => x.name === wname);
     s.value = (w && typeof w.value === "boolean") ? (w.value ? 1 : 0) : 0;
     s.def = s.value;
-    if (wname && s.name === `Value ${slotIndex + 1}`) s.name = String(wname).replace(/_/g, " ");
+    if (wname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+      s.name = String(wname).replace(/_/g, " ");
+      s.autoName = true;
+    }
     syncOutputs(node);
     return true;
   }
@@ -295,11 +303,18 @@ export function resolveAutoType(node, slotIndex, link) {
     s.max = s.type === "int" ? Math.round(hi) : hi;
     s.step = step;
     if (Number.isFinite(cur)) s.value = cur;      // adopt what it is running now
-    if (wname) s.name = String(wname).replace(/_/g, " ");
   } else if (s.type === "int") {
     if (!Number.isFinite(Number(s.step)) || Number(s.step) < 1) s.step = 1;
     s.min = Math.round(Number(s.min) || 0);
     s.max = Math.round(Number(s.max) || 0);
+  }
+
+  // The name follows whatever the row is plugged into, unless the user set their
+  // own (autoName is cleared when they rename it in the settings). This is why
+  // re-wiring a "seed" slider onto a boolean renames it to that input, not "seed".
+  if (wname && (s.name === `Value ${slotIndex + 1}` || s.autoName)) {
+    s.name = String(wname).replace(/_/g, " ");
+    s.autoName = true;
   }
 
   s.value = clampValue(s, s.value);

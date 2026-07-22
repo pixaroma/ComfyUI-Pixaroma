@@ -213,8 +213,11 @@ export function openSlidersPanel(node, onChange) {
       name.placeholder = `Value ${i + 1}`;
       name.maxLength = 40;
       name.addEventListener("keydown", (e) => e.stopPropagation());
-      name.addEventListener("change", () => { s.name = name.value.trim(); fire(); });
-      name.addEventListener("blur", () => { s.name = name.value.trim(); fire(); });
+      // A manual rename takes ownership of the name (autoName off) so a later
+      // re-wire won't overwrite it; clearing it hands the name back to auto.
+      const applyName = () => { s.name = name.value.trim(); s.autoName = (s.name === ""); fire(); };
+      name.addEventListener("change", applyName);
+      name.addEventListener("blur", applyName);
 
       const seg = el("div", "pix-sldp-seg");
       [["auto", "Auto"], ["int", "Int"], ["float", "Float"], ["toggle", "Toggle"]].forEach(([key, label]) => {
