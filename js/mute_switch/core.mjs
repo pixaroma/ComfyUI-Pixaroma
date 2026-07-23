@@ -179,8 +179,22 @@ export function normalizeSlots(node) {
     const enabled = state.selectMode === "single" ? false : true;
     state.rows.push({ enabled, label: null });
   }
-  while (state.rows.length > node.inputs.length) {
-    state.rows.pop();
+  // Only DROP rows when the slot count is authoritative, i.e. at least one wire
+  // is present. With zero wires we may be inside the clone() window that backs
+  // copy/paste, Ctrl+D duplicate AND alt-drag clone: LGraphNode.clone() nulls
+  // EVERY input link before calling configure, so this pass momentarily sees a
+  // one-row node and would pop rows 2..N off the saved state - taking each
+  // row's name AND its on/off pill with it (a pasted Mute Switch came back with
+  // every branch re-enabled, silently changing what runs). The rows are rebuilt
+  // from the wires that land straight after; until then a longer rows array is
+  // inert, because every consumer either iterates node.inputs (drawMuteSwitch,
+  // vue_list) or guards its slot lookup with `node.inputs?.[i]` + a link check
+  // (cascadeMuteSet, setSelectMode, setAllRowsEnabled, the self-heal sweep).
+  // A genuinely over-long array still heals on the next pass that sees a wire.
+  if (connected > 0) {
+    while (state.rows.length > node.inputs.length) {
+      state.rows.pop();
+    }
   }
 
   // Width: do NOT clobber a user-resized width back up to DEFAULT_W
@@ -238,9 +252,16 @@ export function handleConnect(node, slotIdx1) {
   // New row default: ON in multi mode, OFF in single mode. Only on a
   // fresh connect, not a wire-replace (which keeps existing enabled state).
   if (!wasReplace) {
-    const row = state.rows[slotIdx1 - 1];
-    if (row) {
-      row.enabled = state.selectMode === "single" ? false : true;
+    // A wire landing during the restore burst that FOLLOWS configure is not a
+    // user action - it is the node's own wiring coming back (paste / duplicate /
+    // alt-drag clone all add + configure the node first and only then reconnect
+    // every link, in the same tick). Such a row keeps the on/off state it was
+    // copied with; only a genuinely new wire gets the mode default.
+    if (!node._pixMsRestoring) {
+      const row = state.rows[slotIdx1 - 1];
+      if (row) {
+        row.enabled = state.selectMode === "single" ? false : true;
+      }
     }
 
     // Grow the slot list if this was the trailing empty slot.
@@ -248,8 +269,14 @@ export function handleConnect(node, slotIdx1) {
     if (isLast && (node.inputs?.length || 0) < MAX_INPUTS) {
       const newIdx1 = (node.inputs?.length || 0) + 1;
       addInputSlot(node, newIdx1);
-      const enabled = state.selectMode === "single" ? false : true;
-      state.rows.push({ enabled, label: null });
+      // Only mint a row model when the saved state doesn't already carry one
+      // for this slot. On a paste the rows survive (see normalizeSlots) and are
+      // waiting for exactly these wires, so an unconditional push would stack a
+      // second set of rows on top of them.
+      if (state.rows.length < node.inputs.length) {
+        const enabled = state.selectMode === "single" ? false : true;
+        state.rows.push({ enabled, label: null });
+      }
       // Update slot.pos for the freshly-added trailing slot too.
       const y = MODE_BAR_H + TOP_PAD + (newIdx1 - 1) * ROW_H + ROW_H / 2;
       node.inputs[newIdx1 - 1].pos = [10, y];
