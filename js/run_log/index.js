@@ -63,12 +63,16 @@ const WIDGET_MIN_H = SCREEN_H + 46;      // 258
 // EXCLUDES it (bodyHeight === size[1]), so a build with a taller title bar does
 // not change this. Do NOT "correct" it to a NODE_TITLE_HEIGHT.
 const NODE_CHROME_H = 22;
-// Cushion so a future LiteGraph margin change degrades into a few px of node
-// background under the panel instead of pushing the footer buttons out through
-// the bottom of the node onto the canvas. .pix-rl-root also clips as a backstop.
-const SAFETY_PAD = 4;
+// Deliberately 0. A cushion here is visible as node background between the panel
+// and the footer buttons - i.e. the dead space the user asked to remove - and
+// overflow:hidden on .pix-rl-root ALREADY delivers what the cushion was for
+// (the footer can never paint outside the node onto the canvas). Raise it only if
+// a LiteGraph change actually starts clipping the footer: the buttons are 18px in
+// a 20px row so a small shortfall is absorbed, and Export / Copy / Clear stay
+// reachable from the right-click menu regardless.
+const SAFETY_PAD = 0;
 const DEFAULT_W = 300;   // room for a label; existing nodes keep their saved width
-const DEFAULT_H = WIDGET_MIN_H + NODE_CHROME_H + SAFETY_PAD;   // 284
+const DEFAULT_H = WIDGET_MIN_H + NODE_CHROME_H + SAFETY_PAD;   // 280
 const MIN_W = 200;
 const MIN_H = DEFAULT_H;
 
@@ -135,19 +139,25 @@ function pushHistory(node, ms) {
 // editor and pressing Escape (or clicking away untouched) never dirties the
 // workflow. A real change does dirty it - same accepted precedent as recording
 // a run (Pattern #3).
+// Returns true when it actually wrote (and therefore re-rendered), so the caller
+// can avoid a second rebuild of the whole screen on the no-op path.
 function setLabel(node, i, text) {
   const hist = getHist(node);
-  if (!(i >= 0 && i < hist.length)) return;
+  if (!(i >= 0 && i < hist.length)) return false;
   const label = String(text == null ? "" : text).replace(/\s+/g, " ").trim().slice(0, LABEL_MAX);
-  if (hist[i].label === label) return;
+  if (hist[i].label === label) return false;
   hist[i] = { ms: hist[i].ms, label };
   if (!node.properties) node.properties = {};
   node.properties[HIST_PROP] = hist;
   renderList(node);
   if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+  return true;
 }
 function clearHistory(node) {
-  node._pixRlCommitEdit?.();   // see the note on exportTxt
+  // DISCARD an open editor rather than commit it: the list is about to be wiped,
+  // so committing would be a pointless serialized write (and an extra render)
+  // for a label that ceases to exist two lines later.
+  node._pixRlCommitEdit = null;
   if (!node.properties) node.properties = {};
   node.properties[HIST_PROP] = [];
   renderList(node);
@@ -239,7 +249,7 @@ function startEdit(node, i) {
   const screen = node._pixRlScreen;
   const row = screen && screen.children[i];
   const cell = row && row.querySelector(".pix-rl-lbl");
-  if (!cell) return;                       // no such row, or already editing it
+  if (!cell) return;                       // no such row (or the empty-state block)
   const hist = getHist(node);
   const cur = hist[i] ? hist[i].label : "";
   // Identity of the run being edited, so commit can tell whether the list moved.
@@ -260,16 +270,29 @@ function startEdit(node, i) {
     if (done) return;
     done = true;
     node._pixRlCommitEdit = null;
+    // The node was deleted while this editor was open. Nulling the handle in
+    // onRemoved does NOT disarm us - the input's own blur listener still holds
+    // this closure, and some browsers fire blur when a focused element is
+    // detached - so bail explicitly instead of relying on the writes happening
+    // to be harmless on an orphan.
+    if (node._pixRlDead) return;
     // Only write if index i STILL means the run that was being edited. Test the
     // ENTRY (its time), not input.isConnected: a detached input does not imply a
     // shifted list - Nodes 2.0 re-parents the widget root, which would throw the
     // text away for nothing - and a shifted list does not imply a detached input.
+    // This is a BACKSTOP, not the guarantee: ms values are rounded ints, so two
+    // runs CAN share one. What actually makes a shift-under-an-open-editor
+    // impossible is that every mutator flushes first (see the flush invariant).
     // No renderList in this branch: whatever moved the list is mid-rebuild and
     // will draw the row correctly (re-rendering here can duplicate the rows).
     const now = getHist(node);
-    if (!now[i] || now[i].ms !== msAtOpen) return;
-    setLabel(node, i, save ? input.value : cur);
-    renderList(node);   // also restores the cell when setLabel was a no-op
+    if (!now[i] || now[i].ms !== msAtOpen) {
+      // Unreachable today, but never leave a dead field sitting in the list.
+      if (input.isConnected) input.replaceWith(el("span", "pix-rl-lbl"));
+      return;
+    }
+    // setLabel re-renders when it writes; only rebuild here on the no-op path.
+    if (!setLabel(node, i, save ? input.value : cur)) renderList(node);
   };
   node._pixRlCommitEdit = () => commit(true);
 
@@ -305,6 +328,11 @@ function startRun() {
   }
 }
 function finishRun(success) {
+  // ONE timestamp for the whole sweep. Reading performance.now() per node would
+  // fold our own DOM work (an editor flush, the previous node's re-render) into
+  // the measured duration, and would give two Run Log nodes different times for
+  // the same run.
+  const end = performance.now();
   for (const node of _logs) {
     if (!node._rlRunning) continue;   // idempotent: first finish wins (some builds
                                       // fire BOTH 'executing'(null) AND success)
@@ -313,7 +341,7 @@ function finishRun(success) {
     node._pixRlCommitEdit?.();
     node._rlRunning = false;
     // Successes only — an interrupted / errored run gives a partial, misleading time.
-    if (success && node._rlRunStart != null) pushHistory(node, performance.now() - node._rlRunStart);
+    if (success && node._rlRunStart != null) pushHistory(node, end - node._rlRunStart);
     renderList(node);
     if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
   }
@@ -428,7 +456,7 @@ function injectCSS() {
     // label had no hover feedback at all, since the only response was the
     // placeholder brightening. Declared after :nth-child(even) so it wins at
     // equal specificity; the newest row keeps its own colour, just brighter.
-    ".pix-rl-row:hover{background:rgba(255,255,255,0.06);}",
+    ".pix-rl-row:hover{background:rgba(255,255,255,0.06);transition:background 0.12s;}",
     ".pix-rl-idx{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:11px;color:#6c6960;text-align:right;}",
     ".pix-rl-mark{font-size:9.5px;line-height:1;text-align:center;color:#8a8781;}",
     // cursor:text lives on the ROW, not here: the double-click listener is on the
@@ -451,7 +479,7 @@ function injectCSS() {
     // right by the border + padding, which is deliberate - it reads as a field).
     // Explicit line-height so an 11px font in a 14px content box cannot clip a
     // descender on a different font stack.
-    ".pix-rl-lblin{grid-column:3;justify-self:stretch;min-width:0;width:100%;box-sizing:border-box;height:16px;line-height:14px;font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#e6e2da;background:#1d1d1d;border:1px solid #f66744;border-radius:3px;padding:0 4px;outline:none;}",
+    ".pix-rl-lblin{grid-column:3;justify-self:stretch;min-width:0;width:100%;box-sizing:border-box;height:16px;line-height:14px;font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#e6e2da;background:#1d1d1d;border:1px solid #f66744;border-radius:3px;padding:0 4px;outline:none;-webkit-user-select:text;user-select:text;}",
     ".pix-rl-lblin::placeholder{color:#57544d;}",
     ".pix-rl-time{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:13px;color:#b8b4ad;font-weight:500;}",
     ".pix-rl-row--now{background:rgba(246,103,68,0.16);box-shadow:inset 2px 0 0 #f66744;}",
@@ -478,6 +506,9 @@ function injectCSS() {
     ".pix-rl-fbtn:hover{background:rgba(255,255,255,0.06);}",
     ".pix-rl-fbtn:disabled{opacity:0.3;cursor:default;}",
     ".pix-rl-fbtn:disabled:hover{background:transparent;}",
+    // The root clips, and the buttons sit flush in the corner, so pull the
+    // keyboard focus ring inside or it loses an edge.
+    ".pix-rl-fbtn:focus-visible{outline-offset:-2px;}",
     ".pix-rl-ico{width:13px;height:13px;background-color:#7a776f;-webkit-mask-position:center;mask-position:center;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;-webkit-mask-size:contain;mask-size:contain;transition:background-color 0.12s;}",
     ".pix-rl-fbtn:hover:not(:disabled) .pix-rl-ico{background-color:#f66744;}",
     "@media (prefers-reduced-motion:reduce){.pix-rl-rdot{animation:none;}}",
@@ -588,6 +619,11 @@ app.registerExtension({
     // safe (never writes serialized state here).
     const _origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (info) {
+      // CANCEL an open editor, never flush it. This is the one destroyer of the
+      // history that must NOT commit: setLabel would be a node.properties write
+      // on the load path, i.e. the false "Save Changes?" bug Pattern #3 forbids.
+      // Nulling also kills a closure that would otherwise outlive its list.
+      this._pixRlCommitEdit = null;
       const r = _origConfigure ? _origConfigure.apply(this, arguments) : undefined;
       renderList(this);
       return r;
@@ -596,7 +632,11 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       _logs.delete(this);
-      this._pixRlCommitEdit = null;   // never write a label to a deleted node
+      // Nulling the handle only blocks an EXTERNAL flush; the open input's own
+      // blur listener still holds its commit closure. _pixRlDead is what that
+      // closure checks, so a label can never be written to a deleted node.
+      this._pixRlDead = true;
+      this._pixRlCommitEdit = null;
       try { if (this._pixRlFloorOff) this._pixRlFloorOff(); } catch (_e) {}
       this._pixRlFloorOff = null;
       if (_origRemoved) return _origRemoved.apply(this, arguments);
