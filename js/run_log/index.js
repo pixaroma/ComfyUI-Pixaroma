@@ -57,12 +57,30 @@ const SCREEN_H = HISTORY_MAX * ROW_H + 12;
 //     then hands the ELEMENT computedHeight - 2*margin, i.e. WIDGET_MIN_H - 20:
 //     20px SHORT of the content. getMinHeight alone would clip row 10; MIN_H is
 //     what actually delivers the full height.
-const WIDGET_MIN_H = SCREEN_H + 46;      // 258
-// Legacy chrome between node.size[1] and the widget element: widgets_start_y (2)
-// + the DOM widget margin twice (10 each). NOT the title bar - node.size[1]
-// EXCLUDES it (bodyHeight === size[1]), so a build with a taller title bar does
-// not change this. Do NOT "correct" it to a NODE_TITLE_HEIGHT.
-const NODE_CHROME_H = 22;
+const WIDGET_MIN_H = SCREEN_H + 46;      // 258 - the TRUE content height
+// ── The 16px over-reservation, and why LAYOUT_MIN_H is not WIDGET_MIN_H ──────
+// Read from the bundle (LGraphNode.computeSize) and confirmed against a live
+// measurement (reported 258 -> computeSize 296, exactly):
+//     computeSize.height = a*NODE_SLOT_HEIGHT + (minHeight + 4) + 8 + 6
+//                        = 20 + minHeight + 18            (a = 1: no slots)
+//                        = minHeight + 38
+// but the element the widget actually GETS is only node.size[1] - 22
+// (widgets_start_y 2 + 2 x the DOM margin 10). So LiteGraph RESERVES 38 and
+// HANDS BACK 22: every DOM-widget node of this shape is permanently 16px taller
+// than its own content, and computeSize - not our MIN_H clamp - is the real
+// resize floor. That 16px is what showed as a gap above the footer buttons.
+// Reporting content - 16 makes computeSize land on 280, which hands the element
+// exactly 258 = the content. Degrades safely: if a future LiteGraph changes
+// either number the node is off by the delta - too big is invisible slack, too
+// small is absorbed by the 18px-in-20px footer buttons and clipped by
+// .pix-rl-root rather than spilling onto the canvas.
+const LG_COMPUTE_PAD = 38;               // what computeSize adds to minHeight
+const NODE_CHROME_H = 22;                // what the element actually loses
+const LAYOUT_MIN_H = WIDGET_MIN_H - (LG_COMPUTE_PAD - NODE_CHROME_H);   // 242
+// NODE_CHROME_H (declared above) is widgets_start_y (2) + the DOM widget margin
+// twice (10 each). NOT the title bar - node.size[1] EXCLUDES it
+// (bodyHeight === size[1]), so a build with a taller title bar does not change
+// it. Do NOT "correct" it to a NODE_TITLE_HEIGHT.
 // Deliberately 0. A cushion here is visible as node background between the panel
 // and the footer buttons - i.e. the dead space the user asked to remove - and
 // overflow:hidden on .pix-rl-root ALREADY delivers what the cushion was for
@@ -555,7 +573,12 @@ function setupNode(node) {
   applyAdaptiveCanvasOnly(widget);
   // computeLayoutSize makes the widget an 'auto' grower in Nodes 2.0 so the screen
   // fills the node height; minWidth:1 lets the saved node width round-trip.
-  widget.computeLayoutSize = () => ({ minHeight: WIDGET_MIN_H, minWidth: 1 });
+  // LAYOUT_MIN_H, not WIDGET_MIN_H: this is the number LiteGraph's computeSize
+  // consumes, and it over-reserves by 16 (see the constant's derivation). The
+  // TRUE content height still governs everywhere it matters - getMinHeight above
+  // (which feeds distributeSpace) and installResizeFloor below (the Nodes 2.0
+  // drag floor) - so the panel can never be squeezed below its 10 rows.
+  widget.computeLayoutSize = () => ({ minHeight: LAYOUT_MIN_H, minWidth: 1 });
   node._pixRlWidget = widget;
   node._pixRlFloorOff = installResizeFloor(root, () => WIDGET_MIN_H);
 
