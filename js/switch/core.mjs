@@ -167,7 +167,10 @@ export function normalizeSlots(node) {
   // from the wires that land straight after, and both renderers only ever read
   // labels[row] for rows that exist (drawSwitchRows / renderRows iterate
   // inputs, never the labels map), so keys ahead of the row count are inert.
-  if (state.labels) {
+  // The typeof check keeps a hand-edited / foreign workflow that stored labels
+  // as something other than an object from taking normalizeSlots down with a
+  // TypeError on `delete` (ES modules are strict mode).
+  if (state.labels && typeof state.labels === "object") {
     for (const key in state.labels) {
       const k = parseInt(key, 10);
       if (!Number.isFinite(k) || k < 1 || k > MAX_INPUTS) {

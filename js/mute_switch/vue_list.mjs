@@ -269,7 +269,13 @@ export function buildMuteSwitchVueList(node) {
       } else {
         labelEl = document.createElement("span");
         labelEl.className = "pix-ms-label";
-        labelEl.textContent = isTrailing ? "(empty)" : (usefulType ? usefulType.toLowerCase() : "");
+        // A trailing row can carry a name that is waiting for its wire (paste
+        // keeps the copied names while the rows regrow). Legacy paints that
+        // name dimmed rather than "(empty)", so show it here too or the two
+        // renderers disagree on the same node.
+        labelEl.textContent = isTrailing
+          ? (row?.label || "(empty)")
+          : (usefulType ? usefulType.toLowerCase() : "");
         labelEl.title = labelEl.textContent;
       }
 

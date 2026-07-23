@@ -284,6 +284,20 @@ export function handleConnect(node, slotIdx1) {
     }
   }
 
+  // Heal any rows-longer-than-inputs drift on a GENUINE user connect, so the
+  // drift can never reach a saved workflow. Pasting a Mute Switch ALONE leaves
+  // the rows longer than the slots on purpose (the names wait for their wires),
+  // but if the user then wires only some of them and saves, the next LOAD would
+  // run the trim in normalizeSlots - a node.properties write on the load path,
+  // which pops a false "Save Changes?" on a plain open+close (Vue Compat #18 /
+  // Pattern #6). Trimming here keeps the load path a no-op. Deliberately AFTER
+  // the growth above, so the row that just gained a slot keeps the name it was
+  // copied with; only rows with no slot at all are dropped. Skipped while
+  // restoring, since the paste burst is still handing the rows their wires.
+  if (!node._pixMsRestoring) {
+    while (state.rows.length > (node.inputs?.length || 0)) state.rows.pop();
+  }
+
   applyMuteState(node);
   app.graph?.setDirtyCanvas?.(true, true);
   node._pixMsRefresh?.(); // re-render the Nodes 2.0 DOM list (no-op in legacy)
