@@ -46,17 +46,29 @@ const LABEL_MAX = 60;
 // the 1px border: 10*20 + 10 + 2 = 212 → a 200px content box = exactly 10 rows.
 const ROW_H = 20;
 const SCREEN_H = HISTORY_MAX * ROW_H + 12;
-// caption(14) + gap(6) + screen + gap(6) + footer(20). This is the REAL
-// protector: it is the DOM widget getMinHeight, so the classic node auto-grows
-// to honor it on any build (even one with a taller title bar) → the 10th row can
-// never be clipped.
+// caption(14) + gap(6) + screen + gap(6) + footer(20).
+// WHICH floor actually protects row 10 differs per renderer, and the comment
+// that used to sit here named the wrong one (review, 2026-07-23):
+//   Nodes 2.0 - getMinHeight / computeLayoutSize + installResizeFloor. Our widget
+//     is an 'auto' grid track and every child is flex:none, so the node grows to
+//     fit its content and the drag floor is pinned during a resize.
+//   LEGACY    - the MIN_H clamp below, NOT getMinHeight. LiteGraph's DOM-widget
+//     auto-grow converges on node.size[1] = WIDGET_MIN_H + 2, and getBounding
+//     then hands the ELEMENT computedHeight - 2*margin, i.e. WIDGET_MIN_H - 20:
+//     20px SHORT of the content. getMinHeight alone would clip row 10; MIN_H is
+//     what actually delivers the full height.
 const WIDGET_MIN_H = SCREEN_H + 46;      // 258
-// Node chrome around the widget (title bar + body padding), measured live at 22.
-// MIN_H is therefore the EXACT fit: drag the node to its smallest and the panel
-// ends flush under row 10 with nothing left over.
+// Legacy chrome between node.size[1] and the widget element: widgets_start_y (2)
+// + the DOM widget margin twice (10 each). NOT the title bar - node.size[1]
+// EXCLUDES it (bodyHeight === size[1]), so a build with a taller title bar does
+// not change this. Do NOT "correct" it to a NODE_TITLE_HEIGHT.
 const NODE_CHROME_H = 22;
+// Cushion so a future LiteGraph margin change degrades into a few px of node
+// background under the panel instead of pushing the footer buttons out through
+// the bottom of the node onto the canvas. .pix-rl-root also clips as a backstop.
+const SAFETY_PAD = 4;
 const DEFAULT_W = 300;   // room for a label; existing nodes keep their saved width
-const DEFAULT_H = WIDGET_MIN_H + NODE_CHROME_H;   // 280
+const DEFAULT_H = WIDGET_MIN_H + NODE_CHROME_H + SAFETY_PAD;   // 284
 const MIN_W = 200;
 const MIN_H = DEFAULT_H;
 
@@ -90,7 +102,14 @@ function normEntry(e) {
     return isFinite(e) && e >= 0 ? { ms: e, label: "" } : null;
   }
   if (e && typeof e === "object" && typeof e.ms === "number" && isFinite(e.ms) && e.ms >= 0) {
-    return { ms: e.ms, label: typeof e.label === "string" ? e.label.slice(0, LABEL_MAX) : "" };
+    // Normalise on READ exactly as setLabel normalises on write, so the two can
+    // never disagree. A whitespace-only label (hand-edited file, or a future
+    // writer that bypasses setLabel) would otherwise be truthy: the row would
+    // show nothing AND lose its "add note" placeholder, and the row tooltip
+    // would gain an empty segment.
+    const label = typeof e.label === "string"
+      ? e.label.replace(/\s+/g, " ").trim().slice(0, LABEL_MAX) : "";
+    return { ms: e.ms, label };
   }
   return null;
 }
@@ -128,6 +147,7 @@ function setLabel(node, i, text) {
   if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
 }
 function clearHistory(node) {
+  node._pixRlCommitEdit?.();   // see the note on exportTxt
   if (!node.properties) node.properties = {};
   node.properties[HIST_PROP] = [];
   renderList(node);
@@ -196,7 +216,7 @@ function renderList(node) {
     row.addEventListener("dblclick", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      startEdit(node, row, i);
+      startEdit(node, i);
     });
 
     row.appendChild(idx); row.appendChild(mark); row.appendChild(lbl); row.appendChild(time);
@@ -208,12 +228,22 @@ function renderList(node) {
 // Swaps the label cell for a focused text input. Enter / blur commit, Escape
 // reverts, empty clears the label. node._pixRlCommitEdit lets the run lifecycle
 // flush an in-progress edit BEFORE a new run shifts every index (see finishRun).
-function startEdit(node, row, i) {
-  const cell = row.querySelector(".pix-rl-lbl");
-  if (!cell) return;                       // already editing this row
-  node._pixRlCommitEdit?.();               // only one editor at a time
+function startEdit(node, i) {
+  // Flush any other open editor FIRST - committing can rebuild the whole screen,
+  // which would detach the row element. Only then resolve the row, by INDEX, so
+  // we always act on the live DOM. (Capturing the cell first left the editor
+  // inserted into an orphaned row: focus() silently no-ops, the double-click
+  // appears dead, and because the input never gains focus the next keystrokes
+  // reach ComfyUI's canvas shortcuts - Delete would remove the node.)
+  node._pixRlCommitEdit?.();
+  const screen = node._pixRlScreen;
+  const row = screen && screen.children[i];
+  const cell = row && row.querySelector(".pix-rl-lbl");
+  if (!cell) return;                       // no such row, or already editing it
   const hist = getHist(node);
   const cur = hist[i] ? hist[i].label : "";
+  // Identity of the run being edited, so commit can tell whether the list moved.
+  const msAtOpen = hist[i] ? hist[i].ms : null;
 
   const input = el("input", "pix-rl-lblin");
   input.type = "text";
@@ -230,10 +260,14 @@ function startEdit(node, row, i) {
     if (done) return;
     done = true;
     node._pixRlCommitEdit = null;
-    // If some other rebuild already tore the input out of the DOM, index i may
-    // no longer mean the same run - drop the text rather than write it to the
-    // wrong row. (The run lifecycle avoids this by committing BEFORE it renders.)
-    if (!input.isConnected) { renderList(node); return; }
+    // Only write if index i STILL means the run that was being edited. Test the
+    // ENTRY (its time), not input.isConnected: a detached input does not imply a
+    // shifted list - Nodes 2.0 re-parents the widget root, which would throw the
+    // text away for nothing - and a shifted list does not imply a detached input.
+    // No renderList in this branch: whatever moved the list is mid-rebuild and
+    // will draw the row correctly (re-rendering here can duplicate the rows).
+    const now = getHist(node);
+    if (!now[i] || now[i].ms !== msAtOpen) return;
     setLabel(node, i, save ? input.value : cur);
     renderList(node);   // also restores the cell when setLabel was a no-op
   };
@@ -321,12 +355,19 @@ function fmtLine(entry, i) {
   return entry.label ? line + "  " + entry.label : line;
 }
 function copyTimes(node) {
+  node._pixRlCommitEdit?.();   // see the note on exportTxt
   const hist = getHist(node);
   if (!hist.length) return;
   copyText(hist.map(fmtLine).join("\n"));
 }
 // Save the list as a plain .txt (user-initiated download of their OWN data).
+// Flush an open editor FIRST: a note that is still being typed is visible on the
+// node, so leaving it out of the file would be a silent lie. Clicking a footer
+// button usually blurs the input (which commits) before the click lands, but
+// that is browser- and platform-dependent, and the right-click menu path may not
+// blur at all - so do not rely on it.
 function exportTxt(node) {
+  node._pixRlCommitEdit?.();
   const hist = getHist(node);
   if (!hist.length) return;
   const body = hist.map(fmtLine).join("\n");
@@ -364,7 +405,10 @@ function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-rl-css";
   s.textContent = [
-    ".pix-rl-root{display:flex;flex-direction:column;gap:6px;width:100%;height:100%;box-sizing:border-box;padding:0;user-select:none;-webkit-user-select:none;font-family:'Segoe UI',system-ui,sans-serif;}",
+    // overflow:hidden is a backstop: every child is flex:none, so if a future
+    // LiteGraph change ever made the element shorter than the content, the
+    // footer would otherwise paint outside the node frame, over the canvas.
+    ".pix-rl-root{display:flex;flex-direction:column;gap:6px;width:100%;height:100%;box-sizing:border-box;padding:0;overflow:hidden;user-select:none;-webkit-user-select:none;font-family:'Segoe UI',system-ui,sans-serif;}",
     ".pix-rl-cap{display:flex;align-items:center;justify-content:space-between;flex:none;padding:0 2px;height:14px;}",
     ".pix-rl-caplbl{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.14em;text-transform:uppercase;color:#6c6960;}",
     ".pix-rl-status{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:10px;letter-spacing:0.1em;text-transform:uppercase;color:#57544d;display:flex;align-items:center;gap:5px;}",
@@ -378,9 +422,19 @@ function injectCSS() {
     // labels stay aligned whether or not a row carries the bolt.
     ".pix-rl-row{display:grid;grid-template-columns:22px 12px 1fr auto;align-items:center;gap:6px;padding:0 8px;border-radius:4px;height:" + ROW_H + "px;box-sizing:border-box;}",
     ".pix-rl-row:nth-child(even){background:rgba(255,255,255,0.022);}",
+    // The WHOLE row is the double-click target, so the whole row must respond to
+    // the pointer (UI convention #13 - borderless cells inside a bordered
+    // container hover to a white tint). Without this a row that already HAS a
+    // label had no hover feedback at all, since the only response was the
+    // placeholder brightening. Declared after :nth-child(even) so it wins at
+    // equal specificity; the newest row keeps its own colour, just brighter.
+    ".pix-rl-row:hover{background:rgba(255,255,255,0.06);}",
     ".pix-rl-idx{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:11px;color:#6c6960;text-align:right;}",
     ".pix-rl-mark{font-size:9.5px;line-height:1;text-align:center;color:#8a8781;}",
-    ".pix-rl-lbl{font-size:11px;color:#b8b4ad;justify-self:stretch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;}",
+    // cursor:text lives on the ROW, not here: the double-click listener is on the
+    // row, so pointing at the index, the bolt or the time must look editable too.
+    ".pix-rl-row{cursor:text;}",
+    ".pix-rl-lbl{font-size:11px;color:#b8b4ad;justify-self:stretch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}",
     // Discoverability: an unlabelled row ALWAYS reads "add note", like
     // placeholder text in a form, in the same grey as the row numbers so it
     // recedes once real labels are typed. (A hover-only hint was tried first and
@@ -392,12 +446,20 @@ function injectCSS() {
     // read as dead - warm it to match.
     ".pix-rl-row--now .pix-rl-lbl--empty::after{color:#a8776a;}",
     ".pix-rl-row--now:hover .pix-rl-lbl--empty::after{color:#d9917f;}",
-    // The inline editor sits in the label cell and matches its metrics, so the
-    // row does not shift when it opens.
-    ".pix-rl-lblin{grid-column:3;justify-self:stretch;min-width:0;width:100%;box-sizing:border-box;height:16px;font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#e6e2da;background:#1d1d1d;border:1px solid #f66744;border-radius:3px;padding:0 4px;outline:none;}",
+    // The inline editor takes the label's grid column and centres in the 20px
+    // row, so the row never shifts VERTICALLY when it opens (the text does move
+    // right by the border + padding, which is deliberate - it reads as a field).
+    // Explicit line-height so an 11px font in a 14px content box cannot clip a
+    // descender on a different font stack.
+    ".pix-rl-lblin{grid-column:3;justify-self:stretch;min-width:0;width:100%;box-sizing:border-box;height:16px;line-height:14px;font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#e6e2da;background:#1d1d1d;border:1px solid #f66744;border-radius:3px;padding:0 4px;outline:none;}",
     ".pix-rl-lblin::placeholder{color:#57544d;}",
     ".pix-rl-time{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums;font-size:13px;color:#b8b4ad;font-weight:500;}",
     ".pix-rl-row--now{background:rgba(246,103,68,0.16);box-shadow:inset 2px 0 0 #f66744;}",
+    ".pix-rl-row--now:hover{background:rgba(246,103,68,0.24);}",
+    // The row classes are mutually exclusive, so when the newest run is ALSO the
+    // fastest it carries --now only and the --best bolt rule never applies. Warm
+    // the bolt here or it is the one grey element left on an orange row.
+    ".pix-rl-row--now .pix-rl-mark{color:#f66744;}",
     ".pix-rl-row--now .pix-rl-time{color:#f66744;font-weight:700;}",
     ".pix-rl-row--now .pix-rl-idx{color:#ff8a63;}",
     ".pix-rl-row--now .pix-rl-lbl{color:#f0cfc4;}",
@@ -485,8 +547,8 @@ const HELP = {
   tagline: "Keeps the last 10 run times for this workflow on the canvas.",
   sections: [
     { heading: "What it does", body: "A companion to Run Timer. Every time you press Run it times the whole workflow and adds the finished time to the top of the list. It keeps the last 10, newest first, so you can watch a workflow get faster over a session or notice when a change has made it slower." },
-    { heading: "Reading the list", body: "The newest run sits at the top, highlighted in orange with an orange bar down its left edge. The fastest of the ten is marked with a lightning bolt in green. Times under a minute show as seconds (for example 14.8s); longer runs show as minutes and seconds (for example 1:23). While a run is going a small green 'running' marker shows in the corner, and the new time drops in on top the moment it finishes." },
-    { heading: "Label your runs", body: "A list of times tells you that something changed, not what. Double-click any row and type a short note about that run: 'with style lora', 'seed 12345', 'base, no LLM'. Press Enter to save, or Escape to leave it as it was. Clearing the text removes the note again.\n\nThe note belongs to that run, so as newer runs push it down the list it travels with its own time, and it disappears with it when it drops off the bottom. Notes are saved in the workflow like the times, and they are included when you export or copy the list." },
+    { heading: "Reading the list", body: "The newest run sits at the top, highlighted in orange with an orange bar down its left edge. The fastest of the ten is marked with a lightning bolt, in green (or in orange when the newest run is also the fastest). Times under a minute show as seconds (for example 14.8s); longer runs show as minutes and seconds (for example 1:23). While a run is going a small green 'running' marker shows in the corner, and the new time drops in on top the moment it finishes." },
+    { heading: "Label your runs", body: "A list of times tells you that something changed, not what. Double-click any row and type a short note about that run: 'with style lora', 'seed 12345', 'base, no LLM'. Press Enter to save, or click away, which also saves. Escape leaves it as it was. Clearing the text removes the note again.\n\nThe note belongs to that run, so as newer runs push it down the list it travels with its own time, and it disappears with it when it drops off the bottom. Notes are saved in the workflow like the times, and they are included when you export or copy the list." },
     { heading: "This workflow only", body: "The list lives on the node and is saved inside the workflow, so it is only the times for this workflow and it stays with it. Open the workflow again another day and the list is still there. A different workflow keeps its own separate list." },
     { heading: "The two buttons", body: "In the bottom-right corner are two small buttons. The download icon exports the list as a plain .txt file you can save or share. The trash icon clears the list back to 'No runs yet'. The same actions are also on the right-click menu, along with Copy times." },
     { heading: "Right-click options", defs: [
