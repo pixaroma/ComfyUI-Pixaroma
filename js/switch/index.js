@@ -107,29 +107,24 @@ app.registerExtension({
       return _origRemoved?.apply(this, arguments);
     };
 
-    // ── Configure (workflow load / tab switch) ────────────────────────────
-    const _origConfigure = nodeType.prototype.onConfigure;
-    nodeType.prototype.onConfigure = function (info) {
-      // Gate onConnectionsChange during configure so that LiteGraph's
-      // connection-replay calls don't overwrite the saved activeIndex.
-      // LGraphNode.configure() fires onConnectionsChange(INPUT, idx, true,
-      // link, slot) for every restored connected slot - those calls would
-      // route through handleConnect and unconditionally set
-      // state.activeIndex = slotIdx, clobbering the value we're about to
-      // restore from node.properties. The flag is cleared in `finally` so it
-      // is always reset even if configure or restoreFromProperties throws.
+    // ── Configure gate (MUST wrap `configure`, NOT the `onConfigure` hook) ──
+    // LiteGraph calls the onConfigure HOOK at the very END of configure(), long
+    // after it has restored node.inputs and replayed onConnectionsChange for
+    // every slot. Verified live (2026-07-23): by the time our onConfigure hook
+    // ran, the node already carried all 32 Python-def slots AND a row per slot,
+    // because every one of those replayed events reached handleConnect, whose
+    // grow-on-trailing-connect logic then cascaded the list to the MAX_INPUTS
+    // cap. So the long-standing `_pixSwitchConfiguring` flag (Vue Compat #17)
+    // never actually covered the replay it was written for - normalizeSlots
+    // just cleaned up the mess immediately afterwards, hiding it. Once the
+    // copy/paste fix stopped that cleanup from discarding saved row state, the
+    // junk rows survived into the clipboard. Wrapping `configure` raises the
+    // flag BEFORE the replay, so handleConnect never sees it.
+    const _origConfigureFn = nodeType.prototype.configure;
+    nodeType.prototype.configure = function () {
       this._pixSwitchConfiguring = true;
       try {
-        const r = _origConfigure?.apply(this, arguments);
-        // Run normalize synchronously - by the time _origConfigure returns,
-        // node.properties and node.inputs are already restored. Synchronous
-        // call means the cleanup happens BEFORE the next paint frame, so
-        // there's no visible flash of the 32 raw INPUT_TYPES slots that LG
-        // creates before configure() applies the saved state.
-        // (Vue Compat #8's queueMicrotask requirement is for onNodeCreated,
-        // not onConfigure - in onConfigure, configure has already finished.)
-        restoreFromProperties(this);
-        return r;
+        return _origConfigureFn?.apply(this, arguments);
       } finally {
         this._pixSwitchConfiguring = false;
         // Paste / Ctrl+D duplicate / alt-drag clone all run through
@@ -148,6 +143,23 @@ app.registerExtension({
           this._pixSwRestoreTimer = null;
         }, 0);
       }
+    };
+
+    // ── Configure hook (runs INSIDE configure, with the gate above still up) ──
+    const _origConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function (info) {
+      // No flag handling here - the `configure` wrapper above already holds
+      // _pixSwitchConfiguring up for the whole of configure, INCLUDING this
+      // hook, so the removeInput calls inside restoreFromProperties are gated
+      // too. (Setting/clearing it here as well would drop the gate early,
+      // since this hook runs partway through configure, not after it.)
+      const r = _origConfigure?.apply(this, arguments);
+      // Run normalize synchronously - node.properties and node.inputs are
+      // already restored by now. Synchronous means the cleanup lands BEFORE the
+      // next paint, so there's no visible flash of the 32 raw INPUT_TYPES slots
+      // LiteGraph re-creates from the Python def.
+      restoreFromProperties(this);
+      return r;
     };
 
     // ── Connection changes ────────────────────────────────────────────────
