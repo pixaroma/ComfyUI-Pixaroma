@@ -37,15 +37,28 @@ const LABEL_MAX = 60;
 // footer, so the node can't be dragged small enough to clip runs (user feedback).
 // Default = minimum (convention #5); width is still free, taller is harmless. Both
 // heights are CONSTANTS → dirty-on-load safe (byte-identical every save/load).
+// The screen is sized to EXACTLY the 10 rows and no more (flex:none, not flex:1).
+// It used to stretch to fill the node, which left a black strip under the last
+// row - measured at 20.7px, almost a whole row (user feedback, 2026-07-23). A
+// fixed height means that strip cannot come back at any node size: spare height
+// now sits outside the panel, as node background, instead of inside it as dead
+// black. box-sizing is border-box, so this height INCLUDES the 5px padding and
+// the 1px border: 10*20 + 10 + 2 = 212 → a 200px content box = exactly 10 rows.
+const ROW_H = 20;
+const SCREEN_H = HISTORY_MAX * ROW_H + 12;
+// caption(14) + gap(6) + screen + gap(6) + footer(20). This is the REAL
+// protector: it is the DOM widget getMinHeight, so the classic node auto-grows
+// to honor it on any build (even one with a taller title bar) → the 10th row can
+// never be clipped.
+const WIDGET_MIN_H = SCREEN_H + 46;      // 258
+// Node chrome around the widget (title bar + body padding), measured live at 22.
+// MIN_H is therefore the EXACT fit: drag the node to its smallest and the panel
+// ends flush under row 10 with nothing left over.
+const NODE_CHROME_H = 22;
 const DEFAULT_W = 300;   // room for a label; existing nodes keep their saved width
-const DEFAULT_H = 286;
+const DEFAULT_H = WIDGET_MIN_H + NODE_CHROME_H;   // 280
 const MIN_W = 200;
-const MIN_H = 286;        // node floor: can't shrink below all 10 rows + footer
-// Widget content floor: caption(14) + gap(6) + screen(10 rows*20 + 10 pad = 210) +
-// gap(6) + footer(20) = 256, plus a 6px buffer. This is the REAL protector: it is
-// the DOM widget getMinHeight, so the classic node auto-grows to honor it on any
-// build (even one with a taller title bar) → the 10th row can never be clipped.
-const WIDGET_MIN_H = 262;
+const MIN_H = DEFAULT_H;
 
 // ── DOM helper ──────────────────────────────────────────────────────────────
 function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
@@ -358,10 +371,12 @@ function injectCSS() {
     ".pix-rl-running{color:#49c97a;}",
     ".pix-rl-rdot{width:6px;height:6px;border-radius:50%;background:#49c97a;animation:pixRlPulse 1.1s infinite;}",
     "@keyframes pixRlPulse{0%,100%{opacity:1;}50%{opacity:0.25;}}",
-    ".pix-rl-screen{flex:1;min-height:0;overflow:hidden;background:#141417;border:1px solid #050506;border-radius:6px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03),inset 0 0 20px rgba(0,0,0,0.35);padding:5px;box-sizing:border-box;}",
+    // flex:none + an exact height — see SCREEN_H. Never flex:1, or the panel
+    // stretches and leaves a black strip under the last row.
+    ".pix-rl-screen{flex:none;height:" + SCREEN_H + "px;overflow:hidden;background:#141417;border:1px solid #050506;border-radius:6px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.03),inset 0 0 20px rgba(0,0,0,0.35);padding:5px;box-sizing:border-box;}",
     // [index][bolt marker][label][time]. The marker is its own fixed column so
     // labels stay aligned whether or not a row carries the bolt.
-    ".pix-rl-row{display:grid;grid-template-columns:22px 12px 1fr auto;align-items:center;gap:6px;padding:0 8px;border-radius:4px;height:20px;box-sizing:border-box;}",
+    ".pix-rl-row{display:grid;grid-template-columns:22px 12px 1fr auto;align-items:center;gap:6px;padding:0 8px;border-radius:4px;height:" + ROW_H + "px;box-sizing:border-box;}",
     ".pix-rl-row:nth-child(even){background:rgba(255,255,255,0.022);}",
     ".pix-rl-idx{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:11px;color:#6c6960;text-align:right;}",
     ".pix-rl-mark{font-size:9.5px;line-height:1;text-align:center;color:#8a8781;}",
@@ -393,7 +408,10 @@ function injectCSS() {
     ".pix-rl-empty-s{font-size:11px;color:#57544d;}",
     // Footer: two subtle icon buttons, right-aligned (Export .txt, Clear). Grey
     // icon → brand orange on hover (Pixaroma UI convention #13).
-    ".pix-rl-foot{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;height:20px;padding:0 2px;}",
+    // margin-top:auto keeps the buttons in the bottom corner if the node is
+    // dragged taller than the exact fit (spare height falls between the panel
+    // and the footer rather than stranding the footer mid-node).
+    ".pix-rl-foot{display:flex;align-items:center;justify-content:flex-end;gap:2px;flex:none;margin-top:auto;height:20px;padding:0 2px;}",
     ".pix-rl-fbtn{display:inline-flex;align-items:center;justify-content:center;width:22px;height:18px;border:0;background:transparent;cursor:pointer;border-radius:4px;padding:0;}",
     ".pix-rl-fbtn:hover{background:rgba(255,255,255,0.06);}",
     ".pix-rl-fbtn:disabled{opacity:0.3;cursor:default;}",
