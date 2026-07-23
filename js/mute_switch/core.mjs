@@ -231,7 +231,7 @@ export function restoreFromProperties(node) {
   // canvas + the about-to-be-submitted prompt into sync. Trade-off: one-
   // time dirty for those inconsistent workflows on first save.
   //
-  // Skipped during the onConfigure window via the _pixMsConfiguring gate
+  // Skipped during the WHOLE configure window via the _pixMsConfiguring gate
   // inside applyMuteState. The queueMicrotask in onNodeCreated runs AFTER
   // configure resolves and clears the flag, so the apply takes effect then.
   applyMuteState(node);

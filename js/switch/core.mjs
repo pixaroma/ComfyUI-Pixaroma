@@ -201,9 +201,22 @@ export function normalizeSlots(node) {
   // last instead of the row that was copied. With at least one wire present the
   // row count IS authoritative, so a genuinely stale index still self-heals
   // exactly as before.
+  //
+  // Second trigger: a PARTIAL paste (Switch copied with only SOME of its
+  // upstreams) regrows fewer rows than the copied activeIndex, which can leave
+  // it pointing exactly at the trailing empty row - in range, but unroutable,
+  // so the node shows no active row and fails at run time with "no input is
+  // connected to the active row". Heal that too. Restricted to the TRAILING
+  // row, which is unwired by invariant: activeIndex is only ever written to a
+  // WIRED row or 0, so this can never fire on a load path - which is what keeps
+  // the issue-#40 load-race corruption from coming back.
   const currentActive = state.activeIndex;
   const inRange = currentActive >= 1 && currentActive <= node.inputs.length;
-  if (!inRange && connected > 0) {
+  const onEmptyTrailing =
+    inRange &&
+    currentActive === node.inputs.length &&
+    node.inputs[currentActive - 1]?.link == null;
+  if ((!inRange || onEmptyTrailing) && connected > 0) {
     let firstConnected = 0;
     for (let i = 0; i < node.inputs.length; i++) {
       if (node.inputs[i]?.link != null) {
@@ -340,8 +353,9 @@ export function handleConnect(node, slotIdx1) {
   // connects must still GROW the row list (the rows were trimmed away with the
   // links nulled) but must NOT take over the active row - otherwise a pasted
   // Switch routes whichever row was wired last instead of the copied one.
-  // node._pixSwRestoring is raised in onConfigure (index.js) and drops as soon
-  // as the tick ends, so the user's next real wire activates as always.
+  // node._pixSwRestoring is raised in the `configure` WRAPPER (index.js - NOT
+  // the onConfigure hook, which runs too early to cover the burst) and drops as
+  // soon as the tick ends, so the user's next real wire activates as always.
   if (!node._pixSwRestoring) state.activeIndex = slotIdx1;
 
   // Only grow the slot list when this is a fresh connect to the trailing

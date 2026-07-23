@@ -21,9 +21,10 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 const HIDDEN_INPUT_NAME = "SwitchState";
 
 // True while a workflow is loading. The per-node _pixSwitchConfiguring flag
-// (set in onConfigure) does NOT cover connection restoration: LiteGraph
-// restores links at the GRAPH level AFTER each node's onConfigure has returned
-// and cleared its flag, so handleConnect runs for every restored wire and
+// (now raised by the `configure` wrapper below, not the onConfigure hook) does
+// NOT cover connection restoration: LiteGraph restores links at the GRAPH level
+// AFTER every node's configure has returned and cleared its flag, so
+// handleConnect runs for every restored wire and
 // overwrites the saved activeIndex (issue #40 - "switch resets on tab switch /
 // reload"). Wrapping app.loadGraphData (the funnel for workflow open, tab
 // switch, and Ctrl+Z undo - same fix as Image Resize) gives a load-wide guard,
@@ -124,7 +125,13 @@ app.registerExtension({
     nodeType.prototype.configure = function () {
       this._pixSwitchConfiguring = true;
       try {
-        return _origConfigureFn?.apply(this, arguments);
+        // Deliberately NOT `_origConfigureFn?.apply(...)`: a silent no-op here
+        // would load every Switch with zero saved state and report nothing.
+        if (typeof _origConfigureFn !== "function") {
+          console.error("[Switch Pixaroma] node configure() is missing - saved state was not restored");
+          return undefined;
+        }
+        return _origConfigureFn.apply(this, arguments);
       } finally {
         this._pixSwitchConfiguring = false;
         // Paste / Ctrl+D duplicate / alt-drag clone all run through
