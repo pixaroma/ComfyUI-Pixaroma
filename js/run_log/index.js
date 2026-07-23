@@ -366,10 +366,17 @@ function injectCSS() {
     ".pix-rl-idx{font-family:'Consolas','DejaVu Sans Mono',ui-monospace,monospace;font-size:11px;color:#6c6960;text-align:right;}",
     ".pix-rl-mark{font-size:9.5px;line-height:1;text-align:center;color:#8a8781;}",
     ".pix-rl-lbl{font-size:11px;color:#b8b4ad;justify-self:stretch;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:text;}",
-    // Discoverability without permanent clutter: an unlabelled row only shows
-    // the hint while the pointer is on it.
-    ".pix-rl-lbl--empty::after{content:'+ note';color:#4a4842;opacity:0;transition:opacity 0.12s;}",
-    ".pix-rl-row:hover .pix-rl-lbl--empty::after{opacity:1;}",
+    // Discoverability: an unlabelled row ALWAYS reads "add note", like
+    // placeholder text in a form, in the same grey as the row numbers so it
+    // recedes once real labels are typed. (A hover-only hint was tried first and
+    // was invisible in practice - user feedback, 2026-07-23.) It brightens on
+    // hover so the row still confirms it is interactive.
+    ".pix-rl-lbl--empty::after{content:'add note';color:#6c6960;transition:color 0.12s;}",
+    ".pix-rl-row:hover .pix-rl-lbl--empty::after{color:#9a968e;}",
+    // On the newest row the backdrop is orange-tinted, so the neutral grey would
+    // read as dead - warm it to match.
+    ".pix-rl-row--now .pix-rl-lbl--empty::after{color:#a8776a;}",
+    ".pix-rl-row--now:hover .pix-rl-lbl--empty::after{color:#d9917f;}",
     // The inline editor sits in the label cell and matches its metrics, so the
     // row does not shift when it opens.
     ".pix-rl-lblin{grid-column:3;justify-self:stretch;min-width:0;width:100%;box-sizing:border-box;height:16px;font-family:'Segoe UI',system-ui,sans-serif;font-size:11px;color:#e6e2da;background:#1d1d1d;border:1px solid #f66744;border-radius:3px;padding:0 4px;outline:none;}",
