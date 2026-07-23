@@ -155,15 +155,22 @@ export function normalizeSlots(node) {
     if (node.size[1] !== h) node.size[1] = h;
   }
 
-  // Prune label keys that fall outside the current slot range.
-  // Stale keys can arise from hand-edited workflow JSON or (theoretically)
-  // from a future migration that shortens the slot list without going through
-  // actuallyDisconnect. They are never accessed by drawSwitchRows (which
-  // iterates inputs, not labels), so this is purely defensive hygiene.
+  // Prune label keys that could NEVER map to a row: non-numeric, below 1, or
+  // past the MAX_INPUTS cap. Purely defensive hygiene against hand-edited JSON.
+  //
+  // Deliberately NOT pruned against node.inputs.length. clone() - the single
+  // path behind copy/paste, Ctrl+D duplicate AND alt-drag clone - serialises
+  // the node with EVERY input link nulled and then configures it, so this
+  // function momentarily sees a wireless node, trims it to one row, and would
+  // delete every label from row 2 up. That is exactly why a pasted Switch used
+  // to come back with only its first name (2026-07-23). The rows are rebuilt
+  // from the wires that land straight after, and both renderers only ever read
+  // labels[row] for rows that exist (drawSwitchRows / renderRows iterate
+  // inputs, never the labels map), so keys ahead of the row count are inert.
   if (state.labels) {
     for (const key in state.labels) {
       const k = parseInt(key, 10);
-      if (!Number.isFinite(k) || k < 1 || k > node.inputs.length) {
+      if (!Number.isFinite(k) || k < 1 || k > MAX_INPUTS) {
         delete state.labels[key];
       }
     }
@@ -182,9 +189,18 @@ export function normalizeSlots(node) {
   // user's saved intent. We only fall back to scanning when there is nothing
   // saved (activeIndex=0 on a fresh node, or a stale index beyond the current
   // slot count after a disconnect).
+  //
+  // The `connected > 0` half is the second half of the copy/paste fix: with NO
+  // wires at all the row count is not authoritative yet (clone() nulls every
+  // link before configure, and paste restores the wires AFTER it), so a saved
+  // activeIndex legitimately points past the temporary single row. Zeroing it
+  // there is what made a pasted Switch route whatever row happened to be wired
+  // last instead of the row that was copied. With at least one wire present the
+  // row count IS authoritative, so a genuinely stale index still self-heals
+  // exactly as before.
   const currentActive = state.activeIndex;
   const inRange = currentActive >= 1 && currentActive <= node.inputs.length;
-  if (!inRange) {
+  if (!inRange && connected > 0) {
     let firstConnected = 0;
     for (let i = 0; i < node.inputs.length; i++) {
       if (node.inputs[i]?.link != null) {
@@ -314,7 +330,16 @@ export function handleConnect(node, slotIdx1) {
     wasReplace = true;
   }
 
-  state.activeIndex = slotIdx1;
+  // A wire that lands during the restore burst FOLLOWING configure is not a
+  // user action - it is the node's own wiring coming back. Paste / duplicate /
+  // alt-drag clone all add + configure the node first and only then reconnect
+  // every link, in the same tick (LGraphCanvas._deserializeItems), so those
+  // connects must still GROW the row list (the rows were trimmed away with the
+  // links nulled) but must NOT take over the active row - otherwise a pasted
+  // Switch routes whichever row was wired last instead of the copied one.
+  // node._pixSwRestoring is raised in onConfigure (index.js) and drops as soon
+  // as the tick ends, so the user's next real wire activates as always.
+  if (!node._pixSwRestoring) state.activeIndex = slotIdx1;
 
   // Only grow the slot list when this is a fresh connect to the trailing
   // empty slot, NOT a wire-replace (which keeps the existing slot count).

@@ -93,6 +93,11 @@ app.registerExtension({
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       cancelEditorForNode(this);
+      if (this._pixSwRestoreTimer) {
+        clearTimeout(this._pixSwRestoreTimer);
+        this._pixSwRestoreTimer = null;
+        this._pixSwRestoring = false;
+      }
       if (this._pendingDisconnects?.size) {
         for (const timerId of this._pendingDisconnects.values()) {
           clearTimeout(timerId);
@@ -127,6 +132,21 @@ app.registerExtension({
         return r;
       } finally {
         this._pixSwitchConfiguring = false;
+        // Paste / Ctrl+D duplicate / alt-drag clone all run through
+        // LGraphCanvas._deserializeItems, which adds + configures every node
+        // FIRST and reconnects all the links afterwards - later than this
+        // finally block, but still inside the SAME tick. Those replayed
+        // connects have to grow the row list back (clone() nulled every link,
+        // so configure left us with a single row), but they must not hijack the
+        // active row that was copied. Keep a flag up across that burst;
+        // handleConnect reads it. A 0ms timer drops it the moment the tick
+        // ends, so a real user wire right after still activates its row.
+        this._pixSwRestoring = true;
+        clearTimeout(this._pixSwRestoreTimer);
+        this._pixSwRestoreTimer = setTimeout(() => {
+          this._pixSwRestoring = false;
+          this._pixSwRestoreTimer = null;
+        }, 0);
       }
     };
 
