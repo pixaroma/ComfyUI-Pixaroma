@@ -1,7 +1,6 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
-import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import {
   getState, setGate, setText, setModelText, revertText, STATE_PROP,
@@ -240,28 +239,13 @@ function setupNode(node) {
   });
   applyAdaptiveCanvasOnly(widget);
 
-  // Pin a content floor WHILE a resize handle is dragged (both renderers; self-
-  // gates to real DOM resize drags, so it's a no-op in Classic). Stops the node
-  // being dragged so short the text box collapses out of the frame. Only present
-  // during the drag, so it never inflates node.size on load (no dirty-on-load).
+  // Pin a content floor WHILE a resize handle is dragged (Nodes 2.0; a no-op in
+  // Classic, which floors via getMinHeight + the onResize clamp). Stops the node
+  // being dragged so short the button row spills below the frame - the ONLY Vue
+  // floor we use (NOT a ResizeObserver setSize re-grow: that can fire mid-drag and
+  // desync Align, per CLAUDE.md). Only present during the drag, so it never
+  // inflates node.size on load (no dirty-on-load). Verified: arms at 214px.
   node._pixPtFloorOff = installResizeFloor(root, () => nodeMinH(isVueNodes()));
-
-  // Nodes 2.0 only: a manual resize can drag the node shorter than getMinHeight
-  // (not enforced on a manual drag there), spilling the box below the frame. The
-  // root has overflow:hidden so it never visibly spills; this observer re-grows
-  // the node to fit if clipped. Gated on !isGraphLoading so it never resizes on
-  // a workflow load (dirty-on-load). Classic uses the onResize clamp instead.
-  if (isVueNodes()) {
-    const ro = new ResizeObserver(() => {
-      if (isGraphLoading()) return;
-      const over = root.scrollHeight - root.clientHeight;
-      if (over > 1 && typeof node.setSize === "function") {
-        node.setSize([node.size[0], node.size[1] + over]);
-      }
-    });
-    ro.observe(root);
-    node._pixPtRO = ro;
-  }
 
   // Fresh-node default size - opens big (like Text Join Four) since it usually
   // holds a paragraph of prompt. Use setSize (NOT a raw node.size write) so the DOM
@@ -310,9 +294,15 @@ app.registerExtension({
     // size, so saved (>= min) sizes never mutate -> no dirty-on-load.
     const _resize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      const minH = nodeMinH(isVueNodes());
-      if (size[0] < NODE_MIN_W) size[0] = NODE_MIN_W;
-      if (size[1] < minH) size[1] = minH;
+      // LEGACY ONLY. In Nodes 2.0 the rendered size lives in the Vue layout store,
+      // not node.size - clamping node.size there desyncs (Vue renders the dragged
+      // size while node.size holds the clamped value, so content spills). Vue's
+      // floor comes from installResizeFloor + the ResizeObserver re-grow instead.
+      if (!isVueNodes()) {
+        const minH = nodeMinH(false);
+        if (size[0] < NODE_MIN_W) size[0] = NODE_MIN_W;
+        if (size[1] < minH) size[1] = minH;
+      }
       return _resize?.apply(this, arguments);
     };
 
@@ -328,7 +318,6 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       clearTimeout(this._pixPtFlashTimer);
-      this._pixPtRO?.disconnect();
       if (this._pixPtBandPoll) { clearInterval(this._pixPtBandPoll); this._pixPtBandPoll = null; }
       try { this._pixPtFloorOff?.(); } catch { /* ignore */ }
       this._pixPtFloorOff = null;
