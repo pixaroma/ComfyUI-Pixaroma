@@ -88,6 +88,8 @@ from .nodes.node_version_check import NODE_CLASS_MAPPINGS as _MAPS_VERSION_CHECK
 from .nodes.node_version_check import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_VERSION_CHECK
 from .nodes.node_pause_image import NODE_CLASS_MAPPINGS as _MAPS_PAUSE_IMAGE
 from .nodes.node_pause_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAUSE_IMAGE
+from .nodes.node_pause_text import NODE_CLASS_MAPPINGS as _MAPS_PAUSE_TEXT
+from .nodes.node_pause_text import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PAUSE_TEXT
 from .nodes.node_xy_plot import NODE_CLASS_MAPPINGS as _MAPS_XY_PLOT
 from .nodes.node_xy_plot import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_XY_PLOT
 from .nodes.node_find_replace import NODE_CLASS_MAPPINGS as _MAPS_FIND_REPLACE
@@ -177,6 +179,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_TEXT_WATERMARK,
     **_MAPS_VERSION_CHECK,
     **_MAPS_PAUSE_IMAGE,
+    **_MAPS_PAUSE_TEXT,
     **_MAPS_XY_PLOT,
     **_MAPS_FIND_REPLACE,
     **_MAPS_LIF,
@@ -242,6 +245,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_TEXT_WATERMARK,
     **_NAMES_VERSION_CHECK,
     **_NAMES_PAUSE_IMAGE,
+    **_NAMES_PAUSE_TEXT,
     **_NAMES_XY_PLOT,
     **_NAMES_FIND_REPLACE,
     **_NAMES_LIF,

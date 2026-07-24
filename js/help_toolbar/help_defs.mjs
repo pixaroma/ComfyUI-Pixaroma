@@ -1208,6 +1208,48 @@ const HELP = {
     ],
   },
 
+  "PixaromaPauseText": {
+    title: "Pause Text Pixaroma",
+    tagline: "Pause your workflow to read and fix a piece of text before the rest runs.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Acts as an inline gate on any text wire. Made for text that comes from a language model, where you have no control over the exact words. Drop it between your text source and the rest of the workflow. In Pause mode the run stops here and shows the model's text; you edit it, then only the downstream runs, fed the words you approved.",
+      },
+      {
+        heading: "The three modes",
+        defs: [
+          ["Pause", "Run stops here and shows the model's text. The downstream does not run yet."],
+          ["Continue", "The model is skipped and your edited text is sent downstream. Fast, because only the cheaper downstream work runs."],
+          ["Pass", "The whole workflow runs end to end with the model's text untouched, as if this node were not there."],
+        ],
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire your text source (an LLM / prompt node) into `text` and wire the output onward.",
+          "Set the toggle to `Pause` and press Run. Read the text, fix it in the box.",
+          "Press `Continue` - only the downstream runs, using your edited text.",
+          "Press `Regenerate` for fresh text: it finds the node making the text upstream and rolls its seed to a new random value, so you get a different result.",
+          "Use `Revert` (the arrow in the box header) to put the model's original text back.",
+        ],
+      },
+      {
+        heading: "Good to know",
+        bullets: [
+          "A fresh Run replaces the box with the model's new text; your edit is kept between Continue presses and across save and reload.",
+          "If nothing upstream has a seed, Regenerate says so instead of silently giving you the same text.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["text", "The text continuing downstream: the model's text in Pause/Pass, or your edited text in Continue."],
+        ],
+      },
+    ],
+  },
+
   "PixaromaSwitch": {
     title: "Switch Pixaroma",
     tagline: "Route one of many wired inputs to a single output by clicking a row.",
