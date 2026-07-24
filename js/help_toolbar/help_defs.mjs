@@ -1228,7 +1228,7 @@ const HELP = {
         heading: "The buttons",
         defs: [
           ["Continue", "In Pause mode: skip the model and send your edited text downstream to make one image."],
-          ["Regenerate", "Get fresh text: it finds the node making the text upstream and rolls its seed, so you get a different prompt."],
+          ["Regenerate", "Get fresh text: it finds the node making the text upstream and rolls its seed, so you get a different prompt. Works in Pause mode; it's greyed out in Keep (where the text is being reused - switch to Pause to get a new prompt)."],
           ["Revert", "The arrow in the box header - put the model's original text back."],
         ],
       },

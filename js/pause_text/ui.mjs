@@ -256,7 +256,12 @@ export function renderPause(node) {
   const hasText = !!s.text;
   els.copyBtn.classList.toggle("off", !hasText);
   els.revertBtn.classList.toggle("off", !edited);
-  els.btnRegen.disabled = !editable || !!node._pixPtBusy;
+  // Regenerate is greyed in Keep mode: Keep reuses the current text, so getting a
+  // new prompt from the model doesn't belong here - switch back to Pause for that.
+  els.btnRegen.disabled = !editable || keep || !!node._pixPtBusy;
+  els.btnRegen.title = keep
+    ? "Switch to Pause to get fresh text from the model"
+    : "Get fresh text: roll the seed of whatever is generating it upstream";
   els.btnContinue.disabled = !editable || !!node._pixPtBusy;
 
   els.count.textContent = countLabel(s.text);
