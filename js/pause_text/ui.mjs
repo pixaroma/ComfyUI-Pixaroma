@@ -1,53 +1,61 @@
-// Pause Text Pixaroma - the node body UI, built as ONE DOM widget so it renders
-// identically in the Classic and Nodes 2.0 renderers with zero isVueNodes()
-// branching. Layout top->bottom: status + Pause/Pass toggle, the editable text
-// box (fills the remaining height) with a header (label + edited tag + Copy /
-// Revert icons), then the count line + Regenerate / Continue buttons.
+// Pause Text Pixaroma - the node body UI, ONE DOM widget for both renderers.
+// Layout: a STATUS line sits in the empty band BETWEEN the input and output dots
+// (Classic paints it on the canvas via onDrawForeground; Nodes 2.0 shows a DOM
+// band lifted into the slot row by the block-nudge - see index.js). Below that:
+// the editable text box (fills the height) whose header carries the field label,
+// the Pause/Pass toggle and the Copy/Revert icons; then the count + Regenerate /
+// Continue buttons. No status dot (it read as an input dot).
 import { BRAND } from "../shared/utils.mjs";
 import { getState, isEdited } from "./state.mjs";
 
-// Fixed vertical budget for the non-fill rows, so getMinHeight is a CONSTANT
-// (Vue Compat #18): byte-identical every save/load, node.size never jitters.
-const TOP_H = 26;
-const BOX_HDR_H = 20;
-const BOX_MIN_BODY_H = 110;   // textarea min inside the box
-const BOTTOM_H = 28;
+// Fixed vertical budget for the non-fill rows -> getMinHeight is a per-renderer
+// CONSTANT (Vue Compat #18): byte-identical every save/load, node.size never
+// jitters. The band costs 0 height in Classic (painted) and BAND_H in Nodes 2.0
+// (in-flow, then the nudge overlaps it onto the slot row).
 const PAD = 6;
+const HDR_H = 24;
+const BODY_MIN_H = 120;
+const BOT_H = 28;
+export const BAND_H = 18;
+const CORE_H = PAD + HDR_H + BODY_MIN_H + PAD + BOT_H + PAD;
 export const NODE_MIN_W = 300;
-export const NODE_MIN_H = PAD + TOP_H + PAD + BOX_HDR_H + BOX_MIN_BODY_H + PAD + BOTTOM_H + PAD;
+export function nodeMinH(vue) { return CORE_H + (vue ? BAND_H + PAD : 0); }
+// A safe constant floor used by getMinHeight/onResize (the larger of the two so
+// neither renderer is starved).
+export const NODE_MIN_H = CORE_H + BAND_H + PAD;
 
 function injectCSS() {
   if (document.getElementById("pix-pt-css")) return;
   const s = document.createElement("style");
   s.id = "pix-pt-css";
   s.textContent = `
-    .pix-pt-root { display:flex; flex-direction:column; flex:1 1 0; min-height:0;
-      box-sizing:border-box; padding:${PAD}px; gap:${PAD}px; font:12px sans-serif; color:#ddd;
-      overflow:hidden; }
-    .pix-pt-top { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
-    .pix-pt-dot { width:7px; height:7px; border-radius:50%; background:${BRAND}; flex:0 0 auto; }
-    .pix-pt-dot.busy { background:#3ec371; }
-    .pix-pt-dot.idle { background:#666; }
-    .pix-pt-status { flex:1 1 0; min-width:0; font-size:11px; color:rgba(255,255,255,0.75);
-      overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pix-pt-toggle { display:flex; background:rgba(0,0,0,0.25); border-radius:6px; padding:2px; gap:2px; flex:0 0 auto; }
-    .pix-pt-seg { text-align:center; padding:3px 10px; border-radius:5px; cursor:pointer;
-      color:rgba(255,255,255,0.6); user-select:none; border:1px solid transparent; font-size:11px; }
-    .pix-pt-seg.active { background:${BRAND}; color:#fff; border-color:${BRAND}; }
-    .pix-pt-seg:not(.active):hover { border-color:${BRAND}; color:#ddd; }
+    .pix-pt-root { position:relative; display:flex; flex-direction:column; flex:1 1 0;
+      min-height:0; box-sizing:border-box; padding:${PAD}px; gap:${PAD}px;
+      font:12px sans-serif; color:#ddd; overflow:hidden; background:transparent; }
+    /* Status band. Classic hides it (painted on canvas); Nodes 2.0 shows it and
+       the nudge lifts it onto the slot row. Reserve the sides for the dot labels. */
+    .pix-pt-band { flex:0 0 auto; height:${BAND_H}px; line-height:${BAND_H}px;
+      font:11px sans-serif; color:rgba(255,255,255,0.72); text-align:center;
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
+      padding:0 66px; box-sizing:border-box; }
+    .pix-pt-band.pt-hidden { display:none; }
 
     .pix-pt-box { flex:1 1 0; min-height:0; display:flex; flex-direction:column;
       background:#1d1d1d; border:1px solid #333; border-radius:5px; overflow:hidden; }
     .pix-pt-box.pt-focus { border-color:${BRAND}; }
     .pix-pt-box.pt-off { opacity:0.55; }
-    .pix-pt-hdr { flex:0 0 auto; display:flex; align-items:center; gap:6px; padding:3px 6px 2px 9px;
-      border-bottom:1px solid #2c2c2c; background:rgba(255,255,255,0.02); }
+    .pix-pt-hdr { flex:0 0 auto; display:flex; align-items:center; gap:6px;
+      padding:3px 6px 3px 9px; border-bottom:1px solid #2c2c2c; background:rgba(255,255,255,0.02); }
     .pix-pt-hlbl { font:10px 'Segoe UI',-apple-system,sans-serif; color:#8f8f8f; flex:1 1 0;
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .pix-pt-edited { color:${BRAND}; }
+    .pix-pt-toggle { display:flex; background:rgba(0,0,0,0.25); border-radius:5px; padding:1px; gap:2px; flex:0 0 auto; }
+    .pix-pt-seg { text-align:center; padding:2px 9px; border-radius:4px; cursor:pointer;
+      color:rgba(255,255,255,0.6); user-select:none; border:1px solid transparent; font-size:10px; }
+    .pix-pt-seg.active { background:${BRAND}; color:#fff; border-color:${BRAND}; }
+    .pix-pt-seg:not(.active):hover { border-color:${BRAND}; color:#ddd; }
     .pix-pt-hic { width:19px; height:18px; border-radius:4px; display:flex; align-items:center;
       justify-content:center; cursor:pointer; background:rgba(255,255,255,0.06);
-      border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.72); }
+      border:1px solid rgba(255,255,255,0.14); color:rgba(255,255,255,0.72); flex:0 0 auto; }
     .pix-pt-hic:hover:not(.off) { background:${BRAND}; border-color:${BRAND}; color:#fff; }
     .pix-pt-hic.ok, .pix-pt-hic.ok:hover { background:#3ec371; border-color:#3ec371; color:#fff; }
     .pix-pt-hic.off { opacity:0.35; cursor:default; }
@@ -63,7 +71,7 @@ function injectCSS() {
     .pix-pt-btn { height:26px; padding:0 12px; border-radius:4px;
       border:1px solid rgba(255,255,255,0.18); background:rgba(255,255,255,0.05);
       color:rgba(255,255,255,0.85); font:12px sans-serif; cursor:pointer;
-      box-sizing:border-box; white-space:nowrap; user-select:none; }
+      box-sizing:border-box; white-space:nowrap; user-select:none; flex:0 0 auto; }
     .pix-pt-btn:hover:not(:disabled) { border-color:${BRAND}; color:#fff; }
     .pix-pt-btn.primary:not(:disabled) { background:${BRAND}; border-color:${BRAND}; color:#fff; }
     .pix-pt-btn.primary:hover:not(:disabled) { background:#ff8a5e; border-color:#ff8a5e; }
@@ -82,20 +90,36 @@ const REVERT_SVG =
   'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
   '<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-1"/></svg>';
 
+// The current status string, shared by the DOM band (Nodes 2.0) and the canvas
+// paint (Classic). busy > flash > gate-derived.
+export function statusText(node) {
+  const s = getState(node);
+  const paused = s.gate === "pause";
+  if (node._pixPtBusy) return node._pixPtBusy;
+  if (node._pixPtFlash) return node._pixPtFlash;
+  if (!paused) return "Passing through: whole workflow runs";
+  return isEdited(node) ? "Edited. Continue when ready." : "Paused. Edit and press Continue.";
+}
+
 // Build the DOM widget. callbacks: { onGate, onContinue, onRegenerate, onCopy,
-// onRevert, onInput }. Caches element refs on node._pixPtEls.
+// onRevert, onInput }. Caches refs on node._pixPtEls.
 export function buildPauseTextWidget(node, callbacks) {
   injectCSS();
   const root = document.createElement("div");
   root.className = "pix-pt-root";
 
-  // Top row: status + Pause/Pass toggle.
-  const top = document.createElement("div");
-  top.className = "pix-pt-top";
-  const dot = document.createElement("span");
-  dot.className = "pix-pt-dot";
-  const status = document.createElement("span");
-  status.className = "pix-pt-status";
+  // Status band (between the dots).
+  const band = document.createElement("div");
+  band.className = "pix-pt-band";
+
+  // The editable box; its header carries the label + Pause/Pass toggle + icons.
+  const box = document.createElement("div");
+  box.className = "pix-pt-box";
+  const hdr = document.createElement("div");
+  hdr.className = "pix-pt-hdr";
+  const hlbl = document.createElement("span");
+  hlbl.className = "pix-pt-hlbl";
+  hlbl.textContent = "text";
   const toggle = document.createElement("div");
   toggle.className = "pix-pt-toggle";
   const segPause = document.createElement("div");
@@ -107,18 +131,6 @@ export function buildPauseTextWidget(node, callbacks) {
   segPass.textContent = "Pass";
   segPass.title = "Pass straight through; run the whole workflow in one go";
   toggle.append(segPause, segPass);
-  top.append(dot, status, toggle);
-  segPause.addEventListener("click", () => callbacks.onGate("pause"));
-  segPass.addEventListener("click", () => callbacks.onGate("pass"));
-
-  // The editable text box.
-  const box = document.createElement("div");
-  box.className = "pix-pt-box";
-  const hdr = document.createElement("div");
-  hdr.className = "pix-pt-hdr";
-  const hlbl = document.createElement("span");
-  hlbl.className = "pix-pt-hlbl";
-  hlbl.textContent = "text";
   const copyBtn = document.createElement("span");
   copyBtn.className = "pix-pt-hic";
   copyBtn.innerHTML = COPY_SVG;
@@ -127,7 +139,7 @@ export function buildPauseTextWidget(node, callbacks) {
   revertBtn.className = "pix-pt-hic";
   revertBtn.innerHTML = REVERT_SVG;
   revertBtn.title = "Put the model's original text back";
-  hdr.append(hlbl, copyBtn, revertBtn);
+  hdr.append(hlbl, toggle, copyBtn, revertBtn);
   const ta = document.createElement("textarea");
   ta.className = "pix-pt-ta";
   ta.spellcheck = false;
@@ -149,9 +161,9 @@ export function buildPauseTextWidget(node, callbacks) {
   btnContinue.title = "Run only the rest of the workflow with your edited text";
   bot.append(count, btnRegen, btnContinue);
 
-  root.append(top, box, bot);
+  root.append(band, box, bot);
 
-  // Wire events. stopPropagation so canvas drag/deselect/shortcuts don't fire.
+  // Events. stopPropagation so canvas drag/deselect/shortcuts don't fire.
   ta.addEventListener("input", () => callbacks.onInput(ta.value));
   ta.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return;  // let run-workflow through
@@ -162,9 +174,11 @@ export function buildPauseTextWidget(node, callbacks) {
   ta.addEventListener("focus", () => box.classList.add("pt-focus"));
   ta.addEventListener("blur", () => box.classList.remove("pt-focus"));
 
+  segPause.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onGate("pause"); });
+  segPass.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onGate("pass"); });
   copyBtn.addEventListener("click", (e) => { e.stopPropagation(); if (!copyBtn.classList.contains("off")) callbacks.onCopy(); });
   revertBtn.addEventListener("click", (e) => { e.stopPropagation(); if (!revertBtn.classList.contains("off")) callbacks.onRevert(); });
-  for (const b of [copyBtn, revertBtn]) {
+  for (const b of [segPause, segPass, copyBtn, revertBtn]) {
     b.addEventListener("pointerdown", (e) => e.stopPropagation());
     b.addEventListener("mousedown", (e) => e.stopPropagation());
   }
@@ -172,7 +186,7 @@ export function buildPauseTextWidget(node, callbacks) {
   btnContinue.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onContinue(); });
 
   node._pixPtEls = {
-    dot, status, segPause, segPass, box, hlbl, copyBtn, revertBtn, ta, count, btnRegen, btnContinue,
+    root, band, box, hlbl, segPause, segPass, copyBtn, revertBtn, ta, count, btnRegen, btnContinue,
   };
   return root;
 }
@@ -183,15 +197,14 @@ function countLabel(text) {
   return `${chars} char${chars === 1 ? "" : "s"} · ${words} word${words === 1 ? "" : "s"}`;
 }
 
-// Flash a header icon green for 700ms after a successful action.
 export function flashIcon(iconEl) {
   if (!iconEl) return;
   iconEl.classList.add("ok");
   setTimeout(() => iconEl.classList.remove("ok"), 700);
 }
 
-// Push the stored text into the textarea (restore / fresh capture). Only sets when
-// different so it never fights the user's caret mid-type.
+// Push the stored text into the textarea. Only sets when different so it never
+// fights the user's caret mid-type.
 export function syncText(node) {
   const els = node._pixPtEls;
   if (!els) return;
@@ -199,8 +212,9 @@ export function syncText(node) {
   if (els.ta.value !== s.text) els.ta.value = s.text;
 }
 
-// Re-render controls from current state. DOM-only (never mutates serialized
-// state), so it is safe on the load path (Vue Compat #18).
+// Re-render controls from state. DOM-only, safe on the load path (Vue Compat #18).
+// The status band is a DOM element in BOTH renderers (index.js floats it into the
+// slot dead-space in Classic, nudges the slot block in Nodes 2.0).
 export function renderPause(node) {
   const els = node._pixPtEls;
   if (!els) return;
@@ -211,7 +225,6 @@ export function renderPause(node) {
   els.segPause.classList.toggle("active", paused);
   els.segPass.classList.toggle("active", !paused);
 
-  // Editing only in Pause mode; Pass greys the box (transparent passthrough).
   els.ta.disabled = !paused;
   els.box.classList.toggle("pt-off", !paused);
   els.ta.placeholder = paused
@@ -219,7 +232,7 @@ export function renderPause(node) {
     : "Passing through - the model's text is sent as-is";
 
   els.hlbl.innerHTML = edited
-    ? 'text · <span class="pix-pt-edited">edited</span>'
+    ? 'text · <span style="color:' + BRAND + '">edited</span>'
     : "text";
 
   const hasText = !!s.text;
@@ -229,19 +242,5 @@ export function renderPause(node) {
   els.btnContinue.disabled = !paused || !!node._pixPtBusy;
 
   els.count.textContent = countLabel(s.text);
-
-  // Status dot + line.
-  els.dot.classList.toggle("busy", !!node._pixPtBusy);
-  els.dot.classList.toggle("idle", !paused && !node._pixPtBusy);
-  if (node._pixPtBusy) {
-    els.status.textContent = node._pixPtBusy;
-  } else if (node._pixPtFlash) {
-    els.status.textContent = node._pixPtFlash;
-  } else if (!paused) {
-    els.status.textContent = "Passing through: whole workflow runs";
-  } else if (edited) {
-    els.status.textContent = "Edited. Continue when ready.";
-  } else {
-    els.status.textContent = "Paused. Edit and press Continue.";
-  }
+  els.band.textContent = statusText(node);
 }

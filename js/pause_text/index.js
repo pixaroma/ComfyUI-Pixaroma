@@ -8,12 +8,81 @@ import {
 } from "./state.mjs";
 import { applyGateMode } from "./prune.mjs";
 import {
-  buildPauseTextWidget, renderPause, syncText, flashIcon, NODE_MIN_W, NODE_MIN_H,
+  buildPauseTextWidget, renderPause, syncText, flashIcon, NODE_MIN_W, NODE_MIN_H, nodeMinH,
 } from "./ui.mjs";
 
 const CLASS = "PixaromaPauseText";
 const HIDDEN_INPUT = "PauseState";
 const WIDGET_TYPE = "pixaroma_pause_text_ui";
+
+// ── Place the status band in the slot dead-space (between the input/output dots) ──
+// Classic: FLOAT the band up out of flow into the slot row (the widget wrapper is
+// overflow:visible, so content above the widget top isn't clipped - LoRA Loader
+// technique). Nodes 2.0: the body is clipped above its top, so instead NUDGE the
+// slot block out of flow so the band (in-flow first child) rises onto the slot row
+// (Load Image Mini technique). Cosmetic + wrapped in try/catch: on any failure the
+// band degrades to a normal row and the node still works. Writes only DOM style,
+// so it can never dirty a saved workflow.
+const CLASSIC_BAND_TOP = -31;   // lift into the single input/output slot row (calibrated live)
+const BAND_RSV = 66;            // clear the "text" dot labels on each side
+const NUDGE_EXTRA_LIFT = 6;
+
+function slotBlock(el) {
+  const s = el.querySelector(".lg-slot--output") || el.querySelector(".lg-slot--input");
+  return s?.parentElement?.parentElement || null;
+}
+
+function positionBand(node) {
+  const band = node._pixPtEls?.band;
+  const root = node._pixPtEls?.root;
+  if (!band || !root) return;
+  try {
+    if (isVueNodes()) {
+      // In-flow band; lift the slot block so the band overlaps the slot row.
+      root.style.overflow = "";               // CSS default (hidden) - Vue spill safety
+      band.style.position = "";
+      band.style.top = band.style.left = band.style.right = "";
+      const el = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
+      if (!el) return;
+      const block = slotBlock(el);
+      const col = (el.querySelector(".lg-slot--output") || el.querySelector(".lg-slot--input"))?.parentElement;
+      if (!block) return;
+      if (parseFloat(block.style.marginBottom || "0") < 0) return;  // already nudged
+      block.style.marginBottom = "0px";
+      const h = block.offsetHeight;
+      if (h <= 0) return;
+      block.style.marginBottom = (-(h + NUDGE_EXTRA_LIFT)) + "px";
+      block.style.pointerEvents = "none";   // dots stay draggable via the col below
+      if (col) col.style.pointerEvents = "auto";
+    } else {
+      // Classic: float the band up into the slot row (band is pointer-events:none
+      // so the painted dots under it stay clickable/wireable). The root must NOT
+      // clip it - overflow:visible lets it escape upward; the box clips its own
+      // content and the onResize clamp prevents any downward spill in Classic.
+      root.style.overflow = "visible";
+      band.style.position = "absolute";
+      band.style.top = CLASSIC_BAND_TOP + "px";
+      band.style.left = BAND_RSV + "px";
+      band.style.right = BAND_RSV + "px";
+      band.style.zIndex = "2";
+    }
+  } catch { /* degrade to a plain row */ }
+}
+
+// Vue REPLACES the node element on re-render (orphaning the nudge) and can add
+// slots a frame late, so a self-heal poll is required. Classic sets the float once
+// (it persists on our own element).
+function watchBand(node) {
+  positionBand(node);
+  requestAnimationFrame(() => positionBand(node));
+  setTimeout(() => positionBand(node), 120);
+  if (isVueNodes() && !node._pixPtBandPoll) {
+    node._pixPtBandPoll = setInterval(() => {
+      if (!node.graph) { clearInterval(node._pixPtBandPoll); node._pixPtBandPoll = null; return; }
+      positionBand(node);
+    }, 350);
+  }
+}
 
 // ── Queue a run with a one-shot submit mode the graphToPrompt hook reads ──
 // "continue" -> prune the upstream, output the edited text downstream.
@@ -140,7 +209,9 @@ function setupNode(node) {
   });
   const widget = node.addDOMWidget(WIDGET_TYPE, WIDGET_TYPE, root, {
     serialize: false,
-    getMinHeight: () => NODE_MIN_H,  // constant (Vue Compat #18)
+    // Per-renderer constant (Vue Compat #18): Classic excludes the floated band,
+    // Nodes 2.0 includes the in-flow band. Constant per renderer -> no jitter.
+    getMinHeight: () => nodeMinH(isVueNodes()),
   });
   applyAdaptiveCanvasOnly(widget);
 
@@ -148,7 +219,7 @@ function setupNode(node) {
   // gates to real DOM resize drags, so it's a no-op in Classic). Stops the node
   // being dragged so short the text box collapses out of the frame. Only present
   // during the drag, so it never inflates node.size on load (no dirty-on-load).
-  node._pixPtFloorOff = installResizeFloor(root, () => NODE_MIN_H);
+  node._pixPtFloorOff = installResizeFloor(root, () => nodeMinH(isVueNodes()));
 
   // Nodes 2.0 only: a manual resize can drag the node shorter than getMinHeight
   // (not enforced on a manual drag there), spilling the box below the frame. The
@@ -167,11 +238,14 @@ function setupNode(node) {
     node._pixPtRO = ro;
   }
 
-  // Fresh-node default size (wide enough to read a paragraph of prompt without
-  // wrapping every few words). configure() runs AFTER onNodeCreated and restores
-  // a saved size, so this only affects fresh drops.
+  // Fresh-node default size - opens big (like Text Join Four) since it usually
+  // holds a paragraph of prompt. configure() runs AFTER onNodeCreated and restores
+  // a saved size, so this only affects fresh drops; the min stays small so users
+  // can still shrink it.
   if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 480;
-  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 380;
+  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 520;
+
+  watchBand(node);  // float (Classic) / nudge (Vue) the status band into the slot row
 
   // Defer the first render until node.properties is restored (Vue Compat #8).
   queueMicrotask(() => restore(node));
@@ -208,8 +282,9 @@ app.registerExtension({
     // size, so saved (>= min) sizes never mutate -> no dirty-on-load.
     const _resize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
+      const minH = nodeMinH(isVueNodes());
       if (size[0] < NODE_MIN_W) size[0] = NODE_MIN_W;
-      if (size[1] < NODE_MIN_H) size[1] = NODE_MIN_H;
+      if (size[1] < minH) size[1] = minH;
       return _resize?.apply(this, arguments);
     };
 
@@ -217,6 +292,7 @@ app.registerExtension({
     nodeType.prototype.onRemoved = function () {
       clearTimeout(this._pixPtFlashTimer);
       this._pixPtRO?.disconnect();
+      if (this._pixPtBandPoll) { clearInterval(this._pixPtBandPoll); this._pixPtBandPoll = null; }
       try { this._pixPtFloorOff?.(); } catch { /* ignore */ }
       this._pixPtFloorOff = null;
       this._pixPtEls = null;
