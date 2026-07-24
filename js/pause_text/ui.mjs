@@ -243,4 +243,7 @@ export function renderPause(node) {
 
   els.count.textContent = countLabel(s.text);
   els.band.textContent = statusText(node);
+  // Classic paints the status on the canvas from statusText(node), so nudge a
+  // repaint whenever the state changes (harmless in Nodes 2.0).
+  node.setDirtyCanvas?.(true, false);
 }

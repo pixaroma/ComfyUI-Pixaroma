@@ -8,7 +8,7 @@ import {
 } from "./state.mjs";
 import { applyGateMode } from "./prune.mjs";
 import {
-  buildPauseTextWidget, renderPause, syncText, flashIcon, NODE_MIN_W, NODE_MIN_H, nodeMinH,
+  buildPauseTextWidget, renderPause, syncText, flashIcon, statusText, NODE_MIN_W, NODE_MIN_H, nodeMinH,
 } from "./ui.mjs";
 
 const CLASS = "PixaromaPauseText";
@@ -23,8 +23,9 @@ const WIDGET_TYPE = "pixaroma_pause_text_ui";
 // (Load Image Mini technique). Cosmetic + wrapped in try/catch: on any failure the
 // band degrades to a normal row and the node still works. Writes only DOM style,
 // so it can never dirty a saved workflow.
-const CLASSIC_BAND_TOP = -31;   // lift into the single input/output slot row (calibrated live)
-const BAND_RSV = 66;            // clear the "text" dot labels on each side
+const CLASSIC_BOX_LIFT = -18;   // pull the box up into the slot reserve (no top gap)
+const CLASSIC_STATUS_Y = 14;    // node-local Y of the slot row (where the status paints)
+const CLASSIC_STATUS_RSV = 62;  // clear the "text" dot labels on each side
 const NUDGE_EXTRA_LIFT = 6;
 
 function slotBlock(el) {
@@ -32,16 +33,44 @@ function slotBlock(el) {
   return s?.parentElement?.parentElement || null;
 }
 
+// Classic: paint the status text on the canvas in the slot row (between the dots).
+// Painting is fully clipped to the node width by us, so - unlike a floated DOM
+// band - it can NEVER overflow past the node edge on resize. Nodes 2.0 skips this
+// (onDrawForeground isn't called there) and uses the DOM band + nudge instead.
+function paintStatus(node, ctx) {
+  if (isVueNodes() || node.flags?.collapsed) return;
+  const txt = statusText(node);
+  if (!txt) return;
+  const avail = node.size[0] - CLASSIC_STATUS_RSV * 2;
+  if (avail < 24) return;                       // too narrow to show anything
+  ctx.save();
+  ctx.fillStyle = "rgba(255,255,255,0.72)";
+  ctx.font = "11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  let s = txt;
+  if (ctx.measureText(s).width > avail) {        // truncate with an ellipsis
+    while (s.length > 1 && ctx.measureText(s + "…").width > avail) s = s.slice(0, -1);
+    s += "…";
+  }
+  ctx.fillText(s, node.size[0] / 2, CLASSIC_STATUS_Y);
+  ctx.restore();
+}
+
+// Place the DOM band. Classic: HIDE it (the status is canvas-painted) and pull the
+// box up to close the slot-reserve gap. Nodes 2.0: SHOW the in-flow band and nudge
+// the slot block so it overlaps the slot row. Writes only DOM style + one canvas
+// margin - never node.size/props/slots - so it can't dirty a saved workflow.
 function positionBand(node) {
   const band = node._pixPtEls?.band;
   const root = node._pixPtEls?.root;
-  if (!band || !root) return;
+  const box = node._pixPtEls?.box;
+  if (!band || !root || !box) return;
   try {
     if (isVueNodes()) {
-      // In-flow band; lift the slot block so the band overlaps the slot row.
       root.style.overflow = "";               // CSS default (hidden) - Vue spill safety
-      band.style.position = "";
-      band.style.top = band.style.left = band.style.right = "";
+      band.style.display = "";
+      box.style.marginTop = "";               // the nudge already tucks the box up
       const el = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
       if (!el) return;
       const block = slotBlock(el);
@@ -55,16 +84,12 @@ function positionBand(node) {
       block.style.pointerEvents = "none";   // dots stay draggable via the col below
       if (col) col.style.pointerEvents = "auto";
     } else {
-      // Classic: float the band up into the slot row (band is pointer-events:none
-      // so the painted dots under it stay clickable/wireable). The root must NOT
-      // clip it - overflow:visible lets it escape upward; the box clips its own
-      // content and the onResize clamp prevents any downward spill in Classic.
+      // Classic: hide the DOM band (status is painted), pull the box up to close the
+      // top gap. overflow:visible lets the lifted box show; it's node-width so it
+      // never overflows sideways, and the onResize clamp stops downward spill.
+      band.style.display = "none";
       root.style.overflow = "visible";
-      band.style.position = "absolute";
-      band.style.top = CLASSIC_BAND_TOP + "px";
-      band.style.left = BAND_RSV + "px";
-      band.style.right = BAND_RSV + "px";
-      band.style.zIndex = "2";
+      box.style.marginTop = CLASSIC_BOX_LIFT + "px";
     }
   } catch { /* degrade to a plain row */ }
 }
@@ -239,11 +264,14 @@ function setupNode(node) {
   }
 
   // Fresh-node default size - opens big (like Text Join Four) since it usually
-  // holds a paragraph of prompt. configure() runs AFTER onNodeCreated and restores
-  // a saved size, so this only affects fresh drops; the min stays small so users
-  // can still shrink it.
-  if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 480;
-  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 520;
+  // holds a paragraph of prompt. Use setSize (NOT a raw node.size write) so the DOM
+  // widget WIDTH actually propagates - a fresh node arrives at ~MIN_W, and a raw
+  // width write doesn't reach the rendered widget (it stayed narrow, truncating the
+  // band). Set unconditionally: configure() runs AFTER onNodeCreated and restores a
+  // saved size for existing nodes, so this only sticks for fresh drops; the min
+  // stays small (onResize) so users can still shrink it.
+  if (typeof node.setSize === "function") node.setSize([480, 520]);
+  else { node.size[0] = 480; node.size[1] = 520; }
 
   watchBand(node);  // float (Classic) / nudge (Vue) the status band into the slot row
 
@@ -286,6 +314,15 @@ app.registerExtension({
       if (size[0] < NODE_MIN_W) size[0] = NODE_MIN_W;
       if (size[1] < minH) size[1] = minH;
       return _resize?.apply(this, arguments);
+    };
+
+    // Classic: paint the status text in the slot row (Nodes 2.0 skips it - this
+    // hook isn't called there, and the DOM band handles it).
+    const _draw = nodeType.prototype.onDrawForeground;
+    nodeType.prototype.onDrawForeground = function (ctx) {
+      const r = _draw?.apply(this, arguments);
+      paintStatus(this, ctx);
+      return r;
     };
 
     const _removed = nodeType.prototype.onRemoved;
