@@ -78,11 +78,15 @@ export function injectCSS() {
     .pix-tj-field { position:absolute; top:0; right:0; bottom:0; left:0; box-sizing:border-box;
       background:#1d1d1d; border:1px solid #333; border-radius:5px; overflow:hidden; }
     .pix-tj-field:focus-within { border-color:${BRAND}; }
-    .pix-tj-lbl { position:absolute; top:4px; left:9px; z-index:2; pointer-events:none;
+    .pix-tj-lbl { position:absolute; top:4px; left:9px; right:9px; z-index:2; pointer-events:none;
+      overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
       font:10px 'Segoe UI',-apple-system,sans-serif; color:#8f8f8f; }
-    .pix-tj-ta { position:absolute; inset:0; width:100%; height:100%; box-sizing:border-box;
+    /* The textarea BOX starts BELOW the label band (top:19px), not inset:0. So its
+       content is clipped at 19px and scrolled text can never slide up under the
+       fixed label (the overlap bug). Small padding-top for breathing room only. */
+    .pix-tj-ta { position:absolute; top:19px; right:0; bottom:0; left:0; box-sizing:border-box;
       background:transparent; color:#e0e0e0; border:0; outline:none; resize:none;
-      font:12px monospace; padding:19px 8px 7px; }
+      font:12px monospace; padding:2px 8px 7px; }
     .pix-tj-ta::placeholder { color:#5c5c5c; font-style:italic; }
     .pix-tj-icons { position:absolute; top:3px; right:5px; z-index:3; display:none; gap:3px; }
     .pix-tj-field:hover .pix-tj-icons { display:flex; }
