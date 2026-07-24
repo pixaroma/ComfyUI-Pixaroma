@@ -117,12 +117,32 @@ export function applyGateMode(out, id, entry, mode, isOutput, HIDDEN_INPUT = "Pa
     keep.add(String(id));
     addAncestors(out, keep);
 
-    // Delete only the OUTPUT nodes not in the run (they would re-execute and pull
-    // the upstream back). Non-output nodes stay as orphans (never run). Fallback
-    // when output detection is unavailable: delete everything not in keep.
+    // Which OUTPUT nodes to delete: ONLY the ones that would re-pull the gate's
+    // skipped UPSTREAM (the model chain that fed the gate via gateSrc) back alive.
+    // An UNRELATED output branch (its own source, no path through the gate's
+    // upstream) must keep running - Continue/Keep should skip the model, not the
+    // whole rest of the graph. (Old bug: this deleted EVERY output not in `keep`,
+    // silently killing unrelated branches - and, for a gate with nothing wired
+    // downstream, every output in the file.)
+    // upstream = gateSrc's node + all its ancestors (the chain we're skipping).
+    const upstream = new Set();
+    if (gateSrc) { upstream.add(gateSrc[0]); addAncestors(out, upstream); }
+    // pullsUpstream = everything forward-reachable from `upstream` (its consumers);
+    // executing any of these would run the skipped model. Rebuild consumers AFTER
+    // the diamond reroute so rerouted downstream nodes no longer count as consumers.
+    const postConsumers = buildConsumers(out);
+    const pullsUpstream = new Set();
+    const stack = [...upstream];
+    while (stack.length) {
+      const next = postConsumers.get(String(stack.pop()));
+      if (!next) continue;
+      for (const c of next) if (!pullsUpstream.has(c)) { pullsUpstream.add(c); stack.push(c); }
+    }
     const canDetect = typeof isOutput === "function";
     for (const nid of Object.keys(out)) {
-      if (keep.has(String(nid))) continue;
+      const s = String(nid);
+      if (keep.has(s)) continue;
+      if (!pullsUpstream.has(s)) continue;   // unrelated to the gate's upstream -> keep + run it
       if (!canDetect || isOutput(out[nid] && out[nid].class_type)) delete out[nid];
     }
   } else {
