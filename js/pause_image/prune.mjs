@@ -74,13 +74,14 @@ export function addAncestors(output, keep) {
 // can process CONTINUE gates before PAUSE/PASS ones (see the sort in index.js).
 //
 // `isOutput(classType)` returns true iff a class_type is an OUTPUT_NODE (Save /
-// Preview / another gate). It is the ONLY thing that would re-execute on a
-// Continue run, so it is the ONLY thing the Continue prune deletes; every other
-// (non-output) node is left in the submitted prompt as a harmless orphan so
-// downstream Save nodes still embed the full generation metadata (seed / model
-// / sampler) in the "prompt" PNG chunk. When `isOutput` is unavailable the
-// prune falls back to the old delete-everything behavior (safe: no metadata,
-// but the expensive upstream is never re-run).
+// Preview / another gate). On Continue only the output nodes that would re-pull
+// the gate's skipped UPSTREAM back alive are deleted; every other node is left
+// in the submitted prompt as a harmless orphan so downstream Save nodes still
+// embed the full generation metadata (seed / model / sampler) in the "prompt"
+// PNG chunk, and UNRELATED output branches keep running. When `isOutput` is
+// unavailable the prune still scopes deletion to the gate's upstream consumers
+// (safe: no metadata on those, but the expensive upstream is never re-run, and
+// unrelated branches survive).
 export function applyGateMode(out, id, entry, mode, isOutput, HIDDEN_INPUT = "PauseState") {
   entry.inputs = entry.inputs || {};
   if (mode === "pause") {
@@ -140,22 +141,44 @@ export function applyGateMode(out, id, entry, mode, isOutput, HIDDEN_INPUT = "Pa
     keep.add(String(id));    // the gate itself
     addAncestors(out, keep); // + downstream's remaining side deps
 
-    // Delete only the OUTPUT nodes that are NOT part of the run. These are the
-    // only nodes that would execute (an OUTPUT_NODE is always an execution
-    // target) and pull the expensive upstream back alive - the parallel Save /
-    // Preview off the pre-gate image, and any other gate. Everything else
-    // (checkpoint / CLIP / sampler / VAE Decode / latent) is left in the
-    // submitted prompt as an ORPHAN: with the gate's link gone and the parallel
-    // outputs deleted, nothing consumes it, so ComfyUI never runs it (the
-    // expensive upstream is still skipped) - but it stays in the "prompt" PNG
-    // chunk, so downstream Save nodes embed the full generation metadata
-    // (seed / model / sampler). Fixing the "Continue loses metadata" report.
+    // Delete only the OUTPUT nodes that would re-pull the gate's skipped UPSTREAM
+    // (the model -> sampler -> VAE Decode chain that fed the gate) back alive -
+    // the parallel Save / Preview off the pre-gate image, and any chained gate on
+    // the same upstream. An UNRELATED output branch (its own source, no path
+    // through the gate's upstream) must keep running: Continue skips the MODEL,
+    // not the whole rest of the graph. (Old bug: this deleted EVERY output not in
+    // `keep`, silently killing unrelated Save/Preview branches - and, for a gate
+    // with nothing wired downstream, every output in the file.)
     //
-    // Fallback: if output detection is unavailable, delete everything not in
-    // keep (the old behavior) - no metadata, but the upstream is never re-run.
+    // Everything non-output on the gate's upstream is left in the submitted
+    // prompt as an ORPHAN: with the gate's link gone and the re-pulling outputs
+    // deleted, nothing consumes it, so ComfyUI never runs it (the expensive
+    // upstream is still skipped) - but it stays in the "prompt" PNG chunk, so
+    // downstream Save nodes embed the full generation metadata (seed / model /
+    // sampler). Fixing the "Continue loses metadata" report.
+    //
+    // upstream = gateSrc's node + all its ancestors (the chain we're skipping).
+    const upstream = new Set();
+    if (gateSrc) { upstream.add(gateSrc[0]); addAncestors(out, upstream); }
+    // pullsUpstream = everything forward-reachable from `upstream` (its consumers);
+    // executing any of these would run the skipped model. Rebuild consumers AFTER
+    // the diamond reroute so rerouted downstream nodes no longer count as consumers.
+    const postConsumers = buildConsumers(out);
+    const pullsUpstream = new Set();
+    const stack = [...upstream];
+    while (stack.length) {
+      const next = postConsumers.get(String(stack.pop()));
+      if (!next) continue;
+      for (const c of next) if (!pullsUpstream.has(c)) { pullsUpstream.add(c); stack.push(c); }
+    }
+    // Fallback: if output detection is unavailable, delete every UPSTREAM-pulling
+    // node not in keep (still scoped, so unrelated branches survive) - no metadata
+    // on those, but the upstream is never re-run.
     const canDetect = typeof isOutput === "function";
     for (const nid of Object.keys(out)) {
-      if (keep.has(String(nid))) continue;
+      const s = String(nid);
+      if (keep.has(s)) continue;
+      if (!pullsUpstream.has(s)) continue;   // unrelated to the gate's upstream -> keep + run it
       if (!canDetect || isOutput(out[nid] && out[nid].class_type)) delete out[nid];
     }
   } else {
