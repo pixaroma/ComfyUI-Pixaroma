@@ -167,10 +167,11 @@ function setupNode(node) {
     node._pixPtRO = ro;
   }
 
-  // Fresh-node default size. configure() runs AFTER onNodeCreated and restores a
-  // saved size, so this only affects fresh drops.
-  if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 400;
-  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 360;
+  // Fresh-node default size (wide enough to read a paragraph of prompt without
+  // wrapping every few words). configure() runs AFTER onNodeCreated and restores
+  // a saved size, so this only affects fresh drops.
+  if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 480;
+  if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 380;
 
   // Defer the first render until node.properties is restored (Vue Compat #8).
   queueMicrotask(() => restore(node));
