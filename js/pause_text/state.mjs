@@ -5,7 +5,7 @@
 export const STATE_PROP = "pauseTextState";
 
 // Persisted shape:
-//   gate:     "pause" (default) | "pass"
+//   gate:     "pause" (default) | "pass" | "keep"
 //   text:     the current box content (output on Continue; injected as the
 //             frontend box into PauseState for the unwired / continue cases)
 //   original: the model's last text (for Revert + the "edited" indicator)
@@ -20,7 +20,7 @@ export function getState(node) {
     s = { gate: "pause", text: "", original: "" };
     node.properties[STATE_PROP] = s;
   }
-  if (s.gate !== "pause" && s.gate !== "pass") s.gate = "pause";
+  if (s.gate !== "pause" && s.gate !== "pass" && s.gate !== "keep") s.gate = "pause";
   if (typeof s.text !== "string") s.text = "";
   if (typeof s.original !== "string") s.original = "";
   return s;
@@ -28,7 +28,7 @@ export function getState(node) {
 
 export function setGate(node, gate) {
   const s = getState(node);
-  s.gate = gate === "pass" ? "pass" : "pause";
+  s.gate = (gate === "pass" || gate === "keep") ? gate : "pause";
 }
 
 // Update the current box text (a keystroke). Marks the workflow modified, which

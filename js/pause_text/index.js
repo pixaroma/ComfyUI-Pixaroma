@@ -417,7 +417,11 @@ app.graphToPrompt = async function (...args) {
       if (submit === "continue" || submit === "pause") {
         mode = submit;
       } else if (node) {
-        mode = node.properties?.[STATE_PROP]?.gate === "pass" ? "pass" : "pause";
+        // A plain Run: the toggle decides. Keep behaves like Continue on EVERY run
+        // (skip the model, reuse the current text, let the downstream make a fresh
+        // image) - it's Continue turned into a persistent mode.
+        const g = node.properties?.[STATE_PROP]?.gate;
+        mode = g === "pass" ? "pass" : g === "keep" ? "continue" : "pause";
       } else {
         // Can't resolve the live node: default to the harmless "pass" (no prune)
         // rather than the destructive "pause" (which truncates the workflow).

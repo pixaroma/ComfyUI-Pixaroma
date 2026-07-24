@@ -37,7 +37,10 @@ class PixaromaPauseText:
         "the model is skipped, so it is fast. Press Regenerate to get fresh text: "
         "the node walks back up the wire, finds whatever is generating the text, "
         "and rolls its seed to a new random value so you get a different result. "
-        "Flip the toggle to Pass to run the whole workflow end to end in one go."
+        "Flip the toggle to Pass to run the whole workflow end to end in one go. "
+        "Flip it to Keep to reuse your current text on every Run - the model is "
+        "skipped and each Run makes a new image of the same prompt, so you can "
+        "batch out variations quickly without losing your edit."
     )
 
     @classmethod

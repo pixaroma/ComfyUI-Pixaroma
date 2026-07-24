@@ -101,10 +101,10 @@ const REVERT_SVG =
 // paint (Classic). busy > flash > gate-derived.
 export function statusText(node) {
   const s = getState(node);
-  const paused = s.gate === "pause";
   if (node._pixPtBusy) return node._pixPtBusy;
   if (node._pixPtFlash) return node._pixPtFlash;
-  if (!paused) return "Passing through: whole workflow runs";
+  if (s.gate === "pass") return "Passing through: whole workflow runs";
+  if (s.gate === "keep") return "Keeping this text: each Run makes an image";
   return isEdited(node) ? "Edited. Continue when ready." : "Paused. Edit and press Continue.";
 }
 
@@ -137,7 +137,11 @@ export function buildPauseTextWidget(node, callbacks) {
   segPass.className = "pix-pt-seg";
   segPass.textContent = "Pass";
   segPass.title = "Pass straight through; run the whole workflow in one go";
-  toggle.append(segPause, segPass);
+  const segKeep = document.createElement("div");
+  segKeep.className = "pix-pt-seg";
+  segKeep.textContent = "Keep";
+  segKeep.title = "Keep this text; every Run makes a new image with it (the model is skipped)";
+  toggle.append(segPause, segPass, segKeep);
   const copyBtn = document.createElement("span");
   copyBtn.className = "pix-pt-hic";
   copyBtn.innerHTML = COPY_SVG;
@@ -183,9 +187,10 @@ export function buildPauseTextWidget(node, callbacks) {
 
   segPause.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onGate("pause"); });
   segPass.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onGate("pass"); });
+  segKeep.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onGate("keep"); });
   copyBtn.addEventListener("click", (e) => { e.stopPropagation(); if (!copyBtn.classList.contains("off")) callbacks.onCopy(); });
   revertBtn.addEventListener("click", (e) => { e.stopPropagation(); if (!revertBtn.classList.contains("off")) callbacks.onRevert(); });
-  for (const b of [segPause, segPass, copyBtn, revertBtn]) {
+  for (const b of [segPause, segPass, segKeep, copyBtn, revertBtn]) {
     b.addEventListener("pointerdown", (e) => e.stopPropagation());
     b.addEventListener("mousedown", (e) => e.stopPropagation());
   }
@@ -193,7 +198,7 @@ export function buildPauseTextWidget(node, callbacks) {
   btnContinue.addEventListener("click", (e) => { e.stopPropagation(); callbacks.onContinue(); });
 
   node._pixPtEls = {
-    root, band, box, hlbl, segPause, segPass, copyBtn, revertBtn, ta, count, btnRegen, btnContinue,
+    root, band, box, hlbl, segPause, segPass, segKeep, copyBtn, revertBtn, ta, count, btnRegen, btnContinue,
   };
   return root;
 }
@@ -226,15 +231,21 @@ export function renderPause(node) {
   const els = node._pixPtEls;
   if (!els) return;
   const s = getState(node);
-  const paused = s.gate === "pause";
+  const gate = s.gate;
+  const pass = gate === "pass";
+  const keep = gate === "keep";
   const edited = isEdited(node);
+  // Editing + the action buttons are ON in Pause and Keep, OFF in Pass (which
+  // runs the model fresh and ignores the box).
+  const editable = !pass;
 
-  els.segPause.classList.toggle("active", paused);
-  els.segPass.classList.toggle("active", !paused);
+  els.segPause.classList.toggle("active", gate === "pause");
+  els.segPass.classList.toggle("active", pass);
+  els.segKeep.classList.toggle("active", keep);
 
-  els.ta.disabled = !paused;
-  els.box.classList.toggle("pt-off", !paused);
-  els.ta.placeholder = paused
+  els.ta.disabled = !editable;
+  els.box.classList.toggle("pt-off", pass);
+  els.ta.placeholder = editable
     ? "The model's text will appear here on Run"
     : "Passing through - the model's text is sent as-is";
 
@@ -245,8 +256,8 @@ export function renderPause(node) {
   const hasText = !!s.text;
   els.copyBtn.classList.toggle("off", !hasText);
   els.revertBtn.classList.toggle("off", !edited);
-  els.btnRegen.disabled = !paused || !!node._pixPtBusy;
-  els.btnContinue.disabled = !paused || !!node._pixPtBusy;
+  els.btnRegen.disabled = !editable || !!node._pixPtBusy;
+  els.btnContinue.disabled = !editable || !!node._pixPtBusy;
 
   els.count.textContent = countLabel(s.text);
   els.band.textContent = statusText(node);
