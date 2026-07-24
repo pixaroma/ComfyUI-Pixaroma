@@ -263,6 +263,12 @@ export function renderPause(node) {
     ? "Switch to Pause to get fresh text from the model"
     : "Get fresh text: roll the seed of whatever is generating it upstream";
   els.btnContinue.disabled = !editable || !!node._pixPtBusy;
+  // In Keep the button just makes an image (like the top Run button), so call it
+  // Run there; in Pause it commits your edit, so it stays Continue.
+  els.btnContinue.textContent = keep ? "▶ Run" : "▶ Continue";
+  els.btnContinue.title = keep
+    ? "Make a new image with this text (same as pressing Run)"
+    : "Run only the rest of the workflow with your edited text";
 
   els.count.textContent = countLabel(s.text);
   els.band.textContent = statusText(node);
