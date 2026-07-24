@@ -18,7 +18,11 @@ const BODY_MIN_H = 120;
 const BOT_H = 28;
 export const BAND_H = 18;
 const CORE_H = PAD + HDR_H + BODY_MIN_H + PAD + BOT_H + PAD;
-export const NODE_MIN_W = 300;
+// Minimum width where the count + both buttons fit comfortably (like the wide
+// reference node). Below this the buttons don't fit: Classic clamps here in
+// onResize; Nodes 2.0 snaps back here on resize release (it has no live width
+// clamp). Kept modest so the node is still fairly compact.
+export const NODE_MIN_W = 400;
 export function nodeMinH(vue) { return CORE_H + (vue ? BAND_H + PAD : 0); }
 // A safe constant floor used by getMinHeight/onResize (the larger of the two so
 // neither renderer is starved).
@@ -65,7 +69,10 @@ function injectCSS() {
     .pix-pt-ta::placeholder { color:#5c5c5c; font-style:italic; }
     .pix-pt-ta:disabled { color:#9a9a9a; }
 
-    .pix-pt-bot { display:flex; align-items:center; gap:6px; flex:0 0 auto; }
+    /* flex-wrap so if the node is transiently narrower than the buttons (during a
+       resize drag, before the width snaps back), Continue wraps to a new line
+       instead of spilling past / being clipped at the right edge. */
+    .pix-pt-bot { display:flex; align-items:center; gap:6px; flex:0 0 auto; flex-wrap:wrap; justify-content:flex-end; }
     .pix-pt-count { flex:1 1 0; min-width:0; font-size:10px; color:#aaa;
       overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .pix-pt-btn { height:26px; padding:0 12px; border-radius:4px;

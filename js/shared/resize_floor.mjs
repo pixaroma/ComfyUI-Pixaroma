@@ -44,7 +44,11 @@ export function measureRootContent(root) {
   return h;
 }
 
-export function installResizeFloor(root, measureFn) {
+// onRelease (optional): called once on the pointerup/cancel that ENDS a resize
+// gesture this floor armed. Lets a node do post-resize work - e.g. snap the WIDTH
+// back to a minimum, since Nodes 2.0 ignores min-width / computeLayoutSize.minWidth
+// for the width drag (there is no live width clamp, only this after-the-fact snap).
+export function installResizeFloor(root, measureFn, onRelease) {
   if (!root || typeof measureFn !== "function") return () => {};
   let armed = false;
 
@@ -52,6 +56,7 @@ export function installResizeFloor(root, measureFn) {
     if (!armed) return;
     armed = false;
     try { root.style.minHeight = ""; } catch (_e) {}
+    if (typeof onRelease === "function") { try { onRelease(); } catch (_e) {} }
   };
 
   const onDown = (e) => {

@@ -245,7 +245,18 @@ function setupNode(node) {
   // floor we use (NOT a ResizeObserver setSize re-grow: that can fire mid-drag and
   // desync Align, per CLAUDE.md). Only present during the drag, so it never
   // inflates node.size on load (no dirty-on-load). Verified: arms at 214px.
-  node._pixPtFloorOff = installResizeFloor(root, () => nodeMinH(isVueNodes()));
+  node._pixPtFloorOff = installResizeFloor(root, () => nodeMinH(isVueNodes()), () => {
+    // Nodes 2.0 has no live width clamp (it ignores min-width / computeLayoutSize),
+    // so snap the width back to the min AFTER a resize that ended too narrow -
+    // deferred a tick so it runs after the frontend finalizes the drag. Classic is
+    // already clamped live in onResize, so this is a no-op there.
+    if (!isVueNodes()) return;
+    setTimeout(() => {
+      if (node.graph && node.size[0] < NODE_MIN_W && typeof node.setSize === "function") {
+        node.setSize([NODE_MIN_W, node.size[1]]);
+      }
+    }, 0);
+  });
 
   // Fresh-node default size - opens big (like Text Join Four) since it usually
   // holds a paragraph of prompt. Use setSize (NOT a raw node.size write) so the DOM
