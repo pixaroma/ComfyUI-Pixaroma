@@ -7,7 +7,7 @@ import {
 } from "./state.mjs";
 import { applyGateMode } from "./prune.mjs";
 import {
-  buildPauseTextWidget, renderPause, syncText, flashIcon, statusText, NODE_MIN_W, NODE_MIN_H, nodeMinH,
+  buildPauseTextWidget, renderPause, syncText, flashIcon, statusText, NODE_MIN_W, nodeMinH,
 } from "./ui.mjs";
 
 const CLASS = "PixaromaPauseText";
@@ -73,15 +73,20 @@ function positionBand(node) {
       const el = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
       if (!el) return;
       const block = slotBlock(el);
-      const col = (el.querySelector(".lg-slot--output") || el.querySelector(".lg-slot--input"))?.parentElement;
+      // The input and output dots live in SEPARATE slot columns under the same
+      // block - restore BOTH to pointer-events:auto. Restoring only the output
+      // column left the INPUT dot unwireable in Nodes 2.0 (couldn't drag a wire in).
+      const outCol = el.querySelector(".lg-slot--output")?.parentElement;
+      const inCol = el.querySelector(".lg-slot--input")?.parentElement;
       if (!block) return;
       if (parseFloat(block.style.marginBottom || "0") < 0) return;  // already nudged
       block.style.marginBottom = "0px";
       const h = block.offsetHeight;
       if (h <= 0) return;
       block.style.marginBottom = (-(h + NUDGE_EXTRA_LIFT)) + "px";
-      block.style.pointerEvents = "none";   // dots stay draggable via the col below
-      if (col) col.style.pointerEvents = "auto";
+      block.style.pointerEvents = "none";   // the block overlay must not eat clicks...
+      if (outCol) outCol.style.pointerEvents = "auto";   // ...but the dots stay wireable
+      if (inCol) inCol.style.pointerEvents = "auto";
     } else {
       // Classic: hide the DOM band (status is painted), pull the box up to close the
       // top gap. overflow:visible lets the lifted box show; it's node-width so it

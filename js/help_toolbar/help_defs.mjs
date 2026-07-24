@@ -1227,7 +1227,7 @@ const HELP = {
       {
         heading: "The buttons",
         defs: [
-          ["Continue", "In Pause mode: skip the model and send your edited text downstream to make one image."],
+          ["Continue / Run", "The main button. In Pause mode it reads Continue: skip the model and send your edited text downstream to make one image. In Keep mode it reads Run: make a new image with the current text (same as the top Run button)."],
           ["Regenerate", "Get fresh text: it finds the node making the text upstream and rolls its seed, so you get a different prompt. Works in Pause mode; it's greyed out in Keep (where the text is being reused - switch to Pause to get a new prompt)."],
           ["Revert", "The arrow in the box header - put the model's original text back."],
         ],

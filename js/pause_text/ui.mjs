@@ -16,7 +16,7 @@ const PAD = 6;
 const HDR_H = 24;
 const BODY_MIN_H = 120;
 const BOT_H = 28;
-export const BAND_H = 18;
+const BAND_H = 18;
 const CORE_H = PAD + HDR_H + BODY_MIN_H + PAD + BOT_H + PAD;
 // Minimum width where the count + both buttons fit comfortably (like the wide
 // reference node). Below this the buttons don't fit: Classic clamps here in
@@ -24,9 +24,6 @@ const CORE_H = PAD + HDR_H + BODY_MIN_H + PAD + BOT_H + PAD;
 // clamp). Kept modest so the node is still fairly compact.
 export const NODE_MIN_W = 400;
 export function nodeMinH(vue) { return CORE_H + (vue ? BAND_H + PAD : 0); }
-// A safe constant floor used by getMinHeight/onResize (the larger of the two so
-// neither renderer is starved).
-export const NODE_MIN_H = CORE_H + BAND_H + PAD;
 
 function injectCSS() {
   if (document.getElementById("pix-pt-css")) return;
@@ -42,7 +39,6 @@ function injectCSS() {
       font:11px sans-serif; color:rgba(255,255,255,0.72); text-align:center;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis; pointer-events:none;
       padding:0 66px; box-sizing:border-box; }
-    .pix-pt-band.pt-hidden { display:none; }
 
     .pix-pt-box { flex:1 1 0; min-height:0; display:flex; flex-direction:column;
       background:#1d1d1d; border:1px solid #333; border-radius:5px; overflow:hidden; }
