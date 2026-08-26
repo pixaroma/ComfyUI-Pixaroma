@@ -69,12 +69,10 @@ class PixaromaSaveMp4:
         "Frames stream straight to ffmpeg's stdin (no temp PNG files); audio "
         "is muxed in as AAC 192k. Pairs with AudioReact Pixaroma but works "
         "with any source that produces frames + AUDIO.\n\n"
-        "The workflow is written into the saved mp4 (its comment metadata). Saving "
-        "it always works. Reading it back is the catch: ComfyUI on its own cannot "
-        "pull a workflow out of a video, only out of pictures, so dropping the mp4 "
-        "on the canvas does nothing until you install a video pack such as "
-        "ComfyUI-VideoHelperSuite. The workflow is still inside the file either "
-        "way, so a video saved today will open once you have one.\n\n"
+        "The whole workflow is saved inside the mp4, so you can drag the video "
+        "back onto the canvas later and get the graph back, exactly like dragging "
+        "a PNG. It is stored the same way ComfyUI's own video saving stores it, "
+        "so ComfyUI reads it back on its own.\n\n"
         "ffmpeg binary is auto-located: imageio-ffmpeg's bundled exe is "
         "preferred (no system install needed - 'pip install imageio-ffmpeg'), "
         "with ffmpeg on PATH as a fallback. yuv420p requires even width and "
@@ -230,7 +228,7 @@ class PixaromaSaveMp4:
                     pass
             temp_audio_path = None
 
-        # Embed the workflow (+ prompt) as the mp4's comment atom, so dragging the
+        # Embed the workflow + prompt as separate mp4 tags, so dragging the
         # video back into ComfyUI restores the graph. Via an FFMETADATA file (not a
         # command-line arg) so a big workflow can't blow the Windows command-line
         # length limit. Skipped when metadata is globally disabled (--disable-metadata)

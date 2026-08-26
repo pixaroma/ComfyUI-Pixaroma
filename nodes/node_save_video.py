@@ -239,11 +239,10 @@ class PixaromaSaveVideo:
         "recent player. Open the settings with the gear on the node or by right-clicking it "
         "for quality, colour depth, date style, counter digits, trim to audio, workflow "
         "embedding, and which buttons the node shows.\n\n"
-        "The workflow is written into the saved mp4. Saving it always works. Reading it "
-        "back is the catch: ComfyUI on its own cannot pull a workflow out of a video, only "
-        "out of pictures, so dropping the mp4 on the canvas does nothing until you install "
-        "a video pack such as ComfyUI-VideoHelperSuite. The workflow is still inside the "
-        "file either way, so a video saved today will open once you have one.\n\n"
+        "The whole workflow is saved inside the mp4, so you can drag the video back onto "
+        "the canvas later and get the graph back, exactly like dragging a PNG. It is "
+        "stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it "
+        "back on its own.\n\n"
         "The Save and Preview pills switch between writing to your folder on every run and "
         "writing to ComfyUI's temp folder instead, which is cleared on restart, so you can "
         "iterate without filling your folder. ffmpeg is found automatically: it prefers the "
@@ -467,7 +466,7 @@ class PixaromaSaveVideo:
             temp_audio_path = None
 
         # ---- workflow metadata ----
-        # Written as the mp4's comment atom via an FFMETADATA FILE (not a command
+        # Written as separate workflow/prompt tags via an FFMETADATA FILE (not a command
         # line arg) so a big workflow cannot blow the Windows command-line length
         # limit. The stale-preview strip matters here for the same reason it does
         # on Save Image: the workflow is frozen at QUEUE time, so the node's

@@ -296,11 +296,9 @@ export function openSettingsPanel(node, onChange) {
     "Off keeps every frame and the sound simply stops when it stops. On can drop " +
     "the last frame or two."));
   body.appendChild(switchRow(node, "embedWorkflow", "Save workflow inside the video",
-    "Writes the whole workflow into the mp4 file. Saving it always works. READING it " +
-    "back is the catch: ComfyUI on its own cannot pull a workflow out of a video, " +
-    "only out of pictures, so dropping the mp4 on the canvas does nothing until you " +
-    "install a video pack such as ComfyUI-VideoHelperSuite. The workflow is still " +
-    "inside the file either way."));
+    "Writes the whole workflow into the mp4, so you can drag the video back onto the " +
+    "canvas later and get the graph back, exactly like dragging a PNG. Stored the same " +
+    "way ComfyUI's own video saving stores it, so ComfyUI reads it back on its own."));
   body.appendChild(switchRow(node, "hideBarWhenFolded", "Hide the toolbar when folded",
     "When folded, also tuck away the format and Open/Download/Folder buttons."));
 
