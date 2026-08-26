@@ -53,6 +53,19 @@ const CSS = `
 .pix-pm-row {
   display: flex;
   flex-direction: column;
+  /* NEVER shrink. The root is a fixed-height flex column, so a row's only
+     other protection is the flex AUTOMATIC MINIMUM (min-height:auto) - an
+     implicit guarantee ANY stylesheet on the page can delete with a
+     "min-height:0" (min-h-0 is a stock Tailwind flex idiom, and ComfyUI
+     already stamps its own utility classes onto our root). Lose it and a
+     root even slightly shorter than its content crushes every row: measured
+     row 79px -> 27px with an 18px toggle still inside it, so the toggle is
+     clipped by the row's own bottom edge and each row's opaque background
+     covers the one above - exactly the "collapsed, distorted and overlapping"
+     report from two bug hunters, 2026-08-25. Overflowing is the correct
+     failure: the node clips, the rows stay usable. Prompt Pack's bottom bar
+     and every Find-and-Replace child already declare this. */
+  flex-shrink: 0;
   gap: 3px;
   padding: 6px;
   border-radius: 4px;
@@ -173,6 +186,10 @@ const CSS = `
 .pix-pm-actions {
   display: flex;
   flex-wrap: wrap;
+  /* Same reason as .pix-pm-row: crushed to 5px of its 22px in the harness,
+     which is why the buttons read as "unresponsive" - they are still there,
+     just too thin to hit. */
+  flex-shrink: 0;
   gap: 4px;
   align-self: flex-start;
   margin-top: 4px;

@@ -23,6 +23,14 @@ const CSS = `
 .pix-ps-row {
   display: flex;
   flex-direction: column;
+  /* NEVER shrink - identical reasoning to Prompt Multi's .pix-pm-row (see the
+     comment there). The root is a fixed-height flex column, so without this a
+     row's only protection is the flex automatic minimum (min-height:auto),
+     which any page stylesheet can delete with a "min-height:0". Measured in
+     the harness: row 79px -> 35px, textarea 42px -> 17px. Prompt Stack was
+     never reported (only Prompt Multi was), but it is the same node shape and
+     failed the same test, so it is fixed in the same pass. */
+  flex-shrink: 0;
   gap: 3px;
   padding: 6px;
   border-radius: 4px;
@@ -142,6 +150,9 @@ const CSS = `
 .pix-ps-actions {
   display: flex;
   flex-wrap: wrap;
+  /* Same reason as .pix-ps-row: crushed to 8px of its 25px, which is what
+     makes the buttons feel unclickable. */
+  flex-shrink: 0;
   gap: 4px;
   align-self: flex-start;
   margin-top: 4px;
