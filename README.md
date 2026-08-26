@@ -398,7 +398,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Seed Pixaroma now works with Impact Pack's wildcard nodes.** Wired into ImpactWildcardProcessor in populate mode, the processed text stayed on the same words every run. It rerolls properly now.
 
 ### **August 19, 2026 · v1.4.119**
-- **NEW: @tags in Music Prompt**, the same library Prompt and AI Prompt use.
+- **NEW: `@tags` in Music Prompt**, the same library Prompt and AI Prompt use.
 - **NEW: Music Prompt writes instrumental music**, about twice as fast.
 - **Picking a formula set loads its model too**, and a new node names the built-in one.
 - **Music Prompt's small sizes are fixed**: F / R was cut off, and it could shrink under its content.

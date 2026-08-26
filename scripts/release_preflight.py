@@ -256,6 +256,45 @@ def check_changelog(data):
 
 
 
+def check_at_mentions():
+    """A bare @word in a tracked .md TAGS A REAL PERSON once GitLab/GitHub renders it.
+
+    Found live 2026-08-26: the v1.4.120 changelog line "NEW: @tags in Music
+    Prompt" rendered on GitLab as a link to an actual user account called
+    @tags, complete with avatar and a Follow button - so every reader of our
+    README was being shown a stranger's profile, and that account was being
+    notified. We meant the @tag SYNTAX of Prompt Pixaroma, not a username.
+
+    The fix is a code span: `@tags` renders as code and is never auto-linked.
+    Every other mention of the syntax in the README already did this; exactly
+    one had been written bare, which is precisely the kind of single slip a
+    gate catches and a habit does not.
+
+    Deliberately NOT flagged: an @ inside a URL (youtube.com/@pixaroma) or
+    inside an existing code span, neither of which auto-links.
+    """
+    pat = re.compile(r'(?<![\w/])@([A-Za-z][A-Za-z0-9_.-]{1,})')
+    for rel in tracked_files():
+        if not rel.lower().endswith(".md"):
+            continue
+        try:
+            with open(os.path.join(REPO, rel), "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        # blank out what cannot auto-link, so only real mentions survive
+        text = re.sub(r'`[^`\n]*`', " ", text)
+        text = re.sub(r'https?://\S+', " ", text)
+        for m in pat.finditer(text):
+            line = text[:m.start()].count("\n") + 1
+            failures.append(
+                "%s:%d has a bare @%s, which GitLab and GitHub render as a link to the\n"
+                "        USER of that name (it tagged a real stranger's account in the\n"
+                "        changelog). Wrap it in backticks so it stays code: `@%s`."
+                % (rel, line, m.group(1), m.group(1))
+            )
+
+
 def _module_int(tree, want):
     """Module-level `want = <int literal>` in an already-parsed tree, else None."""
     for stmt in tree.body:
@@ -385,6 +424,7 @@ def main():
     data = check_pyproject()
     check_version_lockstep(data)
     check_changelog(data)
+    check_at_mentions()
     check_output_arity()
 
     if failures:
