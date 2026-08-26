@@ -375,7 +375,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **August 26, 2026 · v1.4.127–1.4.128**
+### **August 26, 2026 · v1.4.127–v1.4.129**
+- **Fixed: Save Video would not fill the node.** A new node hid its buttons and player, and after a run the video stayed small with empty space below. Save Image and Save Text are fixed too.
 - **Label, Monitor and Run Timer no longer slow the canvas.** Panning and zooming are far lighter on big workflows, and renders are faster. Milliseconds on the clock still cost more.
 - **Fixed: Prompt Multi and Prompt Stack rows could collapse into each other**, leaving the boxes unusable. Only alongside certain other node packs.
 - **Fixed: dragging a saved video back onto the canvas rebuilds the workflow again.**
