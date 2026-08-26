@@ -871,6 +871,24 @@ function setupNode(node) {
   injectCSS();
   // ui.images is emitted so the Assets panel refreshes, but an mp4 is not an
   // image - stop ComfyUI painting its own preview panel underneath ours.
+  //
+  // BOTH halves are needed, and this node shipped with only the second one.
+  // hideOutputImages is the OFFICIAL flag and the only thing that reaches the
+  // NODES 2.0 panel: that panel is fed by ComfyUI's internal node-preview state,
+  // NOT by node.imgs, so the defineProperty lock below covers Classic alone
+  // (the Prompt Reader pattern says the same). The .image-preview CSS rule in
+  // ui.mjs was carrying Nodes 2.0 on its own and does not, on frontend 1.49.6.
+  //
+  // MEASURED with it missing: the native panel renders as a SIBLING of our
+  // widget column inside the node content flex, so it takes ~390px away from a
+  // column that is asking for all of it - node 940, content 912, widget column
+  // 416 - which squeezed our body until overflow:hidden clipped the player and
+  // the button row. It appeared ONLY after a run (nothing emits ui.images
+  // before one) and vanished on reload (the clip is restored from
+  // pixSvLastRun, not from a ui payload), which is exactly the "fine on reload,
+  // broken after a run" shape that was reported. Save Mp4, Save Image, Preview
+  // Image and Compare have always set it.
+  node.hideOutputImages = true;
   try {
     Object.defineProperty(node, "imgs", {
       configurable: true,

@@ -25,7 +25,20 @@ export function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-sv-css";
   s.textContent = [
-    ".pix-sv-root{position:relative;width:100%;height:100%;box-sizing:border-box;}",
+    // flex:1 1 0 (an ABSOLUTE basis) + min-height:0, never height:100%. The host
+    // is a flex column giving us flex:1 1 0% via its own *:flex-1 utility, and a
+    // PERCENTAGE basis against a parent whose height is not yet definite degrades
+    // to auto -> falls through to height -> 100% is a percentage too -> auto ->
+    // our CONTENT height. The inner is position:absolute so that content measures
+    // ~0, and the row then sits at computeLayoutSize().minHeight while the node
+    // frame stays tall: dead space below, the player stuck at its 120px CSS floor,
+    // and the button row clipped by the inner's overflow:hidden. MEASURED on a
+    // fresh node the user ran: node 926, widgets column 409, stage 120. A cold
+    // load looked perfect because by then the parent height IS definite, which is
+    // why it read as "fine on reload, broken on a fresh drop or a corner drag".
+    // Save Mp4 / Load Video / Load Video Frame / Preview / Compare all use the
+    // absolute basis and were unaffected in the same session.
+    ".pix-sv-root{position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;}",
     ".pix-sv-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:10px;padding:8px 10px 4px;box-sizing:border-box;overflow:hidden;font-family:'Segoe UI',system-ui,sans-serif;}",
     // top strip: fold triangle + gear, pulled up so it hugs the slots
     ".pix-sv-topbar{display:flex;justify-content:flex-start;align-items:center;flex:0 0 auto;min-height:20px;margin:-6px 0 -6px;}",

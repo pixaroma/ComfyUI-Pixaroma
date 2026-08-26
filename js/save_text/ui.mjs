@@ -29,7 +29,12 @@ export function injectCSS() {
   const s = document.createElement("style");
   s.id = "pix-stx-css";
   s.textContent = [
-    ".pix-stx-root{position:relative;width:100%;height:100%;box-sizing:border-box;}",
+    // flex:1 1 0 (ABSOLUTE basis) + min-height:0, never height:100% - see the long
+    // note on .pix-sv-root in js/save_video/ui.mjs. A percentage basis against a
+    // not-yet-definite parent degrades to our content height, which is ~0 here
+    // because .pix-stx-inner is absolute, so the body stops filling and the text
+    // box sticks at its 54px floor. Same defect, same face family.
+    ".pix-stx-root{position:relative;width:100%;flex:1 1 0;min-height:0;box-sizing:border-box;}",
     ".pix-stx-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;" +
       "padding:8px 10px 6px;box-sizing:border-box;overflow:hidden;" +
       "font-family:'Segoe UI',system-ui,sans-serif;}",
