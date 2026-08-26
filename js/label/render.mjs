@@ -193,7 +193,26 @@ export function injectVueLabelCSS() {
    its utility classes changing) PLUS the chip itself as a fallback. Scoped to
    Label nodes via :has(); the label content is .pix-lbl-vue (no such class), so
    only the footer/chip are hit. */
-.lg-node:has(.pix-lbl-vue) [class*="component-node-background"] > div:has(.bg-node-component-surface),
+/* ⚠️ MATCH THE FOOTER ROW BY ITS OWN CLASS, NEVER WITH A NESTED DESCENDANT
+   :has() (viewport-lag report 2026-08-26, reproduced and measured live).
+   This rule used to read "> div:has(.bg-node-component-surface)". An INNER
+   descendant :has() has to be evaluated against every div in the document, so
+   Chrome re-runs it on every class change anywhere in the graph - and ComfyUI
+   changes node classes constantly while you pan, zoom, hover and select.
+   MEASURED in Nodes 2.0 on a 56-node graph, toggling a class over 40 frames:
+   0.33 ms/frame with our CSS off, 7.56 ms/frame as shipped, 1.01 ms/frame
+   after this change - so ONE selector was ~90% of the cost, roughly 4.5 ms of
+   a 16.7 ms frame budget on its own. Monitor and Run Timer carried the same
+   rule and got the same fix.
+   A direct-child :has(> svg) (rule 5) measured FREE, so it is specifically the
+   DESCENDANT form that is expensive - do not assume :has() is always the
+   problem, and re-measure before trading one selector for another.
+   The footer row is the muted status strip; ".text-muted-foreground" selects
+   exactly the same elements (verified live: same 4 nodes, none left visible).
+   If a future frontend renames that utility class the row comes back, but the
+   chip below is still hidden, so it degrades to a small gap rather than a
+   broken label. */
+.lg-node:has(.pix-lbl-vue) [class*="component-node-background"] > div.text-muted-foreground,
 .lg-node:has(.pix-lbl-vue) .bg-node-component-surface { display: none !important; }
 /* 7. Hide the node's RESTING border. A newer frontend draws it as an absolute
    child overlay (<div class="pointer-events-none absolute border border-solid

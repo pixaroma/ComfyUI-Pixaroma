@@ -116,7 +116,15 @@ export function injectCSS() {
     ".lg-node:has(.pix-pm-root) .lg-node-widget > *:first-child{display:none!important;}",
     ".lg-node:has(.pix-pm-root) .lg-node-content{padding:0!important;}",
     ".lg-node:has(.pix-pm-root) [class*=\"component-node-background\"]{padding:0!important;gap:0!important;background:transparent!important;}",
-    ".lg-node:has(.pix-pm-root) [class*=\"component-node-background\"] > div:has(.bg-node-component-surface),.lg-node:has(.pix-pm-root) .bg-node-component-surface{display:none!important;}",
+    // ⚠️ The footer row is matched by its OWN class, never with a nested
+    // descendant ":has(.bg-node-component-surface)". That form has to be
+    // re-evaluated against every div in the document on every class change, and
+    // ComfyUI changes node classes constantly while you pan/zoom/hover/select.
+    // MEASURED in Nodes 2.0 on a 56-node graph over 40 class-churn frames:
+    // 0.33 ms/frame with our CSS off, 7.56 as shipped, 1.01 after this change -
+    // this one selector was ~90% of the cost. See label/render.mjs for the full
+    // note; Label and Run Timer carry the identical rule and the identical fix.
+    ".lg-node:has(.pix-pm-root) [class*=\"component-node-background\"] > div.text-muted-foreground,.lg-node:has(.pix-pm-root) .bg-node-component-surface{display:none!important;}",
     ".lg-node:has(.pix-pm-root) > div.absolute.border:not([data-testid]){display:none!important;}",
     ".lg-node:has(.pix-pm-root) [data-testid=\"node-state-outline-overlay\"],.lg-node:has(.pix-pm-root) > div.absolute.outline-none{inset:-2px!important;}",
     // Click-through so dragging and right-clicking reach the canvas and the node
