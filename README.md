@@ -375,11 +375,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **August 26, 2026 · v1.4.127**
+### **August 26, 2026 · v1.4.127–1.4.128**
+- **Label, Monitor and Run Timer no longer slow the canvas.** Panning and zooming are far lighter on big workflows, and renders are faster. Milliseconds on the clock still cost more.
 - **Fixed: Prompt Multi and Prompt Stack rows could collapse into each other**, leaving the boxes unusable. Only alongside certain other node packs.
 - **Fixed: dragging a saved video back onto the canvas rebuilds the workflow again.**
 - **Fixed: Image Crop gave every queued job the last crop.** Each job keeps its own now.
-- **Run Timer and Monitor no longer slow renders.** Hundredths and milliseconds still cost more.
 - **The LoRA picker no longer opens on an empty folder**, and Back is easier to see.
 
 ### **August 25, 2026 · v1.4.123–1.4.126**
