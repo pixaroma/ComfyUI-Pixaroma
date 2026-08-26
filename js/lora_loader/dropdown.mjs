@@ -45,8 +45,17 @@ function injectCSS() {
     .pix-ll-dd-folder .fi { color:#e0b24a; flex:none; }
     .pix-ll-dd-folder .nm { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .pix-ll-dd-folder .ct { color:#777; font:10px monospace; } .pix-ll-dd-folder .ch { color:#777; }
-    .pix-ll-dd-back { padding:6px 12px; cursor:pointer; color:#9a9a9a; font:11px 'Segoe UI'; }
-    .pix-ll-dd-back:hover { color:${BRAND}; }
+    /* Deliberately the loudest row in the list. It used to be 11px grey and got
+       missed: someone whose LoRAs are in a different folder from the workflow's
+       landed in a folder with nothing in it and could not see the way out
+       (reported 2026-08-25, twice). Accent-coloured off the popup's --acc, not a
+       hard-coded orange, so a recoloured node keeps its own colour (node UI
+       convention #19). The hairline separates it from the items it is NOT one of. */
+    .pix-ll-dd-back { display:flex; align-items:center; gap:6px; padding:8px 12px;
+      cursor:pointer; color:var(--acc,${BRAND}); font:600 12.5px 'Segoe UI',sans-serif;
+      border-bottom:1px solid #333; }
+    .pix-ll-dd-back:hover { background:#2f2f2f; }
+    .pix-ll-dd-back .ar { font-size:14px; line-height:1; }
     .pix-ll-dd-empty { padding:14px 12px; color:#777; text-align:center; }
   `;
   document.head.appendChild(s);
@@ -84,6 +93,7 @@ export async function openLoraDropdown(anchorEl, opts) {
   const pop = document.createElement("div");
   pop.className = "pix-ll-dd";
   pop.style.borderColor = accent;
+  pop.style.setProperty("--acc", accent);  // the back row reads this
 
   const srch = document.createElement("div");
   srch.className = "pix-ll-dd-srch";
@@ -224,7 +234,13 @@ export async function openLoraDropdown(anchorEl, opts) {
     if (curPath) {
       const back = document.createElement("div");
       back.className = "pix-ll-dd-back";
-      back.textContent = "‹ back";
+      const ar = document.createElement("span");
+      ar.className = "ar";
+      ar.textContent = "‹";
+      back.appendChild(ar);
+      const lb = document.createElement("span");
+      lb.textContent = "Back";
+      back.appendChild(lb);
       back.addEventListener("click", () => {
         const i = curPath.lastIndexOf("/");
         curPath = i < 0 ? "" : curPath.slice(0, i);
