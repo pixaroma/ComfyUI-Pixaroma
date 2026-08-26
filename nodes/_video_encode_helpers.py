@@ -9,9 +9,15 @@ each line exists, not decoration.
 What lives here:
   _resolve_ffmpeg        locate the ffmpeg binary, with a helpful install hint
   _write_wav_pcm16       Comfy AUDIO waveform -> 16-bit PCM WAV (stdlib + numpy)
-  build_video_meta_json  the {"workflow":..., "prompt":...} blob for the mp4
-  write_ffmetadata_comment  that blob as an FFMETADATA file (dodges the Windows
-                         command-line length limit for a big workflow)
+  build_video_meta_tags  the {"workflow": json, "prompt": json} tag map to embed
+  write_ffmetadata_tags  those tags as an FFMETADATA file (a FILE, not -metadata
+                         args, so a big workflow cannot blow the Windows
+                         command-line length limit)
+  metadata_movflags      the two muxer flags the read-back depends on - READ ITS
+                         COMMENT before changing either of them
+  build_video_meta_json  the older single-blob form, kept only because it
+                         documents the _json_safe NaN trap that both builders
+                         depend on. NOTHING calls it; do not reach for it.
   validate_rgb_frames    refuse a shape rgb24 cannot carry, BEFORE any file is
                          claimed
   claim_counter_path     atomic O_EXCL name claim with a re-claiming loop
@@ -86,13 +92,64 @@ def build_video_meta_json(prompt, extra_pnginfo):
         return None
 
 
-def write_ffmetadata_comment(path, comment_json):
-    """Write an FFMETADATA file with a single `comment` key. ffmpeg's mov muxer
-    maps `comment` to the standard ©cmt atom (NO -movflags use_metadata_tags, so
-    it stays the ilst form the drag-a-video reader scans for)."""
+def build_video_meta_tags(prompt, extra_pnginfo):
+    """The tag NAME -> JSON-string map to embed, matching what ComfyUI CORE's own
+    SaveVideo writes: a separate `workflow` tag and a separate `prompt` tag, each
+    holding its own JSON. Returns {} when there is nothing to embed.
+
+    Shares `build_video_meta_json`'s `_json_safe` scrub - see that docstring for
+    why (PROMPT carries a bare `NaN` that a browser's JSON.parse refuses).
+    """
+    import json
+
+    from ._save_helpers import _json_safe
+
+    tags = {}
+    if isinstance(extra_pnginfo, dict):
+        wf = extra_pnginfo.get("workflow")
+        if wf is not None:
+            tags["workflow"] = wf
+    if prompt is not None:
+        tags["prompt"] = prompt
+    if not tags:
+        return {}
+    try:
+        return {k: json.dumps(_json_safe(v)) for k, v in tags.items()}
+    except Exception:
+        return {}
+
+
+def write_ffmetadata_tags(path, tags):
+    """Write an FFMETADATA file with one line per tag."""
     with open(path, "w", encoding="utf-8") as f:
         f.write(";FFMETADATA1\n")
-        f.write("comment=" + _escape_ffmetadata(comment_json) + "\n")
+        for key, value in tags.items():
+            f.write(key + "=" + _escape_ffmetadata(value) + "\n")
+
+
+# ⚠️ THESE TWO FLAGS ARE THE WHOLE READ-BACK CONTRACT. Do not drop either.
+#
+# There are exactly two readers of a workflow inside an mp4 and they want
+# DIFFERENT things. Measured 2026-08-26 against both, on real files:
+#
+#   ComfyUI CORE  `parseIsobmffMetadata` needs moov > udta > meta > KEYS + ilst
+#       - the QuickTime `mdta` form, which is what `use_metadata_tags` writes,
+#       with real tag names. Without the keys box it returns {} and gives up.
+#       It also reads ONLY THE FIRST 2 MB of the file, which is what `faststart`
+#       is for: it moves `moov` to the front, so a long video is reachable at all.
+#
+#   VideoHelperSuite `getVideoMetadata` wants an iTunes ilst `©cmt` atom, found
+#       by scanning BACKWARDS from the end.
+#
+# ONE ffmpeg pass cannot produce both: `use_metadata_tags` moves `comment` into
+# the keys box and the `©cmt` atom disappears (measured, all three combinations).
+# So we write CORE's form, and VHS users are covered because VHS FALLS THROUGH -
+# its handler ends `return await originalHandleFile.apply(this, arguments)`, so
+# when it finds no `©cmt` the file reaches core's reader, which does find it.
+# Writing OUR old form instead is what left every core-only install unable to
+# open its own videos, which is how this was reported.
+def metadata_movflags():
+    return ["-movflags", "use_metadata_tags+faststart"]
 
 
 def _resolve_ffmpeg(label="Save Mp4"):

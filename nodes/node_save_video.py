@@ -38,11 +38,12 @@ from ._save_helpers import (
 )
 from ._video_encode_helpers import (
     audio_fade_args,
-    build_video_meta_json,
+    build_video_meta_tags,
     claim_counter_path,
     encode_frames,
     validate_rgb_frames,
-    write_ffmetadata_comment,
+    metadata_movflags,
+    write_ffmetadata_tags,
     _resolve_ffmpeg,
     _write_wav_pcm16,
 )
@@ -473,15 +474,15 @@ class PixaromaSaveVideo:
         # memory of its last clip is the run BEFORE this one.
         metadata_path = None
         if embed and not _metadata_disabled():
-            meta_json = build_video_meta_json(prompt, _strip_stale_preview(extra_pnginfo))
-            if meta_json:
+            meta_tags = build_video_meta_tags(prompt, _strip_stale_preview(extra_pnginfo))
+            if meta_tags:
                 try:
                     metadata_path = os.path.join(
                         folder_paths.get_temp_directory(),
                         f"pixaroma_save_video_meta_{uuid.uuid4().hex}.txt",
                     )
                     os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
-                    write_ffmetadata_comment(metadata_path, meta_json)
+                    write_ffmetadata_tags(metadata_path, meta_tags)
                 except Exception as e:
                     print(f"[Pixaroma] {LABEL} — could not prepare metadata ({e}); saving without it.")
                     if metadata_path is not None and os.path.exists(metadata_path):
@@ -524,6 +525,8 @@ class PixaromaSaveVideo:
                 cmd += ["-shortest"]
         if meta_input_index is not None:
             cmd += ["-map_metadata", str(meta_input_index)]
+            # Both flags are the read-back contract - see metadata_movflags().
+            cmd += metadata_movflags()
         cmd += [out_path]
 
         depth = "10-bit" if pix_fmt.endswith("10le") else "8-bit"
