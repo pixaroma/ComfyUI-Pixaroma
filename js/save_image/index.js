@@ -1039,12 +1039,15 @@ function setupNode(node) {
   });
   applyAdaptiveCanvasOnly(widget);
   node._pixSiWidget = widget;
-  if (isVueNodes()) {
-    widget.computeLayoutSize = () => ({
-      minHeight: Math.round(measureFloor(ui) / 4) * 4,
-      minWidth: 1,
-    });
-  }
+  // UNCONDITIONAL, never behind isVueNodes() - see the long note at the matching
+  // spot in js/save_video/index.js. The renderer can change under a live node, so
+  // a node built in Classic would keep the prototype's minWidth 0 instead of our
+  // 1. Measured inert on frontend 1.49.6; kept for consistency with Save Text,
+  // Save Mp4 and Save Video rather than because a break was observed.
+  widget.computeLayoutSize = () => ({
+    minHeight: Math.round(measureFloor(ui) / 4) * 4,
+    minWidth: 1,
+  });
 
   wireEvents(node, ui);
   try {

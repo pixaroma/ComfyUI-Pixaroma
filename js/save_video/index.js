@@ -930,9 +930,19 @@ function setupNode(node) {
   });
   applyAdaptiveCanvasOnly(widget);
   node._pixSvWidget = widget;
-  if (isVueNodes()) {
-    widget.computeLayoutSize = () => ({ minHeight: floorOf(ui), minWidth: 1 });
-  }
+  // UNCONDITIONAL, never behind isVueNodes(): the renderer can be switched under
+  // a live node, and a one-time check in onNodeCreated does not survive that. A
+  // node built in Classic would otherwise keep the DOMWidget PROTOTYPE's version,
+  // which reports minWidth 0 instead of our 1 (Save Text pattern #11, and the
+  // same rule Save Text and Save Mp4 already follow).
+  //
+  // MEASURED on frontend 1.49.6 before removing the gate: the difference is inert
+  // here. computeSize() returned an identical [210, h] for minWidth 0, 1 and the
+  // prototype's own answer, a live Classic -> Nodes 2.0 flip kept every width
+  // (474/518 stored AND rendered), and node.serialize() round-tripped exactly. So
+  // this is consistency with the documented recipe, NOT a fix for an observed
+  // break - do not re-add the gate on the grounds that nothing visibly changed.
+  widget.computeLayoutSize = () => ({ minHeight: floorOf(ui), minWidth: 1 });
 
   wireEvents(node, ui);
   try {
