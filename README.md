@@ -375,12 +375,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **August 26, 2026 · v1.4.127–v1.4.129**
-- **Fixed: Save Video would not fill the node.** A new node hid its buttons and player, and after a run the video stayed small with empty space below. Save Image and Save Text are fixed too.
-- **Label, Monitor and Run Timer no longer slow the canvas.** Panning and zooming are far lighter on big workflows, and renders are faster. Milliseconds on the clock still cost more.
-- **Fixed: Prompt Multi and Prompt Stack rows could collapse into each other**, leaving the boxes unusable. Only alongside certain other node packs.
+### **August 26, 2026 · v1.4.127–v1.4.130**
+- **Fixed: Load Audio grew taller by itself.** The waveform pushed the node bigger on every redraw, ending at a different size after each reload and dragging the canvas.
+- **Panning and zooming are lighter on big workflows.** Label, Monitor and Run Timer no longer tax the canvas.
+- **Fixed: Save Video, Save Image and Save Text would not fill the node**, leaving the video small with empty space below.
+- **Fixed: Prompt Multi and Prompt Stack rows could collapse into each other**, only alongside certain other node packs.
 - **Fixed: dragging a saved video back onto the canvas rebuilds the workflow again.**
-- **Fixed: Image Crop gave every queued job the last crop.** Each job keeps its own now.
+- **Fixed: Image Crop gave every queued job the last crop.**
 - **The LoRA picker no longer opens on an empty folder**, and Back is easier to see.
 
 ### **August 25, 2026 · v1.4.123–1.4.126**
