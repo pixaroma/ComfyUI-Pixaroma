@@ -193,6 +193,15 @@ function clockParts(ms, dec) {
   else if (dec === 2) frac = "." + pad(Math.floor((ms % 1000) / 10), 2);
   return { groups, frac };
 }
+// The exact string the face is showing. The rAF loop repaints ONLY when this
+// changes, which at the DEFAULT 0 decimals is once a SECOND instead of 60 times
+// (see the loop for the measurement). Derived from the same clockParts() both
+// painters use, so it can never be coarser than what is on screen: at 2 or 3
+// decimals it differs every frame and the repaint rate is unchanged.
+function readoutSig(node) {
+  const p = clockParts(node._rtDisplayMs || 0, node._pixRtDecimals ?? DEFAULT_STATE.decimals);
+  return p.groups.map((g) => g.num + g.unit).join(":") + p.frac;
+}
 
 // ── display (Nodes 2.0 DOM clock) ───────────────────────────────────────────
 // Rebuild the segment STRUCTURE only when the shape changes; otherwise just
@@ -229,7 +238,8 @@ function paint(node) {
 function setDot(node, mode) {
   node._rtDotState = mode; // the classic canvas painter reads this
   if (node._pixRtDot) node._pixRtDot.className = "pix-rt-dot" + (mode === "run" ? " run" : mode === "done" ? " done" : "");
-  if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, true);
+  // Foreground only - see refreshClock for why the background flag is waste.
+  if (!isVueNodes()) node.setDirtyCanvas && node.setDirtyCanvas(true, false);
 }
 function flashScreen(node) {
   const scr = node._pixRtScreen;
@@ -242,7 +252,12 @@ function flashScreen(node) {
 // in the CLASSIC renderer (onDrawForeground redraws), else the DOM paint.
 function refreshClock(node) {
   maybeFitWidth(node); // hug the clock content when the readout shape changes
-  if (!isVueNodes()) { node.setDirtyCanvas && node.setDirtyCanvas(true, true); }
+  // FOREGROUND ONLY. The clock is painted in onDrawForeground and the body hook
+  // wraps drawNode - both are foreground work. The background canvas carries the
+  // GRID and the GROUPS, which a ticking digit cannot change, so asking for it
+  // was pure waste on every single frame of every run. MEASURED on an 80-node
+  // graph at 2135x1881: 15.36 ms/frame with the background, 3.68 ms without.
+  if (!isVueNodes()) { node.setDirtyCanvas && node.setDirtyCanvas(true, false); }
   else paint(node);
 }
 
@@ -685,6 +700,21 @@ let _runName = "";    // active workflow name captured at run start → history 
 // Is a run in flight RIGHT NOW? _runStart alone cannot answer that - it is never
 // cleared, because the history needs it after the finish. See adoptLiveRun.
 let _runLive = false;
+// Repaint only when the readout the user can SEE has changed.
+//
+// This loop runs for the WHOLE duration of a run, and it used to force a full
+// canvas repaint 60 times a second no matter what the clock said. At the default
+// 0 decimals the digits change ONCE A SECOND, so 59 of every 60 repaints drew an
+// identical face. MEASURED on an 80-node graph at 2135x1881: a forced repaint
+// cost 15.36 ms, i.e. ~92% of one CPU core held for the entire generation, while
+// an idle canvas costs 0. On a single-machine setup that is taken straight out of
+// ComfyUI's own Python process - reported 2026-08-25 as MiniMax Music dropping
+// 30.46 it/s -> 24.24 with a timer on the canvas and -> 15.24 with an unpacked
+// subgraph, which is the node-count scaling this cost has.
+//
+// Every OTHER caller of refreshClock is a discrete event (run start, finish,
+// colour, font, decimals) and still repaints unconditionally, so nothing that
+// changes the face for a non-text reason can be skipped here.
 function loop() {
   let anyRunning = false;
   const now = performance.now();
@@ -692,7 +722,11 @@ function loop() {
     if (node._rtRunning) {
       anyRunning = true;
       node._rtDisplayMs = now - node._rtStart;
-      refreshClock(node);
+      const sig = readoutSig(node);
+      if (node._rtReadoutSig !== sig) {
+        node._rtReadoutSig = sig;
+        refreshClock(node);
+      }
     }
   }
   _rafId = anyRunning ? requestAnimationFrame(loop) : null;
