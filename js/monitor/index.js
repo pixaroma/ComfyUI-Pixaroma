@@ -151,7 +151,14 @@ function repaint(node) {
       renderFace(node, st, sample, peak, (key, btn) => runButton(node, key, btn));
     }
   } else {
-    node.setDirtyCanvas?.(true, true);
+    // FOREGROUND ONLY. paintFace runs in onDrawForeground and the body hook
+    // wraps drawNode, so the face is entirely foreground work - the background
+    // canvas only carries the GRID and the GROUPS, which a changing reading
+    // cannot affect. This fires on EVERY sample (about 3 a second during a run,
+    // see #12), and asking for the background made each one cost 15.4 ms on an
+    // 80-node graph instead of 3.7 (measured for the same fix on Run Timer).
+    // The hover repaint below has always passed false; this matches it.
+    node.setDirtyCanvas?.(true, false);
   }
 }
 
@@ -248,10 +255,10 @@ async function runButton(node, key, domBtn) {
       // classic: the painter reads this and draws the button green
       clearTimeout(node._pmFlashT);
       node._pmFlash = { key, label };
-      node.setDirtyCanvas?.(true, true);
+      node.setDirtyCanvas?.(true, false);   // foreground only, as above
       node._pmFlashT = setTimeout(() => {
         node._pmFlash = null;
-        node.setDirtyCanvas?.(true, true);
+        node.setDirtyCanvas?.(true, false);
       }, 900);
     }
   };
