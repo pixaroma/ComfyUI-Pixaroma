@@ -375,6 +375,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **August 26, 2026 · v1.4.127**
+- **Fixed: Prompt Multi and Prompt Stack rows could collapse into each other**, leaving the boxes unusable. Only alongside certain other node packs.
+- **Fixed: dragging a saved video back onto the canvas rebuilds the workflow again.**
+- **Fixed: Image Crop gave every queued job the last crop.** Each job keeps its own now.
+- **Run Timer and Monitor no longer slow renders.** Hundredths and milliseconds still cost more.
+- **The LoRA picker no longer opens on an empty folder**, and Back is easier to see.
+
 ### **August 25, 2026 · v1.4.123–1.4.126**
 - **Dropdown Pixaroma now holds up to four values in one entry.** Name each output, and one pick sets several wires at once: a sampler and its scheduler.
 - **Fixed: a Dropdown would not connect to a sampler or scheduler by hand.** It worked if the wire was already saved, but once unplugged it could not be plugged back.
