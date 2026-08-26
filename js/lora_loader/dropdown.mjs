@@ -127,6 +127,19 @@ export async function openLoraDropdown(anchorEl, opts) {
   // in the search box overrides nav and searches EVERY LoRA (flat), so the user can
   // still find anything without drilling. Start inside the current LoRA's folder.
   let curPath = current ? group(current) : "";
+  // ...but only if this install actually HAS that folder. A workflow shared from
+  // another machine names the author's folder layout, so opening there lands on
+  // a dead end: an "Empty folder." message and a small back link, with none of
+  // your own LoRAs in sight. Reported 2026-08-25 by someone whose LoRAs live in
+  // "MiniMaxH3" opening a workflow whose LoRA was in "h3" - the picker looked
+  // broken, and searching was the only way out. Falling back to the root shows
+  // the whole library instead, which is the useful thing to show someone whose
+  // file is missing. A folder that exists and is genuinely empty is unaffected:
+  // it can only be reached by navigating INTO it, and still says "Empty folder."
+  if (curPath) {
+    const prefix = curPath + "/";
+    if (!all.some((n) => n.replace(/\\/g, "/").startsWith(prefix))) curPath = "";
+  }
 
   function levelItems() {
     const prefix = curPath ? curPath + "/" : "";
