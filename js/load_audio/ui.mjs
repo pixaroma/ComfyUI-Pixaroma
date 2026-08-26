@@ -56,8 +56,18 @@ export function injectCSS() {
     background:#1d1d1d; border:1px solid #444; border-radius:4px; padding:6px;
     display:flex; flex-direction:column; gap:4px; flex:1 1 auto; min-height:0;
   }
+  /* ⚠️ flex-basis MUST be 0, never auto. A <canvas> takes its INTRINSIC ASPECT
+     RATIO from its width/height ATTRIBUTES (the backing store), and with
+     flex-basis:auto the flex base size comes from that intrinsic size - so the
+     element's HEIGHT gets derived from its own backing store. drawWave sets the
+     backing store from the element's measured size, which closes a feedback
+     loop: paint -> backing goes square -> layout makes the box square -> the
+     next paint writes an even bigger square. MEASURED in Nodes 2.0: the body
+     went 190 -> 443px on a fresh insert, and widening the node from 380 to 600
+     pushed node.size[1] to 685. flex-basis:0 makes the base size 0 so only the
+     flex line (and min-height) decide the height; verified back to 188px. */
   .${ROOT} .wave{
-    width:100%; flex:1 1 auto; min-height:${WAVE_H}px; display:block;
+    width:100%; flex:1 1 0; min-height:${WAVE_H}px; display:block;
     cursor:ew-resize; touch-action:none;
   }
   .${ROOT} .times{ display:flex; justify-content:space-between; font-size:10px; color:#777; }
