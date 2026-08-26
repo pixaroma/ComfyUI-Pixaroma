@@ -818,6 +818,68 @@ async def save_3d_bg_image(request):
     return web.json_response({"status": "success", "path": relative_path})
 
 
+# ── Image Crop: one file per SAVE, not one per node (GitLab #22) ─────────────
+# Both crop routes used to write `crop_<kind>_<project_id>.png`, and project_id
+# is created ONCE per node and never changes. So a second crop overwrote the
+# file an ALREADY-QUEUED job was pointing at: crop A -> queue, crop B -> queue,
+# crop C -> queue, run, and all three jobs render C. The rect was never the
+# problem (it is a widget value, so ComfyUI snapshots it per job correctly) -
+# only the pixels behind it. Measured before the fix: 4 of 5 jobs read someone
+# else's image.
+#
+# Each save now gets its own file, so a queued job's path keeps its pixels. The
+# frontend stores whatever path the route returns, so this is server-side only.
+#
+# The cost of unique names is that they accumulate, and nothing has ever cleaned
+# these up - so we keep the newest few PER PROJECT and drop the rest. Bounded per
+# node rather than unbounded, and to lose a file you would have to queue a job
+# and then make KEEP more crops on that same node before the queue drained.
+#
+# ⚠️ The `__` between the id and the stamp is load-bearing twice: it stops
+# project "crop_1" pruning project "crop_12"'s files, and it means the LEGACY
+# `crop_<kind>_<project_id>.png` written by older builds never matches, so a
+# workflow saved before this change keeps the file it still references.
+_CROP_KEEP_PER_PROJECT = 20
+
+
+def _crop_save_unique(prefix, project_id, img):
+    """Save `img` under a fresh name for this project. Returns the relative path
+    the frontend should store, or None if the path guard refused it."""
+    stamp = uuid.uuid4().hex[:12]
+    filename = f"{prefix}_{project_id}__{stamp}.png"
+    file_path = _safe_path(filename)
+    if file_path is None:
+        return None
+    img.save(file_path, "PNG")
+    _crop_prune(prefix, project_id)
+    return os.path.join("pixaroma", filename).replace("\\", "/")
+
+
+def _crop_prune(prefix, project_id, keep=_CROP_KEEP_PER_PROJECT):
+    """Drop this project's oldest saves beyond `keep`. Never raises into the
+    response - failing to tidy up must not fail the save itself."""
+    try:
+        folder = os.path.join(PIXAROMA_INPUT_ROOT)
+        match = f"{prefix}_{project_id}__"
+        entries = []
+        for name in os.listdir(folder):
+            if not name.startswith(match) or not name.endswith(".png"):
+                continue
+            full = os.path.join(folder, name)
+            try:
+                entries.append((os.path.getmtime(full), full))
+            except OSError:
+                pass
+        entries.sort(reverse=True)          # newest first
+        for _mtime, full in entries[keep:]:
+            try:
+                os.remove(full)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 @PromptServer.instance.routes.post("/pixaroma/api/crop/save")
 async def save_crop_composite(request):
     data = await request.json()
@@ -831,13 +893,9 @@ async def save_crop_composite(request):
     if img is None:
         return web.json_response({"error": "Invalid image data"}, status=400)
 
-    filename = f"crop_composite_{project_id}.png"
-    file_path = _safe_path(filename)
-    if file_path is None:
+    relative_path = _crop_save_unique("crop_composite", project_id, img)
+    if relative_path is None:
         return web.json_response({"error": "Invalid project id"}, status=400)
-
-    img.save(file_path, "PNG")
-    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
     return web.json_response({"status": "success", "composite_path": relative_path})
 
 
@@ -854,13 +912,9 @@ async def upload_crop_source(request):
     if img is None:
         return web.json_response({"error": "Invalid image data"}, status=400)
 
-    filename = f"crop_src_{project_id}.png"
-    file_path = _safe_path(filename)
-    if file_path is None:
+    relative_path = _crop_save_unique("crop_src", project_id, img)
+    if relative_path is None:
         return web.json_response({"error": "Invalid project id"}, status=400)
-
-    img.save(file_path, "PNG")
-    relative_path = os.path.join("pixaroma", filename).replace("\\", "/")
     return web.json_response({"status": "success", "path": relative_path})
 
 
