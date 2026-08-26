@@ -335,7 +335,11 @@ class PixaromaVideoPrompt:
                     {
                         "tooltip": "The picture the video ends on. Connecting this as "
                         "well as a first frame switches the node to first-and-last mode, "
-                        "where it writes the movement from one picture to the other."
+                        "where it writes the movement from one picture to the other. "
+                        "On its own, with no first frame, it is treated the SAME as a "
+                        "first frame: the node describes that picture and animates FROM "
+                        "it, not towards it. There is no last-frame-only mode, so wire a "
+                        "first frame too if you want the movement to end on this picture."
                     },
                 ),
                 "clip": (
