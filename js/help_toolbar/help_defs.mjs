@@ -1170,7 +1170,7 @@ const HELP = {
           ["Colour depth", "8 or 10 bit, for MP4 HQ only."],
           ["Trim to audio", "Ends the video exactly where the sound ends, for when the audio is the master. Off keeps every frame and the sound simply stops when it stops."],
           ["Audio fade-in", "Fades the sound in at the very start. AI video clips often begin with a click because the model starts the audio at full level in one step; about 120 ms removes it and is too short to hear as a fade. Leave it off when re-saving audio you do not want altered."],
-          ["Save workflow inside the video", "Lets you drag the file back into ComfyUI to rebuild the graph. Saving it always works; reading it back needs your ComfyUI to support dropping a video onto the canvas."],
+          ["Save workflow inside the video", "Writes the whole workflow into the mp4. Saving it always works. Reading it back is the catch: ComfyUI on its own cannot pull a workflow out of a video, only out of pictures, so dropping the mp4 on the canvas does nothing until you install a video pack such as ComfyUI-VideoHelperSuite. The workflow is still inside the file either way, so a video saved today will open once you have one."],
           ["Date style, counter digits", "What the + Date chip inserts, and how many digits the counter uses."],
           ["Buttons on the node", "Hide the ones you never use. The format you are currently saving as always stays visible."],
         ],
