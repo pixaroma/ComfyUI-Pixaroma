@@ -12,35 +12,22 @@ export const PROMPT_EACH_HELP = {
     {
       heading: "What it does",
       body:
-        "Type your prompts one per line and press Run once. The workflow runs "
+        "Put one prompt in each row and press Run once. The workflow runs "
         + "again for every prompt, one after another, and all the pictures "
         + "collect in the same Preview node.\n\n"
         + "It runs them one at a time, so it uses no more memory than making a "
         + "single picture. A long list is safe on a small graphics card.",
     },
     {
-      heading: "Two ways to see the same prompts",
-      body:
-        "The two small buttons at the top switch the view. They show the very "
-        + "same prompts, so nothing is lost either way and you can move between "
-        + "them whenever you like.",
-      defs: [
-        ["Text", "One prompt per line, in a single box. This is the quick way to paste a long list in from a spreadsheet or a text file."],
-        ["Rows", "A box per prompt, each with its own ON/OFF switch, a number, a delete cross, and a handle to drag it up or down."],
-      ],
-    },
-    {
       heading: "Switching a prompt off",
       body:
         "Click a row's ON button and it turns off: the prompt stays where it is "
-        + "but is skipped, so you can try a list without one of them and put it "
-        + "back later without retyping.\n\n"
-        + "In the Text view a switched-off prompt is simply a line starting with "
-        + "`#`, so you can also switch lines off by typing, and you can see at a "
-        + "glance which ones are sleeping. The counter always shows how many will "
-        + "actually run.\n\n"
-        + "If you want a prompt that really does start with a hash, write "
-        + "\\# in front of it and it will be used as normal.",
+        + "but is skipped, so you can try the list without one of them and put it "
+        + "back later without retyping. The counter above always shows how many "
+        + "will actually run.\n\n"
+        + "Copy keeps the switches: a switched-off prompt is copied out as a line "
+        + "starting with `#`, so pasting that list back in brings the same rows "
+        + "back switched off.",
     },
     {
       heading: "How to wire it",
@@ -48,7 +35,7 @@ export const PROMPT_EACH_HELP = {
         "Drag `prompt` into CLIP Text Encode, where you would normally put your text.",
         "That is the only wire it needs. Everything after it runs once per prompt on its own.",
         "`index` into Save Image keeps the files numbered in the order you typed them.",
-        "Nothing to type? Wire any text node into `text` on the left instead.",
+        "Nothing to type? Wire any text node into `text` on the left instead, including Text Pixaroma if you would rather edit the whole list as one block.",
       ],
     },
     {
@@ -66,9 +53,9 @@ export const PROMPT_EACH_HELP = {
         "Put choices in square brackets and you get all of them:\n\n"
         + "`a [red|blue] car`  gives two prompts, a red one and a blue one.\n\n"
         + "Several groups on one line give every combination, so "
-        + "`a [red|blue] [car|van]` is four prompts. The counter in the corner "
-        + "of the box always shows how many you will actually get, so you can "
-        + "see one line turn into six before you press Run.\n\n"
+        + "`a [red|blue] [car|van]` is four prompts. The counter at the top "
+        + "always shows how many you will actually get, so you can see one row "
+        + "turn into six before you press Run.\n\n"
         + "Curly braces are the opposite and still pick one at random, so "
         + "`{morning|evening}` stays one prompt. You can use both on the same "
         + "line. Write \\[ if you want a bracket kept as ordinary text.",
@@ -76,18 +63,18 @@ export const PROMPT_EACH_HELP = {
     {
       heading: "The buttons on the node",
       defs: [
-        ["Text / Rows", "The two small buttons at the top switch between the single box and one box per prompt."],
-        ["Copy all", "Copies every prompt to the clipboard."],
-        ["Replace", "Pastes over everything. This is how you get a hundred prompts in from a spreadsheet in one go."],
-        ["Clear", "Empties it."],
-        ["+ Add prompt", "At the end of the list in the Rows view: adds an empty row and puts the cursor in it."],
+        ["Add row", "Adds an empty prompt at the end and puts the cursor in it."],
+        ["Clear all", "Empties the text in every row, keeping the rows and their switches."],
+        ["Reset", "Back to one empty row."],
+        ["Copy", "Up beside the counter: copies every prompt to the clipboard, one per line."],
+        ["Paste", "Beside it: replaces every row with the clipboard, one prompt per line. This is how a hundred prompts get in from a spreadsheet in one go."],
         ["The gear", "Opens the settings, described below."],
       ],
     },
     {
       heading: "Settings, behind the gear",
       defs: [
-        ["Split prompts on", "New line means every line is a prompt. Blank line lets one prompt run over several lines and starts the next after an empty line."],
+        ["Split prompts on", "How a pasted list is cut into rows. New line means every line is a prompt; Blank line lets one prompt run over several lines and starts the next after an empty line."],
         ["When text is wired in", "Replace uses only what arrives on the wire. Add puts it after whatever is typed on the node."],
         ["Expand [a|b]", "Turn the brackets off if you want them treated as ordinary text."],
         ["Trim spaces", "Drops spaces at the start and end of every prompt."],

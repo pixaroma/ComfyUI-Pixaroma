@@ -130,11 +130,6 @@ export function renderRows(parts, st, handlers) {
     host.appendChild(el_);
   });
 
-  // innerHTML above wiped the container, so put Add back at the end. It is the
-  // SAME element every time, so its click handler is wired once and never
-  // duplicated.
-  if (parts.addBtn) host.appendChild(parts.addBtn);
-
   // SYNCHRONOUS, deliberately. Every row is already in the document, and reading
   // scrollHeight forces the layout we need anyway - so the heights are final by
   // the time this returns and the caller can size the node immediately. Doing it

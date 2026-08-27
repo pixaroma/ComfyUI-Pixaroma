@@ -48,47 +48,6 @@ const CSS = `
   position: relative;
 }
 
-/* The box grows with the node; it is the ONLY child allowed to shrink, and its
-   floor is a real min-height rather than the flex automatic minimum, which any
-   page stylesheet can delete with a "min-height:0" (convention #35). */
-.pix-each-fieldwrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  flex: 1 1 0;
-  min-height: 72px;
-}
-/* attachLineNumbers inserts its own wrapper around the textarea, so the fill
-   has to be handed down through it. */
-.pix-each-fieldwrap > .pix-ln-wrap {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-}
-.pix-each-fieldwrap > .pix-ln-wrap > textarea { flex: 1 1 auto; min-height: 0; }
-
-/* Interior matches Text / Prompt Pack / Prompt Multi exactly, so the pack reads
-   as one design (node UI convention #3). */
-.pix-each-ta {
-  width: 100%;
-  resize: none;
-  background: #1d1d1d;
-  border: 1px solid #333;
-  border-radius: 4px;
-  color: #e0e0e0;
-  font: 12px monospace;
-  line-height: 1.5;
-  padding: 6px 8px;
-  outline: none;
-  box-sizing: border-box;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-}
-.pix-each-ta:focus { border-color: ${ACC}; }
-.pix-each-ta::placeholder { color: rgba(255,255,255,0.32); font-style: italic; }
-/* Wired: the box shows what arrived and stops taking typing. */
-.pix-each-ta.is-wired { color: #9a9a9a; background: #202020; cursor: default; }
 
 /* The count pill lives in the empty band beside the slot dots, so it costs no
    height AND never sits on top of the text. It is floated up out of the widget
@@ -109,7 +68,8 @@ const CSS = `
 }
 .pix-each-band.floated > * { pointer-events: auto; }
 
-/* The two view pills ride in the band too, so the switch also costs no height. */
+/* Copy and Paste ride in the band, so the two occasional actions cost no height
+   and the main row is left to the three buttons people know from Prompt Stack. */
 .pix-each-views { display: flex; gap: 3px; flex: 0 0 auto; margin-right: 7px; }
 .pix-each-viewpill {
   background: rgba(255, 255, 255, 0.05);
@@ -122,7 +82,9 @@ const CSS = `
   transition: background 0.1s, color 0.1s, border-color 0.1s;
 }
 .pix-each-viewpill:hover { border-color: ${ACC}; color: #ddd; }
-.pix-each-viewpill.on { background: ${ACC}; border-color: ${ACC}; color: #fff; }
+.pix-each-viewpill:disabled, .pix-each-viewpill:disabled:hover {
+  border-color: rgba(255,255,255,0.08); color: rgba(255,255,255,0.28); cursor: default;
+}
 
 /* ── the Rows view ───────────────────────────────────────────────────────── */
 /* "flex: 0 1 auto" is the whole trick, and each of the three values was earned:
@@ -162,6 +124,7 @@ const CSS = `
   transition: opacity 0.12s ease;
 }
 .pix-each-row.is-off { opacity: 0.45; }
+.pix-each-rows.is-wired { opacity: 0.5; }
 .pix-each-row.is-dragging { opacity: 0.4; }
 .pix-each-row.is-drop-above { box-shadow: 0 -2px 0 0 ${ACC}; }
 .pix-each-row.is-drop-below { box-shadow: 0 2px 0 0 ${ACC}; }
@@ -214,28 +177,6 @@ const CSS = `
 .pix-each-rowta:focus { border-color: ${ACC}; }
 .pix-each-rowta::placeholder { color: rgba(255,255,255,0.28); font-style: italic; }
 
-/* Add sits at the end of the list, full width, so five buttons never have to
-   share the action row at the node's minimum width. */
-.pix-each-add {
-  flex-shrink: 0;
-  width: 100%;
-  box-sizing: border-box;
-  background: transparent;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  color: rgba(255, 255, 255, 0.6);
-  cursor: pointer;
-  font: 11px sans-serif;
-  padding: 5px 0;
-  user-select: none;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
-}
-.pix-each-add:hover {
-  border-color: ${ACC};
-  border-style: solid;
-  background: color-mix(in srgb, ${ACC} 12%, transparent);
-  color: #eee;
-}
 
 .pix-each-count {
   flex: 0 0 auto;
@@ -342,44 +283,36 @@ export function el(tag, cls, text) {
   return n;
 }
 
-const PLACEHOLDER =
-  "One prompt per line.\n" +
-  "Run once and you get one image per line.\n" +
-  "\n" +
-  "a [red|blue] car  ->  two prompts";
-
 // Builds the DOM. Returns { root, ta, count, buttons } so index.js can wire it
 // without querying selectors back out of the tree.
 export function buildRoot() {
   const root = el("div", "pix-each-root");
 
-  const fieldwrap = el("div", "pix-each-fieldwrap");
-  const ta = el("textarea", "pix-each-ta");
-  ta.placeholder = PLACEHOLDER;
-  ta.spellcheck = false;
-  fieldwrap.appendChild(ta);
-
-  // The band is FIRST in the root so that, if the float is ever removed, it
-  // degrades to a small strip above the box rather than on top of it.
+  // The band floats into the slot dead space, so everything in it is free
+  // height: the two occasional actions and the live count.
   const band = el("div", "pix-each-band");
   const views = el("div", "pix-each-views");
-  const textPill = el("button", "pix-each-viewpill", "Text");
-  textPill.type = "button";
-  textPill.title = "One prompt per line. Paste a whole list at once.";
-  const rowsPill = el("button", "pix-each-viewpill", "Rows");
-  rowsPill.type = "button";
-  rowsPill.title = "A box per prompt, each with its own on/off switch.";
-  views.appendChild(textPill);
-  views.appendChild(rowsPill);
+  const copyBtn = el("button", "pix-each-viewpill", "Copy");
+  copyBtn.type = "button";
+  copyBtn.title = "Copy every prompt to the clipboard, one per line";
+  const pasteBtn = el("button", "pix-each-viewpill", "Paste");
+  pasteBtn.type = "button";
+  pasteBtn.title =
+    "Replace every row with the clipboard, one prompt per line. This is how a "
+    + "long list gets in from a spreadsheet or a text file.";
+  views.appendChild(copyBtn);
+  views.appendChild(pasteBtn);
   band.appendChild(views);
   const count = el("div", "pix-each-count");
   band.appendChild(count);
   root.appendChild(band);
 
-  root.appendChild(fieldwrap);
   const rows = el("div", "pix-each-rows");
   root.appendChild(rows);
 
+  // Three buttons and the gear, word for word Prompt Stack's, because people
+  // already have the habit. Three plus the gear is also exactly what fits on one
+  // line at the node's minimum width.
   const actions = el("div", "pix-each-actions");
   const mk = (label, cls, title) => {
     const b = el("button", "pix-each-btn" + (cls ? " " + cls : ""), label);
@@ -388,65 +321,15 @@ export function buildRoot() {
     actions.appendChild(b);
     return b;
   };
-  const copyBtn = mk("Copy all", null, "Copy every prompt to the clipboard");
-  const replaceBtn = mk("Replace", null,
-    "Paste over everything in the box. This is how you get a long list in at once.");
-  const clearBtn = mk("Clear", null, "Empty the box");
+  const addBtn = mk("Add row", null, "Append an empty row at the end of the list");
+  const clearAllBtn = mk("Clear all", null,
+    "Empty the text in every row (keeps the rows and their switches)");
+  const resetBtn = mk("Reset", null, "Reset to one empty row, switched on");
   const gearBtn = mk("", "pix-each-gear", "Prompt Each settings");
   root.appendChild(actions);
 
-  // Add lives at the END OF THE LIST, not in the action row: five buttons wrap
-  // to two lines at the node's minimum width, and putting it here also puts it
-  // where the new row is about to appear. renderRows re-appends it after every
-  // rebuild, since that wipes the container.
-  const addBtn = el("button", "pix-each-add", "+ Add prompt");
-  addBtn.type = "button";
-  addBtn.title = "Add another prompt";
-
-  return { root, band, views, textPill, rowsPill, fieldwrap, ta, rows, count,
-           actions, copyBtn, replaceBtn, clearBtn, addBtn, gearBtn };
-}
-
-// How tall the body actually needs to be. Deliberately NOT the shared
-// measureRootContent: that counts every laid-out child, and our count band is
-// position:absolute, so it would add its own height to a node it takes no space
-// in. Rounded to a 4px grid because this feeds getMinHeight, which drives
-// grow-to-content - and grow-only accumulates, so sub-pixel jitter would creep
-// node.size bigger on every workflow switch (Vue Compat #18).
-export function contentHeight(root, view) {
-  if (!root) return WIDGET_MIN_H;
-  // TEXT view has no content height to speak of: the box is designed to FILL
-  // whatever the node gives it, so measuring it is circular - the taller the
-  // node, the taller the box, the higher this floor, and the node could never
-  // be dragged smaller again. Only the Rows view has a real content height.
-  if (view !== "rows") return WIDGET_MIN_H;
-  let h = 0;
-  let count = 0;
-  for (const child of root.children) {
-    if (child.offsetParent === null) continue;
-    if (getComputedStyle(child).position === "absolute") continue;
-    // scrollHeight, not offsetHeight, when the child is being SQUEEZED. The rows
-    // box is allowed to shrink and scroll so the body can never paint outside
-    // the node, which means offsetHeight reports the space it was GIVEN, not the
-    // space it wants - and growing the node from that number is circular: it
-    // measures 254, decides it fits, and the scrollbar never goes away.
-    h += Math.max(child.offsetHeight, child.scrollHeight);
-    count += 1;
-  }
-  const cs = getComputedStyle(root);
-  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
-  if (count > 1) h += gap * (count - 1);
-  h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-  return Math.max(WIDGET_MIN_H, Math.round(h / 4) * 4);
-}
-
-// Show one view and hide the other. DOM only, so it is safe on the load path.
-export function setView(parts, view) {
-  const rowsView = view === "rows";
-  parts.fieldwrap.style.display = rowsView ? "none" : "";
-  parts.rows.style.display = rowsView ? "" : "none";
-  parts.textPill.classList.toggle("on", !rowsView);
-  parts.rowsPill.classList.toggle("on", rowsView);
+  return { root, band, views, rows, count, actions,
+           copyBtn, pasteBtn, addBtn, clearAllBtn, resetBtn, gearBtn };
 }
 
 // Float the count band up into the slot dead space. Writes ONLY DOM
@@ -486,7 +369,7 @@ export function updateCount(parts, result, split, wiredState) {
   if (!count) return;
   const { prompts, pieces, truncated } = result;
   const total = prompts.length;
-  const noun = split === "blank" ? "block" : "line";
+  const noun = "row";   // they are rows on the face now, whatever the split is
 
   count.classList.toggle("is-capped", !!truncated);
 
@@ -536,20 +419,49 @@ export function updateCount(parts, result, split, wiredState) {
 
 // `wiredState` is "replace", "add", or null when nothing is wired.
 //
-// In Replace mode the box goes read-only and dims: what is typed is NOT what
-// runs, and an editable-looking box full of text that the node is ignoring is
-// the kind of quiet lie that costs somebody an afternoon. The text is KEPT, not
-// cleared, so unplugging the wire brings it straight back. Same wired-text lock
-// Text Overlay already uses.
+// In Replace mode the rows are IGNORED at run time, so the whole list is dimmed
+// and made read-only. What is typed is kept, not cleared, so unplugging the wire
+// brings it straight back. Same wired-text lock Text Overlay uses.
 export function applyState(parts, st, wiredState) {
-  const { ta } = parts;
-  if (!ta) return;
-  if (ta.value !== st.text) ta.value = st.text;
   const locked = wiredState === "replace";
-  ta.readOnly = locked;
-  ta.classList.toggle("is-wired", locked);
-  ta.title = locked
-    ? "Ignored while text is wired in: the prompts come from that node instead. "
-      + "Unplug it, or switch to Add in the settings, to use what is typed here."
-    : "";
+  parts.rows.classList.toggle("is-wired", locked);
+  for (const ta of parts.rows.querySelectorAll(".pix-each-rowta")) {
+    ta.readOnly = locked;
+    ta.title = locked
+      ? "Ignored while text is wired in: the prompts come from that node instead. "
+        + "Unplug it, or switch to Add in the settings, to use these."
+      : "";
+  }
+}
+
+// How tall the body actually needs to be.
+//
+// NOT the shared measureRootContent: that counts every laid-out child, and the
+// count band is position:absolute, so it would add its own height to a node it
+// takes no space in.
+//
+// scrollHeight, not offsetHeight, when a child is being SQUEEZED. The rows box
+// is allowed to shrink and scroll so the body can never paint outside the node
+// frame (a DOM widget in Classic is not clipped by the node), which means
+// offsetHeight reports the space it was GIVEN, not the space it wants - and
+// growing the node from that number is circular: it measures 254, decides it
+// fits, and the scrollbar never goes away.
+//
+// Rounded to a 4px grid, because sub-pixel jitter in a grow-only path
+// accumulates and would creep node.size bigger on every workflow switch.
+export function contentHeight(root) {
+  if (!root) return WIDGET_MIN_H;
+  let h = 0;
+  let count = 0;
+  for (const child of root.children) {
+    if (child.offsetParent === null) continue;
+    if (getComputedStyle(child).position === "absolute") continue;
+    h += Math.max(child.offsetHeight, child.scrollHeight);
+    count += 1;
+  }
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+  if (count > 1) h += gap * (count - 1);
+  h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  return Math.max(WIDGET_MIN_H, Math.round(h / 4) * 4);
 }

@@ -1,8 +1,8 @@
 import { app } from "/scripts/app.js";
 import {
-  readState, writeState, restoreFromProperties, DEFAULT_CAP, VIEW_ROWS,
+  readState, writeState, restoreFromProperties, DEFAULT_CAP,
 } from "./core.mjs";
-import { injectCSS, buildRoot, applyState, updateCount, placeBand, setView,
+import { injectCSS, buildRoot, applyState, updateCount, placeBand,
   contentHeight, WIDGET_MIN_H } from "./ui.mjs";
 import { textToRows, rowsToText, renderRows } from "./rows.mjs";
 import { buildPrompts } from "./expand.mjs";
@@ -14,7 +14,7 @@ import {
   registerNodeAccent, registerNodeSettings, registerNodeHelp, notifyGraphChanged,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { attachLineNumbers } from "../shared/line_numbers.mjs";
+import { pixConfirm } from "../shared/confirm_dialog.mjs";
 
 const CLASS = "PixaromaPromptEach";
 
@@ -58,7 +58,7 @@ function wiredState(node) {
 }
 
 // Grow the node so the rendered body fits. Mirrors Prompt Stack: the rows list
-// is content-height rather than a scroll area, so the NODE is what has to give.
+// is content height, so the NODE is what has to give.
 //
 // NEVER call this on the load path - node.size is serialised, and writing it
 // while a workflow opens flags an untouched file "modified" (Vue Compat #18).
@@ -83,17 +83,17 @@ function chromeAllowance(node) {
 function growNodeToContent(node) {
   const parts = node?._pixEachParts;
   if (!parts || isGraphLoading()) return;
-  const desired = contentHeight(parts.root, readState(node).view) + chromeAllowance(node);
+  const desired = contentHeight(parts.root) + chromeAllowance(node);
   if (desired > node.size[1]) setNodeHeight(node, desired);
 }
 
 // Shrink AND grow, for actions where the user is saying "make this fit" - a
-// delete, or switching back to the compact Text view. Never below the default.
+// delete or a reset. Never below the default.
 function fitNodeToContent(node) {
   const parts = node?._pixEachParts;
   if (!parts || isGraphLoading()) return;
   setNodeHeight(node, Math.max(DEFAULT_H,
-    contentHeight(parts.root, readState(node).view) + chromeAllowance(node)));
+    contentHeight(parts.root) + chromeAllowance(node)));
 }
 
 // SYNCHRONOUS on purpose. renderRows finishes sizing every row box before it
@@ -119,8 +119,7 @@ function reflow(node, fit) {
     const parts = node?._pixEachParts;
     if (!parts || isGraphLoading()) return;
     if (node.size[1] !== wrote) return;                 // the user moved it: leave it alone
-    if (readState(node).view !== VIEW_ROWS) return;
-    const settled = contentHeight(parts.root, VIEW_ROWS) + chromeAllowance(node);
+    const settled = contentHeight(parts.root) + chromeAllowance(node);
     if (settled < wrote) setNodeHeight(node, Math.max(DEFAULT_H, settled));
   }, 0);
 }
@@ -134,14 +133,23 @@ function refresh(node, rebuildRows = true) {
   const st = readState(node);
   const ws = wiredState(node);
   applyState(parts, st, ws);
-  setView(parts, st.view);
   // Rebuilding the row list steals focus mid-word, so a keystroke passes
   // rebuildRows=false: the state is already correct, only the count needs to
-  // move. Structural changes (add, delete, toggle, reorder, view switch) do
-  // rebuild.
-  if (st.view === VIEW_ROWS && rebuildRows) {
+  // move. Structural changes (add, delete, toggle, reorder) do rebuild.
+  if (rebuildRows) {
     renderRows(parts, st, { wireRow: (el, i, refs) => wireRow(node, el, i, refs) });
   }
+  // Clear all / Reset grey out when there is nothing to do, same as Prompt
+  // Stack's. Reset stays live while anything differs from the default, which
+  // includes a switched-off row even if no text is typed.
+  if (parts.clearAllBtn && parts.resetBtn) {
+    const rows = textToRows(st.text, st.split);
+    const anyText = rows.some((r) => r.text && r.text.trim());
+    const anyOff = rows.some((r) => r.enabled === false);
+    parts.clearAllBtn.disabled = !anyText;
+    parts.resetBtn.disabled = !(anyText || anyOff || rows.length !== 1);
+  }
+
   const result = buildPrompts(st.text, {
     split: st.split,
     expand: st.expand,
@@ -274,49 +282,58 @@ function toast(text) {
 }
 
 function wireEvents(node, parts) {
-  const { ta, copyBtn, replaceBtn, clearBtn, addBtn, gearBtn, textPill, rowsPill } = parts;
+  const { copyBtn, pasteBtn, addBtn, clearAllBtn, resetBtn, gearBtn } = parts;
 
-  const setViewTo = (view) => {
-    const st = readState(node);
-    if (st.view === view) return;
-    st.view = view;
-    writeState(node, st);
-    refresh(node);
-    // GROW only. Fitting here would shrink a node the user had deliberately
-    // made taller, and switching back to Text needs no resize at all since
-    // that box simply fills whatever room there is.
-    reflow(node, false);
-    notifyGraphChanged();
-  };
-  textPill.addEventListener("click", () => setViewTo("text"));
-  rowsPill.addEventListener("click", () => setViewTo(VIEW_ROWS));
+
+  // The Rows trio is word-for-word Prompt Stack's, behaviour included, because
+  // people already have the habit: Add row appends, Clear all empties the text
+  // but KEEPS the rows and their switches, Reset goes back to one empty row.
+  // Both destructive ones confirm first, like Prompt Stack's do.
+  const rowsNow = () => textToRows(readState(node).text, readState(node).split);
 
   addBtn.addEventListener("click", () => {
-    if (ta.readOnly) {
+    if (wiredState(node) === "replace") {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
-    const st = readState(node);
-    const rows = textToRows(st.text, st.split);
+    const rows = rowsNow();
     rows.push({ text: "", enabled: true });
     commitRows(node, rows);
-    // put the caret straight into the box that was just added
     const boxes = parts.rows.querySelectorAll(".pix-each-rowta");
     boxes[boxes.length - 1]?.focus();
   });
 
-  ta.addEventListener("input", () => {
-    if (ta.readOnly) return;
-    const st = readState(node);
-    st.text = ta.value;
-    writeState(node, st);
-    refresh(node);
+  clearAllBtn.addEventListener("click", async () => {
+    if (wiredState(node) === "replace") {
+      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
+      return;
+    }
+    const rows = rowsNow();
+    if (!rows.some((r) => r.text && r.text.trim())) return;
+    const ok = await pixConfirm({
+      title: "Clear all text?",
+      message: `This will empty the text in all ${rows.length} row${rows.length === 1 ? "" : "s"}. The ON/OFF switches are kept.`,
+      okText: "Clear",
+      cancelText: "Cancel",
+    });
+    if (!ok) return;
+    commitRows(node, rows.map((r) => ({ ...r, text: "" })), true, true);
   });
-  // A DOM control commits on `click`/`input`, which is strictly AFTER the
-  // mouseup ComfyUI snapshots on, so the change would never be recorded and the
-  // user would silently lose it (convention #31). The pack-wide change net
-  // covers clicks inside our own UI; typing needs saying explicitly.
-  ta.addEventListener("change", () => notifyGraphChanged());
+
+  resetBtn.addEventListener("click", async () => {
+    if (wiredState(node) === "replace") {
+      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
+      return;
+    }
+    const ok = await pixConfirm({
+      title: "Reset to default?",
+      message: "This will replace all rows with one empty row, switched on. Your current prompts will be lost.",
+      okText: "Reset",
+      cancelText: "Cancel",
+    });
+    if (!ok) return;
+    commitRows(node, [{ text: "", enabled: true }], true, true);
+  });
 
   copyBtn.addEventListener("click", async () => {
     const st = readState(node);
@@ -325,6 +342,8 @@ function wireEvents(node, parts) {
       return;
     }
     try {
+      // the rows as a person would write them: one prompt per line, and a
+      // switched-off one keeps its "#" so pasting it back restores the switches
       await navigator.clipboard.writeText(st.text);
       flash(copyBtn, "Copied");
     } catch {
@@ -332,8 +351,10 @@ function wireEvents(node, parts) {
     }
   });
 
-  replaceBtn.addEventListener("click", async () => {
-    if (ta.readOnly) {
+  // This is the bulk path, and the reason the node does not need a second view:
+  // paste a hundred lines and you get a hundred rows.
+  pasteBtn.addEventListener("click", async () => {
+    if (wiredState(node) === "replace") {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
@@ -344,31 +365,28 @@ function wireEvents(node, parts) {
       toast("Could not paste from the clipboard");
       return;
     }
-    // Chrome returns "" for both an empty clipboard and an image-only one, so
-    // this single check covers both - and NOT wiping the box is the important
-    // half: silently erasing somebody's list on a failed paste is unforgivable.
+    // Chrome returns "" for an empty clipboard AND an image-only one, so this
+    // covers both - and NOT wiping the rows is the important half.
     if (!text) {
       toast("Nothing to paste");
       return;
     }
     const st = readState(node);
+    if (st.text.trim()) {
+      const ok = await pixConfirm({
+        title: "Replace every prompt?",
+        message: "The rows on this node will be replaced by what is on the clipboard, one prompt per line.",
+        okText: "Replace",
+        cancelText: "Cancel",
+      });
+      if (!ok) return;
+    }
     st.text = text;
     writeState(node, st);
     refresh(node);
+    reflow(node, true);
     notifyGraphChanged();
-    flash(replaceBtn, "Pasted");
-  });
-
-  clearBtn.addEventListener("click", () => {
-    if (ta.readOnly) {
-      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
-      return;
-    }
-    const st = readState(node);
-    st.text = "";
-    writeState(node, st);
-    refresh(node);
-    notifyGraphChanged();
+    flash(pasteBtn, "Pasted");
   });
 
   gearBtn.addEventListener("click", (e) => {
@@ -422,11 +440,7 @@ app.registerExtension({
           getMinHeight: () => WIDGET_MIN_H,
         });
         applyAdaptiveCanvasOnly(widget);
-        node._pixEachFloorOff = installResizeFloor(root,
-          (r) => contentHeight(r, readState(node).view));
-
-        // Must run AFTER the box is in the document - the gutter measures it.
-        node._pixEachLnOff = attachLineNumbers(parts.ta, { minDigits: 2 });
+        node._pixEachFloorOff = installResizeFloor(root, contentHeight);
 
         // MEASURED in both renderers: the same offset lands the pill on the
         // `total` row, clear of every slot label, so there is no branch here.
@@ -490,11 +504,6 @@ app.registerExtension({
       closeSettingsPanelFor(this);
       this._pixEachFloorOff?.();
       this._pixEachFloorOff = null;
-      // attachLineNumbers installs a ResizeObserver, and a Document holds its
-      // observers strongly - without this the textarea, wrap, gutter and mirror
-      // stay pinned for the rest of the session.
-      this._pixEachLnOff?.();
-      this._pixEachLnOff = null;
       this._pixEachParts = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
