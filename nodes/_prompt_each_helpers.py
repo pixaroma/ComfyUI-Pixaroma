@@ -211,6 +211,15 @@ def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
             piece = piece.strip()
         if skip_empty and not piece:
             continue
+        # A prompt starting with "#" is switched OFF. That is what the Rows
+        # view's toggle writes, so the two views are the same string and can
+        # never drift apart - and it means a Save Text file's "# <date>" lines
+        # are skipped for free rather than queued as prompts.
+        # The escape is checked FIRST so a genuine "#1 portrait" still works.
+        if piece.startswith("\\#"):
+            piece = piece[1:]
+        elif piece.startswith("#"):
+            continue
         pieces.append(piece)
 
     prompts = []

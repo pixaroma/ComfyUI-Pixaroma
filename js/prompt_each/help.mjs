@@ -19,6 +19,30 @@ export const PROMPT_EACH_HELP = {
         + "single picture. A long list is safe on a small graphics card.",
     },
     {
+      heading: "Two ways to see the same prompts",
+      body:
+        "The two small buttons at the top switch the view. They show the very "
+        + "same prompts, so nothing is lost either way and you can move between "
+        + "them whenever you like.",
+      defs: [
+        ["Text", "One prompt per line, in a single box. This is the quick way to paste a long list in from a spreadsheet or a text file."],
+        ["Rows", "A box per prompt, each with its own ON/OFF switch, a number, a delete cross, and a handle to drag it up or down."],
+      ],
+    },
+    {
+      heading: "Switching a prompt off",
+      body:
+        "Click a row's ON button and it turns off: the prompt stays where it is "
+        + "but is skipped, so you can try a list without one of them and put it "
+        + "back later without retyping.\n\n"
+        + "In the Text view a switched-off prompt is simply a line starting with "
+        + "`#`, so you can also switch lines off by typing, and you can see at a "
+        + "glance which ones are sleeping. The counter always shows how many will "
+        + "actually run.\n\n"
+        + "If you want a prompt that really does start with a hash, write "
+        + "\\# in front of it and it will be used as normal.",
+    },
+    {
       heading: "How to wire it",
       bullets: [
         "Drag `prompt` into CLIP Text Encode, where you would normally put your text.",
@@ -52,9 +76,11 @@ export const PROMPT_EACH_HELP = {
     {
       heading: "The buttons on the node",
       defs: [
-        ["Copy all", "Copies everything in the box to the clipboard."],
-        ["Replace", "Pastes over everything in the box. This is how you get a hundred prompts in from a spreadsheet in one go."],
-        ["Clear", "Empties the box."],
+        ["Text / Rows", "The two small buttons at the top switch between the single box and one box per prompt."],
+        ["Copy all", "Copies every prompt to the clipboard."],
+        ["Replace", "Pastes over everything. This is how you get a hundred prompts in from a spreadsheet in one go."],
+        ["Clear", "Empties it."],
+        ["+ Add prompt", "At the end of the list in the Rows view: adds an empty row and puts the cursor in it."],
         ["The gear", "Opens the settings, described below."],
       ],
     },

@@ -19,6 +19,14 @@ export const WIRED_REPLACE = "replace";
 export const WIRED_ADD = "add";
 const WIRED = [WIRED_REPLACE, WIRED_ADD];
 
+// Which face is showing. Purely cosmetic: BOTH views read and write the same
+// state.text, so this only decides what you look at, never what runs. It is
+// therefore kept OUT of the payload the graphToPrompt hook sends to Python -
+// switching view must not change the node's cache key and re-run the workflow.
+export const VIEW_TEXT = "text";
+export const VIEW_ROWS = "rows";
+const VIEWS = [VIEW_TEXT, VIEW_ROWS];
+
 export const DEFAULT_CAP = 200;
 export const MAX_CAP = 4096;
 
@@ -32,6 +40,7 @@ export function defaultState() {
     skipEmpty: true,
     cap: DEFAULT_CAP,
     wiredMode: WIRED_REPLACE,
+    view: VIEW_TEXT,
   };
 }
 
@@ -46,6 +55,7 @@ export function readState(node) {
   if (typeof raw.text === "string") st.text = raw.text;
   if (SPLITS.indexOf(raw.split) !== -1) st.split = raw.split;
   if (WIRED.indexOf(raw.wiredMode) !== -1) st.wiredMode = raw.wiredMode;
+  if (VIEWS.indexOf(raw.view) !== -1) st.view = raw.view;
   for (const key of ["expand", "trim", "skipEmpty"]) {
     if (typeof raw[key] === "boolean") st[key] = raw[key];
   }

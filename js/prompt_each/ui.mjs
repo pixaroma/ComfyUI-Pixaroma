@@ -105,6 +105,123 @@ const CSS = `
 }
 .pix-each-band.floated > * { pointer-events: auto; }
 
+/* The two view pills ride in the band too, so the switch also costs no height. */
+.pix-each-views { display: flex; gap: 3px; flex: 0 0 auto; margin-right: 7px; }
+.pix-each-viewpill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font: 10px sans-serif;
+  padding: 2px 8px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pix-each-viewpill:hover { border-color: ${ACC}; color: #ddd; }
+.pix-each-viewpill.on { background: ${ACC}; border-color: ${ACC}; color: #fff; }
+
+/* ── the Rows view ───────────────────────────────────────────────────────── */
+.pix-each-rows {
+  flex: 1 1 0;
+  min-height: 72px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-right: 2px;
+}
+/* BOTH declarations, and they defend different things: flex-shrink stops the
+   row shrinking below its flex base, min-height stops an explicit height (from
+   a page stylesheet, or ComfyUI's own collapsed-node resize probe) winning
+   outright. Prompt Multi needed exactly this pair twice (prompt-multi.md #18). */
+.pix-each-row {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: fit-content;
+  gap: 4px;
+  padding: 6px;
+  border-radius: 4px;
+  background: #232323;
+  border: 1px solid #2e2e2e;
+  transition: opacity 0.12s ease;
+}
+.pix-each-row.is-off { opacity: 0.45; }
+.pix-each-row.is-dragging { opacity: 0.4; }
+.pix-each-row.is-drop-above { box-shadow: 0 -2px 0 0 ${ACC}; }
+.pix-each-row.is-drop-below { box-shadow: 0 2px 0 0 ${ACC}; }
+
+.pix-each-rowhead { display: flex; align-items: center; gap: 6px; min-height: 18px; }
+.pix-each-rowsp { flex: 1; }
+.pix-each-handle {
+  cursor: grab; color: #888; font-size: 13px; line-height: 13px;
+  user-select: none; padding: 0 1px; letter-spacing: -2px;
+}
+.pix-each-handle:hover { color: #ccc; }
+.pix-each-handle:active { cursor: grabbing; }
+.pix-each-rownum {
+  font: 10px monospace; color: #6f6f6f; min-width: 14px;
+  font-variant-numeric: tabular-nums; user-select: none;
+}
+.pix-each-toggle {
+  min-width: 32px; height: 17px; border-radius: 9px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 600 8.5px sans-serif; letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.65);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.pix-each-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+.pix-each-toggle.on { background: ${ACC}; border-color: ${ACC}; color: #fff; }
+.pix-each-toggle.on:hover { filter: brightness(1.08); }
+.pix-each-del {
+  width: 17px; height: 17px; border-radius: 3px; flex-shrink: 0;
+  background: transparent; border: none; color: #888;
+  cursor: pointer; font-size: 12px; line-height: 12px; padding: 0;
+}
+.pix-each-del:hover {
+  color: ${ACC};
+  background: color-mix(in srgb, ${ACC} 12%, transparent);
+}
+.pix-each-rowta {
+  width: 100%; min-height: 30px; max-height: 140px; resize: none;
+  background: #1d1d1d; border: 1px solid #333; border-radius: 4px;
+  color: #e0e0e0; font: 12px monospace; line-height: 1.4;
+  padding: 5px 7px; outline: none; box-sizing: border-box;
+  overflow-y: auto; white-space: pre-wrap; overflow-wrap: break-word;
+}
+.pix-each-rowta:focus { border-color: ${ACC}; }
+.pix-each-rowta::placeholder { color: rgba(255,255,255,0.28); font-style: italic; }
+
+/* Add sits at the end of the list, full width, so five buttons never have to
+   share the action row at the node's minimum width. */
+.pix-each-add {
+  flex-shrink: 0;
+  width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: rgba(255, 255, 255, 0.6);
+  cursor: pointer;
+  font: 11px sans-serif;
+  padding: 5px 0;
+  user-select: none;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.pix-each-add:hover {
+  border-color: ${ACC};
+  border-style: solid;
+  background: color-mix(in srgb, ${ACC} 12%, transparent);
+  color: #eee;
+}
+
 .pix-each-count {
   flex: 0 0 auto;
   max-width: 100%;
@@ -227,13 +344,26 @@ export function buildRoot() {
   ta.spellcheck = false;
   fieldwrap.appendChild(ta);
 
-  // The band is FIRST in the root so that, in whichever renderer cannot float
-  // it, it degrades to a small strip above the box rather than on top of it.
+  // The band is FIRST in the root so that, if the float is ever removed, it
+  // degrades to a small strip above the box rather than on top of it.
   const band = el("div", "pix-each-band");
+  const views = el("div", "pix-each-views");
+  const textPill = el("button", "pix-each-viewpill", "Text");
+  textPill.type = "button";
+  textPill.title = "One prompt per line. Paste a whole list at once.";
+  const rowsPill = el("button", "pix-each-viewpill", "Rows");
+  rowsPill.type = "button";
+  rowsPill.title = "A box per prompt, each with its own on/off switch.";
+  views.appendChild(textPill);
+  views.appendChild(rowsPill);
+  band.appendChild(views);
   const count = el("div", "pix-each-count");
   band.appendChild(count);
   root.appendChild(band);
+
   root.appendChild(fieldwrap);
+  const rows = el("div", "pix-each-rows");
+  root.appendChild(rows);
 
   const actions = el("div", "pix-each-actions");
   const mk = (label, cls, title) => {
@@ -250,7 +380,25 @@ export function buildRoot() {
   const gearBtn = mk("", "pix-each-gear", "Prompt Each settings");
   root.appendChild(actions);
 
-  return { root, band, fieldwrap, ta, count, actions, copyBtn, replaceBtn, clearBtn, gearBtn };
+  // Add lives at the END OF THE LIST, not in the action row: five buttons wrap
+  // to two lines at the node's minimum width, and putting it here also puts it
+  // where the new row is about to appear. renderRows re-appends it after every
+  // rebuild, since that wipes the container.
+  const addBtn = el("button", "pix-each-add", "+ Add prompt");
+  addBtn.type = "button";
+  addBtn.title = "Add another prompt";
+
+  return { root, band, views, textPill, rowsPill, fieldwrap, ta, rows, count,
+           actions, copyBtn, replaceBtn, clearBtn, addBtn, gearBtn };
+}
+
+// Show one view and hide the other. DOM only, so it is safe on the load path.
+export function setView(parts, view) {
+  const rowsView = view === "rows";
+  parts.fieldwrap.style.display = rowsView ? "none" : "";
+  parts.rows.style.display = rowsView ? "" : "none";
+  parts.textPill.classList.toggle("on", !rowsView);
+  parts.rowsPill.classList.toggle("on", rowsView);
 }
 
 // Float the count band up into the slot dead space. Writes ONLY DOM

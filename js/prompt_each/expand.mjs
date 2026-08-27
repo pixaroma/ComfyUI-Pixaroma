@@ -168,6 +168,11 @@ export function buildPrompts(text, opts = {}) {
   for (let piece of raw) {
     if (trim) piece = piece.trim();
     if (skipEmpty && !piece) continue;
+    // A prompt starting with "#" is switched OFF - that is what the Rows view's
+    // toggle writes, so both views are the same string and cannot drift. The
+    // escape is checked FIRST so a genuine "#1 portrait" still works.
+    if (piece.slice(0, 2) === "\\#") piece = piece.slice(1);
+    else if (piece.charAt(0) === "#") continue;
     pieces.push(piece);
   }
 

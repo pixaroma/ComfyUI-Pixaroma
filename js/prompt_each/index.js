@@ -1,8 +1,9 @@
 import { app } from "/scripts/app.js";
 import {
-  readState, writeState, restoreFromProperties, DEFAULT_CAP,
+  readState, writeState, restoreFromProperties, DEFAULT_CAP, VIEW_ROWS,
 } from "./core.mjs";
-import { injectCSS, buildRoot, applyState, updateCount, placeBand } from "./ui.mjs";
+import { injectCSS, buildRoot, applyState, updateCount, placeBand, setView } from "./ui.mjs";
+import { textToRows, rowsToText, renderRows, growAll } from "./rows.mjs";
 import { buildPrompts } from "./expand.mjs";
 import { openSettingsPanel, closeSettingsPanelFor, isPanelOpenFor } from "./settings.mjs";
 import { PROMPT_EACH_HELP } from "./help.mjs";
@@ -60,12 +61,20 @@ function wiredState(node) {
 // Re-render the face from current state. Cheap, and safe to call on the load
 // path: it writes only DOM, never node.size / properties / slots (Vue Compat
 // #18), so opening an untouched workflow cannot flag it modified.
-function refresh(node) {
+function refresh(node, rebuildRows = true) {
   const parts = node?._pixEachParts;
   if (!parts) return;
   const st = readState(node);
   const ws = wiredState(node);
   applyState(parts, st, ws);
+  setView(parts, st.view);
+  // Rebuilding the row list steals focus mid-word, so a keystroke passes
+  // rebuildRows=false: the state is already correct, only the count needs to
+  // move. Structural changes (add, delete, toggle, reorder, view switch) do
+  // rebuild.
+  if (st.view === VIEW_ROWS && rebuildRows) {
+    renderRows(parts, st, { wireRow: (el, i, refs) => wireRow(node, el, i, refs) });
+  }
   const result = buildPrompts(st.text, {
     split: st.split,
     expand: st.expand,
@@ -74,6 +83,94 @@ function refresh(node) {
     cap: st.cap,
   });
   updateCount(parts, result, st.split, ws);
+}
+
+// Write a row list back into the single source of truth: state.text.
+function commitRows(node, rows, rebuild = true) {
+  const st = readState(node);
+  st.text = rowsToText(rows, st.split);
+  writeState(node, st);
+  refresh(node, rebuild);
+  notifyGraphChanged();
+}
+
+function wireRow(node, rowEl, i, refs) {
+  const { ta, tog, del, handle } = refs;
+  const parts = node._pixEachParts;
+
+  ta.addEventListener("input", () => {
+    const st = readState(node);
+    const rows = textToRows(st.text, st.split);
+    if (!rows[i]) return;
+    rows[i].text = ta.value;
+    // rebuild=false: keep the caret where the user is typing.
+    commitRows(node, rows, false);
+    ta.style.height = "auto";
+    ta.style.height = Math.min(Math.max(ta.scrollHeight, 30), 140) + "px";
+  });
+
+  tog.addEventListener("click", () => {
+    const st = readState(node);
+    const rows = textToRows(st.text, st.split);
+    if (!rows[i]) return;
+    rows[i].enabled = rows[i].enabled === false;
+    commitRows(node, rows);
+  });
+
+  del.addEventListener("click", () => {
+    const st = readState(node);
+    const rows = textToRows(st.text, st.split);
+    if (!rows[i]) return;
+    rows.splice(i, 1);
+    if (!rows.length) rows.push({ text: "", enabled: true });
+    commitRows(node, rows);
+  });
+
+  // Reorder. `draggable` is on the HANDLE (see rows.mjs) but the drop targets
+  // are the rows, so these listeners live here and the handle's dragstart
+  // bubbles up to them.
+  handle.addEventListener("dragstart", (e) => {
+    node._pixEachDragFrom = i;
+    rowEl.classList.add("is-dragging");
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      // Firefox will not start a drag without some data set.
+      e.dataTransfer.setData("text/plain", String(i));
+    } catch {}
+  });
+  handle.addEventListener("dragend", () => {
+    node._pixEachDragFrom = null;
+    for (const r of parts.rows.querySelectorAll(".pix-each-row")) {
+      r.classList.remove("is-dragging", "is-drop-above", "is-drop-below");
+    }
+  });
+  rowEl.addEventListener("dragover", (e) => {
+    if (node._pixEachDragFrom == null) return;
+    e.preventDefault();
+    const r = rowEl.getBoundingClientRect();
+    const above = e.clientY < r.top + r.height / 2;
+    rowEl.classList.toggle("is-drop-above", above);
+    rowEl.classList.toggle("is-drop-below", !above);
+  });
+  rowEl.addEventListener("dragleave", () => {
+    rowEl.classList.remove("is-drop-above", "is-drop-below");
+  });
+  rowEl.addEventListener("drop", (e) => {
+    const from = node._pixEachDragFrom;
+    if (from == null) return;
+    e.preventDefault();
+    const r = rowEl.getBoundingClientRect();
+    const above = e.clientY < r.top + r.height / 2;
+    let to = above ? i : i + 1;
+    const st = readState(node);
+    const rows = textToRows(st.text, st.split);
+    if (from < to) to -= 1;
+    if (from === to) return;
+    const [moved] = rows.splice(from, 1);
+    rows.splice(to, 0, moved);
+    node._pixEachDragFrom = null;
+    commitRows(node, rows);
+  });
 }
 
 function flash(btn, label) {
@@ -104,7 +201,32 @@ function toast(text) {
 }
 
 function wireEvents(node, parts) {
-  const { ta, copyBtn, replaceBtn, clearBtn, gearBtn } = parts;
+  const { ta, copyBtn, replaceBtn, clearBtn, addBtn, gearBtn, textPill, rowsPill } = parts;
+
+  const setViewTo = (view) => {
+    const st = readState(node);
+    if (st.view === view) return;
+    st.view = view;
+    writeState(node, st);
+    refresh(node);
+    notifyGraphChanged();
+  };
+  textPill.addEventListener("click", () => setViewTo("text"));
+  rowsPill.addEventListener("click", () => setViewTo(VIEW_ROWS));
+
+  addBtn.addEventListener("click", () => {
+    if (ta.readOnly) {
+      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
+      return;
+    }
+    const st = readState(node);
+    const rows = textToRows(st.text, st.split);
+    rows.push({ text: "", enabled: true });
+    commitRows(node, rows);
+    // put the caret straight into the box that was just added
+    const boxes = parts.rows.querySelectorAll(".pix-each-rowta");
+    boxes[boxes.length - 1]?.focus();
+  });
 
   ta.addEventListener("input", () => {
     if (ta.readOnly) return;
