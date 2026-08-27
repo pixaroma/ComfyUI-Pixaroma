@@ -62,6 +62,10 @@ function restoreEscapes(s) {
 // do. MUST match _MAX_DEPTH in nodes/_prompt_each_helpers.py.
 const MAX_DEPTH = 100;
 
+// The most PIECES one build will look at - see buildFromPieces.
+// MUST match MAX_PIECES in nodes/_prompt_each_helpers.py.
+const MAX_PIECES = 40960;
+
 function balanced(s) {
   let depth = 0;
   for (const c of s) {
@@ -179,7 +183,15 @@ export function buildFromPieces(pieces, opts = {}) {
   if (cap < 0) cap = 0;
 
   const kept = [];
-  for (let piece of pieces || []) {
+  // Bound the INPUT as well as the output: the cap counts prompts, and a
+  // piece that expands to nothing never reaches it, so without this a very
+  // wide list runs both loops in full whatever the cap says. Mirrors
+  // MAX_PIECES in nodes/_prompt_each_helpers.py so the count and the run
+  // truncate at the same place.
+  const all = pieces || [];
+  const limit = Math.min(all.length, MAX_PIECES);
+  for (let i = 0; i < limit; i++) {
+    let piece = all[i];
     if (typeof piece !== "string") continue;
     if (trim) piece = piece.trim();
     if (skipEmpty && !piece) continue;

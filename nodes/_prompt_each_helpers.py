@@ -23,6 +23,7 @@ Harness: D:\\Claude Tests\\_prompt_each_test.py
 import json
 import math
 import re
+from itertools import islice
 from collections import namedtuple
 
 # Private-use-area placeholders for escaped brackets, so they survive the parse
@@ -41,6 +42,12 @@ DEFAULT_CAP = 200
 # MUST equal MAX_CAP in js/prompt_each/core.mjs - the browser clamps there for
 # the UI, this clamps here for anything that skips the browser.
 MAX_CAP = 4096
+
+# The most PIECES one build will look at. The cap above bounds the OUTPUT,
+# and a piece that expands to nothing never reaches it - see build_from_pieces.
+# 10x the largest possible output, so no real list comes near it.
+# MUST match MAX_PIECES in js/prompt_each/expand.mjs.
+MAX_PIECES = 10 * MAX_CAP
 
 # A hard rail, NOT the user-facing cap. Nine groups of ten options is a billion
 # combinations, and a person can type that by accident; without a ceiling the
@@ -250,7 +257,23 @@ def build_from_pieces(pieces, expand=True, trim=True, skip_empty=True,
         cap = 0
 
     kept = []
-    for piece in pieces or []:
+    # The cap bounds the OUTPUT, not the INPUT, and the two are not the same
+    # thing: a piece that expands to nothing (an empty bracket group, a blank
+    # line) never increments the output count, so the cap's break can never
+    # fire and BOTH loops run over every piece that arrived. MEASURED: 2,000,000
+    # pieces of "[]" with cap=1 burned 2.27s of CPU and produced zero prompts,
+    # from a 12MB body - and ComfyUI accepts 100MB by default.
+    #
+    # The guard lives HERE rather than in parse_state because pieces reach this
+    # function from two directions: the state blob's rows AND the wired `text`
+    # input, which a hand-written API prompt can set to a literal string of any
+    # length. One guard covers both.
+    #
+    # 10x the largest output this node can ever produce, so no real list can
+    # reach it - the browser's own row list is unusable long before this.
+    # islice, NOT list(...)[:N] - the latter copies the whole array before
+    # slicing it, which is the very work being avoided.
+    for piece in islice(pieces or [], MAX_PIECES):
         if not isinstance(piece, str):
             continue
         if trim:
