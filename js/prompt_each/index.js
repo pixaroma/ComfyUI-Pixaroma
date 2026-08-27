@@ -379,7 +379,13 @@ function wireEvents(node, parts) {
       cancelText: "Cancel",
     });
     if (!ok) return;
-    commitRows(node, rows.map((r) => ({ ...r, text: "" })), true, true);
+    // RE-READ after the confirm. `rows` above is only used to decide whether to
+    // ASK and to word the question; writing it back would resurrect rows that
+    // a Ctrl+Z removed while the dialog was open (ComfyUI's undo listener is on
+    // window from page startup, and pixConfirm only intercepts Escape and
+    // Enter). Same defect the Paste handler was fixed for; Reset is immune
+    // because it always writes one fixed row rather than a snapshot.
+    commitRows(node, rowsNow().map((r) => ({ ...r, text: "" })), true, true);
   }));
 
   resetBtn.addEventListener("click", guarded(async () => {
