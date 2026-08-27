@@ -19,15 +19,17 @@ const CSS_ID = "pix-prompt-each-css";
 export const WIDGET_MIN_H = 118;
 
 // The float offset, in px above the DOM widget's own top. MEASURED on this node
-// in BOTH renderers rather than guessed, and the same number works in each:
-//   Classic:   widget top at node-local 66, slot rows at 14 / 34 / 54, so the
-//              left half of 24..64 is dead space and -22 lands on the last row.
-//   Nodes 2.0: slot rows at +32 / +52 / +72 from the node top, and -22 lands on
-//              the same last row, horizontally clear of the labels (pill spans
-//              x 80..142, the "total" label starts at 339).
+// rather than guessed. The band is TWO stacked rows, so it fills the dead space
+// beside BOTH spare slot rows instead of crowding onto one:
+//   Copy + Paste  land on the "index" row (node-local y 34)
+//   the counter   lands on the "total" row (y 54), with the whole width to
+//                 itself, which is what it needs when it reads
+//                 "12 rows -> 48 prompts"
+// Classic slot rows are at y 14 / 34 / 54 and the widget starts at y 66, so a
+// 17px row starting at 25 centres on "index" and the next centres on "total".
 // Calibrated to THIS slot layout (1 input / 3 outputs). Add or remove a slot and
-// these must be re-measured - the recipe is in .claude/patterns/prompt-each.md.
-const BAND_TOP = -22;
+// it must be re-measured - the recipe is in .claude/patterns/prompt-each.md.
+const BAND_TOP = -41;
 const BAND_RSV_L = 8;   // line up with the text box's left edge
 const BAND_RSV_R = 76;  // keep clear of the prompt / index / total labels
 
@@ -57,8 +59,10 @@ const CSS = `
    float is ever removed it degrades to a strip ABOVE the box, not over it. */
 .pix-each-band {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   flex-shrink: 0;
-  align-items: center;
   min-width: 0;
 }
 .pix-each-band.floated {
@@ -70,7 +74,7 @@ const CSS = `
 
 /* Copy and Paste ride in the band, so the two occasional actions cost no height
    and the main row is left to the three buttons people know from Prompt Stack. */
-.pix-each-views { display: flex; gap: 3px; flex: 0 0 auto; margin-right: 7px; }
+.pix-each-views { display: flex; gap: 3px; flex: 0 0 auto; }
 .pix-each-viewpill {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.15);

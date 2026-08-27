@@ -26,15 +26,20 @@ const CLASS = "PixaromaPromptEach";
 // 28px gear + 3 gaps of 4 + 16 of root padding is ~314, plus margin.
 //
 // Height is MEASURED, not picked: one empty row is 124 of body (row 80 + gap 6
-// + action bar 23 + 15 of root padding) and the chrome above it is 90 (a 30px
-// title plus three 20px slot rows, since this node has 3 outputs). A fixed 250
-// left 36px of dead space under the buttons on a one-row node, which is exactly
-// what a fresh drop is - Prompt Stack hugs its content and this now does too.
-// Re-measure if a row's padding or the slot count ever changes.
+// + action bar 23 + 15 of root padding) and the chrome is 86 - which is the
+// three 20px slot rows plus LiteGraph's own padding, NOT the 90 you get by
+// adding NODE_TITLE_HEIGHT, because the title sits above node.pos and is not
+// inside size[1] at all. A fixed 250 left 36px of dead space under the buttons
+// on a one-row node, which is exactly what a fresh drop is.
+//
+// What remains below the buttons is 18px: 8 of the root's own bottom padding
+// (the same as every other node in the pack) and 10 of LiteGraph's margin under
+// a DOM widget, which is not ours to remove - Prompt Stack measures 48 in the
+// same place. Re-measure if a row's padding or the slot count changes.
 const DEFAULT_W = 340;
-const DEFAULT_H = 214;
+const DEFAULT_H = 210;
 const MIN_W = 340;
-const MIN_H = 214;
+const MIN_H = 210;
 
 registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 
@@ -79,12 +84,23 @@ function setNodeHeight(node, h) {
   node.setSize?.([node.size[0], h]);
 }
 
+// Everything of node.size that is NOT the widget body: the slot rows above it
+// and LiteGraph's own margin below it.
+//
+// MEASURED off the live node rather than computed from NODE_TITLE_HEIGHT and
+// NODE_SLOT_HEIGHT. The computed version came to 90 where the real figure is 86
+// (the title sits ABOVE node.pos, so it is not inside size[1] at all), and that
+// 4px error is the difference between the node hugging its content and carrying
+// a visible strip of dead space under the buttons. The constant stays as the
+// fallback for the moment before the widget has a rendered height.
 function chromeAllowance(node) {
+  const root = node?._pixEachParts?.root;
+  const rootH = root ? root.offsetHeight : 0;
+  if (rootH > 0 && node.size[1] > rootH) return node.size[1] - rootH;
   const LG = window.LiteGraph || {};
-  const titleH = LG.NODE_TITLE_HEIGHT || 30;
   const slotH = LG.NODE_SLOT_HEIGHT || 20;
   const slots = Math.max(node.outputs?.length || 0, node.inputs?.length || 0);
-  return titleH + slots * slotH;
+  return slots * slotH + 26;
 }
 
 // Grow only, so a node the user made taller keeps the size they chose.
