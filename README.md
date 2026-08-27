@@ -375,6 +375,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **August 27, 2026 · v1.4.131**
+- **Fixed properly: Prompt Multi and Prompt Stack rows collapsing into thin overlapping bars.** The cause was **Monitor Pixaroma restyling them**, not another node pack, which is why it came and went and a refresh cleared it.
+- **Prompt rows now hold their height** if anything else tries to squeeze them.
+
 ### **August 26, 2026 · v1.4.127–v1.4.130**
 - **Fixed: Load Audio grew taller by itself.** The waveform pushed the node bigger on every redraw, ending at a different size after each reload and dragging the canvas.
 - **Panning and zooming are lighter on big workflows.** Label, Monitor and Run Timer no longer tax the canvas.
