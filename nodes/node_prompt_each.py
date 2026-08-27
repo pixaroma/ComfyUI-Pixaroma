@@ -111,7 +111,11 @@ class PixaromaPromptEach:
         # prompts, press Reset and leave the single empty row (it is skipped).
         wired = text if isinstance(text, str) else ""
         if wired.strip():
-            pieces = pieces + split_text(wired, state["split"])
+            arrived = split_text(wired, state["split"])
+            if state["wiredAt"] == "before":
+                pieces = arrived + pieces
+            else:
+                pieces = pieces + arrived
 
         result = build_from_pieces(
             pieces,

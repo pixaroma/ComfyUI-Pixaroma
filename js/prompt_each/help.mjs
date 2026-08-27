@@ -74,11 +74,12 @@ export const PROMPT_EACH_HELP = {
     {
       heading: "Settings, behind the gear",
       defs: [
-        ["Split prompts on", "How a pasted list, or text arriving on the `text` input, is cut into prompts. New line means every line is one; Blank line lets a prompt run over several lines and starts the next after an empty line. It does not affect the rows you type, which are already separate."],
+        ["Cut pasted and wired text on", "ONLY affects text that arrives in one block: the Paste button and the text input. Your rows are already separate prompts, so this never changes them. New line makes every line a prompt; Blank line lets a prompt run over several lines and starts the next after an empty line."],
+        ["Wired prompts go", "Before or after your rows. They are always added, never instead, so this is just the order the pictures come out in."],
         ["Expand [a|b]", "Turn the brackets off if you want them treated as ordinary text."],
         ["Trim spaces", "Drops spaces at the start and end of every prompt."],
         ["Skip empty lines", "An empty line is ignored instead of running with no prompt."],
-        ["Stop after", "The most prompts one Run may queue. Brackets multiply fast: three groups of four options on one line is already 64."],
+        ["Stop after", "The most prompts one Run may queue, so a typo cannot start hundreds of renders. Brackets multiply fast: three groups of four options on ONE row is already 64. It counts prompts, not rows."],
       ],
     },
     {

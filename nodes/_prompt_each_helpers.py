@@ -267,6 +267,7 @@ DEFAULT_STATE = {
     "trim": True,
     "skipEmpty": True,
     "cap": DEFAULT_CAP,
+    "wiredAt": "after",
 }
 
 
@@ -296,6 +297,8 @@ def parse_state(raw):
     for key in ("expand", "trim", "skipEmpty"):
         if isinstance(data.get(key), bool):
             state[key] = data[key]
+    if data.get("wiredAt") in ("after", "before"):
+        state["wiredAt"] = data["wiredAt"]
     cap = data.get("cap")
     if isinstance(cap, bool):
         pass  # bool is an int subclass in Python; a toggle is not a cap

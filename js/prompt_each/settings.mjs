@@ -14,7 +14,8 @@
 //     instantly reopens the panel.
 
 import {
-  readState, writeState, SPLIT_LINE, SPLIT_BLANK, DEFAULT_CAP, MAX_CAP,
+  readState, writeState, SPLIT_LINE, SPLIT_BLANK,
+  WIRED_AFTER, WIRED_BEFORE, DEFAULT_CAP, MAX_CAP,
 } from "./core.mjs";
 import { el } from "./ui.mjs";
 import { createAccentSection } from "../shared/node_settings.mjs";
@@ -232,12 +233,23 @@ export function openSettingsPanel(node, onChange) {
   const body = el("div", "pix-each-pbody");
 
   // ── how the text is cut into prompts ──
-  const splitWrap = section(body, "Split prompts on",
-    "New line is one prompt per line. Blank line lets a prompt run over several "
-    + "lines, and starts the next one after an empty line.");
+  const splitWrap = section(body, "Cut pasted and wired text on",
+    "Only applies to text arriving in ONE block: the Paste button and the text "
+    + "input. The rows you type are already separate prompts, so this never "
+    + "changes them. New line makes every line a prompt; Blank line lets one "
+    + "prompt run over several lines and starts the next after an empty line.");
   chipRow(node, splitWrap, "split", [
-    { value: SPLIT_LINE, label: "New line", title: "Every line is its own prompt" },
-    { value: SPLIT_BLANK, label: "Blank line", title: "An empty line starts the next prompt" },
+    { value: SPLIT_LINE, label: "New line", title: "Every line becomes its own prompt" },
+    { value: SPLIT_BLANK, label: "Blank line", title: "An empty line starts the next prompt, so a prompt can span several lines" },
+  ]);
+
+  const wiredWrap = section(body, "Wired prompts go",
+    "Prompts arriving on the text input are always ADDED to the rows, never "
+    + "instead of them. This is just the order, which decides the order the "
+    + "images come out in and what index each one gets.");
+  chipRow(node, wiredWrap, "wiredAt", [
+    { value: WIRED_AFTER, label: "After the rows", title: "The rows run first, then whatever arrives on the wire" },
+    { value: WIRED_BEFORE, label: "Before the rows", title: "The wired prompts run first, then the rows" },
   ]);
 
   // ── switches ──

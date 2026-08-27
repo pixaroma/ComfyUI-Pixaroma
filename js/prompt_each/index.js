@@ -41,6 +41,17 @@ const DEFAULT_W = 340;
 const DEFAULT_H = 198;
 const MIN_W = 340;
 const MIN_H = 198;
+// The tallest this node will GROW ITSELF to. Auto-growth is a convenience,
+// not an instruction to become a wall: MEASURED, 50 rows wanted a 4330px node
+// and 200 wanted 16978, which is taller than any screen and unusable on a
+// canvas. Past this the rows list scrolls instead (it already can, so nothing
+// is hidden), and the user can still drag the node as tall as they like -
+// this only bounds what WE do on our own.
+//
+// 704 = one row (198) plus six more at 84 each, so SEVEN rows show without a
+// scrollbar. 620 was one row too tight and put a scrollbar on a six-prompt
+// list, which is an ordinary size to work at.
+const MAX_AUTO_H = 704;
 
 registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 
@@ -120,7 +131,7 @@ function ownsHeight(node) {
 function growNodeToContent(node) {
   const parts = node?._pixEachParts;
   if (!parts || isGraphLoading()) return;
-  const desired = contentHeight(parts.root) + chromeAllowance(node);
+  const desired = Math.min(MAX_AUTO_H, contentHeight(parts.root) + chromeAllowance(node));
   if (desired > node.size[1]) setNodeHeight(node, desired);
 }
 
@@ -129,8 +140,8 @@ function growNodeToContent(node) {
 function fitNodeToContent(node) {
   const parts = node?._pixEachParts;
   if (!parts || isGraphLoading()) return;
-  setNodeHeight(node, Math.max(DEFAULT_H,
-    contentHeight(parts.root) + chromeAllowance(node)));
+  setNodeHeight(node, Math.min(MAX_AUTO_H, Math.max(DEFAULT_H,
+    contentHeight(parts.root) + chromeAllowance(node))));
 }
 
 // SYNCHRONOUS on purpose. renderRows finishes sizing every row box before it
@@ -163,7 +174,7 @@ function reflow(node, fit) {
     // node the user had deliberately dragged taller, the moment they typed.
     if (!ownsHeight(node)) return;
     const settled = contentHeight(parts.root) + chromeAllowance(node);
-    if (settled < wrote) setNodeHeight(node, Math.max(DEFAULT_H, settled));
+    if (settled < wrote) setNodeHeight(node, Math.min(MAX_AUTO_H, Math.max(DEFAULT_H, settled)));
   }, 0);
 }
 
@@ -616,6 +627,7 @@ app.graphToPrompt = async function (...args) {
           trim: st.trim,
           skipEmpty: st.skipEmpty,
           cap: st.cap ?? DEFAULT_CAP,
+          wiredAt: st.wiredAt,
 
         });
       }

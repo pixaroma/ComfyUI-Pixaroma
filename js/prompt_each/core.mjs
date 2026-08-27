@@ -13,6 +13,13 @@ import { textToRows } from "./rows.mjs";
 
 export const STATE_PROP = "promptEachState";
 
+// Where wired prompts go relative to the rows. They are always ADDED, never a
+// replacement; this only decides the order, which matters because `index` and
+// the order images come out in follow it.
+export const WIRED_AFTER = "after";
+export const WIRED_BEFORE = "before";
+const WIREDS = [WIRED_AFTER, WIRED_BEFORE];
+
 export const SPLIT_LINE = "line";
 export const SPLIT_BLANK = "blank";
 const SPLITS = [SPLIT_LINE, SPLIT_BLANK];
@@ -44,6 +51,7 @@ export function defaultState() {
     trim: true,
     skipEmpty: true,
     cap: DEFAULT_CAP,
+    wiredAt: WIRED_AFTER,
   };
 }
 
@@ -66,6 +74,7 @@ export function readState(node) {
     st.rows = textToRows(raw.text, SPLITS.indexOf(raw.split) !== -1 ? raw.split : SPLIT_LINE);
   }
   if (SPLITS.indexOf(raw.split) !== -1) st.split = raw.split;
+  if (WIREDS.indexOf(raw.wiredAt) !== -1) st.wiredAt = raw.wiredAt;
   for (const key of ["expand", "trim", "skipEmpty"]) {
     if (typeof raw[key] === "boolean") st[key] = raw[key];
   }
