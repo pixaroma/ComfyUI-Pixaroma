@@ -21,12 +21,20 @@ const CLASS = "PixaromaPromptEach";
 // Default = minimum (node UI convention #5): a fresh drop is the smallest
 // comfortable size and the user grows it. When default > min, dragging the
 // corner inward visibly grows the node before clamping, which reads as a bug.
+//
 // Width is sized off the action row: 3 buttons at min-width 86 border-box + the
-// 28px gear + 3 gaps of 4 + 16 of root padding is ~318, plus margin.
+// 28px gear + 3 gaps of 4 + 16 of root padding is ~314, plus margin.
+//
+// Height is MEASURED, not picked: one empty row is 124 of body (row 80 + gap 6
+// + action bar 23 + 15 of root padding) and the chrome above it is 90 (a 30px
+// title plus three 20px slot rows, since this node has 3 outputs). A fixed 250
+// left 36px of dead space under the buttons on a one-row node, which is exactly
+// what a fresh drop is - Prompt Stack hugs its content and this now does too.
+// Re-measure if a row's padding or the slot count ever changes.
 const DEFAULT_W = 340;
-const DEFAULT_H = 250;
+const DEFAULT_H = 214;
 const MIN_W = 340;
-const MIN_H = 250;
+const MIN_H = 214;
 
 registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 
