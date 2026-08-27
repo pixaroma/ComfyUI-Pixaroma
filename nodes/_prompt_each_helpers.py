@@ -328,7 +328,16 @@ def parse_state(raw):
         return state
     try:
         data = json.loads(raw)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, RecursionError):
+        # RecursionError is the one the obvious pair misses. CPython's JSON
+        # decoder recurses per nesting level, so a blob that is nothing but
+        # "[" * 20000 + "]" * 20000 - which does not even have to resemble the
+        # state schema, since this raises long before the isinstance(dict)
+        # check - threw straight out of the node. MEASURED on 3.14: fine at
+        # 5000, raises at 20000; a different interpreter will have a different
+        # threshold, which is exactly why the guard is unconditional rather
+        # than a depth check. This function's contract is that a wrong value
+        # produces the defaults and NEVER an exception.
         return state
     if not isinstance(data, dict):
         return state
