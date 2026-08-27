@@ -295,6 +295,61 @@ def check_at_mentions():
             )
 
 
+def check_css_prefix_collisions():
+    """Two node directories DEFINING the same .pix-xx- prefix share a namespace.
+
+    Every node's CSS is injected into ONE shared page, once per node type on
+    first instantiation, and it STAYS after the node is removed. So two nodes
+    on the same prefix are two nodes writing the same rules, and the only
+    thing deciding which wins is INJECTION ORDER (identical specificity means
+    the later rule wins per-property).
+
+    Found live 2026-08-27, after being reported twice as "Prompt Multi rows
+    crushed and overlapping". Monitor used .pix-pm- for performance monitor
+    while Prompt Multi used .pix-pm- for prompt multi, and Monitor's
+    `.pix-pm-row { height: calc(13px * var(--pm-s,1)) }` - correct for its own
+    13px VRAM readout lines - collapsed Prompt Multi's rows to 13px whenever a
+    Monitor node happened to load first. It presented as an environment bug:
+    it came and went, changing workflows triggered it, a refresh cleared it,
+    and it would not reproduce on a canvas holding only a Prompt Multi. Two
+    plausible-but-wrong theories were shipped before the real cause was found.
+
+    A convention drifts; a gate does not. Monitor is now .pix-mon-.
+
+    Directories that legitimately publish shared classes are exempt.
+    """
+    SHARED = {"shared", "framework", "help_toolbar", "node_colors"}
+    # a RULE DEFINITION, not a mention in a comment or a querySelector call
+    rule = re.compile(r"(\.pix-[a-z0-9]+-)[a-z0-9_-]*[^{}\n]{0,80}\{")
+    owners = {}
+    for rel in tracked_files():
+        parts = rel.replace("\\", "/").split("/")
+        if len(parts) < 2 or parts[0] != "js":
+            continue
+        if not (rel.endswith(".mjs") or rel.endswith(".js")):
+            continue
+        node_dir = parts[1]
+        if node_dir in SHARED:
+            continue
+        try:
+            with open(os.path.join(REPO, rel), "r", encoding="utf-8") as f:
+                text = f.read()
+        except OSError:
+            continue
+        for m in rule.finditer(text):
+            owners.setdefault(m.group(1), set()).add(node_dir)
+    for prefix, dirs in sorted(owners.items()):
+        if len(dirs) > 1:
+            failures.append(
+                "CSS prefix %s is defined by more than one node: %s.\n"
+                "        They share one namespace on the page, so whichever node loads\n"
+                "        LAST silently restyles the other. Give each its own prefix\n"
+                "        (prefer the node's short NAME over initials, e.g. pix-mon-\n"
+                "        not pix-pm-). See CLAUDE.md node UI convention #38."
+                % (prefix, ", ".join(sorted(dirs)))
+            )
+
+
 def _module_int(tree, want):
     """Module-level `want = <int literal>` in an already-parsed tree, else None."""
     for stmt in tree.body:
@@ -426,6 +481,7 @@ def main():
     check_changelog(data)
     check_at_mentions()
     check_output_arity()
+    check_css_prefix_collisions()
 
     if failures:
         print("RELEASE PREFLIGHT FAILED (%d problem%s)\n"

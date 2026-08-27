@@ -329,8 +329,8 @@ function installPmBodyHook() {
 
 function buildVueFace(node) {
   if (node._pmRoot) return;
-  const root = el("div", "pix-pm-root");
-  const screen = el("div", "pix-pm-screen");
+  const root = el("div", "pix-mon-root");
+  const screen = el("div", "pix-mon-screen");
   root.appendChild(screen);
   node._pmRoot = root;
   node._pmScreen = screen;

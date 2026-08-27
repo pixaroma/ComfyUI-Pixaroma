@@ -56,7 +56,7 @@ function outsideClose(e) {
   // the face's OWN buttons (Nodes 2.0, where they are real DOM): pressing Free
   // VRAM should not dismiss the panel, and Settings toggles it through
   // openSettingsPanel's was-open check instead
-  if (e.target.closest?.(".pix-pm-btn")) return;
+  if (e.target.closest?.(".pix-mon-btn")) return;
   _lastOutsideClose = { node: _panelNode, at: Date.now() };
   closeSettingsPanel();
 }
@@ -100,15 +100,15 @@ export function isPanelOpenFor(node) {
 // ── small builders ──────────────────────────────────────────────────────────
 
 function section(body, label, sub) {
-  const wrap = el("div", "pix-pm-sect");
-  if (label) wrap.appendChild(el("div", "pix-pm-plab", label));
-  if (sub) wrap.appendChild(el("div", "pix-pm-psub", sub));
+  const wrap = el("div", "pix-mon-sect");
+  if (label) wrap.appendChild(el("div", "pix-mon-plab", label));
+  if (sub) wrap.appendChild(el("div", "pix-mon-psub", sub));
   body.appendChild(wrap);
   return wrap;
 }
 
 function chipRow(wrap, items, isOn, onPick, isDisabled) {
-  const grid = el("div", "pix-pm-bgrid");
+  const grid = el("div", "pix-mon-bgrid");
   const chips = {};
   const sync = () => {
     for (const it of items) {
@@ -117,7 +117,7 @@ function chipRow(wrap, items, isOn, onPick, isDisabled) {
     }
   };
   for (const it of items) {
-    const b = el("button", "pix-pm-bchip", it.label);
+    const b = el("button", "pix-mon-bchip", it.label);
     b.type = "button";
     if (it.hint) b.title = it.hint;
     chips[it.key] = b;
@@ -140,9 +140,9 @@ function chipRow(wrap, items, isOn, onPick, isDisabled) {
 }
 
 function switchRow(wrap, node, key, label, sub, after) {
-  const row = el("div", "pix-pm-prow");
-  const sw = el("span", "pix-pm-sw" + (readState(node)[key] ? " on" : ""));
-  // the KNOB. The CSS styles `.pix-pm-sw i` but nothing created it, so every
+  const row = el("div", "pix-mon-prow");
+  const sw = el("span", "pix-mon-sw" + (readState(node)[key] ? " on" : ""));
+  // the KNOB. The CSS styles `.pix-mon-sw i` but nothing created it, so every
   // switch rendered as a bare orange pill with no visible on/off state
   // (user-reported with a screenshot, 2026-08-24)
   sw.appendChild(el("i"));
@@ -163,7 +163,7 @@ function switchRow(wrap, node, key, label, sub, after) {
       toggle();
     }
   });
-  const txt = el("div", "pix-pm-ptxt");
+  const txt = el("div", "pix-mon-ptxt");
   txt.appendChild(el("div", "t", label));
   if (sub) txt.appendChild(el("div", "s", sub));
   row.appendChild(sw);
@@ -173,14 +173,14 @@ function switchRow(wrap, node, key, label, sub, after) {
 }
 
 function sliderRow(wrap, { min, max, step, value, format, onInput }) {
-  const row = el("div", "pix-pm-prow");
-  const sl = el("input", "pix-pm-qsl");
+  const row = el("div", "pix-mon-prow");
+  const sl = el("input", "pix-mon-qsl");
   sl.type = "range";
   sl.min = String(min);
   sl.max = String(max);
   sl.step = String(step);
   sl.value = String(value);
-  const out = el("span", "pix-pm-qval");
+  const out = el("span", "pix-mon-qval");
   const show = () => {
     out.textContent = format(Number(sl.value));
     const f = ((Number(sl.value) - min) / (max - min)) * 100;
@@ -207,24 +207,24 @@ export function openSettingsPanel(node, onChange) {
   injectCSS();
   _onChange = onChange || null;
 
-  const panel = el("div", "pix-pm-panel");
+  const panel = el("div", "pix-mon-panel");
   _panel = panel;
   _panelNode = node;
   applyAccent(panel, node);   // a body-level panel does not inherit the node's var
 
-  const head = el("div", "pix-pm-phead");
+  const head = el("div", "pix-mon-phead");
   head.appendChild(el("span", null, "Monitor settings"));
-  const x = el("button", "pix-pm-px", "✕");
+  const x = el("button", "pix-mon-px", "✕");
   x.type = "button";
   x.onclick = closeSettingsPanel;
   head.appendChild(x);
   panel.appendChild(head);
   makeDraggable(panel, head, {
     onUserMove: () => { _userMoved = true; },
-    ignoreSelector: ".pix-pm-px",
+    ignoreSelector: ".pix-mon-px",
   });
 
-  const body = el("div", "pix-pm-pbody");
+  const body = el("div", "pix-mon-pbody");
 
   // ── layout ──
   const lWrap = section(body, "Layout");
@@ -303,7 +303,7 @@ export function openSettingsPanel(node, onChange) {
 
   // ── reset ──
   const rWrap = section(body, "Reset");
-  const rBtn = el("button", "pix-pm-bchip", "Back to the defaults");
+  const rBtn = el("button", "pix-mon-bchip", "Back to the defaults");
   rBtn.type = "button";
   rBtn.title = "Put every setting on this monitor back to how it started. The colour is left alone.";
   rBtn.onclick = () => {
