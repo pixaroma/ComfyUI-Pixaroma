@@ -403,24 +403,18 @@ export function updateCount(parts, result, split, wiredState) {
 
   count.classList.toggle("is-capped", !!truncated);
 
-  if (wiredState === "replace") {
-    count.classList.remove("is-empty");
-    count.textContent = "using the wired text";
-    count.title =
-      "The prompts are coming from the node wired into the text input, so the "
-      + "count is only known once the workflow runs.";
-    return;
-  }
+  // The browser genuinely cannot know what will arrive on the wire - it is
+  // produced upstream at execution time - and a guessed number would read as a
+  // fact, so say what is known and stop there.
+  count.classList.toggle("is-empty", total === 0 && !wiredState);
 
-  count.classList.toggle("is-empty", total === 0 && wiredState !== "add");
-
-  if (wiredState === "add") {
+  if (wiredState) {
     count.innerHTML = "";
     count.appendChild(el("b", null, String(total)));
-    count.appendChild(document.createTextNode(" typed + the wired text"));
+    count.appendChild(document.createTextNode(" here + the wired text"));
     count.title =
-      "These " + total + " plus however many arrive on the text input. Settings "
-      + "has a Replace option if you want only the wired ones.";
+      "These " + total + " rows, then however many prompts arrive on the text "
+      + "input. Press Reset if you want only the wired ones.";
     return;
   }
 
@@ -447,20 +441,13 @@ export function updateCount(parts, result, split, wiredState) {
     : "This Run will produce " + total + " " + promptWord + ", one after another.";
 }
 
-// `wiredState` is "replace", "add", or null when nothing is wired.
-//
-// In Replace mode the rows are IGNORED at run time, so the whole list is dimmed
-// and made read-only. What is typed is kept, not cleared, so unplugging the wire
-// brings it straight back. Same wired-text lock Text Overlay uses.
+// The wired input is ADDITIVE, so the rows are never ignored and never locked -
+// this only clears any lock a previous build left on a live node.
 export function applyState(parts, st, wiredState) {
-  const locked = wiredState === "replace";
-  parts.rows.classList.toggle("is-wired", locked);
+  parts.rows.classList.remove("is-wired");
   for (const ta of parts.rows.querySelectorAll(".pix-each-rowta")) {
-    ta.readOnly = locked;
-    ta.title = locked
-      ? "Ignored while text is wired in: the prompts come from that node instead. "
-        + "Unplug it, or switch to Add in the settings, to use these."
-      : "";
+    if (ta.readOnly) ta.readOnly = false;
+    if (ta.title) ta.title = "";
   }
 }
 

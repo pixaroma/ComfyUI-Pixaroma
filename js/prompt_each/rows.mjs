@@ -1,15 +1,16 @@
 // Prompt Each Pixaroma - the Rows view: one box + toggle per prompt.
 //
-// THE TEXT IS THE ONLY STATE. A row is a parsed view of one piece of
-// state.text, and a switched-off row is simply a piece starting with "#". So
-// the two views can never drift, switching between them is lossless in both
-// directions, there is no second store to migrate, and a person can switch a
-// prompt off by typing as well as by clicking. `#` also means a Save Text file
-// pasted in here has its "# <date>" lines skipped for free.
+// ROWS ARE THE STATE (see core.mjs). The two converters below are ONLY for the
+// places that genuinely deal in one block of text - Copy, Paste, and opening a
+// workflow saved by the first build of this node. They must never be used to
+// store the rows: a row may contain newlines of its own, and newline is the
+// separator here, so a round trip through text tears such a row apart.
 //
-// The reading rules match nodes/_prompt_each_helpers.py exactly (pinned by the
-// parity harness): leading whitespace is ignored, "\#" is an escaped literal
-// hash, and anything else starting with "#" is off.
+// In that text form a switched-off row is a line starting with "#", which is
+// what makes Copy keep the switches and makes a pasted Save Text file skip its
+// "# <date>" lines for free. The rules match nodes/_prompt_each_helpers.py:
+// leading whitespace ignored, "\#" is an escaped literal hash, anything else
+// starting with "#" is off.
 
 import { splitText, SPLIT_BLANK } from "./expand.mjs";
 import { el } from "./ui.mjs";
@@ -84,7 +85,7 @@ export function renderRows(parts, st, handlers) {
   const host = parts.rows;
   if (!host) return;
   host.innerHTML = "";
-  const rows = textToRows(st.text, st.split);
+  const rows = Array.isArray(st.rows) && st.rows.length ? st.rows : [{ text: "", enabled: true }];
 
   rows.forEach((row, i) => {
     const el_ = el("div", "pix-each-row" + (row.enabled === false ? " is-off" : ""));

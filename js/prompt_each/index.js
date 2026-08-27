@@ -5,7 +5,7 @@ import {
 import { injectCSS, buildRoot, applyState, updateCount, placeBand,
   contentHeight, WIDGET_MIN_H } from "./ui.mjs";
 import { textToRows, rowsToText, renderRows } from "./rows.mjs";
-import { buildPrompts } from "./expand.mjs";
+import { buildFromPieces } from "./expand.mjs";
 import { openSettingsPanel, closeSettingsPanelFor, isPanelOpenFor } from "./settings.mjs";
 import { PROMPT_EACH_HELP } from "./help.mjs";
 import {
@@ -63,12 +63,14 @@ function openPanel(node) {
   openSettingsPanel(node, () => refresh(node));
 }
 
-// Is the optional `text` input wired? Returns the mode that applies ("replace"
-// or "add"), or null when nothing is connected.
-function wiredState(node) {
+// Is the optional `text` input wired? Purely ADDITIVE now: whatever arrives is
+// split into extra prompts and run AFTER the rows. It used to be able to replace
+// them, which meant the rows on screen were not what ran - invisible, and the
+// first thing anyone asked about the input. To run ONLY the wired prompts, press
+// Reset: the one empty row left behind is skipped as empty.
+function isWired(node) {
   const slot = node?.inputs?.find((i) => i && i.name === "text");
-  if (!slot || slot.link == null) return null;
-  return readState(node).wiredMode;
+  return !!(slot && slot.link != null);
 }
 
 // Grow the node so the rendered body fits. Mirrors Prompt Stack: the rows list
@@ -79,6 +81,8 @@ function wiredState(node) {
 // Every caller is a user action, and isGraphLoading is the belt.
 function setNodeHeight(node, h) {
   node.size[1] = h;
+  // Remember what WE set, so ownsHeight can tell our height from the user's.
+  node._pixEachOwnH = h;
   // A bare size[1] write is silently reverted by Nodes 2.0's reactive layout
   // when the node was last sized in the OTHER renderer; setSize commits through
   // the official path. Keep both.
@@ -104,6 +108,14 @@ function chromeAllowance(node) {
   return slots * slotH + 26;
 }
 
+// Does the node still have the height WE last gave it? If so we may shrink it
+// back when the content shrinks; if the user has dragged it since, we must not.
+// Runtime-only (never serialised): after a reload it is unset, so a saved size
+// is respected until onConfigure decides it looks like a fitted one.
+function ownsHeight(node) {
+  return node._pixEachOwnH != null && Math.abs(node.size[1] - node._pixEachOwnH) < 1.5;
+}
+
 // Grow only, so a node the user made taller keeps the size they chose.
 function growNodeToContent(node) {
   const parts = node?._pixEachParts;
@@ -126,7 +138,10 @@ function fitNodeToContent(node) {
 // size off a requestAnimationFrame made it depend on a frame landing, which
 // left the action row outside the node whenever one was dropped.
 function reflow(node, fit) {
-  if (fit) fitNodeToContent(node);
+  // Fit whenever the height is ours: otherwise a row that SHRINKS (deleting a
+  // line from its box) leaves the node tall and a gap under the buttons, which
+  // is exactly what "typing makes extra space at the bottom" was.
+  if (fit || ownsHeight(node)) fitNodeToContent(node);
   else growNodeToContent(node);
   node.setDirtyCanvas(true, true);
 
@@ -144,6 +159,9 @@ function reflow(node, fit) {
     const parts = node?._pixEachParts;
     if (!parts || isGraphLoading()) return;
     if (node.size[1] !== wrote) return;                 // the user moved it: leave it alone
+    // ...and it must still be OUR height. Without this the correction shrank a
+    // node the user had deliberately dragged taller, the moment they typed.
+    if (!ownsHeight(node)) return;
     const settled = contentHeight(parts.root) + chromeAllowance(node);
     if (settled < wrote) setNodeHeight(node, Math.max(DEFAULT_H, settled));
   }, 0);
@@ -156,7 +174,7 @@ function refresh(node, rebuildRows = true) {
   const parts = node?._pixEachParts;
   if (!parts) return;
   const st = readState(node);
-  const ws = wiredState(node);
+  const ws = isWired(node);
   applyState(parts, st, ws);
   // Rebuilding the row list steals focus mid-word, so a keystroke passes
   // rebuildRows=false: the state is already correct, only the count needs to
@@ -168,15 +186,14 @@ function refresh(node, rebuildRows = true) {
   // Stack's. Reset stays live while anything differs from the default, which
   // includes a switched-off row even if no text is typed.
   if (parts.clearAllBtn && parts.resetBtn) {
-    const rows = textToRows(st.text, st.split);
+    const rows = st.rows;
     const anyText = rows.some((r) => r.text && r.text.trim());
     const anyOff = rows.some((r) => r.enabled === false);
     parts.clearAllBtn.disabled = !anyText;
     parts.resetBtn.disabled = !(anyText || anyOff || rows.length !== 1);
   }
 
-  const result = buildPrompts(st.text, {
-    split: st.split,
+  const result = buildFromPieces(st.rows.filter((r) => r.enabled !== false).map((r) => r.text), {
     expand: st.expand,
     trim: st.trim,
     skipEmpty: st.skipEmpty,
@@ -185,10 +202,12 @@ function refresh(node, rebuildRows = true) {
   updateCount(parts, result, st.split, ws);
 }
 
-// Write a row list back into the single source of truth: state.text.
+// Write the row list back. Rows ARE the state - never joined into a string and
+// re-split, which is what duplicated content on every keystroke.
 function commitRows(node, rows, rebuild = true, fit = false) {
   const st = readState(node);
-  st.text = rowsToText(rows, st.split);
+  st.rows = (rows && rows.length ? rows : [{ text: "", enabled: true }])
+    .map((r) => ({ text: typeof r.text === "string" ? r.text : "", enabled: r.enabled !== false }));
   writeState(node, st);
   refresh(node, rebuild);
   // A rebuild means the list changed shape, so the node has to be resized
@@ -203,21 +222,21 @@ function wireRow(node, rowEl, i, refs) {
 
   ta.addEventListener("input", () => {
     const st = readState(node);
-    const rows = textToRows(st.text, st.split);
+    const rows = st.rows.map((r) => ({ ...r }));
     if (!rows[i]) return;
     rows[i].text = ta.value;
     // rebuild=false: keep the caret where the user is typing.
     commitRows(node, rows, false);
     ta.style.height = "auto";
     ta.style.height = Math.min(Math.max(ta.scrollHeight, 30), 140) + "px";
-    // the box just got taller, so the node has to keep up; this no-ops
-    // unless the content genuinely outgrew the node
-    growNodeToContent(node);
+    // the box changed height, so the node follows it - in BOTH directions when
+    // the height is ours (see reflow)
+    reflow(node, false);
   });
 
   tog.addEventListener("click", () => {
     const st = readState(node);
-    const rows = textToRows(st.text, st.split);
+    const rows = st.rows.map((r) => ({ ...r }));
     if (!rows[i]) return;
     rows[i].enabled = rows[i].enabled === false;
     commitRows(node, rows);
@@ -225,7 +244,7 @@ function wireRow(node, rowEl, i, refs) {
 
   del.addEventListener("click", () => {
     const st = readState(node);
-    const rows = textToRows(st.text, st.split);
+    const rows = st.rows.map((r) => ({ ...r }));
     if (!rows[i]) return;
     rows.splice(i, 1);
     if (!rows.length) rows.push({ text: "", enabled: true });
@@ -269,7 +288,7 @@ function wireRow(node, rowEl, i, refs) {
     const above = e.clientY < r.top + r.height / 2;
     let to = above ? i : i + 1;
     const st = readState(node);
-    const rows = textToRows(st.text, st.split);
+    const rows = st.rows.map((r) => ({ ...r }));
     if (from < to) to -= 1;
     if (from === to) return;
     const [moved] = rows.splice(from, 1);
@@ -314,10 +333,10 @@ function wireEvents(node, parts) {
   // people already have the habit: Add row appends, Clear all empties the text
   // but KEEPS the rows and their switches, Reset goes back to one empty row.
   // Both destructive ones confirm first, like Prompt Stack's do.
-  const rowsNow = () => textToRows(readState(node).text, readState(node).split);
+  const rowsNow = () => readState(node).rows.map((r) => ({ ...r }));
 
   addBtn.addEventListener("click", () => {
-    if (wiredState(node) === "replace") {
+    if (false) {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
@@ -329,7 +348,7 @@ function wireEvents(node, parts) {
   });
 
   clearAllBtn.addEventListener("click", async () => {
-    if (wiredState(node) === "replace") {
+    if (false) {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
@@ -346,7 +365,7 @@ function wireEvents(node, parts) {
   });
 
   resetBtn.addEventListener("click", async () => {
-    if (wiredState(node) === "replace") {
+    if (false) {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
@@ -362,14 +381,15 @@ function wireEvents(node, parts) {
 
   copyBtn.addEventListener("click", async () => {
     const st = readState(node);
-    if (!st.text.trim()) {
+    const asText = rowsToText(st.rows, st.split);
+    if (!asText.trim()) {
       toast("Nothing to copy");
       return;
     }
     try {
       // the rows as a person would write them: one prompt per line, and a
       // switched-off one keeps its "#" so pasting it back restores the switches
-      await navigator.clipboard.writeText(st.text);
+      await navigator.clipboard.writeText(asText);
       flash(copyBtn, "Copied");
     } catch {
       toast("Could not copy to the clipboard");
@@ -379,7 +399,7 @@ function wireEvents(node, parts) {
   // This is the bulk path, and the reason the node does not need a second view:
   // paste a hundred lines and you get a hundred rows.
   pasteBtn.addEventListener("click", async () => {
-    if (wiredState(node) === "replace") {
+    if (false) {
       toast("Text is wired in. Unplug it, or switch to Add in the settings.");
       return;
     }
@@ -397,7 +417,7 @@ function wireEvents(node, parts) {
       return;
     }
     const st = readState(node);
-    if (st.text.trim()) {
+    if (st.rows.some((r) => r.text && r.text.trim())) {
       const ok = await pixConfirm({
         title: "Replace every prompt?",
         message: "The rows on this node will be replaced by what is on the clipboard, one prompt per line.",
@@ -406,7 +426,7 @@ function wireEvents(node, parts) {
       });
       if (!ok) return;
     }
-    st.text = text;
+    st.rows = textToRows(text, st.split);
     writeState(node, st);
     refresh(node);
     reflow(node, true);
@@ -437,6 +457,8 @@ app.registerExtension({
       // would run it AFTER configure and clobber the restored size.
       if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
       if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
+      // A fresh drop is ours, so it keeps hugging its content from the start.
+      node._pixEachOwnH = node.size[1];
 
       // The DOM build stays deferred: nodeCreated fires BEFORE configure (Vue
       // Compat #8), so rendering now would show the default and flash to the
@@ -502,6 +524,8 @@ app.registerExtension({
     // clamped size on a workflow switch.
     const origOnResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
+      // A real drag of the resize handle means the size is theirs from now on.
+      if (app.canvas?.resizing_node === this) this._pixEachOwnH = null;
       if (!isVueNodes() && !isGraphLoading()) {
         if (size[0] < MIN_W) size[0] = MIN_W;
         if (size[1] < MIN_H) size[1] = MIN_H;
@@ -583,14 +607,16 @@ app.graphToPrompt = async function (...args) {
         const st = readState(node);
         entry.inputs = entry.inputs || {};
         entry.inputs.PromptEachState = JSON.stringify({
-          version: 1,
-          text: st.text,
+          version: 2,
+          // ALREADY SEPARATED. Never a joined blob: a row may contain
+          // newlines and Python would split it back into several prompts.
+          prompts: st.rows.filter((r) => r.enabled !== false).map((r) => r.text),
           split: st.split,
           expand: st.expand,
           trim: st.trim,
           skipEmpty: st.skipEmpty,
           cap: st.cap ?? DEFAULT_CAP,
-          wiredMode: st.wiredMode,
+
         });
       }
     }

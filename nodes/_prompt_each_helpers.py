@@ -187,15 +187,16 @@ def expand_brackets(text, ceiling=_CEILING):
 # the whole pipeline
 # --------------------------------------------------------------------------
 
-def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
-                  skip_empty=True, cap=DEFAULT_CAP):
-    """Turn typed text into the prompt list. Returns Result(prompts, pieces, truncated).
+def build_from_pieces(pieces, expand=True, trim=True, skip_empty=True,
+                      cap=DEFAULT_CAP):
+    """Turn ALREADY-SEPARATED prompt pieces into the final list.
 
-    `pieces` is how many prompts there were BEFORE expansion, which is the left
-    half of the node's count chip ("4 lines -> 12 prompts").
+    This is the real pipeline. It takes pieces rather than text because the
+    node's rows are separate values in the state - a row may itself contain
+    newlines, and splitting a joined blob would tear such a row into several
+    prompts (it did: typing Enter inside a row duplicated content on every
+    keystroke until the count ran away).
     """
-    if split not in SPLIT_MODES:
-        split = SPLIT_LINE
     try:
         cap = DEFAULT_CAP if cap is None else int(cap)
     except (TypeError, ValueError):
@@ -203,28 +204,28 @@ def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
     if cap < 0:
         cap = 0
 
-    raw = split_text(text, split)
-
-    pieces = []
-    for piece in raw:
+    kept = []
+    for piece in pieces or []:
+        if not isinstance(piece, str):
+            continue
         if trim:
             piece = piece.strip()
         if skip_empty and not piece:
             continue
-        # A prompt starting with "#" is switched OFF. That is what the Rows
-        # view's toggle writes, so the two views are the same string and can
-        # never drift apart - and it means a Save Text file's "# <date>" lines
-        # are skipped for free rather than queued as prompts.
-        # The escape is checked FIRST so a genuine "#1 portrait" still works.
+        # A piece starting with "#" is switched OFF. Rows carry their own
+        # enabled flag now, so this only still matters for text that arrives on
+        # the wire or through Paste - including a Save Text file, whose
+        # "# <date>" lines are skipped for free. The escape is checked FIRST so
+        # a genuine "#1 portrait" still works.
         if piece.startswith("\\#"):
             piece = piece[1:]
         elif piece.startswith("#"):
             continue
-        pieces.append(piece)
+        kept.append(piece)
 
     prompts = []
     truncated = False
-    for piece in pieces:
+    for piece in kept:
         variants = expand_brackets(piece) if expand else [piece]
         for variant in variants:
             if trim:
@@ -238,7 +239,17 @@ def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
         if truncated:
             break
 
-    return Result(prompts, len(pieces), truncated)
+    return Result(prompts, len(kept), truncated)
+
+
+def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
+                  skip_empty=True, cap=DEFAULT_CAP):
+    """Split one block of text, then run the pipeline. Used for the wired input
+    and for pasted text; the node's own rows go through build_from_pieces."""
+    if split not in SPLIT_MODES:
+        split = SPLIT_LINE
+    return build_from_pieces(split_text(text, split), expand=expand, trim=trim,
+                             skip_empty=skip_empty, cap=cap)
 
 
 # --------------------------------------------------------------------------
@@ -246,14 +257,16 @@ def build_prompts(text, split=SPLIT_LINE, expand=True, trim=True,
 # --------------------------------------------------------------------------
 
 DEFAULT_STATE = {
-    "version": 1,
+    "version": 2,
+    # The node's rows, already separated. `text` is only still read so a
+    # workflow saved by the very first build still opens.
+    "prompts": [],
     "text": "",
     "split": SPLIT_LINE,
     "expand": True,
     "trim": True,
     "skipEmpty": True,
     "cap": DEFAULT_CAP,
-    "wiredMode": "replace",
 }
 
 
@@ -276,6 +289,8 @@ def parse_state(raw):
 
     if isinstance(data.get("text"), str):
         state["text"] = data["text"]
+    if isinstance(data.get("prompts"), list):
+        state["prompts"] = [x for x in data["prompts"] if isinstance(x, str)]
     if data.get("split") in SPLIT_MODES:
         state["split"] = data["split"]
     for key in ("expand", "trim", "skipEmpty"):
@@ -286,19 +301,7 @@ def parse_state(raw):
         pass  # bool is an int subclass in Python; a toggle is not a cap
     elif isinstance(cap, (int, float)) and cap == cap:  # reject NaN
         state["cap"] = max(0, int(cap))
-    if data.get("wiredMode") in ("replace", "add"):
-        state["wiredMode"] = data["wiredMode"]
+
     return state
 
 
-def combine_wired(typed, wired, mode="replace"):
-    """Fold a wired `text` input into the typed box, per the gear setting."""
-    wired = wired if isinstance(wired, str) else ""
-    typed = typed if isinstance(typed, str) else ""
-    if not wired.strip():
-        return typed
-    if mode == "add":
-        if not typed.strip():
-            return wired
-        return typed.rstrip("\n") + "\n" + wired
-    return wired

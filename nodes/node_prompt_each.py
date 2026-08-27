@@ -25,7 +25,11 @@ js/prompt_each/expand.mjs so the node face can show the same count the executor
 will produce.
 """
 
-from ._prompt_each_helpers import build_prompts, combine_wired, parse_state
+from ._prompt_each_helpers import (
+    build_from_pieces,
+    parse_state,
+    split_text,
+)
 
 
 class PixaromaPromptEach:
@@ -65,11 +69,11 @@ class PixaromaPromptEach:
                 "text": ("STRING", {
                     "forceInput": True,
                     "tooltip": (
-                        "Prompts from another node, instead of typing them here. "
-                        "Wire a Text, an AI Prompt, a Save Text buffer, or Prompt "
-                        "Pixaroma so its tag library feeds the list. By default "
-                        "this replaces what is typed on the node; the gear can "
-                        "make it add to it instead."
+                        "Extra prompts from another node, run after the rows on "
+                        "this one. Wire a Text, an AI Prompt, a Save Text buffer, "
+                        "or Prompt Pixaroma so its tag library feeds the list. "
+                        "One prompt per line. To run only these, press Reset so "
+                        "the node has no prompts of its own."
                     ),
                 }),
             },
@@ -91,11 +95,26 @@ class PixaromaPromptEach:
 
     def build(self, text=None, PromptEachState="{}"):
         state = parse_state(PromptEachState)
-        source = combine_wired(state["text"], text, state["wiredMode"])
 
-        result = build_prompts(
-            source,
-            split=state["split"],
+        # The node's own rows arrive ALREADY SEPARATED. They must not be joined
+        # and re-split: a row may contain newlines of its own, and splitting a
+        # joined blob tears such a row into several prompts. `text` is only read
+        # when `prompts` is absent, so a workflow saved by the first build of
+        # this node still opens.
+        pieces = list(state["prompts"])
+        if not pieces and state["text"]:
+            pieces = split_text(state["text"], state["split"])
+
+        # Text on the wire IS one block, so that one IS split here - and it is
+        # purely ADDITIVE: it runs after the rows and never replaces them, so
+        # what is on the node is always part of what runs. To use only the wired
+        # prompts, press Reset and leave the single empty row (it is skipped).
+        wired = text if isinstance(text, str) else ""
+        if wired.strip():
+            pieces = pieces + split_text(wired, state["split"])
+
+        result = build_from_pieces(
+            pieces,
             expand=state["expand"],
             trim=state["trim"],
             skip_empty=state["skipEmpty"],

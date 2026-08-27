@@ -147,11 +147,16 @@ export function expandBrackets(text) {
   return expandParts(parts, CEILING).map(restoreEscapes);
 }
 
-// Turn typed text into the prompt list.
-// Returns { prompts, pieces, truncated }; `pieces` is how many prompts there
-// were BEFORE expansion, which is the left half of the node's count chip.
-export function buildPrompts(text, opts = {}) {
-  const split = SPLIT_MODES.indexOf(opts.split) !== -1 ? opts.split : SPLIT_LINE;
+// Turn ALREADY-SEPARATED pieces into the prompt list. Mirror of
+// _prompt_each_helpers.build_from_pieces.
+//
+// Pieces, not text: the node's rows are separate values, and a row may contain
+// newlines of its own, so joining them and splitting again tears such a row into
+// several prompts.
+//
+// Returns { prompts, pieces, truncated }; `pieces` is how many survived before
+// expansion, which is the left half of the node's counter.
+export function buildFromPieces(pieces, opts = {}) {
   const expand = opts.expand !== false;
   const trim = opts.trim !== false;
   const skipEmpty = opts.skipEmpty !== false;
@@ -162,23 +167,22 @@ export function buildPrompts(text, opts = {}) {
     : Math.floor(cap);
   if (cap < 0) cap = 0;
 
-  const raw = splitText(text, split);
-
-  const pieces = [];
-  for (let piece of raw) {
+  const kept = [];
+  for (let piece of pieces || []) {
+    if (typeof piece !== "string") continue;
     if (trim) piece = piece.trim();
     if (skipEmpty && !piece) continue;
-    // A prompt starting with "#" is switched OFF - that is what the Rows view's
-    // toggle writes, so both views are the same string and cannot drift. The
-    // escape is checked FIRST so a genuine "#1 portrait" still works.
+    // "#" switches a piece off. Rows carry their own enabled flag, so this only
+    // still applies to text that arrived through Paste or on the wire. The
+    // escape is checked FIRST so a genuine "#1 portrait" survives.
     if (piece.slice(0, 2) === "\\#") piece = piece.slice(1);
     else if (piece.charAt(0) === "#") continue;
-    pieces.push(piece);
+    kept.push(piece);
   }
 
   const prompts = [];
   let truncated = false;
-  for (const piece of pieces) {
+  for (const piece of kept) {
     const variants = expand ? expandBrackets(piece) : [piece];
     for (let variant of variants) {
       if (trim) variant = variant.trim();
@@ -192,5 +196,12 @@ export function buildPrompts(text, opts = {}) {
     if (truncated) break;
   }
 
-  return { prompts, pieces: pieces.length, truncated };
+  return { prompts, pieces: kept.length, truncated };
+}
+
+// Split one block of text, then run the pipeline. For the wired input and for
+// pasted text; the node's own rows go through buildFromPieces.
+export function buildPrompts(text, opts = {}) {
+  const split = SPLIT_MODES.indexOf(opts.split) !== -1 ? opts.split : SPLIT_LINE;
+  return buildFromPieces(splitText(text, split), opts);
 }

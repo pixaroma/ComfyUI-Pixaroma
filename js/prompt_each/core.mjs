@@ -1,3 +1,5 @@
+import { textToRows } from "./rows.mjs";
+
 // Prompt Each Pixaroma - state.
 //
 // Everything the node remembers lives on node.properties.promptEachState, which
@@ -15,28 +17,33 @@ export const SPLIT_LINE = "line";
 export const SPLIT_BLANK = "blank";
 const SPLITS = [SPLIT_LINE, SPLIT_BLANK];
 
-export const WIRED_REPLACE = "replace";
-export const WIRED_ADD = "add";
-const WIRED = [WIRED_REPLACE, WIRED_ADD];
-
-// The node has ONE face: a row per prompt. The text is still the only STATE
-// (see rows.mjs) - a row is a parsed view of one line, and a switched-off row is
-// a line starting with "#" - but that encoding is now purely internal and
-// nobody ever sees it.
+// ROWS ARE THE STATE. They were briefly stored as one newline-delimited string
+// with "#" marking a switched-off row, which worked while there was a Text view
+// to justify it - and then quietly corrupted data once there was not: newline
+// was the ROW SEPARATOR, so pressing Enter inside a row spawned phantom rows,
+// typing wrote to the wrong index, and the content DUPLICATED on every keystroke
+// (one row reading "cat" then Enter then "dog" became five prompts, then
+// fifteen). A row's text is its own value and must never be joined and re-split.
+//
+// The string form survives only where it belongs: Copy, Paste, and the wired
+// text input, all of which genuinely are one block of text.
 
 export const DEFAULT_CAP = 200;
 export const MAX_CAP = 4096;
 
+export function defaultRow(text = "") {
+  return { text, enabled: true };
+}
+
 export function defaultState() {
   return {
-    version: 1,
-    text: "",
+    version: 2,
+    rows: [defaultRow()],
     split: SPLIT_LINE,
     expand: true,
     trim: true,
     skipEmpty: true,
     cap: DEFAULT_CAP,
-    wiredMode: WIRED_REPLACE,
   };
 }
 
@@ -48,9 +55,17 @@ export function readState(node) {
   const raw = node?.properties?.[STATE_PROP];
   if (!raw || typeof raw !== "object") return st;
 
-  if (typeof raw.text === "string") st.text = raw.text;
+  if (Array.isArray(raw.rows)) {
+    const rows = raw.rows
+      .filter((r) => r && typeof r === "object")
+      .map((r) => ({ text: typeof r.text === "string" ? r.text : "",
+                     enabled: r.enabled !== false }));
+    st.rows = rows.length ? rows : [defaultRow()];
+  } else if (typeof raw.text === "string" && raw.text) {
+    // a workflow saved by the very first build of this node
+    st.rows = textToRows(raw.text, SPLITS.indexOf(raw.split) !== -1 ? raw.split : SPLIT_LINE);
+  }
   if (SPLITS.indexOf(raw.split) !== -1) st.split = raw.split;
-  if (WIRED.indexOf(raw.wiredMode) !== -1) st.wiredMode = raw.wiredMode;
   for (const key of ["expand", "trim", "skipEmpty"]) {
     if (typeof raw[key] === "boolean") st[key] = raw[key];
   }

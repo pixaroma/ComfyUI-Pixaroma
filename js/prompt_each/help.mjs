@@ -35,7 +35,7 @@ export const PROMPT_EACH_HELP = {
         "Drag `prompt` into CLIP Text Encode, where you would normally put your text.",
         "That is the only wire it needs. Everything after it runs once per prompt on its own.",
         "`index` into Save Image keeps the files numbered in the order you typed them.",
-        "Nothing to type? Wire any text node into `text` on the left instead, including Text Pixaroma if you would rather edit the whole list as one block.",
+        "The `text` input on the left adds EXTRA prompts from another node, one per line, run after the rows. Wire Prompt Pixaroma into it and your whole tag library works here.",
       ],
     },
     {
@@ -74,8 +74,7 @@ export const PROMPT_EACH_HELP = {
     {
       heading: "Settings, behind the gear",
       defs: [
-        ["Split prompts on", "How a pasted list is cut into rows. New line means every line is a prompt; Blank line lets one prompt run over several lines and starts the next after an empty line."],
-        ["When text is wired in", "Replace uses only what arrives on the wire. Add puts it after whatever is typed on the node."],
+        ["Split prompts on", "How a pasted list, or text arriving on the `text` input, is cut into prompts. New line means every line is one; Blank line lets a prompt run over several lines and starts the next after an empty line. It does not affect the rows you type, which are already separate."],
         ["Expand [a|b]", "Turn the brackets off if you want them treated as ordinary text."],
         ["Trim spaces", "Drops spaces at the start and end of every prompt."],
         ["Skip empty lines", "An empty line is ignored instead of running with no prompt."],
@@ -88,6 +87,9 @@ export const PROMPT_EACH_HELP = {
         "This node has no tag list of its own, on purpose. Wire Prompt Pixaroma "
         + "into the `text` input and your whole @tag library works here: the "
         + "tags are filled in first, then the result is split into prompts.\n\n"
+        + "Anything on that input is ADDED after your rows, so what is on the "
+        + "node is always part of what runs. To use only the wired prompts, "
+        + "press Reset.\n\n"
         + "The same trick adds a shared ending to every prompt. Send `prompt` "
         + "into Text Join Two Pixaroma with your style words in the second box, "
         + "and because this node sends a list, the join happens once per prompt.",

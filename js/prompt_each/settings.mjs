@@ -14,8 +14,7 @@
 //     instantly reopens the panel.
 
 import {
-  readState, writeState, SPLIT_LINE, SPLIT_BLANK,
-  WIRED_REPLACE, WIRED_ADD, DEFAULT_CAP, MAX_CAP,
+  readState, writeState, SPLIT_LINE, SPLIT_BLANK, DEFAULT_CAP, MAX_CAP,
 } from "./core.mjs";
 import { el } from "./ui.mjs";
 import { createAccentSection } from "../shared/node_settings.mjs";
@@ -239,15 +238,6 @@ export function openSettingsPanel(node, onChange) {
   chipRow(node, splitWrap, "split", [
     { value: SPLIT_LINE, label: "New line", title: "Every line is its own prompt" },
     { value: SPLIT_BLANK, label: "Blank line", title: "An empty line starts the next prompt" },
-  ]);
-
-  // ── what a wired text input does ──
-  const wiredWrap = section(body, "When text is wired in",
-    "Replace uses only what arrives on the wire. Add puts it after whatever is "
-    + "typed on the node, so you can keep a base list and top it up.");
-  chipRow(node, wiredWrap, "wiredMode", [
-    { value: WIRED_REPLACE, label: "Replace", title: "Ignore the typed box while a wire is connected" },
-    { value: WIRED_ADD, label: "Add", title: "Typed prompts first, then the wired ones" },
   ]);
 
   // ── switches ──
