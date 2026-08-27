@@ -25,8 +25,9 @@ const CLASS = "PixaromaPromptEach";
 // Width is sized off the action row: 3 buttons at min-width 86 border-box + the
 // 28px gear + 3 gaps of 4 + 16 of root padding is ~314, plus margin.
 //
-// Height is MEASURED, not picked: one empty row is 124 of body (row 80 + gap 6
-// + action bar 23 + 15 of root padding) and the chrome is 86 - which is the
+// Height is MEASURED, not picked: one empty row is 118 of body (row 80 + gap 6
+// + action bar 23 + 8 root padding + the -6 the rows are pulled up by) and the
+// chrome is 86 - which is the
 // three 20px slot rows plus LiteGraph's own padding, NOT the 90 you get by
 // adding NODE_TITLE_HEIGHT, because the title sits above node.pos and is not
 // inside size[1] at all. A fixed 250 left 36px of dead space under the buttons
@@ -37,9 +38,9 @@ const CLASS = "PixaromaPromptEach";
 // a DOM widget, which is not ours to remove - Prompt Stack measures 48 in the
 // same place. Re-measure if a row's padding or the slot count changes.
 const DEFAULT_W = 340;
-const DEFAULT_H = 210;
+const DEFAULT_H = 204;
 const MIN_W = 340;
-const MIN_H = 210;
+const MIN_H = 204;
 
 registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 

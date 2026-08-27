@@ -25,11 +25,14 @@ export const WIDGET_MIN_H = 118;
 //   the counter   lands on the "total" row (y 54), with the whole width to
 //                 itself, which is what it needs when it reads
 //                 "12 rows -> 48 prompts"
-// Classic slot rows are at y 14 / 34 / 54 and the widget starts at y 66, so a
-// 17px row starting at 25 centres on "index" and the next centres on "total".
+// MEASURED node-local, not derived: the slot dots are at y 14 / 34 / 54 and the
+// DOM widget starts at y 76 (NOT 66 - that was `last_y`, which is not the same
+// thing, and the 10px error put both band rows visibly 9px below their labels).
+// A 17px row starting at 26 centres on "index"; the next, after a 3px gap,
+// centres on "total".
 // Calibrated to THIS slot layout (1 input / 3 outputs). Add or remove a slot and
 // it must be re-measured - the recipe is in .claude/patterns/prompt-each.md.
-const BAND_TOP = -41;
+const BAND_TOP = -50;
 const BAND_RSV_L = 8;   // line up with the text box's left edge
 const BAND_RSV_R = 76;  // keep clear of the prompt / index / total labels
 
@@ -42,7 +45,7 @@ const CSS = `
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 6px 8px 8px 8px;
+  padding: 0 8px 8px 8px;
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
@@ -57,10 +60,15 @@ const CSS = `
    pointer-events:none on the band so the painted dots and labels underneath
    stay clickable and wireable; the band is first in the root so that if the
    float is ever removed it degrades to a strip ABOVE the box, not over it. */
+/* align-items:stretch + a content-sized width is what makes the counter end
+   exactly where Paste ends: the band is as wide as its widest row, and both
+   rows take that width. When the counter reads something long it grows the band
+   instead, and Copy/Paste simply stay their own size inside it. */
 .pix-each-band {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
+  width: max-content;
   gap: 3px;
   flex-shrink: 0;
   min-width: 0;
@@ -103,7 +111,13 @@ const CSS = `
    by the node, so "it just overflows" is not a graceful failure, it is 141px of
    rows and buttons drawn on the canvas below the node. The rows themselves keep
    flex-shrink:0, so the container scrolls and no row is ever crushed. */
+/* Pulled UP into the slot area. LiteGraph starts the widget at node-local 76
+   while the "total" label ends at 64, so without this there is 20px of nothing
+   between the counter and the first row. -6 puts the rows at 70: half the gap
+   back, and still 6px clear of the label above. contentHeight counts child
+   margins, so this shortens the NODE rather than just moving content around. */
 .pix-each-rows {
+  margin-top: -6px;
   flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
@@ -184,6 +198,7 @@ const CSS = `
 
 .pix-each-count {
   flex: 0 0 auto;
+  box-sizing: border-box;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -347,11 +362,16 @@ export function placeBand(parts, floatIt) {
     if (floatIt) {
       band.style.top = BAND_TOP + "px";
       band.style.left = BAND_RSV_L + "px";
-      band.style.right = BAND_RSV_R + "px";
+      // a CEILING, not a width: the band sizes to its widest row so the counter
+      // can end where Paste ends, and this only stops a long count running under
+      // the prompt / index / total labels on the right.
+      band.style.right = "";
+      band.style.maxWidth = "calc(100% - " + (BAND_RSV_L + BAND_RSV_R) + "px)";
     } else {
       band.style.top = "";
       band.style.left = "";
       band.style.right = "";
+      band.style.maxWidth = "";
     }
   } catch {
     // A future frontend that breaks the float should cost a tidy row, never the
@@ -460,7 +480,9 @@ export function contentHeight(root) {
   for (const child of root.children) {
     if (child.offsetParent === null) continue;
     if (getComputedStyle(child).position === "absolute") continue;
-    h += Math.max(child.offsetHeight, child.scrollHeight);
+    const ccs = getComputedStyle(child);
+    h += Math.max(child.offsetHeight, child.scrollHeight)
+       + (parseFloat(ccs.marginTop) || 0) + (parseFloat(ccs.marginBottom) || 0);
     count += 1;
   }
   const cs = getComputedStyle(root);
