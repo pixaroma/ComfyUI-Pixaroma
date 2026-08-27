@@ -27,7 +27,11 @@ export const PROMPT_EACH_HELP = {
         + "will actually run.\n\n"
         + "Copy keeps the switches: a switched-off prompt is copied out as a line "
         + "starting with `#`, so pasting that list back in brings the same rows "
-        + "back switched off.",
+        + "back switched off.\n\n"
+        + "A row is controlled only by its own button, so you can safely start a "
+        + "prompt with a `#` and number your list. It is only text that arrives "
+        + "in a block, from Paste or from the `text` input, where a line "
+        + "starting with `#` is treated as switched off.",
     },
     {
       heading: "How to wire it",
