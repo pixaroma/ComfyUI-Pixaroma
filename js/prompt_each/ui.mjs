@@ -1,9 +1,9 @@
 // Prompt Each Pixaroma - the node face.
 //
-// One numbered box, one row of buttons, and a count pill overlaid in the box's
-// bottom-right corner. The pill costs no height at all, which is the whole
-// reason it lives there rather than on a strip of its own (Prompt Pack's
-// counter uses the same trick).
+// One numbered box, one row of buttons, and a count pill floated up into the
+// empty band beside the slot dots. The pill costs no height there AND does not
+// sit on the text - it was in the box's own corner first, and the overlap was
+// the first thing the user spotted.
 //
 // CSS prefix is "pix-each-", verified unique across the pack. Convention #38:
 // two nodes sharing a prefix share a namespace, and the winner is decided by
@@ -13,6 +13,19 @@
 import { ACC } from "../shared/node_settings.mjs";
 
 const CSS_ID = "pix-prompt-each-css";
+
+// The float offset, in px above the DOM widget's own top. MEASURED on this node
+// in BOTH renderers rather than guessed, and the same number works in each:
+//   Classic:   widget top at node-local 66, slot rows at 14 / 34 / 54, so the
+//              left half of 24..64 is dead space and -22 lands on the last row.
+//   Nodes 2.0: slot rows at +32 / +52 / +72 from the node top, and -22 lands on
+//              the same last row, horizontally clear of the labels (pill spans
+//              x 80..142, the "total" label starts at 339).
+// Calibrated to THIS slot layout (1 input / 3 outputs). Add or remove a slot and
+// these must be re-measured - the recipe is in .claude/patterns/prompt-each.md.
+const BAND_TOP = -22;
+const BAND_RSV_L = 8;   // line up with the text box's left edge
+const BAND_RSV_R = 76;  // keep clear of the prompt / index / total labels
 
 // NOTE: this string is a JS template literal, so a backtick anywhere inside it
 // - including in a comment - terminates it and every Pixaroma node renders with
@@ -27,6 +40,8 @@ const CSS = `
   box-sizing: border-box;
   font-family: inherit;
   color: #ddd;
+  /* the floated band is absolutely positioned against this */
+  position: relative;
 }
 
 /* The box grows with the node; it is the ONLY child allowed to shrink, and its
@@ -71,13 +86,30 @@ const CSS = `
 /* Wired: the box shows what arrived and stops taking typing. */
 .pix-each-ta.is-wired { color: #9a9a9a; background: #202020; cursor: default; }
 
-/* The count pill sits INSIDE the box's bottom-right corner, so it costs zero
-   height. pointer-events:none so it can never swallow a click meant for the
-   text underneath it. */
-.pix-each-count {
+/* The count pill lives in the empty band beside the slot dots, so it costs no
+   height AND never sits on top of the text. It is floated up out of the widget
+   flow into that dead space in BOTH renderers - measured, see placeBand.
+   pointer-events:none on the band so the painted dots and labels underneath
+   stay clickable and wireable; the band is first in the root so that if the
+   float is ever removed it degrades to a strip ABOVE the box, not over it. */
+.pix-each-band {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  min-width: 0;
+}
+.pix-each-band.floated {
   position: absolute;
-  right: 7px;
-  bottom: 6px;
+  pointer-events: none;
+  z-index: 2;
+}
+.pix-each-band.floated > * { pointer-events: auto; }
+
+.pix-each-count {
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none;
   user-select: none;
   font: 10px sans-serif;
@@ -195,8 +227,12 @@ export function buildRoot() {
   ta.spellcheck = false;
   fieldwrap.appendChild(ta);
 
+  // The band is FIRST in the root so that, in whichever renderer cannot float
+  // it, it degrades to a small strip above the box rather than on top of it.
+  const band = el("div", "pix-each-band");
   const count = el("div", "pix-each-count");
-  fieldwrap.appendChild(count);
+  band.appendChild(count);
+  root.appendChild(band);
   root.appendChild(fieldwrap);
 
   const actions = el("div", "pix-each-actions");
@@ -214,7 +250,31 @@ export function buildRoot() {
   const gearBtn = mk("", "pix-each-gear", "Prompt Each settings");
   root.appendChild(actions);
 
-  return { root, fieldwrap, ta, count, actions, copyBtn, replaceBtn, clearBtn, gearBtn };
+  return { root, band, fieldwrap, ta, count, actions, copyBtn, replaceBtn, clearBtn, gearBtn };
+}
+
+// Float the count band up into the slot dead space. Writes ONLY DOM
+// style - never node.size, properties or slots - so it can never dirty a saved
+// workflow (Vue Compat #18) and is safe to call on the load path.
+export function placeBand(parts, floatIt) {
+  const { band } = parts;
+  if (!band) return;
+  try {
+    band.classList.toggle("floated", !!floatIt);
+    if (floatIt) {
+      band.style.top = BAND_TOP + "px";
+      band.style.left = BAND_RSV_L + "px";
+      band.style.right = BAND_RSV_R + "px";
+    } else {
+      band.style.top = "";
+      band.style.left = "";
+      band.style.right = "";
+    }
+  } catch {
+    // A future frontend that breaks the float should cost a tidy row, never the
+    // node: leaving the band in flow is a complete, working fallback.
+    band.classList.remove("floated");
+  }
 }
 
 // The count pill. `pieces` is what was typed, `total` is what will run - showing

@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import {
   readState, writeState, restoreFromProperties, DEFAULT_CAP,
 } from "./core.mjs";
-import { injectCSS, buildRoot, applyState, updateCount } from "./ui.mjs";
+import { injectCSS, buildRoot, applyState, updateCount, placeBand } from "./ui.mjs";
 import { buildPrompts } from "./expand.mjs";
 import { openSettingsPanel, closeSettingsPanelFor, isPanelOpenFor } from "./settings.mjs";
 import { PROMPT_EACH_HELP } from "./help.mjs";
@@ -221,6 +221,12 @@ app.registerExtension({
         // Must run AFTER the box is in the document - the gutter measures it.
         node._pixEachLnOff = attachLineNumbers(parts.ta, { minDigits: 2 });
 
+        // MEASURED in both renderers: the same offset lands the pill on the
+        // `total` row, clear of every slot label, so there is no branch here.
+        // The July note saying Nodes 2.0 clips content above the widget top
+        // was stale - the only clipping ancestors are the canvas container
+        // and the app body, neither of which is inside the node.
+        placeBand(parts, true);
         wireEvents(node, parts);
         refresh(node);
         node.setDirtyCanvas(true, true);
