@@ -11,6 +11,7 @@
 // restyled Prompt Multi's rows for weeks.
 
 import { ACC } from "../shared/node_settings.mjs";
+import { isVueNodes } from "../shared/nodes2.mjs";
 
 const CSS_ID = "pix-prompt-each-css";
 
@@ -38,7 +39,18 @@ export const WIDGET_MIN_H = 110;
 // centres on "total".
 // Calibrated to THIS slot layout (1 input / 3 outputs). Add or remove a slot and
 // it must be re-measured - the recipe is in .claude/patterns/prompt-each.md.
+//
+// THE TWO RENDERERS NEED DIFFERENT OFFSETS, and an earlier comment here claiming
+// one constant served both was simply wrong: it had been checked against the
+// node FRAME (which it was inside, in both) instead of against the SLOTS (which
+// is the actual requirement). MEASURED against the dots, at 1.5 zoom:
+//   Classic    index 406 / total 436, band rows 406 / 436  -> delta 0
+//   Nodes 2.0  index 403 / total 433, band rows 391 / 421  -> 12 screen px high,
+//              which is 8 element px, uniform on both rows
+// The slot PITCH is 20 element px in both, so only the start differs; the band's
+// internal 3px gap is already right and must not be touched to compensate.
 const BAND_TOP = -50;
+const BAND_TOP_VUE = -42;
 const BAND_RSV_L = 8;   // line up with the text box's left edge
 const BAND_RSV_R = 76;  // keep clear of the prompt / index / total labels
 
@@ -366,7 +378,9 @@ export function placeBand(parts, floatIt) {
   try {
     band.classList.toggle("floated", !!floatIt);
     if (floatIt) {
-      band.style.top = BAND_TOP + "px";
+      // Read the renderer LIVE, never cached: the setting can flip under a live
+      // node, and index.js re-calls this from onRendererChange for exactly that.
+      band.style.top = (isVueNodes() ? BAND_TOP_VUE : BAND_TOP) + "px";
       band.style.left = BAND_RSV_L + "px";
       // a CEILING, not a width: the band sizes to its widest row so the counter
       // can end where Paste ends, and this only stops a long count running under

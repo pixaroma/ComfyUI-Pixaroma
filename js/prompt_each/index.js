@@ -12,6 +12,7 @@ import {
   applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes,
   installCanvasZoomPassthrough, installNativeTextMenu, installNodeAccent,
   registerNodeAccent, registerNodeSettings, registerNodeHelp, notifyGraphChanged,
+  onRendererChange,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { pixConfirm } from "../shared/confirm_dialog.mjs";
@@ -346,11 +347,21 @@ function wireEvents(node, parts) {
   // Both destructive ones confirm first, like Prompt Stack's do.
   const rowsNow = () => readState(node).rows.map((r) => ({ ...r }));
 
+  // Every handler that opens a confirm dialog needs this. pixConfirm has no
+  // singleton guard of its own - each call appends its own full-screen backdrop
+  // - so a double-click (an ordinary action, no modifiers) stacks two identical
+  // dialogs exactly on top of each other. Answering one reveals the other, which
+  // reads as the node asking the same question twice for no reason. The guard is
+  // a closure flag rather than btn.disabled so it cannot be clobbered by
+  // refresh(), which owns the disabled state of these same buttons.
+  let busy = false;
+  const guarded = (fn) => async (...a) => {
+    if (busy) return;
+    busy = true;
+    try { await fn(...a); } finally { busy = false; }
+  };
+
   addBtn.addEventListener("click", () => {
-    if (false) {
-      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
-      return;
-    }
     const rows = rowsNow();
     rows.push({ text: "", enabled: true });
     commitRows(node, rows);
@@ -358,11 +369,7 @@ function wireEvents(node, parts) {
     boxes[boxes.length - 1]?.focus();
   });
 
-  clearAllBtn.addEventListener("click", async () => {
-    if (false) {
-      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
-      return;
-    }
+  clearAllBtn.addEventListener("click", guarded(async () => {
     const rows = rowsNow();
     if (!rows.some((r) => r.text && r.text.trim())) return;
     const ok = await pixConfirm({
@@ -373,13 +380,9 @@ function wireEvents(node, parts) {
     });
     if (!ok) return;
     commitRows(node, rows.map((r) => ({ ...r, text: "" })), true, true);
-  });
+  }));
 
-  resetBtn.addEventListener("click", async () => {
-    if (false) {
-      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
-      return;
-    }
+  resetBtn.addEventListener("click", guarded(async () => {
     const ok = await pixConfirm({
       title: "Reset to default?",
       message: "This will replace all rows with one empty row, switched on. Your current prompts will be lost.",
@@ -388,7 +391,7 @@ function wireEvents(node, parts) {
     });
     if (!ok) return;
     commitRows(node, [{ text: "", enabled: true }], true, true);
-  });
+  }));
 
   copyBtn.addEventListener("click", async () => {
     const st = readState(node);
@@ -409,11 +412,7 @@ function wireEvents(node, parts) {
 
   // This is the bulk path, and the reason the node does not need a second view:
   // paste a hundred lines and you get a hundred rows.
-  pasteBtn.addEventListener("click", async () => {
-    if (false) {
-      toast("Text is wired in. Unplug it, or switch to Add in the settings.");
-      return;
-    }
+  pasteBtn.addEventListener("click", guarded(async () => {
     let text = "";
     try {
       text = await navigator.clipboard.readText();
@@ -437,13 +436,21 @@ function wireEvents(node, parts) {
       });
       if (!ok) return;
     }
-    st.rows = textToRows(text, st.split);
-    writeState(node, st);
+    // RE-READ after the confirm, never reuse the snapshot taken before it
+    // ([[reference_requery_dont_guard_after_await]]). writeState writes the
+    // WHOLE blob, so a stale snapshot would silently roll back split / expand /
+    // trim / skipEmpty / cap / wiredAt as well as the rows - and a Ctrl+Z while
+    // the dialog is open really can change them underneath us, since ComfyUI's
+    // undo listener is on window from page startup and pixConfirm only
+    // intercepts Escape and Enter.
+    const cur = readState(node);
+    cur.rows = textToRows(text, cur.split);
+    writeState(node, cur);
     refresh(node);
     reflow(node, true);
     notifyGraphChanged();
     flash(pasteBtn, "Pasted");
-  });
+  }));
 
   gearBtn.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -500,12 +507,20 @@ app.registerExtension({
         applyAdaptiveCanvasOnly(widget);
         node._pixEachFloorOff = installResizeFloor(root, contentHeight);
 
-        // MEASURED in both renderers: the same offset lands the pill on the
-        // `total` row, clear of every slot label, so there is no branch here.
-        // The July note saying Nodes 2.0 clips content above the widget top
-        // was stale - the only clipping ancestors are the canvas container
-        // and the app body, neither of which is inside the node.
+        // The band floats up into the slot dead space in BOTH renderers (the
+        // July note saying Nodes 2.0 clips content above the widget top was
+        // stale - the only clipping ancestors are the canvas container and the
+        // app body, neither of which is inside the node). The OFFSET differs
+        // per renderer though, so the setting can change what this needs to
+        // write while the node is alive: re-place on every flip rather than
+        // leaving the other renderer's number behind (Nodes 2.0 section, "the
+        // renderer can change under a live node"). placeBand writes only DOM
+        // style, so re-running it can never dirty a workflow.
         placeBand(parts, true);
+        node._pixEachRendererOff = onRendererChange(() => {
+          if (!node._pixEachParts) return;
+          placeBand(node._pixEachParts, true);
+        });
         wireEvents(node, parts);
         refresh(node);
         node.setDirtyCanvas(true, true);
@@ -564,6 +579,8 @@ app.registerExtension({
       closeSettingsPanelFor(this);
       this._pixEachFloorOff?.();
       this._pixEachFloorOff = null;
+      this._pixEachRendererOff?.();
+      this._pixEachRendererOff = null;
       this._pixEachParts = null;
       if (origRemoved) return origRemoved.apply(this, arguments);
     };
