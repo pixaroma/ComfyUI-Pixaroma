@@ -70,6 +70,8 @@ from .nodes.node_prompt_from_list import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_FRO
 from .nodes.node_prompt_from_list import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_FROM_LIST
 from .nodes.node_prompt_pack import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_PACK
 from .nodes.node_prompt_pack import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_PACK
+from .nodes.node_prompt_each import NODE_CLASS_MAPPINGS as _MAPS_PROMPT_EACH
+from .nodes.node_prompt_each import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_PROMPT_EACH
 from .nodes.node_remove_background import NODE_CLASS_MAPPINGS as _MAPS_REMOVE_BG
 from .nodes.node_remove_background import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_REMOVE_BG
 from .nodes.node_text_overlay import NODE_CLASS_MAPPINGS as _MAPS_TEXT_OVERLAY
@@ -194,6 +196,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_PROMPT_MULTI,
     **_MAPS_PROMPT_FROM_LIST,
     **_MAPS_PROMPT_PACK,
+    **_MAPS_PROMPT_EACH,
     **_MAPS_UTILS,
     **_MAPS_SHOW_TEXT,
     **_MAPS_REMOVE_BG,
@@ -269,6 +272,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_PROMPT_MULTI,
     **_NAMES_PROMPT_FROM_LIST,
     **_NAMES_PROMPT_PACK,
+    **_NAMES_PROMPT_EACH,
     **_NAMES_UTILS,
     **_NAMES_PAINT,
     **_NAMES_PREVIEW,
