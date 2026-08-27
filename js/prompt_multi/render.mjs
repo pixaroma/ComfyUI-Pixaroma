@@ -66,6 +66,19 @@ const CSS = `
      failure: the node clips, the rows stay usable. Prompt Pack's bottom bar
      and every Find-and-Replace child already declare this. */
   flex-shrink: 0;
+  /* AND a real floor, because flex-shrink:0 does NOT cover the other half of
+     this hole: it only stops the row shrinking BELOW its flex base size, and an
+     explicit "height" IS that base size. So anything that puts a height on the
+     row wins outright - notably ComfyUI's own resize probe, which deliberately
+     sets "--node-height: 0" to measure the collapsed node and would leave the
+     row at 0 if it were ever not restored. MEASURED from a user's broken node
+     (2026-08-27) and reproduced field for field: row offsetHeight 13, which is
+     exactly this row's padding+border (13.33) with ZERO content height, while
+     the textarea inside still rendered at its full 38px and overflowed - so
+     each row's opaque background covered the one above it. "fit-content" puts
+     the floor back at head+gap+textarea and the same forced "height:0" then
+     produces 77px again. Keep both declarations: they defend different things. */
+  min-height: fit-content;
   gap: 3px;
   padding: 6px;
   border-radius: 4px;

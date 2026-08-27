@@ -31,6 +31,12 @@ const CSS = `
      never reported (only Prompt Multi was), but it is the same node shape and
      failed the same test, so it is fixed in the same pass. */
   flex-shrink: 0;
+  /* AND a real floor - see the long note on .pix-pm-row. flex-shrink:0 only
+     stops the row shrinking below its flex BASE size, and an explicit "height"
+     is that base size, so a height:0 from anywhere (e.g. ComfyUI's own
+     "--node-height: 0" resize probe left unrestored) collapses the row to its
+     padding+border while the children render full size and overflow. */
+  min-height: fit-content;
   gap: 3px;
   padding: 6px;
   border-radius: 4px;
