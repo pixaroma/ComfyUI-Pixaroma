@@ -2,13 +2,14 @@ import { app } from "/scripts/app.js";
 import {
   readState, writeState, restoreFromProperties, DEFAULT_CAP, VIEW_ROWS,
 } from "./core.mjs";
-import { injectCSS, buildRoot, applyState, updateCount, placeBand, setView } from "./ui.mjs";
-import { textToRows, rowsToText, renderRows, growAll } from "./rows.mjs";
+import { injectCSS, buildRoot, applyState, updateCount, placeBand, setView,
+  contentHeight, WIDGET_MIN_H } from "./ui.mjs";
+import { textToRows, rowsToText, renderRows } from "./rows.mjs";
 import { buildPrompts } from "./expand.mjs";
 import { openSettingsPanel, closeSettingsPanelFor, isPanelOpenFor } from "./settings.mjs";
 import { PROMPT_EACH_HELP } from "./help.mjs";
 import {
-  applyAdaptiveCanvasOnly, installResizeFloor, measureRootContent, isVueNodes,
+  applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes,
   installCanvasZoomPassthrough, installNativeTextMenu, installNodeAccent,
   registerNodeAccent, registerNodeSettings, registerNodeHelp, notifyGraphChanged,
 } from "../shared/index.mjs";
@@ -26,8 +27,6 @@ const DEFAULT_W = 340;
 const DEFAULT_H = 250;
 const MIN_W = 340;
 const MIN_H = 250;
-// Body content: field min (72) + gap (6) + action row (~24) + root padding (14).
-const WIDGET_MIN_H = 118;
 
 registerNodeHelp(CLASS, PROMPT_EACH_HELP);
 
@@ -58,6 +57,74 @@ function wiredState(node) {
   return readState(node).wiredMode;
 }
 
+// Grow the node so the rendered body fits. Mirrors Prompt Stack: the rows list
+// is content-height rather than a scroll area, so the NODE is what has to give.
+//
+// NEVER call this on the load path - node.size is serialised, and writing it
+// while a workflow opens flags an untouched file "modified" (Vue Compat #18).
+// Every caller is a user action, and isGraphLoading is the belt.
+function setNodeHeight(node, h) {
+  node.size[1] = h;
+  // A bare size[1] write is silently reverted by Nodes 2.0's reactive layout
+  // when the node was last sized in the OTHER renderer; setSize commits through
+  // the official path. Keep both.
+  node.setSize?.([node.size[0], h]);
+}
+
+function chromeAllowance(node) {
+  const LG = window.LiteGraph || {};
+  const titleH = LG.NODE_TITLE_HEIGHT || 30;
+  const slotH = LG.NODE_SLOT_HEIGHT || 20;
+  const slots = Math.max(node.outputs?.length || 0, node.inputs?.length || 0);
+  return titleH + slots * slotH;
+}
+
+// Grow only, so a node the user made taller keeps the size they chose.
+function growNodeToContent(node) {
+  const parts = node?._pixEachParts;
+  if (!parts || isGraphLoading()) return;
+  const desired = contentHeight(parts.root, readState(node).view) + chromeAllowance(node);
+  if (desired > node.size[1]) setNodeHeight(node, desired);
+}
+
+// Shrink AND grow, for actions where the user is saying "make this fit" - a
+// delete, or switching back to the compact Text view. Never below the default.
+function fitNodeToContent(node) {
+  const parts = node?._pixEachParts;
+  if (!parts || isGraphLoading()) return;
+  setNodeHeight(node, Math.max(DEFAULT_H,
+    contentHeight(parts.root, readState(node).view) + chromeAllowance(node)));
+}
+
+// SYNCHRONOUS on purpose. renderRows finishes sizing every row box before it
+// returns, so the content height is already final here - and hanging the node's
+// size off a requestAnimationFrame made it depend on a frame landing, which
+// left the action row outside the node whenever one was dropped.
+function reflow(node, fit) {
+  if (fit) fitNodeToContent(node);
+  else growNodeToContent(node);
+  node.setDirtyCanvas(true, true);
+
+  // ...and one deferred correction, because a structural change that lands in
+  // the same tick as another layout change can measure a row box a line taller
+  // than it settles at (seen: 60px and 94px where the box ends up 44px). That
+  // only ever makes the node too TALL, never clipped, but it is visible.
+  //
+  // It shrinks ONLY back toward the real content, only while the rows view is
+  // still showing, and only if the height is still exactly what we just wrote -
+  // so it can never fight a resize the user did in between, and never runs on
+  // the load path.
+  const wrote = node.size[1];
+  setTimeout(() => {
+    const parts = node?._pixEachParts;
+    if (!parts || isGraphLoading()) return;
+    if (node.size[1] !== wrote) return;                 // the user moved it: leave it alone
+    if (readState(node).view !== VIEW_ROWS) return;
+    const settled = contentHeight(parts.root, VIEW_ROWS) + chromeAllowance(node);
+    if (settled < wrote) setNodeHeight(node, Math.max(DEFAULT_H, settled));
+  }, 0);
+}
+
 // Re-render the face from current state. Cheap, and safe to call on the load
 // path: it writes only DOM, never node.size / properties / slots (Vue Compat
 // #18), so opening an untouched workflow cannot flag it modified.
@@ -86,11 +153,14 @@ function refresh(node, rebuildRows = true) {
 }
 
 // Write a row list back into the single source of truth: state.text.
-function commitRows(node, rows, rebuild = true) {
+function commitRows(node, rows, rebuild = true, fit = false) {
   const st = readState(node);
   st.text = rowsToText(rows, st.split);
   writeState(node, st);
   refresh(node, rebuild);
+  // A rebuild means the list changed shape, so the node has to be resized
+  // to match. A keystroke does not rebuild and handles its own growth.
+  if (rebuild) reflow(node, fit);
   notifyGraphChanged();
 }
 
@@ -107,6 +177,9 @@ function wireRow(node, rowEl, i, refs) {
     commitRows(node, rows, false);
     ta.style.height = "auto";
     ta.style.height = Math.min(Math.max(ta.scrollHeight, 30), 140) + "px";
+    // the box just got taller, so the node has to keep up; this no-ops
+    // unless the content genuinely outgrew the node
+    growNodeToContent(node);
   });
 
   tog.addEventListener("click", () => {
@@ -123,7 +196,7 @@ function wireRow(node, rowEl, i, refs) {
     if (!rows[i]) return;
     rows.splice(i, 1);
     if (!rows.length) rows.push({ text: "", enabled: true });
-    commitRows(node, rows);
+    commitRows(node, rows, true, true);   // a delete should compact the node
   });
 
   // Reorder. `draggable` is on the HANDLE (see rows.mjs) but the drop targets
@@ -209,6 +282,10 @@ function wireEvents(node, parts) {
     st.view = view;
     writeState(node, st);
     refresh(node);
+    // GROW only. Fitting here would shrink a node the user had deliberately
+    // made taller, and switching back to Text needs no resize at all since
+    // that box simply fills whatever room there is.
+    reflow(node, false);
     notifyGraphChanged();
   };
   textPill.addEventListener("click", () => setViewTo("text"));
@@ -335,10 +412,18 @@ app.registerExtension({
 
         const widget = node.addDOMWidget("prompteach", "pixaroma_prompteach", root, {
           serialize: false,
+          // A CONSTANT, never the live content measure. getMinHeight drives
+          // LiteGraph's node sizing, so a content-derived value rewrites
+          // node.size on the LOAD path for any node saved smaller than its
+          // rows - measured 470 -> 578 - which flags an untouched workflow
+          // modified (Vue Compat #18). Growth happens on user actions via
+          // growNodeToContent; a node deliberately dragged smaller than its
+          // rows simply clips them, which is the correct failure.
           getMinHeight: () => WIDGET_MIN_H,
         });
         applyAdaptiveCanvasOnly(widget);
-        node._pixEachFloorOff = installResizeFloor(root, measureRootContent);
+        node._pixEachFloorOff = installResizeFloor(root,
+          (r) => contentHeight(r, readState(node).view));
 
         // Must run AFTER the box is in the document - the gutter measures it.
         node._pixEachLnOff = attachLineNumbers(parts.ta, { minDigits: 2 });

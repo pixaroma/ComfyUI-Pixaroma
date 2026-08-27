@@ -135,5 +135,10 @@ export function renderRows(parts, st, handlers) {
   // duplicated.
   if (parts.addBtn) host.appendChild(parts.addBtn);
 
-  requestAnimationFrame(() => growAll(parts));
+  // SYNCHRONOUS, deliberately. Every row is already in the document, and reading
+  // scrollHeight forces the layout we need anyway - so the heights are final by
+  // the time this returns and the caller can size the node immediately. Doing it
+  // in a requestAnimationFrame instead made the node's height depend on a frame
+  // landing, which is exactly the kind of thing that half-fires.
+  growAll(parts);
 }

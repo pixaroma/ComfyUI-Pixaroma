@@ -14,6 +14,10 @@ import { ACC } from "../shared/node_settings.mjs";
 
 const CSS_ID = "pix-prompt-each-css";
 
+// The body's floor: field min (72) + gap (6) + action row (~24) + root padding
+// (14). Exported so index.js sizes the node from the same number.
+export const WIDGET_MIN_H = 118;
+
 // The float offset, in px above the DOM widget's own top. MEASURED on this node
 // in BOTH renderers rather than guessed, and the same number works in each:
 //   Classic:   widget top at node-local 66, slot rows at 14 / 34 / 54, so the
@@ -121,14 +125,15 @@ const CSS = `
 .pix-each-viewpill.on { background: ${ACC}; border-color: ${ACC}; color: #fff; }
 
 /* ── the Rows view ───────────────────────────────────────────────────────── */
+/* Content height, NOT a scroll area. An inner scrollbar clipped the last row and
+   hid the Add button, which is exactly what was reported; Prompt Stack lets its
+   rows stack and grows the NODE instead, and this matches it. Anyone wanting a
+   very long list has the Text view for that. */
 .pix-each-rows {
-  flex: 1 1 0;
-  min-height: 72px;
-  overflow-y: auto;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding-right: 2px;
 }
 /* BOTH declarations, and they defend different things: flex-shrink stops the
    row shrinking below its flex base, min-height stops an explicit height (from
@@ -390,6 +395,34 @@ export function buildRoot() {
 
   return { root, band, views, textPill, rowsPill, fieldwrap, ta, rows, count,
            actions, copyBtn, replaceBtn, clearBtn, addBtn, gearBtn };
+}
+
+// How tall the body actually needs to be. Deliberately NOT the shared
+// measureRootContent: that counts every laid-out child, and our count band is
+// position:absolute, so it would add its own height to a node it takes no space
+// in. Rounded to a 4px grid because this feeds getMinHeight, which drives
+// grow-to-content - and grow-only accumulates, so sub-pixel jitter would creep
+// node.size bigger on every workflow switch (Vue Compat #18).
+export function contentHeight(root, view) {
+  if (!root) return WIDGET_MIN_H;
+  // TEXT view has no content height to speak of: the box is designed to FILL
+  // whatever the node gives it, so measuring it is circular - the taller the
+  // node, the taller the box, the higher this floor, and the node could never
+  // be dragged smaller again. Only the Rows view has a real content height.
+  if (view !== "rows") return WIDGET_MIN_H;
+  let h = 0;
+  let count = 0;
+  for (const child of root.children) {
+    if (child.offsetParent === null) continue;
+    if (getComputedStyle(child).position === "absolute") continue;
+    h += child.offsetHeight;
+    count += 1;
+  }
+  const cs = getComputedStyle(root);
+  const gap = parseFloat(cs.rowGap || cs.gap) || 0;
+  if (count > 1) h += gap * (count - 1);
+  h += (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
+  return Math.max(WIDGET_MIN_H, Math.round(h / 4) * 4);
 }
 
 // Show one view and hide the other. DOM only, so it is safe on the load path.
