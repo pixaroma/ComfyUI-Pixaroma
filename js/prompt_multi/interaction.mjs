@@ -103,6 +103,17 @@ function autoGrow(ta) {
   // narrow node), so skip the measure and let the CSS min-height rule it. This is
   // also what stops the bottom button row from being shoved onto the frame edge.
   if (!ta.value) { ta.style.height = ""; return; }
+  // NO LAYOUT, NO MEASURE. A node sitting in a non-active workflow tab is
+  // display:none, so scrollHeight reads 0 and the write below would pin the
+  // field to a literal "0px". That inline height SURVIVES the return to the
+  // tab: the repair ResizeObserver in index.js only re-grows on a WIDTH change,
+  // and coming back to the tab does not change the width. Measured 2026-08-27:
+  // row 92px -> 74px here, and on a page where another pack ships
+  // "min-height: 0" (see node UI convention #35) the CSS floor is gone too, so
+  // the field renders at 0 and the row collapses to its own padding - the
+  // "rows crushed after I changed workflows" report. Skipping is always safe:
+  // the field is invisible right now, and its height is left exactly as it was.
+  if (ta.offsetParent === null) return;
   // Reset to single line, then grow to scrollHeight up to max-height (CSS cap).
   ta.style.height = "auto";
   const h = Math.min(ta.scrollHeight, 120);

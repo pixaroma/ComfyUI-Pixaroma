@@ -101,6 +101,14 @@ function autoGrow(ta) {
   // EMPTY field: pin to the CSS min so the placeholder can't balloon it and so
   // the ResizeObserver re-grow stays compact on a narrow node.
   if (!ta.value) { ta.style.height = ""; return; }
+  // NO LAYOUT, NO MEASURE - identical to Prompt Multi's guard, same defect.
+  // A node in a non-active workflow tab is display:none, so scrollHeight reads
+  // 0 and the write below would pin the field to a literal "0px" that survives
+  // the return to the tab (the repair ResizeObserver only fires on a WIDTH
+  // change). Measured 2026-08-27: this row lost 64px of its height across one
+  // hide/show. Skipping leaves the height exactly as it was, which is always
+  // safe for a field nobody can currently see.
+  if (ta.offsetParent === null) return;
   // Reset to single line, then grow to scrollHeight up to max-height (CSS cap).
   ta.style.height = "auto";
   const h = Math.min(ta.scrollHeight, 120);
