@@ -80,12 +80,27 @@ function rowToPiece(row) {
 // pieceToRow above, which counts the whole backslash run; Python's strips
 // EXACTLY ONE backslash before a hash, so doubling here would send "\\#x" and
 // have it arrive with the extra backslash still attached.
-export function rowToPrompt(text) {
+//
+// It needs `trim` because Python's decoder is ANCHORED AT POSITION 0 while this
+// escape sits after the row's indent, and only trimming brings the two into
+// line. Escape unconditionally and a row of "  #tag" with Trim turned OFF
+// arrives as "  \#tag": the strip never runs, so position 0 is a space, neither
+// marker branch fires, and the backslash the user never typed ends up in the
+// prompt. The first version of this function did exactly that.
+//
+// So escape ONLY when the escape will actually be undone:
+//   trim ON  - always. The indent is stripped, "\#" lands at 0, Python unescapes.
+//   trim OFF - only when the hash is ALREADY at 0. An indented hash needs no
+//              protection, because Python's marker check will not fire on it
+//              either (verified: "  #tag" with trim off runs as "  #tag").
+export function rowToPrompt(text, trim = true) {
   const s = typeof text === "string" ? text : "";
   const lead = s.length - s.trimStart().length;
   const indent = s.slice(0, lead);
   const body = s.slice(lead);
-  return body.charAt(0) === OFF ? indent + "\\" + body : s;
+  if (body.charAt(0) !== OFF) return s;
+  if (!trim && lead > 0) return s;
+  return indent + "\\" + body;
 }
 
 export function textToRows(text, split) {

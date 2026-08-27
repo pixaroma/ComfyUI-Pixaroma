@@ -205,7 +205,7 @@ function refresh(node, rebuildRows = true) {
     parts.resetBtn.disabled = !(anyText || anyOff || rows.length !== 1);
   }
 
-  const result = buildFromPieces(st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text)), {
+  const result = buildFromPieces(st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text, st.trim)), {
     expand: st.expand,
     trim: st.trim,
     skipEmpty: st.skipEmpty,
@@ -644,7 +644,7 @@ app.graphToPrompt = async function (...args) {
           version: 2,
           // ALREADY SEPARATED. Never a joined blob: a row may contain
           // newlines and Python would split it back into several prompts.
-          prompts: st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text)),
+          prompts: st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text, st.trim)),
           split: st.split,
           expand: st.expand,
           trim: st.trim,
