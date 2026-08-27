@@ -26,6 +26,7 @@ will produce.
 """
 
 from ._prompt_each_helpers import (
+    MAX_PIECES,
     build_from_pieces,
     parse_state,
     split_text,
@@ -116,6 +117,21 @@ class PixaromaPromptEach:
                 pieces = arrived + pieces
             else:
                 pieces = pieces + arrived
+
+        # SAY SO if the hard piece rail bites. build_from_pieces looks at no more
+        # than MAX_PIECES pieces, and `result.truncated` reports the user's CAP,
+        # not this - so without a word here a wired blob longer than the rail
+        # (a Save Text mirror file is the realistic one, since it accumulates)
+        # would quietly contribute fewer prompts than it holds, with the node's
+        # own message pointing at a setting that is not the cause. The rows can
+        # never reach this; only the wire can.
+        if len(pieces) > MAX_PIECES:
+            print(
+                f"[Pixaroma] Prompt Each: {len(pieces)} pieces arrived and only "
+                f"the first {MAX_PIECES} were read. This is a fixed safety "
+                f"limit, not the cap in the node's settings - split the source "
+                f"into smaller pieces if you meant to run them all."
+            )
 
         result = build_from_pieces(
             pieces,
