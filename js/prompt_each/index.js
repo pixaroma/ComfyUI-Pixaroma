@@ -4,7 +4,7 @@ import {
 } from "./core.mjs";
 import { injectCSS, buildRoot, applyState, updateCount, placeBand,
   contentHeight, WIDGET_MIN_H } from "./ui.mjs";
-import { textToRows, rowsToText, renderRows } from "./rows.mjs";
+import { textToRows, rowsToText, renderRows, rowToPrompt } from "./rows.mjs";
 import { buildFromPieces } from "./expand.mjs";
 import { openSettingsPanel, closeSettingsPanelFor, isPanelOpenFor } from "./settings.mjs";
 import { PROMPT_EACH_HELP } from "./help.mjs";
@@ -205,7 +205,7 @@ function refresh(node, rebuildRows = true) {
     parts.resetBtn.disabled = !(anyText || anyOff || rows.length !== 1);
   }
 
-  const result = buildFromPieces(st.rows.filter((r) => r.enabled !== false).map((r) => r.text), {
+  const result = buildFromPieces(st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text)), {
     expand: st.expand,
     trim: st.trim,
     skipEmpty: st.skipEmpty,
@@ -638,7 +638,7 @@ app.graphToPrompt = async function (...args) {
           version: 2,
           // ALREADY SEPARATED. Never a joined blob: a row may contain
           // newlines and Python would split it back into several prompts.
-          prompts: st.rows.filter((r) => r.enabled !== false).map((r) => r.text),
+          prompts: st.rows.filter((r) => r.enabled !== false).map((r) => rowToPrompt(r.text)),
           split: st.split,
           expand: st.expand,
           trim: st.trim,

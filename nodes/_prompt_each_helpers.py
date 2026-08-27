@@ -21,6 +21,7 @@ Harness: D:\\Claude Tests\\_prompt_each_test.py
 """
 
 import json
+import math
 import re
 from collections import namedtuple
 
@@ -36,12 +37,41 @@ SPLIT_BLANK = "blank"
 SPLIT_MODES = (SPLIT_LINE, SPLIT_BLANK)
 
 DEFAULT_CAP = 200
+# The most prompts one Run may ever queue, whatever the state blob asks for.
+# MUST equal MAX_CAP in js/prompt_each/core.mjs - the browser clamps there for
+# the UI, this clamps here for anything that skips the browser.
+MAX_CAP = 4096
 
 # A hard rail, NOT the user-facing cap. Nine groups of ten options is a billion
 # combinations, and a person can type that by accident; without a ceiling the
 # expansion would build the whole product before the cap ever got to trim it.
 # Expansion truncates as it goes, so memory stays bounded whatever arrives.
 _CEILING = 4096
+
+# The deepest [a|[b|c]] nesting that will be expanded. Anything deeper is left
+# as literal text (see _balanced). Real prompts nest two or three levels; this
+# is pure headroom, chosen to sit far below Python's ~1000-frame recursion
+# limit. MUST match MAX_DEPTH in js/prompt_each/expand.mjs.
+_MAX_DEPTH = 100
+
+# EXACTLY what JavaScript's String.prototype.trim() removes: the ECMAScript
+# WhiteSpace set plus LineTerminator. Python's own str.strip() is NOT the same
+# set in EITHER direction, and both gaps are real parity bugs, because the count
+# on the node face is trimmed by JS while the prompt that actually runs is
+# trimmed here:
+#   U+FEFF (BOM)  JS strips it, Python does not -> the face showed "c" while the
+#                 model received an invisible character. Reachable by pasting
+#                 from a UTF-8-with-BOM file, which this project has met before.
+#   U+0085 (NEL), U+001C..U+001F  Python strips them, JS does not -> the face
+#                 would keep a character the run silently dropped.
+# Using one explicit set makes the two provably identical instead of
+# coincidentally similar. MUST match what trim() does in expand.mjs.
+_JS_WS = (
+    # Written as escapes, NEVER as literal characters: this file is
+    # deliberately pure ASCII so an invisible byte cannot hide in it
+    # (convention #25, and the release preflight scans for exactly that).
+    "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+)
 
 _BLANK_SPLIT_RE = re.compile(r"\n[ \t]*\n+")
 
@@ -84,11 +114,22 @@ def _balanced(s):
     An unbalanced string is left completely alone rather than half-expanded:
     eating half of somebody's prompt because they typed one stray bracket is a
     far worse outcome than not expanding it.
+
+    Nesting DEPTH is refused the same way, and for the same reason. The parser
+    and the expander are mutually recursive, roughly two frames per level, so a
+    balanced-but-deep string like "["*500 + "a" + "]"*500 - which a person can
+    paste in one keystroke - blew Python's 1000-frame limit and raised
+    RecursionError straight out of the node. V8's stack is far bigger, so the
+    browser happily showed a count for a prompt that then failed on Run. Bailing
+    to the literal is the behaviour this function already promises for anything
+    it cannot parse safely.
     """
     depth = 0
     for c in s:
         if c == "[":
             depth += 1
+            if depth > _MAX_DEPTH:
+                return False
         elif c == "]":
             depth -= 1
             if depth < 0:
@@ -199,7 +240,11 @@ def build_from_pieces(pieces, expand=True, trim=True, skip_empty=True,
     """
     try:
         cap = DEFAULT_CAP if cap is None else int(cap)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError is the one the obvious pair misses: int(float("inf"))
+        # raises it, and JSON's 1e400 parses to inf. parse_state clamps before
+        # this is reached through the node, but this is public and the harness
+        # calls it directly.
         cap = DEFAULT_CAP
     if cap < 0:
         cap = 0
@@ -209,7 +254,7 @@ def build_from_pieces(pieces, expand=True, trim=True, skip_empty=True,
         if not isinstance(piece, str):
             continue
         if trim:
-            piece = piece.strip()
+            piece = piece.strip(_JS_WS)
         if skip_empty and not piece:
             continue
         # A piece starting with "#" is switched OFF. Rows carry their own
@@ -229,7 +274,7 @@ def build_from_pieces(pieces, expand=True, trim=True, skip_empty=True,
         variants = expand_brackets(piece) if expand else [piece]
         for variant in variants:
             if trim:
-                variant = variant.strip()
+                variant = variant.strip(_JS_WS)
             if skip_empty and not variant:
                 continue
             if len(prompts) >= cap:
@@ -302,8 +347,17 @@ def parse_state(raw):
     cap = data.get("cap")
     if isinstance(cap, bool):
         pass  # bool is an int subclass in Python; a toggle is not a cap
-    elif isinstance(cap, (int, float)) and cap == cap:  # reject NaN
-        state["cap"] = max(0, int(cap))
+    elif isinstance(cap, (int, float)) and math.isfinite(cap):
+        # Clamp the SAME WAY THE BROWSER DOES (core.mjs MAX_CAP), because the
+        # browser's clamp protects nobody: /prompt is unauthenticated, so a
+        # hand-written API prompt reaches this function without ever passing
+        # through readState. Without the ceiling a crafted blob could ask for
+        # a cap of 999999999 and queue that many downstream graph runs from one
+        # Run. isfinite also covers what the old "cap == cap" NaN test did not:
+        # JSON's 1e400 parses to inf in both languages, and int(inf) raises
+        # OverflowError straight out of the node, where JS quietly fell back to
+        # the default.
+        state["cap"] = max(0, min(MAX_CAP, int(cap)))
 
     return state
 

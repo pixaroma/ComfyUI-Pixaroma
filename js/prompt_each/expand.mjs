@@ -53,11 +53,22 @@ function restoreEscapes(s) {
 // unbalanced string is left completely alone rather than half-expanded: eating
 // half of somebody's prompt over one stray bracket is far worse than not
 // expanding it.
+// Nesting DEPTH is refused exactly like imbalance, and the reason lives on the
+// Python side: the parser and expander are mutually recursive, so a
+// balanced-but-deep string (a person can paste "["*500 + "a" + "]"*500 in one
+// keystroke) raised RecursionError out of the node. V8's stack is far larger,
+// so WITHOUT this the browser would happily count a prompt that then failed on
+// Run - the node lying about what Run will do, which is the worst thing it can
+// do. MUST match _MAX_DEPTH in nodes/_prompt_each_helpers.py.
+const MAX_DEPTH = 100;
+
 function balanced(s) {
   let depth = 0;
   for (const c of s) {
-    if (c === "[") depth += 1;
-    else if (c === "]") {
+    if (c === "[") {
+      depth += 1;
+      if (depth > MAX_DEPTH) return false;
+    } else if (c === "]") {
       depth -= 1;
       if (depth < 0) return false;
     }

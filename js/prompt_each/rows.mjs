@@ -17,33 +17,75 @@ import { el } from "./ui.mjs";
 
 const OFF = "#";
 
+// How many backslashes a body has immediately before a leading "#", or -1 when
+// the body does not lead with a hash at all. This is what makes the clipboard
+// encoding reversible: escaping only a BARE "#" is ambiguous, because a decoded
+// "\#..." could equally be an escaped "#..." or an untouched "\#...", and the
+// decoder has no way to tell. Counting the run and escaping the escape removes
+// the ambiguity entirely.
+function escapeLead(body) {
+  let i = 0;
+  while (body.charAt(i) === "\\") i += 1;
+  return body.charAt(i) === OFF ? i : -1;
+}
+
 // One piece of text -> { text, enabled }. `text` is what the row shows and is
 // never carrying the marker, so the row's box holds exactly the prompt.
 function pieceToRow(piece) {
   const lead = piece.length - piece.trimStart().length;
   const indent = piece.slice(0, lead);
   const body = piece.slice(lead);
-  if (body.slice(0, 2) === "\\" + OFF) {
-    return { text: indent + body.slice(1), enabled: true };
-  }
+  // one or more backslashes before the hash: an ESCAPED prompt, still switched on
+  if (escapeLead(body) > 0) return { text: indent + body.slice(1), enabled: true };
   if (body.charAt(0) === OFF) {
     let rest = body.slice(1);
     if (rest.charAt(0) === " ") rest = rest.slice(1);
+    // the remainder carries its own escaping, so undo that too - without this a
+    // switched-off row whose text starts with "#" came back with a stray
+    // backslash baked into it on every Copy then Paste
+    if (escapeLead(rest) > 0) rest = rest.slice(1);
     return { text: indent + rest, enabled: false };
   }
   return { text: piece, enabled: true };
 }
 
 // ...and back. A prompt the user genuinely wants to START with a hash is
-// escaped, so it survives the round trip instead of switching itself off.
+// escaped, so it survives the round trip instead of switching itself off - and
+// so is one that already starts with a backslash-hash, or the two cases would
+// decode to the same thing.
 function rowToPiece(row) {
   const text = typeof row.text === "string" ? row.text : "";
   const lead = text.length - text.trimStart().length;
   const indent = text.slice(0, lead);
   const body = text.slice(lead);
-  const escaped = body.charAt(0) === OFF ? "\\" + body : body;
+  const escaped = escapeLead(body) >= 0 ? "\\" + body : body;
   if (row.enabled === false) return indent + OFF + " " + escaped;
   return indent + escaped;
+}
+
+// The ONE conversion from an ENABLED row to the piece that is sent to Python,
+// used by both the count on the node face and the graphToPrompt payload so the
+// two can never disagree.
+//
+// It exists because "#" at the start of a piece means SWITCHED OFF down in the
+// shared pipeline, which is right for text arriving on the wire or through
+// Paste but wrong for a row: a row carries its own ON/OFF switch, so a person
+// who types "#1 portrait" as an actual prompt - numbering a list is the obvious
+// thing to do in a node like this - had that row silently refuse to run while
+// its switch still read ON. Escaping here means Python unescapes it back and
+// runs it, and the parity-critical pipeline is not touched at all.
+//
+// DELIBERATELY NOT rowToPiece: an encoder is only correct against its own
+// decoder, and these two have different decoders. The clipboard's decoder is
+// pieceToRow above, which counts the whole backslash run; Python's strips
+// EXACTLY ONE backslash before a hash, so doubling here would send "\\#x" and
+// have it arrive with the extra backslash still attached.
+export function rowToPrompt(text) {
+  const s = typeof text === "string" ? text : "";
+  const lead = s.length - s.trimStart().length;
+  const indent = s.slice(0, lead);
+  const body = s.slice(lead);
+  return body.charAt(0) === OFF ? indent + "\\" + body : s;
 }
 
 export function textToRows(text, split) {
