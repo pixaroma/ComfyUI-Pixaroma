@@ -72,6 +72,7 @@ export const PROMPT_EACH_HELP = {
         ["Reset", "Back to one empty row."],
         ["Copy", "Up beside the counter: copies every prompt to the clipboard, one per line."],
         ["Paste", "Beside it: replaces every row with the clipboard, one prompt per line. This is how a hundred prompts get in from a spreadsheet in one go."],
+        ["Copy and Paste with long prompts", "If any of your prompts runs over several lines, switch `Cut pasted and wired text on` to Blank line first. On New line the clipboard treats every line as its own prompt, so copying and pasting back would break a long prompt into several rows."],
         ["The gear", "Opens the settings, described below."],
       ],
     },
