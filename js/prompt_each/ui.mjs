@@ -125,12 +125,22 @@ const CSS = `
 .pix-each-viewpill.on { background: ${ACC}; border-color: ${ACC}; color: #fff; }
 
 /* ── the Rows view ───────────────────────────────────────────────────────── */
-/* Content height, NOT a scroll area. An inner scrollbar clipped the last row and
-   hid the Add button, which is exactly what was reported; Prompt Stack lets its
-   rows stack and grows the NODE instead, and this matches it. Anyone wanting a
-   very long list has the Text view for that. */
+/* "flex: 0 1 auto" is the whole trick, and each of the three values was earned:
+   basis AUTO so the box is its CONTENT height and the node can be grown to fit
+   it (an earlier "1 1 0" made it always fill the leftover space, so it always
+   showed a scrollbar and clipped the last row); grow 0 so a node bigger than
+   its rows leaves trailing space instead of stretching this box, which would
+   inflate the measure that grow-to-content reads back; shrink 1 + min-height 0
+   + overflow-y auto so that when the node IS too small - reopened at a saved
+   smaller size, or dragged down - this box scrolls INSTEAD of the body painting
+   outside the node frame. A DOM widget in the Classic renderer is not clipped
+   by the node, so "it just overflows" is not a graceful failure, it is 141px of
+   rows and buttons drawn on the canvas below the node. The rows themselves keep
+   flex-shrink:0, so the container scrolls and no row is ever crushed. */
 .pix-each-rows {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -415,7 +425,12 @@ export function contentHeight(root, view) {
   for (const child of root.children) {
     if (child.offsetParent === null) continue;
     if (getComputedStyle(child).position === "absolute") continue;
-    h += child.offsetHeight;
+    // scrollHeight, not offsetHeight, when the child is being SQUEEZED. The rows
+    // box is allowed to shrink and scroll so the body can never paint outside
+    // the node, which means offsetHeight reports the space it was GIVEN, not the
+    // space it wants - and growing the node from that number is circular: it
+    // measures 254, decides it fits, and the scrollbar never goes away.
+    h += Math.max(child.offsetHeight, child.scrollHeight);
     count += 1;
   }
   const cs = getComputedStyle(root);
