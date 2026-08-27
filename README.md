@@ -262,6 +262,9 @@ A single node that holds an ordered stack of prompt chunks you can mute or inclu
 ### 🎲 Prompt Multi Pixaroma
 The sibling of Prompt Stack: instead of joining your rows into one text output, it **runs the workflow once for each enabled row**. Type two or more prompt variants, give each a short label (e.g. "v1", "blue version"), and hit Run - you get one image per enabled prompt, sequentially, each as its own item in the ComfyUI queue panel so you can cancel any of them individually. Toggle the orange **ON / OFF** pill to skip a row without deleting it. Drag the handle on the left to reorder. Each generated image carries only the prompt that produced it, so dropping the PNG back into **Prompt Reader Pixaroma** correctly recovers that exact variant. Great for batch-comparing prompt ideas with a single click instead of editing text and re-running by hand. Also has a **List Prompts** mode (pill toggle at top) that ships the whole list out a `prompts` output for downstream **Prompt From List Pixaroma** nodes to pick from.
 
+### 🔁 Prompt Each Pixaroma
+Many prompts, **one Run, one picture each**. Type a prompt in each row and press Run once: the workflow runs again for every row, one after another, and all the pictures collect in the same Preview node. It renders them one at a time, so it uses no more memory than making a single picture and a long list is safe on a small graphics card. This is the difference from **Prompt Multi Pixaroma**, which queues a separate entry per prompt so you can cancel them individually: Prompt Each is a single queue entry that keeps going by itself. Each row has an **ON / OFF** button so you can skip one without deleting it, a drag handle to reorder, and the counter at the top always says how many prompts will actually run. Square brackets multiply a row into several prompts: `a [red|blue] car` gives two, and `a [red|blue] [car|van]` gives all four combinations, so you can see one row turn into six before you press Run (curly braces still pick one at random, as on Text Pixaroma, so the two work together). **Paste** drops a whole list in at once, one prompt per line, which is how a hundred prompts get in from a spreadsheet; **Copy** sends them back out the same way and keeps the switches. The node has no tag library of its own on purpose, because brackets take all the options while `@tags` pick one: wire **Prompt Pixaroma** into the `text` input instead and your whole library works here, added to your rows rather than replacing them. Outputs are `prompt`, plus `index` and `total` if you want the files numbered in the order you typed them.
+
 ### 🎯 Prompt From List Pixaroma
 A tiny picker that pairs with **Prompt Multi Pixaroma** in List Prompts mode. Wire Prompt Multi's `prompts` output into this node's input, set a 1-based **index**, and you get back the prompt at that position. Drop multiple From List nodes to fan one prompt library out to different places - for example, use index 1 in scene A, index 2 in scene B. Out-of-range index returns an empty string instead of erroring, so a workflow with a mistyped index still runs.
 
@@ -375,7 +378,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **August 27, 2026 · v1.4.131**
+### **August 27, 2026 · v1.4.131–v1.4.132**
+- **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
+- **Square brackets multiply a row**: `a [red|blue] car` is two prompts, `a [red|blue] [car|van]` is all four. The counter shows what you will get before you press Run.
+- **Paste a whole list in one go**, one prompt per line, and Copy sends it back out the same way with the ON/OFF switches kept.
+- **It works with your tag library.** Wire Prompt Pixaroma into its `text` input and your `@tags` are filled in first, added to your rows rather than replacing them.
 - **Fixed properly: Prompt Multi and Prompt Stack rows collapsing into thin overlapping bars.** The cause was **Monitor Pixaroma restyling them**, not another node pack, which is why it came and went and a refresh cleared it.
 - **Prompt rows now hold their height** if anything else tries to squeeze them.
 
