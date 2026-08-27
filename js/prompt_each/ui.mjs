@@ -14,9 +14,15 @@ import { ACC } from "../shared/node_settings.mjs";
 
 const CSS_ID = "pix-prompt-each-css";
 
-// The body's floor: field min (72) + gap (6) + action row (~24) + root padding
-// (14). Exported so index.js sizes the node from the same number.
-export const WIDGET_MIN_H = 118;
+// The body's floor, and it must be the height of ONE ROW - not a round number
+// left over from an earlier layout. MEASURED: row 79 + the -6 it is pulled up by
+// + gap 6 + action bar 23 + 8 of bottom padding = 110.
+//
+// It was still 118 (the old floor from when this node had a big textarea), and
+// because contentHeight returns max(floor, measured), every ONE-ROW node was
+// padded by 8px it did not need - which is exactly why a one-row node looked
+// bottom-heavy while a two-row one, which clears the floor, looked right.
+export const WIDGET_MIN_H = 110;
 
 // The float offset, in px above the DOM widget's own top. MEASURED on this node
 // rather than guessed. The band is TWO stacked rows, so it fills the dead space
