@@ -188,6 +188,13 @@ export function buildFromPieces(pieces, opts = {}) {
   // wide list runs both loops in full whatever the cap says. Mirrors
   // MAX_PIECES in nodes/_prompt_each_helpers.py so the count and the run
   // truncate at the same place.
+  //
+  // CONTRACT: `pieces` is an ARRAY. Every caller passes one (splitText's
+  // return, or rows.map), so this is not a restriction in practice - but the
+  // indexed loop means a non-array now yields an empty result where the old
+  // for...of threw, and a Set would yield empty rather than iterating. Both are
+  // unreachable; the harness pins them so a future change cannot alter them
+  // silently.
   const all = pieces || [];
   const limit = Math.min(all.length, MAX_PIECES);
   for (let i = 0; i < limit; i++) {
