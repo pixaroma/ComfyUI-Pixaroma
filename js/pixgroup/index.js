@@ -169,8 +169,52 @@ function cornerAt(g, p) {
   return null;
 }
 function cornerCursor(c) { return (c === "tl" || c === "br") ? "nwse-resize" : "nesw-resize"; }
-function groupAt(p) {
+// ── containment order: a NESTED group must paint AFTER, and be hit-tested
+// BEFORE, the group that contains it ────────────────────────────────────────
+// The array is both the paint order and the hit-test order, and until 2026-09-05
+// it was used raw - so whether a nested group worked depended purely on whether
+// it happened to sit after its container in the array, i.e. on the order the two
+// were CREATED. Reported (#81) as "randomly, some nested groups lose the
+// functionality to edit them": a group created BEFORE the one drawn around it
+// was painted first, so the container's translucent body washed its title to
+// grey, AND every hit test found the container first - so the header showed a
+// plain arrow, double-click could not rename, and the colour picker recoloured
+// the CONTAINER. Dragging it out fixed all of it instantly (the container no
+// longer contains the point) and dragging it back broke it again, which is what
+// made it look random. Two groups nested in the SAME container could differ.
+//
+// DEPTH = how many other groups fully contain this one. Sorting by depth is
+// STABLE, so groups at the same depth keep their array order and the existing
+// z-order between merely OVERLAPPING (non-nested) groups is untouched.
+// The stored array is NEVER reordered - only this view is - so serialization
+// order is unchanged and a plain open cannot dirty a workflow (Vue Compat #18).
+function containsBox(outer, inner) {
+  return inner.x >= outer.x && inner.y >= outer.y &&
+         inner.x + inner.w <= outer.x + outer.w &&
+         inner.y + inner.h <= outer.y + outer.h;
+}
+let _ordArr = null, _ordSig = "", _ordOut = null;
+function orderedGroups() {
   const gs = ensureGroups();
+  if (gs.length < 2) return gs;
+  // Cheap O(n) signature so the O(n^2) depth pass runs only when a box actually
+  // moved. Pinned to the array INSTANCE too, because groups are per-graph (#1)
+  // and two graphs could otherwise present an identical signature.
+  let sig = "";
+  for (const g of gs) sig += g.id + ":" + g.x + "," + g.y + "," + g.w + "," + g.h + ";";
+  if (_ordArr === gs && sig === _ordSig && _ordOut) return _ordOut;
+  const rows = gs.map((g, i) => {
+    let d = 0;
+    for (const o of gs) if (o !== g && containsBox(o, g)) d++;
+    return { g, i, d };
+  });
+  rows.sort((a, b) => (a.d - b.d) || (a.i - b.i));
+  _ordArr = gs; _ordSig = sig; _ordOut = rows.map((r) => r.g);
+  return _ordOut;
+}
+
+function groupAt(p) {
+  const gs = orderedGroups();
   for (let i = gs.length - 1; i >= 0; i--) if (!isHiddenGroup(gs[i]) && inRect(gs[i], p)) return gs[i];
   return null;
 }
@@ -571,7 +615,7 @@ function installDraw() {
     try { applyNodeCarry(); } catch (_e) {}
     try { applyNativeCarry(); } catch (_e) {}
     try {
-      const gs = ensureGroups();
+      const gs = orderedGroups();   // outermost first: a nested group paints ON TOP of its container
       if (gs.length) {
         const { hiddenGroups } = hiddenMaps();
         // Cull groups FULLY outside the visible area (LiteGraph's own per-frame
@@ -730,7 +774,7 @@ function onDown(e) {
   }
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  const gs = ensureGroups();
+  const gs = orderedGroups();   // innermost first, so a nested group wins over its container
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
     if (isHiddenGroup(g)) continue; // hidden by a folded ancestor → not interactive
@@ -1132,7 +1176,7 @@ function onHover(e) {
   if (!p) return;
   _hoverPt = p;
   let cur = null, hoverId = null, hotBtn = null;
-  const gs = ensureGroups();
+  const gs = orderedGroups();   // innermost first: the `break` below takes the TOPMOST
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
     if (isHiddenGroup(g)) continue; // hidden by a folded ancestor
@@ -1248,7 +1292,7 @@ function onDblClick(e) {
   if (!c || e.target !== c.canvas) return;
   const p = screenToGraph(e.clientX, e.clientY);
   if (!p) return;
-  const gs = ensureGroups();
+  const gs = orderedGroups();   // innermost first, or a container swallows the rename
   for (let i = gs.length - 1; i >= 0; i--) {
     const g = gs[i];
     if (inHeader(g, p)) {
