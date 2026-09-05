@@ -444,7 +444,36 @@ function maybeFitWidth(node) {
  * "movement" back the other way. max() has no such memory: as the pointer moves
  * smoothly, the scale moves smoothly, in whichever direction is being pulled.
  */
+/**
+ * TRUE while the CHOSEN font has not settled yet.
+ *
+ * Until the .ttf lands, every measurement in this file is taken with the
+ * FALLBACK face, so `clockUnitWidth` is wrong by however much the real face
+ * differs (measured: Montserrat 157 vs the fallback's 141, JetBrains Mono 150,
+ * Playfair 148, and the other way for the condensed faces - Anton 130). Any
+ * scale derived from it is wrong by the same ratio, and `applyResizeAspect`
+ * writes that scale straight into node.size, which is SERIALIZED. That is the
+ * "the timer is bigger every time I open ComfyUI" report (2026-09-04):
+ * MEASURED, a Montserrat clock saved [314,100] reopened [314,111], the re-hug
+ * after the font landed then took the width to 349, the next open took the
+ * height to 124, and so on at ~11% a time until MAX_S.
+ *
+ * It keys off a SETTLED stamp rather than `_rtFontKey === want`, because a font
+ * that is missing or fails to parse falls back to the built-in face and leaves
+ * `_rtFontKey` empty (pattern #1f) - comparing keys would then read as "pending"
+ * for ever and the node could never be resized again.
+ */
+function fontPending(node) {
+  const want = readState(node).font || "";
+  if (!want) return false;                   // built-in face: nothing to wait for
+  return node._rtFontSettledFor !== want;    // stamped once the attempt resolves, hit OR miss
+}
 function applyResizeAspect(node) {
+  // The unit width is measured with the wrong face until the font lands, so the
+  // scale would be wrong - and this function's whole job is to write it into
+  // node.size. Leave the saved size alone; applyClockFont re-derives and
+  // re-hugs the moment the file is in.
+  if (fontPending(node)) return;
   const u = clockUnitWidth(node);
   const s = Math.max(1, Math.min(MAX_S, Math.max(node.size[0] / u, node.size[1] / BASE_H)));
   node._rtScale = s;
@@ -540,7 +569,7 @@ async function applyClockFont(node) {
     if (node._rtFontKey === "" && !node._rtFontVar) return;
     node._rtFontVar = null; node._rtFontKey = "";
   } else {
-    if (node._rtFontKey === id && node._rtFontVar) return;
+    if (node._rtFontKey === id && node._rtFontVar) { node._rtFontSettledFor = id; return; }
     try {
       const variant = await loadFontForLayer(id, CLOCK_FONT_WEIGHT, false);
       if (node._rtFontGen !== gen) return;   // a newer pick already won
@@ -576,6 +605,10 @@ async function applyClockFont(node) {
       node._rtFontVar = null; node._rtFontKey = "";
     }
   }
+  // The attempt has RESOLVED - hit or miss. Stamp it before anything below can
+  // measure, so fontPending stops holding the aspect rule off (a font that fell
+  // back must not leave the node permanently un-resizable).
+  node._rtFontSettledFor = id;
   node._rtUnitSig = null;   // the metrics changed → drop the cached width
   applyDomFont(node);
   // RE-DERIVE THE SCALE BEFORE RE-HUGGING. Until this await resolved, the unit
@@ -588,6 +621,13 @@ async function applyClockFont(node) {
   // modified. With the real metrics in hand the scale comes back out as the one
   // the user saved, and the fit below is a no-op.
   syncScaleFromSize(node);
+  // NODES 2.0: syncScaleFromSize only sets _rtScale, which the CANVAS painter
+  // reads - but there the face is DOM and its every size is a calc() off the
+  // --rt-s custom property, which only the observer writes and only on a size
+  // change. Push the corrected scale through the observer's own apply() so the
+  // rendered clock stops being the fallback-derived size (and so its `last`
+  // memo stays in step).
+  if (isVueNodes() && node._pixRtApplyScale) { try { node._pixRtApplyScale(); } catch (_e) {} }
   if (wasLoading) {
     // Trust the saved width: it was measured with THIS font when it was saved.
     // Stamping the signature is what makes that stick - refreshClock below calls
@@ -1509,7 +1549,14 @@ function installVueScaleObserver(node, root) {
   const ro = new ResizeObserver(apply);
   ro.observe(root);
   apply();
-  return () => { try { ro.disconnect(); } catch (_e) {} };
+  // Expose it so applyClockFont can re-run it when the font lands. The observer
+  // only fires on a SIZE change, and the node does not resize when a font
+  // finishes downloading - so without this the variable keeps the value derived
+  // from the FALLBACK metrics. MEASURED on a cold load: _rtScale corrected to
+  // 2.038 while --rt-s stayed 2.2695 (the 157/141 ratio), i.e. the clock
+  // rendered 11% too big and the layout store then saved that height.
+  node._pixRtApplyScale = apply;
+  return () => { node._pixRtApplyScale = null; try { ro.disconnect(); } catch (_e) {} };
 }
 
 function setupNode(node) {
@@ -1693,7 +1740,16 @@ app.registerExtension({
     // serialized field on a load frame (convention #7 / Vue Compat #18).
     const _origResize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
-      if (!isVueNodes()) applyResizeAspect(this);
+      // THE isGraphLoading GATE IS NOT OPTIONAL (convention #7). onResize is NOT
+      // only a user drag: LGraphNode.setSize calls it, and the frontend calls
+      // setSize from node creation, fit-to-content, the Resize menu, a per-frame
+      // legacy layout correction AND workflow restore. The draw hook below has
+      // carried this gate from the start; this one did not, which is how a
+      // workflow RESTORE reached applyResizeAspect and rewrote a serialized
+      // size. MEASURED: setSize([300,100]) on a JetBrains Mono clock during the
+      // load window came back [300,106] - the fallback face's unit width (141)
+      // instead of the real one (150) - against [300,100] with the gate.
+      if (!isVueNodes() && !isGraphLoading()) applyResizeAspect(this);
       if (_origResize) return _origResize.apply(this, arguments);
     };
 
