@@ -84,6 +84,7 @@ from .nodes._workflow_index_helpers import (
     looks_like_image as _wf_looks_like_image,
     is_cover_name as _wf_is_cover_name,
     reserved_part as _wf_reserved_part,
+    walk_following as _wf_walk,
     WIN_RESERVED_NAMES as _WIN_RESERVED_NAMES,
 )
 
@@ -3106,6 +3107,27 @@ def _wf_meta_path(request):
     return os.path.join(_wf_user_dir(request), "pixaroma_workflows_meta.json")
 
 
+def _wf_under_root(path, root):
+    """Workflow-folder containment that survives a symlinked subfolder.
+
+    The shared guard is realpath-strict, which is right for fixed roots but
+    rejects every path BEHIND a symlink (a workflows folder junctioned to
+    another drive, a synced folder). That made the browser refuse to rename,
+    move, reveal or cover anything inside one. Here the caller's `..`s are
+    already gone and only the user's own machine can have placed a link under
+    the root, so plain lexical containment is the honest test: abspath
+    collapses any traversal that survived, while a symlink the user made stays
+    valid. realpath still gets its vote, for a root that is itself a link.
+    """
+    if _is_path_under(path, root):
+        return True
+    try:
+        c, r = os.path.abspath(path), os.path.abspath(root)
+        return os.path.commonpath([c, r]) == r
+    except ValueError:
+        return False
+
+
 def _wf_resolve(root, rel):
     """A relative path from the browser turned into a real one inside the
     workflows folder, or None. Returns None for empty, so a caller can never
@@ -3117,7 +3139,7 @@ def _wf_resolve(root, rel):
     if not parts:
         return None
     p = os.path.normpath(os.path.join(root, *parts))
-    if not _is_path_under(p, root):
+    if not _wf_under_root(p, root):
         return None
     return p
 
@@ -3133,9 +3155,11 @@ def _wf_registered_types():
 
 def _wf_list_folders(root):
     """Every folder under the workflows root, including empty ones - those hold
-    no entries, so they would otherwise be invisible in the browser."""
+    no entries, so they would otherwise be invisible in the browser. Walked
+    with followlinks so a symlinked or junctioned folder is a folder like any
+    other (the walk itself refuses to loop)."""
     out = []
-    for dirpath, dirnames, _files in os.walk(root):
+    for dirpath, dirnames, _files in _wf_walk(root):
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         if os.path.abspath(dirpath) == os.path.abspath(root):
             continue
@@ -3453,7 +3477,7 @@ async def api_workflows_reveal(request):
     root = _wf_root(request)
     target = _wf_resolve(root, data.get("path", "")) or root
     folder = target if os.path.isdir(target) else os.path.dirname(target)
-    if not os.path.isdir(folder) or not _is_path_under(folder, root):
+    if not os.path.isdir(folder) or not _wf_under_root(folder, root):
         return web.json_response({"ok": False, "message": "Folder not found."})
     try:
         import subprocess

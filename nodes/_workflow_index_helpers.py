@@ -122,6 +122,38 @@ def _rel(path, root):
     return os.path.relpath(path, root).replace(os.sep, "/")
 
 
+def walk_following(root):
+    """os.walk that descends into symlinked folders without ever looping.
+
+    A symlink (or junction) inside the workflows folder - to a second drive, a
+    sync folder, or a shared library - is a real folder to the user, and plain
+    os.walk skips it: its contents went unindexed and the folder itself never
+    appeared in the browser's tree.
+
+    followlinks=True on its own can spin forever when a link points back at an
+    ancestor, so each directory is visited at most once by REAL path. That also
+    means two links to the same target are indexed once, under whichever one
+    the walk reaches first - indexing the same files twice under two names
+    would just invent duplicates.
+    """
+    seen = set()
+
+    def _claim(path):
+        try:
+            real = os.path.realpath(path)
+        except OSError:
+            return False
+        if real in seen:
+            return False
+        seen.add(real)
+        return True
+
+    _claim(root)
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=True):
+        dirnames[:] = [d for d in dirnames if _claim(os.path.join(dirpath, d))]
+        yield dirpath, dirnames, filenames
+
+
 def _num(v, default=0.0):
     try:
         f = float(v)
@@ -394,7 +426,7 @@ def build_index(root, cache_path):
     new_entries = {}
     out = []
 
-    for dirpath, dirnames, filenames in os.walk(root):
+    for dirpath, dirnames, filenames in walk_following(root):
         # Skip anything hidden, and ComfyUI's own bookkeeping.
         dirnames[:] = [d for d in dirnames if not d.startswith(".")]
         for fn in filenames:
