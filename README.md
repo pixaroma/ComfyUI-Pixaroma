@@ -386,7 +386,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133**
+### **September 5, 2026 · v1.4.133–v1.4.134**
+- **Fixed: Run Timer got a bit bigger every time you opened ComfyUI**, if you had given its clock a font of your own. Pinning the node did not stop it. A timer that has already stretched needs dragging back to the size you want once, and it stays there from then on.
 - **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Issues and Discussions on GitHub and GitLab are closed. Nothing reported was lost.
 - **The help names the update button:** `Update Easy-Install.bat`, or **Easy-Install** in the EZi Launcher.
 - **Updating help now asks one question: did the version number move?** If not, the update never landed and the browser cache is not the cause.
