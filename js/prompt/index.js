@@ -141,6 +141,20 @@ function injectCSS() {
       border:0; border-radius:4px; padding:6px 8px; font:12px/1.5 monospace; resize:none; outline:none; scrollbar-gutter:stable;
       white-space:pre-wrap; overflow-wrap:break-word; caret-color:var(--acc); }
     .pix-prm-ta::placeholder { color:#6a6a6a; }
+    /* ⚠️ color:transparent does NOT hide this layer while text is SELECTED, so
+       invariant #18's "there is only ONE visible text layer, misalignment can
+       never double/ghost the text" is FALSE for a selection. The browser paints
+       selected text in the selection's own foreground colour, overriding
+       transparent - CONFIRMED live on the sibling node. Where the two layers'
+       metrics differ at all the offset ACCUMULATES along the line and the
+       sentence is drawn twice, sliding apart to the right; reported on AI
+       Prompt, which shares this backdrop (ai-prompt.md #21). Zeroing the
+       selection colour makes the invariant true again. The highlight rectangle
+       still paints and the backdrop supplies the visible text over it, so
+       selecting looks normal. Note the pack already had this idiom in Note's
+       code view (js/note/css.mjs). Do NOT restore a visible selection colour. */
+    .pix-prm-ta::selection { color:transparent; }
+    .pix-prm-ta::-moz-selection { color:transparent; }
     /* preview GROWS with the node (flex, no fixed cap) so a big node shows more.
        LIGHTER gray (not the dark #1d1d1d of the editable inputs) so it reads as a
        read-only preview, not another input box. The plain colour lives on the CONTAINER,

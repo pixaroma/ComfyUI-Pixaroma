@@ -216,6 +216,21 @@ export function injectCSS() {
       border-radius:4px; padding:6px 8px; font:11.5px/1.45 monospace; resize:none;
       outline:none; scrollbar-gutter:stable;
       white-space:pre-wrap; overflow-wrap:break-word; }
+    /* ⚠️ color:transparent does NOT hide this layer while text is SELECTED.
+       The browser paints selected text in the selection's own foreground colour,
+       overriding it - CONFIRMED live: selecting in this box makes the textarea's
+       own glyphs appear. Normally they land exactly on the backdrop's and nobody
+       notices; where the two layers' metrics differ by even a fraction the offset
+       ACCUMULATES along the line and you see the sentence twice, sliding apart to
+       the right. That is the "ghosted font" report (2026-08-19), whose video shows
+       "A woman in a fiery plume" doubled inside the selection.
+       Zeroing the selection colour restores the invariant this design rests on -
+       ONE visible layer, always. The highlight rectangle still paints, and the
+       backdrop (position:absolute, so it paints ABOVE this in-flow textarea)
+       supplies the visible text over it, so selecting looks completely normal.
+       Do NOT "restore" a visible selection colour here. */
+    .pix-ap-idea::selection { color:transparent; }
+    .pix-ap-idea::-moz-selection { color:transparent; }
 
     /* NO expanded-preview box here, deliberately - see ai-prompt.md #21. One was
        built and removed the same day: this face already carries a banner, two

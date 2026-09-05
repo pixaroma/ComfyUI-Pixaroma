@@ -175,6 +175,18 @@ export function injectCSS() {
       border:0; font:12px/1.45 monospace; scrollbar-gutter:stable;
       white-space:pre-wrap; overflow-wrap:break-word; }
     .pix-mp-idea::placeholder { color:#5c5a57; }
+    /* A transparent text colour does NOT hide this layer while text is
+       SELECTED: the browser paints selected text in the selection's own
+       foreground colour and overrides it. Confirmed live on AI Prompt, whose
+       idea box is this same two-layer field. Where the two layers' metrics
+       differ at all the offset accumulates along the line and the sentence is
+       drawn twice, sliding apart to the right - the "ghosted font" report of
+       2026-08-19. Zeroing the selection colour keeps ONE visible text layer,
+       which is the invariant the whole design rests on. The highlight
+       rectangle still paints and the backdrop supplies the text over it.
+       Same idiom as Note's code view. Do not restore a visible colour here. */
+    .pix-mp-idea::selection { color:transparent; }
+    .pix-mp-idea::-moz-selection { color:transparent; }
     /* Tags: opens the shared library, the same one Prompt Pixaroma uses. Sized
        to the Caption/Lyrics segment beside it (20px, not the sibling's 23px)
        because this row is tighter - it already carries the segment, the seed
