@@ -553,15 +553,30 @@ async function saveToDisk(node) {
   const prefix = readFilenamePrefix(node);
   let suggestedName = `${prefix}.png`;
   try {
-    const blob = await getPreviewBlob(node);
-    if (!blob) throw new Error("no preview blob");
-    const dataURL = await blobToDataURL(blob);
+    // SEND THE REFERENCE, NOT THE BYTES. The frame is already on the server, so
+    // uploading it back was waste - and past ~75 MB of PNG it FAILED outright
+    // (base64 adds a third, ComfyUI's --max-upload-size defaults to 100 MB, and
+    // aiohttp rejects the body while parsing, which the route reported as
+    // "invalid JSON"). That is report #91, "cannot save big images". The server
+    // answers with the PNG bytes, so no base64 in either direction.
+    const idx = node._pixaromaSelectedFrame ?? 0;
+    const frame = node._pixaromaFrames?.[idx];
+    const ref = frame?.filename
+      ? { filename: frame.filename, subfolder: frame.subfolder || "", type: frame.type || "temp" }
+      : null;
+    let dataURL = null;
+    if (!ref) {
+      // Legacy fallback: no frame record (older saved state), so send the bytes.
+      const blob = await getPreviewBlob(node);
+      if (!blob) throw new Error("no preview blob");
+      dataURL = await blobToDataURL(blob);
+    }
     const { workflow, prompt } = await resolveSaveMeta(node);
     const resp = await fetch(pixApiUrl("/pixaroma/api/preview/prepare"), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        image_b64: dataURL,
+        ...(ref ? { frame: ref } : { image_b64: dataURL }),
         filename_prefix: prefix,
         workflow,
         prompt,
@@ -572,7 +587,15 @@ async function saveToDisk(node) {
       showToast(node, `Prepare failed: ${errJson.error || resp.status}`);
       return;
     }
-    const { image_b64, suggested_filename } = await resp.json();
+    // Binary reply (the frame-reference path) or the legacy JSON one.
+    let image_b64 = null, suggested_filename = null;
+    if ((resp.headers.get("content-type") || "").startsWith("image/")) {
+      preparedBlob = await resp.blob();
+      const h = resp.headers.get("X-Pixaroma-Filename");
+      if (h) { try { suggested_filename = decodeURIComponent(h); } catch { suggested_filename = h; } }
+    } else {
+      ({ image_b64, suggested_filename } = await resp.json());
+    }
     if (suggested_filename) {
       let omit = false;
       try {
@@ -594,7 +617,7 @@ async function saveToDisk(node) {
           : suggested_filename;
       }
     }
-    preparedBlob = await dataURLToBlob(image_b64);
+    if (!preparedBlob) preparedBlob = await dataURLToBlob(image_b64);
   } catch (err) {
     showToast(node, `Prepare failed: ${err.message || err}`);
     return;
@@ -1741,10 +1764,15 @@ api.addEventListener("executed", ({ detail }) => {
   node._pixaromaExpanded = false;
   node.properties.pixaromaExpanded = false;
   if (_activePreviewNode === node) _activePreviewNode = null;
-  // New run = fresh counter base. Output/ counter has advanced (if save_mode
-  // was on) so suggested filename will be naturally newer; reset the local
-  // offset so we don't double-jump.
-  node._pixaromaDiskOffset = 0;
+  // New run = fresh counter base ONLY IN save MODE. There, output/ gained files
+  // so the server's suggestion is naturally newer and keeping our offset would
+  // double-jump. In PREVIEW mode nothing is written to output/, so
+  // get_save_image_path returns the SAME counter every run - resetting made
+  // every run's first Save to Disk suggest the identical filename, which had to
+  // be retyped by hand (report #80). The offset is the only thing that can
+  // advance there, so it must survive the run. It stays runtime-only.
+  const mode = node.widgets?.find((w) => w.name === "save_mode")?.value;
+  if (mode === "save") node._pixaromaDiskOffset = 0;
   // Belt-and-braces: ensure the native preview stays suppressed even if a
   // restored/older node instance missed the onNodeCreated assignment.
   node.hideOutputImages = true;

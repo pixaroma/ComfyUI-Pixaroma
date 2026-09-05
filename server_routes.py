@@ -9,6 +9,7 @@ import asyncio
 import json
 import base64
 import uuid
+from urllib.parse import quote
 from server import PromptServer
 from aiohttp import web
 from PIL import Image
@@ -1487,6 +1488,45 @@ async def api_preview_save(request):
     )
 
 
+def _resolve_preview_frame(frame):
+    """Turn a {filename, subfolder, type} preview frame into a real path.
+
+    UNTRUSTED like every other route input - /prompt and all of ours are
+    unauthenticated, so "our own frontend sent it" is not a control
+    (patterns/path-containment.md #0). Containment is the shared helper, never a
+    re-rolled check: safe_join realpaths and refuses any escape, which matters
+    because a bare os.path.join DISCARDS the base for an absolute right-hand
+    side (#1). basename() on the filename keeps a subfolder out of it, exactly
+    as core's own /view does.
+    """
+    if not isinstance(frame, dict):
+        return None
+    name = frame.get("filename")
+    sub = frame.get("subfolder") or ""
+    ftype = frame.get("type") or "temp"
+    if not isinstance(name, str) or not isinstance(sub, str) or not isinstance(ftype, str):
+        return None
+    if ftype not in ("temp", "output", "input"):
+        return None
+    try:
+        base = folder_paths.get_directory_by_type(ftype)
+    except Exception:
+        base = None
+    if not base:
+        return None
+    leaf = os.path.basename(name)
+    if not leaf:
+        return None
+    rel = os.path.join(sub, leaf) if sub else leaf
+    path = _safe_join(base, rel)
+    if not path or not os.path.isfile(path):
+        return None
+    roots = _pix_comfy_roots()
+    if not roots or not _is_path_under(path, *roots):
+        return None
+    return path
+
+
 @PromptServer.instance.routes.post("/pixaroma/api/preview/prepare")
 async def api_preview_prepare(request):
     """Embed workflow metadata into a PNG and return it alongside an
@@ -1520,7 +1560,30 @@ async def api_preview_prepare(request):
     # Python node's behavior so the user always gets a successful save.
     prefix = _safe_prefix(prefix_raw) or "Preview"
 
-    pil = _decode_image(image_b64)
+    # THE BIG-IMAGE PATH. The frame is ALREADY on this machine, so sending its
+    # bytes up as base64 was pure waste - and past roughly 75 MB of PNG it does
+    # not merely waste, it FAILS: base64 adds a third, ComfyUI's
+    # --max-upload-size defaults to 100 MB, and aiohttp then rejects the body
+    # while PARSING it, which surfaced from the `except` above as the thoroughly
+    # misleading "invalid JSON". MEASURED: a detailed 4352x7680 PNG is ~100 MB,
+    # ~134 MB as base64, and this route answered 400 - i.e. "cannot save big
+    # images" (report #91). Given a frame REFERENCE we open the file ourselves
+    # and answer with the PNG BYTES, so neither direction carries base64 and
+    # neither is capped. The base64 path stays for the no-frame fallback.
+    frame = data.get("frame")
+    binary_reply = False
+    if isinstance(frame, dict):
+        fpath = _resolve_preview_frame(frame)
+        if fpath is None:
+            return web.json_response({"error": "frame not found"}, status=400)
+        try:
+            pil = Image.open(fpath)
+            pil.load()
+        except Exception:
+            return web.json_response({"error": "frame could not be read"}, status=400)
+        binary_reply = True
+    else:
+        pil = _decode_image(image_b64)
     if pil is None:
         return web.json_response({"error": "invalid image data"}, status=400)
 
@@ -1541,6 +1604,17 @@ async def api_preview_prepare(request):
         suggested_filename = f"{name}_{counter:05}_.png"
     except Exception as e:
         return web.json_response({"error": f"prepare failed: {e}"}, status=500)
+
+    if binary_reply:
+        # The suggested name rides in a header because the body is the PNG. HTTP
+        # headers are latin-1, and a prefix may be any script (the sanitizer
+        # deliberately keeps Unicode - preview-image.md #8), so percent-encode it
+        # and decodeURIComponent on the other side.
+        return web.Response(
+            body=body,
+            content_type="image/png",
+            headers={"X-Pixaroma-Filename": quote(suggested_filename)},
+        )
 
     image_data_uri = "data:image/png;base64," + base64.b64encode(body).decode("ascii")
     return web.json_response({
