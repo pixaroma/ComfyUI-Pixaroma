@@ -386,12 +386,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.134**
-- **Fixed: Run Timer got a bit bigger every time you opened ComfyUI**, if you had given its clock a font of your own. Pinning the node did not stop it. A timer that has already stretched needs dragging back to the size you want once, and it stays there from then on.
+### **September 5, 2026 · v1.4.133–v1.4.135**
+- **Fixed: text looked doubled and shifted while you selected it** in AI Prompt, Prompt Pixaroma and Music Prompt. Selecting now shows one clean copy.
+- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own. A timer already stretched needs one drag back to the size you want.
 - **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Issues and Discussions on GitHub and GitLab are closed. Nothing reported was lost.
-- **The help names the update button:** `Update Easy-Install.bat`, or **Easy-Install** in the EZi Launcher.
-- **Updating help now asks one question: did the version number move?** If not, the update never landed and the browser cache is not the cause.
-- **ComfyUI Manager can leave you on an older version.** It installs from the Comfy Registry, which can sit behind. Easy-Install or `git pull` give you the newest.
+- **Clearer updating help:** it names `Update Easy-Install.bat` and asks whether the version number moved. ComfyUI Manager installs from the Registry, which can sit behind.
 
 ### **August 27, 2026 · v1.4.131–v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
