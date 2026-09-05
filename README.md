@@ -386,15 +386,17 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.141**
+### **September 5, 2026 · v1.4.133–v1.4.142**
+- **Fixed: Preview Image Save to Disk** - big pictures failed, the filename stopped counting up, and a refused folder picker now saves to Downloads.
 - **Fixed: the Workflows panel now sees folders you linked in from elsewhere**, and can rename, move and cover them. Thanks to jab416171.
 - **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt.**
-- **Fixed: Preview Image Save to Disk** - very large pictures failed, the filename stopped counting up in preview mode, and if your system refused the folder picker it now saves to Downloads instead of doing nothing.
 - **Fixed: Load Audio now finds sound files in folders inside `input`.**
-- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, wrong colour target.
+- **Fixed: a Pixaroma group inside another group could stop being editable.**
 - **Fixed: text looked doubled while you selected it** in AI Prompt, Prompt and Music Prompt.
-- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own.
-- **Reports and ideas now go to `#pixaroma-nodes` on Discord.** Nothing was lost.
+- **Fixed: Run Timer grew a little on every open** with a font of your own.
+- **Open folder and Reveal now work only on the computer ComfyUI runs on**, since that is whose screen the window appears on.
+- **Groundwork for clearing the Registry security warning.** Nothing changes in how the nodes behave.
+- **Reports and ideas now go to `#pixaroma-nodes` on Discord.**
 
 ### **August 27, 2026 · v1.4.131–v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
