@@ -386,7 +386,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.138**
+### **September 5, 2026 · v1.4.133–v1.4.139**
+- **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt**, on images whose prompt was written by a language model.
 - **Fixed: Preview Image could not Save to Disk a very large picture**, and in preview mode the filename stopped counting up.
 - **Fixed: Load Audio now finds sound files in folders inside `input`.**
 - **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, and the colour picker changed the outer group.
