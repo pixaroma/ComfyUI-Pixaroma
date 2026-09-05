@@ -211,6 +211,39 @@ _DROPDOWN_CLASS = "PixaromaDropdown"
 # follows text_in, combining exactly like nodes/node_prompt.py run().
 _PROMPT_CLASS = "PixaromaPrompt"
 _VIDEO_PROMPT_CLASS = "PixaromaVideoPrompt"
+_PAUSE_TEXT_CLASS = "PixaromaPauseText"
+
+# NODES WHOSE TEXT OUTPUT IS WRITTEN BY A MODEL AT RUN TIME. Walking INTO one
+# can never find the prompt and can only ever find the INSTRUCTION, so they are
+# a dead end for this walker.
+#
+# ComfyUI embeds the API prompt as SUBMITTED, which is captured BEFORE
+# execution - at that moment the language model has not run and its text does
+# not exist. What IS in the file is the node's own input, and for an LLM that
+# input is the system/instruction text ("You are an expert prompt engineer...").
+# Collecting it produced report #79: "Prompt Reader read rules for LLM node not
+# prompt text." Reproduced on three real Civitai images, all of which returned
+# 2355 characters of instructions.
+#
+# The same reasoning already governs our own Video Prompt node further down -
+# this is that invariant generalised to other people's LLM nodes.
+#
+# Stopping here is not a loss: an image made this way normally carries the real
+# prompt in its A1111 `parameters` chunk (written at SAVE time, after the model
+# ran), and read_prompt_from_image falls through to that automatically. All
+# three reported images recover their exact prompt that way.
+#
+# ADDING ONE: it must be a node that ASKS A MODEL for text. A node that merely
+# transforms text it was given (concat, replace, wildcards) is not one of these
+# and must keep being walked, or a real prompt goes missing.
+_RUNTIME_TEXT_NODES = frozenset({
+    "TextGenerate",          # ComfyUI core's LLM text node
+    "AdvPromptEnhancer",     # Groq / OpenAI / Gemini / Ollama prompt enhancer
+    "OllamaGenerate",
+    "OllamaVision",
+    "IF_LLM",
+    "LLMPromptGenerator",
+})
 
 # Switch Source Pixaroma: N-output A/B bank switcher. The hidden
 # SwitchSourceState carries active side + row count, and the walker follows
@@ -732,9 +765,46 @@ def _walk_for_text(
             captured.append(chased)
         return
 
+    # A node that ASKS A MODEL for its text is a DEAD END - see
+    # _RUNTIME_TEXT_NODES. Its answer was produced after the prompt was
+    # captured, so the only text stored here is the instruction, and returning
+    # that is report #79.
+    if node.get("class_type") in _RUNTIME_TEXT_NODES:
+        return
+
     inputs = node.get("inputs") or {}
     if not isinstance(inputs, dict):
         return
+
+    # Pause Text Pixaroma: MIRRORS node_pause_text.py::run exactly, and claims
+    # the box text ONLY where that text is provably what ran.
+    #   continue      -> the wire was pruned, the box text IS the output.
+    #   no wire       -> the box text is the output.
+    #   pause / pass WITH a wire -> the output was the WIRE's text. Do NOT claim
+    #                    the box: it holds whatever was there at SUBMIT, i.e.
+    #                    the PREVIOUS run's text - close enough to look right
+    #                    and wrong often enough to mislead. FALL THROUGH to the
+    #                    normal walk instead, which is what keeps a plain Text
+    #                    node upstream recoverable; an LLM upstream dead-ends
+    #                    (_RUNTIME_TEXT_NODES) and the A1111 chunk answers.
+    # Without this branch PauseState is not a text key, so an UNWIRED or
+    # continued node reported nothing at all.
+    if node.get("class_type") == _PAUSE_TEXT_CLASS:
+        raw = inputs.get("PauseState")
+        mode, box = "pause", ""
+        if isinstance(raw, str) and raw:
+            try:
+                st = json.loads(raw)
+                if isinstance(st, dict):
+                    mode = st.get("mode", "pause")
+                    v = st.get("text", "")
+                    box = v.strip() if isinstance(v, str) else ""
+            except Exception:
+                pass
+        if box and (mode == "continue" or not isinstance(inputs.get("text"), list)):
+            captured.append(box)
+            return
+        # else: fall through to the generic walk (the wire is the truth)
 
     # Mux / switch nodes: pick the active input and recurse through it. If we
     # fall through to the per-input loop instead, the switch's own input names
