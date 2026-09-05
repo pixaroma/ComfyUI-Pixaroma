@@ -2,6 +2,7 @@ import os
 import io
 import re
 import hashlib
+import ipaddress
 import threading
 import time
 import shutil
@@ -47,6 +48,57 @@ from .nodes._path_guard import (
     prescreen_folder_field as _pix_prescreen_field,
     rel_is_rooted as _pix_rel_is_rooted,
 )
+
+
+# --- Desktop-only routes: refuse a caller that is not on this machine --------
+#
+# THREE routes act on the SERVER'S PHYSICAL DESKTOP. Two open a file-explorer
+# window (/save_image/open_folder, /workflows/reveal) and one pops the native
+# folder dialog (/load_images_folder/pick_native). For a caller on a different
+# machine those are useless by construction: the window appears on somebody
+# else's screen. So refusing a non-loopback peer takes nothing away from a
+# remote user that they could ever have used, while removing the one shape a
+# registry security review reliably objects to - a side-effecting route wired
+# straight to an OS sink. See `.claude/patterns/registry-compliance.md` #2d for
+# the measurement (11 of 11 banned route-bearing packs had it; 0 of 10 approved
+# ones did) and `path-containment.md` #11, where this class was previously and
+# deliberately left alone.
+#
+# THIS IS NOT CONTAINMENT AND REPLACES NONE OF IT. `_path_guard` still runs on
+# every path these routes touch. This narrows WHO can reach the sink; the
+# guards narrow WHERE it may point. Both are required, and dropping either one
+# because the other exists is the mistake.
+#
+# We read `request.remote`, the actual socket peer, and NEVER a header:
+# X-Forwarded-For is set by whoever is calling. A reverse proxy on the same
+# host therefore reads as local. That is a false ALLOW - precisely the
+# reachability these routes already have today - and never a false DENY that
+# could break a working local setup.
+def _pix_peer_is_local(request):
+    """True when the HTTP peer address is a loopback address."""
+    try:
+        peer = getattr(request, "remote", None)
+        if not peer:
+            return False
+        # aiohttp gives a bare address; strip the brackets IPv6 may carry.
+        return ipaddress.ip_address(str(peer).strip("[]")).is_loopback
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def _pix_desktop_only_refusal():
+    """Shared refusal for the desktop-only routes.
+
+    Says WHY rather than just no, per `path-containment.md` #7 - a bare refusal
+    reads as a bug to somebody whose button just stopped working.
+    """
+    return web.json_response({
+        "ok": False,
+        "message": (
+            "This opens a window on the computer running ComfyUI, so it only "
+            "works when you are using ComfyUI on that same computer."
+        ),
+    })
 from .nodes._font_catalog import full_catalog as _font_full_catalog
 from .nodes._resize_helpers import _I16_MODES
 from .nodes._font_catalog import (
@@ -2232,6 +2284,12 @@ async def api_lif_pick_native(request):
     """Pop the native OS folder dialog on the ComfyUI host; return the chosen path.
     {ok:true, path} on pick; {ok:false, cancelled} on cancel; {ok:false,
     unavailable} when no native dialog tool exists (so the UI falls back)."""
+    # A remote caller gets the SAME answer as a host with no dialog tool, on
+    # purpose: `unavailable` is the signal the frontend already handles by
+    # falling back to the in-app folder browser, which is the control a remote
+    # user actually wants. An error would just be a dead end for them.
+    if not _pix_peer_is_local(request):
+        return web.json_response({"ok": False, "unavailable": True})
     if not _lif_dialog_available():
         return web.json_response({"ok": False, "unavailable": True})
     start = request.query.get("path", "")
@@ -2425,7 +2483,12 @@ async def api_save_image_open_folder(request):
     os.path.isdir check ALONE reach out over SMB and leak an NTLM hash, before
     startfile is even called - so the check has to come BEFORE the isdir, not
     just before the launch. The sibling /workflows/reveal route already did
-    this correctly; this one is now consistent with it."""
+    this correctly; this one is now consistent with it.
+
+    Peer check added 2026-09-05: opening a file manager is only meaningful for
+    somebody sitting at this machine. See _pix_peer_is_local."""
+    if not _pix_peer_is_local(request):
+        return _pix_desktop_only_refusal()
     try:
         data = await request.json()
     except Exception:
@@ -3467,7 +3530,10 @@ async def api_workflows_folder(request):
 @PromptServer.instance.routes.post("/pixaroma/api/workflows/reveal")
 async def api_workflows_reveal(request):
     """Open the OS file explorer at a workflow's folder. Same trust level as the
-    Save Image reveal: the server IS the user's machine."""
+    Save Image reveal: the server IS the user's machine - which is now enforced
+    rather than assumed (peer check added 2026-09-05, see _pix_peer_is_local)."""
+    if not _pix_peer_is_local(request):
+        return _pix_desktop_only_refusal()
     try:
         data = await request.json()
     except Exception:
