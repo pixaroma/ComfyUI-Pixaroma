@@ -45,8 +45,16 @@ export const GUIDES = [
         ],
       },
       {
-        heading: "Updated, but nothing changed?",
-        body: "That is almost always the browser holding on to the old files rather than the update failing. The fix takes about five seconds and is on the Buttons or nodes missing? page.",
+        heading: "Did it actually take?",
+        body: "Worth ten seconds, because an update can finish with a tick and still leave you on the old version. Compare the version in the footer of this window against the newest one on the Pixaroma site. If the number went up, the update worked.",
+      },
+      {
+        heading: "The number did not go up",
+        body: "Then the update did not land, and clearing the browser cache will not help. The usual cause is that Manager installs from the Comfy Registry, which can sit behind the repository. Switch Pixaroma to nightly in Manager, which installs straight from the repository, or use Easy-Install or `git pull` instead.",
+      },
+      {
+        heading: "The number went up, but nothing looks different",
+        body: "That is the browser holding on to the old files rather than the update failing. The fix takes about five seconds and is on the Buttons or nodes missing? page.",
       },
       {
         heading: "Which version am I on?",
