@@ -25,10 +25,27 @@ export async function listAudioFiles() {
   }
 }
 
-/** A url the browser can fetch the raw file from, for drawing and playing. */
+/**
+ * A url the browser can fetch the raw file from, for drawing and playing.
+ *
+ * ⚠️ A SUBFOLDER MUST BE SENT SEPARATELY. Core's /view does
+ * `filename = os.path.basename(filename)` and reads the folder from its OWN
+ * `subfolder` query param (server.py), so passing "Audio/song.mp3" whole makes
+ * it look for "song.mp3" in the input ROOT and find nothing. The failure is
+ * quiet - no waveform and no playback, with the file plainly listed in the
+ * picker - which is half of report #69. Core containment-checks `subfolder`
+ * against the input dir itself, and our own `_resolve` re-checks on the Python
+ * side, so this is presentation only.
+ */
 export function audioFileUrl(name) {
   if (!name) return "";
-  return pixApiUrl(`/view?filename=${encodeURIComponent(name)}&type=input`);
+  const s = String(name).replace(/\\/g, "/");
+  const cut = s.lastIndexOf("/");
+  const base = cut >= 0 ? s.slice(cut + 1) : s;
+  const sub = cut >= 0 ? s.slice(0, cut) : "";
+  let q = `/view?filename=${encodeURIComponent(base)}&type=input`;
+  if (sub) q += `&subfolder=${encodeURIComponent(sub)}`;
+  return pixApiUrl(q);
 }
 
 /**

@@ -3768,23 +3768,55 @@ async def api_duration_preview(request):
 # is never cached, so a file dropped in the input folder shows up without a
 # refresh, let alone a restart.
 _AUDIO_EXTS = (".wav", ".mp3", ".flac", ".ogg", ".opus", ".m4a", ".aac", ".wma", ".aiff", ".aif")
+_AUDIO_MAX_DEPTH = 6      # how many folders deep to look under input/
+_AUDIO_MAX_FILES = 2000   # a picker is unusable long before this; the cap is a stop, not a budget
 
 
 @PromptServer.instance.routes.get("/pixaroma/api/load_audio/list")
 async def api_load_audio_list(request):
-    """Sound files sitting in ComfyUI's input folder."""
+    """Sound files sitting in ComfyUI's input folder, INCLUDING subfolders.
+
+    Reported (#69): a user moved his audio into input/Audio to keep things tidy
+    and the picker went empty, because this listed the root only. Core's own
+    LoadImage is flat too, so this is a deliberate step past core rather than a
+    core behaviour we were failing to match.
+
+    A name is returned RELATIVE to the input dir with forward slashes
+    ("Audio/song.mp3"). That is the same shape `uploadAudio` already returns for
+    a file dropped into a subfolder, and `_resolve` in node_load_audio.py feeds
+    it to get_annotated_filepath, which joins it under the input dir and refuses
+    anything that escapes.
+
+    followlinks stays FALSE (os.walk's default, stated here because it is load
+    bearing): this route is unauthenticated, so a symlink inside input/ pointing
+    at C:\\ would otherwise turn a file picker into a filesystem enumerator.
+    Both caps exist so a huge or pathological tree cannot hang the picker.
+    """
     hdrs = {"Cache-Control": "no-store"}
     try:
         input_dir = folder_paths.get_input_directory()
+        root = os.path.abspath(input_dir)
         names = []
-        for n in os.listdir(input_dir):
-            if not n.lower().endswith(_AUDIO_EXTS):
-                continue
-            try:
-                if os.path.isfile(os.path.join(input_dir, n)):
-                    names.append(n)
-            except OSError:
-                continue
+        for dirpath, dirnames, filenames in os.walk(root):  # followlinks=False
+            rel_dir = os.path.relpath(dirpath, root)
+            depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
+            if depth >= _AUDIO_MAX_DEPTH:
+                dirnames[:] = []          # stop descending, still list this level
+            dirnames.sort(key=lambda s: s.lower())
+            for n in filenames:
+                if not n.lower().endswith(_AUDIO_EXTS):
+                    continue
+                try:
+                    if not os.path.isfile(os.path.join(dirpath, n)):
+                        continue
+                except OSError:
+                    continue
+                rel = n if rel_dir == "." else os.path.join(rel_dir, n)
+                names.append(rel.replace(os.sep, "/"))
+                if len(names) >= _AUDIO_MAX_FILES:
+                    break
+            if len(names) >= _AUDIO_MAX_FILES:
+                break
         names.sort(key=lambda s: s.lower())
     except Exception:
         # A SCAN FAILURE is not an empty folder. Saying [] would make the node
