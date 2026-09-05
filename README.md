@@ -22,7 +22,15 @@
 
 ---
 
-> 💬 **Need help, have an idea, or found a bug?** Post in the **#pixaroma-nodes** channel on the [Pixaroma Discord](https://discord.gg/gggpkVgBf3), or open a work item (issue) on [GitLab](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues).
+> ## 💬 Bugs, questions and ideas all go to Discord
+>
+> **[#pixaroma-nodes on the Pixaroma Discord](https://discord.com/channels/1245221993746399232/1513481633762775110)** is now the one place for everything: bug reports, questions and feature ideas. ([Join here first](https://discord.gg/gggpkVgBf3) if you are not on the server, it is free.)
+>
+> **Issues and Discussions here are closed.** Not because reports are unwelcome, the opposite. They were spread across four places, so questions sat unanswered for weeks. On Discord there is a large community that often answers within minutes, everything lands in one channel, and a real bug gets looked at properly instead of being lost in a queue.
+>
+> **Pull requests are also closed.** The nodes are tightly connected: one change usually has to be carried into the help text, the node's own tooltips, and other nodes that read its state (Prompt Reader and XY Plot both need to know when a node changes). A patch that only touches one file leaves the rest inconsistent, so ideas and code suggestions are very welcome on Discord instead.
+>
+> **New here, or something looks broken?** The [help page](https://workflows.pixaroma.com/help/) covers installing, updating, and the 30-second fix for most "a node looks broken" reports. Inside ComfyUI, the orange **?** in the top toolbar opens the full help for every node.
 
 > 💡 **Updated Pixaroma and a node looks broken or old?** Hard-refresh your ComfyUI browser tab with **Ctrl+Shift+R** (**Cmd+Shift+R** on Mac). The browser caches old node visuals, so without a hard refresh you can still see the previous version even though the update installed correctly.
 
@@ -307,7 +315,7 @@ cd ComfyUI/custom_nodes
 git clone https://gitlab.com/pixaroma/comfyui-pixaroma.git
 ```
 
-> **⚠️ Node looks blank or broken right after updating?** This is almost always your browser cache, not a bug. Hard-refresh with **Ctrl + Shift + R** (Windows / Linux) or **Cmd + Shift + R** (Mac). If a node is still broken after that, see [Read this first](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues/2).
+> **⚠️ Node looks blank or broken right after updating?** This is almost always your browser cache, not a bug. Hard-refresh with **Ctrl + Shift + R** (Windows / Linux) or **Cmd + Shift + R** (Mac). If a node is still broken after that, see [the help page](https://workflows.pixaroma.com/help/#cache).
 
 ### 2. Optional: AI Background Removal
 AI Remove Background is used in three places in Pixaroma: the **Remove Background Pixaroma** node, the **Image Composer** editor's AI Background Removal button, and the **Paint Pixaroma** editor's AI Background Removal button.
@@ -904,8 +912,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 > This suite was developed with significant AI assistance. While thoroughly tested, we welcome bug reports and feedback from the community!
 
 🏠 **Home:** ComfyUI-Pixaroma is developed on [GitLab](https://gitlab.com/pixaroma/comfyui-pixaroma) - the place for the latest code. Any copy hosted elsewhere (such as a GitHub mirror) is a backup.  
-💡 **Have an idea for a new node or improvement?** Share it in the **#pixaroma-nodes** channel on [Discord](https://discord.gg/gggpkVgBf3).  
-🐞 **Found a bug?** Open a work item (GitLab's name for an issue) on [GitLab](https://gitlab.com/pixaroma/comfyui-pixaroma/-/issues), or post in **#pixaroma-nodes** on [Discord](https://discord.gg/gggpkVgBf3).  
+🐞 **Found a bug, or have an idea?** Both go to the **#pixaroma-nodes** channel on [Discord](https://discord.com/channels/1245221993746399232/1513481633762775110) - the single place for reports, questions and suggestions. ([Join the server](https://discord.gg/gggpkVgBf3) first if you need to.)  
+📖 **Stuck?** The [help page](https://workflows.pixaroma.com/help/) covers installing, updating and the usual "it looks broken" fix.  
 ⚖️ **Licensed under [MIT](LICENSE)**
 
 ComfyUI-Pixaroma is an independent, community-made extension. It is not affiliated with, endorsed by, or sponsored by Comfy Org or the ComfyUI project. Product names, logos, and trademarks are the property of their respective owners.
