@@ -25,24 +25,19 @@ export const GUIDES = [
     key: "guide:update",
     icon: "⬆️",
     title: "Update the nodes",
-    tagline: "Three ways to get the newest version, in the order to try them.",
+    tagline: "Three ways to get the newest version, best first.",
     keywords: "update upgrade newer version manager easy install git pull latest",
     sections: [
       {
-        heading: "The easy ways",
+        heading: "The two that always give you the newest",
         defs: [
-          ["ComfyUI Manager", "Open the Manager, find Pixaroma in the installed list, press Update, then restart ComfyUI."],
-          ["ComfyUI Easy-Install", "Run the updater that came with it. It fetches the newest version for you."],
+          ["ComfyUI Easy-Install", "Run `Update Easy-Install.bat` from your ComfyUI-Easy-Install folder, or open the ComfyUI EZi Launcher and press Easy-Install under UPDATE."],
+          ["By hand with git", "Open a terminal in `ComfyUI/custom_nodes/ComfyUI-Pixaroma`, run `git pull`, then restart ComfyUI."],
         ],
       },
       {
-        heading: "When neither works",
-        body: "Open a terminal in the plugin folder and pull the newest version by hand:",
-        bullets: [
-          "Go to `ComfyUI/custom_nodes/ComfyUI-Pixaroma`",
-          "Run `git pull`",
-          "Restart ComfyUI",
-        ],
+        heading: "ComfyUI Manager",
+        body: "Find Pixaroma in the installed list, press Update, then restart ComfyUI.\n\nManager installs from the Comfy Registry, which can sit behind the repository, so Update can finish with a tick and still leave you a few versions back with nothing to warn you. If the version does not move, pressing Update again will not help: switch Pixaroma to nightly in Manager, which installs straight from the repository, or use one of the two above.",
       },
       {
         heading: "Did it actually take?",
@@ -50,7 +45,7 @@ export const GUIDES = [
       },
       {
         heading: "The number did not go up",
-        body: "Then the update did not land, and clearing the browser cache will not help. The usual cause is that Manager installs from the Comfy Registry, which can sit behind the repository. Switch Pixaroma to nightly in Manager, which installs straight from the repository, or use Easy-Install or `git pull` instead.",
+        body: "Then the update did not land, and clearing the browser cache will not help. If you updated with Manager, see the note above: switch Pixaroma to nightly, or use Easy-Install or `git pull` instead.",
       },
       {
         heading: "The number went up, but nothing looks different",
