@@ -386,7 +386,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.135**
+### **September 5, 2026 · v1.4.133–v1.4.136**
+- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, and the colour picker changed the outer group instead. Dragging it out was the only workaround.
 - **Fixed: text looked doubled and shifted while you selected it** in AI Prompt, Prompt Pixaroma and Music Prompt. Selecting now shows one clean copy.
 - **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own. A timer already stretched needs one drag back to the size you want.
 - **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Issues and Discussions on GitHub and GitLab are closed. Nothing reported was lost.
