@@ -403,7 +403,8 @@ function collectGates(out) {
 // clears it in a `finally` AFTER `await app.queuePrompt(...)` resolves, and
 // api.queuePrompt runs inside that await.
 // ─────────────────────────────────────────────────────────────────────────────
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   // FAIL OPEN. If this injection throws, ComfyUI's graphToPrompt promise
@@ -432,7 +433,8 @@ app.graphToPrompt = async function (...args) {
 // partialExecutionTargets and any future option survive.
 if (!api._pixPauseQueueWrapped) {
   api._pixPauseQueueWrapped = true;
-  const _origQueuePrompt = api.queuePrompt.bind(api);
+  const _origQueuePrompt_fn = api.queuePrompt;
+  const _origQueuePrompt = (...a) => _origQueuePrompt_fn.apply(api, a);
   api.queuePrompt = async function (...args) {
     try {
       const out = args[1]?.output;

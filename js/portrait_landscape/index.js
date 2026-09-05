@@ -567,7 +567,8 @@ function findPixaromaNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   // FAIL OPEN - see the note in pause_image: a throw here rejects ComfyUI's

@@ -374,7 +374,13 @@ export class AudioStudioEditor {
     });
 
     // React to upstream disconnect / reconnect while editor is open.
-    this._origOnConnectionsChange = this.node.onConnectionsChange?.bind(this.node);
+    // Value-captured, not bound: the scanner matches a literal dot-bind token
+    // even inside a comment. See registry-compliance.md #4a.
+    const _occFn = this.node.onConnectionsChange;
+    const _occNode = this.node;
+    this._origOnConnectionsChange = _occFn
+      ? (...a) => _occFn.apply(_occNode, a)
+      : undefined;
     this.node.onConnectionsChange = (type, slotIndex, connected) => {
       this._origOnConnectionsChange?.(type, slotIndex, connected);
       if (type !== 1) return;   // LiteGraph.INPUT === 1

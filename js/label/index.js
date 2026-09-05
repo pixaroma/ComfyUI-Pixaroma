@@ -148,7 +148,8 @@ function openLabelEditor(node) {
   try {
     const ed = new LabelEditor(node);
     node._pixLblEditor = ed;
-    const origClose = ed.close.bind(ed);
+    const _origClose_fn = ed.close;
+    const origClose = (...a) => _origClose_fn.apply(ed, a);
     ed.close = () => { node._pixLblEditorOpen = false; node._pixLblEditor = null; origClose(); };
     ed.open();
   } catch (e) {

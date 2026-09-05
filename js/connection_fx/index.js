@@ -584,7 +584,8 @@ function installDrawHook() {
 function installLoadHook() {
   if (loadHookInstalled) return;
   if (typeof app.loadGraphData !== "function") return;
-  const origLoad = app.loadGraphData.bind(app);
+  const _origLoad_fn = app.loadGraphData;
+  const origLoad = (...a) => _origLoad_fn.apply(app, a);
   app.loadGraphData = function () {
     // Every workflow-open / tab-restore / Ctrl+Z funnels through here, and
     // ComfyUI repopulates graph.links with all saved wires. Suppress the

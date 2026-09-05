@@ -559,7 +559,8 @@ export function closeNodeSettingsFor(node) {
 function wrapLoadGraphData() {
   if (_loadWrapped || !app?.loadGraphData) return;
   _loadWrapped = true;
-  const orig = app.loadGraphData.bind(app);
+  const _orig_fn = app.loadGraphData;
+  const orig = (...a) => _orig_fn.apply(app, a);
   app.loadGraphData = function (...args) {
     closeNodeSettingsPanel();
     return orig(...args);

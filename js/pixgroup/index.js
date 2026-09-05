@@ -601,7 +601,9 @@ function installDraw() {
   const c = app.canvas;
   if (!c) { setTimeout(installDraw, 150); return; }
   if (c._pixGroupBgWrapped) return;
-  const prev = (typeof c.onDrawBackground === "function") ? c.onDrawBackground.bind(c) : null;
+  // Value-captured, not bound - see registry-compliance.md #4a.
+  const _prevFn = c.onDrawBackground;
+  const prev = (typeof _prevFn === "function") ? (...a) => _prevFn.apply(c, a) : null;
   c.onDrawBackground = function (ctx, area) {
     if (prev) { try { prev(ctx, area); } catch (_e) {} }
     // Apply the node / native-group carry HERE, inside the bg draw pass, in BOTH renderers,

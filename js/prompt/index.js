@@ -1006,7 +1006,8 @@ function findPromptNode(index, promptId) {
 
 if (!app._pixPromptToPromptPatched) {
 app._pixPromptToPromptPatched = true;
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   // Bound to app above, so a future detached call (someone doing
   // `const f = app.graphToPrompt; f()`) cannot lose `this` inside our wrapper.

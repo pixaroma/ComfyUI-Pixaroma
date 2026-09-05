@@ -265,7 +265,8 @@ function ensureGraphCloseHook() {
   if (_graphHookInstalled) return;
   if (!app || typeof app.loadGraphData !== "function") return;
   _graphHookInstalled = true;
-  const orig = app.loadGraphData.bind(app);
+  const _orig_fn = app.loadGraphData;
+  const orig = (...a) => _orig_fn.apply(app, a);
   app.loadGraphData = function (...args) {
     closeHelpPopup();
     return orig(...args);

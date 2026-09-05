@@ -1503,7 +1503,8 @@ function findNode(index, id) {
 
 if (!app._pixOpPromptPatched) {
   app._pixOpPromptPatched = true;
-  const _origGraphToPrompt = app.graphToPrompt.bind(app);
+  const _origGraphToPrompt_fn = app.graphToPrompt;
+  const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
   app.graphToPrompt = async function (...args) {
     const result = await _origGraphToPrompt(...args);
     try {

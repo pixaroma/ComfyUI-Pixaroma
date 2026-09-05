@@ -37,7 +37,8 @@ const MIN_W = 360; // minimum node width (the two IN/OUT cards need the room)
 let _irLoadingGraph = false;
 if (app && app.loadGraphData && !app._pixIrLoadWrapped) {
   app._pixIrLoadWrapped = true;
-  const _origLoadGraphData = app.loadGraphData.bind(app);
+  const _origLoadGraphData_fn = app.loadGraphData;
+  const _origLoadGraphData = (...a) => _origLoadGraphData_fn.apply(app, a);
   app.loadGraphData = function (...args) {
     _irLoadingGraph = true;
     let r;
@@ -925,7 +926,8 @@ api.addEventListener("executed", ({ detail }) => {
 });
 
 // ── graphToPrompt: inject state into the hidden input (subgraph-safe) ──
-const _origG2P = app.graphToPrompt.bind(app);
+const _origG2P_fn = app.graphToPrompt;
+const _origG2P = (...a) => _origG2P_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origG2P(...args);
   // FAIL OPEN - see the note in pause_image: a throw here rejects ComfyUI's

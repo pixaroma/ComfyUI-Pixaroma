@@ -133,7 +133,8 @@ app.registerExtension({
 
 // ── graphToPrompt: inject the state ────────────────────────────────────────
 // INJECT ONLY - a prune here would strip the settings out of Export (API) too.
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   try {

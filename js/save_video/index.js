@@ -713,7 +713,8 @@ function injectState(result) {
 function installGraphToPromptHook() {
   if (app._pixSvGraphPatched) return;
   app._pixSvGraphPatched = true;
-  const orig = app.graphToPrompt.bind(app);
+  const _orig_fn = app.graphToPrompt;
+  const orig = (...a) => _orig_fn.apply(app, a);
   app.graphToPrompt = async function (...args) {
     const result = await orig(...args);
     try {

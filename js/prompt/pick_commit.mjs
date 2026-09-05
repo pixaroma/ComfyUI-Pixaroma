@@ -28,7 +28,8 @@ import { commitPicks } from "./cursors.mjs";
 // that file cannot install a second wrap and commit every build twice.
 if (!app._pixPromptQueuePatched && api && typeof api.queuePrompt === "function") {
   app._pixPromptQueuePatched = true;
-  const _origQueuePrompt = api.queuePrompt.bind(api);
+  const _origQueuePrompt_fn = api.queuePrompt;
+  const _origQueuePrompt = (...a) => _origQueuePrompt_fn.apply(api, a);
   api.queuePrompt = async function (...args) {
     const res = await _origQueuePrompt(...args);   // throws on a rejected queue -> pick kept
     try {

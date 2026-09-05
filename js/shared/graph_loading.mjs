@@ -27,7 +27,8 @@ let _loading = false;
 
 if (app && app.loadGraphData && !app._pixGraphLoadWrapped) {
   app._pixGraphLoadWrapped = true;
-  const _origLoadGraphData = app.loadGraphData.bind(app);
+  const _origLoadGraphData_fn = app.loadGraphData;
+  const _origLoadGraphData = (...a) => _origLoadGraphData_fn.apply(app, a);
   app.loadGraphData = function (...args) {
     _loading = true;
     let r;

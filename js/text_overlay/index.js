@@ -215,7 +215,9 @@ function setupTextOverlayNode(node) {
   // node.computeSize interferes with LiteGraph's internal layout and can
   // make the whole node body collapse on the current Vue frontend).
   const MIN_W = 320;
-  const _origOnDrawForeground = node.onDrawForeground?.bind(node);
+  // Value-captured, not bound - see registry-compliance.md #4a.
+  const _odfFn = node.onDrawForeground;
+  const _origOnDrawForeground = _odfFn ? (...a) => _odfFn.apply(node, a) : undefined;
   node.onDrawForeground = function (ctx) {
     if (this.size && this.size[0] < MIN_W) {
       this.size[0] = MIN_W;
@@ -432,7 +434,8 @@ function findPixNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   const out = result?.output;

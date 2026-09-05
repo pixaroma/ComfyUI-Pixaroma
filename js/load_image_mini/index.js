@@ -889,7 +889,8 @@ function findNode(index, id) {
 
 if (!app._pixLmPromptPatched) {
   app._pixLmPromptPatched = true;
-  const _orig = app.graphToPrompt.bind(app);
+  const _orig_fn = app.graphToPrompt;
+  const _orig = (...a) => _orig_fn.apply(app, a);
   app.graphToPrompt = async function (...args) {
     const result = await _orig(...args);
     try {

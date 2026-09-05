@@ -154,7 +154,8 @@ app.registerExtension({
     if (app._pixWorkflowCompatWrapped) return;
     app._pixWorkflowCompatWrapped = true;
 
-    const orig = app.graphToPrompt.bind(app);
+    const _orig_fn = app.graphToPrompt;
+    const orig = (...a) => _orig_fn.apply(app, a);
     let warned = false;
     app.graphToPrompt = async function (...args) {
       const result = await orig(...args);

@@ -288,7 +288,8 @@ function findNode(index, id) {
   return tail && index.has(tail) ? index.get(tail) : null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   try {

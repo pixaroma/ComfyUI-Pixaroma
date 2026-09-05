@@ -451,7 +451,8 @@ function findNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   // FAIL OPEN: a throw here would reject ComfyUI's own graphToPrompt and break

@@ -1842,7 +1842,8 @@ function injectCivitaiFlag(result) {
 function installCivitaiFlagHook() {
   if (app._pixPreviewCivitaiPatched) return;
   app._pixPreviewCivitaiPatched = true;
-  const orig = app.graphToPrompt.bind(app);
+  const _orig_fn = app.graphToPrompt;
+  const orig = (...a) => _orig_fn.apply(app, a);
   app.graphToPrompt = async function (...args) {
     const result = await orig(...args);
     try {

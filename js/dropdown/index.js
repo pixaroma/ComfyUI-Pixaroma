@@ -269,7 +269,8 @@ function findNode(index, id) {
   return tail && index.has(tail) ? index.get(tail) : null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   try {
@@ -306,7 +307,8 @@ app.graphToPrompt = async function (...args) {
 // entry is handed out again until then.
 if (!app._pixDdQueuePatched && api && typeof api.queuePrompt === "function") {
   app._pixDdQueuePatched = true;
-  const _origQueuePrompt = api.queuePrompt.bind(api);
+  const _origQueuePrompt_fn = api.queuePrompt;
+  const _origQueuePrompt = (...a) => _origQueuePrompt_fn.apply(api, a);
   api.queuePrompt = async function (...args) {
     const res = await _origQueuePrompt(...args);   // throws on a rejected queue -> pick kept
     try {

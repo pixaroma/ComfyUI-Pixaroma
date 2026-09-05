@@ -224,7 +224,8 @@ api.addEventListener("executed", (e) => {
 //
 // This is also where a Random seed is BAKED IN for the run, so the value the
 // model actually used is the value that went into the queued workflow.
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   try {

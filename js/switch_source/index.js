@@ -31,7 +31,8 @@ const MIN_W = 250;
 let _ssLoadingGraph = false;
 if (app && app.loadGraphData && !app._pixSsLoadWrapped) {
   app._pixSsLoadWrapped = true;
-  const _origLoad = app.loadGraphData.bind(app);
+  const _origLoad_fn = app.loadGraphData;
+  const _origLoad = (...a) => _origLoad_fn.apply(app, a);
   app.loadGraphData = function (...args) {
     _ssLoadingGraph = true;
     let r;
@@ -405,7 +406,8 @@ function switchSourceInfo(index, id, entry) {
 // double-injecting SwitchSourceState. Matches the _pixSsLoadWrapped pattern above.
 if (!app._pixSsGtpWrapped) {
   app._pixSsGtpWrapped = true;
-  const _origGraphToPrompt = app.graphToPrompt.bind(app);
+  const _origGraphToPrompt_fn = app.graphToPrompt;
+  const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
   app.graphToPrompt = async function (...args) {
     const result = await _origGraphToPrompt(...args);
     const out = result?.output;
@@ -438,7 +440,8 @@ if (!app._pixSsGtpWrapped) {
 // untouched so partialExecutionTargets and any future option survive.
 if (!api._pixSsQueueWrapped) {
   api._pixSsQueueWrapped = true;
-  const _origQueuePrompt = api.queuePrompt.bind(api);
+  const _origQueuePrompt_fn = api.queuePrompt;
+  const _origQueuePrompt = (...a) => _origQueuePrompt_fn.apply(api, a);
   api.queuePrompt = async function (...args) {
     try {
       const out = args[1]?.output;

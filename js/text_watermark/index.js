@@ -142,7 +142,9 @@ function setupWatermarkNode(node) {
   // Min-width self-heal on draw (Preview Image Pattern #11 / Vue Compat #13:
   // onResize is unreliable for DOM-widget resizes). setDirtyCanvas is a redraw
   // flag, not a change-tracker trip, so this does not dirty the workflow.
-  const _origOnDrawForeground = node.onDrawForeground?.bind(node);
+  // Value-captured, not bound - see registry-compliance.md #4a.
+  const _odfFn = node.onDrawForeground;
+  const _origOnDrawForeground = _odfFn ? (...a) => _odfFn.apply(node, a) : undefined;
   node.onDrawForeground = function (ctx) {
     if (this.size && this.size[0] < MIN_W) {
       this.size[0] = MIN_W;
@@ -206,7 +208,8 @@ function findPixNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt(...args);
   // FAIL OPEN - see the note in pause_image: a throw here rejects ComfyUI's

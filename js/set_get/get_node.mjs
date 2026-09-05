@@ -78,7 +78,9 @@ export function registerPixaromaGetNode() {
       // Legacy-only: the bundled ComboWidget mis-handles a live-getter values
       // list (empty-array edge case), so drive a ContextMenu ourselves. Vue
       // mode renders the combo natively and is left untouched.
-      const origOnClick = widget.onClick?.bind(widget);
+      // Value-captured, not bound - see registry-compliance.md #4a.
+      const _onClickFn = widget.onClick;
+      const origOnClick = _onClickFn ? (...a) => _onClickFn.apply(widget, a) : undefined;
       widget.onClick = (params) => {
         if (LiteGraph.vueNodesMode) return origOnClick?.(params);
         const { e, canvas, node } = params;

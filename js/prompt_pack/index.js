@@ -243,7 +243,8 @@ const _batch = {
 // workflow: its app.queuePrompt patch wraps each of our PP iterations in
 // an extra inner loop, which would otherwise dump PM's prompt_ids into
 // our tracker too and bloat the "X left" counter.
-const _origApiQueuePrompt = api.queuePrompt.bind(api);
+const _origApiQueuePrompt_fn = api.queuePrompt;
+const _origApiQueuePrompt = (...a) => _origApiQueuePrompt_fn.apply(api, a);
 api.queuePrompt = async function (...args) {
   const res = await _origApiQueuePrompt(...args);
   if (_batch.activeCapture && res &&
@@ -348,7 +349,8 @@ api.addEventListener("execution_error", (event) => {
 // Same trade-off Prompt Multi makes; matches user expectation that the
 // node "owns" the queue count.
 
-const _origQueuePrompt = app.queuePrompt.bind(app);
+const _origQueuePrompt_fn = app.queuePrompt;
+const _origQueuePrompt = (...a) => _origQueuePrompt_fn.apply(app, a);
 // Forward ALL arguments. ComfyUI's queuePrompt is (number, batchCount=1,
 // queueNodeIds): the 3rd arg carries the "Execute to selected output nodes"
 // partial-execution targets. Dropping it makes a partial run execute the FULL

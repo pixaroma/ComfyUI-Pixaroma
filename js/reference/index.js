@@ -59,7 +59,12 @@ app.registerExtension({
       };
 
       // chain existing onRemoved to avoid overwriting other handlers
-      const origOnRemoved = this.onRemoved?.bind(this);
+      // Value-captured, not bound - see registry-compliance.md #4a.
+      const _onRemovedFn = this.onRemoved;
+      const _onRemovedSelf = this;
+      const origOnRemoved = _onRemovedFn
+        ? (...a) => _onRemovedFn.apply(_onRemovedSelf, a)
+        : undefined;
       this.onRemoved = () => {
         origOnRemoved?.();
         widget = null;

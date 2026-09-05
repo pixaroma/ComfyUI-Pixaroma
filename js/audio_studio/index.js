@@ -86,7 +86,8 @@ app.registerExtension({
   // studio_json from node.properties.audioStudioState into the request
   // body right before submission. Same pattern as Resolution Pixaroma.
   async setup() {
-    const original = app.graphToPrompt.bind(app);
+    const _original_fn = app.graphToPrompt;
+    const original = (...a) => _original_fn.apply(app, a);
     app.graphToPrompt = async function (...args) {
       const result = await original(...args);
       try {

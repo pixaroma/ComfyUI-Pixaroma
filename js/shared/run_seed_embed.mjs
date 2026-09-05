@@ -65,7 +65,8 @@ function install() {
   if (!api || typeof api.queuePrompt !== "function") return;
   _installed = true;
 
-  const orig = api.queuePrompt.bind(api);
+  const _orig_fn = api.queuePrompt;
+  const orig = (...a) => _orig_fn.apply(api, a);
   api.queuePrompt = function (number, data, ...rest) {
     try {
       const wf = data?.workflow;

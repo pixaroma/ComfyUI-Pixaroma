@@ -1242,7 +1242,8 @@ function findSeedNode(index, promptId) {
   return null;
 }
 
-const _origGraphToPrompt = app.graphToPrompt.bind(app);
+const _origGraphToPrompt_fn = app.graphToPrompt;
+const _origGraphToPrompt = (...a) => _origGraphToPrompt_fn.apply(app, a);
 app.graphToPrompt = async function (...args) {
   // PRE-PASS (runs BEFORE ComfyUI serializes): decide each live Seed node's run
   // seed and write it to the hidden "seed" mirror widget. This is what lets
