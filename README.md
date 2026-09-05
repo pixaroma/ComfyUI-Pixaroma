@@ -386,6 +386,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 5, 2026 · v1.4.133**
+- **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Issues and Discussions on GitHub and GitLab are closed. Nothing reported was lost.
+- **The help names the update button:** `Update Easy-Install.bat`, or **Easy-Install** in the EZi Launcher.
+- **Updating help now asks one question: did the version number move?** If not, the update never landed and the browser cache is not the cause.
+- **ComfyUI Manager can leave you on an older version.** It installs from the Comfy Registry, which can sit behind. Easy-Install or `git pull` give you the newest.
+
 ### **August 27, 2026 · v1.4.131–v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
 - **Square brackets multiply a row**: `a [red|blue] car` is two prompts, `a [red|blue] [car|van]` is all four. The counter shows what you will get before you press Run.
