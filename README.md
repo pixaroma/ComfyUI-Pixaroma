@@ -386,13 +386,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.137**
-- **Fixed: Load Audio now finds sound files in folders inside `input`**, so you can keep them tidy instead of loose in one pile.
-- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, and the colour picker changed the outer group instead. Dragging it out was the only workaround.
-- **Fixed: text looked doubled and shifted while you selected it** in AI Prompt, Prompt Pixaroma and Music Prompt. Selecting now shows one clean copy.
-- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own. A timer already stretched needs one drag back to the size you want.
-- **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Issues and Discussions on GitHub and GitLab are closed. Nothing reported was lost.
-- **Clearer updating help:** it names `Update Easy-Install.bat` and asks whether the version number moved. ComfyUI Manager installs from the Registry, which can sit behind.
+### **September 5, 2026 · v1.4.133–v1.4.138**
+- **Fixed: Preview Image could not Save to Disk a very large picture**, and in preview mode the filename stopped counting up.
+- **Fixed: Load Audio now finds sound files in folders inside `input`.**
+- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, and the colour picker changed the outer group.
+- **Fixed: text looked doubled while you selected it** in AI Prompt, Prompt Pixaroma and Music Prompt.
+- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own. One drag back to size and it stays.
+- **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Nothing reported was lost.
+- **Clearer updating help:** it names `Update Easy-Install.bat` and asks whether the version number moved.
 
 ### **August 27, 2026 · v1.4.131–v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
