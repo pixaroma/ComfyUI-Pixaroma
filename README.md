@@ -386,15 +386,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.139**
-- **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt**, on images whose prompt was written by a language model.
+### **September 5, 2026 · v1.4.133–v1.4.140**
+- **Fixed: the Workflows panel now sees folders you linked in from elsewhere**, and can rename, move and cover them. Thanks to jab416171.
+- **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt.**
 - **Fixed: Preview Image could not Save to Disk a very large picture**, and in preview mode the filename stopped counting up.
 - **Fixed: Load Audio now finds sound files in folders inside `input`.**
-- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, and the colour picker changed the outer group.
-- **Fixed: text looked doubled while you selected it** in AI Prompt, Prompt Pixaroma and Music Prompt.
-- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own. One drag back to size and it stays.
-- **Bug reports and ideas now go to the `#pixaroma-nodes` channel on Discord.** Nothing reported was lost.
-- **Clearer updating help:** it names `Update Easy-Install.bat` and asks whether the version number moved.
+- **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, wrong colour target.
+- **Fixed: text looked doubled while you selected it** in AI Prompt, Prompt and Music Prompt.
+- **Fixed: Run Timer grew a little on every open** if its clock wore a font of your own.
+- **Reports and ideas now go to `#pixaroma-nodes` on Discord.** Nothing was lost.
 
 ### **August 27, 2026 · v1.4.131–v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
