@@ -386,10 +386,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **September 5, 2026 · v1.4.133–v1.4.140**
+### **September 5, 2026 · v1.4.133–v1.4.141**
 - **Fixed: the Workflows panel now sees folders you linked in from elsewhere**, and can rename, move and cover them. Thanks to jab416171.
 - **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt.**
-- **Fixed: Preview Image could not Save to Disk a very large picture**, and in preview mode the filename stopped counting up.
+- **Fixed: Preview Image Save to Disk** - very large pictures failed, the filename stopped counting up in preview mode, and if your system refused the folder picker it now saves to Downloads instead of doing nothing.
 - **Fixed: Load Audio now finds sound files in folders inside `input`.**
 - **Fixed: a Pixaroma group inside another group could stop being editable** - grey title, no rename, wrong colour target.
 - **Fixed: text looked doubled while you selected it** in AI Prompt, Prompt and Music Prompt.
