@@ -623,9 +623,23 @@ async function saveToDisk(node) {
     return;
   }
 
+  // THE FOLDER PICKER IS A NATIVE DIALOG, SO IT MAY BE REFUSED - AND A REFUSAL
+  // MUST NOT END THE SAVE. Reported 2026-09-05 with a screenshot: the picker
+  // opened, the user chose a folder, and `createWritable` threw NotAllowedError
+  // ("not allowed by the user agent or the platform"), leaving a ZERO-BYTE file
+  // behind. The old code toasted and RETURNED, so the perfectly good <a download>
+  // path below - which needs no permission at all - was never reached and the
+  // button was simply dead for that user.
+  //
+  // Same class as ai-prompt.md #19/#19c, where window.prompt and window.confirm
+  // were refused by an Electron host: **never gate a Pixaroma action on a native
+  // dialog.** A host can refuse one, and the answer is always to degrade, never
+  // to stop. AbortError is the ONE exception: that IS the user saying no.
+  let pickerFailed = false;
   if (typeof window.showSaveFilePicker === "function") {
+    let handle = null;
     try {
-      const handle = await window.showSaveFilePicker({
+      handle = await window.showSaveFilePicker({
         suggestedName,
         types: [{ description: "PNG image", accept: { "image/png": [".png"] } }],
       });
@@ -634,11 +648,16 @@ async function saveToDisk(node) {
       await writable.close();
       node._pixaromaDiskOffset = (node._pixaromaDiskOffset ?? 0) + 1;
       showToast(node, `Saved: ${handle.name}`);
+      return;
     } catch (err) {
       if (err?.name === "AbortError") return; // user cancelled, silent
-      showToast(node, `Save failed: ${err.message || err}`);
+      // The picker CREATES the file before the write is attempted, so a refused
+      // write leaves an empty one sitting there. Remove it if the browser
+      // allows (FileSystemHandle.remove is recent and optional).
+      if (handle) { try { await handle.remove(); } catch (_e) {} }
+      pickerFailed = true;
+      // fall through - the download path below needs no permission
     }
-    return;
   }
 
   // Fallback: <a download> → Downloads folder
@@ -651,7 +670,9 @@ async function saveToDisk(node) {
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1500);
   node._pixaromaDiskOffset = (node._pixaromaDiskOffset ?? 0) + 1;
-  showToast(node, "Saved to Downloads (browser has no folder picker)");
+  showToast(node, pickerFailed
+    ? "Folder picker refused - saved to Downloads instead"
+    : "Saved to Downloads (browser has no folder picker)");
 }
 
 // ---- custom widget (buttons sit above the preview image) ----
