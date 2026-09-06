@@ -44,6 +44,25 @@ from PIL import Image
 # I;16 and byte-identical to the old behaviour on every other mode.
 _I16_MODES = ("I;16", "I;16B", "I;16L", "I;16N")
 
+
+def normalize_bit_depth(img):
+    """Scale a 16- or 32-bit image into the 8-bit range BEFORE any .convert().
+
+    Everything above explains WHY; this is that rule as one callable, for the
+    sites that open a whole image at once rather than iterating frames. The
+    three loaders keep the inline `if frame.mode == "I": ... elif ...` form
+    because it sits inside their frame loop next to exif_transpose, and it is
+    harness-locked; new code should call this instead of writing a fourth copy.
+
+    Returns the image UNCHANGED for every 8-bit mode, so it is safe to call on
+    anything, and it is exactly a no-op on the paths that were already correct.
+    """
+    if img.mode == "I":
+        return img.point(lambda px: px * (1 / 255))
+    if img.mode in _I16_MODES:
+        return img.convert("I").point(lambda px: px * (1 / 257))
+    return img
+
 # Resize-related defaults shared by both nodes. Each node owns its own
 # DEFAULT_STATE that spreads these in (Image Resize adds preview_open + cached
 # dims; Load Image keeps its own copy with version/etc).

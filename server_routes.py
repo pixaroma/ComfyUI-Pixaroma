@@ -100,7 +100,7 @@ def _pix_desktop_only_refusal():
         ),
     })
 from .nodes._font_catalog import full_catalog as _font_full_catalog
-from .nodes._resize_helpers import _I16_MODES
+from .nodes._resize_helpers import _I16_MODES, normalize_bit_depth
 from .nodes._font_catalog import (
     get_custom_fonts_dir as _font_custom_dir,
     resolve_custom_file as _font_resolve_custom,
@@ -648,7 +648,14 @@ def _decode_image(b64_data: str) -> Image.Image | None:
         # (decompression-bomb guard; no legitimate source exceeds this).
         if img.width > 16384 or img.height > 16384:
             return None
-        return img
+        # Most callers hand us a CANVAS render, which is always 8-bit - but the
+        # paste and drag-drop paths (Image Crop, Inpaint Crop) use the browser's
+        # readAsDataURL, which preserves the ORIGINAL file bytes. So a 16-bit PNG
+        # or TIFF can arrive here at full depth, and every caller's .convert()
+        # would CLAMP it to near-white. Normalising in this one funnel fixes all
+        # of them at once; it is a no-op for 8-bit. See load-image.md #21.
+        # Stays AFTER the dimension guard so a bomb is still refused undecoded.
+        return normalize_bit_depth(img)
     except Exception:
         return None
 

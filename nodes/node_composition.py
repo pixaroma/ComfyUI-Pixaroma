@@ -8,6 +8,7 @@ import folder_paths
 from server import PromptServer
 from .node_ref import any_type, FlexibleOptionalInputType
 from ._path_guard import safe_join
+from ._resize_helpers import normalize_bit_depth
 from ._fx_adjust_engine import apply_fx, is_neutral, _fx_seed
 from ._bg_removal_helpers import (
     is_birefnet_model_id,
@@ -80,7 +81,10 @@ def _load_server_image(src, input_dir):
         return None
     if not os.path.exists(full_path):
         return None
-    return Image.open(full_path).convert("RGBA")
+    # A LAYER is a raw file the user put in ComfyUI's input folder, so it can be
+    # a 16-bit scan or depth map, and a bare .convert() would CLAMP it to
+    # near-white with no error raised. See load-image.md #21; no-op for 8-bit.
+    return normalize_bit_depth(Image.open(full_path)).convert("RGBA")
 
 
 def _remove_background(img, quality="auto"):

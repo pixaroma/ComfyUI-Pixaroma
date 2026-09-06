@@ -32,6 +32,7 @@ from ._audio_react_engine import (
     validate_params,
 )
 from ._path_guard import safe_join
+from ._resize_helpers import normalize_bit_depth
 
 
 PIXAROMA_INPUT_ROOT = Path(folder_paths.get_input_directory()) / "pixaroma"
@@ -88,7 +89,12 @@ def _load_inline_image(rel_path: str) -> torch.Tensor:
             f"[Pixaroma] AudioReact -- inline image missing at {abs_path}. "
             f"Re-open the editor and re-pick the image."
         )
-    arr = np.array(Image.open(abs_path).convert("RGB"), dtype=np.float32) / 255.0
+    # The inline image is a RAW file the user uploaded, so it can be 16-bit, and
+    # a bare .convert() would CLAMP it to near-white with no error anywhere.
+    # See load-image.md #21; no-op for 8-bit.
+    arr = np.array(
+        normalize_bit_depth(Image.open(abs_path)).convert("RGB"), dtype=np.float32
+    ) / 255.0
     return torch.from_numpy(arr).unsqueeze(0)
 
 
