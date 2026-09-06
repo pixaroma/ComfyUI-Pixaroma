@@ -1,0 +1,39 @@
+# Files that have no business inside a user's install.
+#
+# `comfy node publish` zips the git-tracked tree minus everything matched here.
+# Syntax is gitignore's, via pathspec ("gitwildmatch"), and this file must stay
+# at the repo root: comfy-cli/comfy_cli/file_utils.py.
+#
+# Two reasons, in order:
+#   1. Somebody installing this pack should get the pack, not our dev tooling.
+#      This drops 20 files and about 965 KB that no user ever runs.
+#   2. The Registry security scanner reads EVERY file in the archive, so dev-only
+#      code costs real findings. `scripts/` alone contributed three: two process
+#      launches and the package's only outbound urllib call, none of which ship
+#      in anything a user executes. See .claude/patterns/registry-compliance.md
+#      sections 4d and 4e.
+#
+# Every entry below was checked for runtime references before being added: all
+# mentions of scripts/ and docs/ in shipped code are comments and docstrings,
+# never an import or a file read. Re-check with:
+#   grep -rn "scripts/\|docs/" --include=*.py --include=*.js --include=*.mjs .
+#
+# NEVER add here: js/, nodes/, locales/, __init__.py, server_routes.py,
+# pyproject.toml, LICENSE, README.md, assets/{fonts,icons,sounds,models,vendor}/,
+# or workflows/ (ComfyUI serves those as this pack's native node templates at
+# /api/workflow_templates/ComfyUI-Pixaroma/, so they are a user-facing feature).
+
+# Dev tooling: parity checks, generators, the release preflight gate.
+scripts/
+
+# Math specifications. Cited from code comments as the source of truth, but only
+# ever read by a developer working from the git repo, never at runtime.
+docs/
+
+# Standalone browser harness for the AudioReact JS/Python parity check.
+assets/audio_studio_parity/
+
+# Repo housekeeping, meaningless once installed.
+.clauderules
+.gitignore
+.gitlab-ci.yml
