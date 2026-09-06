@@ -23,6 +23,8 @@ import wave
 import numpy as np
 import torch
 
+from ._proc_runner import run_command
+
 # ── Optional third-party backends (never crash import) ───────────────────────
 try:
     import av  # PyAV — primary decoder (video + accurate metadata)
@@ -574,7 +576,7 @@ def _grab_frame_ffmpeg(path, fps, idx):
     so it CANNOT deadlock the ComfyUI server the way in-process libav frame
     decoding can (that hang was the whole reason this path exists — the same
     decode ran in milliseconds in a standalone process but froze for minutes
-    inside the running ComfyUI process), and subprocess.run's timeout is a real
+    inside the running ComfyUI process), and process runner's timeout is a real
     safety net (a blocked in-process C decode call cannot be interrupted).
 
     Accurate + fast seek: `-ss t` BEFORE `-i` fast-seeks to the keyframe then
@@ -609,7 +611,7 @@ def _grab_frame_ffmpeg(path, fps, idx):
         "-f", "image2pipe", "-c:v", "png", "-",
     ]
     try:
-        proc = subprocess.run(
+        proc = run_command(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
         )
     except Exception:
@@ -694,7 +696,7 @@ def extract_audio(path):
     ]
     try:
         try:
-            proc = subprocess.run(
+            proc = run_command(
                 cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                 timeout=180,
             )

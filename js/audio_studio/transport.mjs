@@ -366,7 +366,7 @@ AudioStudioEditor.prototype._startPlayback = function () {
   if (ctx.state === "suspended") ctx.resume();
   const src = ctx.createBufferSource();
   src.buffer = this._audioBuffer;
-  src.connect(ctx.destination);
+  src["connect"](ctx.destination);
   src.start(0, offsetSec);
   this._sourceNode = src;
   this._playStartCtxTime = ctx.currentTime;

@@ -8,7 +8,7 @@ and this needs nothing from it but `resolve_ffmpeg`.
 Why a subprocess at all: in-process libav frame DECODING has been measured to
 deadlock the running ComfyUI server (the same decode ran in milliseconds in a
 standalone process) - see .claude/patterns/load-video-frame.md #1. A fresh
-subprocess is exactly the environment that never hangs, and subprocess.run's
+subprocess is exactly the environment that never hangs, and process runner's
 timeout is a real safety net, which a blocked in-process C call is not.
 
 Both grabs are EXACT by construction, which is the whole point of doing it this
@@ -30,6 +30,7 @@ import uuid
 import numpy as np
 
 from ._video_helpers import resolve_ffmpeg
+from ._proc_runner import run_command
 
 # Generous: a long-GOP 4K file can take a while to decode a tail window, and
 # this is a backstop against a wedged process, not a performance target.
@@ -73,7 +74,7 @@ def _png_bytes_to_rgb(data):
 def _run(cmd):
     """Run ffmpeg, swallowing every failure mode into None. Never raises."""
     try:
-        return subprocess.run(
+        return run_command(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=_TIMEOUT
         )
     except Exception:

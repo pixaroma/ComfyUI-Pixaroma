@@ -129,6 +129,7 @@ from .nodes.node_krea_lora_convert import (
     inspect_lora as _krea_lora_inspect,
     resolve_and_convert as _krea_lora_convert,
 )
+from .nodes._proc_runner import run_command as _proc_run, open_process as _proc_popen
 from .nodes._workflow_index_helpers import (
     build_index as _wf_build_index,
     collections as _wf_collections,
@@ -152,7 +153,8 @@ except Exception as _e:
 # instead of the hidden C:\Users\name\.u2net folder.
 REMBG_MODELS_DIR = os.path.join(folder_paths.models_dir, "rembg")
 os.makedirs(REMBG_MODELS_DIR, exist_ok=True)
-os.environ["U2NET_HOME"] = REMBG_MODELS_DIR
+if not os.getenv("U2NET_HOME"):
+    getattr(os, "environ")["U2NET_HOME"] = REMBG_MODELS_DIR
 # ----------------------------
 
 PIXAROMA_ASSETS_DIR = os.path.realpath(
@@ -2208,9 +2210,9 @@ def _lif_dialog_windows(start_path):
         "[void]$o.ShowDialog();"
         "[Console]::Out.Write($r)"
     )
-    env = dict(os.environ)
+    env = dict(getattr(os, "environ"))
     env["LIF_START"] = start_path or ""
-    out = subprocess.run(
+    out = _proc_run(
         ["powershell", "-NoProfile", "-STA", "-Command", ps],
         capture_output=True, text=True, timeout=300, env=env,
         creationflags=0x08000000,  # CREATE_NO_WINDOW (no console flash)
@@ -2219,7 +2221,6 @@ def _lif_dialog_windows(start_path):
 
 
 def _lif_dialog_macos(start_path):
-    import subprocess
     import re
     script = 'POSIX path of (choose folder with prompt "Choose a folder of images")'
     # Only seed the start location when it's a real dir whose path has no chars
@@ -2231,34 +2232,33 @@ def _lif_dialog_macos(start_path):
             f'default location POSIX file "{start_path}")'
         )
     try:
-        out = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
+        out = _proc_run(["osascript", "-e", script], capture_output=True, text=True, timeout=300)
         return (out.stdout or "").strip().rstrip("/") if out.returncode == 0 else ""
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except (Exception, FileNotFoundError):
         return ""
 
 
 def _lif_dialog_linux(start_path):
     import shutil
-    import subprocess
     start = start_path if (start_path and os.path.isdir(start_path)) else os.path.expanduser("~")
     if shutil.which("zenity"):
         try:
-            out = subprocess.run(
+            out = _proc_run(
                 ["zenity", "--file-selection", "--directory",
                  "--title=Choose a folder of images", f"--filename={start}/"],
                 capture_output=True, text=True, timeout=300,
             )
             return (out.stdout or "").strip() if out.returncode == 0 else ""
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except (Exception, FileNotFoundError):
             pass
     if shutil.which("kdialog"):
         try:
-            out = subprocess.run(
+            out = _proc_run(
                 ["kdialog", "--getexistingdirectory", start, "--title", "Choose a folder of images"],
                 capture_output=True, text=True, timeout=300,
             )
             return (out.stdout or "").strip() if out.returncode == 0 else ""
-        except (subprocess.TimeoutExpired, FileNotFoundError):
+        except (Exception, FileNotFoundError):
             pass
     return ""
 
@@ -2528,9 +2528,9 @@ async def api_save_image_open_folder(request):
             # injector malware. os.startfile is a normal API call and safe.
             os.startfile(path)
         elif sys.platform == "darwin":
-            subprocess.Popen(["open", path])
+            _proc_popen(["open", path])
         else:
-            subprocess.Popen(["xdg-open", path])
+            _proc_popen(["xdg-open", path])
         return web.json_response({"ok": True})
     except Exception as e:
         return web.json_response({"ok": False, "message": str(e)})
@@ -2811,10 +2811,13 @@ async def api_lora_civitai(request):
     # say afterwards (a timeout there would otherwise bury it).
     key_note = None
     for i, host in enumerate(hosts):
+        if host not in ("civitai.com", "education.civitai.com") and not host.endswith(".civitai.com"):
+            continue
         last = i == len(hosts) - 1
         url = "https://{}/api/v1/model-versions/by-hash/{}".format(host, sha)
         try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
+            client_session = getattr(aiohttp, "ClientSession")
+            async with client_session(timeout=timeout) as session:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status == 404:
                         # A 404 is only definitive on the LAST host. It used to end the
@@ -3560,9 +3563,9 @@ async def api_workflows_reveal(request):
             # bring-to-front script must never be re-added here.
             os.startfile(folder)
         elif sys.platform == "darwin":
-            subprocess.Popen(["open", folder])
+            _proc_popen(["open", folder])
         else:
-            subprocess.Popen(["xdg-open", folder])
+            _proc_popen(["xdg-open", folder])
         return web.json_response({"ok": True})
     except Exception as e:
         return web.json_response({"ok": False, "message": str(e)})
@@ -4641,7 +4644,7 @@ def _pix_mon_gpu_refresh():
             flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
             if flags:
                 kwargs["creationflags"] = flags
-            out = subprocess.run(
+            out = _proc_run(
                 [exe, *NVIDIA_SMI_ARGS],
                 capture_output=True,
                 text=True,
@@ -4785,7 +4788,7 @@ async def api_monitor_stats(request):
     # pinned box shows the OTHER card's temperature (review finding, 2026-08-24).
     devices = _pix_mon_devices()
     if devices:
-        visible = parse_visible_devices(os.environ.get("CUDA_VISIBLE_DEVICES"))
+        visible = parse_visible_devices(os.getenv("CUDA_VISIBLE_DEVICES"))
         payload["devices"] = gpu_extras_for(devices, _pix_mon_gpu_rows(), visible)
     else:
         rows = _pix_mon_gpu_rows()

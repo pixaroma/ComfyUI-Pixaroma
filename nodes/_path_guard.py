@@ -310,7 +310,7 @@ def dialog_available() -> bool:
         return True
     if sys.platform == "darwin":
         return True
-    return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return bool(os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"))
 
 
 def remember_folder(path: str) -> bool:

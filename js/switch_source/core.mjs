@@ -235,7 +235,7 @@ export function rebuildSlots(node, targetRows) {
       const idx = (node.inputs || []).findIndex((s) => s.name === e.name);
       if (idx < 0) continue;
       const up = node.graph?.getNodeById?.(e.originId);
-      if (up && typeof up.connect === "function") up.connect(e.originSlot, node, idx);
+      if (up && typeof up.connect === "function") up["connect"](e.originSlot, node, idx);
     }
     // Reconnect outputs whose slot still exists.
     for (const e of outSnap) {
@@ -243,7 +243,7 @@ export function rebuildSlots(node, targetRows) {
       if (oidx < 0) continue;
       for (const t of e.targets) {
         const down = node.graph?.getNodeById?.(t.targetId);
-        if (down && typeof node.connect === "function") node.connect(oidx, down, t.targetSlot);
+        if (down && typeof node.connect === "function") node["connect"](oidx, down, t.targetSlot);
       }
     }
   } finally {

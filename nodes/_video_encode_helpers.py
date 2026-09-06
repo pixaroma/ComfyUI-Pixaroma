@@ -33,6 +33,7 @@ import threading
 import numpy as np
 
 import comfy.model_management
+from ._proc_runner import open_process
 
 
 def _escape_ffmetadata(value):
@@ -343,7 +344,7 @@ def encode_frames(cmd, frames, out_path, temp_paths=(), label="Save Mp4"):
     drift past it. A successful -shortest trim keeps its valid file.
     """
     try:
-        proc = subprocess.Popen(
+        proc = open_process(
             cmd,
             stdin=subprocess.PIPE,
             stderr=subprocess.PIPE,

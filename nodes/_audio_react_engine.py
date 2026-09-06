@@ -922,7 +922,7 @@ def generate_video(image: torch.Tensor, audio: dict, params: Params) -> torch.Te
     except Exception:
         default_cap_gb = 12.0
     try:
-        override = float(os.environ.get(
+        override = float(os.getenv(
             "PIXAROMA_AUDIOREACT_MAX_RAM_GB", str(default_cap_gb),
         ))
         max_ram_gb = override if override > 0 else default_cap_gb
