@@ -386,6 +386,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **September 6, 2026 · v1.4.143**
+- **Fixed: a 16-bit picture came out almost white**, in Inpaint Crop, Image Crop, Image Composer layers and AudioReact. The preview looked right the whole time, so it read as the node being broken.
+- **The download is smaller.** Developer tools and notes that never run on your machine are no longer packed into the release.
+- **The settings gear on Outpaint and Prompt is now drawn by the pack**, so it looks the same on Windows, Mac and Linux.
+
 ### **September 5, 2026 · v1.4.133–v1.4.142**
 - **Fixed: Preview Image Save to Disk** - big pictures failed, the filename stopped counting up, and a refused folder picker now saves to Downloads.
 - **Fixed: the Workflows panel now sees folders you linked in from elsewhere**, and can rename, move and cover them. Thanks to jab416171.
