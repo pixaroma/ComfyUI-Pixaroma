@@ -249,9 +249,23 @@ function injectCSS() {
     .pix-op-chip.dim.on:hover { border-color:var(--pix-op-acc,${BRAND}); color:#fff; }
 
     /* Chevron and gear: fixed, so the mode chips get every spare pixel. The
-       14px glyph (larger than the 11px chip text) matches the gear on Sizes
-       Pixaroma, so the settings button reads the same across the suite. */
+       14px glyph (larger than the 11px chip text) matches the chevron and the
+       gear on Sizes Pixaroma, so the settings button reads the same across the
+       suite. */
     .pix-op-sq { flex:0 0 auto; width:30px; padding:6px 0; font-size:14px; line-height:1; }
+
+    /* The bundled gear SVG as a CSS mask, never the emoji (house rule #28): an
+       emoji is drawn by the OPERATING SYSTEM, so it is a different shape on
+       Windows, Mac and Linux, arrives in colour on some of them, and sits on a
+       different baseline from the chips beside it. "currentColor" makes the
+       icon inherit the chip's own text colour, so idle / hover / .on need no
+       rules of their own and can never drift from the other chips.
+       NOTE: no backticks in this comment - it lives inside a JS template
+       literal and one would end it (CLAUDE.md #35). */
+    .pix-op-gear::before { content:""; display:block; width:14px; height:14px;
+      background:currentColor;
+      -webkit-mask:url("${pixAsset("icons/note/gear.svg")}") center/contain no-repeat;
+      mask:url("${pixAsset("icons/note/gear.svg")}") center/contain no-repeat; }
     .pix-op-alabel { flex:0 0 auto; display:flex; align-items:center;
       color:#8a8a8a; padding-right:1px; white-space:nowrap; }
 
@@ -401,8 +415,9 @@ function renderModeRow(node, host) {
     }
   }
 
-  const gear = chip("⚙", false, "Choose ratios and the accent colour");
-  gear.classList.add("pix-op-sq");
+  // No text: the icon is drawn by .pix-op-gear's mask (house rule #28).
+  const gear = chip("", false, "Choose ratios and the accent colour");
+  gear.classList.add("pix-op-sq", "pix-op-gear");
   gear.onclick = () => openSettings(node);
   host.appendChild(gear);
 }

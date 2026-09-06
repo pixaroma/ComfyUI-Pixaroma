@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import {
   BRAND, applyAdaptiveCanvasOnly, registerNodeHelp, closeHelpPopup, isVueNodes,
-  installResizeFloor, installCanvasZoomPassthrough,
+  installResizeFloor, installCanvasZoomPassthrough, pixAsset,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { registerNodeSettings } from "../shared/node_settings.mjs";
@@ -182,7 +182,23 @@ function injectCSS() {
     /* settings gear: a SQUARE at the SAME height as the text buttons (24x24) so it
        doesn't stick out. Explicit height is required - padding:0 with no height
        collapses it to 13px. */
+    /* 24x24 SQUARE at the text-button height. The explicit height is REQUIRED
+       (padding:0 with no height collapses it to 13px), and it must NOT grow to
+       the 30x28 "matching Sizes" shape - that read as sticking out and was
+       rejected. See prompt.md #12.
+       The icon is the bundled gear SVG as a CSS mask, never the emoji (house
+       rule #28): an emoji is drawn by the OPERATING SYSTEM, so it is a
+       different shape per platform, arrives in colour on some, and sits on its
+       own baseline next to the text buttons. "currentColor" inherits
+       .pix-prm-btn's own colour, so idle / hover / disabled need no extra
+       rules and cannot drift from the buttons beside it.
+       NOTE: no backticks in this comment - it lives inside a JS template
+       literal and one would end it (CLAUDE.md #35). */
     .pix-prm-gear { flex:0 0 auto; width:24px; height:24px; padding:0; justify-content:center; font-size:14px; line-height:1; }
+    .pix-prm-gear::before { content:""; display:block; width:14px; height:14px;
+      background:currentColor;
+      -webkit-mask:url("${pixAsset("icons/note/gear.svg")}") center/contain no-repeat;
+      mask:url("${pixAsset("icons/note/gear.svg")}") center/contain no-repeat; }
     .pix-prm-lockhint { color:var(--acc); font:10px 'Segoe UI',sans-serif; font-style:italic; padding:0 2px; margin:0; flex:0 0 auto; user-select:none; display:none; }
   `;
   document.head.appendChild(style);
@@ -444,7 +460,7 @@ function buildRoot(node) {
   expandSw.innerHTML = '<span class="pix-prm-sw-dot"></span>Show expanded';
   const gearBtn = document.createElement("button");
   gearBtn.type = "button"; gearBtn.className = "pix-prm-btn pix-prm-gear"; gearBtn.title = "Node settings (button colour, default join order)";
-  gearBtn.textContent = "⚙";
+  // No text: the icon is drawn by .pix-prm-gear's mask (house rule #28).
   bar.append(copyBtn, replaceBtn, clearBtn, tagsBtn, expandSw, gearBtn);
 
   root.append(portrow, tawrap, expand, lockHint, bar);
