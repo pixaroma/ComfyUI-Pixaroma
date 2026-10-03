@@ -34,7 +34,7 @@ const COMPARE_HELP = {
         ["Show 1 / Show 2", "View one image full-size. Click to switch between the two."],
         ["Left Right / Right Left", "Side-by-side split - hover the image to wipe across. Right Left swaps which side each image is on."],
         ["Up Down", "Top / bottom split - hover to wipe up and down."],
-        ["Overlay", "Stack both images and drag the slider to fade between them."],
+        ["Overlay", "Stack both images and drag the slider, or scroll the mouse wheel over the image, to fade between them."],
         ["Difference", "Highlight only the pixels that differ between the two."],
       ],
     },
@@ -207,7 +207,7 @@ const MODE_TIPS = [
   "Split view. Hover the image to wipe between the two, left to right.",
   "Split view with the sides swapped. Hover to wipe right to left.",
   "Split view. Hover the image to wipe top to bottom.",
-  "Overlay the two images. Drag the slider to fade between them.",
+  "Overlay the two images. Drag the slider or scroll over the image to fade between them.",
   "Show only the pixels that differ between the two images.",
 ];
 function cmpTooltipFor(node, lx, ly, W) {
@@ -1102,22 +1102,55 @@ function createCompareDOMWidget(node) {
     cmpLeave(node);
     render();
   });
-  root.addEventListener("wheel", (e) => {
-    const [, ly] = localPos(e);
-    if (cmpWheel(node, ly, e.deltaY)) {
-      // Only swallow the wheel when we consumed it (Overlay opacity); otherwise
-      // let it bubble so the graph still zooms.
-      e.preventDefault();
-      e.stopPropagation();
-      render();
-    }
-  }, { passive: false });
+  // The Overlay opacity wheel is handled by installCompareWheel (core takes the
+  // wheel before a listener here would ever see it); it finds this node and its
+  // drawing's y through these two.
+  root._cmpNode = node;
+  root._cmpWheelY = (e) => localPos(e)[1];
 
   const ro = new ResizeObserver(() => render());
   ro.observe(root);
   node._cmpDomRO = ro;
   requestAnimationFrame(render); // initial paint once laid out
   return widget;
+}
+
+// The Overlay opacity wheel, in both looks. Neither renderer hands a Compare the
+// wheel any more: LiteGraph's wheel handler no longer calls a node's
+// onMouseWheel (none left in frontend 1.52.7), and in Nodes 2.0 core forwards
+// every wheel over a node to the canvas in the CAPTURE phase, before the body's
+// own listener runs. Both looks zoomed the graph instead and the opacity never
+// moved (measured 2026-10-03, cmp_wheel_probe.js). So one page-level capture
+// listener finds the Compare under the pointer itself and swallows the wheel
+// ONLY when it changed the opacity; everywhere else the graph zooms as before.
+let _cmpWheelInstalled = false;
+function installCompareWheel() {
+  if (_cmpWheelInstalled) return;
+  _cmpWheelInstalled = true;
+  document.addEventListener("wheel", (e) => {
+    // A trackpad pinch arrives as Ctrl+wheel and a sideways swipe has no deltaY:
+    // both belong to the canvas.
+    if (e.ctrlKey || e.metaKey || !e.deltaY) return;
+    let node = null;
+    let ly = 0;
+    if (isVueNodes()) {
+      const root = e.target?.closest?.(".pix-cmp-root");
+      node = root?._cmpNode;
+      if (!node || !root._cmpWheelY) return;
+      ly = root._cmpWheelY(e);
+    } else {
+      const c = app.canvas;
+      if (!c?.canvas || e.target !== c.canvas) return;
+      const [gx, gy] = c.convertEventToCanvasOffset(e);
+      node = c.graph?.getNodeOnPos?.(gx, gy, c.visible_nodes);
+      if (!node || node.comfyClass !== "PixaromaCompare" || node.flags?.collapsed) return;
+      ly = gy - node.pos[1];
+    }
+    if (!cmpWheel(node, ly, e.deltaY)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    cmpRepaint(node);
+  }, { capture: true, passive: false });
 }
 
 // Remove the Nodes 2.0 body again (a live switch back to the classic look).
@@ -1141,6 +1174,10 @@ function teardownCompareDOMWidget(node) {
     node._cmpDomRoot?.closest?.(".dom-widget")?.remove();
     node._cmpDomRoot?.remove();
   } catch {}
+  if (node._cmpDomRoot) {
+    node._cmpDomRoot._cmpNode = null;
+    node._cmpDomRoot._cmpWheelY = null;
+  }
   node._cmpDomWidget = null;
   node._cmpDomRoot = null;
   node._cmpDomRender = null;
@@ -1328,15 +1365,9 @@ app.registerExtension({
       if (_origUp) return _origUp.call(this, e, pos);
     };
 
-    const _origWheel = nodeType.prototype.onMouseWheel;
-    nodeType.prototype.onMouseWheel = function (e, pos) {
-      if (isVueNodes()) return _origWheel ? _origWheel.call(this, e, pos) : undefined;
-      if (cmpWheel(this, pos[1], e.deltaY)) {
-        app.graph.setDirtyCanvas(true, true);
-        return true;
-      }
-      if (_origWheel) return _origWheel.call(this, e, pos);
-    };
+    // The wheel (Overlay opacity) is not a node hook any more: see
+    // installCompareWheel.
+    installCompareWheel();
 
     const _origLeave = nodeType.prototype.onMouseLeave;
     nodeType.prototype.onMouseLeave = function (e) {

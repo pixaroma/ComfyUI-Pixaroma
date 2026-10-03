@@ -89,7 +89,10 @@ export function wireEvents(node, root) {
       if (!navigator.clipboard?.readText) throw new Error("Clipboard read not available");
       const txt = await navigator.clipboard.readText();
       if (!txt) { toast("info", "Nothing to paste"); return; }
-      setText(node, txt);
+      // Plain line breaks, as the box shows them: on Windows every multi-line
+      // clipboard read is CRLF, and storing it raw sent hidden \r characters to
+      // the model inside each "Blank line" prompt (same fix as Prompt Pixaroma).
+      setText(node, txt.replace(/\r\n?/g, "\n"));
       applyState(root, readState(node));
       flashBtnText(els.replaceBtn, "Pasted");
       node.setDirtyCanvas(true, true);

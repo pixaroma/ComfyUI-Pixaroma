@@ -38,7 +38,7 @@ export const KEYWORDS = {
   PixaromaLoadImagesFolder: "batch folder directory many bulk each one by one subfolders recursive keep structure tree mirror flatten",
   PixaromaPreview: "view result thumbnail show display civitai metadata parameters resources share",
   PixaromaSaveImage: "export write disk output filename png jpg jpeg webp lossless quality compression file size smaller folder subfolders tree mirror civitai metadata parameters resources share lora hash embed settings gear hide buttons",
-  PixaromaCompare: "before after slider difference ab side by side",
+  PixaromaCompare: "before after slider difference ab side by side overlay opacity fade",
   PixaromaRemoveBackground: "cutout transparent alpha matte birefnet rembg erase background",
   PixaromaLoadVideo: "mp4 movie frames clip import video size resolution dimensions",
   PixaromaLoadVideoFrame: "still grab frame single picture screenshot",
