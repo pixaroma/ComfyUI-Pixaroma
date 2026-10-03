@@ -2604,6 +2604,38 @@ async def api_save_image_open_folder(request):
         return web.json_response({"ok": False, "message": str(e)})
 
 
+@PromptServer.instance.routes.post("/pixaroma/api/save_image/save_now")
+async def api_save_image_save_now(request):
+    """Save Image Pixaroma's Save now: write the pictures the last Preview run
+    showed into the node's save folder, without running the workflow again.
+
+    Request JSON: {files: [temp filenames], state: {node state}, pattern_live}.
+    Response JSON: {ok: true, entries, inside_output} or {ok: false, error}.
+
+    JSON only: a cross-origin form cannot send it without a preflight that is
+    never answered (registry-compliance.md #2c). Every value is untrusted. The
+    request never carries a path: only file names the node itself registered
+    when it wrote them are accepted, and the destination goes through the same
+    containment and write code as a Save run (node_save_image.save_now). Runs in
+    a worker thread because encoding a batch, or fingerprinting a model for the
+    Civitai info the first time, must not freeze the server for everyone.
+    """
+    if request.content_type != "application/json":
+        return web.json_response({"ok": False, "error": "send JSON"}, status=415)
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+    from .nodes.node_save_image import save_now as _si_save_now
+    try:
+        out = await asyncio.to_thread(_si_save_now, data)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e)}, status=400)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": f"save failed: {e}"}, status=500)
+    return web.json_response({"ok": True, **out})
+
+
 # ── LoRA Loader Pixaroma ─────────────────────────────────────────────────────
 # Back the multi-LoRA loader: the file list, the offline info + trigger-word
 # readout, preview thumbnails, and the OPTIONAL (user-clicked) Civitai lookup.

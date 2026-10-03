@@ -734,7 +734,11 @@ function restoreLastRun(node) {
     node._pixSiExpanded = false;
     node._pixSiTotal = Math.max(last.n || 0, frames.length);
   }
+  // a restored Preview run can still be saved (runtime field only, so the
+  // load path writes nothing)
+  node._pixSiPreviewFiles = last.ok === false ? previewFilesOf(last.entries) : null;
   renderPreviewUI(node);
+  updateSaveNowBtn(node);
 }
 
 // ── wiring ───────────────────────────────────────────────────────────────────
@@ -884,6 +888,11 @@ function wireEvents(node, ui) {
   });
   ui.btnCopy.addEventListener("click", () => copyFrame(node));
   ui.btnOpen.addEventListener("click", () => openFrame(node));
+  ui.btnSaveNow.addEventListener("pointerdown", (e) => e.stopPropagation());
+  ui.btnSaveNow.addEventListener("click", (e) => {
+    e.stopPropagation();
+    saveNow(node);
+  });
   // fold / unfold toggle (stop the pointerdown so it can't start a node drag)
   ui.foldBtn.addEventListener("pointerdown", (e) => e.stopPropagation());
   ui.foldBtn.addEventListener("click", (e) => {
@@ -1064,6 +1073,70 @@ function setupNode(node) {
   });
 }
 
+// ── Save now (after a Preview run) ──────────────────────────────────────────
+// A Preview run's pictures sit in ComfyUI's temp folder. Save now writes THOSE
+// into the save folder with the node's current settings, without a new run
+// (which would make a different picture whenever the seed is randomized). The
+// server accepts only temp names it registered when it wrote them
+// (node_save_image.py, _PREVIEW_FILES), so only names travel, never a path.
+const PREVIEW_NAME = /^pixaroma_save_preview_[0-9a-f]{32}\.png$/;
+function previewFilesOf(entries) {
+  return (entries || [])
+    .filter((f) => f && f.type === "temp" && PREVIEW_NAME.test(f.filename || ""))
+    .map((f) => f.filename);
+}
+function updateSaveNowBtn(node) {
+  const b = node._pixSiUI && node._pixSiUI.btnSaveNow;
+  if (!b) return;
+  b.style.display = (node._pixSiPreviewFiles || []).length ? "" : "none";
+  b.disabled = !!node._pixSiSaving;
+  b.textContent = node._pixSiSaving ? "Saving…" : "Save now";
+}
+async function saveNow(node) {
+  const files = (node._pixSiPreviewFiles || []).slice();
+  if (!files.length || node._pixSiSaving) return;
+  const st = readState(node);
+  const seq = node._pixSiRunSeq || 0;
+  node._pixSiSaving = true;
+  updateSaveNowBtn(node);
+  try {
+    const res = await api.fetchApi("/pixaroma/api/save_image/save_now", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        files,
+        state: st,
+        // What the face shows now. The server prefers the run's own values
+        // while the filename field is unchanged since that run, because a
+        // randomized seed has moved on by now.
+        pattern_live: applyFilenameTokenRefs(String(st.pattern || DEFAULT_STATE.pattern)),
+      }),
+    });
+    let data = null;
+    try {
+      data = await res.json();
+    } catch {}
+    if (!node._pixSiUI) return; // the node was removed meanwhile
+    if (!res.ok || !data || !data.ok) {
+      const why = (data && data.error) || "the server answered " + res.status;
+      flashStatus(node, "info", "Save now failed: " + why, 8000);
+      return;
+    }
+    const entries = Array.isArray(data.entries) ? data.entries : [];
+    const st0 = entries[0] && entries[0]._pixaroma_status;
+    const n = (st0 && st0.saved) || entries.length;
+    // Re-read after the await: a run that landed while this was saving owns
+    // the viewer now, so the files are saved but its pictures stay on show.
+    if ((node._pixSiRunSeq || 0) === seq && entries.length) applyRunFrames(node, entries);
+    flashStatus(node, "ok", "Saved " + n + (n === 1 ? " image" : " images"), 3000);
+  } catch (e) {
+    if (node._pixSiUI) flashStatus(node, "info", "Save now failed: " + ((e && e.message) || e), 8000);
+  } finally {
+    node._pixSiSaving = false;
+    updateSaveNowBtn(node);
+  }
+}
+
 // ── executed event: thumbnails + status + light persistence ─────────────────
 let _executedInstalled = false;
 function installExecutedListener() {
@@ -1079,69 +1152,79 @@ function installExecutedListener() {
     const out = detail.output || {};
     const frames = out.pixaroma_save_frames || out.images;
     if (!Array.isArray(frames) || !frames.length) return;
-    const status = frames[0]._pixaroma_status || null;
-
-    // One stamp for THIS run, stamped onto every entry before anything builds a
-    // URL from them, so a filename reused after a delete cannot serve the old
-    // picture out of the browser cache (see buildViewUrl). Per run rather than
-    // per render, so re-renders stay cache-fast.
-    const bust = String(Date.now());
-    for (const f of frames) {
-      if (f && typeof f === "object") f.bust = bust;
-    }
-
-    node._pixSiFrames = entriesToFrames(frames);
-    node._pixSiSel = 0;
-    node._pixSiExpanded = false; // batches land on the grid first
-    node._pixSiTotal = Math.max(status ? status.saved : 0, node._pixSiFrames.length);
-
-    if (status) {
-      if (status.w && status.h) node._pixSiLastDims = { w: status.w, h: status.h };
-      const ok = status.saved > 0;
-      let sum;
-      if (ok) {
-        sum = "saved " + status.saved + (status.saved === 1 ? " image" : " images");
-        if (status.note) sum += " (" + status.note + ")";
-      } else {
-        sum = "preview only - not saved";
-      }
-      node._pixSiSummary = sum;
-      node._pixSiFolderInfo = status.folder || "";
-      // Persist a LIGHT restore snapshot so the preview + summary survive a
-      // workflow-tab switch (Preview Pattern #4 family; writing properties
-      // after a run is the accepted "Save Changes?" trade-off). Tokens stay
-      // valid for the server session, so external saves restore too.
-      try {
-        const keep = frames
-          .filter((f) => f && ((f.type && f.filename) || f.token))
-          .slice(0, THUMB_SHOW_MAX)
-          .map((f) => ({
-            filename: f.filename || "",
-            subfolder: f.subfolder || "",
-            type: f.type || "",
-            token: f.token || "",
-            path: f.path || "",
-            // carried so a tab-switch restore rebuilds the SAME url this run
-            // used - stable (no needless refetch) and still unique per run
-            bust: f.bust || "",
-          }));
-        if (!node.properties) node.properties = {};
-        node.properties.pixSiLastRun = {
-          ok,
-          sum,
-          folder: node._pixSiFolderInfo,
-          entries: keep,
-          n: node._pixSiTotal,
-          w: status.w,
-          h: status.h,
-        };
-      } catch {}
-    }
-    renderPreviewUI(node);
-    node._pixSiCntKey = null; // files landed on disk - refetch the counter
-    updatePreview(node);
-    growToFloor(node);
+    applyRunFrames(node, frames);
   });
+}
+
+// A run's ui entries (or Save now's answer, which has the same shape) -> the
+// viewer, the info line, Save now, and the light snapshot a tab switch restores.
+function applyRunFrames(node, frames) {
+  const status = frames[0]._pixaroma_status || null;
+  node._pixSiRunSeq = (node._pixSiRunSeq || 0) + 1;
+  // Preview frames are what Save now can still save; a real save leaves none.
+  node._pixSiPreviewFiles = status && status.saved === 0 ? previewFilesOf(frames) : null;
+
+  // One stamp for THIS run, stamped onto every entry before anything builds a
+  // URL from them, so a filename reused after a delete cannot serve the old
+  // picture out of the browser cache (see buildViewUrl). Per run rather than
+  // per render, so re-renders stay cache-fast.
+  const bust = String(Date.now());
+  for (const f of frames) {
+    if (f && typeof f === "object") f.bust = bust;
+  }
+
+  node._pixSiFrames = entriesToFrames(frames);
+  node._pixSiSel = 0;
+  node._pixSiExpanded = false; // batches land on the grid first
+  node._pixSiTotal = Math.max(status ? status.saved : 0, node._pixSiFrames.length);
+
+  if (status) {
+    if (status.w && status.h) node._pixSiLastDims = { w: status.w, h: status.h };
+    const ok = status.saved > 0;
+    let sum;
+    if (ok) {
+      sum = "saved " + status.saved + (status.saved === 1 ? " image" : " images");
+      if (status.note) sum += " (" + status.note + ")";
+    } else {
+      sum = "preview only - not saved";
+    }
+    node._pixSiSummary = sum;
+    node._pixSiFolderInfo = status.folder || "";
+    // Persist a LIGHT restore snapshot so the preview + summary survive a
+    // workflow-tab switch (Preview Pattern #4 family; writing properties
+    // after a run is the accepted "Save Changes?" trade-off). Tokens stay
+    // valid for the server session, so external saves restore too.
+    try {
+      const keep = frames
+        .filter((f) => f && ((f.type && f.filename) || f.token))
+        .slice(0, THUMB_SHOW_MAX)
+        .map((f) => ({
+          filename: f.filename || "",
+          subfolder: f.subfolder || "",
+          type: f.type || "",
+          token: f.token || "",
+          path: f.path || "",
+          // carried so a tab-switch restore rebuilds the SAME url this run
+          // used - stable (no needless refetch) and still unique per run
+          bust: f.bust || "",
+        }));
+      if (!node.properties) node.properties = {};
+      node.properties.pixSiLastRun = {
+        ok,
+        sum,
+        folder: node._pixSiFolderInfo,
+        entries: keep,
+        n: node._pixSiTotal,
+        w: status.w,
+        h: status.h,
+      };
+    } catch {}
+  }
+  renderPreviewUI(node);
+  updateSaveNowBtn(node);
+  node._pixSiCntKey = null; // files landed on disk - refetch the counter
+  updatePreview(node);
+  growToFloor(node);
 }
 
 // ── Pattern #9: inject state into the hidden input at submit time ────────────
@@ -1173,9 +1256,14 @@ function injectState(result) {
     if (!node) continue;
     if (!entry.inputs) entry.inputs = {};
     const st = readState(node);
+    const typed = st.pattern;
     // resolve %NodeName.widget% refs NOW (frontend-only tokens; the Seed
     // mirror widget already holds this run's value at this point)
-    st.pattern = applyFilenameTokenRefs(String(st.pattern || DEFAULT_STATE.pattern));
+    st.pattern = applyFilenameTokenRefs(String(typed || DEFAULT_STATE.pattern));
+    // Preview mode only: the field as typed, so Save now can tell whether it
+    // still says what it said for this run and use this run's values
+    // (node_save_image.save_now). A Save run's prompt stays as it was.
+    if (st.saveOnRun === false) st.patternRaw = typed == null ? "" : String(typed);
     entry.inputs[HIDDEN_INPUT_NAME] = JSON.stringify(st);
   }
 }

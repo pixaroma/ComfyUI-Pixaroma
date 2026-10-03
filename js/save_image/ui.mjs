@@ -105,6 +105,10 @@ export function injectCSS() {
     ".pix-si-x:hover{background:var(--pix-acc,#f66744);border-color:var(--pix-acc,#f66744);color:#fff;}",
     // one small info line under the image: dims + save summary + flashes
     ".pix-si-info{flex:0 0 auto;text-align:center;font-size:11px;color:#8f8f8f;min-height:12px;line-height:1.25;word-break:break-word;}",
+    // the info line + Save now (after a Preview run) share one centred row
+    ".pix-si-inforow{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap;}",
+    ".pix-si-inforow .pix-si-info{flex:0 1 auto;min-width:0;}",
+    ".pix-si-savenow{padding:2px 10px;font-size:11px;}",
     // right-click settings panel (Run Timer palette; DROPPED by mistake in
     // the mockup-v2 rewrite - the panel rendered as an invisible unstyled
     // div at the page bottom. Keep this block when restyling the face!)
@@ -263,8 +267,18 @@ export function buildRoot() {
   view.appendChild(counter);
   view.appendChild(closeX);
   secSaved.appendChild(view);
+  // The info line, with Save now beside it after a Preview run: the line says
+  // "not saved", and the way to save sits right there (hidden otherwise).
+  const infoRow = el("div", "pix-si-inforow");
   const infoLine = el("div", "pix-si-info", "");
-  secSaved.appendChild(infoLine);
+  const btnSaveNow = el("button", "pix-si-btn pix-si-primary pix-si-savenow", "Save now");
+  btnSaveNow.type = "button";
+  btnSaveNow.title =
+    "Save the pictures shown here into your folder, with the settings above, without running the workflow again";
+  btnSaveNow.style.display = "none";
+  infoRow.appendChild(infoLine);
+  infoRow.appendChild(btnSaveNow);
+  secSaved.appendChild(infoRow);
   inner.appendChild(secSaved);
 
   return {
@@ -299,5 +313,6 @@ export function buildRoot() {
     counter,
     closeX,
     infoLine,
+    btnSaveNow,
   };
 }
