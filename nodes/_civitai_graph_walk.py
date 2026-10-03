@@ -27,6 +27,7 @@ A list value of the form [node_id, slot] is a LINK; anything else is a widget
 value.
 """
 
+import importlib
 import json
 import re
 
@@ -528,6 +529,179 @@ _ZERO_OUT_CLASSES = frozenset({"ConditioningZeroOut"})
 
 _sketch_mod = None
 
+# Pixaroma text nodes keep their text in a hidden state blob (PromptState,
+# PromptStackState, JoinState...) or build it at run time, so none of it sits in
+# a _TEXT_KEYS input and the walk found NOTHING - or worse, walked on past the
+# node and returned only a wired PART of the prompt (Prompt Pixaroma with a
+# text_in recorded just the wired half). Reported 2026-10-03: switching Civitai
+# info on "gets rid of my prompts", because Civitai reads our `parameters` chunk
+# FIRST (#1) and that chunk then had no prompt line.
+# Each class below is answered by _pix_source_text with the text the node emits,
+# reusing the readers Prompt Reader already keeps in step with each node's own
+# Python, or the node's own pure functions (Text Join, Find and Replace). The walk
+# never goes PAST one of these nodes (#2: omit, never guess). A wired piece from a
+# THIRD-PARTY node is still read the best-effort way the rest of this walk reads
+# such nodes; "exact" holds for our own nodes.
+# One of these answers ONLY when the walk reached it through a TEXT input
+# (`via`, _is_text_input). Reached any other way - a Dropdown feeding a LoRA's
+# lora_name on the CLIP chain, a Text Join building a Load Image filename on an
+# edit model's picture chain - its text is not the prompt, so the branch stops.
+# The run-time ones (a model writes the text) and Prompt Each (a different
+# prompt per image, which one made THIS image is not in the prompt) are listed
+# with no reader, so they stop the walk and the prompt is left out.
+_PIX_TEXT_SOURCES = frozenset({
+    "PixaromaPrompt", "PixaromaPromptStack", "PixaromaPromptMulti",
+    "PixaromaPromptPack", "PixaromaPromptFromList", "PixaromaDropdown",
+    "PixaromaPauseText", "PixaromaPromptReader",
+    "PixaromaTextJoinTwo", "PixaromaTextJoinThree", "PixaromaTextJoinFour",
+    "PixaromaFindReplace",
+    "PixaromaAIPrompt", "PixaromaVideoPrompt", "PixaromaMusicPrompt",
+    "PixaromaPromptEach",
+})
+# Switch Source is NOT a text source: it routes any type (often CONDITIONING) and
+# output R carries row R of the active side. read_text follows only that row when
+# it knows the slot it arrived on, and walks every input (the old behaviour) when
+# it does not - routing inside the BFS keeps its order, the depth cap and `avoid`.
+_SWITCH_SOURCE_CLASS = "PixaromaSwitchSource"
+# The input names that carry prompt text: this module's _TEXT_KEYS, Prompt
+# Reader's list + pattern (text_1, text_in, string_a...), and the text inputs
+# of core's encoders that use other names (checked in the installed core):
+# Flux / SD3 / HiDream clip_l clip_g t5xxl llama, Lumina2 user_prompt (NOT its
+# system_prompt, a combo), Kandinsky5 qwen25_7b, HunyuanDiT bert mt5xl.
+_TEXT_INPUT_RE = re.compile(r"^(text|string|str|prompt)[_-][a-zA-Z0-9]+$")
+_EXTRA_TEXT_INPUTS = frozenset({"clip_l", "clip_g", "t5xxl", "llama", "user_prompt",
+                                "qwen25_7b", "bert", "mt5xl", "str", "wildcard_text",
+                                "input_string", "positive_prompt"})
+# Pass-through switches: what reaches their output is one of their inputs as it
+# is, so the walk keeps the CONSUMER's input name when it passes through them
+# (their own input names, input_1 / any_01, say nothing about text). Both are
+# pruned / resolved to the live branch the same way Prompt Reader relies on.
+_PASS_THROUGH_SWITCHES = frozenset({"PixaromaSwitch", "Any Switch (rgthree)"})
+
+
+def _is_text_input(name):
+    return isinstance(name, str) and (
+        name in _TEXT_KEYS or name in _EXTRA_TEXT_INPUTS or bool(_TEXT_INPUT_RE.match(name)))
+_TEXT_JOIN_FIELDS = {"PixaromaTextJoinTwo": 2, "PixaromaTextJoinThree": 3,
+                     "PixaromaTextJoinFour": 4}
+_MAX_TEXT_NESTING = 8   # a Prompt fed by a Join fed by a Prompt... bounded
+
+_pix_mods = {}
+
+
+def _pix_mod(name):
+    """Import a sibling module on first use (relative inside ComfyUI, flat when a
+    test puts nodes/ on sys.path), or None. Lazy so this module still imports
+    with no PIL: _prompt_reader_helpers imports it at module level."""
+    if name not in _pix_mods:
+        mod = None
+        try:
+            mod = importlib.import_module("." + name, __package__) if __package__ else None
+        except Exception:
+            mod = None
+        if mod is None:
+            try:
+                mod = importlib.import_module(name)
+            except Exception:
+                mod = None
+        _pix_mods[name] = mod
+    return _pix_mods[name]
+
+
+def _wired_text(prompt, link, nesting, via):
+    """The text arriving down a STRING `link` into the input named `via`, or None
+    when it cannot be known."""
+    if not is_link(link) or nesting >= _MAX_TEXT_NESTING:
+        return None
+    return read_text(prompt, str(link[0]), _slot=int(link[1]), _nesting=nesting + 1, _via=via)
+
+
+def _pix_source_text(prompt, node, slot, nesting):
+    """The exact text a _PIX_TEXT_SOURCES node emits on `slot`, or None.
+
+    None also when part of it cannot be known (a wired piece from a run-time
+    node, say): a partial prompt is a wrong prompt, so the caller omits it.
+    """
+    ct = node.get("class_type")
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict):
+        return None
+    prh = _pix_mod("_prompt_reader_helpers")
+    if ct == "PixaromaPrompt":
+        if prh is None:
+            return None
+        mine, order, sep = prh._pix_prompt_parse_state(inputs)
+        other = ""
+        if is_link(inputs.get("text_in")):
+            other = _wired_text(prompt, inputs["text_in"], nesting, "text_in")
+            if other is None:
+                return None
+        return prh._pix_prompt_join(mine, other, order, sep)
+    if ct in _TEXT_JOIN_FIELDS:
+        tj = _pix_mod("node_text_join")
+        if tj is None:
+            return None
+        pieces = []
+        for i in range(1, _TEXT_JOIN_FIELDS[ct] + 1):
+            v = inputs.get("text_%d" % i, "")
+            if is_link(v):
+                v = _wired_text(prompt, v, nesting, "text_%d" % i)
+                if v is None:
+                    return None
+            pieces.append(v)   # _join applies the node's own _as_text
+        return tj._join(pieces, inputs.get("JoinState", "")).strip() or None
+    if ct == "PixaromaFindReplace":
+        fr = _pix_mod("node_find_replace")
+        if fr is None:
+            return None
+        text = inputs.get("text")
+        if is_link(text):
+            text = _wired_text(prompt, text, nesting, "text")
+            if text is None:
+                return None
+        elif not isinstance(text, str):   # as PixaromaFindReplace.apply coerces it
+            text = "" if text is None else str(text)
+        state = fr.PixaromaFindReplace._parse_state(inputs.get("FindReplaceState", "{}"))
+        result, _warnings = fr._apply_rules(text, state)
+        return result.strip() or None
+    if ct == "PixaromaPauseText":
+        # Mirrors node_pause_text.run, the same way Prompt Reader does: the box
+        # text when the run continued with it or nothing is wired, else the wire.
+        raw = inputs.get("PauseState")
+        mode, box = "pause", ""
+        try:
+            st = json.loads(raw) if isinstance(raw, str) and raw else {}
+        except (ValueError, TypeError, RecursionError):
+            st = {}
+        if isinstance(st, dict):
+            mode = st.get("mode", "pause")
+            box = st.get("text", "") if isinstance(st.get("text"), str) else ""
+        wire = inputs.get("text")
+        if box.strip() and (mode == "continue" or not is_link(wire)):
+            return box.strip()
+        return _wired_text(prompt, wire, nesting, "text")
+    if prh is None:
+        return None
+    if ct == "PixaromaPromptStack":
+        return prh._pix_prompt_stack_extract(inputs)
+    if ct == "PixaromaPromptMulti":
+        return prh._pix_prompt_multi_extract(inputs) if slot in (None, 0) else None
+    if ct == "PixaromaPromptPack":
+        return prh._pix_prompt_pack_extract(inputs)
+    if ct == "PixaromaPromptFromList":
+        return prh._pix_prompt_from_list_resolve(node, prompt)
+    if ct == "PixaromaDropdown":
+        return prh._pix_dropdown_extract(inputs, slot)
+    if ct == "PixaromaPromptReader":
+        # The node reads the WIRED / typed `filename` when there is one
+        # (node_prompt_reader._effective_name), which the chase cannot follow:
+        # it only reads the picker `image`, a real-looking wrong prompt there.
+        fn = inputs.get("filename")
+        if is_link(fn) or (isinstance(fn, str) and fn.strip()):
+            return None
+        return prh._chase_pixaroma_prompt_reader(node, 0)
+    return None   # run-time text (AI / Video / Music Prompt) or Prompt Each
+
 
 def _sketch_prompt(prompt, link):
     """The prompt Sketch sent down `link`, or None when `link` does not come from
@@ -563,7 +737,7 @@ def _sketch_prompt(prompt, link):
     return text.strip() if isinstance(text, str) and text.strip() else None
 
 
-def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH):
+def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH, _slot=None, _nesting=0, _via=None):
     """First prompt string found upstream of a conditioning input, or None.
 
     Follows conditioning chains (Combine / Concat / SetArea and friends) and
@@ -582,15 +756,22 @@ def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH):
     input wired straight from its prompt - through a join its text is only PART
     of the prompt, and walking on into its picture chain returned unrelated text
     there (a watermark's words, measured) as the prompt.
+
+    A Pixaroma text node (_PIX_TEXT_SOURCES) answers for itself with the text it
+    emits on the slot the walk arrived by - only when it was reached through a
+    text input - and is never walked past. A Switch Source reached on a known
+    slot is followed down its active row only.
+    `_slot` / `_nesting` / `_via` are internal: the slot and input name the walk
+    arrived by, set by read_prompts and when a reader follows a wired piece.
     """
     if not prompt or cond_id is None:
         return None
     avoid = tuple(avoid or ())
     seen = {str(cond_id)}
-    frontier = [(str(cond_id), 0)]
+    frontier = [(str(cond_id), 0, _slot, _via)]
     while frontier:
         nxt = []
-        for node_id, depth in frontier:
+        for node_id, depth, slot, via in frontier:
             if depth > max_depth:
                 continue
             node = prompt.get(node_id)
@@ -599,8 +780,21 @@ def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH):
             ct = node.get("class_type")
             if ct in _ZERO_OUT_CLASSES or ct == _SKETCH_CLASS:
                 continue
+            if ct in _PIX_TEXT_SOURCES:
+                if _is_text_input(via):
+                    text = _pix_source_text(prompt, node, slot, _nesting)
+                    if isinstance(text, str) and text.strip():
+                        return text
+                continue
             inputs = node.get("inputs")
             if not isinstance(inputs, dict):
+                continue
+            if ct == _SWITCH_SOURCE_CLASS and slot is not None:
+                prh = _pix_mod("_prompt_reader_helpers")
+                row = prh._pix_switch_source_active_link(inputs, slot + 1) if prh else None
+                if is_link(row) and str(row[0]) not in seen:
+                    seen.add(str(row[0]))
+                    nxt.append((str(row[0]), depth + 1, int(row[1]), via))
                 continue
             for key in _TEXT_KEYS:
                 v = inputs.get(key)
@@ -614,30 +808,42 @@ def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH):
                     continue
                 if is_link(value) and str(value[0]) not in seen:
                     seen.add(str(value[0]))
-                    nxt.append((str(value[0]), depth + 1))
+                    nxt.append((str(value[0]), depth + 1, int(value[1]),
+                                via if ct in _PASS_THROUGH_SWITCHES else name))
         frontier = nxt
     return None
+
+
+def _slot_of(prompt, node_id, input_name):
+    """The output slot a link into `input_name` comes from, or None."""
+    node = (prompt or {}).get(str(node_id))
+    value = (node.get("inputs") or {}).get(input_name) if isinstance(node, dict) else None
+    return int(value[1]) if is_link(value) else None
 
 
 def read_prompts(prompt, sampler_id):
     """(positive_text, negative_text), either of which may be None."""
     pos = link_source(prompt, sampler_id, "positive")
     neg = link_source(prompt, sampler_id, "negative")
+    pos_at, neg_at = (sampler_id, "positive"), (sampler_id, "negative")
     if pos is None and neg is None:
         # SamplerCustom routes conditioning through a guider node.
         guider = link_source(prompt, sampler_id, "guider")
         if guider:
             pos = link_source(prompt, guider, "positive")
             neg = link_source(prompt, guider, "negative")
+            pos_at, neg_at = (guider, "positive"), (guider, "negative")
             # BasicGuider (the standard Flux shape) has NEITHER: its single
             # conditioning input carries the positive, one hop further out.
             # Without this the most common modern workflow recorded no prompt.
             if pos is None and neg is None:
                 pos = link_source(prompt, guider, "conditioning")
+                pos_at = (guider, "conditioning")
     # Each side refuses to cross into the other, so a node carrying both (e.g.
     # ControlNetApplyAdvanced) cannot leak the negative into the positive.
-    return (read_text(prompt, pos, avoid=("negative",)),
-            read_text(prompt, neg, avoid=("positive",)))
+    # The arriving slot lets a Switch Source feeding the sampler follow its row.
+    return (read_text(prompt, pos, avoid=("negative",), _slot=_slot_of(prompt, *pos_at)),
+            read_text(prompt, neg, avoid=("positive",), _slot=_slot_of(prompt, *neg_at)))
 
 
 # ------------------------------------------------------------------ top level
