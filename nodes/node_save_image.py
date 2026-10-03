@@ -626,8 +626,12 @@ def save_now(data):
     if not isinstance(data, dict) or not isinstance(data.get("files"), list):
         raise ValueError("Save now needs the pictures from the last run.")
     temp_dir = folder_paths.get_temp_directory()
-    run = None
-    picks = []
+    # One preview can hold SEVERAL runs: a list input upstream (Prompt Each,
+    # Load Images from Folder, any OUTPUT_IS_LIST node) runs this node once per
+    # item and ComfyUI joins their pictures into one executed event. Each run
+    # is written as its own group with its own name, size and prompt, in the
+    # order sent - what a Save run does with the same list (round-2 review).
+    groups = []  # [(run, [(batch index, path), ...])]
     seen = set()
     for fname in data["files"][:_PREVIEW_MAX]:
         ok_name = isinstance(fname, str) and bool(_PREVIEW_NAME_RE.match(fname))
@@ -639,30 +643,47 @@ def save_now(data):
         if fname in seen:
             continue
         seen.add(fname)
-        if run is None:
-            run = rec[0]
-        elif rec[0] is not run:
-            raise ValueError("Those pictures come from different runs. Run again, then Save now.")
-        picks.append((rec[1], path))
-    if run is None:
+        group = next((g for g in groups if g[0] is rec[0]), None)
+        if group is None:
+            group = (rec[0], [])
+            groups.append(group)
+        group[1].append((rec[1], path))
+    if not groups:
         raise ValueError("Save now needs the pictures from the last run.")
 
     state = _parse_state(data.get("state"))
-    # Node references (%Seed Pixaroma.seed%) are filled in by the browser when a
-    # run is queued, and a randomized seed has already moved on by the time
-    # Save now is clicked. So while the field still says what it said for that
-    # run, use the run's own values; an edited field uses what the face shows.
-    if run["pattern_raw"] is not None and state.get("pattern") == run["pattern_raw"]:
-        state["pattern"] = run["pattern"]
-    elif isinstance(data.get("pattern_live"), str):
-        state["pattern"] = data["pattern_live"]
+    typed = state.get("pattern")
+    live = data.get("pattern_live")
     folder_abs, inside_output = _contain_folder(state.get("folder", ""))
-    frames = ((i, _open_preview(p)) for i, p in picks)
-    results, _status = _write_frames(
-        frames, state, run["name"], run["w"], run["h"], run["prompt"],
-        run["extra_pnginfo"], run["unique_id"], folder_abs, inside_output,
-    )
-    return {"entries": results, "inside_output": inside_output}
+    entries = []
+    status = None
+    for run, picks in groups:
+        run_state = dict(state)
+        # Node references (%Seed Pixaroma.seed%) are filled in by the browser
+        # when a run is queued, and a randomized seed has already moved on by
+        # the time Save now is clicked. So while the field still says what it
+        # said for that run, use the run's own values; an edited field uses
+        # what the face shows.
+        if run["pattern_raw"] is not None and typed == run["pattern_raw"]:
+            run_state["pattern"] = run["pattern"]
+        elif isinstance(live, str):
+            run_state["pattern"] = live
+        frames = ((i, _open_preview(p)) for i, p in picks)
+        results, run_status = _write_frames(
+            frames, run_state, run["name"], run["w"], run["h"], run["prompt"],
+            run["extra_pnginfo"], run["unique_id"], folder_abs, inside_output,
+        )
+        if results:
+            results[0].pop("_pixaroma_status", None)
+        entries.extend(results)
+        if status is None:
+            status = run_status
+        else:
+            status["saved"] += run_status["saved"]
+    # ONE status for the whole answer, on the first entry (the face reads it there)
+    if entries and status is not None:
+        entries[0]["_pixaroma_status"] = status
+    return {"entries": entries, "inside_output": inside_output}
 
 
 class PixaromaSaveImage:
