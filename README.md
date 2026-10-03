@@ -398,13 +398,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 3, 2026 · v1.4.188–v1.4.189**
-- **Save Image: Save now after a Preview run** writes the pictures into your folder without running again, so a random seed cannot change them.
-- **Fixed: in Nodes 2.0 the wheel scrolls long prompts** when "Scroll the field" is set, in every Pixaroma text box, instead of always zooming.
-- **Save Image: Civitai info now includes your prompt** from Prompt, Prompt Stack, Prompt Multi or Text Join, and no longer records wrong text in a few setups.
-- **Ctrl+S in a Pixaroma prompt box saves the workflow** instead of opening the browser's save window.
-- **Prompt and Prompt Pack: Replace no longer sends hidden line breaks,** and the expanded box updates when you edit a tag.
+### **October 3, 2026 · v1.4.188–v1.4.190**
+- **Save Image: Save now after a Preview run** writes the pictures to your folder without running again, so a random seed cannot change them.
+- **Fixed: in Nodes 2.0 the wheel scrolls long prompts** when "Scroll the field" is set, instead of always zooming.
+- **Save Image: Civitai info now includes your prompt** from Prompt, Prompt Stack, Prompt Multi or Text Join.
+- **Ctrl+S in a Pixaroma prompt box saves the workflow.**
+- **Prompt and Prompt Pack: Replace no longer sends hidden line breaks.**
 - **Fixed: Image Compare's Overlay opacity follows the mouse wheel again.**
+- **Image Crop: Ratio and Alignment are Pixaroma dropdowns now,** with full names, and the number fields light up while you type.
+- **Help search finds Image Resize for "upscale" again,** and icon-only buttons have names for screen readers.
 
 ### **October 2, 2026 · v1.4.185–v1.4.187**
 - **AI Prompt and Music Prompt: saving remembers the preset you edited.** Its name is filled in, so pressing Enter updates it. An edited built-in one is offered as "(mine)". Music Prompt now also asks before replacing another set with the same name.
