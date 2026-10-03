@@ -274,7 +274,7 @@ export function buildRoot() {
   const btnSaveNow = el("button", "pix-si-btn pix-si-primary pix-si-savenow", "Save now");
   btnSaveNow.type = "button";
   btnSaveNow.title =
-    "Save the pictures shown here into your folder, with the settings above, without running the workflow again";
+    "Save every picture of this preview into your folder, with the settings above, without running the workflow again";
   btnSaveNow.style.display = "none";
   infoRow.appendChild(infoLine);
   infoRow.appendChild(btnSaveNow);

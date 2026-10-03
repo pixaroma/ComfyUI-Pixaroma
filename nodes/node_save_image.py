@@ -108,11 +108,15 @@ def resolve_serve_token(tok):
 # node wrote, never one from the request. Bounded FIFO; it dies with the
 # process, and ComfyUI empties its temp folder on restart anyway.
 _PREVIEW_FILES = OrderedDict()  # temp filename -> (run context, batch index)
-_PREVIEW_FILES_CAP = 64
+# Counted in FILES: 16 full 16-frame batches. 64 let five full Preview batches
+# (other nodes, other tabs) push out a picture still on screen (review
+# 2026-10-03). Each entry only points at the run's prompt + workflow, which
+# ComfyUI's own history keeps anyway - no image data is held here.
+_PREVIEW_FILES_CAP = 256
 _PREVIEW_NAME_RE = re.compile(r"^pixaroma_save_preview_[0-9a-f]{32}\.png$")
 _PREVIEW_GONE = (
-    "The preview is gone (ComfyUI empties its temp folder when it restarts). "
-    "Run again, then Save now."
+    "This preview can no longer be saved: only the latest previews are kept, and "
+    "ComfyUI empties its temp folder when it restarts. Run again, then Save now."
 )
 
 
@@ -686,8 +690,8 @@ class PixaromaSaveImage:
         "X returns to the grid. Copy puts the shown image on the clipboard, Open shows it in a new browser tab. "
         "Resize the node to make the preview bigger. The Save and Preview pills switch between writing files on "
         "every run and only showing images on the node with nothing written to your folder, so it can double as a "
-        "preview node. After a Preview run, Save now (on the line under the image) writes the pictures you see into "
-        "your folder with the node's current settings, without running the workflow again. "
+        "preview node. After a Preview run, Save now (on the line under the image) writes every picture of that preview "
+        "into your folder with the node's current settings, without running the workflow again. "
         "Folder shows the save location in your file explorer; the window can appear on the taskbar."
     )
 
