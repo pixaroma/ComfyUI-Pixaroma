@@ -142,8 +142,12 @@ function askText(node, area, px, p, ui, onAdded) {
   inp._pixClose = close;
   inp.addEventListener("keydown", (k) => {
     // Ctrl+Enter adds the word AND still runs the workflow (it has to reach
-    // ComfyUI); every other key stays in the box, so typing fires no shortcut.
-    if (isComfyTextShortcut(k)) { if (k.key === "Enter") close(true); return; }
+    // ComfyUI); Ctrl+S adds it AND saves, or the save would miss the word still
+    // being typed. Every other key stays in the box, so typing fires no shortcut.
+    if (isComfyTextShortcut(k)) {
+      if (k.key === "Enter" || k.key === "s" || k.key === "S") close(true);
+      return;
+    }
     k.stopPropagation();
     if (k.key === "Enter") { k.preventDefault(); close(true); }
     else if (k.key === "Escape") { k.preventDefault(); close(false); }
