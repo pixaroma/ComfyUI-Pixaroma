@@ -9,7 +9,7 @@
 // like "1024+256" or "1024*2" — evaluated safely on commit.
 // ============================================================
 
-import { ACC, placeZoomedPopup } from "../shared/index.mjs";
+import { ACC, notifyGraphChanged, placeZoomedPopup } from "../shared/index.mjs";
 import { RATIOS } from "./core.mjs";
 import { ALIGNMENTS, computeAlignedXY, defaultAlignForMeta } from "./alignments.mjs";
 
@@ -534,6 +534,9 @@ function makeCombo({ name, title, options, onPick }) {
     if (!d) return;
     e.preventDefault();
     step(d);
+    // A key step fires no click or change, so the pack-wide change net
+    // (node UI convention #31) cannot see it; the <select> sent `change` here.
+    notifyGraphChanged();
   });
   dd.addEventListener("click", (e) => {
     e.stopPropagation();
