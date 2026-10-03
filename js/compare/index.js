@@ -1,7 +1,7 @@
 import { app } from "../../../scripts/app.js";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { BRAND, registerNodeHelp,
-  installCanvasZoomPassthrough, registerNodeAccent, accentOf,
+  installCanvasZoomPassthrough, registerNodeAccent, accentOf, removeNodeWidget,
 } from "../shared/index.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
@@ -1162,14 +1162,11 @@ function teardownCompareDOMWidget(node) {
   try { node._cmpSnap?.dispose(); } catch {}
   node._cmpSnap = null;
   const w = node._cmpDomWidget || (node.widgets || []).find((x) => x && x.name === "pixaroma_compare");
-  // The widget's OWN onRemove first (monitor.md #8): ComfyUI also keeps DOM
+  // The widget's OWN onRemove must run (monitor.md #8): ComfyUI also keeps DOM
   // widgets in a store of its own and re-mounts everything in it, so splicing
   // the widget out and removing the element is not enough - the face comes back.
-  try { w?.onRemove?.(); } catch {}
-  if (w && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry.
+  removeNodeWidget(node, w);
   try {
     node._cmpDomRoot?.closest?.(".dom-widget")?.remove();
     node._cmpDomRoot?.remove();

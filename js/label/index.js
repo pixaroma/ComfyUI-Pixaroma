@@ -1,6 +1,6 @@
 import { app } from "../../../scripts/app.js";
 import { allow_debug, hideJsonWidget,
-  installCanvasZoomPassthrough,
+  installCanvasZoomPassthrough, removeNodeWidget,
 } from "../shared/index.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
@@ -144,14 +144,11 @@ function setupVueLabel(node) {
 
 function teardownVueLabel(node) {
   const w = (node.widgets || []).find((x) => x && x.name === "label_dom");
-  // The widget's OWN onRemove first (monitor.md #8): ComfyUI keeps DOM widgets in
-  // a store of its own and re-mounts everything in it, so splicing the widget out
-  // and removing the element is not enough - the label comes back.
-  try { w?.onRemove?.(); } catch (_e) {}
-  if (w && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  // The widget's OWN onRemove must run (monitor.md #8): ComfyUI keeps DOM widgets
+  // in a store of its own and re-mounts everything in it, so splicing the widget
+  // out and removing the element is not enough - the label comes back.
+  // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry.
+  removeNodeWidget(node, w);
   try {
     node._pixLblVueEl?.closest?.(".dom-widget")?.remove();
     node._pixLblVueEl?.remove();

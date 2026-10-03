@@ -4,6 +4,7 @@ import { api } from "../../../scripts/api.js";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
 import {
@@ -1715,15 +1716,12 @@ function teardownVueFace(node) {
   node._pixRtFloorOff = null;
   try { if (node._pixRtScaleOff) node._pixRtScaleOff(); } catch (_e) {}
   node._pixRtScaleOff = null;
-  // ⚠️ The widget's OWN onRemove FIRST (monitor.md #8): ComfyUI also keeps DOM
+  // ⚠️ The widget's OWN onRemove must run (monitor.md #8): ComfyUI also keeps DOM
   // widgets in its own store and re-mounts everything in it, so splicing the
   // widget out and removing the element is NOT enough - the face comes back.
+  // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry.
   const w = node._pixRtWidget || (node.widgets || []).find((x) => x && x.name === "run_timer_ui");
-  try { if (w && w.onRemove) w.onRemove(); } catch (_e) {}
-  if (w && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  removeNodeWidget(node, w);
   try {
     const wrap = node._pixRtRoot && node._pixRtRoot.closest && node._pixRtRoot.closest(".dom-widget");
     if (wrap) wrap.remove();

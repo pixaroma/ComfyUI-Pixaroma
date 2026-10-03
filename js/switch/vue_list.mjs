@@ -30,6 +30,7 @@
 import { readState, getUpstreamType, setActiveRow } from "./core.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installNodeAccent } from "../shared/node_settings.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 
 const BRAND = "#f66744";
 const ROW_MIN_H = 24;                 // matches the 24px slot-dot row height
@@ -96,10 +97,8 @@ function syncRowWidgets(node) {
   // Drop surplus rows (a disconnect removed a slot). Row widgets are positional,
   // so only the tail ever needs removing - names never have to change.
   while (rows.length > inputs.length) {
-    const w = rows.pop();
-    const i = node.widgets ? node.widgets.indexOf(w) : -1;
-    if (i >= 0) node.widgets.splice(i, 1);
-    w.onRemove?.();
+    // node.removeWidget: onRemove + splice + the 1.54 widget-store entry.
+    removeNodeWidget(node, rows.pop());
   }
 
   // Add missing rows (a connect grew the slot list).
@@ -272,22 +271,23 @@ export function buildSwitchVueList(node) {
 // w.onRemove(), which is what detaches the element), so there is one way to
 // retire a row widget, not two.
 export function teardownSwitchVueList(node) {
+  // Read BEFORE removing: node.removeWidget already clears the marker of an
+  // input bound to its widget, which would hide the change from the loop below
+  // and skip the `node.inputs` re-assign it decides.
+  let changed = (node.inputs || []).some((slot) => slot && slot.widget);
   const rows = node._pixSwRows || [];
-  for (const w of rows) {
-    const i = node.widgets ? node.widgets.indexOf(w) : -1;
-    if (i >= 0) node.widgets.splice(i, 1);
-    try { w.onRemove?.(); } catch { /* element already detached */ }
-  }
+  for (const w of rows) removeNodeWidget(node, w); // onRemove + splice + store entry
   node._pixSwRows = [];
   node._pixSwRefresh = null;
 
   // Drop the marker so NodeSlots.vue puts the dots back in the top column, and
   // so legacy never sees a `widget` field it would hide its painted dots for.
-  let changed = false;
   for (const slot of node.inputs || []) {
     if (!slot) continue;
-    if (slot.widget) { delete slot.widget; changed = true; }
-    if (slot._widget) delete slot._widget;
+    if (slot.widget) changed = true;
+    // `in`, not truthiness: removeWidget leaves the keys behind as undefined.
+    if ("widget" in slot) delete slot.widget;
+    if ("_widget" in slot) delete slot._widget;
   }
   // Same shallowReactive caveat as syncRowWidgets: a field written INSIDE a
   // slot is invisible to Vue until the array identity changes.

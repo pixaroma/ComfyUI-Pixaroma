@@ -23,6 +23,7 @@ import { pixAsset } from "../shared/api_url.mjs";
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { placeZoomedPopup } from "../shared/popup_zoom.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 import { installNodeAccent, accentOf, ACC } from "../shared/node_settings.mjs";
 import {
   ROW_H, MIN_W, BODY_PAD, readState, writeState, shownIndex, MODE_LETTERS, MODE_LABELS, MODES,
@@ -449,9 +450,8 @@ export function syncValueRows(node) {
 
   while (rows.length > target) {
     const r = rows.pop();
-    try { r.widget?.onRemove?.(); } catch { /* already gone */ }
-    const i = node.widgets ? node.widgets.indexOf(r.widget) : -1;
-    if (i > -1) node.widgets.splice(i, 1);
+    // node.removeWidget: onRemove + splice + the 1.54 widget-store entry.
+    removeNodeWidget(node, r.widget);
     r.el?.remove();
   }
   while (rows.length < target) rows.push(buildValueRow(node, rows.length));

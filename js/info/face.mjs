@@ -21,6 +21,7 @@ import { NODE, M, MIN_S, MAX_S, readCfg, unitWidth, clampS, fontAt, titleWidth,
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 
 // Nothing written in the note yet: no text, and nothing visual (a picture, a
 // line, an icon). Blank markup the editor leaves behind counts as empty.
@@ -350,14 +351,11 @@ export function buildVueFace(node) {
 export function teardownVueFace(node) {
   try { node._pixInfoScaleOff?.(); } catch (_e) {}
   node._pixInfoScaleOff = null;
-  // The widget's own onRemove FIRST, or ComfyUI's widget store re-mounts it
-  // (monitor.md #8).
+  // The widget's own onRemove must run, or ComfyUI's widget store re-mounts it
+  // (monitor.md #8). removeNodeWidget = node.removeWidget: onRemove + splice +
+  // the store entry. The host is still read AFTER onRemove, as before (info.md #18).
   const w = node._pixInfoWidget || (node.widgets || []).find((x) => x && x.name === "info_face");
-  try { w?.onRemove?.(); } catch (_e) {}
-  if (w && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  removeNodeWidget(node, w);
   try {
     // Remember where a Nodes 2.0 face sat, for an undo that rebuilds this node
     // under the same id (remountIfOrphan above).

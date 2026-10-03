@@ -121,6 +121,9 @@ export function registerPixaromaGetNode() {
         w.options = fresh;
         const idx = this.widgets.indexOf(w);
         if (idx >= 0) {
+          // Out and straight back in at the same index (a re-render nudge), so a
+          // plain splice on purpose: removeWidget would run onRemove and delete
+          // the widget's store entry for a widget that stays (Vue Compat #27).
           this.widgets.splice(idx, 1);
           this.widgets.splice(idx, 0, w);
         }

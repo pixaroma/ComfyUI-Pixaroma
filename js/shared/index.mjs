@@ -60,6 +60,10 @@ export { notifyGraphChanged } from "./graph_changed.mjs";
 export { onRouterChanged, notifyRouterChanged } from "./router_changed.mjs";
 export { installBypassRepair, repairBypassedWildcardInputs } from "./bypass_repair.mjs";
 
+// Take a widget off a node for good: node.removeWidget() (onRemove + input unlink +
+// the 1.54 widget-store entry), never a bare widgets.splice() (Vue Compat #27).
+export { removeNodeWidget } from "./remove_widget.mjs";
+
 // Node UI convention #27 - a document.body popup must track the canvas zoom and
 // grow to fit, or it reads tiny beside a zoomed-in node. Use this for EVERY new
 // picker popup rather than re-deriving the traps.

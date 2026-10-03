@@ -9,7 +9,7 @@
 import { app } from "../../../scripts/app.js";
 import {
   applyAdaptiveCanvasOnly, isVueNodes, installResizeFloor,
-  installCanvasZoomPassthrough,
+  installCanvasZoomPassthrough, removeNodeWidget,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
@@ -121,11 +121,9 @@ function teardownFace(node) {
     // ComfyUI created a wrapper and a registration of its own in addDOMWidget
     // and only onRemove releases those. Without it every renderer flip and
     // every node delete left an orphan behind, and this function runs on both.
-    // Same order as js/switch/vue_list.mjs, js/mute_switch/vue_list.mjs and
-    // js/sliders/ui.mjs; try/catch because the element may already be detached.
-    const w = node.widgets[i];
-    node.widgets.splice(i, 1);
-    try { w?.onRemove?.(); } catch { /* already detached */ }
+    // removeNodeWidget = node.removeWidget (onRemove, then splice, then the 1.54
+    // store entry); it never throws, so a detached element cannot stop it.
+    removeNodeWidget(node, node.widgets[i]);
   }
   node._pixLsBand = null;
   node._pixLsRoot = null;

@@ -21,6 +21,7 @@
 
 import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 import { readState, accentOf, clampValue, decimalsOf, rangeOf, comboVisible, randomSeed, MAX_SLIDERS } from "./core.mjs";
 
 export const ROW_H = 23;    // height of one slider row
@@ -653,10 +654,8 @@ export function syncRowWidgets(node, onAdd) {
   if (rows.length > st.sliders.length) closeComboPopup();
 
   while (rows.length > st.sliders.length) {
-    const w = rows.pop();
-    const i = node.widgets ? node.widgets.indexOf(w) : -1;
-    if (i >= 0) node.widgets.splice(i, 1);
-    w.onRemove?.();
+    // node.removeWidget: onRemove + splice + the 1.54 widget-store entry.
+    removeNodeWidget(node, rows.pop());
   }
 
   while (rows.length < st.sliders.length) {
@@ -697,6 +696,8 @@ export function syncRowWidgets(node, onAdd) {
   } else if (node.widgets) {
     const i = node.widgets.indexOf(node._pixSldAdd);
     if (i >= 0 && i !== node.widgets.length - 1) {
+      // A MOVE, so a plain splice on purpose: removeWidget would run the strip's
+      // onRemove and tear down the element we are about to put back (Vue Compat #27).
       node.widgets.splice(i, 1);
       node.widgets.push(node._pixSldAdd);
     }

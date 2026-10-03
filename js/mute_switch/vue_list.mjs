@@ -19,6 +19,7 @@ import { readState, togglePillRow, setSelectMode, setMuteMode } from "./core.mjs
 import { getUpstreamType } from "./render.mjs";
 import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { installNodeAccent } from "../shared/node_settings.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 
 const BRAND = "#f66744";
 const MODEBAR_H = 34;                 // mode bar block (segments + its padding)
@@ -119,10 +120,8 @@ function syncRowWidgets(node) {
   // Drop surplus rows (a disconnect removed a slot). Row widgets are positional,
   // so only the tail ever needs removing - names never have to change.
   while (rows.length > inputs.length) {
-    const w = rows.pop();
-    const i = node.widgets ? node.widgets.indexOf(w) : -1;
-    if (i >= 0) node.widgets.splice(i, 1);
-    w.onRemove?.();
+    // node.removeWidget: onRemove + splice + the 1.54 widget-store entry.
+    removeNodeWidget(node, rows.pop());
   }
 
   // Add missing rows (a connect grew the slot list). They append AFTER the mode
@@ -323,24 +322,27 @@ export function buildMuteSwitchVueList(node) {
 // (shared/renderer_switch.mjs). Without it, flipping 2.0 -> legacy leaves the
 // DOM body in place with the canvas rows painted over the top of it.
 export function teardownMuteSwitchVueList(node) {
+  // Read BEFORE removing: node.removeWidget already clears the marker of an
+  // input bound to its widget, which would hide the change from the loop below
+  // and skip the `node.inputs` re-assign it decides.
+  let changed = (node.inputs || []).some((slot) => slot && slot.widget);
   const widgets = [...(node._pixMsRows || [])];
   if (node._pixMsBar) widgets.push(node._pixMsBar);
-  for (const w of widgets) {
-    const i = node.widgets ? node.widgets.indexOf(w) : -1;
-    if (i >= 0) node.widgets.splice(i, 1);
-    try { w.onRemove?.(); } catch { /* element already detached */ }
-  }
+  for (const w of widgets) removeNodeWidget(node, w); // onRemove + splice + store entry
   node._pixMsRows = [];
   node._pixMsBar = null;
   node._pixMsRefresh = null;
 
   // Drop the marker so NodeSlots.vue puts the dots back in the top column, and
   // so legacy never sees a `widget` field it would hide its painted dots for.
-  let changed = false;
+  // (applyLegacySlotPositions runs AFTER this in index.js, so the slot.pos that
+  // removeWidget clears is set again there.)
   for (const slot of node.inputs || []) {
     if (!slot) continue;
-    if (slot.widget) { delete slot.widget; changed = true; }
-    if (slot._widget) delete slot._widget;
+    if (slot.widget) changed = true;
+    // `in`, not truthiness: removeWidget leaves the keys behind as undefined.
+    if ("widget" in slot) delete slot.widget;
+    if ("_widget" in slot) delete slot._widget;
   }
   // shallowReactive tracks the ARRAY, not fields inside a slot.
   if (changed && node.inputs) node.inputs = node.inputs.slice();

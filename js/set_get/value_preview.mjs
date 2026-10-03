@@ -18,7 +18,7 @@
 
 import { app } from "../../../scripts/app.js";
 import { applyAdaptiveCanvasOnly,
-  installCanvasZoomPassthrough,
+  installCanvasZoomPassthrough, removeNodeWidget,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { SET_TYPE, GET_TYPE, getLink, firstWiredInput, findSetterByName } from "./scope.mjs";
@@ -203,18 +203,11 @@ export function ensureValueWidget(node) {
 // Remove the Nodes 2.0 row again: Classic paints the line itself.
 function removeValueWidget(node) {
   const w = node._pixSgValWidget;
-  // The widget's OWN onRemove first (monitor.md #8): ComfyUI keeps DOM widgets in
-  // a store of its own and re-mounts everything in it, so splicing the widget out
-  // and removing the element is not enough - the row comes back.
-  try {
-    w?.onRemove?.();
-  } catch {
-    /* ignore */
-  }
-  if (w && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  // The widget's OWN onRemove must run (monitor.md #8): ComfyUI keeps DOM widgets
+  // in a store of its own and re-mounts everything in it, so splicing the widget
+  // out and removing the element is not enough - the row comes back.
+  // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry.
+  removeNodeWidget(node, w);
   try {
     node._pixSgValEl?.closest?.(".dom-widget")?.remove();
     node._pixSgValEl?.remove();

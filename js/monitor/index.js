@@ -39,6 +39,7 @@ import { isVueNodes, applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { notifyGraphChanged } from "../shared/graph_changed.mjs";
 import { registerNodeSettings, installNodeAccent } from "../shared/node_settings.mjs";
@@ -415,13 +416,9 @@ function teardownVueFace(node) {
   // faces in the document, all still visible and still owning their observers,
   // while node.widgets correctly read 0. Scope any such count to the node's own
   // root or you will also be counting another workflow TAB's mounted widgets.
-  try {
-    node._pmWidget?.onRemove?.();
-  } catch (_e) {}
-  if (node._pmWidget && Array.isArray(node.widgets)) {
-    const i = node.widgets.indexOf(node._pmWidget);
-    if (i >= 0) node.widgets.splice(i, 1);
-  }
+  // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry
+  // (the 1.54 widget-value store keeps a spliced widget's entry, Vue Compat #27).
+  removeNodeWidget(node, node._pmWidget);
   try {
     node._pmRoot?.closest?.(".dom-widget")?.remove();
     node._pmRoot?.remove();

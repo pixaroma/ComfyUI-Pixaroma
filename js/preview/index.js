@@ -9,6 +9,7 @@ import { applyFilenameTokenRefs, installFilenameTokenResolver } from "../shared/
 import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
 import { attachCanvasSnapshot } from "../shared/canvas_snapshot.mjs";
+import { removeNodeWidget } from "../shared/remove_widget.mjs";
 
 // ---- Nodes 2.0 helpers ----
 // The Vue "WidgetLegacy" bridge repaints a custom widget's canvas only via
@@ -1422,11 +1423,10 @@ function applyPreviewRenderer(node, vue) {
   for (const name of ["pixaroma_buttons", "pixaroma_strip"]) {
     const w = (node.widgets || []).find((x) => x && x.name === name);
     if (!w) continue;
-    // A DOM widget's OWN onRemove first (monitor.md #8): ComfyUI keeps DOM
+    // A DOM widget's OWN onRemove must run (monitor.md #8): ComfyUI keeps DOM
     // widgets in a store of its own and re-mounts everything in it.
-    try { w.onRemove?.(); } catch {}
-    const i = node.widgets.indexOf(w);
-    if (i >= 0) node.widgets.splice(i, 1);
+    // removeNodeWidget = node.removeWidget: onRemove + splice + the store entry.
+    removeNodeWidget(node, w);
     try {
       w.element?.closest?.(".dom-widget")?.remove();
       w.element?.remove();
