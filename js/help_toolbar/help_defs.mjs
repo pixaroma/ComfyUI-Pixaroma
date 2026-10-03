@@ -439,7 +439,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Shows a draggable crop rectangle over your image with corner and edge handles. The on-node panel exposes `Width`, `Height`, `X`, `Y`, `Ratio`, and `Alignment` fields - math expressions like `1024+512` or `512*2` work in any number field. Picking a non-Free alignment auto-centers the crop rectangle.\n\nThree ways to load a source image: wire any upstream IMAGE into the input slot, drag and drop a file onto the node body, or paste from the clipboard with `Ctrl+V`. Drag-drop and paste auto-disconnect the upstream wire so your loaded image takes over.",
+        body: "Shows a draggable crop rectangle over your image with corner and edge handles. The on-node panel exposes `Width`, `Height`, `X` and `Y` fields plus `Ratio` and `Alignment` dropdowns - math expressions like `1024+512` or `512*2` work in any number field. Click a dropdown to pick from the list, or use the small arrows beside it to step through the choices. Picking a non-Free alignment places the crop rectangle for you and fills in X and Y.\n\nThree ways to load a source image: wire any upstream IMAGE into the input slot, drag and drop a file onto the node body, or paste from the clipboard with `Ctrl+V`. Drag-drop and paste auto-disconnect the upstream wire so your loaded image takes over.",
       },
       {
         heading: "How to use",

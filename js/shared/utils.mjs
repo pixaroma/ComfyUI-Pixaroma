@@ -61,6 +61,7 @@ export function createDummyWidget(titleText, subtitleText, instructionText) {
 
   const logo = document.createElement("img");
   logo.src = imgSrc || "";
+  logo.alt = ""; // decorative: the title text right below names the editor
   logo.style.cssText = `
       width: 45px;
       height: auto;

@@ -9,7 +9,7 @@
 // like "1024+256" or "1024*2" — evaluated safely on commit.
 // ============================================================
 
-import { BRAND } from "../shared/index.mjs";
+import { ACC, placeZoomedPopup } from "../shared/index.mjs";
 import { RATIOS } from "./core.mjs";
 import { ALIGNMENTS, computeAlignedXY, defaultAlignForMeta } from "./alignments.mjs";
 
@@ -70,7 +70,10 @@ const PANEL_CSS = `
   box-sizing: border-box;
   transition: border-color 0.08s;
 }
-.pix-cropp-cell:hover { border-color: #888; }
+.pix-cropp-cell:hover { border-color: ${ACC}; }
+/* The input draws no outline of its own, so the cell's border IS the focus
+   ring (node UI convention #13: inputs use :focus-within). */
+.pix-cropp-cell:focus-within { border-color: ${ACC}; }
 .pix-cropp-cell label {
   font-size: 10px;
   color: #777;
@@ -90,27 +93,69 @@ const PANEL_CSS = `
   font-family: inherit;
   text-align: center;
 }
-.pix-cropp-combo {
-  flex: 1;
-  min-width: 0;
+/* The Pixaroma dropdown (node UI convention #14), never a native <select>:
+   [<] [ value v ] [>] - the arrows step through the options, the middle
+   opens the list. Same 24px height as the W/H/X/Y cells. */
+.pix-cropp-combo { flex: 1; min-width: 0; display: flex; gap: 3px; }
+.pix-cropp-combo button {
   background: #1d1d1d;
-  color: #ccc;
   border: 1px solid #666;
   border-radius: 4px;
-  outline: 0;
-  padding: 4px 4px;
-  font-size: 11px;
+  min-height: 24px;
+  box-sizing: border-box;
   font-family: inherit;
   cursor: pointer;
-  min-height: 24px;
   transition: border-color 0.08s;
-  text-align: center;
-  text-align-last: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
 }
-.pix-cropp-combo:hover { border-color: #888; }
+.pix-cropp-combo button:hover,
+.pix-cropp-combo button:focus-visible { border-color: ${ACC}; outline: 0; }
+.pix-cropp-nav {
+  flex: 0 0 18px;
+  padding: 0;
+  color: ${ACC};
+  font-size: 9px;
+}
+.pix-cropp-dd {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  color: #ccc;
+  font-size: 11px;
+}
+.pix-cropp-dd-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pix-cropp-dd-arrow { flex: none; color: ${ACC}; font-size: 9px; }
+/* The list lives on document.body, so it is NOT scoped to .pix-cropp. Inner
+   sizes in em: placeZoomedPopup scales the root font with the canvas zoom. */
+.pix-cropp-pop {
+  position: fixed;
+  z-index: 10900;
+  background: #181818;
+  border: 1px solid #555;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  max-height: 320px;
+  overflow: auto;
+  font-family: 'Segoe UI', sans-serif;
+}
+.pix-cropp-pop-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.2em;
+  padding: 0.55em 1em;
+  cursor: pointer;
+  border-bottom: 1px solid #2a2a2a;
+  white-space: nowrap;
+}
+.pix-cropp-pop-item:last-child { border-bottom: none; }
+.pix-cropp-pop-item:hover { background: #2a2a2a; }
+.pix-cropp-pop-label { font-size: 1.08em; color: #ddd; }
+.pix-cropp-pop-item.active .pix-cropp-pop-label { color: ${ACC}; font-weight: 600; }
+.pix-cropp-pop-hint { font-size: 0.92em; color: #888; }
 `;
 
 let _cssInjected = false;
@@ -156,25 +201,22 @@ export function createCropPanel(callbacks) {
   const row3 = document.createElement("div");
   row3.className = "pix-cropp-row";
 
-  const ratioSelect = document.createElement("select");
-  ratioSelect.className = "pix-cropp-combo";
-  for (let i = 0; i < RATIOS.length; i++) {
-    const opt = document.createElement("option");
-    opt.value = String(i);
-    opt.textContent = ratioLabel(RATIOS[i]);
-    ratioSelect.appendChild(opt);
-  }
+  // Both keep the old <select>'s contract: `.value` is the option's string
+  // value, and picking one runs the same commit the "change" event did.
+  const ratioSelect = makeCombo({
+    name: "Crop ratio",
+    title: "Lock the crop to a shape. Click to pick, or use the arrows.",
+    options: RATIOS.map((r, i) => ({ value: String(i), label: ratioLabel(r), item: r.label, hint: ratioHint(r) })),
+    onPick: () => onRatioCommit(),
+  });
+  const alignSelect = makeCombo({
+    name: "Crop alignment",
+    title: "Where the crop sits on the picture. Any choice except Free sets X and Y for you.",
+    options: ALIGNMENTS.map((a) => ({ value: a.id, label: a.label, hint: a.id === "free" ? "type X and Y" : "" })),
+    onPick: () => onAlignmentCommit(),
+  });
 
-  const alignSelect = document.createElement("select");
-  alignSelect.className = "pix-cropp-combo";
-  for (const a of ALIGNMENTS) {
-    const opt = document.createElement("option");
-    opt.value = a.id;
-    opt.textContent = a.label;
-    alignSelect.appendChild(opt);
-  }
-
-  row3.append(ratioSelect, alignSelect);
+  row3.append(ratioSelect.el, alignSelect.el);
 
   root.append(row1, row2, row3);
 
@@ -345,8 +387,6 @@ export function createCropPanel(callbacks) {
   hInput.input.addEventListener("change", () => onWHCommit("h"));
   xInput.input.addEventListener("change", onXYCommit);
   yInput.input.addEventListener("change", onXYCommit);
-  ratioSelect.addEventListener("change", onRatioCommit);
-  alignSelect.addEventListener("change", onAlignmentCommit);
 
   // Up/Down arrows act as numeric spinners on the text inputs (since
   // type=text doesn't get them natively). Shift = ×8 step for fast nudges.
@@ -367,7 +407,7 @@ export function createCropPanel(callbacks) {
   }
 
   // Block keyboard from bubbling to ComfyUI canvas (would otherwise pan/zoom).
-  for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ratioSelect, alignSelect]) {
+  for (const el of [wInput.input, hInput.input, xInput.input, yInput.input, ...ratioSelect.keyTargets, ...alignSelect.keyTargets]) {
     el.addEventListener("keydown", (e) => e.stopImmediatePropagation());
   }
 
@@ -400,8 +440,24 @@ export function createCropPanel(callbacks) {
     alignSelect.value = alignId;
   }
 
-  return { el: root, refresh };
+  // dispose: close a list left open when the node goes away (its document
+  // listeners would otherwise stay until the next outside click).
+  // Only THIS panel's list: another Crop's open list is not ours to close.
+  const dispose = () => { if (ratioSelect.isOpen() || alignSelect.isOpen()) closeComboPopup(); };
+  return { el: root, refresh, dispose };
 }
+
+// "Square" / "Landscape" / "Portrait", shown at the right of a ratio's row in
+// the list (the closed dropdown carries it in the label already).
+function ratioHint(r) {
+  if (r.w === 0 || r.h === 0) return "any shape";
+  if (r.w === r.h) return "Square";
+  return r.w > r.h ? "Landscape" : "Portrait";
+}
+
+// Names a screen reader announces for the four fields (the visible "W" / "H" /
+// "X" / "Y" label is not tied to its input).
+const FIELD_NAMES = { W: "Crop width", H: "Crop height", X: "Crop left edge (X)", Y: "Crop top edge (Y)" };
 
 // Internal helper — builds a labelled cell with a text input.
 // type=text (not number) so the user can type math expressions like
@@ -415,7 +471,132 @@ function makeTextInput(label, defaultVal) {
   input.type = "text";
   input.inputMode = "numeric";
   input.spellcheck = false;
+  input.setAttribute("aria-label", FIELD_NAMES[label] || label);
   if (defaultVal != null) input.value = String(defaultVal);
   cell.append(lbl, input);
   return { cell, input };
+}
+
+// ── The dropdown: [<] [ value v ] [>] + a list on document.body ──
+// One list open at a time across every Crop node; its close() is tracked so
+// dispose() and a second open both tear the document listeners down.
+let _closeActivePopup = null;
+function closeComboPopup() { _closeActivePopup?.(); }
+
+// options: [{ value, label, item?, hint? }] - `label` shows on the closed
+// dropdown, `item` (default label) + `hint` on the list row.
+// onPick runs after a USER choice only; setting `.value` from code is silent,
+// exactly like assigning a <select>'s value.
+function makeCombo({ name, title, options, onPick }) {
+  let value = options[0].value;
+  const el = document.createElement("div");
+  el.className = "pix-cropp-combo";
+  const mk = (cls, text, label) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    if (text) b.textContent = text;
+    if (label) { b.title = label; b.setAttribute("aria-label", label); }
+    return b;
+  };
+  const prev = mk("pix-cropp-nav", "◀", "Previous " + name.toLowerCase());
+  const next = mk("pix-cropp-nav", "▶", "Next " + name.toLowerCase());
+  const dd = mk("pix-cropp-dd", "", null);
+  dd.title = title;
+  dd.setAttribute("aria-haspopup", "listbox");
+  const val = document.createElement("span");
+  val.className = "pix-cropp-dd-val";
+  const arrow = document.createElement("span");
+  arrow.className = "pix-cropp-dd-arrow";
+  arrow.textContent = "▼";
+  arrow.setAttribute("aria-hidden", "true");
+  dd.append(val, arrow);
+  el.append(prev, dd, next);
+
+  const indexOf = (v) => Math.max(0, options.findIndex((o) => o.value === v));
+  function paint() {
+    const o = options[indexOf(value)];
+    val.textContent = o.label;
+    dd.setAttribute("aria-label", `${name}: ${o.label}`);
+  }
+  function pick(v) {
+    if (v === value) return;
+    value = v;
+    paint();
+    onPick?.(v);
+  }
+  const step = (d) => pick(options[(indexOf(value) + d + options.length) % options.length].value);
+  prev.addEventListener("click", (e) => { e.stopPropagation(); step(-1); });
+  next.addEventListener("click", (e) => { e.stopPropagation(); step(1); });
+  // Arrow keys step through the options, as they did on the <select>.
+  dd.addEventListener("keydown", (e) => {
+    const d = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    step(d);
+  });
+  dd.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (_closeActivePopup && dd.getAttribute("aria-expanded") === "true") { closeComboPopup(); return; }
+    openList();
+  });
+
+  function openList() {
+    closeComboPopup();
+    const pop = document.createElement("div");
+    pop.className = "pix-cropp-pop";
+    pop.setAttribute("role", "listbox");
+    pop.setAttribute("aria-label", name);
+    for (const o of options) {
+      const row = document.createElement("div");
+      row.className = "pix-cropp-pop-item" + (o.value === value ? " active" : "");
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", o.value === value ? "true" : "false");
+      const l = document.createElement("span");
+      l.className = "pix-cropp-pop-label";
+      l.textContent = o.item || o.label;
+      row.appendChild(l);
+      if (o.hint) {
+        const h = document.createElement("span");
+        h.className = "pix-cropp-pop-hint";
+        h.textContent = o.hint;
+        row.appendChild(h);
+      }
+      row.addEventListener("click", (e) => { e.stopPropagation(); close(); pick(o.value); });
+      pop.appendChild(row);
+    }
+    document.body.appendChild(pop);
+    placeZoomedPopup(pop, dd, { baseFontPx: 12, minWidthPx: 150, baseMaxHeightPx: 320 });
+    dd.setAttribute("aria-expanded", "true");
+
+    // Outside press / wheel / Esc close it, all in the CAPTURE phase; a wheel
+    // or press INSIDE the list must not (it scrolls when the canvas is zoomed).
+    const outside = (e) => { if (!pop.contains(e.target) && !dd.contains(e.target)) close(); };
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    function close() {
+      pop.remove();
+      dd.setAttribute("aria-expanded", "false");
+      document.removeEventListener("pointerdown", outside, true);
+      document.removeEventListener("mousedown", outside, true);
+      document.removeEventListener("wheel", outside, true);
+      document.removeEventListener("keydown", onKey, true);
+      if (_closeActivePopup === close) _closeActivePopup = null;
+    }
+    _closeActivePopup = close;
+    document.addEventListener("pointerdown", outside, true);
+    document.addEventListener("mousedown", outside, true);
+    document.addEventListener("wheel", outside, true);
+    document.addEventListener("keydown", onKey, true);
+  }
+
+  paint();
+  return {
+    el,
+    keyTargets: [prev, dd, next],
+    isOpen: () => dd.getAttribute("aria-expanded") === "true",
+    get value() { return value; },
+    // A value that is not an option reads back "" (it shows the first one),
+    // as a <select> did: the commits then fall back to Free exactly as before.
+    set value(v) { v = String(v); value = options.some((o) => o.value === v) ? v : ""; paint(); },
+  };
 }

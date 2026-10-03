@@ -121,6 +121,8 @@ function paint(entry) {
   rng.style.setProperty("--pix-vol-fill", (silent ? 0 : vol) + "%");
   grp.title = silent ? "Sound is off. Click to turn it on." : `Volume ${vol}%`;
   rng.setAttribute("aria-label", `Volume ${vol}%`);
+  // The speaker is an icon only: name the button by what a click will do.
+  if (entry.btn) entry.btn.setAttribute("aria-label", silent ? "Turn the sound on" : "Mute");
   if (video) applyVideoVolume(video);
 }
 
@@ -164,7 +166,7 @@ export function buildVolumeControl(video) {
   grp.appendChild(btn);
   grp.appendChild(rng);
 
-  const entry = { grp, ico, rng, video };
+  const entry = { grp, btn, ico, rng, video };
   LIVE.add(entry);
 
   btn.addEventListener("click", (e) => {

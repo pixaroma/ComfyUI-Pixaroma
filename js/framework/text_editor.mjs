@@ -484,6 +484,9 @@ function inputCell(parent, label, min, max, value, step, onChange) {
   const spin = el("div", "pix-to-spin");
   const upBtn = el("button", "pix-to-spin-up");   upBtn.type = "button";   upBtn.tabIndex = -1;
   const downBtn = el("button", "pix-to-spin-down"); downBtn.type = "button"; downBtn.tabIndex = -1;
+  // The arrows are drawn by CSS, so give a screen reader a name to announce.
+  upBtn.setAttribute("aria-label", `Increase ${label}`);
+  downBtn.setAttribute("aria-label", `Decrease ${label}`);
   spin.append(upBtn, downBtn);
   cell.append(lbl, input, spin);
 

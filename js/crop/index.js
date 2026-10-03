@@ -759,6 +759,7 @@ app.registerExtension({
         if (node._pixaromaCropEditor?.el?.overlay?.isConnected) node._pixaromaCropEditor._close();
       } catch (e) {}
       origRemoved?.call(node);
+      try { panel.dispose?.(); } catch {}
       clearInterval(pollInterval);
       try { api.removeEventListener("execution_start", onStart); } catch {}
       try { api.removeEventListener("executing", onExecuting); } catch {}
