@@ -18,6 +18,28 @@ import { buildMuteSwitchVueList, teardownMuteSwitchVueList } from "./vue_list.mj
 import { registerNodeAccent } from "../shared/node_settings.mjs";
 import { onRendererChange, refreshVueNodeSlots } from "../shared/renderer_switch.mjs";
 
+// Give the chain output a NEW slot object after a switch into Nodes 2.0, so its
+// "out" caption shows (mute-switch.md #21). Nodes 2.0 mounts the node the moment
+// the setting flips, before onRendererChange's poll runs, so it mounts the output
+// while it still carries the Classic zero-width space. It then never re-reads a
+// field inside that slot: OutputSlot.vue is keyed by name + index, and
+// refreshVueNodeSlots hands it the SAME object back. So the caption stayed blank
+// until the workflow was reopened. The copy is built by the slot's own class,
+// the constructor core's configure() uses (toClass(NodeOutputSlot, o, node)).
+// MEASURED: same own keys in the same order, byte-identical serialize(), the
+// links array and LLink origin untouched, connect/disconnect work through it.
+function remountOutputSlot(node) {
+  const out = node.outputs?.[0];
+  const Ctor = out?.constructor;
+  // A plain-object slot (a very old frontend) has no class to rebuild it with.
+  if (!out || typeof Ctor !== "function" || Ctor === Object) return;
+  try {
+    node.outputs[0] = new Ctor(out, node);
+  } catch (err) {
+    console.warn("[Pixaroma] Mute Switch could not refresh its output caption", err);
+  }
+}
+
 // Rebuild one node's UI for the renderer it is NOW in, after the user flipped
 // the Nodes 2.0 setting with the page still open. Same shape (and same
 // reasoning) as applyRenderer in js/switch/index.js - see
@@ -43,14 +65,14 @@ function applyRenderer(node, vue) {
       applyLegacySlotPositions(node);
     }
     refreshRendererLabels(node);
-    // The markers are fields INSIDE the slots of a node Nodes 2.0 has already
-    // mounted, which it never notices (see refreshVueNodeSlots): without this the
-    // rebuilt node kept its input dot in the top column until the workflow was
-    // reopened (measured 2026-09-26, flip_audit_lib.js). It does NOT bring back
-    // the output's "out" caption: Nodes 2.0 redraws a slot only when the slot
-    // OBJECT changes, so that caption appears after the next reopen (accepted,
-    // mute-switch.md).
-    if (vue) refreshVueNodeSlots(node);
+    if (vue) {
+      remountOutputSlot(node);
+      // The markers are fields INSIDE the slots of a node Nodes 2.0 has already
+      // mounted, which it never notices (see refreshVueNodeSlots): without this
+      // the rebuilt node kept its input dot in the top column until the workflow
+      // was reopened (measured 2026-09-26, flip_audit_lib.js).
+      refreshVueNodeSlots(node);
+    }
     node.setDirtyCanvas?.(true, true);
   } catch (err) {
     console.warn("[Pixaroma] Mute Switch renderer rebuild failed", err);
