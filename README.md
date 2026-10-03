@@ -398,6 +398,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 3, 2026 · v1.4.188**
+- **Fixed: in Nodes 2.0 the wheel scrolls long prompts** when "Scroll the field" is set, in every Pixaroma text box, instead of always zooming.
+- **Save Image: Civitai info now includes your prompt** from Prompt, Prompt Stack, Prompt Multi or Text Join, and no longer records wrong text in a few setups.
+- **Ctrl+S in a Pixaroma prompt box saves the workflow** instead of opening the browser's save window.
+- **Prompt: Replace no longer sends hidden line breaks,** and the expanded box updates when you edit a tag.
+
 ### **October 2, 2026 · v1.4.185–v1.4.187**
 - **AI Prompt and Music Prompt: saving remembers the preset you edited.** Its name is filled in, so pressing Enter updates it. An edited built-in one is offered as "(mine)". Music Prompt now also asks before replacing another set with the same name.
 - **Info: Delete.** Right-click a button and choose Delete, or press Delete in its reading window, which asks first. Ctrl+Z brings it back.
