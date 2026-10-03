@@ -161,7 +161,7 @@ from .nodes.node_load_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_3D
 from .nodes.node_save_3d import NODE_CLASS_MAPPINGS as _MAPS_SAVE_3D
 from .nodes.node_save_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SAVE_3D
 
-# development mode for loading additional refrence nodes
+# development mode for loading additional reference nodes
 dev_mode = False
 if dev_mode:
     from .nodes.node_ref import NODE_CLASS_MAPPINGS as _MAPS_UTILS

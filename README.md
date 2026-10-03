@@ -398,7 +398,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 3, 2026 · v1.4.188–v1.4.192**
+### **October 3, 2026 · v1.4.188-v1.4.192**
 - **Save Image: Save now** writes a Preview run's pictures to your folder without running again.
 - **Nodes 2.0: the wheel scrolls long prompts** when "Scroll the field" is set.
 - **Save Image's Civitai info now includes your prompt** from Pixaroma prompt nodes.
@@ -410,13 +410,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Load Image and Load Image Mini open at the same height every time,** and saved workflows no longer reopen taller.
 - **Workflows panel: an open question box now blocks the panel behind it,** and only one can be open.
 
-### **October 2, 2026 · v1.4.185–v1.4.187**
+### **October 2, 2026 · v1.4.185-v1.4.187**
 - **AI Prompt and Music Prompt: saving remembers the preset you edited.** Its name is filled in, so pressing Enter updates it. An edited built-in one is offered as "(mine)". Music Prompt now also asks before replacing another set with the same name.
 - **Info: Delete.** Right-click a button and choose Delete, or press Delete in its reading window, which asks first. Ctrl+Z brings it back.
 - **Prompt Each: the prompt boxes fit their text again** when a workflow opens and when you make the node wider, with no scrollbar.
 - **Fixed: in Nodes 2.0, after Ctrl+Z Pixaroma nodes kept their old controls,** so what you typed was lost and Info buttons went blank.
 
-### **October 1, 2026 · v1.4.183–v1.4.184**
+### **October 1, 2026 · v1.4.183-v1.4.184**
 - **NEW: Info Pixaroma.** A small button on the canvas that opens a note to read. Pick a title, icon and colour, or start from Read me, Download Models, Run Times and more. Also in the canvas right-click menu, under Add Label.
 - **AI Prompt: two Ming Image presets** that turn a short idea into the layout prompt Ming Image 0.1 reads best, written by Qwen3.8 27B or Qwen3.5 9B.
 - **Note: lists no longer leave an empty gap above them**, and the Code view no longer adds stray empty lines.
@@ -427,7 +427,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Resize Crop: sharper when it enlarges a picture.** It now uses lanczos both ways, the same as ComfyUI's own resize.
 - **Fixed: a "Pixaroma" badge floating above Label, Run Timer and Monitor** after the latest ComfyUI update.
 
-### **September 29, 2026 · v1.4.177–v1.4.181**
+### **September 29, 2026 · v1.4.177-v1.4.181**
 - **Load Image and Load Image Mini: pictures from your own folders** (`+ Folder` in the picker), refreshed from the original at each Run. Load Image also gets a settings gear.
 - **AI Prompt: several pictures at once.** Wiring a picture adds a slot for another, up to 8, each seen at its own size.
 - **Paint: "Canvas size from added image".** Turn it on under Add Image and every picture you add sets the canvas to its size.
@@ -439,13 +439,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **September 28, 2026 · v1.4.176**
 - **AI Prompt's "Qwen Image 2.1 - prompt from an idea" preset now writes real selfies**, not photos of someone holding up a phone. Load the preset again to get it.
 
-### **September 27, 2026 · v1.4.170–v1.4.175**
+### **September 27, 2026 · v1.4.170-v1.4.175**
 - **New: Sketch Pixaroma.** Mark a picture with boxes, circles, arrows or words and a note each; edit models like Flux 2 Klein get the marked picture and a ready prompt.
 - **Fixed: Set and Get Pixaroma broke after refreshing nodes (R)** until a page reload. Affected workflows repair themselves, and both are back in the Add Node menu.
 - **Fixed: all Pixaroma nodes showed up empty** when ComfyUI runs under a web address folder (a reverse proxy like `yoursite.com/comfyui/`).
 - **Plus fixes:** Inter Bold now comes out bold in Text Overlay and Watermark; Align no longer shrinks a node below its content; XY Plot, Load Images from Folder, Image Resize and Notify keep their size; Civitai info no longer writes the positive prompt as the negative.
 
-### **September 26, 2026 · v1.4.163–v1.4.169**
+### **September 26, 2026 · v1.4.163-v1.4.169**
 - **Run Timer, Run Log and Monitor Pixaroma no longer slow your renders.** Run Timer with 2 or 3 decimals had cost 6-9%; its final time stays exact.
 - **Faster renders in Nodes 2.0 with Compare, Preview Image, Outpaint, Load 3D, Save 3D or a video node (Load Video, Load Video Frame, Save Mp4, Save Video) on screen.** Their previews show a still picture while nothing moves. Load Audio, Image Resize and Load Image Mini do the same.
 - **Fixed: copied Run Timers, Monitors and Image Composers kept working unseen**, even after the node was deleted.
@@ -456,18 +456,18 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **New: four Qwen Image 2.1 presets for AI Prompt Pixaroma**: a prompt from an idea, a transparent picture, a prompt from an image, and an edit instruction.
 - **Fixed: Inpaint Stitch Pixaroma pasted a grey patch** when the model returned a picture with transparency, as Qwen Image 2.1 does. It pastes clean colours now.
 
-### **September 22, 2026 · v1.4.159–v1.4.161**
+### **September 22, 2026 · v1.4.159-v1.4.161**
 - **Fixed: Music Prompt Pixaroma closed ComfyUI part way through a run**, on ComfyUI 0.37.0. It writes the caption and the lyrics again.
 - **Fixed: in Prompt Pixaroma the cursor could sit away from the words you typed**, further out the longer the prompt. The box now follows your theme's font exactly.
 - **A file name can end with `_` again.** Type `name_%counter%_` in Save Image Pixaroma and you get `name_001_.png`, so you can add your own words after the number.
 
 ### **September 21, 2026 · v1.4.158**
-- **Fixed: the prompt and text nodes used the wrong look for your theme** — white on a dark one, dark on a light one. A new **Node look** setting can force either.
+- **Fixed: the prompt and text nodes used the wrong look for your theme:** white on a dark one, dark on a light one. A new **Node look** setting can force either.
 - **Fixed: Load Audio Pixaroma's file list ran off the screen.** It scrolls now.
 - **Group Switch Pixaroma no longer slows things down while on screen.**
 - **Inpaint Crop Pixaroma follows a Switch**, and stops showing a picture that is no longer wired in.
 
-### **September 18, 2026 · v1.4.154–v1.4.157**
+### **September 18, 2026 · v1.4.154-v1.4.157**
 - **New node: Number Pick Pixaroma.** One number, picked from buttons you choose yourself. It sends a whole number or a decimal to suit whatever you wire it to.
 - **Volume on the video players.** A speaker on Save Mp4 and Save Video Pixaroma. The level you set is remembered by every Pixaroma video node.
 - **Save Mp4 Pixaroma takes a whole video, not only frames**, and it now shows the video size on the node, as does Load Video Pixaroma.
@@ -475,7 +475,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Fixed: Inpaint Crop Pixaroma was blank** when a Switch or a Reroute sat between it and the picture.
 - **Fixed: Prompt Reader Pixaroma could open a little short** in a big workflow.
 
-### **September 17, 2026 · v1.4.152–v1.4.153**
+### **September 17, 2026 · v1.4.152-v1.4.153**
 - **Fixed: middle-mouse drag did not move the canvas over a node's picture or text box.** Now it does, over 3D views too.
 - **Fixed: LoRA Loader forgot your trigger words when a LoRA was moved to another folder.** Pick the moved file again and they come back.
 - **Fixed: Ctrl+Up / Ctrl+Down did not change a word's weight** in Pixaroma prompt boxes.
@@ -496,7 +496,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **September 13, 2026 · v1.4.149**
 - **NEW: Load 3D Pixaroma.** Load a GLB, OBJ, FBX, STL or PLY model, turn it to any view, and get the model, its picture and a mask.
 
-### **September 11, 2026 · v1.4.145–v1.4.148**
+### **September 11, 2026 · v1.4.145-v1.4.148**
 - **Fixed: bypassing a node could break the wire below it.** Show Text, Switch, Notify and Free VRAM stopped with "missing input" or passed the wrong value.
 - **Fixed: Save Text kept only the first result** of a folder run.
 - **Fixed: a picked button colour came back orange after a reload**, hover too.
@@ -514,7 +514,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **The download is smaller.** Developer tools and notes that never run on your machine are no longer packed into the release.
 - **The settings gear on Outpaint and Prompt is now drawn by the pack**, so it looks the same on Windows, Mac and Linux.
 
-### **September 5, 2026 · v1.4.133–v1.4.142**
+### **September 5, 2026 · v1.4.133-v1.4.142**
 - **Fixed: Preview Image Save to Disk** - big pictures failed, the filename stopped counting up, and a refused folder picker now saves to Downloads.
 - **Fixed: the Workflows panel now sees folders you linked in from elsewhere**, and can rename, move and cover them. Thanks to jab416171.
 - **Fixed: Prompt Reader returned an AI node's instructions instead of the prompt.**
@@ -526,7 +526,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Groundwork for clearing the Registry security warning.** Nothing changes in how the nodes behave.
 - **Reports and ideas now go to `#pixaroma-nodes` on Discord.**
 
-### **August 27, 2026 · v1.4.131–v1.4.132**
+### **August 27, 2026 · v1.4.131-v1.4.132**
 - **NEW: Prompt Each Pixaroma.** Type a prompt in each row, press Run **once**, and you get one picture per prompt, all collected in the same Preview node. It renders them one at a time, so a long list is safe on a small graphics card.
 - **Square brackets multiply a row**: `a [red|blue] car` is two prompts, `a [red|blue] [car|van]` is all four. The counter shows what you will get before you press Run.
 - **Paste a whole list in one go**, one prompt per line, and Copy sends it back out the same way with the ON/OFF switches kept.
@@ -534,7 +534,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Fixed properly: Prompt Multi and Prompt Stack rows collapsing into thin overlapping bars.** The cause was **Monitor Pixaroma restyling them**, not another node pack, which is why it came and went and a refresh cleared it.
 - **Prompt rows now hold their height** if anything else tries to squeeze them.
 
-### **August 26, 2026 · v1.4.127–v1.4.130**
+### **August 26, 2026 · v1.4.127-v1.4.130**
 - **Fixed: Load Audio grew taller by itself.** The waveform pushed the node bigger on every redraw, ending at a different size after each reload and dragging the canvas.
 - **Panning and zooming are lighter on big workflows.** Label, Monitor and Run Timer no longer tax the canvas.
 - **Fixed: Save Video, Save Image and Save Text would not fill the node**, leaving the video small with empty space below.
@@ -543,14 +543,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Fixed: Image Crop gave every queued job the last crop.**
 - **The LoRA picker no longer opens on an empty folder**, and Back is easier to see.
 
-### **August 25, 2026 · v1.4.123–1.4.126**
+### **August 25, 2026 · v1.4.123-1.4.126**
 - **Dropdown Pixaroma now holds up to four values in one entry.** Name each output, and one pick sets several wires at once: a sampler and its scheduler.
 - **Fixed: a Dropdown would not connect to a sampler or scheduler by hand.** It worked if the wire was already saved, but once unplugged it could not be plugged back.
 - **Each output has its own type.** Existing Dropdowns keep working.
 - **New: Save Mp4 and Save Video can fade the sound in.** AI video clips often start with a click; 120 removes it.
 - **Fixed: Save Mp4 could skip saving, with no error, when run from an API script.**
 
-### **August 24, 2026 · v1.4.121–1.4.122**
+### **August 24, 2026 · v1.4.121-1.4.122**
 - **NEW: Free VRAM Pixaroma**, hands the graphics card's memory back at the point you wire it in, so a second heavy model has room to load. Under Logic & Flow.
 - **NEW: Monitor Pixaroma**, a live readout on the canvas: video memory, system memory, GPU and processor load, temperature and power. Under Logic & Flow.
 - **Monitor also keeps a peak mark** from the last run, has its own Free VRAM button, and switches between bars and a one line strip.
@@ -567,7 +567,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Model sizes in every picker**, and Gemma 4 and Qwen3.5 are no longer marked "no vision".
 - **The cursor lands where you click** in long prompts.
 
-### **August 18, 2026 · v1.4.115–v1.4.117**
+### **August 18, 2026 · v1.4.115-v1.4.117**
 - **NEW: Music Prompt Pixaroma.** One idea in, a caption and lyrics out for MiniMax Music 3. Set the length and the words are written to fit. Replaces the two music presets.
 - **Find a model by typing.** The model lists in AI Prompt, Video Prompt and Music Prompt settings now filter as you type, like presets do.
 - **NEW: your tag library works in AI Prompt too.** `@name`, `*Category` and `#name` from the same library as Prompt Pixaroma, coloured so you can see which are real.
@@ -576,7 +576,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Comma is gone as a separator.** It chopped prompts into pieces. Workflows set to it move to Blank line.
 - **Quick runs no longer scatter a collection.** Save Text could start a second .txt part way through.
 
-### **August 17, 2026 · v1.4.111–v1.4.114**
+### **August 17, 2026 · v1.4.111-v1.4.114**
 - **NEW: Save Text Pixaroma.** Keeps every run's text in one list on the node and in a .txt file, so tried prompts are not lost. Clear starts a new file instead of deleting the old one.
 - **Copy and Paste (Clipspace) work again** on Load Image, Load Image Mini and Preview Image.
 - **Inpaint Crop asks before throwing your mask away.** Closing with ✕ or Escape used to discard your painting.
@@ -585,21 +585,21 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Pause Text: Regenerate gives you a fresh prompt** from an AI Prompt node, even with a fixed seed.
 - **Plus:** paste a recipe when the browser blocks clipboard reads; Load Video Frame explains a blank ProRes preview.
 
-### **August 16, 2026 · v1.4.109–v1.4.110**
+### **August 16, 2026 · v1.4.109-v1.4.110**
 - **NEW: First Last Frame Pixaroma.** Takes the first and last frame out of a video as two pictures, so the next clip can start where the last one ended. Works with Load Video Pixaroma or ComfyUI's own Load Video.
 - **Run Timer: drag the corner and the whole clock grows with it**, digits and all, and it remembers the size with your workflow. You can also pick the clock font now, your own .ttf files included.
 - **The timer says when it will stay silent** by dimming the sound rows, and there is a mute button beside the volume.
 - **16-bit pictures load properly now** in Load Image, Load Image Mini and Load Images from Folder. Scans and depth maps used to come out almost white.
 - **Plus fixes:** no grey edge down the right of the clock; Load Video Frame handles 16-bit clips.
 
-### **August 14, 2026 · v1.4.107–v1.4.108**
+### **August 14, 2026 · v1.4.107-v1.4.108**
 - **NEW: AI Prompt Pixaroma.** Give it a model and a saved instruction, wire in text, pictures, audio or video, and it writes text on your own machine, no account or key. Six ready recipes included.
 - **Chain them and share recipes:** the output is plain text, so one node can describe a photo and the next restyle it. A recipe shares as one .txt file.
 - **Your written prompt stays put** in AI Prompt and Video Prompt when you switch workflow tabs, with the seed that wrote it.
 - **The Krea 2 idea recipe keeps the look you ask for:** cartoon, illustration or 3D no longer turns into a photograph. Load the preset again to pick it up.
 - **Plus fixes:** a clearer AI Prompt banner, a formula box that scrolls, settings panels that open fully on screen, and dropdowns that close when you zoom.
 
-### **August 13, 2026 · v1.4.105–v1.4.106**
+### **August 13, 2026 · v1.4.105-v1.4.106**
 - **Video Prompt: the idea box can be made bigger.** Drag the node, drag the bar under the box, or press Expand for a full-screen one.
 - **LoRA Loader: a LoRA two folders deep no longer shows "Empty folder"**, and a LoRA's trigger word is now ticked for you when you pick it.
 - **Right-click in a text box gives copy and paste again** instead of the node menu, on the prompt and text nodes.
@@ -612,7 +612,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **It picks the mode from what you wire in** (nothing, one picture or two), and its frames output snaps to a length H3 accepts. Wan, Hunyuan and LTX too.
 - **Also:** talking prompts work at 5 seconds, the wording is yours to edit, a Free VRAM switch frees the model for your video, and Prompt Reader pulls your idea back out.
 
-### **August 10, 2026 · v1.4.100–v1.4.103**
+### **August 10, 2026 · v1.4.100-v1.4.103**
 - **NEW: Save Video Pixaroma.** Save an mp4 anywhere with Save Image's folder and filename tools, a live preview of the name, and playback on the node. MP4 HQ keeps fades smooth at about half the size.
 - **Three new filename pieces:** frame rate, length and frame count, like `Video_24fps_81f_3-4s_001.mp4`.
 - **Save Image can save WebP:** about a fifth of a PNG, keeps transparency, and still reloads the workflow when dragged in. Plus a settings gear, a row to hide unused buttons, and a + Input folder chip.
@@ -622,12 +622,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **August 7, 2026 · v1.4.99**
 - **Fixed: a change you made by clicking a Pixaroma control was not always noticed**, so a workflow could look saved when it was not, and with Auto Save on the change could be lost entirely. Every control now reports it the instant you make it, and Ctrl+Z undoes it properly. Worth knowing either way: a workflow opened from the built-in templates always reopens as it came, so save it under your own name once it is set up.
 
-### **August 6, 2026 · v1.4.97–v1.4.98**
+### **August 6, 2026 · v1.4.97-v1.4.98**
 - **Fixed: Pause Text made your whole workflow redo itself**, so everything after it ran again on every Run even with a fixed seed and nothing changed. Pause Image had the same problem, found by checking rather than waiting for a report.
 - **Fixed: workflow cards showed a broken picture** for anything that makes video. They now show the drawn map of the graph, and cards already stuck put themselves right.
 - **Fixed: a cover you picked is no longer replaced** by the next run's output. It stays until you use Remove cover.
 
-### **August 5, 2026 · v1.4.91–v1.4.96**
+### **August 5, 2026 · v1.4.91-v1.4.96**
 - **NEW: Load Audio Pixaroma.** Pick a sound file and take exactly the piece you want: drag the orange edges to trim, drag the middle to slide, and press play to hear it before you spend a render. Wire in Duration Pixaroma and the window matches your video exactly.
 - **NEW: H3 Audio Sync Pixaroma.** Makes a MiniMax H3 video perform your recording instead of the sound the model invents. H3 makes picture and sound as one thing, so you cannot simply lay a track on top; this puts yours in and holds it there. It reads the length itself and warns past H3's roughly 15 seconds.
 - **NEW: Longest Side Pixaroma.** Click a size and the longer edge becomes exactly that, the other following so nothing is squashed. Optional shape crops first, and a button rounds both sides to 8, 16, 32 or 64.
@@ -635,7 +635,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Fixed: Image Resize no longer loses a see-through background.** It comes out of the mask output, cropped and resized to match, ready for Join Image with Alpha.
 - Also: saving an unsaved workflow into a folder now uses the folder you chose; a LoRA picture or your trigger words could vanish while the panel was still loading; loaders could show a different picture than the one you picked.
 
-### **August 4, 2026 · v1.4.85–v1.4.90**
+### **August 4, 2026 · v1.4.85-v1.4.90**
 - **Pixaroma now works properly on online ComfyUI services.** The Save Mp4 player, Note icons, fonts, sounds and several pickers were quietly broken there: around 270 addresses were built as if ComfyUI owned the whole site. Nothing changes on your own PC.
 - **Your own LoRA trigger words now belong to the LoRA**, not to one row, so a word you type once is waiting wherever you use that LoRA. Words you already typed move across the first time you open the panel.
 - **Our full screen editors no longer hold up the rest of ComfyUI.** Ctrl+Z is still kept inside the editor, but the old way of doing it also switched off workflow loading for the whole page, which affected other creators' nodes.
@@ -645,26 +645,26 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **It is easier to find where your own fonts go**: the font list says so at the bottom, and Help has a new "Add your own fonts" page.
 - Also: a bad setting on one node can no longer stop the Run button; Pixaroma is back in the ComfyUI Manager list; Run Log fills the node properly in the new node style; AudioReact and Save Image check a folder is allowed before looking it up, which matters on Windows network paths.
 
-### **August 3, 2026 · v1.4.82–v1.4.84**
+### **August 3, 2026 · v1.4.82-v1.4.84**
 - **Please update: Pixaroma now only reads and writes where you have said it can.** It stays inside ComfyUI's own input, output and temp folders plus any folder you pick with **Browse**, which approves it for good. Nothing you already save to the output folder changes, and the node warns you before you run rather than after. Found in a security review, with no report of it being used against anyone.
 - **NEW: Duration Pixaroma.** Say how long a video should be in seconds and it works out the frame count your model wants, replacing the seconds-plus-maths pair people usually wire up. You decide which lengths it offers, as buttons or a slider, and it shows the frame count and the true length before you run. Outputs both, so audio can line up. Custom formula understands the same functions as ComfyUI's Math Expression.
 - **Portrait Landscape can round your sizes to a step** of 8, 16, 32 or 64, each node keeping its own, and it shows the size it will send. Existing nodes open with rounding off.
 - **Fixed: Control Panel and Dropdown could not connect to some newer ComfyUI nodes**, including its own Math Expression - the wire appeared and vanished a moment later. Connection sparkles light up on those inputs now too.
 
-### **August 2, 2026 · v1.4.76–v1.4.81**
+### **August 2, 2026 · v1.4.76-v1.4.81**
 - **LoRA Loader: add your Civitai API key** in the gear and lookups find models the site keeps from anyone not signed in. Your key stays on your computer, never in a workflow, and only its last four characters are shown back. Try Civitai also works on more connections now, and its info panels follow the node as you zoom.
 - **XY Plot: long prompts are readable at last**, wrapping with numbered lines in the value box and into the side strip as an axis label instead of running across your pictures. The grid preview follows the node width, and the saved grid carries its workflow.
 - **Prompt: put your tag categories in any order** by dragging or the ⋯ menu. Colours show where each piece came from - tag, category or list - and a half-typed tag gets a spellcheck-style underline instead of glowing red at you.
 - **Start ComfyUI with `--disable-metadata` and Pixaroma writes nothing into your pictures**: no workflow, no prompt, no Civitai info. Before, only the video saver honoured it.
 - Plus fixes: Export (API) left out everything after a paused Pause node; dragging a workflow or category onto a text box could rename a file or edit a tag; renaming a category to change only its capitals did nothing; Inpaint Crop failing on newer NumPy.
 
-### **August 1, 2026 · v1.4.73–v1.4.75**
+### **August 1, 2026 · v1.4.73-v1.4.75**
 - **Using a list twice in one prompt gives you two different things.** `#fruit #fruit` now deals the next one along instead of repeating.
 - **You can see what a prompt actually picked.** The expanded box shows the real words the moment you press Run, and they travel inside the picture.
 - **Fixed: a picture now remembers the seed that made it.** Drag it back onto the canvas and Run recreates it, locked to that seed.
 - **Fixed: a confusing warning on startup.** One of the pack's own files was saved with an invisible marker, and a new check stops that happening again.
 
-### **July 31, 2026 · v1.4.69–v1.4.72**
+### **July 31, 2026 · v1.4.69-v1.4.72**
 - **NEW: Dropdown Pixaroma.** Your own named list for the values you keep retyping - pick "warm light" instead of pasting the sentence. Sends text, a whole number, a decimal or on/off.
 - **It can change entry on its own each run.** The letter on the node: **F** keeps your pick, **I** steps to the next, **R** picks at random. XY Plot can compare every entry.
 - **The Workflows panel can be made bigger.** Three **A** buttons in its toolbar scale the writing, cards, pictures and folder list together.
@@ -673,14 +673,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **XY Plot warns when another LoRA is quietly in every square**, and its help gained worked examples plus a section just for LoRAs.
 - Plus fixes: the Workflows search box emptied itself when you changed the view, the sort or the size.
 
-### **July 30, 2026 · v1.4.66–v1.4.68**
+### **July 30, 2026 · v1.4.66-v1.4.68**
 - **NEW: a panel for your workflows** - the orange **W** in the top toolbar, or Alt+W. It reads the folder you already use, gives every workflow a picture, and searches inside the files.
 - **Organise without leaving ComfyUI:** rename with F2, drag onto a folder, duplicate, set a cover, delete. **Needs tidying** gathers the mess in one click.
 - **Save Image and Preview Image can add the generation info Civitai reads.** Right-click to switch it on; the values are read from your workflow. Off by default.
 - **XY Plot can compare the LoRAs in LoRA Loader Pixaroma** - the file in each row, its strength, or both at once on a grid.
 - Plus fixes: "no workflow data available" when opening from your history on a cloned install, and an XY Plot asking you to save a workflow you never edited.
 
-### **July 29, 2026 · v1.4.64–v1.4.65**
+### **July 29, 2026 · v1.4.64-v1.4.65**
 - **NEW: a help button in the top toolbar**, the orange **?** next to Align. It covers every node, the canvas tools and four short guides, and search reads the whole text.
 - **Your version is always on screen** along the bottom of the help window, and one click copies the full details for a support question.
 - **Fixed: the typing cursor could sit away from the text in Prompt Pixaroma** on long prompts.
@@ -692,7 +692,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **A node's own options moved onto the node**, out of the Settings window. Everything you had already chosen carries over.
 - **Fixed: Load Image Mini, Image Info and Prompt could make an untouched workflow ask to be saved.**
 
-### **July 27, 2026 · v1.4.60–v1.4.62**
+### **July 27, 2026 · v1.4.60-v1.4.62**
 - **Outpaint: type the edge amounts** instead of only dragging, with a reset button. Sums like `512*2` work.
 - **Renamed model files show up when you press R** - fixed in the LoRA picker, the folder gallery, Run Timer's sounds and the Note icon picker.
 - **A LoRA whose file is missing finally says so**, with a red mark, instead of looking normal and quietly doing nothing.
@@ -701,27 +701,27 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Anything that takes something away asks first**, names exactly what goes, and offers to export a backup.
 - Plus fixes: your place in a sequence only moves on a real Run, and odd entries from a hand-edited import file are refused cleanly.
 
-### **July 25, 2026 · v1.4.58–v1.4.59**
+### **July 25, 2026 · v1.4.58-v1.4.59**
 - **LoRAs kept on another drive through a shortcut folder now show their details** - they came back as "not found" before. Prompt Reader, Save Image and XY Plot benefit too.
 - **Civitai lookups are steadier and previews load far faster**, with a useful reason when something does go wrong.
 - **The details window no longer flashes in the corner**, and it opens next to the node.
 - **The mouse wheel zooms again over seven nodes that had stopped it**, plus a new setting for what it does over a text box or list.
 
-### **July 24, 2026 · v1.4.56–v1.4.57**
+### **July 24, 2026 · v1.4.56-v1.4.57**
 - **NEW: Pause Text Pixaroma.** A checkpoint for words: read and fix AI-written text before it goes on, or hit **Regenerate** for a fresh one.
 - **Prompt learns lists.** Flip a shortcut to **List**, put one option per line, and `#animals` becomes one of them each run - Shuffle, Random or In order.
 - **The tag library keeps your writing and your lists apart**, so `@` offers your wording and `#` offers your lists.
 - **Share part of your library instead of all of it** - export one category, and see what is in a file before importing it.
 - Plus fixes: Pause Image no longer skips your other branches on Continue, and Text Join no longer hides words behind the line label.
 
-### **July 23, 2026 · v1.4.54–v1.4.55**
+### **July 23, 2026 · v1.4.54-v1.4.55**
 - **Run Log lets you label each run.** Double-click a row and type a short note; it travels with that run's time and comes along when you export.
 - **Copying a Switch or Mute Switch keeps everything you set up** - row names, the row you had switched through, and which branches were off.
 
 ### **July 22, 2026 · v1.4.53**
 - **Sliders grows into Control Panel Pixaroma.** Each row becomes whatever you plug it into: a slider, a switch, a dropdown, a seed or a text field. Up to 16 per node, and your existing Sliders nodes simply gain the new abilities.
 
-### **July 21, 2026 · v1.4.47–v1.4.52**
+### **July 21, 2026 · v1.4.47-v1.4.52**
 - **NEW: LoRA Loader Pixaroma.** Stack as many LoRAs as you like in one small node, each with an on/off switch and a strength. Click the **i** for trigger words read straight from the file, tap the ones you want, and they come out of a **triggers** output.
 - **NEW: Text Join Pixaroma (Two, Three and Four).** Join pieces of text, each line either typed or wired in. Right-click to set the separator, skip empty lines, and rename each line.
 - **NEW: Run Log Pixaroma.** Keeps the last 10 run times on the node, newest first, one list per workflow. No wiring needed.
@@ -729,7 +729,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Prompt can roll a random shortcut each run** - type `*` and a category name.
 - **LoRA Loader's info window is tidier**, with a File / Civitai switch and an option to hide the file ending.
 
-### **July 19, 2026 · v1.4.43–v1.4.46**
+### **July 19, 2026 · v1.4.43-v1.4.46**
 - **NEW: Prompt Pixaroma.** A prompt box with a personal library: save a long chunk once, then just type `@name`. Type `@` for a searchable list, and **Tags** opens a full-screen library you can export and import.
 - **NEW: Load Image Mini Pixaroma, with an Image Info companion.** A stripped-down loader that keeps all the resizing behind the gear; wire Image Info in when you need the mask, size or filename.
 - **Updates now show up on their own - no more hard refresh.** One last Ctrl+Shift+R may be needed if your browser is already stuck on an old copy.
@@ -738,21 +738,21 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **July 18, 2026 · v1.4.42**
 - **NEW: Outpaint Pixaroma.** Adds a border around your image so an outpainting model can fill in new scenery. Grow to a ratio, add exact pixels per edge, or drag a green edge on the preview. Optional megapixel cap and snap.
 
-### **July 16, 2026 · v1.4.40–v1.4.41**
+### **July 16, 2026 · v1.4.40-v1.4.41**
 - **Notify now times your workflow.** The clock starts on Run and stops when the workflow reaches that node, so several Notify nodes give you per-section times. Each keeps its own history of the last 10.
 - **Fixed: Save Image no longer stretches itself very tall**, and workflows already saved that way are put right when you open them.
 
-### **July 15, 2026 · v1.4.38–v1.4.39**
+### **July 15, 2026 · v1.4.38-v1.4.39**
 - **NEW: Sizes Pixaroma.** A tidy list of your favourite exact resolutions, with a Portrait / Landscape button that flips the whole list and an optional snap.
 - **Fixed: duplicating a Crop or Inpaint Crop node no longer touches the original** - every copy starts with a clean slate.
 
-### **July 14, 2026 · v1.4.33–v1.4.37**
+### **July 14, 2026 · v1.4.33-v1.4.37**
 - **NEW: Sliders Pixaroma.** A panel holding every number you keep reaching for. Wire a slider to any number input and it learns the name, range, step and type.
 - **Switch and Mute Switch line up properly in the new node style** - each socket now sits on its own row.
 - **The Switch exports properly to API format**, and picks the right branch when run through the API. Switch Source too.
 - **All on / All off buttons on the Group Switch**, plus a mute-all switch for Run Timer in its settings.
 
-### **July 13, 2026 · v1.4.31–v1.4.32**
+### **July 13, 2026 · v1.4.31-v1.4.32**
 - **Run Timer remembers your recent run times.** Right-click for the last ten, with the workflow name, the time of day, and the fastest marked.
 - **NEW: Krea LoRA Converter.** A LoRA trained for Krea 2 on fal.ai will not load in ComfyUI; pick it, press Convert, and it saves a working copy. Your original is never touched.
 
@@ -760,7 +760,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **The Seed node gained up/down arrows, shorter random seeds, and a history panel** of the last ten seeds you ran.
 - **Pause Image buttons are in a clearer order** - Regenerate on the left, Continue on the right.
 
-### **July 9, 2026 · v1.4.25–v1.4.29**
+### **July 9, 2026 · v1.4.25-v1.4.29**
 - **Image Compare no longer errors when one image is missing** - it just shows whichever one is connected.
 - **Prompt Reader can follow a connected image.** Wire a filename in and it keeps up as you flip through pictures.
 - **Pause Image keeps your image details when you press Continue**, so the prompt and seed survive.
@@ -769,7 +769,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **July 8, 2026 · v1.4.24**
 - **XY Plot works with the Power Lora Loader, and can compare lora strengths** - put the lora across and the strength down for a grid of both.
 
-### **July 7, 2026 · v1.4.20–v1.4.23**
+### **July 7, 2026 · v1.4.20-v1.4.23**
 - **A cleaner Run Timer** - just the floating clock, no title bar or frame, sized tightly to the time.
 - **A smaller Seed node.** Right-click for "Seed compact size" to shrink it to one row, plus a settings panel to cap how many digits a random seed has.
 - **Fold the Save Image node** with the arrow in its corner to tuck away the folder and file-name settings.
@@ -783,7 +783,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **July 2, 2026 · v1.4.17**
 - **Run Timer keeps each workflow's time when you switch tabs**, and after a page reload.
 
-### **July 1, 2026 · v1.4.14–v1.4.16**
+### **July 1, 2026 · v1.4.14-v1.4.16**
 - **NEW: Load Video Frame Pixaroma.** Grab one exact frame out of a video: drag the slider, step with the arrows, or type the frame number.
 - **The mouse wheel zooms the canvas over Pixaroma nodes now**, while text boxes and lists still scroll normally.
 - **XY Plot saves at full resolution.** A Save row picks 2048, 4096, 8192 or Full.
@@ -796,14 +796,14 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Draw inpaint masks with a pen or tablet** in Inpaint Crop.
 - **Prompt Multi and Prompt Stack keep their text rows the right size** after a workflow or tab switch.
 
-### **June 28, 2026 · v1.4.9–v1.4.11**
+### **June 28, 2026 · v1.4.9-v1.4.11**
 - **NEW: Run Timer Pixaroma.** A clock that resets on Run, counts up live, freezes on the total and plays a chime. Right-click for the sound, the detail and the colour.
 - **Turn a regular group into a Pixaroma Group** with one right-click, and groups no longer leak into subgraphs.
 - **Save Mp4 stores the workflow inside the video**, so you can drag a saved video back in.
 - **The Seed node shows the seed it actually used** in Random mode.
 - Plus fixes: dragging a group by its title bar always works, lowercase `hh` works in filename date stamps, Set Pixaroma is findable by dragging any wire, and Get / Set hold their picked name more reliably.
 
-### **June 26, 2026 · v1.4.3–v1.4.8**
+### **June 26, 2026 · v1.4.3-v1.4.8**
 - **Pixaroma Groups stay with their workflow** - no more appearing on the wrong tab or disappearing.
 - **Set / Get fixed:** a Set could grow a duplicate input that stopped the value passing through. Older workflows repair themselves when you open them.
 - **Copy and paste a Pixaroma group** with Ctrl+C / Ctrl+V, landing at your cursor, and Ctrl+A now selects them too.
@@ -816,13 +816,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Move a node and its group together**, and group selection now matches ComfyUI (Ctrl+drag replaces, Shift adds).
 - **Choose how group header buttons appear** - always, on hover, or a tidy in-between.
 
-### **June 24, 2026 · v1.4.0–v1.4.1**
+### **June 24, 2026 · v1.4.0-v1.4.1**
 - **Groups, reimagined: the Pixaroma Group.** Select some nodes and press **G**. A coloured header with the node count, one-click run / mute / bypass / fold, nesting, and Align snapping. Regular ComfyUI groups go back to their plain look.
 - **Group Mute and Bypass reach inside subgraphs**, and the header has a **Run** button for just that group.
 - **A cleaner, more modern Label editor**, and the Label looks right on the canvas again.
 - Plus smaller touches: the colour menu colours your whole selection, and the "deprecated" console warnings are gone.
 
-### **June 22, 2026 · v1.3.101–v1.3.102**
+### **June 22, 2026 · v1.3.101-v1.3.102**
 - **Align now works with groups.** Drag a group and it snaps to nearby nodes and groups, taking its own nodes with it.
 - **NEW: Group styling** - rounded corners, a coloured header with the node count, and hover buttons to mute, bypass, colour or collapse.
 - **NEW: Smart node title colour** - titles turn white or dark so they stay readable on any node colour.
@@ -875,7 +875,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 ### **June 7, 2026 · v1.3.78**
 - **Project moved to GitLab.** The links now point to the new home; the nodes themselves are unchanged.
 
-### **June 3, 2026 · v1.3.73–1.3.77**
+### **June 3, 2026 · v1.3.73-1.3.77**
 - **NEW: XY Plot Pixaroma.** Compare settings side by side with no setup: wire your image in, pick what changes across and down, Run once, and a labelled grid fills the node.
 - **NEW: Find and Replace Pixaroma.** Sit it in a wire and it swaps words on the way through - stack rules, drag to reorder, and see a live before-and-after.
 - **Fixed: Find and Replace, Prompt Stack, Prompt Pack, Prompt Multi and XY Plot now work inside subgraphs.**
@@ -886,7 +886,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **Image Compare: a sharper preview plus Save to disk and Save to output buttons.**
 - **Align: nodes no longer jump or move the wrong node when you resize.**
 
-### **June 1, 2026 · v1.3.70–1.3.71**
+### **June 1, 2026 · v1.3.70-1.3.71**
 - **Every Pixaroma node now works in ComfyUI's new node interface.** Mute Switch, Image Resize and Label were the last three.
 - **Align guides, the node colour picker and Connection FX all work there too**, and the colour picker was redesigned to pop out beside the node.
 
