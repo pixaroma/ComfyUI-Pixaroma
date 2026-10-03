@@ -398,6 +398,13 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 4, 2026 · v1.4.193**
+- **Nodes 2.0: Label keeps its size after Ctrl+Z and reopening,** so undo and redo work again and the workflow no longer shows as changed.
+- **Nodes 2.0: Align snaps collapsed nodes and title-less ones** (Label, Run Timer, Monitor, Info) to the edges you see.
+- **Mute Switch shows its "out" label** right after switching to Nodes 2.0.
+- **Workflows panel: Alt+W closes it even with a question open,** and a right-click no longer cancels the question.
+- **Help and node descriptions use clearer names for on/off controls:** switch and button.
+
 ### **October 3, 2026 · v1.4.188-v1.4.192**
 - **Save Image: Save now** writes a Preview run's pictures to your folder without running again.
 - **Nodes 2.0: the wheel scrolls long prompts** when "Scroll the field" is set.
