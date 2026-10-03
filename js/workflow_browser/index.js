@@ -297,10 +297,21 @@ export function closeAsk() {
 }
 
 function ask({ title, message, value, okLabel = "OK", danger }) {
+  // ONE dialog at a time. A second one used to stack on top of the first, and
+  // closeAsk only knew the newest, so closing the panel left the older one
+  // hidden inside it - back on the next open, still wired to its action.
+  // The earlier one is answered "no", as Cancel would.
+  closeAsk();
   return new Promise((resolve) => {
-    const back = el("div");
+    const back = el("div", "pixwb-ask");
     back.tabIndex = -1;
-    back.style.cssText = "position:absolute;inset:0;background:rgba(0,0,0,.55);z-index:8;display:flex;align-items:center;justify-content:center;";
+    // Covers the toolbar and footer as well as the columns, everything below
+    // the title bar. It used to cover only the columns, so the toolbar stayed
+    // live behind the dialog and "Save open workflow here" opened a second
+    // one. The title bar stays usable: moving the window is harmless, and its
+    // close button already dismisses the dialog (closeAsk in onClose).
+    back.style.cssText = `position:absolute;left:0;right:0;bottom:0;top:${S.win.title.offsetHeight}px;`
+      + "background:rgba(0,0,0,.55);z-index:8;display:flex;align-items:center;justify-content:center;";
     const box = el("div");
     // Wider when the message LISTS things (a delete naming the files it will
     // remove). 330px wraps a folder path into three lines and the list becomes
@@ -384,7 +395,7 @@ function ask({ title, message, value, okLabel = "OK", danger }) {
     acts.append(ok, no);
     box.append(acts);
     back.append(box);
-    S.win.el.querySelector(".pixwb-body").append(back);
+    S.win.el.append(back);
     setTimeout(() => (input || ok).focus(), 20);
     // ...and if neither can take focus, the backdrop still can, so Escape works.
     setTimeout(() => { if (!back.contains(document.activeElement)) back.focus(); }, 40);

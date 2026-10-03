@@ -282,6 +282,16 @@ export function createWorkflowWindow({ onRender, onClose }) {
       // But a right-click that opens NO menu still needs the rescue, or it
       // blurs the search box with nothing to bring it back.
       if (a && a.closest(".pixwb-menu")) return;
+      // A question box is up (index.js ask()): focus belongs IN it. The search
+      // box sits behind the dialog, and handing focus there sent typing, the
+      // arrows and Enter to the panel the dialog covers - a click on the
+      // dialog's own title was enough. Back to its text box if it has one,
+      // otherwise its backdrop, where Enter is a safe cancel.
+      const dlg = win.querySelector(".pixwb-ask");
+      if (dlg) {
+        if (!(a && dlg.contains(a) && a !== dlg)) (dlg.querySelector("input") || dlg).focus({ preventScroll: true });
+        return;
+      }
       bar.querySelector("input")?.focus({ preventScroll: true });
     }, 0);
   });
