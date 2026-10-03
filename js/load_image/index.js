@@ -710,7 +710,22 @@ function setupLoadImageNode(node) {
   // fold/unfold note inside measureH). Empty at first, so the genuine pre-first-paint
   // measure still falls back to the 280 placeholder.
   const _lastGoodH = {};
+  // Classic keeps its own last-good values for the width guard below: one
+  // measured in Nodes 2.0 counts the two canvases a Classic body never shows,
+  // so handing it back right after a switch to Classic would grow the node.
+  const _lastGoodClassicH = {};
   function measureH(previewMin) {
+    // Classic: measure only once the root has the node's REAL width (in Classic
+    // it always equals node.size[0], at any zoom). Early on a fresh node, or on
+    // a node coming into view, the root can be laid out but narrow: the chips
+    // and buttons wrap and the panel measured 309 instead of 230. Core only
+    // ever GROWS a Classic node, so when the picture had already loaded at that
+    // moment the node locked at 675 instead of 596 (Load Image Mini: 164 -> 430
+    // instead of 350). Until then, answer with the last real value, or 0, which
+    // can never inflate: core grows the node to the real content a frame later.
+    // Convention #39 C2, measured 2026-10-03.
+    const classic = !isVueNodes();
+    if (classic && root.offsetWidth + 20 < (node.size?.[0] || 0)) return _lastGoodClassicH[previewMin] || 0;
     let totalH = 0;
     let visible = 0;
     for (const child of inner.children) {
@@ -742,6 +757,7 @@ function setupLoadImageNode(node) {
     if (totalH < 20) return _lastGoodH[previewMin] || 280;
     const result = totalH + padding + gaps;
     _lastGoodH[previewMin] = result;
+    if (classic) _lastGoodClassicH[previewMin] = result;
     return result;
   }
   const measureContentHeight = () => measureH(LI_PREVIEW_FILL_MIN);
@@ -1051,15 +1067,17 @@ function setupLoadImageNode(node) {
     fitPreview(node); // re-snug the preview under the new (taller/shorter) panel
   });
 
-  // Initial render — defer so configure() has time to land state. Fit the
-  // height ONLY on a fresh drop (no saved state yet); a loaded workflow keeps
-  // its saved size (Vue Compat #18 — never resize on the load path).
+  // Initial render — defer so configure() has time to land state. A loaded
+  // workflow keeps its saved size (Vue Compat #18 — never resize on the load path).
   queueMicrotask(() => {
     const wasConfigured = node.properties?.[STATE_PROP] !== undefined;
     renderUI(node);
-    // Fresh drop: fit once the default image loads (the image-ready path reads
-    // this flag). A restored workflow keeps its saved size (Vue Compat #18).
-    if (!wasConfigured) node._pixLiFitPending = true;
+    // Fresh drop: NO fit request. Core already grows a fresh Classic node to its
+    // content (slots + panel + its own 220px picture area) as soon as the
+    // default picture arrives. fitPreview only added a race: run before core had
+    // grown the node, it read "no picture area yet" and used its 260 default, so
+    // a fresh node came out 636 instead of 596 (measured 2026-10-03). Nodes 2.0
+    // never fit here (onImageReady skips fitPreview there).
     // Fetch the selected image into node.imgs whenever what is loaded is not
     // what the widget names, so the preview and the cards' INPUT dims match the
     // restored file. The native image path may feed internal state without

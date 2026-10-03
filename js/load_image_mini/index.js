@@ -594,7 +594,20 @@ function setupNode(node) {
   // the preview canvas at its MIN (never its grown height). Cache the last good
   // measure so a hidden node (folded group) doesn't inflate.
   const _lastGoodH = {};
+  // Classic keeps its own last-good values for the width guard below: one
+  // measured in Nodes 2.0 counts the cards and preview canvas a Classic body
+  // never shows, so handing it back after a switch to Classic would grow it.
+  const _lastGoodClassicH = {};
   function measureH(previewMin) {
+    // Classic: measure only once the root has the node's REAL width (in Classic
+    // it always equals node.size[0], at any zoom). A root laid out but narrow
+    // wraps the toolbar onto extra lines: 164 instead of 84, and since core only
+    // ever GROWS a Classic node, a node whose picture had already loaded locked
+    // at 430 instead of 350 (seen fresh, and reopening a saved 380 workflow).
+    // Until then answer with the last real value, or 0, which can never inflate.
+    // Convention #39 C2, measured 2026-10-03 (Load Image has the same guard).
+    const classic = !isVueNodes();
+    if (classic && root.offsetWidth + 20 < (node.size?.[0] || 0)) return _lastGoodClassicH[previewMin] || 0;
     let totalH = 0, visible = 0;
     for (const child of inner.children) {
       const st = window.getComputedStyle(child);
@@ -617,6 +630,7 @@ function setupNode(node) {
     // taller on every workflow open (grow-to-content is grow-only; Vue Compat #18).
     const result = Math.round((totalH + padding + gaps) / 4) * 4;
     _lastGoodH[previewMin] = result;
+    if (classic) _lastGoodClassicH[previewMin] = result;
     return result;
   }
   const measureContentHeight = () => measureH(LM_PREVIEW_FILL_MIN);
