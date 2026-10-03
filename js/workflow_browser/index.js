@@ -296,6 +296,18 @@ export function closeAsk() {
   if (cancel) { try { cancel(); } catch { /* already gone */ } }
 }
 
+// The panel's own shortcut (Alt+W, the keybinding registered at the bottom of
+// this file). A dialog stops every key from reaching the page, so it swallowed
+// this one too and the shortcut did nothing while a question was up. Close the
+// panel here instead, the same as its title-bar close button: onClose answers
+// the dialog "no" (closeAsk). Matches on e.key, the way core reads a keybinding.
+function closePanelOnToggleKey(e) {
+  if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || (e.key || "").toLowerCase() !== "w") return false;
+  e.preventDefault();
+  S.win?.close?.();
+  return true;
+}
+
 function ask({ title, message, value, okLabel = "OK", danger }) {
   // ONE dialog at a time. A second one used to stack on top of the first, and
   // closeAsk only knew the newest, so closing the panel left the older one
@@ -337,6 +349,7 @@ function ask({ title, message, value, okLabel = "OK", danger }) {
     // delete dialogs have no input at all, so they were entirely unprotected.
     back.addEventListener("keydown", (e) => {
       e.stopPropagation();
+      if (closePanelOnToggleKey(e)) return;
       if (e.key === "Escape") { e.preventDefault(); done(null); }
       else if (e.key === "Enter" && !input) {
         e.preventDefault();
@@ -379,6 +392,7 @@ function ask({ title, message, value, okLabel = "OK", danger }) {
       input.value = value;
       input.addEventListener("keydown", (e) => {
         e.stopPropagation();
+        if (closePanelOnToggleKey(e)) return;
         if (e.key === "Enter") done(input.value.trim());
         if (e.key === "Escape") done(null);
       });
@@ -419,7 +433,8 @@ function ask({ title, message, value, okLabel = "OK", danger }) {
     openAsk = cancel;
     ok.addEventListener("click", () => done(input ? input.value.trim() : true));
     no.addEventListener("click", () => done(null));
-    back.addEventListener("mousedown", (e) => { if (e.target === back) done(null); });
+    // LEFT button only: a right-click outside the box used to cancel it too.
+    back.addEventListener("mousedown", (e) => { if (e.target === back && e.button === 0) done(null); });
   });
 }
 
