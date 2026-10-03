@@ -1,12 +1,17 @@
-// Canvas zoom passthrough for in-node DOM widgets (Classic renderer only).
+// Canvas zoom passthrough for in-node DOM widgets.
 //
 // ComfyUI binds its wheel-to-zoom listener on the <canvas> element, so a wheel
 // event has to reach the canvas to zoom. An in-node DOM widget (addDOMWidget) is
 // layered OVER the canvas, so wheeling over it - especially over a scrollable
 // child like a textarea or a list - is consumed by the widget and never reaches
 // the canvas, so zoom stops (issue #17). Nodes 2.0 already forwards the wheel to
-// the canvas via its own node container, so this is a CLASSIC-ONLY fix that
-// NO-OPS in Nodes 2.0.
+// the canvas via its own node container, so the forwarding half is CLASSIC-ONLY
+// and NO-OPS in Nodes 2.0.
+//
+// Nodes 2.0 has the OPPOSITE problem, handled by the other half (see
+// keepWheelForFieldsInNodes2 below): core forwards EVERY wheel over a node to the
+// canvas, so the "Scroll the field" setting was silently ignored there and a long
+// prompt could not be scrolled with the wheel at all (reported 2026-10-03).
 //
 // Mirrors ComfyUI's own preview widgets (useCanvasInteractions ->
 // forwardEventToCanvas): forward the wheel to the canvas UNLESS the cursor is over
@@ -71,6 +76,42 @@ function scrollRegionWantsWheel(target, root, deltaX, deltaY) {
   return false;
 }
 
+// ---- Nodes 2.0: let a scrollable field keep the wheel ------------------------
+// Core listens on the layer holding every node in the CAPTURE phase
+// (GraphCanvas.vue onWheelCapture -> useCanvasInteractions.forwardEventToCanvas)
+// and sends each wheel to the canvas, cancelling it, unless the element under the
+// cursor sits inside data-capture-wheel="true" AND holds focus. That capture
+// listener runs before anything inside the node, so the per-root listener in
+// installCanvasZoomPassthrough never gets a say. Measured on frontend 1.52.7 and
+// the same in core's main branch: wheel over a Prompt / Text / AI Prompt box with
+// text left to scroll zoomed the canvas, the box never moved.
+// So ONE document-level capture listener (it runs before core's) makes the same
+// decision Classic makes and, when the field should scroll, stops the event going
+// any deeper. It does NOT preventDefault, so the browser scrolls the field
+// natively; other capture listeners on document (our popups closing on wheel)
+// still run, stopPropagation only stops nodes below document.
+// Left to core, unchanged: Ctrl/Cmd+wheel (core's canvas gesture), anything inside
+// data-capture-wheel="true" (core's own opt-in, e.g. Load 3D's viewport), a field
+// at the end of its scroll, and every wheel when the setting is "Zoom the canvas".
+const _wheelRoots = new WeakSet();
+let _nodes2WheelInstalled = false;
+
+function wheelRootOf(el) {
+  for (let e = el; e; e = e.parentElement) if (_wheelRoots.has(e)) return e;
+  return null;
+}
+
+function keepWheelForFieldsInNodes2(e) {
+  if (!isVueNodes() || e.ctrlKey || e.metaKey) return;
+  const target = e.target;
+  if (!(target instanceof Element)) return;
+  const root = wheelRootOf(target);
+  if (!root || wheelZoomsOverFields()) return;
+  if (target.closest('[data-capture-wheel="true"]')) return;
+  if (!scrollRegionWantsWheel(target, root, e.deltaX, e.deltaY)) return;
+  e.stopPropagation();
+}
+
 // ---- middle-button pan -------------------------------------------------------
 // A copy of what ComfyUI itself does in Nodes 2.0, so both renderers behave the
 // same: GraphCanvas.vue listens on the layer holding every node in the CAPTURE
@@ -113,12 +154,18 @@ function forwardPanToCanvas(e, matches) {
 // Install wheel passthrough on an in-node DOM widget `root` so the mouse wheel
 // zooms the ComfyUI canvas when the cursor is over the widget (Classic renderer),
 // except over a scrollable region that still has room to scroll - and the
-// middle-button pan passthrough above. Safe to call unconditionally - both no-op
-// in Nodes 2.0. Returns an uninstall fn (optional to call; the listeners are
-// garbage-collected with the element when the node is removed, and a detached
-// element never receives these events).
+// middle-button pan passthrough above. In Nodes 2.0 both forwarders no-op and the
+// root is registered with keepWheelForFieldsInNodes2 instead, so its scrollable
+// fields scroll there too. Safe to call unconditionally. Returns an uninstall fn
+// (optional to call; the listeners are garbage-collected with the element when the
+// node is removed, and a detached element never receives these events).
 export function installCanvasZoomPassthrough(root) {
   if (!root || typeof root.addEventListener !== "function") return () => {};
+  _wheelRoots.add(root);
+  if (!_nodes2WheelInstalled) {
+    _nodes2WheelInstalled = true;
+    document.addEventListener("wheel", keepWheelForFieldsInNodes2, { capture: true, passive: true });
+  }
   const onWheel = (e) => {
     if (isVueNodes()) return;                  // Nodes 2.0 forwards to the canvas itself
     // "Zoom the canvas" makes the wheel zoom everywhere on the node, including
@@ -144,6 +191,7 @@ export function installCanvasZoomPassthrough(root) {
   root.addEventListener("pointermove", onPanMove, true);
   root.addEventListener("pointerup", onPanUp, true);
   return () => {
+    _wheelRoots.delete(root);
     root.removeEventListener("wheel", onWheel);
     root.removeEventListener("pointerdown", onPanDown, true);
     root.removeEventListener("pointermove", onPanMove, true);
