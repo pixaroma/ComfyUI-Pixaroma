@@ -309,7 +309,30 @@ function getTitleH(n) {
   return window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
 }
 
+// NODES 2.0 ONLY, and only for the two kinds it draws differently from Classic
+// (pattern #24, measured 2026-10-03): it places EVERY node's element at
+// pos[1] - title height, title or not, so a title-less face (Label, Run Timer,
+// Monitor, Info) starts 30 px ABOVE pos[1]; and it draws a collapsed node as a
+// pill of its own size (225 x 28 here), not _collapsed_width x 30 (a Classic
+// draw-time value, absent or stale in Nodes 2.0). So for these two, read the
+// size the node is DRAWN at from its element (graph units, any zoom). null =
+// keep the Classic geometry (Classic, every other node, no single element).
+function vueDrawnSize(n) {
+  if (!(n.flags?.collapsed || n.flags?.no_title)) return null;
+  if (!isVueNodes()) return null;
+  const id = window.CSS?.escape ? window.CSS.escape(String(n.id)) : String(n.id);
+  const els = document.querySelectorAll('.lg-node[data-node-id="' + id + '"]');
+  if (els.length !== 1) return null;
+  const r = els[0].getBoundingClientRect();
+  const s = app.canvas?.ds?.scale || 1;
+  const w = r.width / s, h = r.height / s;
+  if (!(w >= 2 && h >= 2)) return null;
+  return { w, h };
+}
+
 function nodeRect(n) {
+  const vd = vueDrawnSize(n);
+  if (vd) return { x: n.pos[0], y: n.pos[1] - (window.LiteGraph?.NODE_TITLE_HEIGHT || 30), w: vd.w, h: vd.h };
   // A COLLAPSED node renders as just its title bar - a small pill of
   // _collapsed_width, sitting at pos[1] - titleH like any title. Use THAT small
   // rect so collapsed nodes snap/align by what's actually drawn (not their
@@ -1508,9 +1531,12 @@ function onWindowPointerMove(e) {
   // Collapse-aware moving rect: a collapsed node is just its title pill.
   const collapsed = !!draggedNode.flags?.collapsed;
   const TH = window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
-  const titleH = collapsed ? TH : getTitleH(draggedNode);
-  const w = collapsed ? (draggedNode._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80) : draggedNode.size[0];
-  const h = collapsed ? 0 : draggedNode.size[1];
+  let titleH = collapsed ? TH : getTitleH(draggedNode);
+  let w = collapsed ? (draggedNode._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80) : draggedNode.size[0];
+  let h = collapsed ? 0 : draggedNode.size[1];
+  // Nodes 2.0: a collapsed pill / title-less face at the size it is drawn, from pos[1] - TH.
+  const vd = vueDrawnSize(draggedNode);
+  if (vd) { titleH = TH; w = vd.w; h = vd.h - TH; }
   const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
   const movingE = rectEdges(movingRect);
   const movingX = [movingE.left, movingE.right, movingE.centerX];
