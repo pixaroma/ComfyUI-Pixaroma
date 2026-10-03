@@ -707,8 +707,8 @@ function setupLoadImageNode(node) {
   // dragged compact. Children live on the inner flex layer, so measure inner.children.
   // previewMin -> last laid-out height. Returned while the node is HIDDEN (children
   // measure 0) so a fold/unfold of a Pixaroma group can't grow the node (see the
-  // fold/unfold note inside measureH). Empty at first, so the genuine pre-first-paint
-  // measure still falls back to the 280 placeholder.
+  // fold/unfold note inside measureH). Empty at first: before the first real measure
+  // Classic answers 0 (the width guard) and Nodes 2.0 the 280 placeholder.
   const _lastGoodH = {};
   // Classic keeps its own last-good values for the width guard below: one
   // measured in Nodes 2.0 counts the two canvases a Classic body never shows,
@@ -850,7 +850,7 @@ function setupLoadImageNode(node) {
   // so a new call cancels any in-flight poll, and the existing onRemoved
   // cleanup picks up the same handle.
   // When the image is ready, refresh the readout and — only if a fit was
-  // requested by a user action (fresh drop / pick / upload / paste / drop), not
+  // requested by a user action (pick / upload / paste / drop), not a fresh node or
   // a workflow restore — re-fit the node to a STABLE preview area (it no longer
   // resizes to the image's aspect, issue #1). _pixLiFitPending guards against
   // firing on restore (the saved height is trusted then; Vue Compat #18).
