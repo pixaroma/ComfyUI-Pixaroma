@@ -93,10 +93,12 @@ const PANEL_CSS = `
   font-family: inherit;
   text-align: center;
 }
-/* The Pixaroma dropdown (node UI convention #14), never a native <select>:
-   [<] [ value v ] [>] - the arrows step through the options, the middle
-   opens the list. Same 24px height as the W/H/X/Y cells. */
-.pix-cropp-combo { flex: 1; min-width: 0; display: flex; gap: 3px; }
+/* The Pixaroma dropdown (node UI convention #14), never a native <select>.
+   No side arrows HERE: two dropdowns share one row, and 24px arrow buttons
+   (the WCAG 2.5.8 minimum) left too little room, cutting "16:9 Landscape"
+   and "Bottom Right" short at the default width. Full names win; the arrow
+   KEYS still step through the options. Same 24px height as the cells. */
+.pix-cropp-combo { flex: 1; min-width: 0; display: flex; }
 .pix-cropp-combo button {
   background: #1d1d1d;
   border: 1px solid #666;
@@ -109,12 +111,6 @@ const PANEL_CSS = `
 }
 .pix-cropp-combo button:hover,
 .pix-cropp-combo button:focus-visible { border-color: ${ACC}; outline: 0; }
-.pix-cropp-nav {
-  flex: 0 0 18px;
-  padding: 0;
-  color: ${ACC};
-  font-size: 9px;
-}
 .pix-cropp-dd {
   flex: 1;
   min-width: 0;
@@ -205,7 +201,7 @@ export function createCropPanel(callbacks) {
   // value, and picking one runs the same commit the "change" event did.
   const ratioSelect = makeCombo({
     name: "Crop ratio",
-    title: "Lock the crop to a shape. Click to pick, or use the arrows.",
+    title: "Lock the crop to a shape. Click to pick from the list.",
     options: RATIOS.map((r, i) => ({ value: String(i), label: ratioLabel(r), item: r.label, hint: ratioHint(r) })),
     onPick: () => onRatioCommit(),
   });
@@ -477,7 +473,7 @@ function makeTextInput(label, defaultVal) {
   return { cell, input };
 }
 
-// ── The dropdown: [<] [ value v ] [>] + a list on document.body ──
+// ── The dropdown: [ value v ] + a list on document.body ──
 // One list open at a time across every Crop node; its close() is tracked so
 // dispose() and a second open both tear the document listeners down.
 let _closeActivePopup = null;
@@ -491,17 +487,9 @@ function makeCombo({ name, title, options, onPick }) {
   let value = options[0].value;
   const el = document.createElement("div");
   el.className = "pix-cropp-combo";
-  const mk = (cls, text, label) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = cls;
-    if (text) b.textContent = text;
-    if (label) { b.title = label; b.setAttribute("aria-label", label); }
-    return b;
-  };
-  const prev = mk("pix-cropp-nav", "◀", "Previous " + name.toLowerCase());
-  const next = mk("pix-cropp-nav", "▶", "Next " + name.toLowerCase());
-  const dd = mk("pix-cropp-dd", "", null);
+  const dd = document.createElement("button");
+  dd.type = "button";
+  dd.className = "pix-cropp-dd";
   dd.title = title;
   dd.setAttribute("aria-haspopup", "listbox");
   const val = document.createElement("span");
@@ -511,7 +499,7 @@ function makeCombo({ name, title, options, onPick }) {
   arrow.textContent = "▼";
   arrow.setAttribute("aria-hidden", "true");
   dd.append(val, arrow);
-  el.append(prev, dd, next);
+  el.append(dd);
 
   const indexOf = (v) => Math.max(0, options.findIndex((o) => o.value === v));
   function paint() {
@@ -526,8 +514,6 @@ function makeCombo({ name, title, options, onPick }) {
     onPick?.(v);
   }
   const step = (d) => pick(options[(indexOf(value) + d + options.length) % options.length].value);
-  prev.addEventListener("click", (e) => { e.stopPropagation(); step(-1); });
-  next.addEventListener("click", (e) => { e.stopPropagation(); step(1); });
   // Arrow keys step through the options, as they did on the <select>.
   dd.addEventListener("keydown", (e) => {
     const d = { ArrowUp: -1, ArrowLeft: -1, ArrowDown: 1, ArrowRight: 1 }[e.key];
@@ -595,7 +581,7 @@ function makeCombo({ name, title, options, onPick }) {
   paint();
   return {
     el,
-    keyTargets: [prev, dd, next],
+    keyTargets: [dd],
     isOpen: () => dd.getAttribute("aria-expanded") === "true",
     get value() { return value; },
     // A value that is not an option reads back "" (it shows the first one),

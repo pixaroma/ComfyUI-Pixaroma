@@ -28,6 +28,7 @@ export function attachEditButton(wrap, onClick) {
   const icon = document.createElement("img");
   icon.src = pixAsset("icons/layers/edit.svg");
   icon.draggable = false;
+  icon.alt = ""; // decorative: the button's own text says "Edit"
   icon.className = "pix-note-editbtn-icon";
   btn.appendChild(icon);
   btn.appendChild(document.createTextNode(" Edit"));
