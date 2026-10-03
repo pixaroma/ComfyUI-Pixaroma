@@ -721,7 +721,11 @@ function wireEvents(node, root) {
       const txt = await navigator.clipboard.readText();
       if (!txt) { toast("info", "Nothing to paste"); return; }
       els.ta.value = txt;
-      writeState(node, { text: txt });
+      // Store what the BOX now holds, not the raw clipboard: on Windows every
+      // multi-line copy arrives as CRLF, the textarea turns it into plain line
+      // breaks, and storing `txt` sent hidden \r characters to the model while
+      // the box showed clean lines (and the expanded box never matched a run).
+      writeState(node, { text: els.ta.value });
       refreshBody(node);
       flashBtnText(els.replaceBtn, "Pasted");
     } catch { toast("warn", "Could not paste from clipboard"); }
@@ -887,7 +891,11 @@ function setupNode(node) {
   wireEvents(node, root);
 
   // Re-highlight / re-preview when the library changes (edited in the editor).
-  node._pixPromptUnsub = subscribe(() => { refreshBody(node); });
+  // A library edit also ends what the expanded box shows of the LAST run: its words
+  // came from the old tag text, and the next run sends the new one (the gate in
+  // renderExpand only watches the prompt box). The library fans out only on a real
+  // edit, never on load, so a run's words restored from a workflow survive opening it.
+  node._pixPromptUnsub = subscribe(() => { node._pixPromptLastRun = null; refreshBody(node); });
   // Keep the preview in step with an upstream wired node being edited.
   startWiredPoll(node);
 
