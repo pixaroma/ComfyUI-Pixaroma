@@ -20,7 +20,11 @@
 export const KEYWORDS = {
   "canvas:workflows": "workflow manager browse organise organize my workflows folder rename move file explorer thumbnail cover picture star favourite favorite duplicate junk tidy messy find lost which workflow used broken image missing picture video mp4 card blank grey map",
   // ── Resize and crop: the biggest source of missed searches ──
-  PixaromaImageResize: "upscale enlarge bigger smaller shrink scale megapixel resolution downscale make it bigger",
+  // ONE key per node: a second literal key silently replaces the first (this one was lost
+  // to a later transparency entry until 2026-10-03; lint_js.py's no-dupe-keys now catches it).
+  PixaromaImageResize: "upscale enlarge bigger smaller shrink scale megapixel resolution downscale make it bigger "
+    + "alpha transparency transparent background removed rmbg cutout "
+    + "png black background lost preserve keep join image with alpha mask channel rgba",
   PixaromaLongestSide: "longest side long edge longest edge biggest side largest side resize simple small resize quick resize downscale shrink smaller bigger make it 864 1024 1216 1536 2048 832 scale to size crop to square crop to ratio centre crop center crop crop to 16:9 9:16 2:3 phone shape aspect shape chips tall wide sdxl size multiple of 8 16 32 64 round size one number resize without width height",
   PixaromaResizeCrop: "exact size cover fill stretch squash aspect force size",
   PixaromaCrop: "trim cut region area chop",
@@ -109,8 +113,6 @@ export const KEYWORDS = {
   PixaromaVersionCheck: "version diagnostic about update which version",
 
   // ── Utility and editors ──
-  PixaromaImageResize: "alpha transparency transparent background removed rmbg cutout "
-    + "png black background lost preserve keep join image with alpha mask channel rgba",
   PixaromaLoraLoader: "lora stack weight trigger civitai xy plot compare grid sweep "
     + "moved move folder subfolder lost trigger words red name "
     + "api key token login account not found missing nsfw adult uncensored mature "
