@@ -398,16 +398,17 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 3, 2026 · v1.4.188–v1.4.191**
-- **Save Image: Save now after a Preview run** writes the pictures to your folder without running again, so a random seed cannot change them.
-- **Fixed: in Nodes 2.0 the wheel scrolls long prompts** when "Scroll the field" is set, instead of always zooming.
-- **Save Image: Civitai info now includes your prompt** from Prompt, Prompt Stack, Prompt Multi or Text Join.
-- **Ctrl+S in a Pixaroma prompt box saves the workflow.**
-- **Prompt and Prompt Pack: Replace no longer sends hidden line breaks.**
+### **October 3, 2026 · v1.4.188–v1.4.192**
+- **Save Image: Save now** writes a Preview run's pictures to your folder without running again.
+- **Nodes 2.0: the wheel scrolls long prompts** when "Scroll the field" is set.
+- **Save Image's Civitai info now includes your prompt** from Pixaroma prompt nodes.
+- **Prompt boxes:** Ctrl+S saves the workflow, and Replace no longer sends hidden line breaks.
 - **Fixed: Image Compare's Overlay opacity follows the mouse wheel again.**
-- **Image Crop: Ratio and Alignment are Pixaroma dropdowns now,** with full names, and the number fields light up while you type.
+- **Image Crop: Pixaroma dropdowns** for Ratio and Alignment, with full names.
 - **Help search finds Image Resize for "upscale" again,** and icon-only buttons have names for screen readers.
-- **Ready for newer ComfyUI:** switching renderers or removing a row no longer leaves stale data behind in Switch, Sliders, Dropdown and other nodes.
+- **Ready for newer ComfyUI:** renderer switches and removed rows no longer leave stale data behind.
+- **Load Image and Load Image Mini open at the same height every time,** and saved workflows no longer reopen taller.
+- **Workflows panel: an open question box now blocks the panel behind it,** and only one can be open.
 
 ### **October 2, 2026 · v1.4.185–v1.4.187**
 - **AI Prompt and Music Prompt: saving remembers the preset you edited.** Its name is filled in, so pressing Enter updates it. An edited built-in one is offered as "(mine)". Music Prompt now also asks before replacing another set with the same name.
