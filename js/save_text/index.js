@@ -989,7 +989,7 @@ registerNodeHelp(COMFY_CLASS, {
         "Collecting happens while the workflow is open in a browser. A run started from the API passes the text through but writes no file.",
         "Run the same prompt twice and nothing is added the second time. ComfyUI does not re-run a node whose input has not changed, and the node ignores the replayed result, so there is nothing new to collect.",
         "Files are only ever written as .txt, wherever you point it.",
-        "To run your collected prompts again: open the .txt, copy it, paste it into Prompt Pack Pixaroma with its Replace button, and press the pill with the same name as the Separator you chose here. It queues one run per prompt.",
+        "To run your collected prompts again: open the .txt, copy it, paste it into Prompt Pack Pixaroma with its Replace button, and press the button with the same name as the Separator you chose here. It queues one run per prompt.",
       ],
     },
   ],

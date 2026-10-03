@@ -28,7 +28,7 @@ PIXAROMA_PROMPT_LIST = "PIXAROMA_PROMPT_LIST"
 class PixaromaPromptMulti:
     DESCRIPTION = (
         "Prompt Multi Pixaroma - one node, two run modes you switch with "
-        "the pill at the top.\n\n"
+        "the buttons at the top.\n\n"
         "Queue mode: click Run and the workflow runs once per enabled "
         "prompt, in a loop. Empty rows are silently skipped. Each prompt "
         "becomes its own item in the queue panel so you can cancel "
@@ -42,7 +42,7 @@ class PixaromaPromptMulti:
         "parts of the same workflow (scene 1, scene 2, ...) to each pull "
         "a different prompt from the same library, without extra nodes "
         "everywhere.\n\n"
-        "Both outputs are always visible - the mode pill just controls "
+        "Both outputs are always visible - the mode buttons just control "
         "whether the queue loops or not. Click + Add prompt to add a row. "
         "Toggle ON/OFF to include/exclude. Drag the handle to reorder. "
         "Clear prompts wipes text but keeps rows. Reset goes back to two "

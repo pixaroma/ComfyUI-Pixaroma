@@ -28,11 +28,11 @@ class PixaromaMuteSwitch:
     DESCRIPTION = (
         "Mute Switch Pixaroma - toggle whole branches of your workflow on "
         "and off with one node. Wire the last node of each scene (usually a "
-        "KSampler) into a row, then click the row's pill to skip or enable "
+        "KSampler) into a row, then click the row's switch to skip or enable "
         "that scene on the next Run.\n\n"
-        "The pill at top-left switches between Single mode (exactly one "
+        "The buttons at top-left switch between Single mode (exactly one "
         "scene runs at a time, like a radio button) and Multi mode (any "
-        "combination of scenes can run). The pill at top-right switches "
+        "combination of scenes can run). The buttons at top-right switch "
         "between Mute (the scene does not run at all) and Bypass (each "
         "node in the scene passes its input through unchanged).\n\n"
         "Switching a row off sets the node wired into that row to skipped. "
@@ -53,7 +53,7 @@ class PixaromaMuteSwitch:
                     "forceInput": True,
                     "tooltip": (
                         "Wire any node from a scene here. Clicking this "
-                        "row's pill on the node body toggles the whole "
+                        "row's switch on the node body toggles the whole "
                         "branch upstream of this wire on or off."
                     ),
                 },

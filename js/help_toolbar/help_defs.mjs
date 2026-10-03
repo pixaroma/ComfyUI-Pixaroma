@@ -608,7 +608,7 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Lets you write styled, multi-paragraph notes directly on the canvas. Double-click (or use the pencil button) to open a fullscreen editor.\n\nSupported formatting: bold, italic, underline, strikethrough, headings, bulleted and numbered lists, code blocks with a copy button, tables, horizontal rules, and inline icons (CLIP, LORA, GGUF, model badges and 30+ more). You can also insert custom-colored buttons (Download, View Page, Read More, or plain links) and pre-styled YouTube and Discord pills.",
+        body: "Lets you write styled, multi-paragraph notes directly on the canvas. Double-click (or use the pencil button) to open a fullscreen editor.\n\nSupported formatting: bold, italic, underline, strikethrough, headings, bulleted and numbered lists, code blocks with a copy button, tables, horizontal rules, and inline icons (CLIP, LORA, GGUF, model badges and 30+ more). You can also insert custom-colored buttons (Download, View Page, Read More, or plain links) and pre-styled YouTube and Discord buttons.",
       },
       {
         heading: "How to use",
@@ -643,15 +643,15 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "Holds a list of prompts you can toggle on/off, label, and reorder. A pill at the top switches between two behaviors:\n\n`Queue Text` mode: clicking Run queues the workflow once per enabled prompt in sequence, one prompt per run. Wire the `text` output to CLIP Text Encode to generate one image per prompt.\n\n`List Prompts` mode: clicking Run fires the workflow once and makes the full list available as a bundle. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream so different parts of the workflow can each pull a different prompt.",
+        body: "Holds a list of prompts you can toggle on/off, label, and reorder. The buttons at the top switch between two behaviors:\n\n`Queue Text` mode: clicking Run queues the workflow once per enabled prompt in sequence, one prompt per run. Wire the `text` output to CLIP Text Encode to generate one image per prompt.\n\n`List Prompts` mode: clicking Run fires the workflow once and makes the full list available as a bundle. Wire the `prompts` output into Prompt From List Pixaroma nodes downstream so different parts of the workflow can each pull a different prompt.",
       },
       {
         heading: "How to use",
         bullets: [
           "Click `+ Add prompt` to add a row, then type a prompt into each.",
-          "Toggle the orange pill on each row to include or exclude it from runs.",
+          "Toggle the orange switch on each row to include or exclude it from runs.",
           "Drag the handle on the left edge of a row to reorder.",
-          "Pick `Queue Text` or `List Prompts` mode using the pills at the top.",
+          "Pick `Queue Text` or `List Prompts` mode using the buttons at the top.",
           "Wire `text` to CLIP Text Encode (Queue mode) or wire `prompts` to Prompt From List nodes (List mode).",
         ],
       },
@@ -663,7 +663,7 @@ const HELP = {
         ],
       },
     ],
-    footer: "Both outputs are always visible - the mode pill only controls whether the queue loops.",
+    footer: "Both outputs are always visible - the mode buttons only control whether the queue loops.",
   },
 
   "PixaromaPromptPack": {
@@ -672,17 +672,17 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "You paste multiple prompts into one big textarea. When you click Run the node queues the workflow once per non-empty prompt, looping automatically. The counter pill in the textarea's corner shows the total count at idle, then counts down during a run.\n\nThe pills at the top say how your prompts are separated: `Blank line`, `New line`, or `--- line`. If the counter is not the number of prompts you expect, you have picked the wrong pill. The reverse is not a guarantee: now and then a wrong pill lands on the right number by chance, so if a run comes out strange, look at the first prompt as well as the count.",
+        body: "You paste multiple prompts into one big textarea. When you click Run the node queues the workflow once per non-empty prompt, looping automatically. The counter in the textarea's corner shows the total count at idle, then counts down during a run.\n\nThe buttons at the top say how your prompts are separated: `Blank line`, `New line`, or `--- line`. If the counter is not the number of prompts you expect, you have picked the wrong button. The reverse is not a guarantee: now and then a wrong button lands on the right number by chance, so if a run comes out strange, look at the first prompt as well as the count.",
       },
       {
         heading: "Reusing a Save Text collection",
-        body: "Save Text Pixaroma keeps every prompt you tried in a .txt file. Those same three names are its Separator setting, so the two nodes fit together with nothing to convert.\n\nOpen the .txt, copy everything, press `Replace` here, then press the pill with the same name you chose in Save Text. The counter should show the number of prompts you collected. Click Run and it works through all of them.\n\nOne thing to watch: if you collected with Save Text's `Timestamp each entry` turned on, the date line is stored inside each entry and comes along with the prompt. On `New line` it even counts as a prompt of its own, doubling the number. Collect with timestamps off if you mean to reuse the file.",
+        body: "Save Text Pixaroma keeps every prompt you tried in a .txt file. Those same three names are its Separator setting, so the two nodes fit together with nothing to convert.\n\nOpen the .txt, copy everything, press `Replace` here, then press the button with the same name you chose in Save Text. The counter should show the number of prompts you collected. Click Run and it works through all of them.\n\nOne thing to watch: if you collected with Save Text's `Timestamp each entry` turned on, the date line is stored inside each entry and comes along with the prompt. On `New line` it even counts as a prompt of its own, doubling the number. Collect with timestamps off if you mean to reuse the file.",
       },
       {
         heading: "How to use",
         bullets: [
           "Paste or type your prompts into the textarea.",
-          "Press the pill that matches how they are separated.",
+          "Press the button that matches how they are separated.",
           "Check the counter reads the number of prompts you expect.",
           "Wire the `text` output to CLIP Text Encode.",
           "Click Run - the node queues one workflow per prompt automatically.",
@@ -704,7 +704,7 @@ const HELP = {
           ["Copy all", "Copies everything in the box to your clipboard."],
           ["Replace", "Overwrites the box with whatever text is on your clipboard."],
           ["Clear", "Empties the box straight away, with no confirmation."],
-          ["The counter", "Shows how many prompts are in the box, and counts down while a run works through them. A number you did not expect means the wrong pill is selected."],
+          ["The counter", "Shows how many prompts are in the box, and counts down while a run works through them. A number you did not expect means the wrong button is selected."],
         ],
       },
     ],
@@ -723,7 +723,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Click `+ Add row` to add a chunk, then type a piece of your prompt into each.",
-          "Click the orange pill on a row to toggle it on or off.",
+          "Click the orange switch on a row to toggle it on or off.",
           "Drag the handle on the left edge of a row to reorder.",
           "Wire the `text` output to CLIP Text Encode or a downstream text node.",
         ],
@@ -953,11 +953,11 @@ const HELP = {
           "`PNG` is lossless, keeps transparency, and embeds the workflow: drag a saved PNG back into ComfyUI to reload everything with the exact seed that made it.",
           "`WebP` is the middle road and usually the best pick: far smaller than PNG, still keeps transparency, and it still reloads the workflow when you drag it back into ComfyUI. See the size table below for what it costs.",
           "`JPG` makes small, universally accepted files with a quality setting, but it has no transparency and ComfyUI cannot reload a workflow from a JPG. Pick PNG or WebP when reloading matters.",
-          "The `Save` / `Preview` pair of pills switches between writing files on every run and only showing the images on the node, with nothing written to your folder (those frames go to ComfyUI's temporary folder, cleared on restart). So the node can also replace a preview node while you iterate.",
+          "The `Save` / `Preview` pair of buttons switches between writing files on every run and only showing the images on the node, with nothing written to your folder (those frames go to ComfyUI's temporary folder, cleared on restart). So the node can also replace a preview node while you iterate.",
           "Liked a picture you made in `Preview`? Click `Save now` on the line under the image. It writes every picture of that preview (all of a batch, up to 16) into your folder with the node's current folder, filename and format, without running the workflow again, so a random seed cannot change the picture first. The wired name in the filename is the one that made the picture, and so is a node value such as `%KSampler.seed%`, as long as you do not edit the filename after the run (an edited filename uses the values shown now). It works until ComfyUI restarts, which empties the temporary folder, or until many newer previews (a few hundred pictures) have replaced it.",
           "`Copy`, `Open`, and `Folder` sit in the button row: Copy puts the shown image on your clipboard, Open shows it in a new browser tab, Folder opens the save location in your file explorer (the window can appear on the taskbar instead of in front; that is a Windows limitation). Right-clicking the preview image gives the same `Open image`, `Copy image`, and `Save image` (download) options.",
           "The `gear` next to the fold triangle opens the settings (right-clicking the node still works too): date style (the order the + Date chip inserts, e.g. dd-MM-yyyy), counter digits (how many zeros %counter% uses), JPG / WebP quality, WebP lossless, workflow embedding, Civitai generation info, and whether folders in a wired name are kept. `Reset node size` in the right-click menu returns the node to its default size.",
-          "`Buttons on the node`, in the settings, hides the ones you never use. Handy if `Folder` does nothing helpful on your system, or if you only ever save in one or two formats and want the others out of the way. The last remaining format cannot be switched off, and when only one is left the format pills disappear entirely, since there is nothing left to choose.",
+          "`Buttons on the node`, in the settings, hides the ones you never use. Handy if `Folder` does nothing helpful on your system, or if you only ever save in one or two formats and want the others out of the way. The last remaining format cannot be switched off, and when only one is left the format buttons disappear entirely, since there is nothing left to choose.",
           "If ComfyUI itself was started with `--disable-metadata`, nothing is written into your images: no workflow, no prompt, no Civitai info, whatever the settings above say. That is a ComfyUI-wide switch you would have added yourself, and it is off unless you did.",
         ],
       },
@@ -1138,7 +1138,7 @@ const HELP = {
       },
       {
         heading: "The two formats",
-        body: "The pill on the node picks both the format and the colour depth together, because whether a video plays depends on the format, not on the number of bits.",
+        body: "The buttons on the node pick both the format and the colour depth together, because whether a video plays depends on the format, not on the number of bits.",
         defs: [
           ["MP4", "H.264 at 8-bit. Plays on everything, everywhere. This is the default and the safe choice for anything you are sending to someone else."],
           ["MP4 HQ", "H.265 at 10-bit. Smooth gradients where MP4 would band (skies, fades to black, soft lighting), and roughly half the file size for the same picture. It needs a reasonably recent player, so keep it for your own masters and for footage you will edit or grade."],
@@ -1679,14 +1679,14 @@ const HELP = {
 
   "PixaromaMuteSwitch": {
     title: "Mute Switch Pixaroma",
-    tagline: "Toggle whole workflow branches on and off with per-scene pills.",
+    tagline: "Toggle whole workflow branches on and off with per-scene switches.",
     sections: [
       {
         heading: "What it does",
-        body: "Wire the last node of each branch (usually a KSampler) into a row. Clicking a row's pill skips or enables that branch on the next Run. Useful for workflows with several scenes or style variants where you only want to render a subset at a time.\n\nOnly the node you wired into the row greys out on the canvas. Everything feeding just that node is skipped along with it, because ComfyUI never runs anything the result no longer needs. That is why the row wants the LAST node of a branch rather than the first.",
+        body: "Wire the last node of each branch (usually a KSampler) into a row. Clicking a row's switch skips or enables that branch on the next Run. Useful for workflows with several scenes or style variants where you only want to render a subset at a time.\n\nOnly the node you wired into the row greys out on the canvas. Everything feeding just that node is skipped along with it, because ComfyUI never runs anything the result no longer needs. That is why the row wants the LAST node of a branch rather than the first.",
       },
       {
-        heading: "Mode pills",
+        heading: "Mode buttons",
         defs: [
           ["Single / Multi", "Single is like a radio button - exactly one scene runs. Multi lets any combination run together."],
           ["Mute / Bypass", "Mute means an off scene does not run at all. Bypass means each node passes its input through unchanged."],
@@ -1696,7 +1696,7 @@ const HELP = {
         heading: "How to use",
         bullets: [
           "Wire the last node of each branch into a row (`input_1`, `input_2`, ...).",
-          "Click a row's pill to toggle it on (orange) or off (grey).",
+          "Click a row's switch to toggle it on (orange) or off (grey).",
           "Rename a row by clicking its label.",
           "Right-click the node for `Enable all rows` / `Disable all rows` shortcuts in Multi mode.",
         ],

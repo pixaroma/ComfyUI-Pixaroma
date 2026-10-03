@@ -243,7 +243,7 @@ class PixaromaSaveVideo:
         "the canvas later and get the graph back, exactly like dragging a PNG. It is "
         "stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it "
         "back on its own.\n\n"
-        "The Save and Preview pills switch between writing to your folder on every run and "
+        "The Save and Preview buttons switch between writing to your folder on every run and "
         "writing to ComfyUI's temp folder instead, which is cleared on restart, so you can "
         "iterate without filling your folder. ffmpeg is found automatically: it prefers the "
         "one bundled with imageio-ffmpeg (pip install imageio-ffmpeg, no system setup) and "

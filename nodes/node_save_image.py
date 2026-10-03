@@ -709,7 +709,7 @@ class PixaromaSaveImage:
         "Saved images show in a large preview on the node: one image fills the area, a batch shows as a grid. "
         "Click a picture in the grid to view it big, click it or hover for the arrows to flip through, and the "
         "X returns to the grid. Copy puts the shown image on the clipboard, Open shows it in a new browser tab. "
-        "Resize the node to make the preview bigger. The Save and Preview pills switch between writing files on "
+        "Resize the node to make the preview bigger. The Save and Preview buttons switch between writing files on "
         "every run and only showing images on the node with nothing written to your folder, so it can double as a "
         "preview node. After a Preview run, Save now (on the line under the image) writes every picture of that preview "
         "into your folder with the node's current settings, without running the workflow again. "

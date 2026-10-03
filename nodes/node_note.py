@@ -8,7 +8,7 @@ class PixaromaNote:
         "and numbered lists, code blocks (with copy button), inline icons (CLIP, "
         "LORA, GGUF, model versions, plus 30+ more), tables, separators, "
         "custom-colored buttons (Download / View Page / Read More / plain), "
-        "folder hints, plus pre-styled YouTube and Discord pills.\n\n"
+        "folder hints, plus pre-styled YouTube and Discord buttons.\n\n"
         "Each block carries its own color, picked from a centered modal that "
         "opens over the canvas. A Code view lets you hand-edit the underlying "
         "HTML; a drop-in LLM prompt at assets/note-pixaroma-llm-prompt.txt lets "
