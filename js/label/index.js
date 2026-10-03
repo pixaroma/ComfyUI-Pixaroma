@@ -336,15 +336,26 @@ app.registerExtension({
     // measured size as computeSize lowers that floor so short labels stay tight
     // AND a re-save now sticks.
     //
-    // This is a MINIMUM only (LiteGraph uses computeSize as a floor, never to
-    // force-resize on load), so a larger saved size is preserved - we never
-    // shrink a saved label on load, which keeps the dirty-on-load behavior
-    // unchanged (Vue Compat #18) and leaves the "oversized background label"
-    // use case intact. Cached by cfg signature so it's cheap per frame.
+    // This is a MINIMUM only, so a larger saved size is preserved - we never
+    // shrink a saved label on load, and the "oversized background label" use
+    // case stays intact. NOTE core's loadGraphData DOES grow every node to
+    // max(size, computeSize()) on every open and Ctrl+Z; in Classic the saved
+    // size is never below this measure, so nothing changes there. Cached by cfg
+    // signature so it's cheap per frame.
     nodeType.prototype.computeSize = function (out) {
       const c = this._labelCfg || DEFAULTS;
       const m = measureCached(this, c);          // shared with the painter below
-      const w = Math.max(m.w, 1), h = Math.max(m.h, 1);
+      let w = Math.max(m.w, 1), h = Math.max(m.h, 1);
+      // Nodes 2.0: never above the CURRENT size. The rendered DOM owns the size
+      // there, and core stores the frame height MINUS a 30px title this node does
+      // not have (a 38px label is stored as 8), so the load-path grow above turned
+      // 8 into 38 on every open and Ctrl+Z: the open read "modified" after one
+      // click, and the next click after an undo pushed a phantom step that cleared
+      // redo (label.md #12).
+      if (isVueNodes() && this.size) {
+        if (Number.isFinite(this.size[0])) w = Math.min(w, this.size[0]);
+        if (Number.isFinite(this.size[1])) h = Math.min(h, this.size[1]);
+      }
       if (out) { out[0] = w; out[1] = h; return out; }
       return [w, h];
     };
