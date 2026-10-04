@@ -270,6 +270,8 @@ export function openResamplePopup(anchorEl, currentValue, onPick) {
   document.querySelector(".pix-ir-rs-popup")?.remove();
   const popup = document.createElement("div");
   popup.className = "pix-ir-rs-popup";
+  // On <body> it inherits no node colour: take the accent of the control that opened it.
+  popup.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
   popup.style.top = `${rect.bottom + 2}px`;

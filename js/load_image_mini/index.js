@@ -202,7 +202,10 @@ function buildRoot() {
 
 function applyAccent(node) {
   const inner = node._pixLmInner;
-  if (inner) inner.style.setProperty("--pix-lm-acc", accentOf(node));
+  if (!inner) return;
+  inner.style.setProperty("--pix-lm-acc", accentOf(node));
+  // the shared Load Image file list opened from this face reads --pix-acc
+  inner.style.setProperty("--pix-acc", accentOf(node));
 }
 
 // The current preview/source image (loaded pick, or a fetched /view on restore).

@@ -143,6 +143,8 @@ export function openMiniMenu(anchorEl, items, currentValue, onPick) {
   document.querySelectorAll(".pix-lif-menu").forEach((m) => m._pixClose?.());
   const menu = document.createElement("div");
   menu.className = "pix-lif-menu";
+  // On <body> it inherits no node colour: take the accent of the control that opened it.
+  menu.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));
   for (const it of items) {
     const row = document.createElement("div");
     row.className = "it" + (it.value === currentValue ? " on" : "");
@@ -191,6 +193,8 @@ export function openPickGallery(node, anchorEl, ctx) {
   document.querySelectorAll(".pix-lif-gallery").forEach((g) => g._pixClose?.());
   const gal = document.createElement("div");
   gal.className = "pix-lif-gallery";
+  // On <body>: the node's accent from the opener (the Sort menu inside copies it from here).
+  gal.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));
   gal.innerHTML =
     `<div class="pix-lif-gal-head">` +
     `<div class="pix-lif-tbtn" data-act="all" title="Select every image in this folder">Select all</div>` +
@@ -399,6 +403,7 @@ export function openBrowsePopup(node, anchorEl, ctx) {
   document.querySelectorAll(".pix-lif-browse-pop").forEach((p) => p._pixClose?.());
   const pop = document.createElement("div");
   pop.className = "pix-lif-browse-pop";
+  pop.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));   // the opener's accent (on <body>)
   pop.innerHTML =
     `<div class="pix-lif-bp-head">Choose a folder</div>` +
     `<div class="pix-lif-bp-crumb"></div>` +

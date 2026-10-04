@@ -829,6 +829,8 @@ export function openImageDropdown(node, anchorEl, onPick) {
 
   const popup = document.createElement("div");
   popup.className = "pix-li-popup";
+  // On <body> it inherits no node colour: take the accent of the control that opened it.
+  popup.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));
   const rect = anchorEl.getBoundingClientRect();
   const width = Math.max(rect.width, 360); // widen so sidebar + thumbs fit
   Object.assign(popup.style, {
@@ -1314,6 +1316,7 @@ function openResamplePopup(anchorEl, currentValue, onPick) {
 
   const popup = document.createElement("div");
   popup.className = "pix-li-rs-popup";
+  popup.style.setProperty("--pix-acc", getComputedStyle(anchorEl).getPropertyValue("--pix-acc"));   // the opener's accent (on <body>)
   const rect = anchorEl.getBoundingClientRect();
   popup.style.left = `${rect.left}px`;
   popup.style.top  = `${rect.bottom + 2}px`;
