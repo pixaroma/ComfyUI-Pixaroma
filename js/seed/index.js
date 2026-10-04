@@ -6,6 +6,7 @@ import { registerNodeSettings, installNodeAccent, ACC, ACC_HOVER } from "../shar
 import { openSeedSettings, closeSeedSettingsFor } from "./settings.mjs";
 import { openSeedHistory, closeSeedHistoryFor, refreshSeedHistory } from "./history.mjs";
 import { registerRunWorkflowPatcher, readNodeProp, writeNodeProp } from "../shared/run_seed_embed.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Seed Pixaroma — a seed source with Random / Fixed modes + buttons.
@@ -390,6 +391,7 @@ const COMPACT_MIN_W = 320; // compact widens to at least this so a 16-digit seed
 // documented way to shrink a Nodes 2.0 node, which otherwise only grows).
 function fitSeedNodeHeight(node) {
   if (typeof node.setSize !== "function") return;
+  node._pixSeedKeepSavedH = false; // a fit is a user action (or a fresh drop): size from the content
   // Full snaps back to the DEFAULT width so a toggled node matches a fresh one
   // (the "shorter and wider than a new node" report); Compact widens to at least
   // COMPACT_MIN_W so the one-line seed stays readable (keeping any wider width).
@@ -397,12 +399,30 @@ function fitSeedNodeHeight(node) {
     ? Math.max(MIN_W, node.size[0] || NODE_W, COMPACT_MIN_W)
     : NODE_W;
   node.setSize([w, node.computeSize()[1]]);
+  if (isVueNodes()) storeVueFrameHeight(node);
   // Force an immediate repaint. Without this the node keeps drawing at its OLD
   // size until the user moves the mouse / presses a key (the "stuck + clipped
   // until I move" report) - setSize alone doesn't reliably schedule a redraw of
   // a DOM-widget node here.
   node.setDirtyCanvas?.(true, true);
   app.graph?.setDirtyCanvas?.(true, true);
+}
+
+// Nodes 2.0 draws the frame from its content, and core's ResizeObserver stores
+// the frame height minus the title as node.size, but only when the frame
+// CHANGES. computeSize is in Classic units, below the Vue frame, so a fit that
+// did not move the frame left node.size under the drawn node (246 under a
+// 270.25 body) and the next open re-stored it: "modified" after one click
+// (seed.md #15). Store it from the same border box core reads.
+function storeVueFrameHeight(node) {
+  const el = node._pixSeedRoot?.closest(".lg-node");
+  if (!el) return;
+  const ro = new ResizeObserver(([e]) => {
+    ro.disconnect();
+    const h = e.borderBoxSize[0].blockSize - (window.LiteGraph?.NODE_TITLE_HEIGHT || 0);
+    if (h > 0 && node.size[1] !== h) node.setSize([node.size[0], h]);
+  });
+  ro.observe(el);
 }
 
 // Re-fit after a layout-changing action (Compact <-> Full). The FIRST pass is
@@ -998,6 +1018,9 @@ function renderUI(node) {
 function setupSeedNode(node) {
   // Defensive: hide any SeedState widget (none exists with the hidden input).
   hideJsonWidget(node.widgets, HIDDEN_INPUT_NAME);
+  // Built by an open / tab load / Ctrl+Z: keep the saved height until the body
+  // can be measured (see computeSize). Read here, never in a deferred frame (VC#19).
+  node._pixSeedKeepSavedH = isGraphLoading();
 
   node.resizable = true; // horizontal resize allowed (issue #10); height stays content-driven
   // Do NOT force the height. getMinHeight (measured) is the floor and there is no
@@ -1154,6 +1177,24 @@ app.registerExtension({
       return r;
     };
 
+    // Core's loadGraphData grows every node to max(size, computeSize()) on every
+    // open, tab load and Ctrl+Z, before the body is laid out, and the change
+    // tracker takes its first snapshot right after. Unmeasured, the body answers
+    // the 216 fallback (254 > the saved 246), so the open read "modified" after
+    // one click and, after a Ctrl+Z, the next click pushed a phantom step that
+    // cleared redo (seed.md #15). Until the body has been measured once, a node
+    // built by a load answers its own height, which every resize path (core's
+    // grow, the restored snap, onResize, the draw snap) then leaves alone.
+    const _origComputeSize = nodeType.prototype.computeSize;
+    nodeType.prototype.computeSize = function (out) {
+      const s = _origComputeSize.call(this, out);
+      if (this._pixSeedKeepSavedH) {
+        if (measureRootContent(this._pixSeedRoot) > 20) this._pixSeedKeepSavedH = false;
+        else if (Number.isFinite(this.size?.[1])) s[1] = this.size[1];
+      }
+      return s;
+    };
+
     // Classic only: free HORIZONTAL resize (floored at MIN_W); lock the height to
     // the content so a corner-drag stays horizontal (issue #10). In Nodes 2.0 the
     // rendered size lives in the Vue layout store, so writing node.size there
@@ -1181,7 +1222,9 @@ app.registerExtension({
         // node writes nothing (dirty-on-load safe: measureSeedHeight is coarse-
         // rounded, so the target is stable across save/load).
         const target = this.computeSize()[1];
-        if (this.size[1] > target + 2) this.size[1] = target;
+        // Repaint: this frame is already drawn at the old height. A Seed coming
+        // from Nodes 2.0 (270.25) showed an empty band until the mouse moved.
+        if (this.size[1] > target + 2) { this.size[1] = target; this.setDirtyCanvas(true, false); }
       }
       if (_origDraw) return _origDraw.apply(this, arguments);
     };
