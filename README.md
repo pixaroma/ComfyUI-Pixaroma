@@ -398,7 +398,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 4, 2026 · v1.4.193**
+### **October 4, 2026 · v1.4.193-v1.4.194**
+- **Seed no longer marks a workflow as changed** right after you open it, and Ctrl+Z works again with it in Nodes 2.0.
+- **Nodes 2.0: Run Timer, Monitor and Info keep their size** when you open a workflow or press Ctrl+Z.
+- **The button colour you pick now reaches every part** of Image Resize, Load Image, Load Image Mini and Load Images from Folder, lists and gallery included.
 - **Nodes 2.0: Label keeps its size after Ctrl+Z and reopening,** so undo and redo work again and the workflow no longer shows as changed.
 - **Nodes 2.0: Align snaps collapsed nodes and title-less ones** (Label, Run Timer, Monitor, Info) to the edges you see.
 - **Mute Switch shows its "out" label** right after switching to Nodes 2.0.
