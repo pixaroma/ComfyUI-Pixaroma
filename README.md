@@ -398,15 +398,15 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 4, 2026 · v1.4.193-v1.4.194**
-- **Seed no longer marks a workflow as changed** right after you open it, and Ctrl+Z works again with it in Nodes 2.0.
-- **Nodes 2.0: Run Timer, Monitor and Info keep their size** when you open a workflow or press Ctrl+Z.
-- **The button colour you pick now reaches every part** of Image Resize, Load Image, Load Image Mini and Load Images from Folder, lists and gallery included.
-- **Nodes 2.0: Label keeps its size after Ctrl+Z and reopening,** so undo and redo work again and the workflow no longer shows as changed.
-- **Nodes 2.0: Align snaps collapsed nodes and title-less ones** (Label, Run Timer, Monitor, Info) to the edges you see.
+### **October 4, 2026 · v1.4.193-v1.4.195**
+- **Ctrl+Z no longer gets stuck after you add one of 14 nodes,** including Paint, 3D Builder, Image Composer, Prompt and Inpaint Crop.
+- **Seed no longer marks a workflow as changed** on open, and Ctrl+Z works with it in Nodes 2.0.
+- **Nodes 2.0: Run Timer, Monitor, Info and Label keep their size** on open and Ctrl+Z, so undo works again.
+- **The button colour you pick reaches every part** of Image Resize and the image loaders, lists and gallery included.
+- **Nodes 2.0: Align snaps collapsed and title-less nodes** to the edges you see.
 - **Mute Switch shows its "out" label** right after switching to Nodes 2.0.
-- **Workflows panel: Alt+W closes it even with a question open,** and a right-click no longer cancels the question.
-- **Help and node descriptions use clearer names for on/off controls:** switch and button.
+- **Workflows panel: Alt+W closes it even with a question open,** and a right-click no longer cancels it.
+- **Help and node descriptions call on/off controls switches and buttons.**
 
 ### **October 3, 2026 · v1.4.188-v1.4.192**
 - **Save Image: Save now** writes a Preview run's pictures to your folder without running again.
