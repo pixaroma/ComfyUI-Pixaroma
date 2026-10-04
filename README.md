@@ -398,7 +398,8 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 4, 2026 · v1.4.193-v1.4.195**
+### **October 4, 2026 · v1.4.193-v1.4.196**
+- **Pixaroma loads even when a launcher saves ComfyUI's console output to a file;** its startup message could stop every node from loading.
 - **Ctrl+Z no longer gets stuck after you add one of 14 nodes,** including Paint, 3D Builder, Image Composer, Prompt and Inpaint Crop.
 - **Seed no longer marks a workflow as changed** on open, and Ctrl+Z works with it in Nodes 2.0.
 - **Nodes 2.0: Run Timer, Monitor, Info and Label keep their size** on open and Ctrl+Z, so undo works again.
