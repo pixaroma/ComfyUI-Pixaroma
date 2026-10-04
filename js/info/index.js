@@ -251,8 +251,15 @@ app.registerExtension({
     // default computeSize left in place for Nodes 2.0, a workflow reload grew
     // every small button to that default (188x34 -> 210x58), which changed its
     // scale and its saved size on a plain open. computeSize is a minimum only.
+    // Nodes 2.0 also caps it at the CURRENT size (label.md #12): the frame stores
+    // a height 30 short of what it draws (#5), so the Classic height grew a 4 to
+    // 20 on open and the workflow read "modified" after one click.
     nodeType.prototype.computeSize = function (out) {
       const sz = classicComputeSize(this);
+      if (isVueNodes() && this.size) {
+        if (Number.isFinite(this.size[0])) sz[0] = Math.min(sz[0], this.size[0]);
+        if (Number.isFinite(this.size[1])) sz[1] = Math.min(sz[1], this.size[1]);
+      }
       if (out) { out[0] = sz[0]; out[1] = sz[1]; return out; }
       return sz;
     };

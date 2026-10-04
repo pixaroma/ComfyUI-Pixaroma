@@ -1955,6 +1955,23 @@ app.registerExtension({
       if (_origResize) return _origResize.apply(this, arguments);
     };
 
+    // Nodes 2.0: never above the CURRENT size (the Label fix, label.md #12).
+    // Classic has its own instance computeSize (useClassicFace); in Nodes 2.0 this
+    // answers core's default [210, 88] (the 210 floor of any node with a widget),
+    // and core's loadGraphData grows every node to max(size, computeSize()) on
+    // every open and Ctrl+Z. A 141x13 clock came back 210 wide with bigger digits,
+    // the open read "modified" after one click, and after a Ctrl+Z the next click
+    // pushed a phantom undo step that cleared redo. The drawn face owns the size.
+    const _origComputeSize = nodeType.prototype.computeSize;
+    nodeType.prototype.computeSize = function (out) {
+      const s = _origComputeSize.call(this, out);
+      if (isVueNodes() && this.size) {
+        if (Number.isFinite(this.size[0])) s[0] = Math.min(s[0], this.size[0]);
+        if (Number.isFinite(this.size[1])) s[1] = Math.min(s[1], this.size[1]);
+      }
+      return s;
+    };
+
     // Classic: paint the clock onto the node canvas. Nodes 2.0 skips this (its
     // DOM clock renders instead + onDrawForeground is not the paint path).
     //

@@ -537,6 +537,22 @@ app.registerExtension({
       return r;
     };
 
+    // Nodes 2.0: never above the CURRENT size (label.md #12, run-timer.md #15).
+    // Classic has its own instance computeSize (installClassicComputeSize); here
+    // core's default answers 177 for a monitor the frame stores as 112 (title-less,
+    // 30 short), and core's loadGraphData grows every node to
+    // max(size, computeSize()) on every open and Ctrl+Z, so an untouched workflow
+    // read "modified" after one click. The drawn face owns the size.
+    const _origComputeSize = nodeType.prototype.computeSize;
+    nodeType.prototype.computeSize = function (out) {
+      const s = _origComputeSize.call(this, out);
+      if (isVueNodes() && this.size) {
+        if (Number.isFinite(this.size[0])) s[0] = Math.min(s[0], this.size[0]);
+        if (Number.isFinite(this.size[1])) s[1] = Math.min(s[1], this.size[1]);
+      }
+      return s;
+    };
+
     const _origRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       removeNode(this);
