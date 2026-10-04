@@ -174,7 +174,10 @@ export function openMiniSettings(node, ctx) {
   const fire = () => { _onChange?.(); };
 
   const panel = el("div", "pix-lmset");
-  panel.style.setProperty("--acc", accentOf(node));
+  // --acc colours the panel's own parts; the reused Load Image resize controls
+  // read --pix-acc, and a panel on <body> inherits neither from the node.
+  const paintAccent = (a) => { panel.style.setProperty("--acc", a); panel.style.setProperty("--pix-acc", a); };
+  paintAccent(accentOf(node));
 
   const title = el("div", "pix-lmset-t");
   title.append(el("span", null, "⚙"), el("span", null, "Load Image Mini settings"));
@@ -200,7 +203,7 @@ export function openMiniSettings(node, ctx) {
       onPick: (c) => {
         writeState(node, { ...readState(node), accent: c || BRAND });
         const a = accentOf(node);
-        panel.style.setProperty("--acc", a);
+        paintAccent(a);
         sw.style.background = a;
         fire();
       },
