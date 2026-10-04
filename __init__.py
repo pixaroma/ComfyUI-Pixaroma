@@ -388,7 +388,17 @@ def display_pixaroma_banner(node_mappings, list_all_nodes=False):
         lines_to_print.append(current_line.rstrip(", "))
 
     # --- 4. Print the Banner ---
-    horizontal_bar = f"{CLR_ORANGE}{'━' * 120}{CLR_RESET}"
+    # The bar is a box-drawing character. A stdout that cannot encode it (ComfyUI's output redirected
+    # to a file or pipe on Windows = cp1252) gets a plain "-" bar instead: a print that raises here
+    # used to fail the WHOLE pack's import (found 2026-10-04).
+    import sys
+
+    bar_char = "━"
+    try:
+        bar_char.encode(getattr(sys.stdout, "encoding", None) or "ascii")
+    except (LookupError, UnicodeEncodeError):
+        bar_char = "-"
+    horizontal_bar = f"{CLR_ORANGE}{bar_char * 120}{CLR_RESET}"
 
     print(horizontal_bar)
     print(
@@ -414,5 +424,8 @@ def display_pixaroma_banner(node_mappings, list_all_nodes=False):
     print(horizontal_bar)
 
 
-# display the banner when the module is loaded
-display_pixaroma_banner(NODE_DISPLAY_NAME_MAPPINGS)
+# display the banner when the module is loaded; a cosmetic print must never fail the pack's import
+try:
+    display_pixaroma_banner(NODE_DISPLAY_NAME_MAPPINGS)
+except Exception:
+    pass
