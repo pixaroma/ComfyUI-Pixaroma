@@ -18,6 +18,7 @@ import { BRAND, applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
 } from "../shared/index.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 // Namespace import (NOT a named import) so a STALE cached shared module that
 // predates PIXAROMA_JS_VERSION yields `undefined` instead of a hard module link
 // error — `undefined` IS the stale-cache signal we want to surface, not crash on.
@@ -316,6 +317,9 @@ app.registerExtension({
 
       this.size[0] = DEFAULT_W;
       this.size[1] = DEFAULT_H;
+      // Classic fresh drop: up to core's own height (210), or the first Ctrl+Z
+      // grows the node 14px and jams undo (version-check.md, "UNDO JAM").
+      growToCoreMinHeight(this);
     };
 
     const origRemoved = nodeType.prototype.onRemoved;

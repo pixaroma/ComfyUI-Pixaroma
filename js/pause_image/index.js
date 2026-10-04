@@ -5,6 +5,7 @@ import { installNodeAccent, registerNodeAccent } from "../shared/node_settings.m
 import { api } from "../../../scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import { getState, setGate, STATE_PROP } from "./state.mjs";
 import { applyGateMode } from "./prune.mjs";
 import {
@@ -235,6 +236,9 @@ function setupNode(node) {
   // the saved size for saved workflows, so this only affects fresh drops.
   if (!node.size || node.size[0] < NODE_MIN_W) node.size[0] = 400;
   if (!node.size || node.size[1] < NODE_MIN_H) node.size[1] = 400;
+  // Classic: then up to core's own height (334), or the first Ctrl+Z grows the
+  // node 12px and jams undo (#6; Nodes 2.0 is the computeSize cap below).
+  growToCoreMinHeight(node);
 
   // Defer the first render until node.properties is restored (Vue Compat #8).
   queueMicrotask(() => restore(node));
@@ -275,6 +279,21 @@ app.registerExtension({
       if (size[0] < NODE_MIN_W) size[0] = NODE_MIN_W;
       if (size[1] < NODE_MIN_H) size[1] = NODE_MIN_H;
       return _resize?.apply(this, arguments);
+    };
+
+    // Nodes 2.0: computeSize never answers more than the current size (the Run
+    // Timer fix, run-timer.md #15). The frame stores its height 30 short (296 for a
+    // 326 frame) while core's computeSize says 334, and core's loadGraphData grows
+    // every node to max(size, computeSize()) on each open and Ctrl+Z: the node
+    // came back 38px taller and the next click jammed undo (#6).
+    const _origComputeSize = nodeType.prototype.computeSize;
+    nodeType.prototype.computeSize = function (out) {
+      const s = _origComputeSize.call(this, out);
+      if (isVueNodes() && this.size) {
+        if (Number.isFinite(this.size[0])) s[0] = Math.min(s[0], this.size[0]);
+        if (Number.isFinite(this.size[1])) s[1] = Math.min(s[1], this.size[1]);
+      }
+      return s;
     };
 
     const _removed = nodeType.prototype.onRemoved;

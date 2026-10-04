@@ -21,6 +21,8 @@ import {
 } from "../shared/index.mjs";
 import { installNodeAccent, registerNodeAccent } from "../shared/node_settings.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
+import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 
 const NODE = "KreaLoraConvertPixaroma";
 const MIN_W = 300;
@@ -255,6 +257,13 @@ app.registerExtension({
       applyAdaptiveCanvasOnly(widget);
 
       if (!node.size || node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
+      // Fresh drop only (configure restores a saved size). Core hands this node a
+      // fractional width (304.4996), and Nodes 2.0 re-measures a fractional width
+      // a hair narrower on every Ctrl+Z (304.48 -> 304.47), which recorded a new
+      // undo step and jammed undo: start on a whole pixel. Classic: start at core's
+      // own height (250), or the first Ctrl+Z grows the node 36px and jams it too.
+      if (!isGraphLoading() && node.size) node.size[0] = Math.round(node.size[0]);
+      growToCoreMinHeight(node);
 
       // configure() (saved value restore) runs AFTER onNodeCreated, so defer the
       // first inspect a tick so the picker holds the restored file (Vue Compat #8).

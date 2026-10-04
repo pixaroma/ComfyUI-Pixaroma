@@ -24,6 +24,7 @@ import {
   applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 
 app.registerExtension({
   name: "Pixaroma.3DEditor",
@@ -139,6 +140,9 @@ app.registerExtension({
       margin: 5,
     });
     applyAdaptiveCanvasOnly(widget);
+    // Classic fresh drop: start at core's own height (312), or the first Ctrl+Z
+    // grows the node and jams undo (3d-builder.md #12).
+    growToCoreMinHeight(node);
 
     // cleanup when node is removed
     node.onRemoved = () => {

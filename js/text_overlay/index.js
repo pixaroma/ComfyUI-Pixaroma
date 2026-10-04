@@ -8,6 +8,7 @@ import { app } from "../../../scripts/app.js";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { api } from "../../../scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
@@ -207,6 +208,10 @@ function setupTextOverlayNode(node) {
   if (!node.size || node.size[0] < 320) {
     node.size = [340, 455];
   }
+  // Classic fresh drop: then up to core's own height (522, the same value the
+  // text-lock snap below and every reopen give it), or the first Ctrl+Z grows the
+  // node 12px and jams undo (text-overlay.md #23).
+  growToCoreMinHeight(node);
 
   // Enforce a minimum node width so the user can't drag-shrink so narrow
   // that the input values get clipped and labels overlap. Self-heal on

@@ -24,6 +24,7 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import {
   openNotifyHistory,
   closeNotifyHistoryFor,
@@ -608,6 +609,10 @@ app.registerExtension({
       } catch (e) {
         console.warn("[Notify Pixaroma] readout widget failed:", e?.message || e);
       }
+      // Classic fresh drop: start at core's own height (176, what fitNotifyNode
+      // and every reopen give it), or the first Ctrl+Z grows it 8px and jams undo
+      // (notify.md #10).
+      growToCoreMinHeight(this);
     };
 
     // Duplicate detection + reflect restored timing state (Vue Compat #11:

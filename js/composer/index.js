@@ -26,6 +26,7 @@ import "./placeholder.mjs";
 import { getUpstreamImageUrlForNode } from "./placeholder.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 
 // Re-export so other modules can import from index
 export { PixaromaEditor };
@@ -212,6 +213,9 @@ app.registerExtension({
       },
     );
     applyAdaptiveCanvasOnly(widget);
+    // Classic fresh drop: start at core's own height (312), or the first Ctrl+Z
+    // grows the node and jams undo (composer.md #7).
+    growToCoreMinHeight(node);
 
     // cleanup handled in API listener section below
 

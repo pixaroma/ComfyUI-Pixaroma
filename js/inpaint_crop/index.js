@@ -5,6 +5,7 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import { InpaintCropEditor, INPAINT_PREVIEW_COLORS } from "./core.mjs";
 import { registerNodeAccent } from "../shared/node_settings.mjs";
 import "./paint.mjs";   // mixin: brush / mask / keys
@@ -481,6 +482,9 @@ app.registerExtension({
       margin: 5,
     });
     applyAdaptiveCanvasOnly(widget);
+    // Classic fresh drop: up to core's own height (558), or the first Ctrl+Z grows
+    // the node 12px and jams undo (#20).
+    growToCoreMinHeight(node);
     activateNodePreview(parts, node);
 
     // ── paste / drag-drop a source directly onto the node ──

@@ -6,6 +6,7 @@ import { pixApiUrl } from "../shared/api_url.mjs";
 import { api } from "../../../scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import { CropEditor } from "./core.mjs";
 import "./interaction.mjs"; // mixin: mouse/keyboard events
 import "./render.mjs"; // mixin: canvas rendering, ratio, save
@@ -535,6 +536,9 @@ app.registerExtension({
       margin: 5,
     });
     applyAdaptiveCanvasOnly(widget);
+    // Classic fresh drop: up to core's own height (456), or the first Ctrl+Z grows
+    // the node 16px and jams undo (#11).
+    growToCoreMinHeight(node);
 
     activateNodePreview(parts, node);
 

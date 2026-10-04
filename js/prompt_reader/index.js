@@ -852,11 +852,19 @@ function setupNode(node) {
   // So refuse to answer until the root has a real width and hand back the last
   // good value. As a getMinHeight FLOOR that means core simply keeps whatever
   // the workflow saved, and the true floor applies on the next call.
+  //
+  // With no good value yet the floor is UNMEASURED_H, the laid-out content
+  // height (220 in every state, measured 2026-10-04), NEVER more: core's
+  // loadGraphData grows every node to computeSize() on each open and Ctrl+Z
+  // BEFORE the body is laid out, and Classic's first draw grows it to fit this
+  // floor too. The old 300 made a Ctrl+Z grow a fresh node 12px (Classic) or
+  // 38px (Nodes 2.0), which jammed undo (#20).
   const LAYOUT_READY_W = 100;
+  const UNMEASURED_H = 220;
   let _lastGoodHeight = 0;
   function measureHeight() {
     if (!root.isConnected || root.offsetWidth < LAYOUT_READY_W) {
-      return _lastGoodHeight || 300;
+      return _lastGoodHeight || UNMEASURED_H;
     }
     let total = 0;
     let visible = 0;
@@ -876,7 +884,7 @@ function setupNode(node) {
     const out = total + padding + gaps;
     // A total this small means the children have not laid out either, even
     // though the root has a width. Same reasoning as the width gate above.
-    if (out < READOUT_MIN_H) return _lastGoodHeight || 300;
+    if (out < READOUT_MIN_H) return _lastGoodHeight || UNMEASURED_H;
     _lastGoodHeight = out;
     return out;
   }

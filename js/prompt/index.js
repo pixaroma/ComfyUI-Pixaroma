@@ -4,6 +4,7 @@ import {
   installResizeFloor, installCanvasZoomPassthrough, pixAsset,
 } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
 import { registerNodeSettings } from "../shared/node_settings.mjs";
 import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 // Only the re-highlight fanout is still needed here: everything that READS the
@@ -901,6 +902,9 @@ function setupNode(node) {
 
   if (node.size[0] < MIN_W) node.size[0] = DEFAULT_W;
   if (node.size[1] < MIN_H) node.size[1] = DEFAULT_H;
+  // Classic fresh drop: up to core's own height (186), or the first Ctrl+Z grows
+  // the node 12px and jams undo (#58).
+  growToCoreMinHeight(node);
 
   queueMicrotask(() => {
     restoreLastRun(node);

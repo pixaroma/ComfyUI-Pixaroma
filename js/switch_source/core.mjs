@@ -12,6 +12,7 @@
 
 import { app } from "../../../scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { coreMinHeight } from "../shared/core_min_size.mjs";
 
 export const STATE_PROP = "switchSourceState";
 export const MAX_ROWS = 16;
@@ -172,7 +173,11 @@ function resizeToRows(node, rows) {
   // the workflow "modified" so just opening+closing it pops "Save Changes?"
   // (Vue Compat #18/#19). Fresh drops + genuine Rows-field changes still size.
   if (isGraphLoading()) return;
-  const h = minNodeHeight(rows);
+  // Classic: never below core's own computeSize height (6px more than ours: core
+  // adds 4 under the strip, then 8 and 6, where we add 4 + 8). Core grows every node to that
+  // on each Ctrl+Z, so a node sized below it jammed undo after a fresh drop or a
+  // Rows change (switch-family.md, "UNDO JAM"). 0 in Nodes 2.0.
+  const h = Math.max(minNodeHeight(rows), coreMinHeight(node));
   const w = Math.max(node.size[0] || 0, DEFAULT_W);
   // node.setSize goes through the official resize path so the new height sticks
   // in BOTH renderers - a raw node.size[1] = h write can be silently reverted in
