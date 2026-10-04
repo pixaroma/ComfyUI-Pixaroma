@@ -3,7 +3,6 @@
 // node.properties[...] state. Load Image keeps importing via the thin shim at
 // js/load_image/resize_modes.mjs.
 import { openPixaromaColorPickerModal } from "./color_picker.mjs";
-import { BRAND } from "./utils.mjs";
 import { pixAsset } from "./api_url.mjs";
 
 // The per-mode panels use `pix-li-*` class names. Load Image injects these in
@@ -12,7 +11,10 @@ import { pixAsset } from "./api_url.mjs";
 // it is a no-op when Load Image (or a previous call) already added equivalent
 // rules — the panel CSS is presentational, so the small overlap with Load
 // Image's stylesheet is intentional and harmless. If you restyle the panels,
-// update BOTH this block and js/load_image/ui.mjs.
+// update BOTH this block and js/load_image/ui.mjs. Colours are the node's
+// accent var with the orange fallback, never BRAND: both blocks define the same
+// selectors, so whichever loaded last won, and a recoloured Image Resize kept an
+// orange preset chip and field label (Discord report 2026-10-03).
 let _resizePanelCSSInjected = false;
 export function injectResizePanelCSS() {
   if (_resizePanelCSSInjected || document.getElementById("pix-resize-panel-css")) return;
@@ -33,13 +35,13 @@ export function injectResizePanelCSS() {
       text-align: center;
       margin-bottom: 6px;
     }
-    .pix-li-panel input[type="range"] { flex: 1; accent-color: ${BRAND}; }
+    .pix-li-panel input[type="range"] { flex: 1; accent-color: var(--pix-acc,#f66744); }
     .pix-li-panel input[type="text"], .pix-li-panel input[type="number"] {
       background: #2a2a2a;
       border: 1px solid #444;
       border-radius: 3px;
       padding: 4px 6px;
-      color: ${BRAND};
+      color: var(--pix-acc,#f66744);
       font-size: 12px;
       font-weight: 600;
       text-align: center;
@@ -48,7 +50,7 @@ export function injectResizePanelCSS() {
     }
     .pix-li-panel input[type="text"]:focus, .pix-li-panel input[type="number"]:focus {
       outline: none;
-      border-color: ${BRAND};
+      border-color: var(--pix-acc,#f66744);
     }
     .pix-li-panel-readout {
       font-size: 9px;
@@ -70,7 +72,7 @@ export function injectResizePanelCSS() {
       font-family: inherit;
     }
     .pix-li-quickpick:hover { border-color: #666; color: #ddd; }
-    .pix-li-quickpick.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-li-quickpick.active { background: var(--pix-acc,#f66744); color: #fff; border-color: var(--pix-acc,#f66744); }
     .pix-li-ratio-chips {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
@@ -93,7 +95,7 @@ export function injectResizePanelCSS() {
       gap: 5px;
     }
     .pix-li-ratio-chip:hover { border-color: #666; color: #ddd; }
-    .pix-li-ratio-chip.active { background: ${BRAND}; color: #fff; border-color: ${BRAND}; }
+    .pix-li-ratio-chip.active { background: var(--pix-acc,#f66744); color: #fff; border-color: var(--pix-acc,#f66744); }
     .pix-li-cropped {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -112,7 +114,7 @@ export function injectResizePanelCSS() {
       cursor: pointer;
       user-select: none;
     }
-    .pix-li-cropped > div.active { background: ${BRAND}; color: #fff; }
+    .pix-li-cropped > div.active { background: var(--pix-acc,#f66744); color: #fff; }
     .pix-li-pad-row { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #888; }
     .pix-li-pad-swatch {
       width: 22px; height: 22px;
@@ -151,7 +153,7 @@ export function injectResizePanelCSS() {
               mask: url("${pixAsset("icons/ui/swap.svg")}") center/14px 14px no-repeat;
       pointer-events: none;
     }
-    .pix-li-custom-ratio-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-li-custom-ratio-swap:hover { color: var(--pix-acc,#f66744); border-color: var(--pix-acc,#f66744); }
     .pix-li-panel-row.pix-li-centered { justify-content: center; }
     .pix-li-input-wide { width: 70% !important; max-width: 200px; }
     .pix-li-numinput {
@@ -163,14 +165,14 @@ export function injectResizePanelCSS() {
       overflow: hidden;
       box-sizing: border-box;
     }
-    .pix-li-numinput:focus-within { border-color: ${BRAND}; }
+    .pix-li-numinput:focus-within { border-color: var(--pix-acc,#f66744); }
     .pix-li-numinput input {
       flex: 1;
       background: transparent;
       border: none;
       outline: none;
       padding: 2px 6px;
-      color: ${BRAND};
+      color: var(--pix-acc,#f66744);
       font-size: 11px;
       font-weight: 600;
       text-align: center;
@@ -195,7 +197,7 @@ export function injectResizePanelCSS() {
       line-height: 1;
       position: relative;
     }
-    .pix-li-spin > button:hover { background: #333; color: ${BRAND}; }
+    .pix-li-spin > button:hover { background: #333; color: var(--pix-acc,#f66744); }
     .pix-li-spin-up { border-bottom: 1px solid #444; }
     .pix-li-spin-up::before,
     .pix-li-spin-down::before {
@@ -247,7 +249,7 @@ export function injectResizePanelCSS() {
               mask: url("${pixAsset("icons/ui/swap.svg")}") center/12px 12px no-repeat;
       pointer-events: none;
     }
-    .pix-li-swap:hover { color: ${BRAND}; border-color: ${BRAND}; }
+    .pix-li-swap:hover { color: var(--pix-acc,#f66744); border-color: var(--pix-acc,#f66744); }
     .pix-li-wh-preview {
       display: flex;
       flex-direction: column;
@@ -256,8 +258,8 @@ export function injectResizePanelCSS() {
       margin-top: 8px;
     }
     .pix-li-wh-rect {
-      background: rgba(246,103,68,0.18);
-      border: 1px solid ${BRAND};
+      background: color-mix(in srgb, var(--pix-acc,#f66744) 18%, transparent);
+      border: 1px solid var(--pix-acc,#f66744);
       border-radius: 2px;
       transition: width 0.12s ease, height 0.12s ease;
     }
@@ -270,8 +272,8 @@ export function injectResizePanelCSS() {
       transition: width 0.12s ease, height 0.12s ease;
     }
     .pix-li-wh-out {
-      background: rgba(246,103,68,0.35);
-      border: 1px solid ${BRAND};
+      background: color-mix(in srgb, var(--pix-acc,#f66744) 35%, transparent);
+      border: 1px solid var(--pix-acc,#f66744);
       border-radius: 1px;
       transition: width 0.12s ease, height 0.12s ease;
     }
@@ -313,12 +315,12 @@ export function injectResizePanelCSS() {
     .pix-li-pad-input-wrap { width: 100%; max-width: 82px; }
     .pix-li-pad-inlabel {
       display: flex; align-items: center;
-      color: ${BRAND}; font-size: 9px; font-weight: 600;
+      color: var(--pix-acc,#f66744); font-size: 9px; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.5px;
       padding: 0 2px 0 7px; flex: none;
     }
     .pix-li-pad-labeled input { text-align: right !important; padding-right: 6px !important; }
-    .pix-li-pad-outdims { font-size: 11px; font-weight: 600; color: ${BRAND}; }
+    .pix-li-pad-outdims { font-size: 11px; font-weight: 600; color: var(--pix-acc,#f66744); }
     .pix-li-pad-outhint { font-size: 8px; color: #777; text-transform: uppercase; letter-spacing: 0.5px; line-height: 1.3; }
     .pix-li-pad-resetcell { grid-column: 1; grid-row: 3; display: flex; align-items: center; justify-content: center; }
     .pix-li-pad-reset {
@@ -327,7 +329,7 @@ export function injectResizePanelCSS() {
       color: #aaa; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px;
       padding: 6px 9px; cursor: pointer; white-space: nowrap;
     }
-    .pix-li-pad-reset:hover { border-color: ${BRAND}; color: ${BRAND}; }
+    .pix-li-pad-reset:hover { border-color: var(--pix-acc,#f66744); color: var(--pix-acc,#f66744); }
     .pix-li-pad-reset-ic {
       width: 11px; height: 11px; flex: none; background-color: currentColor;
       -webkit-mask: url("${pixAsset("icons/ui/reset.svg")}") center/11px 11px no-repeat;
@@ -339,7 +341,7 @@ export function injectResizePanelCSS() {
       background: #1d1d1d; border: 1px solid #444; border-radius: 4px;
       padding: 5px 9px; cursor: pointer;
     }
-    .pix-li-pad-colorcell:hover { border-color: ${BRAND}; }
+    .pix-li-pad-colorcell:hover { border-color: var(--pix-acc,#f66744); }
     .pix-li-pad-colorcell .pix-li-pad-swatch { width: 16px; height: 16px; }
     .pix-li-pad-colorlbl { font-size: 9px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; }
   `;
