@@ -35,7 +35,7 @@ export const HELP = {
       body:
         "Right-click the node, or press the gear on the node toolbar, and switch any readout on or off. Turn most of them off and pick the Strip layout and you get a single thin line, which is the same node wearing less.",
       defs: [
-        ["VRAM", "Video memory in use on the graphics card, out of its total. This is the whole card, so other programs using it are counted too."],
+        ["VRAM", "Video memory in use on the graphics card, out of its total. This is the whole card, so other programs using it are counted too. Memory ComfyUI has finished with but keeps parked for reuse counts as free here, because ComfyUI can use it again straight away. Tools like Crystools or Task Manager count it as used, so they often show a higher number. Free VRAM gives that memory back, and then the numbers come closer."],
         ["RAM", "System memory in use, out of what is installed."],
         ["GPU", "How busy the graphics card is. Needs an NVIDIA card."],
         ["CPU", "How busy the processor is."],
