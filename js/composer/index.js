@@ -26,7 +26,7 @@ import "./placeholder.mjs";
 import { getUpstreamImageUrlForNode } from "./placeholder.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 
 // Re-export so other modules can import from index
 export { PixaromaEditor };
@@ -79,6 +79,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
     if (nodeData.name !== "PixaromaImageComposition") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (composer.md #8)
 
     const originalOnExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {

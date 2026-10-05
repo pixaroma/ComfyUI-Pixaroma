@@ -18,7 +18,7 @@ import { BRAND, applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
 } from "../shared/index.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 // Namespace import (NOT a named import) so a STALE cached shared module that
 // predates PIXAROMA_JS_VERSION yields `undefined` instead of a hard module link
 // error — `undefined` IS the stale-cache signal we want to surface, not crash on.
@@ -104,6 +104,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaVersionCheck") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (version-check.md)
 
     const origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {

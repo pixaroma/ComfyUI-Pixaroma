@@ -23,13 +23,14 @@ import {
   applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 
 app.registerExtension({
   name: "Pixaroma.Paint",
 
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
     if (nodeData.name !== "PixaromaPaint") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (paint.md #4)
 
     const originalOnExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {

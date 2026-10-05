@@ -2,6 +2,7 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { notifyRouterChanged } from "../shared/router_changed.mjs";
+import { capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import {
   STATE_PROP, MAX_ROWS, CONTROL_BAND,
   readState, writeState,
@@ -222,6 +223,7 @@ app.registerExtension({
 
   beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaSwitchSource") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (switch-family.md)
 
     const _origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {

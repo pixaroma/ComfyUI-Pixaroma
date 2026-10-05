@@ -6,7 +6,7 @@ import { pixApiUrl } from "../shared/api_url.mjs";
 import { api } from "../../../scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import { CropEditor } from "./core.mjs";
 import "./interaction.mjs"; // mixin: mouse/keyboard events
 import "./render.mjs"; // mixin: canvas rendering, ratio, save
@@ -272,6 +272,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
     if (nodeData.name !== "PixaromaCrop") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (crop-uncrop.md #12)
 
     const originalOnExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {

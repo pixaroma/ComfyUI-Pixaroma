@@ -12,7 +12,7 @@
 // core's height makes the drop look exactly like the same node after a reopen.
 //
 // Nodes 2.0 is left alone: its frame owns the size there (cap computeSize at
-// node.size instead, run-timer.md #15). Never on the load path (VC#18): configure()
+// node.size instead: capComputeSizeInNodes2 below). Never on the load path (VC#18): configure()
 // restores the saved size after onNodeCreated anyway.
 
 import { isGraphLoading } from "./graph_loading.mjs";
@@ -32,4 +32,24 @@ export function growToCoreMinHeight(node) {
   if (!node?.size) return;
   const h = coreMinHeight(node);
   if (h > node.size[1]) node.size[1] = h;
+}
+
+// Nodes 2.0: computeSize() never answers more than the node's current size once
+// the node is on a graph. From frontend 1.53 core's grow (above) also lands in
+// Nodes 2.0: a node drawn below computeSize grew on every Ctrl+Z (Paint 300 ->
+// 312, Krea LoRA Convert 106 -> 250) and the next click wiped redo (VC#28/#29).
+// The Run Timer recipe (run-timer.md #15) as one call, for beforeRegisterNodeDef.
+// Off the graph is left alone: core picks a NEW node's starting size from
+// computeSize while it is being built, before it is added. Classic untouched.
+export function capComputeSizeInNodes2(nodeType) {
+  const orig = nodeType?.prototype?.computeSize;
+  if (typeof orig !== "function") return;
+  nodeType.prototype.computeSize = function (out) {
+    const s = orig.call(this, out);
+    if (isVueNodes() && this.graph && this.size && Array.isArray(s)) {
+      if (Number.isFinite(this.size[0])) s[0] = Math.min(s[0], this.size[0]);
+      if (Number.isFinite(this.size[1])) s[1] = Math.min(s[1], this.size[1]);
+    }
+    return s;
+  };
 }

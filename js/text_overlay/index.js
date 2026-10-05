@@ -8,7 +8,7 @@ import { app } from "../../../scripts/app.js";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { api } from "../../../scripts/api.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import { applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
@@ -29,6 +29,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE_CLASS) return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (text-overlay.md #24)
 
     const origCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {

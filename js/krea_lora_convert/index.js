@@ -22,7 +22,7 @@ import {
 import { installNodeAccent, registerNodeAccent } from "../shared/node_settings.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 
 const NODE = "KreaLoraConvertPixaroma";
 const MIN_W = 300;
@@ -199,6 +199,7 @@ app.registerExtension({
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== NODE) return;
     if (nodeType.prototype._klcPatched) return;  // don't double-wrap on hot reload
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (krea-lora-convert.md #2)
     nodeType.prototype._klcPatched = true;
 
     const origCreated = nodeType.prototype.onNodeCreated;

@@ -24,7 +24,7 @@ import {
   applyAdaptiveCanvasOnly,
   installCanvasZoomPassthrough,
 } from "../shared/index.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 
 app.registerExtension({
   name: "Pixaroma.3DEditor",
@@ -37,6 +37,7 @@ app.registerExtension({
   // Handle execution result (OUTPUT_NODE = True on python side)
   async beforeRegisterNodeDef(nodeType, nodeData, app) {
     if (nodeData.name !== "Pixaroma3D") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (3d-builder.md #13)
 
     const originalOnExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {

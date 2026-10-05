@@ -24,7 +24,7 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/index.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import {
   openNotifyHistory,
   closeNotifyHistoryFor,
@@ -572,6 +572,7 @@ app.registerExtension({
     // prototype hooks, which would stack a 2nd Preview button + readout widget.
     if (nodeType.prototype._pixNotifyPatched) return;
     nodeType.prototype._pixNotifyPatched = true;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (notify.md #11)
 
     const onCreated = nodeType.prototype.onNodeCreated;
     nodeType.prototype.onNodeCreated = function () {

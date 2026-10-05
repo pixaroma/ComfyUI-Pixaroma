@@ -5,7 +5,7 @@ import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { growToCoreMinHeight } from "../shared/core_min_size.mjs";
+import { growToCoreMinHeight, capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import { InpaintCropEditor, INPAINT_PREVIEW_COLORS } from "./core.mjs";
 import { registerNodeAccent } from "../shared/node_settings.mjs";
 import "./paint.mjs";   // mixin: brush / mask / keys
@@ -356,6 +356,7 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaInpaintCrop") return;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (inpaint.md #21)
     const origExec = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
       origExec?.apply(this, arguments);

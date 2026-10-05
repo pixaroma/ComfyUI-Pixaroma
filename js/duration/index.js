@@ -7,6 +7,7 @@
 import { app } from "../../../scripts/app.js";
 import { isVueNodes } from "../shared/nodes2.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import { registerNodeHelp } from "../shared/help.mjs";
 import { registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
 import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState } from "./core.mjs";
@@ -72,6 +73,7 @@ app.registerExtension({
     // Without this a re-registration (hot reload) double-wraps every hook.
     if (nodeType.prototype._pixDurPatched) return;
     nodeType.prototype._pixDurPatched = true;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (duration.md)
 
     injectCSS();
 

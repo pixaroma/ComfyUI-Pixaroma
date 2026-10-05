@@ -1,6 +1,7 @@
 import { app } from "../../../scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
+import { capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import {
   setupNode, restoreFromProperties,
   handleConnect, handleDisconnect,
@@ -119,6 +120,7 @@ app.registerExtension({
     // previous wrap), producing exponential call chains.
     if (nodeType.prototype._pixMsPatched) return;
     nodeType.prototype._pixMsPatched = true;
+    capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (mute-switch.md #22)
 
     // Creation
     const _origCreated = nodeType.prototype.onNodeCreated;

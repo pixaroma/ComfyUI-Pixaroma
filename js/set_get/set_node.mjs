@@ -10,6 +10,7 @@
 
 import { app } from "../../../scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
+import { capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
 import {
   SET_TYPE,
   GET_TYPE,
@@ -353,6 +354,7 @@ export function registerPixaromaSetNode() {
     }
   }
 
+  capComputeSizeInNodes2(PixaromaSetNode); // Nodes 2.0 Ctrl+Z grow on frontend 1.53
   LiteGraph.registerNodeType(SET_TYPE, PixaromaSetNode);
   // registerNodeType resets category to the part of the type name before a "/"
   // (none here, so ""), which left Set Pixaroma out of the right-click Add Node
