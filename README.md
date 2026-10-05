@@ -398,6 +398,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 5, 2026 · v1.4.197**
+- **Newer ComfyUI: workflows no longer show as changed** right after opening them with Text Join, Sliders, Dropdown, Switch, Outpaint Stitch or Load 3D nodes.
+- **Newer ComfyUI, Nodes 2.0: Ctrl+Z no longer gets stuck** after adding Paint, 3D Builder, Image Composer, Crop, Text Overlay, Notify or 9 other nodes.
+
 ### **October 4, 2026 · v1.4.193-v1.4.196**
 - **Pixaroma loads even when a launcher saves ComfyUI's console output to a file;** its startup message could stop every node from loading.
 - **Ctrl+Z no longer gets stuck after you add one of 14 nodes,** including Paint, 3D Builder, Image Composer, Prompt and Inpaint Crop.
