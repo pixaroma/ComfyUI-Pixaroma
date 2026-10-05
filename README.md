@@ -398,7 +398,10 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 5, 2026 · v1.4.197**
+### **October 5, 2026 · v1.4.197-v1.4.198**
+- **Text Overlay and Text Watermark no longer scramble pictures from Qwen Image 2.1 and Ming Image;** transparent pictures stay transparent, with the text on top.
+- **Control Panel: the Show options list fits long names and has a filter box,** and All or None apply to the matching names.
+- **Monitor's help explains why its VRAM number is lower than Crystools or Task Manager.**
 - **Newer ComfyUI: workflows no longer show as changed** right after opening them with Text Join, Sliders, Dropdown, Switch, Outpaint Stitch or Load 3D nodes.
 - **Newer ComfyUI, Nodes 2.0: Ctrl+Z no longer gets stuck** after adding Paint, 3D Builder, Image Composer, Crop, Text Overlay, Notify or 9 other nodes.
 
