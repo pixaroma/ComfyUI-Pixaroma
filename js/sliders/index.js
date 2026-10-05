@@ -280,12 +280,14 @@ app.registerExtension({
     // Legacy writes output.pos into the workflow; that value is meaningless in
     // Nodes 2.0 and would make a file saved in one renderer differ from the
     // other (and flag a clean workflow "modified"). It is rebuilt on every
-    // arrange, so strip it.
-    const _serialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const o = _serialize?.apply(this, arguments);
+    // arrange, so strip it. onSerialize, not a serialize() wrapper: from frontend
+    // 1.53 the graph saves each node from its store and never calls
+    // node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
       if (o?.outputs) for (const out of o.outputs) { if (out && out.pos) delete out.pos; }
-      return o;
+      return r;
     };
 
     // Right-click lives on the extension-level getNodeMenuItems hook below (the

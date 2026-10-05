@@ -137,9 +137,11 @@ app.registerExtension({
     // Keep our render-time slot geometry + marker out of the saved file (rebuilt on
     // load): legacy writes input.pos, Nodes 2.0 writes the widget marker; either
     // would differ per renderer and flag a clean workflow "modified".
-    const _serialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const o = _serialize?.apply(this, arguments);
+    // onSerialize, not a serialize() wrapper: from frontend 1.53 the graph saves
+    // each node from its store and never calls node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
       if (o?.inputs) {
         for (const inp of o.inputs) {
           if (inp && isSliderInput(inp.name)) {
@@ -149,7 +151,7 @@ app.registerExtension({
           }
         }
       }
-      return o;
+      return r;
     };
 
     const _removed = nodeType.prototype.onRemoved;

@@ -187,10 +187,12 @@ app.registerExtension({
     // Legacy WRITES output.pos into the workflow. It means nothing in Nodes 2.0,
     // so a file saved in one renderer differs from the other and a clean
     // workflow opens "modified". It is rebuilt on every arrange, so nothing is
-    // lost by stripping it.
-    const _serialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const out = _serialize?.apply(this, arguments);
+    // lost by stripping it. onSerialize, not a serialize() wrapper: from frontend
+    // 1.53 the graph saves each node from its store and never calls
+    // node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (out) {
+      const r = _onSerialize?.apply(this, arguments);
       try {
         for (const o of out?.outputs || []) {
           delete o.pos;
@@ -204,7 +206,7 @@ app.registerExtension({
           }
         }
       } catch {}
-      return out;
+      return r;
     };
 
     // ── Size clamps (Classic only) ───────────────────────────────────────

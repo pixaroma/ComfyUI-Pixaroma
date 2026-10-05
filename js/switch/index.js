@@ -134,17 +134,19 @@ app.registerExtension({
     // renderer, where it would hide the dots we paint ourselves, and (c) flag a
     // clean workflow "modified" on open. The marker is purely a render-time
     // concern - syncRowWidgets rebuilds it on load - so strip it from the
-    // serialized copy. The change-tracker snapshots via serialize() too, so this
-    // also keeps a plain open+close clean (Vue Compat #18).
-    const _origSerialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const o = _origSerialize?.apply(this, arguments);
+    // serialized copy. The change-tracker snapshots the same data, so this
+    // also keeps a plain open+close clean (Vue Compat #18). onSerialize, not a
+    // serialize() wrapper: from frontend 1.53 the graph saves each node from its
+    // store and never calls node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
       if (o?.inputs) {
         for (const inp of o.inputs) {
           if (inp && inp.widget) delete inp.widget;
         }
       }
-      return o;
+      return r;
     };
 
     // ── Removal ──────────────────────────────────────────────────────────

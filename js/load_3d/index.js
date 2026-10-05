@@ -218,15 +218,17 @@ app.registerExtension({
     // The size inputs' pos is layout, rebuilt on every load, so it never goes
     // into a saved workflow. LGraphNode.serialize copies each slot
     // (inputAsSerialisable), so deleting it here cannot touch the live input.
-    const _serialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const data = _serialize.apply(this, arguments);
+    // onSerialize, not a serialize() wrapper: from frontend 1.53 the graph saves
+    // each node from its store and never calls node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (data) {
+      const r = _onSerialize?.apply(this, arguments);
       try {
         for (const inp of data?.inputs || []) {
           if (inp && SIZE_INPUTS.includes(inp.name)) delete inp.pos;
         }
       } catch (_e) { /* a save must never fail over layout */ }
-      return data;
+      return r;
     };
 
     // Plugging a wire into width or height, or pulling one out, changes the frame

@@ -144,15 +144,17 @@ app.registerExtension({
     // renderer (hiding the dots we paint there), and flag a clean workflow
     // "modified" on open. The marker is purely a render-time concern that
     // syncRowWidgets rebuilds on load, so strip it from the serialized copy.
-    const _origSerialize = nodeType.prototype.serialize;
-    nodeType.prototype.serialize = function () {
-      const o = _origSerialize?.apply(this, arguments);
+    // onSerialize, not a serialize() wrapper: from frontend 1.53 the graph saves
+    // each node from its store and never calls node.serialize() (Vue Compat #29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
       if (o?.inputs) {
         for (const inp of o.inputs) {
           if (inp && inp.widget) delete inp.widget;
         }
       }
-      return o;
+      return r;
     };
 
     // Configure gate (MUST wrap `configure`, NOT the `onConfigure` hook).
