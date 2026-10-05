@@ -105,13 +105,22 @@ function injectCSS() {
     .pix-sldp-filter:hover { border-color:var(--acc,${BRAND}); color:#fff; }
     .pix-sldp-filter .cnt { margin-left:auto; color:var(--acc,${BRAND}); font-weight:600; font-variant-numeric:tabular-nums; }
 
-    /* the filter popup (which options to show + the default) */
-    .pix-sldp-fpop { position:fixed; z-index:10040; width:280px; max-height:60vh; overflow:hidden; background:#1a1a1a;
+    /* the filter popup (which options to show + the default). It opens as wide as the
+       longest name (at least 280px, never past the screen) and keeps that width while
+       the filter box narrows the list, so it does not jump as you type. */
+    .pix-sldp-fpop { position:fixed; z-index:10040; min-width:280px; width:max-content; max-width:min(720px, calc(100vw - 16px));
+      box-sizing:border-box; max-height:60vh; overflow:hidden; background:#1a1a1a;
       border:1px solid #3a3a3a; border-radius:9px; box-shadow:0 16px 44px rgba(0,0,0,0.6); display:flex; flex-direction:column; }
     .pix-sldp-fpop .fh { display:flex; align-items:center; gap:8px; padding:9px 11px; background:#232323; border-bottom:1px solid #333; font-size:11px; color:#cfcfcf; }
-    .pix-sldp-fpop .fh .fa { margin-left:auto; font-size:10.5px; color:var(--acc,${BRAND}); cursor:pointer; }
+    .pix-sldp-fpop .fh .ft { flex:none; white-space:nowrap; }
+    .pix-sldp-fpop .fh .ff { flex:1 1 auto; width:0; min-width:70px; box-sizing:border-box; background:#1d1d1d;
+      border:1px solid #444; border-radius:4px; color:#e0e0e0; font:11.5px 'Segoe UI',sans-serif; padding:3px 7px; outline:none; }
+    .pix-sldp-fpop .fh .ff::placeholder { color:#777; }
+    .pix-sldp-fpop .fh .ff:focus { border-color:var(--acc,${BRAND}); }
+    .pix-sldp-fpop .fh .fa { flex:none; font-size:10.5px; color:var(--acc,${BRAND}); cursor:pointer; user-select:none; }
     .pix-sldp-fpop .fh .fa:hover { text-decoration:underline; }
-    .pix-sldp-flist { overflow-y:auto; padding:6px; display:flex; flex-direction:column; gap:3px; }
+    .pix-sldp-flist { overflow-y:auto; scrollbar-gutter:stable; padding:6px; display:flex; flex-direction:column; gap:3px; }
+    .pix-sldp-fempty { padding:10px 8px; font-size:11.5px; color:#8a8a8a; font-style:italic; }
     .pix-sldp-fopt { display:flex; align-items:center; gap:9px; padding:6px 8px; border-radius:5px; cursor:pointer;
       font-size:12px; color:#bdbdbd; border:1px solid transparent; }
     .pix-sldp-fopt:hover { border-color:rgba(255,255,255,0.12); }
@@ -290,12 +299,30 @@ function openFilterPopup(node, s, anchorEl, onChange) {
   const fh = el("div", "fh");
   const allBtn = el("span", "fa", "All");
   const noneBtn = el("span", "fa", "None");
-  fh.append(el("span", null, "Show these options"), allBtn, noneBtn);
+  allBtn.title = "Tick every option in the list (only the ones that match the filter, when you type one)";
+  noneBtn.title = "Untick every option in the list (only the ones that match the filter, when you type one)";
+  // Filter box: narrows the list so a long one (124 checkpoints) is quick to search.
+  // Words are matched anywhere in the name, all of them, any case.
+  const filterIn = el("input", "ff");
+  filterIn.type = "text";
+  filterIn.placeholder = "Filter...";
+  filterIn.spellcheck = false;
+  filterIn.autocomplete = "off";
+  filterIn.title = "Type part of a name to show only the matching options";
+  filterIn.setAttribute("aria-label", "Filter the options");
+  fh.append(el("span", "ft", "Show these options"), filterIn, allBtn, noneBtn);
   const list = el("div", "pix-sldp-flist");
   pop.append(fh, list);
 
-  // empty allowed = show all
-  const shown = () => { const a = Array.isArray(s.allowed) ? s.allowed : []; return a.length ? new Set(a) : new Set(opts); };
+  const matching = () => {
+    const words = filterIn.value.toLowerCase().split(/\s+/).filter(Boolean);
+    if (!words.length) return opts;
+    return opts.filter((o) => { const n = String(o).toLowerCase(); return words.every((w) => n.includes(w)); });
+  };
+
+  // empty allowed = show all. Read through comboVisible (like the node face) so a
+  // stale name no longer in the list can never count as ticked.
+  const shown = () => new Set(comboVisible(s));
   const commit = (set) => {
     if (set.size >= opts.length) s.allowed = [];
     else s.allowed = opts.filter((o) => set.has(o));
@@ -306,11 +333,14 @@ function openFilterPopup(node, s, anchorEl, onChange) {
   function rebuild() {
     list.innerHTML = "";
     const set = shown();
-    opts.forEach((o) => {
+    const inView = matching();
+    if (!inView.length) list.append(el("div", "pix-sldp-fempty", "No option matches the filter"));
+    inView.forEach((o) => {
       const r = el("div", "pix-sldp-fopt");
       r.setAttribute("data-on", set.has(o) ? "1" : "0");
       r.setAttribute("data-def", s.def === o ? "1" : "0");
       const lab = el("span", null, o);
+      lab.title = o;   // the full name, when a very long one is cut short
       lab.style.cssText = "flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       r.append(el("span", "ck", set.has(o) ? "✓" : ""), lab, el("span", "star", "★"));
       const star = r.querySelector(".star");
@@ -334,17 +364,39 @@ function openFilterPopup(node, s, anchorEl, onChange) {
       list.append(r);
     });
   }
-  allBtn.addEventListener("click", () => { commit(new Set(opts)); rebuild(); });
-  noneBtn.addEventListener("click", () => { commit(new Set(opts.length ? [opts[0]] : [])); rebuild(); });
+  // All / None act on the options in view: everything with no filter (as before),
+  // only the matching ones while a filter is typed. None still keeps one ticked.
+  allBtn.addEventListener("click", () => {
+    const set = shown();
+    matching().forEach((o) => set.add(o));
+    commit(set);
+    rebuild();
+  });
+  noneBtn.addEventListener("click", () => {
+    const inView = matching();
+    const set = shown();
+    inView.forEach((o) => set.delete(o));
+    if (!set.size && opts.length) set.add(inView.length ? inView[0] : opts[0]);
+    commit(set);
+    rebuild();
+  });
+  filterIn.addEventListener("input", rebuild);
+  // All / None leave the cursor in the filter box, so you can type the next word
+  [allBtn, noneBtn].forEach((b) => b.addEventListener("mousedown", (e) => e.preventDefault()));
   rebuild();
 
   document.body.appendChild(pop);
+  // Freeze the width the full list asked for, so typing in the filter never resizes it.
+  // Rounded UP (+1px for display scaling): offsetWidth rounds down, and a fraction of a
+  // pixel short is enough to cut the longest name with "...".
+  pop.style.width = Math.ceil(pop.getBoundingClientRect().width) + 1 + "px";
   const rc = anchorEl.getBoundingClientRect();
   pop.style.left = Math.max(8, Math.min(rc.left, window.innerWidth - pop.offsetWidth - 8)) + "px";
   let top = rc.bottom + 4;
   if (top + pop.offsetHeight > window.innerHeight - 8) top = Math.max(8, window.innerHeight - pop.offsetHeight - 8);
   pop.style.top = top + "px";
   _filterPop = pop;
+  try { filterIn.focus({ preventScroll: true }); } catch {}
   setTimeout(() => {
     document.addEventListener("pointerdown", _filterOutside, true);
     document.addEventListener("wheel", _filterOutside, true);

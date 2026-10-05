@@ -453,7 +453,7 @@ registerNodeHelp(CLASS, {
       defs: [
         ["Slider", "For a number: steps, cfg, denoise, a LoRA strength, a width. Drag it (hold Shift for fine control) or double-click to type. Whole number or decimal is decided by the input you plug it into."],
         ["Switch", "For a true / false setting. Click to flip it. Sends true / false, or 1 / 0 for a number input. You can rename its two states and set which one it starts in."],
-        ["Dropdown", "For a picker: sampler, scheduler, checkpoint, VAE, a LoRA name. It learns the whole list from the input; in the settings you tick which options to show, so it only offers the ones you actually use."],
+        ["Dropdown", "For a picker: sampler, scheduler, checkpoint, VAE, a LoRA name. It learns the whole list from the input; in the settings you tick which options to show, so it only offers the ones you actually use. For a long list, type part of a name in the filter box at the top, then All or None ticks or unticks just the matching ones."],
         ["Seed", "For a seed input. R randomizes it on every run, N rolls a new fixed one, or click the number to type an exact seed."],
         ["Text", "For words: a prompt, a filename, a style tag. Type straight into it on the node."],
       ],
