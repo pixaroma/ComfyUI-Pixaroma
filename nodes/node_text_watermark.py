@@ -16,6 +16,20 @@ from PIL import Image
 from ._text_render_helpers import render_text_layer, compute_text_bbox, resolve_font_variant
 
 
+def _frame_to_rgba(frame):
+    """uint8 [H, W, C] -> PIL RGBA to draw on. Qwen Image 2.1 and Ming Image
+    decode to RGBA (4 channels); read as "RGB" those 4-byte pixels shear the
+    picture into diagonal bands. Keep a real alpha, give RGB an opaque one, and
+    turn a stray 1- or 2-channel frame into grey. Same as Text Overlay's copy."""
+    ch = frame.shape[-1] if frame.ndim == 3 else 1
+    if ch >= 4:
+        return Image.fromarray(np.ascontiguousarray(frame[..., :4]), "RGBA")
+    if ch == 3:
+        return Image.fromarray(frame, "RGB").convert("RGBA")
+    grey = frame if frame.ndim == 2 else frame[..., 0]
+    return Image.fromarray(np.ascontiguousarray(grey), "L").convert("RGBA")
+
+
 # Each anchor's horizontal band (left / center / right) and vertical band
 # (top / middle / bottom). Used to turn the 9-point anchor + margin into x/y.
 _ANCHOR_COLS = {
@@ -77,14 +91,16 @@ class PixaromaTextWatermark:
         if text is not None:
             state["text"] = str(text)
 
+        # An RGBA image comes back RGBA (the watermark drawn over it), RGB stays RGB.
+        keep_alpha = image.shape[-1] >= 4
         outputs = []
         for b in range(image.shape[0]):
             frame = image[b].clamp(0, 1).cpu().numpy()
             frame = (frame * 255).astype(np.uint8)
-            pil = Image.fromarray(frame, "RGB").convert("RGBA")
+            pil = _frame_to_rgba(frame)
             if state and state.get("text"):
                 self._stamp(pil, state)
-            outputs.append(self._pil_to_tensor_array(pil))
+            outputs.append(self._pil_to_tensor_array(pil, keep_alpha))
 
         return (torch.stack(outputs, dim=0),)
 
@@ -180,8 +196,8 @@ class PixaromaTextWatermark:
             return True  # assume synthesized (keeps the extra slant room - safer)
 
     @staticmethod
-    def _pil_to_tensor_array(pil):
-        rgb = pil.convert("RGB")
+    def _pil_to_tensor_array(pil, keep_alpha=False):
+        rgb = pil.convert("RGBA" if keep_alpha else "RGB")
         arr = np.array(rgb).astype(np.float32) / 255.0
         return torch.from_numpy(arr)
 

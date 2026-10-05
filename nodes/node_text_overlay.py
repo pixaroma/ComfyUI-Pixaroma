@@ -17,6 +17,20 @@ import folder_paths
 from ._text_render_helpers import render_text_layer, compute_text_bbox
 
 
+def _frame_to_rgba(frame):
+    """uint8 [H, W, C] -> PIL RGBA to draw on. Qwen Image 2.1 and Ming Image
+    decode to RGBA (4 channels); read as "RGB" those 4-byte pixels shear the
+    picture into diagonal bands. Keep a real alpha, give RGB an opaque one, and
+    turn a stray 1- or 2-channel frame into grey."""
+    ch = frame.shape[-1] if frame.ndim == 3 else 1
+    if ch >= 4:
+        return Image.fromarray(np.ascontiguousarray(frame[..., :4]), "RGBA")
+    if ch == 3:
+        return Image.fromarray(frame, "RGB").convert("RGBA")
+    grey = frame if frame.ndim == 2 else frame[..., 0]
+    return Image.fromarray(np.ascontiguousarray(grey), "L").convert("RGBA")
+
+
 class PixaromaTextOverlay:
     CATEGORY = "👑 Pixaroma/📝 Notes & Overlay"
     DESCRIPTION = (
@@ -112,14 +126,16 @@ class PixaromaTextOverlay:
                 print(f"[Text Overlay Pixaroma] WARN: auto-center failed: {e}")
 
         # state IS the single text dict (or empty dict = no overlay)
+        # An RGBA image comes back RGBA (the text drawn over it), RGB stays RGB.
+        keep_alpha = image.shape[-1] >= 4
         outputs = []
         for b in range(image.shape[0]):
             frame = image[b].clamp(0, 1).cpu().numpy()
             frame = (frame * 255).astype(np.uint8)
-            pil = Image.fromarray(frame, "RGB").convert("RGBA")
+            pil = _frame_to_rgba(frame)
             if state and state.get("text"):
                 render_text_layer(pil, state)
-            outputs.append(self._pil_to_tensor_array(pil))
+            outputs.append(self._pil_to_tensor_array(pil, keep_alpha))
 
         # Stash the FIRST input frame (the base image BEFORE overlay) to
         # ComfyUI's temp/ folder so the editor canvas can use it as the
@@ -132,7 +148,9 @@ class PixaromaTextOverlay:
         try:
             input_frame = image[0].clamp(0, 1).cpu().numpy()
             input_frame = (input_frame * 255).astype(np.uint8)
-            input_pil = Image.fromarray(input_frame, "RGB")
+            input_pil = _frame_to_rgba(input_frame)
+            if not keep_alpha:
+                input_pil = input_pil.convert("RGB")
             temp_dir = folder_paths.get_temp_directory()
             os.makedirs(temp_dir, exist_ok=True)
             fname = f"pixaroma_text_overlay_base_{uuid.uuid4().hex[:12]}.png"
@@ -154,8 +172,8 @@ class PixaromaTextOverlay:
         return {"ui": ui_payload, "result": (torch.stack(outputs, dim=0),)}
 
     @staticmethod
-    def _pil_to_tensor_array(pil):
-        rgb = pil.convert("RGB")
+    def _pil_to_tensor_array(pil, keep_alpha=False):
+        rgb = pil.convert("RGBA" if keep_alpha else "RGB")
         arr = np.array(rgb).astype(np.float32) / 255.0
         return torch.from_numpy(arr)
 

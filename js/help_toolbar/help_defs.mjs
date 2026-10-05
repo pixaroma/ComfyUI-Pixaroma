@@ -1787,7 +1787,7 @@ const HELP = {
       {
         heading: "Inputs",
         defs: [
-          ["image", "Required image to draw the text on."],
+          ["image", "Required image to draw the text on. A transparent picture (for example from Qwen Image 2.1 or Ming Image) stays transparent, with the text drawn over it."],
           ["text", "Optional wire from any STRING source. When connected it replaces whatever text is typed on the panel (the box greys out as a reminder)."],
         ],
       },
@@ -1820,7 +1820,7 @@ const HELP = {
       {
         heading: "Inputs",
         defs: [
-          ["image", "Image or batch to stamp the watermark onto."],
+          ["image", "Image or batch to stamp the watermark onto. A transparent picture (for example from Qwen Image 2.1 or Ming Image) stays transparent, with the watermark drawn over it."],
           ["text", "Optional wire from any STRING source. When connected it replaces the panel text (the box greys out)."],
         ],
       },
