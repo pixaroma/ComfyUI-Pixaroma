@@ -398,6 +398,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 6, 2026 · v1.4.199**
+- **Save Image and Preview Image: Civitai shows your prompt, settings and model again** with "Add Civitai generation info" on. Save images again before uploading.
+
 ### **October 5, 2026 · v1.4.197-v1.4.198**
 - **Text Overlay and Text Watermark no longer scramble pictures from Qwen Image 2.1 and Ming Image;** transparent pictures stay transparent, with the text on top.
 - **Control Panel: the Show options list fits long names and has a filter box,** and All or None apply to the matching names.
