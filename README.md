@@ -398,11 +398,12 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 6, 2026 · v1.4.199-v1.4.201**
+### **October 6, 2026 · v1.4.199-v1.4.202**
 - **Save Image and Preview Image: Civitai shows your prompt, settings and model again** with "Add Civitai generation info" on. Save images again before uploading.
 - **Civitai info also reads prompts built with String Concatenate and LoRAs from Power Lora Loader (rgthree),** and keeps LoRAs with non-Latin names.
 - **Prompt Reader now reads the prompt from JPG and WebP images,** including Civitai downloads and Save Image's own JPG and WebP files.
 - **Save Mp4 and Save Video: new "Add Civitai generation info" switch,** so Civitai shows the prompt and settings of your videos. Values from Dropdown Pixaroma are read too.
+- **Prompt Reader no longer shows the negative prompt as the prompt** when an image has none, and Civitai info keeps the space between joined texts.
 
 ### **October 5, 2026 · v1.4.197-v1.4.198**
 - **Text Overlay and Text Watermark no longer scramble pictures from Qwen Image 2.1 and Ming Image;** transparent pictures stay transparent, with the text on top.
