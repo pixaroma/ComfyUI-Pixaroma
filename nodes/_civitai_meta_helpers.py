@@ -4,8 +4,12 @@ NOTHING here imports ComfyUI, torch or PIL, so it unit-tests standalone.
 Harness: D:\\Claude Tests\\_civitai_meta_test.py
 
 The whole contract below was verified against Civitai's OWN open-source parser,
-not community write-ups. Sources (re-read these before changing any rule):
-  civitai/src/utils/metadata/automatic.metadata.ts        the A1111 parser
+not community write-ups. Since 2026-08-31 that parser is the npm package
+@civitai/generation-metadata (automatic1111Parser, hashesDetailExtractor,
+defaultParsers = A1111 first); civitai/src/utils/metadata/index.ts only wraps
+it. Harness that RUNS it on our output: D:\\Claude Tests\\_civitai_real_parser_test.py
+(run that before changing any rule). Historical sources the rules were first read from:
+  civitai/src/utils/metadata/automatic.metadata.ts        the A1111 parser (removed)
   civitai/src/utils/metadata/index.ts                     parser precedence
   civitai/packages/civitai-db-schema/prisma/programmability/get_image_resources.sql
                                                           how a hash becomes a resource
@@ -340,9 +344,9 @@ class HashCache:
 def _quote(value):
     """A1111's quoting rule (modules/infotext_utils.py::quote).
 
-    A value containing a comma, colon or newline is JSON-encoded. This is what
-    lets Civitai's parser find the end of a nested value like `Hashes`, so it
-    is not optional decoration.
+    A value containing a comma, colon or newline is JSON-encoded, so Civitai's
+    parser can find where it ends. NOT for `Hashes`: that one is a bare JSON
+    object (see build_parameters).
     """
     s = str(value)
     if "," not in s and "\n" not in s and ":" not in s:
@@ -410,9 +414,11 @@ def build_parameters(positive="", negative="", params=None, hashes=None,
     if hashes:
         clean = {k: v for k, v in hashes.items() if v}
         if clean:
-            # separators without spaces so the value stays compact; _quote then
-            # JSON-encodes it because it contains commas and colons.
-            pairs.append("Hashes: %s" % _quote(json.dumps(clean, separators=(",", ":"))))
+            # A BARE JSON object, never _quote()d: A1111 writes the dict itself.
+            # Civitai's reader brace-scans from the first "{" after ", Hashes: "
+            # and JSON.parses it; a quoted value hands it `{\"model\"...` and
+            # the throw drops EVERYTHING from the file (civitai-meta.md #14).
+            pairs.append("Hashes: %s" % json.dumps(clean, separators=(",", ":")))
 
     line = ", ".join(pairs)
     neg_block = "\nNegative prompt: %s" % neg if neg else ""
