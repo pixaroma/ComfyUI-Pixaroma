@@ -398,8 +398,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 6, 2026 · v1.4.199**
+### **October 6, 2026 · v1.4.199-v1.4.200**
 - **Save Image and Preview Image: Civitai shows your prompt, settings and model again** with "Add Civitai generation info" on. Save images again before uploading.
+- **Civitai info also reads prompts built with String Concatenate and LoRAs from Power Lora Loader (rgthree),** and keeps LoRAs with non-Latin names.
 
 ### **October 5, 2026 · v1.4.197-v1.4.198**
 - **Text Overlay and Text Watermark no longer scramble pictures from Qwen Image 2.1 and Ming Image;** transparent pictures stay transparent, with the text on top.
