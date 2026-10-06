@@ -259,3 +259,94 @@ def build_metadata(prompt, extra_pnginfo=None, unique_id=None, width=None,
         hashes=hashes,
         lora_specs=lora_specs or None,
     )
+
+
+def build_video_prompt(prompt, unique_id=None, width=None, height=None):
+    """A small ComfyUI API prompt for a VIDEO's `prompt` tag, or None.
+
+    Civitai reads a video ONLY through its `prompt` / `workflow` tags and its
+    ComfyUI parser (civitai-meta.md #16), and that parser chokes on a real graph:
+    it cannot see the text in our prompt nodes, takes a WIRED seed as 0, and drops
+    the whole record when Control Panel or Dropdown feed the sampler. So this
+    hands it a plain stand-in it reads in full: one loader, the LoRAs as core
+    LoraLoaders, two CLIPTextEncodes with the real text, an EmptyLatentImage at
+    the video's size and one KSampler with every value written in. The values are
+    the ones build_metadata writes for an image (same walk, same refusals); a
+    value the walk cannot know is left out, never guessed. Nothing is hashed:
+    Civitai's ComfyUI path matches no hashes, so it would only cost time.
+
+    The caller puts this in the `prompt` tag and leaves `workflow` alone, which
+    is what ComfyUI reopens a video from.
+    """
+    if not isinstance(prompt, dict) or not prompt:
+        return None
+    node_id = str(unique_id) if unique_id is not None else None
+    if node_id is None or node_id not in prompt:
+        return None
+    # The PICTURE's sampler: a soundtrack's own sampler on an `audio` wire can be
+    # nearer and would label the video with its values (walk.not_audio).
+    info = walk.describe(prompt, node_id, sampler_follow=walk.not_audio)
+    if info.get("steps") is None:
+        return None
+
+    graph = {}
+    model = clip = None
+    ckpt = info.get("checkpoint")
+    if ckpt:
+        if info.get("checkpoint_key") == "unet_name":
+            graph["1"] = {"class_type": "UNETLoader", "inputs": {"unet_name": ckpt}}
+        else:
+            graph["1"] = {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}}
+        model, clip = ["1", 0], ["1", 1]
+
+    # The same LoRAs, in the same order, collect_resources would record for an
+    # image: a file that is not there did not touch the picture, so it is left out.
+    seen = set()
+    loras = list(info.get("loras") or []) + pixaroma_lora_rows(prompt, info.get("pixaroma_lora_ids"))
+    next_id = 10
+    for name, strength in loras:
+        path = resolve_model_path(name, ("loras",))
+        if not path:
+            continue
+        key = os.path.normcase(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        inputs = {"lora_name": name, "strength_model": strength}
+        if model:
+            inputs["model"] = model
+        if clip:
+            inputs["clip"] = clip
+        graph[str(next_id)] = {"class_type": "LoraLoader", "inputs": inputs}
+        model, clip = [str(next_id), 0], [str(next_id), 1]
+        next_id += 1
+
+    sampler = {"steps": info.get("steps")}
+    for src, dst in (("seed", "seed"), ("cfg", "cfg"), ("sampler_name", "sampler_name"),
+                     ("scheduler", "scheduler"), ("denoise", "denoise")):
+        if info.get(src) is not None:
+            sampler[dst] = info[src]
+    if model:
+        sampler["model"] = model
+    for side, nid in (("positive", "2"), ("negative", "3")):
+        text = info.get(side)
+        if isinstance(text, str) and text.strip():
+            enc = {"text": text}
+            if clip:
+                enc["clip"] = clip
+            graph[nid] = {"class_type": "CLIPTextEncode", "inputs": enc}
+            sampler[side] = [nid, 0]
+    try:
+        w, h = int(width), int(height)
+    except (TypeError, ValueError):
+        w = h = 0
+    if w > 0 and h > 0:
+        graph["4"] = {"class_type": "EmptyLatentImage",
+                      "inputs": {"width": w, "height": h, "batch_size": 1}}
+        sampler["latent_image"] = ["4", 0]
+    graph["5"] = {"class_type": "KSampler", "inputs": sampler}
+    try:
+        # A bare NaN is not JSON a browser can parse; leave the tag alone instead.
+        return json.dumps(graph, allow_nan=False)
+    except (TypeError, ValueError):
+        return None

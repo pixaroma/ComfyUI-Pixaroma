@@ -92,10 +92,36 @@ def build_video_meta_json(prompt, extra_pnginfo):
         return None
 
 
-def build_video_meta_tags(prompt, extra_pnginfo):
+def civitai_video_prompt(flag, prompt, unique_id, width, height, label):
+    """The Civitai stand-in for a video's `prompt` tag when the "Add Civitai
+    generation info" switch is on, else None. Shared by Save Mp4 and Save Video.
+
+    `flag` is the switch as each node carries it (True, or Save Mp4's injected
+    "1" / "0"). Never raises: a failure prints and the video saves without it,
+    the same promise build_metadata gives the image savers. Imported lazily, as
+    the image savers do, so this module still loads without it.
+    """
+    if not (flag is True or str(flag or "").strip().lower() in ("1", "true", "yes", "on")):
+        return None
+    try:
+        from ._civitai_meta import build_video_prompt
+        return build_video_prompt(prompt, unique_id, width, height)
+    except Exception as e:
+        print(f"[Pixaroma] {label} - could not build the Civitai generation info "
+              f"({e}); saving the video without it.")
+        return None
+
+
+def build_video_meta_tags(prompt, extra_pnginfo, civitai_prompt=None):
     """The tag NAME -> JSON-string map to embed, matching what ComfyUI CORE's own
     SaveVideo writes: a separate `workflow` tag and a separate `prompt` tag, each
     holding its own JSON. Returns {} when there is nothing to embed.
+
+    `civitai_prompt` (already a JSON string, from _civitai_meta.build_video_prompt)
+    TAKES THE `prompt` TAG'S PLACE when given: it is the only tag Civitai's video
+    reader parses, and the real graph is unreadable to it (civitai-meta.md #17).
+    `workflow`, which ComfyUI reopens a video from, is never touched. Without it
+    the result is byte-identical to before.
 
     Shares `build_video_meta_json`'s `_json_safe` scrub - see that docstring for
     why (PROMPT carries a bare `NaN` that a browser's JSON.parse refuses).
@@ -111,10 +137,16 @@ def build_video_meta_tags(prompt, extra_pnginfo):
             tags["workflow"] = wf
     if prompt is not None:
         tags["prompt"] = prompt
-    if not tags:
+    civ = civitai_prompt if isinstance(civitai_prompt, str) and civitai_prompt else None
+    if civ is not None:
+        tags.pop("prompt", None)
+    if not tags and civ is None:
         return {}
     try:
-        return {k: json.dumps(_json_safe(v)) for k, v in tags.items()}
+        out = {k: json.dumps(_json_safe(v)) for k, v in tags.items()}
+        if civ is not None:
+            out["prompt"] = civ
+        return out
     except Exception:
         return {}
 

@@ -9,6 +9,7 @@ import folder_paths
 from ._video_encode_helpers import (
     audio_fade_args,
     build_video_meta_tags,
+    civitai_video_prompt,
     claim_counter_path,
     encode_frames,
     validate_rgb_frames,
@@ -89,6 +90,10 @@ class PixaromaSaveMp4:
         "back onto the canvas later and get the graph back, exactly like dragging "
         "a PNG. It is stored the same way ComfyUI's own video saving stores it, "
         "so ComfyUI reads it back on its own.\n\n"
+        "Turn on 'Add Civitai generation info' in the node's settings (right-click "
+        "the node) and Civitai shows the prompt, steps, CFG, seed, sampler and "
+        "model name of the videos you upload; your workflow stays in the video as "
+        "before.\n\n"
         "ffmpeg binary is auto-located: imageio-ffmpeg's bundled exe is "
         "preferred (no system install needed - 'pip install imageio-ffmpeg'), "
         "with ffmpeg on PATH as a fallback. yuv420p requires even width and "
@@ -148,7 +153,15 @@ class PixaromaSaveMp4:
             },
             # The workflow + prompt, embedded into the mp4 so dragging it back into
             # ComfyUI restores the graph (read by the drag-a-video loader).
-            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
+            # unique_id + CivitaiMeta (2026-10-06, civitai-meta.md #17): the
+            # "Add Civitai generation info" switch lives in the node's settings
+            # panel as a setting (Pixaroma.SaveMp4.CivitaiMeta), so - like
+            # Preview Image's - it reaches Python through a hidden input injected
+            # at graphToPrompt, and adds no widget (a widget here would shift the
+            # positional widgets_values, #19 / #20). unique_id tells the walker
+            # WHICH sampler fed this node.
+            "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO",
+                       "unique_id": "UNIQUE_ID", "CivitaiMeta": "STRING"},
         }
 
     RETURN_TYPES = ()
@@ -166,7 +179,7 @@ class PixaromaSaveMp4:
     def save(self, video_frames=None, fps=24.0, filename_prefix="Video",
              save_mode="save", trim_to_audio=False,
              audio_fade_ms=0, audio=None, video=None,
-             prompt=None, extra_pnginfo=None):
+             prompt=None, extra_pnginfo=None, unique_id=None, CivitaiMeta=""):
         crf = self._CRF
         pix_fmt = self._PIX_FMT
         fps_int = max(1, int(round(float(fps))))
@@ -308,7 +321,10 @@ class PixaromaSaveMp4:
         metadata_path = None
         disable_meta = bool(getattr(_comfy_cli_args, "disable_metadata", False))
         if not disable_meta:
-            meta_tags = build_video_meta_tags(prompt, extra_pnginfo)
+            meta_tags = build_video_meta_tags(
+                prompt, extra_pnginfo,
+                civitai_prompt=civitai_video_prompt(
+                    CivitaiMeta, prompt, unique_id, W, H, "Save Mp4"))
             if meta_tags:
                 try:
                     metadata_path = os.path.join(

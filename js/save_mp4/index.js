@@ -8,6 +8,7 @@ import { applyAdaptiveCanvasOnly,
 import { installFilenameTokenResolver } from "../shared/filename_tokens.mjs";
 import { buildVolumeControl, applyVideoVolume } from "../shared/video_volume.mjs";
 import { attachVideoSnapshot } from "../shared/video_snapshot.mjs";
+import { nodeSetting } from "../shared/node_settings.mjs";
 
 // Nodes 2.0 renders its own native .image-preview panel because this node
 // emits ui.images (for the Media Assets refresh, Preview Image Pattern #14).
@@ -724,5 +725,46 @@ api.addEventListener("executed", ({ detail }) => {
 });
 
 // The colour option: a right-click "Save Mp4 settings" entry, the gear in the
-// selection toolbar, and the shared colour panel behind both.
-registerNodeAccent("PixaromaSaveMp4", { title: "Save Mp4" });
+// selection toolbar, and the shared colour panel behind both. The Civitai switch
+// (civitai-meta.md #17) rides in the same panel as a setting, exactly like
+// Preview Image's: this node has no state blob, and a new widget would shift
+// its positional widgets_values (save-mp4.md #19 / #20).
+registerNodeAccent("PixaromaSaveMp4", {
+  title: "Save Mp4",
+  rows: [
+    { kind: "toggle", setting: "Pixaroma.SaveMp4.CivitaiMeta", defaultValue: false,
+      label: "Add Civitai generation info",
+      hint: "Civitai then shows the prompt, steps, seed and sampler of videos you upload. Your workflow stays inside the video as before" },
+  ],
+});
+
+// ── Civitai flag -> the hidden CivitaiMeta input ─────────────────────────────
+// A setting is not a widget, so Python cannot see it: inject it the way Preview
+// Image does (hidden input + graphToPrompt, Vue Compat #9). Read LIVE per call so
+// flipping the switch applies to the very next Run with no reload.
+function injectCivitaiFlag(result) {
+  const out = result?.output;
+  if (!out) return;
+  const on = !!nodeSetting("Pixaroma.SaveMp4.CivitaiMeta", false);
+  for (const id in out) {
+    const entry = out[id];
+    if (!entry || entry.class_type !== "PixaromaSaveMp4") continue;
+    if (!entry.inputs) entry.inputs = {};
+    entry.inputs.CivitaiMeta = on ? "1" : "0";
+  }
+}
+
+if (!app._pixSaveMp4CivitaiPatched) {
+  app._pixSaveMp4CivitaiPatched = true;
+  const _orig_fn = app.graphToPrompt;
+  const orig = (...a) => _orig_fn.apply(app, a);
+  app.graphToPrompt = async function (...args) {
+    const result = await orig(...args);
+    try {
+      injectCivitaiFlag(result);
+    } catch (e) {
+      console.warn("[Save Mp4] Civitai flag inject failed", e);
+    }
+    return result;
+  };
+}

@@ -39,6 +39,7 @@ from ._save_helpers import (
 from ._video_encode_helpers import (
     audio_fade_args,
     build_video_meta_tags,
+    civitai_video_prompt,
     claim_counter_path,
     encode_frames,
     validate_rgb_frames,
@@ -61,6 +62,9 @@ DEFAULT_STATE = {
     "trimToAudio": False,
     "audioFadeMs": 0,           # ms of fade-in on the sound; 0 = off (see audio_fade_args)
     "embedWorkflow": True,
+    # Write a plain stand-in graph Civitai's video reader understands into the
+    # `prompt` tag (civitai-meta.md #17). Off by default, like Save Image's.
+    "civitaiMeta": False,
     "saveOnRun": True,
     "dateStyle": "yyyy-MM-dd",  # JS-only (what the + Date chip inserts)
     "counterDigits": 3,         # %counter% zero-padding (001 = 3)
@@ -238,7 +242,8 @@ class PixaromaSaveVideo:
         "instead of banding, and the file is roughly half the size, but it needs a reasonably "
         "recent player. Open the settings with the gear on the node or by right-clicking it "
         "for quality, colour depth, date style, counter digits, trim to audio, workflow "
-        "embedding, and which buttons the node shows.\n\n"
+        "embedding, Civitai generation info (so Civitai shows the prompt, steps, seed and "
+        "sampler of videos you upload), and which buttons the node shows.\n\n"
         "The whole workflow is saved inside the mp4, so you can drag the video back onto "
         "the canvas later and get the graph back, exactly like dragging a PNG. It is "
         "stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it "
@@ -471,9 +476,18 @@ class PixaromaSaveVideo:
         # limit. The stale-preview strip matters here for the same reason it does
         # on Save Image: the workflow is frozen at QUEUE time, so the node's
         # memory of its last clip is the run BEFORE this one.
+        # "Add Civitai generation info" puts a plain stand-in graph in the `prompt`
+        # tag (civitai-meta.md #17) and works with "Save workflow" off too, the
+        # way Save Image's does; with it off this block is byte-identical to before.
         metadata_path = None
-        if embed and not _metadata_disabled():
-            meta_tags = build_video_meta_tags(prompt, _strip_stale_preview(extra_pnginfo))
+        if not _metadata_disabled():
+            civ = civitai_video_prompt(state.get("civitaiMeta", False), prompt,
+                                       unique_id, W, H, LABEL)
+            meta_tags = build_video_meta_tags(
+                prompt if embed else None,
+                _strip_stale_preview(extra_pnginfo) if embed else None,
+                civitai_prompt=civ,
+            ) if (embed or civ) else {}
             if meta_tags:
                 try:
                     metadata_path = os.path.join(

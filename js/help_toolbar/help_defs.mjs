@@ -1111,6 +1111,10 @@ const HELP = {
         body: "The full workflow is saved inside the mp4, the same way it is saved inside a PNG, so you can drag a saved mp4 back onto the canvas later and rebuild the whole graph. It is stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it back on its own. The frame width and height must be even numbers.",
       },
       {
+        heading: "Civitai generation info",
+        body: "Turn on `Add Civitai generation info` in the node's settings (right-click the node, or the gear) and Civitai shows the prompt, negative prompt, steps, CFG, seed, sampler and model name of the videos you upload. Without it Civitai often shows no prompt at all for a video, or nothing, because it cannot read most custom nodes.\n\nYour workflow stays inside the video exactly as before, so dragging it back onto the canvas still rebuilds the whole graph. The setting applies to every Save Mp4 node. Unlike an image, a video cannot link the model or LoRAs to their Civitai pages, because Civitai does not read model fingerprints from videos.",
+      },
+      {
         heading: "The buttons on the node",
         defs: [
           ["Play and Pause", "Starts or stops the preview. Clicking the picture itself does the same."],
@@ -1195,7 +1199,8 @@ const HELP = {
           ["Colour depth", "8 or 10 bit, for MP4 HQ only."],
           ["Trim to audio", "Ends the video exactly where the sound ends, for when the audio is the master. Off keeps every frame and the sound simply stops when it stops."],
           ["Audio fade-in", "Fades the sound in at the very start. AI video clips often begin with a click because the model starts the audio at full level in one step; about 120 ms removes it and is too short to hear as a fade. Leave it off when re-saving audio you do not want altered."],
-          ["Save workflow inside the video", "Writes the whole workflow into the mp4, so you can drag the video back onto the canvas later and get the graph back, exactly like dragging a PNG. It is stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it back on its own. Turn it off if you would rather the file carried nothing about how it was made."],
+          ["Save workflow inside the video", "Writes the whole workflow into the mp4, so you can drag the video back onto the canvas later and get the graph back, exactly like dragging a PNG. It is stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it back on its own. Turn it off if you would rather the file carried nothing about how it was made (and leave Add Civitai generation info off too)."],
+          ["Add Civitai generation info", "Civitai then shows the prompt, negative prompt, steps, CFG, seed, sampler and model name of the videos you upload. Without it Civitai often shows no prompt at all for a video, or nothing, because it cannot read most custom nodes. With Save workflow on, your workflow stays inside the video as before; with it off, dragging the video back onto the canvas gives a small basic graph with those settings instead of your workflow. Unlike an image, a video cannot link the model or LoRAs to their Civitai pages, because Civitai does not read model fingerprints from videos."],
           ["Date style, counter digits", "What the + Date chip inserts, and how many digits the counter uses."],
           ["Buttons on the node", "Hide the ones you never use. The format you are currently saving as always stays visible."],
         ],

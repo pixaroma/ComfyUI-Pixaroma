@@ -152,6 +152,29 @@ def _seed_value(state):
     return s
 
 
+# Dropdown Pixaroma: one value per OUTPUT, typed (text / int / float / bool), in a
+# hidden DropdownState. The user's own H3 workflows feed sampler_name, scheduler
+# AND steps from it, and with steps unknown the whole Civitai info was left out
+# (civitai-meta.md #17). Answered by the node's OWN `selected_values`, never a copy.
+_DROPDOWN_CLASS = "PixaromaDropdown"
+
+
+def _dropdown_value(prompt, node_id, slot):
+    """What Dropdown Pixaroma emits on output `slot` (its own selected_values), or None."""
+    raw = widget_value(prompt, node_id, "DropdownState")
+    dh = _pix_mod("_dropdown_helpers")
+    if dh is None or not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        idx = int(slot)
+        values = dh.selected_values(raw)
+    except Exception:
+        return None
+    if idx < 0 or idx >= len(values):
+        return None
+    return values[idx]
+
+
 def _from_state_blob(prompt, node_id, slot):
     """Value a Pixaroma state-blob node emits on `slot`, or None.
 
@@ -159,6 +182,8 @@ def _from_state_blob(prompt, node_id, slot):
     records what the sampler actually received.
     """
     ct = class_of(prompt, node_id)
+    if ct == _DROPDOWN_CLASS:
+        return _dropdown_value(prompt, node_id, slot)
     spec = _STATE_BLOB_NODES.get(ct)
     if not spec:
         return None
@@ -299,7 +324,7 @@ _INLINE_SAMPLERS = ("KSampler", "KSamplerAdvanced")
 _NOT_THE_SAMPLER = ("KSamplerSelect",)
 
 
-def find_sampler(prompt, save_node_id):
+def find_sampler(prompt, save_node_id, follow=None):
     """The sampler node that produced the image this save node received.
 
     Walks back from the save node through whatever sits between (VAEDecode,
@@ -307,12 +332,27 @@ def find_sampler(prompt, save_node_id):
     Picks the FIRST sampler found breadth-first, which is the nearest one
     upstream and therefore the one that made this image - the right answer in a
     multi-pass workflow, where a later refiner is nearer than the base pass.
+
+    `follow(class_type, input_name)` limits which inputs are walked; the video
+    savers pass not_audio so a sound sampler is never taken for the picture's.
     """
     def match(ct, _id):
         if ct in _NOT_THE_SAMPLER:
             return False
         return bool(_SAMPLER_RE.search(ct))
-    return walk_back(prompt, save_node_id, match)
+    return walk_back(prompt, save_node_id, match, follow=follow)
+
+
+def not_audio(_class_type, input_name):
+    """A follow rule for VIDEO saves: never walk an input named `audio`.
+
+    A soundtrack from its own sampler (ACE-Step music, MMAudio) sits on the
+    saver's `audio` input or a CreateVideo's, and is often NEARER than the
+    picture's sampler, so it was taken as the video's and its steps / CFG / seed /
+    prompt labelled the video - a real-looking wrong value (civitai-meta.md #10,
+    #17; review 2026-10-06). An audio wire never carries the picture.
+    """
+    return input_name != "audio"
 
 
 def read_sampler(prompt, sampler_id):
@@ -919,7 +959,7 @@ def read_prompts(prompt, sampler_id):
 
 # ------------------------------------------------------------------ top level
 
-def describe(prompt, save_node_id):
+def describe(prompt, save_node_id, sampler_follow=None):
     """Everything the Civitai metadata needs, as value-or-None.
 
     Returns a dict: sampler_id, class_type, steps, cfg, seed, denoise,
@@ -928,8 +968,10 @@ def describe(prompt, save_node_id):
 
     Nothing is defaulted. The caller drops every None key, which is exactly what
     A1111 does with an unset value, so the emitted string stays truthful.
+    `sampler_follow` only narrows the search for THE sampler (see find_sampler);
+    everything read from that sampler onward is unchanged.
     """
-    sampler_id = find_sampler(prompt, save_node_id)
+    sampler_id = find_sampler(prompt, save_node_id, follow=sampler_follow)
     info = read_sampler(prompt, sampler_id)
     pos, neg = read_prompts(prompt, sampler_id)
     ckpt_id, ckpt, ckpt_key = find_checkpoint(prompt, sampler_id if sampler_id else save_node_id)

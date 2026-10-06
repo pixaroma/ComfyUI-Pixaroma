@@ -20,6 +20,9 @@ export const DEFAULT_STATE = {
   // DEFAULT_STATE - the two must stay in lockstep.
   audioFadeMs: 0,
   embedWorkflow: true,
+  // also write a stand-in graph Civitai's video reader understands into the
+  // `prompt` tag (civitai-meta.md #17); MIRRORS nodes/node_save_video.py
+  civitaiMeta: false,
   saveOnRun: true,
   dateStyle: "yyyy-MM-dd", // what the + Date chip inserts (regional order)
   counterDigits: 3, // %counter% zero-padding (001 = 3)

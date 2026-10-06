@@ -299,6 +299,9 @@ export function openSettingsPanel(node, onChange) {
     "Writes the whole workflow into the mp4, so you can drag the video back onto the " +
     "canvas later and get the graph back, exactly like dragging a PNG. Stored the same " +
     "way ComfyUI's own video saving stores it, so ComfyUI reads it back on its own."));
+  body.appendChild(switchRow(node, "civitaiMeta", "Add Civitai generation info",
+    "Civitai then shows the prompt, steps, seed and sampler of videos you upload. " +
+    "With Save workflow on, your workflow stays inside the video as before."));
   body.appendChild(switchRow(node, "hideBarWhenFolded", "Hide the toolbar when folded",
     "When folded, also tuck away the format and Open/Download/Folder buttons."));
 
