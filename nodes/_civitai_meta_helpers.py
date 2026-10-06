@@ -456,12 +456,15 @@ def build_hashes(model_sha256="", loras=None):
         # happens to be called that would be silently dropped on their side.
         if tag.lower() == "vae":
             continue
+        if v in out.values():
+            continue   # the same bytes are already listed: one resource
         key = "LORA:%s" % tag
-        # The key is the BASENAME, so two LoRAs from different folders sharing a
-        # name would collide and one hash would vanish. Keep the first rather
-        # than overwrite: dropping a hash loses a resource link silently, which
-        # is the failure mode this whole module is built to avoid.
-        if key in out:
-            continue
+        # The key is the cleaned BASENAME, so two LoRAs from different folders
+        # sharing a name, or two non-Latin names (both clean to ""), collided and
+        # the second hash vanished (civitai-meta.md #15). Such a LoRA is keyed by
+        # its own hash instead: Civitai's resource query reads only the role
+        # before the ":" and matches on the hash value.
+        if not tag or key in out:
+            key = "LORA:%s" % v
         out[key] = v
     return out

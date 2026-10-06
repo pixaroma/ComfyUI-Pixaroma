@@ -416,16 +416,54 @@ def find_checkpoint(prompt, from_id):
 
 _LORA_CLASSES = ("LoraLoader", "LoraLoaderModelOnly")
 _PIXAROMA_LORA = "PixaromaLoraLoader"
+# rgthree's Power Lora Loader keeps each LoRA as a dict input `lora_N` =
+# {"on", "lora", "strength"[, "strengthTwo"]} (real graphToPrompt capture,
+# 2026-10-06), not as lora_name / strength_model widgets.
+_POWER_LORA_CLASS = "Power Lora Loader (rgthree)"
 # Civitai's own parser skips a LoRA whose strength is effectively zero; match
 # that so a disabled LoRA is not advertised as used.
 _ZERO = 0.001
 
 
+def _power_lora_rows(inputs):
+    """[(lora_filename, model_strength)] a Power Lora Loader (rgthree) applies.
+
+    Mirrors rgthree's RgthreePowerLoraLoader.load_loras: every input whose key
+    starts with LORA_ (any case) holding "on", "lora" and "strength", in the
+    node's own order, applied when "on". `strength` is the MODEL strength
+    (strengthTwo, when shown, is CLIP's); like LoraLoader above, a row whose
+    model strength is zero is left out. The file NAME is the exact list entry
+    its dropdown stores; collect_resources resolves it and skips a missing file.
+    """
+    rows = []
+    # rgthree applies nothing without a model (`if model is not None and lora is
+    # not None`), even when a wired clip passes through to an encoder.
+    if not isinstance(inputs, dict) or not is_link(inputs.get("model")):
+        return rows
+    for key, value in inputs.items():
+        if not (isinstance(key, str) and key.upper().startswith("LORA_")):
+            continue
+        if not isinstance(value, dict) or not all(k in value for k in ("on", "lora", "strength")):
+            continue
+        name = value.get("lora")
+        if not value.get("on") or not isinstance(name, str) or not name:
+            continue
+        try:
+            s = float(value.get("strength"))
+        except (TypeError, ValueError):
+            continue
+        if s != s or -_ZERO < s < _ZERO:
+            continue
+        rows.append((name, s))
+    return rows
+
+
 def collect_loras(prompt, from_id):
     """[(lora_filename, strength)] for every active LoRA feeding `from_id`.
 
-    Nearest-first. Skips strengths within +/-0.001 of zero, matching Civitai's
-    own parser. Pixaroma's LoRA Loader keeps its stack in a state blob rather
+    Nearest-first: core LoraLoader / LoraLoaderModelOnly and every row of a
+    Power Lora Loader (rgthree). Skips strengths within +/-0.001 of zero,
+    matching Civitai's own parser. Pixaroma's LoRA Loader keeps its stack in a state blob rather
     than widgets, so it is NOT read here: the caller passes those rows in
     separately (its own JS/py already knows them).
     """
@@ -459,6 +497,8 @@ def collect_loras(prompt, from_id):
                 # keys off the name; only the weight is lost, which is honest.
                 if isinstance(name, str) and name and s is not None and not (-_ZERO < s < _ZERO):
                     found.append((name, s))
+            elif depth and ct == _POWER_LORA_CLASS:
+                found.extend(_power_lora_rows((prompt.get(node_id) or {}).get("inputs")))
             node = prompt.get(node_id)
             if not isinstance(node, dict):
                 continue
@@ -558,6 +598,13 @@ _PIX_TEXT_SOURCES = frozenset({
     "PixaromaAIPrompt", "PixaromaVideoPrompt", "PixaromaMusicPrompt",
     "PixaromaPromptEach",
 })
+# Core text combiners answered the same way, with the core node's own formula.
+# Walking past StringConcatenate found nothing (string_a / string_b are not
+# _TEXT_KEYS) or, with a piece wired in, returned ONLY that piece - a partial
+# prompt that looks real (Discord report 2026-10-06, civitai-meta.md #15).
+# Core: comfy_extras/nodes_string.py StringConcatenate.execute ->
+# delimiter.join((string_a, string_b)).
+_CORE_TEXT_SOURCES = frozenset({"StringConcatenate"})
 # Switch Source is NOT a text source: it routes any type (often CONDITIONING) and
 # output R carries row R of the active side. read_text follows only that row when
 # it knows the slot it arrived on, and walks every input (the old behaviour) when
@@ -703,6 +750,24 @@ def _pix_source_text(prompt, node, slot, nesting):
     return None   # run-time text (AI / Video / Music Prompt) or Prompt Each
 
 
+def _core_source_text(prompt, node, nesting):
+    """The exact text a _CORE_TEXT_SOURCES node emits, or None when any piece of
+    it cannot be known (a partial prompt is a wrong prompt)."""
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict) or node.get("class_type") != "StringConcatenate":
+        return None
+    pieces = []
+    for key, default in (("string_a", None), ("string_b", None), ("delimiter", "")):
+        v = inputs.get(key, default)
+        if is_link(v):
+            v = _wired_text(prompt, v, nesting, key)
+        if not isinstance(v, str):
+            return None
+        pieces.append(v)
+    string_a, string_b, delimiter = pieces
+    return delimiter.join((string_a, string_b))
+
+
 def _sketch_prompt(prompt, link):
     """The prompt Sketch sent down `link`, or None when `link` does not come from
     a PixaromaSketch's prompt output or that prompt is empty.
@@ -783,6 +848,12 @@ def read_text(prompt, cond_id, avoid=(), max_depth=_MAX_DEPTH, _slot=None, _nest
             if ct in _PIX_TEXT_SOURCES:
                 if _is_text_input(via):
                     text = _pix_source_text(prompt, node, slot, _nesting)
+                    if isinstance(text, str) and text.strip():
+                        return text
+                continue
+            if ct in _CORE_TEXT_SOURCES:
+                if _is_text_input(via):
+                    text = _core_source_text(prompt, node, _nesting)
                     if isinstance(text, str) and text.strip():
                         return text
                 continue
