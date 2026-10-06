@@ -759,20 +759,25 @@ def _pix_prompt_parse_state(inputs: dict):
     return mine, order, sep
 
 
-def _pix_prompt_join(mine, other, order: str, sep: str) -> Optional[str]:
+def _pix_prompt_join(mine, other, order: str, sep: str, keep_edges=False) -> Optional[str]:
     """Combine a PixaromaPrompt's typed text with its wired text_in, exactly
     like nodes/node_prompt.py run(): nothing wired -> just mine; empty mine ->
     just other; else join in the chosen order with the chosen separator.
-    Returns the stripped result, or None when both are empty.
+    Returns the stripped result, or None when both are empty. `keep_edges`
+    returns the node's exact text instead (the Civitai walker joins it with
+    more pieces, where a trimmed edge glued two words together).
     """
     mine = mine if isinstance(mine, str) else ""
     other = other if isinstance(other, str) else ""
     if not other.strip():
-        return mine.strip() or None
-    if not mine.strip():
-        return other.strip() or None
-    combined = (other + sep + mine) if order == "wired" else (mine + sep + other)
-    return combined.strip() or None
+        out = mine
+    elif not mine.strip():
+        out = other
+    else:
+        out = (other + sep + mine) if order == "wired" else (mine + sep + other)
+    if not out.strip():
+        return None
+    return out if keep_edges else out.strip()
 
 
 _sketch_mod = None
@@ -1203,6 +1208,10 @@ def extract_positive_from_a1111(parameters: str) -> Optional[str]:
     if not isinstance(parameters, str) or not parameters.strip():
         return None
     text = parameters
+    # An EMPTY positive: the text opens with the negative (the JPG/WebP path hands it over
+    # stripped). Civitai shows no prompt there; never return the negative as the prompt.
+    if text.lstrip().startswith("Negative prompt:"):
+        return None
 
     neg_idx = text.find("\nNegative prompt:")
     if neg_idx > 0:

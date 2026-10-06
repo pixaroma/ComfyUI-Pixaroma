@@ -723,7 +723,7 @@ def _pix_source_text(prompt, node, slot, nesting):
             other = _wired_text(prompt, inputs["text_in"], nesting, "text_in")
             if other is None:
                 return None
-        return prh._pix_prompt_join(mine, other, order, sep)
+        return prh._pix_prompt_join(mine, other, order, sep, keep_edges=True)
     if ct in _TEXT_JOIN_FIELDS:
         tj = _pix_mod("node_text_join")
         if tj is None:
@@ -736,7 +736,11 @@ def _pix_source_text(prompt, node, slot, nesting):
                 if v is None:
                     return None
             pieces.append(v)   # _join applies the node's own _as_text
-        return tj._join(pieces, inputs.get("JoinState", "")).strip() or None
+        # The node's exact text, edge spaces kept: a joiner downstream (Prompt,
+        # String Concatenate) glued two words together when they were trimmed here.
+        # The final prompt is trimmed once, where it is written.
+        out = tj._join(pieces, inputs.get("JoinState", ""))
+        return out if out.strip() else None
     if ct == "PixaromaFindReplace":
         fr = _pix_mod("node_find_replace")
         if fr is None:
@@ -750,7 +754,7 @@ def _pix_source_text(prompt, node, slot, nesting):
             text = "" if text is None else str(text)
         state = fr.PixaromaFindReplace._parse_state(inputs.get("FindReplaceState", "{}"))
         result, _warnings = fr._apply_rules(text, state)
-        return result.strip() or None
+        return result if result.strip() else None   # exact, as Text Join above
     if ct == "PixaromaPauseText":
         # Mirrors node_pause_text.run, the same way Prompt Reader does: the box
         # text when the run continued with it or nothing is wired, else the wire.
@@ -765,7 +769,7 @@ def _pix_source_text(prompt, node, slot, nesting):
             box = st.get("text", "") if isinstance(st.get("text"), str) else ""
         wire = inputs.get("text")
         if box.strip() and (mode == "continue" or not is_link(wire)):
-            return box.strip()
+            return box   # exact, as Text Join above
         return _wired_text(prompt, wire, nesting, "text")
     if prh is None:
         return None
