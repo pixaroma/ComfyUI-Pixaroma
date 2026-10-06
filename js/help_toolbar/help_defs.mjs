@@ -811,16 +811,16 @@ const HELP = {
 
   "PixaromaPromptReader": {
     title: "Prompt Reader Pixaroma",
-    tagline: "Pull the positive prompt saved inside any ComfyUI or Automatic1111 PNG back out as usable text.",
+    tagline: "Pull the positive prompt saved inside a ComfyUI, Automatic1111 or Civitai image back out as usable text.",
     sections: [
       {
         heading: "What it does",
-        body: "Reads the metadata embedded in a PNG and extracts the positive prompt that generated it. Works with ComfyUI workflows (including chained text nodes, SDXL dual encoders, and switch/combine graphs) and with Automatic1111 / Forge images.\n\nThe readout updates the moment you pick a file, so you can read the prompt before running. If the image has no embedded prompt (a JPEG, a screenshot, or a PNG that lost its metadata), the readout explains why.",
+        body: "Reads the metadata embedded in an image (PNG, JPG or WebP) and extracts the positive prompt that generated it. Works with ComfyUI workflows (including chained text nodes, SDXL dual encoders, and switch/combine graphs), with Automatic1111 / Forge images, and with images made on Civitai.\n\nThe readout updates the moment you pick a file, so you can read the prompt before running. If the image has no embedded prompt (a screenshot, a photo, or a file whose metadata was removed), the readout explains why.",
       },
       {
         heading: "How to use",
         bullets: [
-          "Click `Upload Image` to pick a PNG, or drag one onto the node.",
+          "Click `Upload Image` to pick an image, or drag one onto the node.",
           "Or use the file dropdown to choose from images already in ComfyUI's input folder.",
           "The prompt appears in the text area immediately.",
           "Wire the `text` output into a CLIP Text Encode or any other text input to reuse the prompt.",
@@ -828,7 +828,7 @@ const HELP = {
       },
       {
         heading: "Follow a connected image",
-        body: "Wire an image's filename into the optional `filename` input (for example from Load Image Pixaroma's `filename` output) and the node reads that image's prompt automatically. While the wire is connected it ignores its own picker, and the readout follows the connected node live as you switch images.\n\nTo go back to picking manually, just upload, drop, or pick a file on the node - that takes over and disconnects the wire.\n\nOnly images that actually have a prompt baked in (a PNG made by ComfyUI / A1111 / Forge) can be read. A JPEG or plain photo carries no prompt.\n\nNote: the connected filename does not include the subfolder, so if you keep two images with the exact same name in different input subfolders, the run may read the wrong one. Give them distinct names to be safe (the live readout in the node always shows the correct one).",
+        body: "Wire an image's filename into the optional `filename` input (for example from Load Image Pixaroma's `filename` output) and the node reads that image's prompt automatically. While the wire is connected it ignores its own picker, and the readout follows the connected node live as you switch images.\n\nTo go back to picking manually, just upload, drop, or pick a file on the node - that takes over and disconnects the wire.\n\nOnly images that actually have a prompt baked in (made by ComfyUI, A1111, Forge or Civitai) can be read. A screenshot or plain photo carries no prompt.\n\nNote: the connected filename does not include the subfolder, so if you keep two images with the exact same name in different input subfolders, the run may read the wrong one. Give them distinct names to be safe (the live readout in the node always shows the correct one).",
       },
       {
         heading: "Inputs",
@@ -845,7 +845,7 @@ const HELP = {
       {
         heading: "The buttons on the node",
         defs: [
-          ["Upload Image", "Opens a file picker so you can choose a PNG and read the prompt saved inside it."],
+          ["Upload Image", "Opens a file picker so you can choose an image and read the prompt saved inside it."],
           ["The arrows", "Step to the previous or next uploaded image and read its prompt automatically."],
           ["The file name", "Click it to pick a different uploaded image from a list."],
           ["Copy", "Copies the prompt it found to your clipboard."],

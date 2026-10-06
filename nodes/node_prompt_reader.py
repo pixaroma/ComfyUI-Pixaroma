@@ -1,6 +1,7 @@
 """Prompt Reader Pixaroma - extract the positive prompt embedded in an image.
 
-Reads PNG tEXt chunks (ComfyUI workflow JSON or A1111 'parameters'), walks the
+Reads PNG tEXt chunks or a JPG / WebP's EXIF (ComfyUI workflow JSON or A1111
+'parameters'; _prompt_reader_helpers.read_png_text_chunks), walks the
 graph back from the sampler to the positive CLIP-text-encode node, and returns
 the underlying text. STRING output only - no IMAGE/MASK side. If the image
 has no embedded prompt, returns a short notice string explaining that, so
@@ -17,15 +18,16 @@ from ._prompt_reader_helpers import read_prompt_from_image, resolve_input_image_
 class PixaromaPromptReader:
     DESCRIPTION = (
         "Prompt Reader Pixaroma - load an image generated with ComfyUI "
-        "(or Automatic1111 / Forge) and read the positive prompt saved "
-        "inside its PNG metadata. No image preview, just the text. "
+        "(or Automatic1111 / Forge, or on Civitai) and read the positive "
+        "prompt saved inside its metadata (PNG, JPG or WebP). No image "
+        "preview, just the text. "
         "Outputs the prompt as STRING so you can wire it into a "
         "CLIPTextEncode or any other text input and re-use it. "
-        "Drag-drop a PNG onto the node, click Upload Image, or pick "
+        "Drag-drop an image onto the node, click Upload Image, or pick "
         "from the file combo. The readout updates the moment a file is "
         "selected, so you see the prompt before running the workflow. "
-        "If the image has no embedded prompt (JPG, screenshot, or a "
-        "PNG that lost its metadata), the readout shows a short "
+        "If the image has no embedded prompt (a screenshot, a photo, or "
+        "a file whose metadata was removed), the readout shows a short "
         "explanation and the STRING output carries the same explanation "
         "so downstream wiring does not break. Handles ComfyUI workflows "
         "with chained text nodes (ConditioningCombine, "
@@ -56,7 +58,7 @@ class PixaromaPromptReader:
             files = []
         return {
             "required": {
-                "image": (sorted(files), {"image_upload": True, "tooltip": "The image to read the prompt from. Upload, drag-drop, or pick a PNG made with ComfyUI / Automatic1111 / Forge so its embedded prompt can be recovered. The readout updates as soon as you pick a file."}),
+                "image": (sorted(files), {"image_upload": True, "tooltip": "The image to read the prompt from. Upload, drag-drop, or pick an image (PNG, JPG or WebP) made with ComfyUI / Automatic1111 / Forge or on Civitai so its embedded prompt can be recovered. The readout updates as soon as you pick a file."}),
             },
             "optional": {
                 # Wire-only (no widget). When connected it drives the read and

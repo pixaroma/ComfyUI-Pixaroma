@@ -271,21 +271,117 @@ _MAX_WALK_DEPTH = 24
 _MAX_CHASE_DEPTH = 5
 
 
-def read_png_text_chunks(file_path: str) -> dict:
-    """Return all tEXt/iTXt chunks from a PNG as {key: value} strings.
+def _decode_user_comment(raw) -> str:
+    """EXIF UserComment (0x9286) -> text. Mirrors Civitai's decodeUserComment
+    (@civitai/generation-metadata): an 8-byte charset header, then ASCII / UTF-8,
+    or UTF-16 by BOM, else by which byte of each pair holds the zeros. One addition:
+    a body with no zero bytes at all cannot be UTF-16 text, so it is read as UTF-8."""
+    if isinstance(raw, str):
+        return raw.replace("\x00", "")
+    if not isinstance(raw, (bytes, bytearray)) or len(raw) < 8:
+        return ""
+    head, body = bytes(raw[:8]), bytes(raw[8:])
+    try:
+        if head.startswith(b"ASCII"):
+            return body.decode("ascii", "replace").replace("\x00", "")
+        if head.startswith(b"UTF8"):
+            return body.decode("utf-8", "replace").replace("\x00", "")
+        if body[:2] == b"\xfe\xff":
+            return body[2:].decode("utf-16-be", "replace").replace("\x00", "")
+        if body[:2] == b"\xff\xfe":
+            return body[2:].decode("utf-16-le", "replace").replace("\x00", "")
+        if b"\x00" not in body:
+            return body.decode("utf-8", "replace")
+        sample = body[:1000]
+        even = sum(1 for i in range(0, len(sample) - 1, 2) if sample[i] == 0)
+        odd = sum(1 for i in range(0, len(sample) - 1, 2) if sample[i + 1] == 0)
+        enc = "utf-16-le" if odd > even else "utf-16-be"
+        return body[: len(body) - len(body) % 2].decode(enc, "replace").replace("\x00", "")
+    except Exception:
+        return ""
 
-    Empty dict for non-PNG / unreadable files - the caller treats that as
-    'no metadata found' and shows the placeholder message.
+
+def _exif_text_chunks(img) -> dict:
+    """The PNG-style keys ("prompt", "workflow", "parameters") a JPG / WebP keeps in
+    EXIF, which read_png_text_chunks never saw (prompt-reader.md #21):
+      - Make / Model / ImageDescription = "Prompt:{json}" / "Workflow:{json}" - what
+        ComfyUI, Save Image Pixaroma and Civitai (Model, lower case) write;
+      - UserComment = A1111 text (Civitai's own images, A1111, Save Image Pixaroma), or
+        a ComfyUI JSON: the API prompt itself, or {"prompt": ..., "workflow": ...}.
+    UserComment counts as A1111 text only with A1111's markers ("Steps: " - Civitai's
+    own detection gate - or "Negative prompt:"), so a camera's comment is never shown
+    as a prompt. Never raises."""
+    out = {}
+    try:
+        exif = img.getexif()
+    except Exception:
+        return out
+    try:
+        for tag in (0x010F, 0x0110, 0x010E):   # Make, Model, ImageDescription
+            v = exif.get(tag)
+            if isinstance(v, (bytes, bytearray)):
+                v = bytes(v).decode("utf-8", "replace")
+            if not isinstance(v, str):
+                continue
+            head, sep, body = v.rstrip("\x00").partition(":")
+            key = head.strip().lower()
+            if sep and key in ("prompt", "workflow") and body.strip() and key not in out:
+                out[key] = body
+    except Exception:
+        pass
+    try:
+        text = _decode_user_comment(exif.get_ifd(0x8769).get(0x9286))
+    except Exception:
+        text = ""
+    stripped = text.strip()
+    parsed = None
+    if stripped.startswith("{"):
+        try:
+            parsed = json.loads(stripped)
+        except Exception:
+            parsed = None   # not JSON: an A1111 prompt may itself start with "{"
+        if isinstance(parsed, dict) and parsed:
+            if "prompt" in parsed or "workflow" in parsed:
+                for k in ("prompt", "workflow"):
+                    v = parsed.get(k)
+                    if isinstance(v, (dict, list)):
+                        v = json.dumps(v)
+                    if isinstance(v, str) and v.strip():
+                        out.setdefault(k, v)
+            else:
+                # The API prompt itself. Civitai's own generator adds "extra" and
+                # "extraMetadata" beside the nodes (measured on a real on-site JPG),
+                # so keep the node-shaped entries rather than demand all of them.
+                nodes = {k: n for k, n in parsed.items() if isinstance(n, dict) and "class_type" in n}
+                if nodes:
+                    out.setdefault("prompt", json.dumps(nodes))
+    # A1111 text, including one whose prompt starts with "{" ({masterpiece},
+    # {red|blue}) and so failed the JSON try above. Never JSON that DID parse.
+    if parsed is None and stripped and ("Steps: " in stripped or "Negative prompt:" in stripped):
+        out.setdefault("parameters", stripped)
+    return out
+
+
+def read_png_text_chunks(file_path: str) -> dict:
+    """Return the image's text metadata as {key: value} strings.
+
+    PNG: every tEXt/iTXt chunk. JPG / WebP (and a PNG's eXIf): the same keys read
+    out of EXIF by _exif_text_chunks, only where no text chunk already set them.
+    Empty dict for unreadable files - the caller treats that as 'no metadata
+    found' and shows the placeholder message.
     """
     try:
         with Image.open(file_path) as img:
             info = dict(img.info or {})
+            exif_keys = _exif_text_chunks(img) if "exif" in info else {}
     except Exception:
         return {}
     out = {}
     for k, v in info.items():
         if isinstance(v, (str, bytes)):
             out[str(k)] = v.decode("utf-8", "replace") if isinstance(v, bytes) else v
+    for k, v in exif_keys.items():
+        out.setdefault(k, v)
     return out
 
 

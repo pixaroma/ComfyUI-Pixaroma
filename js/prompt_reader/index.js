@@ -1,4 +1,4 @@
-// Prompt Reader Pixaroma - read the positive prompt saved in a PNG's metadata.
+// Prompt Reader Pixaroma - read the positive prompt saved in an image's metadata (PNG, JPG, WebP).
 //
 // UX mirrors Load Image Pixaroma's input flow (upload button, file combo,
 // drag-drop) but renders a read-only text area instead of an image preview.
@@ -268,7 +268,7 @@ function buildRoot() {
 
   const hint = document.createElement("div");
   hint.className = "pix-pr-hint";
-  hint.textContent = "or drag a PNG here";
+  hint.textContent = "or drag an image here";
   hint.dataset.role = "hint";
   root.appendChild(hint);
 
@@ -643,7 +643,7 @@ function setWiredUI(node, wired, followed) {
       : "\u{1F517} Connected · the prompt loads when you run";
   } else {
     hint.classList.remove("pix-pr-wired-hint");
-    hint.textContent = "or drag a PNG here";
+    hint.textContent = "or drag an image here";
   }
 }
 

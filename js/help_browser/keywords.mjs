@@ -62,7 +62,7 @@ export const KEYWORDS = {
   PixaromaFindReplace: "replace swap substitute rules change words",
   PixaromaText: "string write field type note textbox weight emphasis attention ctrl up down",
   PixaromaShowText: "debug display print inspect see value preview text",
-  PixaromaPromptReader: "metadata png extract read recover steal prompt from image exif",
+  PixaromaPromptReader: "metadata png jpg jpeg webp civitai extract read recover steal prompt from image exif",
   PixaromaPauseText: "llm edit review gate check interrupt cache cached runs again re-runs ksampler restarts fixed seed slow",
   PixaromaTextJoinTwo: "concat combine merge glue join",
   PixaromaTextJoinThree: "concat combine merge glue join",
