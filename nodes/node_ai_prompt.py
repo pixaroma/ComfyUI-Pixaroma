@@ -137,6 +137,38 @@ def reset_generation_runtime():
             )
 
 
+def repeat_generation(owner):
+    """Record that `owner` (the node object) is about to generate, and return
+    True when it ALREADY generated text inside the execution that is running
+    now. Call it right BEFORE each `clip.generate`; a True means
+    `reset_generation_runtime()` must run first.
+
+    A node's FUNCTION can run many times inside ONE execution: ComfyUI calls it
+    once per item when an input is a LIST (Load Images from Folder, Prompt
+    Each, Prompt Multi in List mode), all before its per-node cleanup runs. So
+    the second picture of a folder generated against the first one's live
+    state and ComfyUI 0.37+ aborted (core issue #16441), exactly the crash
+    music-prompt.md #17 describes for two passes in one call.
+
+    "This execution" is core's own (prompt_id, node_id) from
+    comfy_execution.utils.get_executing_context(), the context it sets around
+    every call of a list. A new Run is a new prompt_id, so it never pays for a
+    reset it does not need. On a ComfyUI without that API there is no Aimdo
+    either (both arrived long before 0.37), so False is safe there.
+    """
+    try:
+        from comfy_execution.utils import get_executing_context
+        ctx = get_executing_context()
+    except Exception:
+        ctx = None
+    if ctx is None:
+        return False
+    key = (ctx.prompt_id, ctx.node_id)
+    seen = getattr(owner, "_pix_generated_in", None) == key
+    owner._pix_generated_in = key
+    return seen
+
+
 _NEEDED = (
     "  Put a language model in your ComfyUI/models/text_encoders folder and\n"
     "  pick it from the gear on the node. For anything that has to SEE a\n"
@@ -488,6 +520,12 @@ class PixaromaAIPrompt:
                 audio=aud,
             )
 
+        # A LIST input (a folder of pictures, Prompt Each) runs this function
+        # once per item inside ONE execution, so the second item would generate
+        # against the first one's live state and ComfyUI 0.37+ would abort.
+        # One generation per execution needs no reset (ai-prompt.md #25, #31).
+        if repeat_generation(self):
+            reset_generation_runtime()
         try:
             generated_ids = clip.generate(
                 tokens,

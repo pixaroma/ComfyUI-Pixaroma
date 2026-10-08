@@ -39,7 +39,7 @@ from ._music_prompt_helpers import (
 # The SHARED loader and the SHARED one-entry cache. Importing rather than
 # copying is the one architectural rule of this node: these took twenty-odd
 # documented fixes on the sibling and a second copy would drift.
-from .node_ai_prompt import _load_clip, _release_clip, reset_generation_runtime
+from .node_ai_prompt import _load_clip, _release_clip, repeat_generation, reset_generation_runtime
 
 _NEEDED = (
     "  Put a language model in your ComfyUI/models/text_encoders folder and\n"
@@ -141,7 +141,12 @@ class PixaromaMusicPrompt:
         # generation aborts the whole ComfyUI process on 0.37.0 - see
         # reset_generation_runtime(). Counted rather than hard-coded to "before
         # the lyrics" so a third pass cannot be added without the reset.
-        if self._passes:
+        # repeat_generation covers a LIST input too: the idea list runs run()
+        # once per item inside the SAME execution, and run() zeroes _passes, so
+        # the counter alone missed the second idea's first pass (music-prompt.md
+        # #17b). Called first so it records every generation.
+        repeat = repeat_generation(self)
+        if repeat or self._passes:
             reset_generation_runtime()
         self._passes += 1
 
