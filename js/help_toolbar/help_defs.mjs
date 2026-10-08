@@ -869,7 +869,7 @@ const HELP = {
         heading: "Good to know",
         bullets: [
           "It works on a plain batch too, for example the 4 pictures of one KSampler.",
-          "Pictures of different shapes keep their shape inside their cell.",
+          "The cells take the shape of the pictures: wide pictures get wide cells, tall pictures tall ones, so there is no empty band around them. A mix of wide and tall gets square cells, and every picture keeps its shape.",
           "Very big grids are scaled down to 8192 pixels on the long side, and up to 1024 pictures are used.",
           "Do not put it after a gate that holds pictures back (Text Match's if_match): ComfyUI then skips the whole grid. Wire it to the pictures BEFORE the gate.",
         ],

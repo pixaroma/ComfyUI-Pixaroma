@@ -107,6 +107,19 @@ def _label(names, item, frame, frames_in_item, show):
     return f"{name} ({frame + 1})" if frames_in_item > 1 else name
 
 
+def _box(dims, cell):
+    """The cell takes the SHAPE of the pictures: its long side is `cell`, its other side
+    the widest / tallest any picture needs at that size. A square cell left a wide empty
+    band above and below every landscape picture (a storyboard, LOOKED at 2026-10-08);
+    a mixed set (landscape + portrait) still gets a square cell, as before."""
+    bw = bh = 0
+    for w, h in dims:
+        if w > 0 and h > 0:
+            s = cell / max(w, h)
+            bw, bh = max(bw, max(1, round(w * s))), max(bh, max(1, round(h * s)))
+    return (bw or cell), (bh or cell)
+
+
 def auto_columns(n, cell_tall=1):
     """Columns 0 = this. The grid closest to a slightly wide picture (6:5), with
     few empty cells.
@@ -134,25 +147,28 @@ def build_grid(after, before=None, names=None, columns=0, cell=384, gap=8, backg
     pre = _frames(before) if before else []
     n = len(pics)
     pair = bool(pre)
-    cols = int(columns) if int(columns or 0) > 0 else auto_columns(n, 2 if pair else 1)
-    cols = max(1, min(cols, n))
-    rows = math.ceil(n / cols)
+    dims = [(int(f.shape[1]), int(f.shape[0])) for (_, _, _, f) in pics + pre]
     cell = max(32, int(cell))
     gap = max(0, int(gap))
+    bw, bh = _box(dims, cell)
+    cols = int(columns) if int(columns or 0) > 0 else auto_columns(n, (bh / bw) * (2 if pair else 1))
+    cols = max(1, min(cols, n))
+    rows = math.ceil(n / cols)
 
     def size_for(c):
+        bw, bh = _box(dims, c)
         fs = max(11, c // 16)
         label_h = int(fs * 1.7) if show_names else 0
         title_h = int(fs * 2.6) if title else 0
-        cell_h = c * (2 if pair else 1) + (gap if pair else 0) + label_h
-        w = cols * c + (cols + 1) * gap
+        cell_h = bh * (2 if pair else 1) + (gap if pair else 0) + label_h
+        w = cols * bw + (cols + 1) * gap
         h = title_h + rows * cell_h + (rows + 1) * gap
-        return fs, label_h, title_h, cell_h, w, h
+        return fs, label_h, title_h, cell_h, w, h, bw, bh
 
-    fs, label_h, title_h, cell_h, W, H = size_for(cell)
+    fs, label_h, title_h, cell_h, W, H, bw, bh = size_for(cell)
     if max(W, H) > MAX_SIDE:
         cell = max(32, int(cell * MAX_SIDE / max(W, H)) - 1)
-        fs, label_h, title_h, cell_h, W, H = size_for(cell)
+        fs, label_h, title_h, cell_h, W, H, bw, bh = size_for(cell)
 
     sheet = Image.new("RGB", (W, H), bg)
     draw = ImageDraw.Draw(sheet)
@@ -164,24 +180,24 @@ def build_grid(after, before=None, names=None, columns=0, cell=384, gap=8, backg
 
     def paste(img, x, y):
         im = img.copy()
-        im.thumbnail((cell, cell), Image.LANCZOS)
-        sheet.paste(im, (x + (cell - im.width) // 2, y + (cell - im.height) // 2))
+        im.thumbnail((bw, bh), Image.LANCZOS)
+        sheet.paste(im, (x + (bw - im.width) // 2, y + (bh - im.height) // 2))
 
     for idx, (item, k, nk, frame) in enumerate(pics):
         r, c = divmod(idx, cols)
-        x = gap + c * (cell + gap)
+        x = gap + c * (bw + gap)
         y = title_h + gap + r * (cell_h + gap)
         if pair:
             if idx < len(pre):
                 paste(_to_pil(pre[idx][3], bg), x, y)
-            paste(_to_pil(frame, bg), x, y + cell + gap)
+            paste(_to_pil(frame, bg), x, y + bh + gap)
         else:
             paste(_to_pil(frame, bg), x, y)
         text = _label(names, item, k, nk, show_names)
         if text:
-            t = _fit_text(draw, text, font, cell)
+            t = _fit_text(draw, text, font, bw)
             tw = draw.textlength(t, font=font)
-            draw.text((x + (cell - tw) / 2, y + cell_h - label_h + (label_h - fs) / 2 - 1), t, font=font, fill=fg)
+            draw.text((x + (bw - tw) / 2, y + cell_h - label_h + (label_h - fs) / 2 - 1), t, font=font, fill=fg)
     return sheet
 
 
