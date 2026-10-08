@@ -147,7 +147,8 @@ def build_grid(after, before=None, names=None, columns=0, cell=384, gap=8, backg
     pre = _frames(before) if before else []
     n = len(pics)
     pair = bool(pre)
-    dims = [(int(f.shape[1]), int(f.shape[0])) for (_, _, _, f) in pics + pre]
+    # only pictures that are DRAWN shape the cell (extra before pictures beyond the results never are)
+    dims = [(int(f.shape[1]), int(f.shape[0])) for (_, _, _, f) in pics + pre[:n]]
     cell = max(32, int(cell))
     gap = max(0, int(gap))
     bw, bh = _box(dims, cell)
