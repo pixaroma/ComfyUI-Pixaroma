@@ -107,6 +107,24 @@ def _label(names, item, frame, frames_in_item, show):
     return f"{name} ({frame + 1})" if frames_in_item > 1 else name
 
 
+def auto_columns(n, cell_tall=1):
+    """Columns 0 = this. The grid closest to a slightly wide picture (6:5), with
+    few empty cells.
+
+    A plain ceil(sqrt) left 4 before/after pairs as 3 + 1 (one lonely pair on a
+    second row, LOOKED at 2026-10-08); scoring the shape and the empty cells gives
+    4 in a row there, 3 x 2 for 6 pairs, 2 x 2 for 4 singles, 3 x 3 for 9, 7 x 6
+    for 40. `cell_tall` = cell height / width (2 for a before/after pair)."""
+    best, best_score = 1, None
+    for c in range(1, n + 1):
+        rows = math.ceil(n / c)
+        aspect = c / (rows * cell_tall)
+        score = abs(math.log(aspect / 1.2)) + 1.0 * (rows * c - n) / n
+        if best_score is None or score < best_score - 1e-9:
+            best, best_score = c, score
+    return best
+
+
 def build_grid(after, before=None, names=None, columns=0, cell=384, gap=8, background="dark", show_names=True, title=""):
     """Pure (tensors in, PIL out) so the harness can call it without ComfyUI's executor."""
     bg, fg = BACKGROUNDS.get(background, BACKGROUNDS["dark"])
@@ -116,7 +134,7 @@ def build_grid(after, before=None, names=None, columns=0, cell=384, gap=8, backg
     pre = _frames(before) if before else []
     n = len(pics)
     pair = bool(pre)
-    cols = int(columns) if int(columns or 0) > 0 else max(1, math.ceil(math.sqrt(n * (2 if pair else 1))))
+    cols = int(columns) if int(columns or 0) > 0 else auto_columns(n, 2 if pair else 1)
     cols = max(1, min(cols, n))
     rows = math.ceil(n / cols)
     cell = max(32, int(cell))

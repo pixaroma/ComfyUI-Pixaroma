@@ -50,29 +50,41 @@ def _done_folder(state):
     return base, None
 
 
-def _done_keys(done, exclude):
-    """Match keys of every file under `done` (its subfolders too, for Keep folder
-    structure), skipping the paths in `exclude` - the selected pictures, so a done
-    folder that IS the picture folder (captions saved next to the pictures) does
-    not count each picture as its own result. Keys are the clean-up Save Image and
-    Save Text apply to a wired name, case-insensitive, by basename AND by the
-    relative path."""
+def _done_keys(done, exclude, deep=False):
+    """Match keys of the files that count as results in `done`, skipping the paths
+    in `exclude` - the selected pictures, so a done folder that IS the picture
+    folder (captions saved next to the pictures) does not count each picture as its
+    own result. Keys are the clean-up Save Image and Save Text apply to a wired
+    name, case-insensitive.
+
+    Only the files directly in `done` count, unless `deep` (Include subfolders +
+    Keep folder structure: the results mirror the tree, so "sub/cat" is looked for
+    in done/sub). A walk of everything underneath made an unrelated
+    output/old_project/01.png mark a picture "01" as done (review round 1,
+    reproduced) and walked the whole output tree when the field was empty."""
     keys = set()
     seen = 0
-    for root, _dirs, files in os.walk(done):
+    walker = os.walk(done) if deep else [(done, None, [n for n in _safe_listdir(done)])]
+    for root, _dirs, files in walker:
         for n in files:
             seen += 1
             if seen > _DONE_SCAN_MAX:
                 return keys
             full = os.path.join(root, n)
-            if os.path.normcase(os.path.realpath(full)) in exclude:
+            if not deep and not os.path.isfile(full):
                 continue
-            stem = os.path.splitext(n)[0]
-            keys.add(_match_key(stem))
+            if exclude and os.path.normcase(os.path.realpath(full)) in exclude:
+                continue
             rel = os.path.splitext(os.path.relpath(full, done))[0].replace("\\", "/")
-            if "/" in rel:
-                keys.add("/".join(_match_key(p) for p in rel.split("/")))
+            keys.add("/".join(_match_key(p) for p in rel.split("/")))
     return keys
+
+
+def _safe_listdir(path):
+    try:
+        return os.listdir(path)
+    except OSError:
+        return []
 
 
 def _name_key(name):
@@ -331,7 +343,7 @@ class PixaromaLoadImagesFolder:
                 exclude = set()
                 if _is_under(real_folder, done_dir):
                     exclude = _selected_realpaths(folder, real_folder, selected)
-                done_keys = _done_keys(done_dir, exclude)
+                done_keys = _done_keys(done_dir, exclude, deep=recursive and keep_folders)
         for rel in selected:
             if not isinstance(rel, str) or not rel:
                 continue  # malformed selection entry (e.g. null/number in state)
@@ -437,7 +449,8 @@ class PixaromaLoadImagesFolder:
             elif done_dir:
                 exclude = _selected_realpaths(folder, real_folder, state.get("selected", []) or []) \
                     if _is_under(real_folder, done_dir) else set()
-                parts.append("done:" + "/".join(sorted(_done_keys(done_dir, exclude))))
+                deep = bool(state.get("recursive")) and bool(state.get("keepFolders"))
+                parts.append("done:" + "|".join(sorted(_done_keys(done_dir, exclude, deep=deep))))
             else:
                 parts.append("done:none")
         return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()

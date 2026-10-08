@@ -158,7 +158,14 @@ export function openCaptionReview(node, folder) {
     return true;
   }
   function chipFor(it) {
-    if (it.read_only) return `<span class="pix-cr-chip" title="${esc(it.too_big ? "This caption file is too big to edit here. Open the .txt file itself." : "This name has characters a saved file name cannot keep (such as a _ at the start), so it would be saved under another name. Rename the picture, or edit its .txt file directly.")}">read-only</span>`;
+    if (it.read_only) {
+      const why = it.too_big
+        ? "This caption file is too big to edit here. Open the .txt file itself."
+        : it.same_name
+          ? "Another picture in this folder has the same name (like cat.png and cat.jpg), so both would share one caption file. Rename one of them."
+          : "This name has characters a saved file name cannot keep (such as a _ at the start), so it would be saved under another name. Rename the picture, or edit its .txt file directly.";
+      return `<span class="pix-cr-chip" title="${esc(why)}">read-only</span>`;
+    }
     if (it.value !== it.caption) return `<span class="pix-cr-chip chg">changed</span>`;
     if (!it.has_caption) return `<span class="pix-cr-chip miss">no caption</span>`;
     return `<span class="pix-cr-chip">${esc(it.caption_file)}</span>`;
@@ -222,8 +229,17 @@ export function openCaptionReview(node, folder) {
     render();
   }
 
-  async function saveAll() {
-    if (saving) return true;
+  // ONE save at a time, and a second caller gets the RUNNING save's promise, not
+  // an early "done": "Save and close" pressed while Ctrl+S was still writing
+  // closed the window after the first file and lost the rest (review round 1,
+  // reproduced: 1 of 3 written). Edits made during a save are picked up by the
+  // caller asking again (see the ask bar's Save and close).
+  let savingP = null;
+  function saveAll() {
+    if (!savingP) savingP = saveOnce().finally(() => { savingP = null; });
+    return savingP;
+  }
+  async function saveOnce() {
     const todo = changedItems();
     if (!todo.length) return true;
     saving = true;
@@ -303,7 +319,10 @@ export function openCaptionReview(node, folder) {
   q('[data-act="close"]').addEventListener("click", () => close(false));
   ask.querySelector('[data-ask="save"]').addEventListener("click", async () => {
     ask.classList.remove("show");
-    if (await saveAll()) close(true);
+    let ok = await saveAll();                       // joins a save already running
+    if (ok && changedItems().length) ok = await saveAll();  // edits made while it ran
+    if (!ov.isConnected) return;
+    if (ok && !changedItems().length) close(true);
   });
   ask.querySelector('[data-ask="discard"]').addEventListener("click", () => close(true));
   ask.querySelector('[data-ask="stay"]').addEventListener("click", () => ask.classList.remove("show"));

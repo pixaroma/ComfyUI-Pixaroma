@@ -2137,6 +2137,7 @@ def _cr_review_items(real):
     txts = _tfh_list_txt(real)
     exact, clean = _tfh_caption_index(txts)
     used = set()
+    taken = set()     # caption names already handed to a card (lower case: one file on Windows)
     items = []
     for f in images:
         stem = os.path.splitext(f["name"])[0]
@@ -2149,12 +2150,18 @@ def _cr_review_items(real):
         # The card may be saved only under the caption's OWN name: the write
         # route cleans names, and a cleaned name would be a SECOND file.
         save_stem = cap_file[:-4] if cap_file else stem
+        # Two pictures that would write the SAME caption file (a.png + a.jpg, or
+        # names that differ only in case): only the first card may save it, or
+        # the second write silently replaces the first (review round 1, reproduced).
+        dup = save_stem.lower() in taken
+        taken.add(save_stem.lower())
         items.append({
             "file": f["file"], "name": f["name"], "stem": stem, "mtime": f["mtime"],
             "caption": caption, "has_caption": bool(cap_path), "caption_file": cap_file,
             "save_stem": save_stem,
-            "read_only": (not ok) or _tfh_save_name_changes(save_stem),
+            "read_only": (not ok) or dup or _tfh_save_name_changes(save_stem),
             "too_big": not ok,
+            "same_name": dup,
         })
     orphans = sum(1 for _s, p in txts if p not in used)
     return items, truncated, orphans
