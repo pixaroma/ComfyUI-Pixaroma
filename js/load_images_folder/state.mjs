@@ -14,6 +14,12 @@ export const DEFAULT_STATE = {
   // keep "sub/cat" in the filename output instead of flattening it to
   // "sub_cat", so Save Image Pixaroma can rebuild the same folder tree
   keepFolders: false,
+  // "Skip pictures already done": leave out every picture whose result (a file
+  // named like its filename output, any extension) is already in doneFolder.
+  // doneFolder: empty = ComfyUI output, a name = a folder inside output, a full
+  // path = an approved folder (Save Image / Save Text's folder rule).
+  skipDone: false,
+  doneFolder: "",
   sort: "name", // "name" | "date"
   sort_dir: "asc", // "asc" | "desc"
   selected: [], // file paths relative to folder, in display order

@@ -809,6 +809,134 @@ const HELP = {
     footer: "Useful for checking what a text node produces, or confirming an image's size before a sampler.",
   },
 
+  "PixaromaTextMatch": {
+    title: "Text Match Pixaroma",
+    tagline: "Does this text contain one of your words? Get a yes or no, and let things through only on a match.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Checks a text for the words you type and turns the answer into something a workflow can use: `match` (yes or no), `index` (which word matched, 1 for the first) and `word` (the word itself).\n\nWire anything into `value` (a picture, a prompt, a latent) and two gates appear: `if_match` lets it through only when the text matches, `if_no_match` only when it does not. Whatever comes after a closed gate simply does not run, with no error. With nothing in `value`, the gates pass the text itself.",
+      },
+      {
+        heading: "Filter a whole folder with an AI",
+        bullets: [
+          "Load Images from Folder sends each picture to AI Prompt Pixaroma with a vision model, and a formula like: Is the face sharp and in focus? Answer only yes or no.",
+          "Wire the AI's `text` into Text Match and keep the word `yes`.",
+          "Wire the picture into `value` and `if_match` into Save Image Pixaroma: only the pictures the AI said yes to are saved. Use `if_no_match` to collect the others.",
+        ],
+      },
+      {
+        heading: "Settings",
+        defs: [
+          ["words", "The words or phrases to look for, one per line or separated by commas."],
+          ["mode", "`contains any word` (the default), `contains all words`, `is exactly one of them` (Yes. and \"yes\" count as yes) or `starts with one of them`."],
+          ["ignore_case", "On: Yes, YES and yes are the same."],
+          ["whole_words", "On: cat does not match category. Off: a word may be part of a longer one."],
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["match", "True or False."],
+          ["index", "The number of the word that matched, 0 when none did. Handy to pick a branch by number."],
+          ["word", "The word that matched."],
+          ["if_match", "The value (or the text) when it matches; nothing runs after it otherwise."],
+          ["if_no_match", "The value (or the text) when it does not match."],
+        ],
+      },
+    ],
+    footer: "The words are plain text, never a code pattern, so any symbol you type is matched as it is.",
+  },
+
+  "PixaromaImageGrid": {
+    title: "Image Grid Pixaroma",
+    tagline: "Every picture of a Run in one grid image, with each file name under its picture.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "When Load Images from Folder, Prompt Each or a Loop sends many pictures through a workflow, a preview only shows the last one. Image Grid collects ALL of them into one picture, laid out in a grid, so you can see the whole Run at once, share it, or compare.\n\nThe grid shows on the node and comes out of the `grid` output. Wire it into Save Image Pixaroma to keep it.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Wire the results into `images`.",
+          "Wire Load Images from Folder's `filename` into `names` to write each file name under its picture. Without it the pictures are numbered.",
+          "Wire the original pictures into `before` for a before and after grid: each original sits above its result.",
+          "`columns` 0 picks a near-square grid by itself. `cell_size` is the size of each picture, `gap` the space between them, and `title` writes a line across the top.",
+        ],
+      },
+      {
+        heading: "Good to know",
+        bullets: [
+          "It works on a plain batch too, for example the 4 pictures of one KSampler.",
+          "Pictures of different shapes keep their shape inside their cell.",
+          "Very big grids are scaled down to 8192 pixels on the long side, and up to 1024 pictures are used.",
+          "Do not put it after a gate that holds pictures back (Text Match's if_match): ComfyUI then skips the whole grid. Wire it to the pictures BEFORE the gate.",
+        ],
+      },
+    ],
+    footer: "Perfect for a contact sheet of a folder Run, a before and after for a tutorial, or a quick look at 100 prompts.",
+  },
+
+  "PixaromaLoadTextsFolder": {
+    title: "Load Texts from Folder Pixaroma",
+    tagline: "Read the .txt files of a folder and send them through the workflow one by one.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "The text version of Load Images from Folder: it reads every .txt file in a folder and the workflow runs once per text. Use it for a folder of prompts, or for the captions Save Text writes with One file per entry.\n\nWire Load Images from Folder's `filename` into `names` and it gives the text that belongs to EACH picture instead, in the pictures' order: 01_Cat.png gets 01_Cat.txt. A picture with no text file gets an empty text, so pictures and texts always stay together.",
+      },
+      {
+        heading: "The folder",
+        bullets: [
+          "Empty: ComfyUI's output folder.",
+          "A name like Training Set: a folder inside output.",
+          "A full path: any folder you approved. Click `Browse folder` and pick it once in the system dialog to approve it.",
+        ],
+      },
+      {
+        heading: "Outputs",
+        defs: [
+          ["text", "Each text in turn."],
+          ["filename", "Each file name without .txt, or the wired picture name."],
+          ["index", "Which text this is, counting from 1."],
+          ["total", "How many texts this Run sends."],
+        ],
+      },
+    ],
+    footer: "Fix a few captions by hand (Caption Review Pixaroma makes that easy), then Run again with them. Files over 1 MB are skipped.",
+  },
+
+  "PixaromaCaptionReview": {
+    title: "Caption Review Pixaroma",
+    tagline: "Every picture of a folder with its caption under it: read and fix a training set in one window.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "A training set is a folder of pictures with a .txt caption for each one (01_Cat.png and 01_Cat.txt). Caption Review opens them all in one window, the picture above its caption, so you can read what the AI wrote and fix it right there. It is a tool on the canvas: it never runs and needs no wires.",
+      },
+      {
+        heading: "How to use",
+        bullets: [
+          "Type the folder or click `Browse folder`. Empty means ComfyUI's output folder; a name like Training Set means a folder inside output.",
+          "Click `Review captions`. Each picture shows its caption, editable. A picture with no caption yet says so: type one to create it.",
+          "Changed captions get an orange frame. Click `Save changes` (or press Ctrl+S) to write them to their .txt files.",
+          "Type in `Find a word` to show only the captions with that word, or use `Only without a caption` and `Only changed`.",
+          "Close (or Esc) asks first when something is not saved.",
+        ],
+      },
+      {
+        heading: "Good to know",
+        bullets: [
+          "A caption is always saved to the .txt file with the picture's own name. A picture whose name has characters a saved file name cannot keep (such as a _ at the start) is shown read-only: rename it, or edit its .txt file directly.",
+          "Ctrl+Z inside a caption undoes your typing, not the workflow behind the window.",
+          "Up to 2000 pictures are shown.",
+        ],
+      },
+    ],
+    footer: "Pairs with Save Text's One file per entry (an AI writes the captions) and Load Texts from Folder (Run again with your fixed captions).",
+  },
+
   "PixaromaPromptReader": {
     title: "Prompt Reader Pixaroma",
     tagline: "Pull the positive prompt saved inside a ComfyUI, Automatic1111 or Civitai image back out as usable text.",
@@ -1009,6 +1137,10 @@ const HELP = {
           "`Keep folder structure in the name`, next to it, hands over the real path (portraits/ana) instead. Switch on `Keep folders from the wired name` in Save Image Pixaroma's settings as well and your whole folder tree is rebuilt in the save folder, so processing a folder of folders gives you back the same arrangement.",
           "Click Run once and leave the batch count at 1. The node processes every selected image by itself.",
         ],
+      },
+      {
+        heading: "Skip pictures already done",
+        body: "A big folder that stopped halfway (a crash, a closed tab, an out of memory) does not have to start again from the first picture. In the `Pick images` gallery, switch on `Skip pictures already done in` and type the folder where the results are saved: empty means ComfyUI's output folder, a name like AI Scenes means a folder inside output, a full path works for any folder you approved with Browse.\n\nEvery picture that already has a file with the same name there (any extension) is left out, so the Run carries on with the rest. It works when the results keep the picture's name: `%input%` in Save Image Pixaroma's file name, or Save Text's One file per entry (captions saved next to the pictures count too). When every picture is done, the Run stops and says so. Switch it off to run them all again.",
       },
       {
         heading: "Outputs",

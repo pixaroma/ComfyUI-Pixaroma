@@ -125,6 +125,14 @@ from .nodes._lora_helpers import (
     write_custom_preview as _lora_write_custom_preview,
     delete_custom_preview as _lora_delete_custom_preview,
 )
+from .nodes._text_folder_helpers import (
+    caption_index as _tfh_caption_index,
+    find_caption as _tfh_find_caption,
+    list_txt as _tfh_list_txt,
+    read_txt as _tfh_read_txt,
+    resolve_folder as _tfh_resolve_folder,
+    save_name_changes as _tfh_save_name_changes,
+)
 from .nodes.node_krea_lora_convert import (
     inspect_lora as _krea_lora_inspect,
     resolve_and_convert as _krea_lora_convert,
@@ -2108,6 +2116,68 @@ async def api_lif_thumb(request):
         )
     except Exception:
         return web.Response(status=404)
+
+
+# ---------------------------------------------------------------------------
+# Caption Review Pixaroma - the pictures of a folder with their .txt captions
+# ---------------------------------------------------------------------------
+# READ-ONLY. Edited captions are written through the EXISTING save_text/write
+# route, so this feature adds no write route (registry-compliance.md 4e #2).
+# The folder rule is _text_folder_helpers.resolve_folder, shared with Load Texts
+# from Folder: prescreen BEFORE the resolver, folder_allowed BEFORE isdir.
+_CR_MAX_ITEMS = 2000
+_CR_MAX_CAPTION = 64 * 1024     # bigger than any caption; a bigger file is shown read-only
+
+
+def _cr_review_items(real):
+    """Blocking (listdir + reads) - run off the event loop."""
+    images = sorted(_lif_list_files(real, False), key=lambda f: f["name"].lower())
+    truncated = len(images) > _CR_MAX_ITEMS
+    images = images[:_CR_MAX_ITEMS]
+    txts = _tfh_list_txt(real)
+    exact, clean = _tfh_caption_index(txts)
+    used = set()
+    items = []
+    for f in images:
+        stem = os.path.splitext(f["name"])[0]
+        cap_path = _tfh_find_caption(stem, exact, clean)
+        caption, ok, cap_file = "", True, ""
+        if cap_path:
+            used.add(cap_path)
+            cap_file = os.path.basename(cap_path)
+            caption, ok = _tfh_read_txt(cap_path, _CR_MAX_CAPTION)
+        # The card may be saved only under the caption's OWN name: the write
+        # route cleans names, and a cleaned name would be a SECOND file.
+        save_stem = cap_file[:-4] if cap_file else stem
+        items.append({
+            "file": f["file"], "name": f["name"], "stem": stem, "mtime": f["mtime"],
+            "caption": caption, "has_caption": bool(cap_path), "caption_file": cap_file,
+            "save_stem": save_stem,
+            "read_only": (not ok) or _tfh_save_name_changes(save_stem),
+            "too_big": not ok,
+        })
+    orphans = sum(1 for _s, p in txts if p not in used)
+    return items, truncated, orphans
+
+
+@PromptServer.instance.routes.get("/pixaroma/api/caption_review/list")
+async def api_caption_review_list(request):
+    """?path=<folder> -> {ok, folder, items:[{file, name, stem, mtime, caption,
+    has_caption, caption_file, save_stem, read_only, too_big}], truncated, orphans}."""
+    hdrs = {"Cache-Control": "no-store"}
+    raw = request.query.get("path", "")
+    real, err = _tfh_resolve_folder(raw, "Caption Review")
+    if err:
+        return web.json_response({"ok": False, "message": err, "items": []}, headers=hdrs)
+    try:
+        loop = asyncio.get_running_loop()
+        items, truncated, orphans = await loop.run_in_executor(None, _cr_review_items, real)
+    except Exception as e:
+        return web.json_response({"ok": False, "message": f"Could not read the folder: {e}", "items": []}, headers=hdrs)
+    return web.json_response(
+        {"ok": True, "folder": real, "items": items, "truncated": truncated, "orphans": orphans},
+        headers=hdrs,
+    )
 
 
 @PromptServer.instance.routes.get("/pixaroma/api/load_images_folder/browse")

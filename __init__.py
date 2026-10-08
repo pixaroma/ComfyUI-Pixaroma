@@ -160,6 +160,14 @@ from .nodes.node_load_3d import NODE_CLASS_MAPPINGS as _MAPS_LOAD_3D
 from .nodes.node_load_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_3D
 from .nodes.node_save_3d import NODE_CLASS_MAPPINGS as _MAPS_SAVE_3D
 from .nodes.node_save_3d import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SAVE_3D
+from .nodes.node_text_match import NODE_CLASS_MAPPINGS as _MAPS_TEXT_MATCH
+from .nodes.node_text_match import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_TEXT_MATCH
+from .nodes.node_image_grid import NODE_CLASS_MAPPINGS as _MAPS_IMAGE_GRID
+from .nodes.node_image_grid import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_IMAGE_GRID
+from .nodes.node_load_texts_folder import NODE_CLASS_MAPPINGS as _MAPS_LOAD_TEXTS_FOLDER
+from .nodes.node_load_texts_folder import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LOAD_TEXTS_FOLDER
+from .nodes.node_caption_review import NODE_CLASS_MAPPINGS as _MAPS_CAPTION_REVIEW
+from .nodes.node_caption_review import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_CAPTION_REVIEW
 
 # development mode for loading additional reference nodes
 dev_mode = False
@@ -253,6 +261,10 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_VIDEO_PROMPT,
     **_MAPS_AI_PROMPT,
     **_MAPS_MUSIC_PROMPT,
+    **_MAPS_TEXT_MATCH,
+    **_MAPS_IMAGE_GRID,
+    **_MAPS_LOAD_TEXTS_FOLDER,
+    **_MAPS_CAPTION_REVIEW,
 }
 
 # combine all node display name mappings
@@ -338,6 +350,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_VIDEO_PROMPT,
     **_NAMES_AI_PROMPT,
     **_NAMES_MUSIC_PROMPT,
+    **_NAMES_TEXT_MATCH,
+    **_NAMES_IMAGE_GRID,
+    **_NAMES_LOAD_TEXTS_FOLDER,
+    **_NAMES_CAPTION_REVIEW,
 }
 
 # web directory for loading js files

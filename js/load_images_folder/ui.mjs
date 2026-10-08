@@ -73,6 +73,12 @@ export function injectCSS() {
 .pix-lif-subf.dim { opacity:.45; }
 .pix-lif-done { margin-left:auto; background:var(--pix-acc,#f66744); border:1px solid var(--pix-acc,#f66744); border-radius:6px; padding:6px 16px; font-size:12px; color:#fff; cursor:pointer; }
 .pix-lif-done:hover { filter:brightness(1.08); }
+/* "Skip pictures already done" row, under the footer */
+.pix-lif-gal-skip { padding:0 12px 10px; display:flex; gap:8px; align-items:center; }
+.pix-lif-gal-skip .pix-lif-subf { flex-shrink:0; }
+.pix-lif-donef { flex:1; min-width:0; background:#141414; border:1px solid rgba(255,255,255,0.16); border-radius:5px; color:#ddd; font-size:11px; padding:5px 7px; box-sizing:border-box; }
+.pix-lif-donef:focus { outline:none; border-color:var(--pix-acc,#f66744); }
+.pix-lif-donef:disabled { opacity:.45; }
 
 /* folder browser */
 .pix-lif-browse-pop { position:fixed; z-index:99999; background:#191919; border:1px solid var(--pix-acc,#f66744); border-radius:9px; box-shadow:0 14px 40px rgba(0,0,0,0.6); display:flex; flex-direction:column; max-height:72vh; }
@@ -209,6 +215,10 @@ export function openPickGallery(node, anchorEl, ctx) {
     `<div class="pix-lif-subf pix-lif-keepf" title="Normally an image inside a sub-folder comes out as portraits_cat, so two files with the same name cannot clash. Turn this on to keep the real path (portraits/cat) and let Save Image Pixaroma rebuild the same folders - switch on 'Keep folders from the wired name' there too."><span class="box"></span> Keep folder structure in the name</div>` +
     `<div class="pix-lif-tbtn" data-act="sort" title="Change the sort order">Sort: Name ↑</div>` +
     `<div class="pix-lif-done" data-act="done" title="Apply this selection and close">Done</div>` +
+    `</div>` +
+    `<div class="pix-lif-gal-skip">` +
+    `<div class="pix-lif-subf pix-lif-skipdone" title="Leave out every picture that already has a result: a file with the same name (any extension) in the folder on the right. A big folder that stopped halfway then carries on where it stopped. Works when the results keep the picture's name (%input% in Save Image, or Save Text's One file per entry)."><span class="box"></span> Skip pictures already done in</div>` +
+    `<input class="pix-lif-donef" type="text" spellcheck="false" placeholder="the results folder (empty = ComfyUI output)" title="Where the results are. Empty = ComfyUI's output folder, a name like AI Scenes = a folder inside output, or a full path to an approved folder.">` +
     `</div>`;
   document.body.appendChild(gal);
 
@@ -218,6 +228,8 @@ export function openPickGallery(node, anchorEl, ctx) {
   const firstInput = gal.querySelector(".pix-lif-firstn");
   const subfEl = gal.querySelector(".pix-lif-subf");
   const keepfEl = gal.querySelector(".pix-lif-keepf");
+  const skipEl = gal.querySelector(".pix-lif-skipdone");
+  const doneInput = gal.querySelector(".pix-lif-donef");
   const sortBtn = gal.querySelector('[data-act="sort"]');
   // "Keep folder structure" only means anything while subfolders are included
   function syncKeepFolders() {
@@ -369,6 +381,32 @@ export function openPickGallery(node, anchorEl, ctx) {
     syncKeepFolders();
     ctx.onChange?.(node);
   });
+  // "Skip pictures already done": two keys only this row owns. Same re-read
+  // rule as keepFolders above: write the fresh state, never the snapshot.
+  skipEl.classList.toggle("on", !!state.skipDone);
+  doneInput.value = state.doneFolder || "";
+  skipEl.addEventListener("click", () => {
+    const fresh = readState(node);
+    fresh.skipDone = !state.skipDone;
+    writeState(node, fresh);
+    state.skipDone = fresh.skipDone;
+    skipEl.classList.toggle("on", !!state.skipDone);
+    ctx.onChange?.(node);
+  });
+  const commitDoneFolder = () => {
+    const v = doneInput.value.trim();
+    if (v === (state.doneFolder || "")) return;
+    const fresh = readState(node);
+    fresh.doneFolder = v;
+    writeState(node, fresh);
+    state.doneFolder = v;
+    ctx.onChange?.(node);
+  };
+  doneInput.addEventListener("change", commitDoneFolder);
+  doneInput.addEventListener("keydown", (e) => {
+    e.stopImmediatePropagation(); // typing here must not reach canvas shortcuts
+    if (e.key === "Enter") { e.preventDefault(); commitDoneFolder(); doneInput.blur(); }
+  });
   subfEl.addEventListener("click", async () => {
     state.recursive = !state.recursive;
     writeState(node, state);
@@ -388,6 +426,9 @@ export function openPickGallery(node, anchorEl, ctx) {
   attachClosePopup(
     gal,
     () => {
+      // a folder typed but not yet committed (closed by an outside click,
+      // where a removed input may never fire "change") still counts
+      commitDoneFolder();
       document.querySelectorAll(".pix-lif-menu").forEach((m) => m._pixClose?.());
       if (node._pixLifGallery === gal) node._pixLifGallery = null;
     },

@@ -25,7 +25,111 @@ from ._path_guard import (
     denied_message as _pix_denied_message,
     rel_is_rooted as _pix_rel_is_rooted,
 )
+from ._path_guard import prescreen_folder_field as _pix_prescreen_field
 from ._resize_helpers import _I16_MODES, _resize_frame
+from ._save_helpers import _resolve_save_folder
+from ._text_folder_helpers import match_key as _match_key
+
+_DONE_SCAN_MAX = 50000   # files looked at in the done folder (a bound, not a feature)
+
+
+def _done_folder(state):
+    """(real_done_folder or None, error). None + no error = nothing is done yet
+    (the folder does not exist: the first Run). The order is the containment
+    invariant (path-containment #5): prescreen the RAW field before the resolver
+    realpaths it, folder_allowed before any isdir / listing."""
+    raw = state.get("doneFolder", "")
+    raw = raw if isinstance(raw, str) else ""
+    if not _pix_prescreen_field(raw):
+        return None, _pix_denied_message(raw)
+    base, _inside = _resolve_save_folder(raw)
+    if not _pix_folder_allowed(base):
+        return None, _pix_denied_message(raw)
+    if not os.path.isdir(base):
+        return None, None
+    return base, None
+
+
+def _done_keys(done, exclude):
+    """Match keys of every file under `done` (its subfolders too, for Keep folder
+    structure), skipping the paths in `exclude` - the selected pictures, so a done
+    folder that IS the picture folder (captions saved next to the pictures) does
+    not count each picture as its own result. Keys are the clean-up Save Image and
+    Save Text apply to a wired name, case-insensitive, by basename AND by the
+    relative path."""
+    keys = set()
+    seen = 0
+    for root, _dirs, files in os.walk(done):
+        for n in files:
+            seen += 1
+            if seen > _DONE_SCAN_MAX:
+                return keys
+            full = os.path.join(root, n)
+            if os.path.normcase(os.path.realpath(full)) in exclude:
+                continue
+            stem = os.path.splitext(n)[0]
+            keys.add(_match_key(stem))
+            rel = os.path.splitext(os.path.relpath(full, done))[0].replace("\\", "/")
+            if "/" in rel:
+                keys.add("/".join(_match_key(p) for p in rel.split("/")))
+    return keys
+
+
+def _name_key(name):
+    """The key of one `filename` output value (may be "sub/cat" with keepFolders)."""
+    if "/" in name:
+        return "/".join(_match_key(p) for p in name.split("/"))
+    return _match_key(name)
+
+
+def _is_under(child, parent):
+    try:
+        return os.path.commonpath([os.path.realpath(child), os.path.realpath(parent)]) == os.path.realpath(parent)
+    except ValueError:
+        return False
+
+
+def _selected_realpaths(folder, real_folder, selected):
+    """normcase'd realpaths of the selected pictures that sit inside the folder
+    (the same containment as load(): rooted entries and escapes are left out)."""
+    out = set()
+    for rel in selected:
+        if not isinstance(rel, str) or not rel or _pix_rel_is_rooted(rel):
+            continue
+        p = os.path.realpath(os.path.join(folder, rel))
+        if _is_under(p, real_folder):
+            out.add(os.path.normcase(p))
+    return out
+
+
+def _output_name(rel, path, real_folder, recursive, keep_folders):
+    """The `filename` output value for one picture (moved out of load() unchanged
+    on 2026-10-08, so "Skip pictures already done" can decide BEFORE decoding)."""
+    if recursive:
+        stem = os.path.splitext(rel)[0].replace("\\", "/")
+        if keep_folders:
+            # hand over the REAL relative path so a Save node can
+            # rebuild the same folder tree ("sub/cat").
+            #
+            # Derived from the RESOLVED `path`, not from the raw `rel`.
+            # `rel` comes out of the hidden state, which /prompt lets
+            # anyone set, and the containment check in load() tests the
+            # resolved location - not the literal string. So an entry
+            # like "keep/../keep/cat.png" points at a file genuinely
+            # inside the folder, passes, and would then have emitted the
+            # traversal-SHAPED name "keep/../keep/cat" on an output whose
+            # whole purpose is to be used as a path by another node.
+            # Save Image refuses a ".." segment, and so does core's
+            # SaveImage, so nothing was exploitable - but this output is
+            # meant for arbitrary consumers, so it should not hand out a
+            # string shaped like an escape. relpath of an already
+            # contained path can never contain "..", and is identical to
+            # the old value for every ordinary selection (verified).
+            return os.path.splitext(os.path.relpath(path, real_folder))[0].replace("\\", "/")
+        # keep names unique across subfolders so a Save node can't
+        # overwrite: "sub/cat.png" -> "sub_cat"
+        return stem.replace("/", "_")
+    return os.path.splitext(os.path.basename(rel))[0]
 
 
 # Resize keys MUST match node_load_image.py::DEFAULT_STATE (shared engine).
@@ -40,6 +144,14 @@ DEFAULT_STATE = {
     # folder tree - it has a matching "Keep folders from the wired name", and
     # only rebuilds folders when BOTH are on, so this stays safe by default.
     "keepFolders": False,
+    # "Skip pictures already done" (2026-10-08): leave out every picture whose
+    # result is already in `doneFolder` (a file named like the picture's
+    # `filename` output, any extension), so a big folder that stopped halfway
+    # carries on where it stopped. doneFolder follows Save Image / Save Text's
+    # folder rule: empty = output, a name = inside output, a full path = any
+    # approved folder. See _done_keys().
+    "skipDone": False,
+    "doneFolder": "",
     "sort": "name",
     "sort_dir": "asc",
     "selected": [],
@@ -126,7 +238,10 @@ class PixaromaLoadImagesFolder:
         "mask, width, height, filename, index, total, path (the full file path, for "
         "Prompt Reader Pixaroma). Wire filename into a Save node "
         "so each result keeps its original name, and width/height into an empty latent "
-        "so it matches each image's size. Hit Run once and leave the batch count at 1."
+        "so it matches each image's size. Hit Run once and leave the batch count at 1. "
+        "A big folder that stopped halfway: in the gallery, switch on 'Skip pictures "
+        "already done in' and name the results folder, and every picture that already "
+        "has a file with its name there is left out."
     )
 
     @classmethod
@@ -202,6 +317,21 @@ class PixaromaLoadImagesFolder:
         # opens it (Prompt Reader) gets a resolved, already-contained path.
         paths = []
         count = 0
+        # "Skip pictures already done": the keys of what is already in the done
+        # folder. A refused done folder is an error (the user asked for it); a
+        # missing one just means nothing is done yet.
+        done_keys = None
+        done_dir = None
+        skipped_done = 0
+        if state.get("skipDone"):
+            done_dir, derr = _done_folder(state)
+            if derr:
+                raise ValueError(derr)
+            if done_dir:
+                exclude = set()
+                if _is_under(real_folder, done_dir):
+                    exclude = _selected_realpaths(folder, real_folder, selected)
+                done_keys = _done_keys(done_dir, exclude)
         for rel in selected:
             if not isinstance(rel, str) or not rel:
                 continue  # malformed selection entry (e.g. null/number in state)
@@ -224,6 +354,10 @@ class PixaromaLoadImagesFolder:
             if not os.path.isfile(path):
                 print(f"[PixaromaLoadImagesFolder] missing, skipped: {rel}")
                 continue
+            name = _output_name(rel, path, real_folder, recursive, keep_folders)
+            if done_keys is not None and _name_key(name) in done_keys:
+                skipped_done += 1
+                continue
             try:
                 t, m, fw, fh = _load_one(path, state, dtype)
             except Exception as e:
@@ -233,40 +367,19 @@ class PixaromaLoadImagesFolder:
             masks.append(m)
             widths.append(fw)
             heights.append(fh)
-            if recursive:
-                stem = os.path.splitext(rel)[0].replace("\\", "/")
-                if keep_folders:
-                    # hand over the REAL relative path so a Save node can
-                    # rebuild the same folder tree ("sub/cat").
-                    #
-                    # Derived from the RESOLVED `path`, not from the raw `rel`.
-                    # `rel` comes out of the hidden state, which /prompt lets
-                    # anyone set, and the containment check above tests the
-                    # resolved location - not the literal string. So an entry
-                    # like "keep/../keep/cat.png" points at a file genuinely
-                    # inside the folder, passes, and would then have emitted the
-                    # traversal-SHAPED name "keep/../keep/cat" on an output whose
-                    # whole purpose is to be used as a path by another node.
-                    # Save Image refuses a ".." segment, and so does core's
-                    # SaveImage, so nothing was exploitable - but this output is
-                    # meant for arbitrary consumers, so it should not hand out a
-                    # string shaped like an escape. relpath of an already
-                    # contained path can never contain "..", and is identical to
-                    # the old value for every ordinary selection (verified).
-                    name = os.path.splitext(
-                        os.path.relpath(path, real_folder)
-                    )[0].replace("\\", "/")
-                else:
-                    # keep names unique across subfolders so a Save node can't
-                    # overwrite: "sub/cat.png" -> "sub_cat"
-                    name = stem.replace("/", "_")
-            else:
-                name = os.path.splitext(os.path.basename(rel))[0]
             names.append(name)
             paths.append(path)
             count += 1
             indices.append(count)
 
+        if skipped_done:
+            print(f"[PixaromaLoadImagesFolder] skipped {skipped_done} picture(s) already done in {done_dir}")
+        if not images and skipped_done:
+            raise ValueError(
+                f"Load Images from Folder: all {skipped_done} selected pictures are already done "
+                f"(a file with the same name is in {done_dir}). Nothing left to do. Turn off "
+                "'Skip pictures already done' to run them again."
+            )
         if not images:
             raise ValueError(
                 "Load Images from Folder: none of the selected images could be loaded "
@@ -313,6 +426,20 @@ class PixaromaLoadImagesFolder:
                 parts.append(f"{rel}:{os.stat(p).st_mtime_ns}")
             except OSError:
                 parts.append(f"{rel}:missing")
+        # "Skip pictures already done": what is done changes after every Run (the
+        # results land there), so it MUST be part of the key, or the next Run
+        # replays the cached list with the finished pictures still in it. The same
+        # guard as load() runs before any listing; a refused folder is a constant.
+        if state.get("skipDone"):
+            done_dir, derr = _done_folder(state)
+            if derr:
+                parts.append("done:refused")
+            elif done_dir:
+                exclude = _selected_realpaths(folder, real_folder, state.get("selected", []) or []) \
+                    if _is_under(real_folder, done_dir) else set()
+                parts.append("done:" + "/".join(sorted(_done_keys(done_dir, exclude))))
+            else:
+                parts.append("done:none")
         return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
