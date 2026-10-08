@@ -1376,7 +1376,7 @@ const HELP = {
         defs: [
           ["Max frames", "How many frames to load from the start of the video. 0 = all. The safety valve for long clips: it never reads more than this many. Works with Skip first frames, which trims frames off the front of that window (Max 100 with Skip 5 gives 95)."],
           ["Force FPS", "Force a steady frames-per-second by dropping or duplicating frames (a 60fps clip forced to 24). 0 = keep the original rate. AI video models usually expect a fixed rate."],
-          ["Skip first frames", "Skip this many frames from the start, like trimming an intro. Trims the front of the loaded frames."],
+          ["Skip first frames", "Skip this many frames from the start, like trimming an intro. Trims the front of the loaded frames. The audio output is cut the same way (and to Max frames), so the sound stays in sync with the picture."],
           ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally; set both to crop-to-fill that exact size (keeps proportions and trims overflow, like Resize Crop). It never stretches."],
         ],
       },

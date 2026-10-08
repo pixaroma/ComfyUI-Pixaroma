@@ -237,6 +237,35 @@ export function attachVideoSnapshot(video, opts = {}) {
     mo.observe(video, { attributes: true, attributeFilter: ["style", "class"] });
   } catch (_e) { mo = null; }
 
+  // A RIGHT-click must reach the live video. With the picture up, the press lands
+  // on the media box (the picture is pointer-events:none and the video hidden), so
+  // the browser showed its plain PAGE menu instead of the VIDEO one - no Save
+  // video as, Save / Copy video frame, Open video in new tab (reported 2026-10-08
+  // on Save Mp4; MEASURED in all players: contextmenu target DIV.pix-mp4-media /
+  // DIV.pix-lv-media). The contextmenu event is hit-tested when it fires, AFTER
+  // this press, so bringing the video back on the press is enough. The picture
+  // returns on the first pointer move with no button held: none reaches the page
+  // while a native menu is open, so it never swaps under an open menu.
+  let pressMove = null;
+  const resettleLater = () => {
+    if (pressMove) return;
+    pressMove = (e) => {
+      if (e.buttons !== 0) return; // the button is still held: the menu is not up yet
+      window.removeEventListener("pointermove", pressMove, true);
+      pressMove = null;
+      if (!disposed && video.paused) settle();
+    };
+    window.addEventListener("pointermove", pressMove, true);
+  };
+  const onPress = (e) => {
+    // button 2 = right; Ctrl+click is the context menu on a Mac
+    if (e.button !== 2 && !(e.button === 0 && e.ctrlKey)) return;
+    if (showing !== "image") return;
+    live();
+    resettleLater();
+  };
+  box?.addEventListener?.("pointerdown", onPress, true);
+
   // A video that is already loaded and paused when we attach.
   if (video.readyState >= 2 && video.paused) settle();
 
@@ -255,6 +284,9 @@ export function attachVideoSnapshot(video, opts = {}) {
       for (const [ev, fn] of events) video.removeEventListener(ev, fn);
       video.removeEventListener("fullscreenchange", onFullscreen);
       video.removeEventListener("webkitfullscreenchange", onFullscreen);
+      box?.removeEventListener?.("pointerdown", onPress, true);
+      if (pressMove) window.removeEventListener("pointermove", pressMove, true);
+      pressMove = null;
       try { mo?.disconnect(); } catch (_e) { /* ignore */ }
       try { io?.disconnect(); } catch (_e) { /* ignore */ }
       video.style.visibility = "";

@@ -664,6 +664,32 @@ def decode_one(path, frame_index=0) -> dict:
     return _decode_one_imageio(path, idx)
 
 
+def trim_audio(audio, start_s, duration_s):
+    """Cut a ComfyUI AUDIO dict to [start_s, start_s + duration_s) seconds, so the
+    soundtrack covers exactly the frames Load Video returned (Discord 2026-10-07:
+    with Skip first frames the sound still started at 0 and ran ahead of the
+    picture; Max frames did not shorten it either). The frames are source frames
+    [skip_first, skip_first + frame_count) at the OUTPUT fps (_collect counts after
+    the force_fps resample), so the caller passes skip_first / fps and
+    frame_count / fps. None in = None out; a start past the end of the sound =
+    None (those frames have no sound), never an empty waveform. Pure: a slice of
+    the tensor, no subprocess."""
+    if not audio or "waveform" not in audio:
+        return audio
+    wf = audio["waveform"]
+    sr = int(audio.get("sample_rate") or 0)
+    if sr <= 0 or wf is None or wf.shape[-1] <= 0:
+        return audio
+    n = wf.shape[-1]
+    a = max(0, int(round(float(start_s) * sr)))
+    b = n if not duration_s or duration_s <= 0 else min(n, a + int(round(float(duration_s) * sr)))
+    if a >= n or b <= a:
+        return None
+    if a == 0 and b == n:
+        return audio
+    return {**audio, "waveform": wf[..., a:b].contiguous()}
+
+
 def extract_audio(path):
     """Pull the soundtrack as a ComfyUI AUDIO dict via an ffmpeg subprocess.
     Returns None when the file has no audio, ffmpeg is missing, or extraction

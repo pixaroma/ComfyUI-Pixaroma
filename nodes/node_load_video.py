@@ -11,7 +11,7 @@ import os
 
 import folder_paths
 
-from ._video_helpers import VIDEO_EXTS, decode, extract_audio
+from ._video_helpers import VIDEO_EXTS, decode, extract_audio, trim_audio
 
 
 def _list_input_videos():
@@ -62,7 +62,7 @@ class PixaromaLoadVideo:
                 "force_fps": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 1.0,
                     "tooltip": "Force a steady frames-per-second by dropping or duplicating frames (e.g. a 60fps clip forced to 24). 0 = keep the video's original rate. AI video models usually expect a fixed rate like 24."}),
                 "skip_first_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
-                    "tooltip": "Skip this many frames from the start, like trimming an intro. 0 = start at the beginning. Trims the front of the loaded frames."}),
+                    "tooltip": "Skip this many frames from the start, like trimming an intro. 0 = start at the beginning. Trims the front of the loaded frames, and the sound is cut the same way, so it stays in sync."}),
                 "custom_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
                     "tooltip": "Resize frames as they load. 0 = keep the original. Set only width OR only height to scale proportionally. Set BOTH to crop-to-fill that exact size: it scales to fill the box, keeps the picture's proportions, and trims the overflow (like Resize Crop). It never stretches."}),
                 "custom_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
@@ -104,6 +104,12 @@ class PixaromaLoadVideo:
             custom_h=custom_height,
         )
         audio = extract_audio(path)
+        # The sound follows the frames: Skip first frames moves its start and Max
+        # frames its end, both counted at the output fps (load-video.md #14).
+        fps_out = float(result["fps"] or 0.0)
+        if audio is not None and fps_out > 0:
+            audio = trim_audio(audio, max(0, int(skip_first_frames or 0)) / fps_out,
+                               result["frame_count"] / fps_out)
 
         print(
             f"[Pixaroma] Load Video — {os.path.basename(path)}: "
