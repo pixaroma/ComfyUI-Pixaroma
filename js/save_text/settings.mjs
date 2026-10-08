@@ -243,6 +243,12 @@ export function openSettingsPanel(node, onChange) {
   body.appendChild(switchRow(node, "autoSave", "Save after every run",
     "Keeps the file matching the node without you thinking about it. Turn it off " +
     "if you would rather press Save .txt yourself."));
+  body.appendChild(switchRow(node, "eachFile", "One file per entry",
+    "Also saves every entry as its own .txt, named by what is wired into the " +
+    "name input: wire a picture's filename from Load Images from Folder and " +
+    "01_Cat.jpg gets 01_Cat.txt, handy as training captions. A file with that " +
+    "name is replaced. It goes in the folder above; turn Save after every run off " +
+    "to write only these files."));
 
   // ── how entries are added ──
   const sepWrap = section(body, "Separator",

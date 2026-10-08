@@ -49,7 +49,7 @@ export const KEYWORDS = {
   PixaromaFirstLastFrame: "first last frame start end continue continuation extend chain join carry on next video ending beginning still grab last frame from video",
   PixaromaSaveMp4: "export video render encode movie mp4 h264 civitai metadata generation info audio fade click tick pop start onset resave re-save size resolution dimensions length duration volume loud loudness sound level mute muted silence silent speaker too loud turn down",
   PixaromaSaveVideo: "export video render encode movie mp4 h264 civitai metadata generation info h265 hevc 10 bit 10bit ten bit colour color depth banding gradient smooth quality crf bitrate folder subfolders filename tokens counter name fps duration frames seconds length trim audio soundtrack player preview scrub settings gear hide buttons master grade edit audio fade click tick pop start onset volume loud loudness sound level mute muted silence silent speaker too loud turn down",
-  PixaromaSaveText: "save text txt export write disk file collect collection gather accumulate keep store log history journal notebook remember lost losing prompts prompt list library archive append add each run every run batch llm generated prompts edit copy clear folder filename counter separator blank line timestamp reuse later",
+  PixaromaSaveText: "save text txt export write disk file collect collection gather accumulate keep store log history journal notebook remember lost losing prompts prompt list library archive append add each run every run batch llm generated prompts edit copy clear folder filename counter separator blank line timestamp reuse later one file per entry per picture per image caption captions captioning lora training dataset alt text name",
   PixaromaPauseImage: "stop check gate review approve interrupt",
 
   // ── Prompt and text ──
@@ -62,7 +62,7 @@ export const KEYWORDS = {
   PixaromaFindReplace: "replace swap substitute rules change words",
   PixaromaText: "string write field type note textbox weight emphasis attention ctrl up down",
   PixaromaShowText: "debug display print inspect see value preview text",
-  PixaromaPromptReader: "metadata png jpg jpeg webp civitai extract read recover steal prompt from image exif",
+  PixaromaPromptReader: "metadata png jpg jpeg webp civitai extract read recover steal prompt from image exif folder batch path re-create remake old pictures new model",
   PixaromaPauseText: "llm edit review gate check interrupt cache cached runs again re-runs ksampler restarts fixed seed slow",
   PixaromaTextJoinTwo: "concat combine merge glue join",
   PixaromaTextJoinThree: "concat combine merge glue join",

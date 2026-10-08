@@ -39,6 +39,11 @@ export const DEFAULT_STATE = {
   // is exactly the state Clear leaves behind - that is what makes Clear safe.
   currentFile: "",
   folded: false, // JS-only: body collapsed to the box + buttons
+  // ALSO write every entry to its own .txt, named by the wired `name` input
+  // (a picture's name from Load Images from Folder gives 01_Cat.txt beside
+  // 01_Cat.jpg: training captions). Off by default, and the list file above is
+  // untouched by it - turn Save after every run off to write ONLY the files.
+  eachFile: false,
 };
 
 // Separator ids MUST match nodes/_save_text_helpers.py::SEPARATORS. A blank line

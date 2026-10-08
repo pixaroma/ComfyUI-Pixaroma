@@ -50,7 +50,10 @@ class PixaromaSaveText:
         "wrote: it moves on to the next name, so old collections are kept. The "
         "text also passes straight through the output, so the node can sit in "
         "the middle of a chain without changing anything. Useful for keeping the "
-        "prompts an LLM generates, or any prompt you tried and want back later."
+        "prompts an LLM generates, or any prompt you tried and want back later. "
+        "With One file per entry on in the settings, every entry is also saved "
+        "as its own .txt named by the name input, for example one caption file "
+        "per picture."
     )
 
     @classmethod
@@ -70,6 +73,22 @@ class PixaromaSaveText:
                         ),
                     },
                 ),
+                # Appended LAST and optional (backend rules: a new input never
+                # shifts old prompts). Only the One file per entry setting reads
+                # it; the browser writes <name>.txt through the same route.
+                "name": (
+                    "STRING",
+                    {
+                        "forceInput": True,
+                        "tooltip": (
+                            "Optional. The file name for this entry, used only "
+                            "when One file per entry is on in the settings. Wire "
+                            "a picture's filename from Load Images from Folder "
+                            "and each picture gets its own .txt with the same "
+                            "name, for example training captions."
+                        ),
+                    },
+                ),
             },
         }
 
@@ -85,7 +104,7 @@ class PixaromaSaveText:
     # is the normal way to use it, parked off to the side collecting.
     OUTPUT_NODE = True
 
-    def collect(self, text=None):
+    def collect(self, text=None, name=None):
         # Any-type upstreams and list inputs can hand over something that is not
         # a string (see reference_optional_input_is_not_type_guaranteed): coerce
         # rather than raise, so one odd wire cannot fail a whole run.
@@ -98,10 +117,22 @@ class PixaromaSaveText:
         else:
             out = str(text)
 
+        # The name is only a LABEL for the browser (which sanitises it through
+        # the write route's containment, server_routes save_text/write); nothing
+        # here touches the filesystem. Coerced like the text, never raises.
+        if name is None:
+            nm = ""
+        elif isinstance(name, str):
+            nm = name.strip()
+        elif isinstance(name, (list, tuple)):
+            nm = str(name[0]).strip() if name and name[0] is not None else ""
+        else:
+            nm = str(name).strip()
+
         # The browser reads this and does the collecting. An empty run still
         # reports, so the node can show that it ran and found nothing.
         return {
-            "ui": {"pixaroma_save_text": [{"text": out}]},
+            "ui": {"pixaroma_save_text": [{"text": out, "name": nm}]},
             "result": (out,),
         }
 

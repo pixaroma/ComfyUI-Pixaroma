@@ -747,10 +747,15 @@ function setupNode(node) {
 // and this function used to return `rows[0].text`, so the node collected
 // "abstract" and dropped the other two. Reported as "one description instead of
 // one per image" - nothing was wrong upstream, the results were all here.
-function pickTexts(output) {
+// Each result with the name wired into the node's `name` input ("" when
+// nothing is wired), for the One file per entry setting. Same filtering as the
+// text list always had, so text and name stay paired.
+function pickRows(output) {
   const rows = output?.pixaroma_save_text;
   if (!Array.isArray(rows)) return [];
-  return rows.map((r) => r?.text).filter((t) => typeof t === "string");
+  return rows
+    .filter((r) => typeof r?.text === "string")
+    .map((r) => ({ text: r.text, name: typeof r.name === "string" ? r.name.trim() : "" }));
 }
 
 // The guards that belong to a DELIVERY rather than to an entry. Applied ONCE
@@ -759,7 +764,7 @@ function pickTexts(output) {
 //
 // Both fail OPEN, because the cost of suppressing a genuine run (lost entries)
 // is far worse than the duplicate it prevents.
-function acceptDelivery(node, texts) {
+function acceptDelivery(node, texts, names = []) {
   //  * `readBuffer(...).trim()` - with nothing collected there is nothing to
   //    duplicate, so take the replay. Without this the gate REGRESSED "Clear,
   //    then Run": this node has no graphToPrompt hook by design, so clearing
@@ -789,7 +794,10 @@ function acceptDelivery(node, texts) {
   // separator that cannot appear in a prompt keeps ["a","b"] distinct from
   // ["a\u0000b"]. Cost is unchanged from before: two deliberately identical runs
   // queued back to back with "Keep all" collapse to one.
-  const key = texts.join("\u0000");
+  // The wired names join the key only when there are any, so a delivery with
+  // no name wired keys exactly as it always did; with names, two pictures that
+  // got the same text are still two different files.
+  const key = names.some((n) => n) ? texts.join("\u0000") + "\u0001" + names.join("\u0000") : texts.join("\u0000");
   const now = Date.now();
   const prev = node._pixStxLastApplied;
   if (prev && prev.text === key && now - prev.at < 2000) return false;
@@ -802,11 +810,136 @@ function acceptDelivery(node, texts) {
 // after it (pattern file #4, four separate bugs) - so overlapping calls would
 // reintroduce exactly those races. Re-check the node between entries: a save
 // takes real time and the node can be deleted or the workflow switched.
-async function collectDelivery(node, texts) {
-  for (const t of texts) {
+async function collectDelivery(node, rows) {
+  let wrote = 0;
+  let unnamed = 0;
+  let lastName = "";
+  let failed = null;
+  // A per-entry file is only useful under the name it was GIVEN (a training
+  // tool pairs 01_Cat.txt with 01_Cat.jpg), and the route's file-name cleaner
+  // changes some names: MEASURED _MG_1234 -> MG_1234.txt, a__b and a_b -> both
+  // a_b.txt. Track what was really written so the footer can say so instead
+  // of a plain "saved" (save-text.md #13).
+  let renamed = null;
+  let shared = 0;
+  const files = new Set();
+  // The separator warning must stay the LAST thing said (#7): a message after
+  // it would wipe it, and it is shown only once per separator setting.
+  const splitWarnBefore = node._pixStxSplitWarnFor;
+  for (const r of rows) {
     if (!uiOf(node)) return;
-    await collectRun(node, t);
+    await collectRun(node, r.text);
+    if (!uiOf(node)) return;
+    // One file per entry: written for EVERY result, even one the list skipped
+    // as a repeat, because two pictures with the same caption are still two
+    // pictures. An empty result writes nothing (no empty caption files).
+    if (!readState(node).eachFile || !r.text.trim()) continue;
+    if (!r.name) {
+      unnamed++;
+      continue;
+    }
+    const res = await saveEachFile(node, r.name, r.text);
+    if (!uiOf(node)) return;
+    if (res.ok) {
+      wrote++;
+      lastName = res.file || r.name;
+      if (files.has(lastName)) shared++;
+      files.add(lastName);
+      if (!renamed && res.file && res.file !== expectedEachFile(r.name)) renamed = { name: r.name, file: res.file };
+    } else {
+      failed = res;
+    }
   }
+  const splitWarned = node._pixStxSplitWarnFor !== splitWarnBefore;
+  // The three messages below REPLACE the separator warning. It is shown once
+  // per separator setting, so re-arm it, or it would never come back.
+  const rearmSplitWarn = () => {
+    if (splitWarned) node._pixStxSplitWarnFor = splitWarnBefore;
+  };
+  if (failed) {
+    rearmSplitWarn();
+    say(node, shorten(failed.message) || "Could not save a file.", "bad", failed.message);
+  } else if (shared) {
+    rearmSplitWarn();
+    say(
+      node,
+      `${shared} ${shared === 1 ? "entry" : "entries"} went to the same file as another: give each its own name.`,
+      "bad",
+      "Two or more entries got the same file name, so the later one replaced the " +
+        "earlier one. That happens when the same text is wired into name every time, " +
+        "when two pictures differ only in their extension (cat.png and cat.jpg both " +
+        "give cat), or when two names differ only in characters a file name cannot " +
+        "keep. Wire a name that is different for every entry.",
+      9000,
+    );
+  } else if (renamed) {
+    rearmSplitWarn();
+    say(
+      node,
+      `Saved as ${renamed.file}: the name had to change.`,
+      "bad",
+      `"${renamed.name}" was saved as ${renamed.file}, because a file name cannot ` +
+        "keep some characters (such as a _ at the start, a dot or space at the end, " +
+        "or a double __), and a name is cut at 100 letters. A training tool pairs a " +
+        "caption with its picture by the exact name, so save the pictures with Save " +
+        "Image Pixaroma too (it changes the name the same way), or rename them.",
+      9000,
+    );
+  } else if (splitWarned) {
+    // the separator warning fired during this delivery and is showing: keep it
+  } else if (wrote) {
+    say(node, wrote === 1 ? `${lastName} ✓ saved` : `✓ ${wrote} files saved, one per entry`, "saved");
+  } else if (unnamed) {
+    say(
+      node,
+      "One file per entry needs a name: wire one into the name input.",
+      "bad",
+      "One file per entry is on, but nothing is wired into the name input, so there " +
+        "is no name for each file. Wire a picture's filename (Load Images from Folder) " +
+        "or any text into name. The list itself was collected as usual.",
+      7000,
+    );
+  }
+}
+
+// The file the route WOULD write for `name` if its cleaner changed nothing:
+// backslashes as "/", a known text extension dropped from the last part, ".txt"
+// added (normalize_txt_name + the "/".join of rel_final in server_routes.py).
+// Compared with the route's answer only to TELL the user; it decides nothing.
+function expectedEachFile(name) {
+  const parts = String(name).trim().replace(/\\/g, "/").split("/").filter((p) => p);
+  const leaf = (parts.pop() || "").trim().replace(/\.(txt|text|md|log|csv|json)$/i, "").trim();
+  return [...parts, leaf + ".txt"].join("/");
+}
+
+// Write ONE entry to <folder>/<name>.txt, replacing a file of that name (a re-run
+// rewrites the caption, it does not pile up numbered copies). Same route, same
+// containment and the same forced .txt as the list file (pattern file #9); it
+// goes through the node's save chain so it can never interleave with a list
+// write (#4). Never touches currentFile, the buffer or the dirty flag: those
+// belong to the list file only.
+function saveEachFile(node, name, text) {
+  return queueOnNode(node, "_pixStxSaveChain", async () => {
+    const st = readState(node);
+    try {
+      const r = await fetch(pixApiUrl("/pixaroma/api/save_text/write"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          folder: st.folder || "",
+          name,
+          content: text,
+          claim: false,
+          digits: st.counterDigits || 3,
+        }),
+      });
+      const j = await r.json();
+      if (j?.ok) return { ok: true, file: j.file, path: j.path };
+      return { ok: false, message: j?.message || "Could not save." };
+    } catch (e) {
+      return { ok: false, message: "Could not reach the server to save." };
+    }
+  });
 }
 
 function installExecutedListener() {
@@ -818,10 +951,10 @@ function installExecutedListener() {
     const graph = app.graph;
     const node = graph?.getNodeById?.(id) ?? graph?.getNodeById?.(parseInt(id, 10));
     if (!node || node.comfyClass !== COMFY_CLASS) return;
-    const texts = pickTexts(detail?.output);
-    if (!texts.length) return;
-    if (!acceptDelivery(node, texts)) return;
-    collectDelivery(node, texts);
+    const rows = pickRows(detail?.output);
+    if (!rows.length) return;
+    if (!acceptDelivery(node, rows.map((r) => r.text), rows.map((r) => r.name))) return;
+    collectDelivery(node, rows);
   });
 }
 
@@ -933,8 +1066,8 @@ app.registerExtension({
     const origExec = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (output) {
       const r = origExec?.apply(this, arguments);
-      const texts = pickTexts(output);
-      if (texts.length && acceptDelivery(this, texts)) collectDelivery(this, texts);
+      const rows = pickRows(output);
+      if (rows.length && acceptDelivery(this, rows.map((x) => x.text), rows.map((x) => x.name))) collectDelivery(this, rows);
       return r;
     };
   },
@@ -961,6 +1094,11 @@ registerNodeHelp(COMFY_CLASS, {
         "Clear empties the box and starts a NEW file. The one it already wrote is kept exactly as it is, so think of it as turning to a fresh page rather than deleting anything. The next file carries on the numbering: prompts_003.txt becomes prompts_004.txt.\n\nThe one case where Clear does lose something is when you have edited the box and not saved, or when nothing has been written yet. It tells you which of those it is before you confirm.",
     },
     {
+      heading: "One .txt per picture (captions)",
+      body:
+        "For training captions or alt text, each picture needs its own text file with the same name. Wire Load Images from Folder into a model that describes the picture (AI Prompt Pixaroma), wire that text into this node, and wire the folder node's filename output into the name input. Then open the settings, switch on One file per entry, and set the Folder to where you want the files, for example the picture folder itself. One Run writes 01_Cat.txt for 01_Cat.jpg, 02_Dog.txt for 02_Dog.jpg, and so on.\n\nThe list on the node is still collected as usual, so you can read every caption in one place. Turn Save after every run off if you do not want the list file in that folder too.\n\nA Run REPLACES a file with the same name, so copy captions you fixed by hand somewhere else before you run again.\n\nA file name cannot keep some characters (such as a _ at the start, a dot or space at the end, or a double __), so a name like _MG_1234 is saved as MG_1234.txt. The node then says so under the box, because a training tool pairs a caption with its picture by the exact name: save the pictures with Save Image Pixaroma as well (it changes the name the same way), or rename them. It also warns when two entries end up with the same file name, which happens when the same text is wired into name every time, or when two pictures differ only in their extension (cat.png and cat.jpg).",
+    },
+    {
       heading: "The buttons on the node",
       defs: [
         ["Copy all", "Puts everything in the box on the clipboard."],
@@ -976,6 +1114,7 @@ registerNodeHelp(COMFY_CLASS, {
         ["Folder", "Empty means ComfyUI's output folder. For anywhere else, click Browse and pick it once - that is what approves it."],
         ["File name", "Always saved as .txt. %counter% keeps the numbering going so a new collection never overwrites an old one."],
         ["Save after every run", "On by default. A save you have to remember is a save you forget."],
+        ["One file per entry", "Off by default. When on, every entry is ALSO saved as its own .txt, named by what is wired into the name input, in the same folder. A file with that name is replaced, so running again rewrites it. Turn Save after every run off if you want only these files and no list file."],
         ["Separator", "A blank line by default. Prompt Pack Pixaroma offers these same three under the same names, so a saved file drops straight into it - just pick the matching one there. Entries are split on whatever you pick, so if your prompts contain blank lines of their own, choose --- line instead or one prompt will be counted as several."],
         ["New entry goes", "At the top puts the newest prompt where you can read it without scrolling."],
         ["Skip repeats", "A second belt. The node already ignores a run where nothing changed, so this is for the case that slips past it: reopening a workflow, where the first run afterwards would otherwise re-add the prompt that is already last. Same as last is the default; Any repeat also catches a prompt you used earlier in the session."],

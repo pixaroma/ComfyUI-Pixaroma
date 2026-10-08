@@ -831,9 +831,13 @@ const HELP = {
         body: "Wire an image's filename into the optional `filename` input (for example from Load Image Pixaroma's `filename` output) and the node reads that image's prompt automatically. While the wire is connected it ignores its own picker, and the readout follows the connected node live as you switch images.\n\nTo go back to picking manually, just upload, drop, or pick a file on the node - that takes over and disconnects the wire.\n\nOnly images that actually have a prompt baked in (made by ComfyUI, A1111, Forge or Civitai) can be read. A screenshot or plain photo carries no prompt.\n\nNote: the connected filename does not include the subfolder, so if you keep two images with the exact same name in different input subfolders, the run may read the wrong one. Give them distinct names to be safe (the live readout in the node always shows the correct one).",
       },
       {
+        heading: "Read every picture in a folder",
+        body: "Wire Load Images from Folder Pixaroma's `path` output into `filename` and press Run once: the node reads the prompt saved in EVERY picture of the folder, one after the other, and sends each one on. Wire `text` into CLIP Text Encode and a new model makes each of your old pictures again from its own prompt.\n\nA full path is only read from ComfyUI's input, output or temp folder, or from a folder you picked once with Browse (on Load Images from Folder, Save Image or Save Text). A folder anywhere else is refused with a message that says how to allow it.\n\nWhile it is fed by a folder, the readout on the node says the prompts are read on Run; the live preview is only for a picture from the input folder.\n\nA picture you make this way does not carry the prompt it was made from: Prompt Reader read it from another file while the workflow ran. Reading that new picture again tells you so instead of showing a wrong prompt.",
+      },
+      {
         heading: "Inputs",
         defs: [
-          ["filename (optional)", "A filename to read from, usually wired from Load Image Pixaroma's `filename` output. When connected it drives the read and overrides the picker."],
+          ["filename (optional)", "A filename to read from, usually wired from Load Image Pixaroma's `filename` output, or a full path, from Load Images from Folder Pixaroma's `path` output. When connected it drives the read and overrides the picker."],
         ],
       },
       {
@@ -1016,6 +1020,7 @@ const HELP = {
           ["filename", "Each image's filename without the extension, for naming saved results. With subfolders included this is flattened (portraits/ana becomes portraits_ana) unless `Keep folder structure in the name` is on."],
           ["index", "The 1-based position of each image in this batch (1, 2, 3 ...)."],
           ["total", "How many images are in this batch (how many loaded; same for every item)."],
+          ["path", "Each image's full file path, with its extension. Wire it into Prompt Reader Pixaroma's filename input to read the prompt saved inside every picture of the folder, for example to make your old pictures again with a new model."],
         ],
       },
     ],

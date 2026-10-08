@@ -385,6 +385,15 @@ def read_png_text_chunks(file_path: str) -> dict:
     return out
 
 
+def _pr_filename_is_wired(node: dict) -> bool:
+    """True when a PixaromaPromptReader in a saved prompt read a WIRED filename
+    (a link, or a non-empty string) instead of its own picker."""
+    fn = (node.get("inputs") or {}).get("filename")
+    if isinstance(fn, list) and len(fn) == 2:
+        return True
+    return isinstance(fn, str) and bool(fn.strip())
+
+
 def _chase_pixaroma_prompt_reader(node: dict, chase_depth: int) -> Optional[str]:
     """When the walker hits a PixaromaPromptReader node, the embedded workflow
     only records `inputs.image = "<filename>"` - the actual prompt text was a
@@ -911,6 +920,13 @@ def _walk_for_text(
 
     # Special-case Pixaroma Prompt Reader: chase the source file.
     if node.get("class_type") == "PixaromaPromptReader":
+        # A WIRED filename (Load Image's filename, Load Images from Folder's
+        # path) is what the node really read, and it is a run-time value the
+        # saved prompt does not hold; the chase can only open the PICKER file,
+        # which then hands back a real-looking WRONG prompt. Stop instead, the
+        # same rule _civitai_graph_walk already follows (prompt-reader.md #23).
+        if _pr_filename_is_wired(node):
+            return
         chased = _chase_pixaroma_prompt_reader(node, chase_depth)
         if chased:
             captured.append(chased)
@@ -1255,10 +1271,20 @@ def read_prompt_from_image(file_path: str) -> dict:
     if "prompt" in chunks:
         try:
             nodes = json.loads(chunks["prompt"])
-            if isinstance(nodes, dict) and any(
-                isinstance(n, dict) and n.get("class_type") == "PixaromaPromptReader"
-                for n in nodes.values()
-            ):
+            readers = [
+                n for n in (nodes.values() if isinstance(nodes, dict) else [])
+                if isinstance(n, dict) and n.get("class_type") == "PixaromaPromptReader"
+            ]
+            if readers and all(_pr_filename_is_wired(n) for n in readers):
+                return {
+                    "found": False,
+                    "message": (
+                        "The prompt came from a Prompt Reader Pixaroma that "
+                        "read a picture wired into it while the workflow ran, "
+                        "so the prompt is not saved in this file."
+                    ),
+                }
+            if readers:
                 return {
                     "found": False,
                     "message": (

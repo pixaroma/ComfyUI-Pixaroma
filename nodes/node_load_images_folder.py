@@ -123,7 +123,8 @@ class PixaromaLoadImagesFolder:
         "first N, or hand-pick specific images in a thumbnail gallery. Same resize "
         "options as Load Image Pixaroma (max megapixels, longest side, scale by, "
         "fit inside, crop to fill, match aspect ratio). Outputs are a list: image, "
-        "mask, width, height, filename, index, total. Wire filename into a Save node "
+        "mask, width, height, filename, index, total, path (the full file path, for "
+        "Prompt Reader Pixaroma). Wire filename into a Save node "
         "so each result keeps its original name, and width/height into an empty latent "
         "so it matches each image's size. Hit Run once and leave the batch count at 1."
     )
@@ -141,9 +142,11 @@ class PixaromaLoadImagesFolder:
         }
 
     CATEGORY = "👑 Pixaroma/🖼️ Image"
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height", "filename", "index", "total")
-    OUTPUT_IS_LIST = (True, True, True, True, True, True, True)
+    # `path` is appended LAST (2026-10-08) so every saved link to the first
+    # seven keeps its slot index.
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "STRING", "INT", "INT", "STRING")
+    RETURN_NAMES = ("image", "mask", "width", "height", "filename", "index", "total", "path")
+    OUTPUT_IS_LIST = (True, True, True, True, True, True, True, True)
     OUTPUT_TOOLTIPS = (
         "Each selected image, one per list item (after any resize).",
         "Each image's mask from its alpha channel (blank if it has none).",
@@ -152,6 +155,8 @@ class PixaromaLoadImagesFolder:
         "Each image's filename without the extension - wire into Save so results keep their original names. With subfolders included this is normally flattened (sub/cat becomes sub_cat) so two same-named files cannot collide; turn on 'Keep the folder structure in the name' to pass the real path instead and rebuild the same folders when saving.",
         "1-based position of each image in this batch (1, 2, 3 ...).",
         "How many images are in this batch - i.e. how many loaded (same for every item).",
+        "Each image's full file path, with its extension - for nodes that open the file "
+        "themselves, like Prompt Reader Pixaroma reading the prompt saved inside it.",
     )
     FUNCTION = "load"
 
@@ -193,6 +198,9 @@ class PixaromaLoadImagesFolder:
         recursive = bool(state.get("recursive", False))
         keep_folders = bool(state.get("keepFolders", False))
         images, masks, widths, heights, names, indices = [], [], [], [], [], []
+        # The REALPATH that passed the containment check above, so a node that
+        # opens it (Prompt Reader) gets a resolved, already-contained path.
+        paths = []
         count = 0
         for rel in selected:
             if not isinstance(rel, str) or not rel:
@@ -255,6 +263,7 @@ class PixaromaLoadImagesFolder:
             else:
                 name = os.path.splitext(os.path.basename(rel))[0]
             names.append(name)
+            paths.append(path)
             count += 1
             indices.append(count)
 
@@ -265,7 +274,7 @@ class PixaromaLoadImagesFolder:
             )
 
         totals = [count] * len(images)
-        return (images, masks, widths, heights, names, indices, totals)
+        return (images, masks, widths, heights, names, indices, totals, paths)
 
     @classmethod
     def IS_CHANGED(cls, LoadImagesFolderState: str = ""):
