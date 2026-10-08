@@ -410,7 +410,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
-### **October 8, 2026 · v1.4.203-v1.4.205**
+### **October 8, 2026 · v1.4.203-v1.4.206**
 - **AI Prompt and Music Prompt no longer crash ComfyUI on a list** (a folder or Prompt Each): each item gets its own text.
 - **Save Text: new "One file per entry" switch and name input,** so every picture gets its own .txt with the same name, ready as training captions.
 - **Load Images from Folder: new path output, and Prompt Reader reads it,** so one Run reads the prompts saved in every picture of a folder.
@@ -418,7 +418,7 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 - **NEW: Text Match,** a yes or no from your words, with gates that filter a whole folder with an AI.
 - **NEW: Load Texts from Folder and Caption Review:** read a folder of .txt captions, and fix them in one window.
 - **Load Images from Folder can skip pictures already done,** so a big folder carries on where it stopped.
-- **Fixed: right-click a paused video for its menu again; Load Video's sound now follows Skip first frames.**
+- **Fixed: right-click a paused video for its menu again; Load Video's sound follows Skip first frames; Image Grid cells fit wide pictures.**
 
 ### **October 6, 2026 · v1.4.199-v1.4.202**
 - **Save Image and Preview Image: Civitai shows your prompt, settings and model again** with "Add Civitai generation info" on. Save images again before uploading.
