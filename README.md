@@ -398,6 +398,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 8, 2026 · v1.4.203**
+- **AI Prompt and Music Prompt no longer crash ComfyUI when fed a list** (a folder of pictures or Prompt Each): every item gets its own text in one Run.
+- **Save Text: new "One file per entry" switch and name input,** so every picture gets its own .txt with the same name, ready as training captions.
+- **Load Images from Folder: new path output, and Prompt Reader reads it,** so one Run reads the prompts saved in every picture of a folder.
+
 ### **October 6, 2026 · v1.4.199-v1.4.202**
 - **Save Image and Preview Image: Civitai shows your prompt, settings and model again** with "Add Civitai generation info" on. Save images again before uploading.
 - **Civitai info also reads prompts built with String Concatenate and LoRAs from Power Lora Loader (rgthree),** and keeps LoRAs with non-Latin names.
