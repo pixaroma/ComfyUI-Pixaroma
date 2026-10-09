@@ -126,7 +126,9 @@ function installClassic() {
 let _vueTimer = null;
 function refreshVue() {
   if (!isVueNodes()) return;
-  const nodes = app.graph?._nodes || [];
+  // the graph ON SCREEN: inside a subgraph app.graph is still the root, so the
+  // inner nodes were never found and kept ComfyUI's gray (2026-10-09)
+  const nodes = (app.canvas?.graph || app.graph)?._nodes || [];
   const byId = new Map();
   for (const n of nodes) byId.set(String(n.id), n);
   const headers = document.querySelectorAll(".lg-node-header");
