@@ -512,11 +512,16 @@ def denied_message(path: str) -> str:
     machine...") and only ever said "approve THIS folder".
     """
     if dialog_available():
+        # the last step covers a ComfyUI used from ANOTHER computer (--listen, a service): Browse
+        # then opens its window on the ComfyUI PC's screen (review round 1, 2026-10-09)
         steps = (
             "  - Workflow from someone else? Their folder is not on your PC: click Browse "
             "on the node and pick a folder of your own.\n"
             "  - Your own folder? Click Browse and pick it once. After that it always works.\n"
-        )
+            "  - No folder window opens (ComfyUI runs on another computer)? Add the folder to "
+            "\"folders\" in\n"
+            "    {config}\n"
+        ).format(config=_config_path())
     else:
         steps = (
             "  - Workflow from someone else? Their folder is not on your PC: type the path "

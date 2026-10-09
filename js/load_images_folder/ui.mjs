@@ -276,7 +276,7 @@ export function openPickGallery(node, anchorEl, ctx) {
       const empty = document.createElement("div");
       // a folder problem keeps its line breaks and reads left to right: one step per line (the
       // server's message, _path_guard.denied_message); "No images" stays a centred one-liner
-      empty.className = "pix-lif-gal-empty" + (node._pixLifListError ? " err" : "");
+      empty.className = "pix-lif-gal-empty" + (/\n/.test(node._pixLifListError || "") ? " err" : "");
       empty.textContent = node._pixLifListError || "No images in this folder.";
       grid.appendChild(empty);
       updateCounts();
