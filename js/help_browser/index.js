@@ -295,6 +295,8 @@ function buildFooter(foot) {
     mkLink("", "🌐 Workflows", LINKS.SITE_URL, "The Pixaroma workflows site"),
   );
   foot.appendChild(el("div", "pixhb-fsp"));
+  // beside the version chip, so "mine" and "the newest" sit side by side
+  foot.appendChild(mkLink("", "🆕 Latest version", LINKS.LATEST_URL, "The newest Pixaroma version and what is new in it"));
 
   // The version, spelled out rather than hidden behind a button. The short form
   // is what people are asked for; the click copies the FULL line (frontend

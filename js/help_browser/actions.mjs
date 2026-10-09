@@ -20,6 +20,9 @@ import { versionLine } from "../shared/version.mjs";
 const DISCORD_URL = "https://discord.com/invite/gggpkVgBf3";
 const YOUTUBE_URL = "https://www.youtube.com/@pixaroma";
 const SITE_URL = "https://workflows.pixaroma.com/";
+// the newest version + what is new, read live from GitLab by that page (a link only:
+// the pack itself never asks the internet for a version)
+const LATEST_URL = "https://workflows.pixaroma.com/latest/";
 
 // A node's title is free text restored verbatim from a workflow file, so it is
 // UNTRUSTED: a downloaded workflow can name a node `<img onerror=...>`. Toast
@@ -185,4 +188,4 @@ export function helpAsText(entry) {
 export function openExternal(url) {
   try { window.open(url, "_blank", "noopener,noreferrer"); } catch { /* popup blocked */ }
 }
-export const LINKS = { DISCORD_URL, YOUTUBE_URL, SITE_URL };
+export const LINKS = { DISCORD_URL, YOUTUBE_URL, SITE_URL, LATEST_URL };

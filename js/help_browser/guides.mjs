@@ -42,6 +42,7 @@ export const GUIDES = [
       {
         heading: "Did it actually take?",
         body: "Worth ten seconds, because an update can finish with a tick and still leave you on the old version. Compare the version in the footer of this window against the newest one on the Pixaroma site. If the number went up, the update worked.",
+        links: [["🆕 Latest version", LINKS.LATEST_URL]],
       },
       {
         heading: "The number did not go up",
