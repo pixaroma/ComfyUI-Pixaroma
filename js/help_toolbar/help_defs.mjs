@@ -1136,6 +1136,7 @@ const HELP = {
           "`Include subfolders` in the gallery also loads images from folders inside your folder. Their names then come out flattened, so an image at portraits/ana.png is called portraits_ana and cannot clash with a same-named file elsewhere.",
           "`Keep folder structure in the name`, next to it, hands over the real path (portraits/ana) instead. Switch on `Keep folders from the wired name` in Save Image Pixaroma's settings as well and your whole folder tree is rebuilt in the save folder, so processing a folder of folders gives you back the same arrangement.",
           "Click Run once and leave the batch count at 1. The node processes every selected image by itself.",
+          "If the `Pick images` button turns into a yellow warning (for example `Folder not approved on this PC: click Browse`), the folder cannot be used yet. This happens with a workflow made on another computer. Click `Browse` and pick the folder once, or pick your own folder. Hover the button for the full explanation.",
         ],
       },
       {

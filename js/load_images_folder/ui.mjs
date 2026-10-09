@@ -25,9 +25,10 @@ export function injectCSS() {
 .pix-lif-browse { display:flex; align-items:center; gap:5px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.16); border-radius:5px; color:#ddd; font-size:11px; padding:0 9px; cursor:pointer; white-space:nowrap; }
 .pix-lif-browse:hover { border-color:var(--pix-acc,#f66744); color:#fff; }
 .pix-lif-browse svg { width:13px; height:13px; fill:currentColor; }
-.pix-lif-pick { background:var(--pix-acc,#f66744); border:1px solid var(--pix-acc,#f66744); border-radius:6px; padding:8px; font-size:12px; color:#fff; text-align:center; font-weight:500; cursor:pointer; }
+.pix-lif-pick { background:var(--pix-acc,#f66744); border:1px solid var(--pix-acc,#f66744); border-radius:6px; padding:8px; font-size:12px; color:#fff; text-align:center; font-weight:500; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex-shrink:0; }
 .pix-lif-pick:hover { filter:brightness(1.08); }
 .pix-lif-pick.empty { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.16); color:#9a9a9a; }
+.pix-lif-pick.warn { background:rgba(224,163,62,0.12); border-color:#e0a33e; color:#e0a33e; }
 .pix-lif-msg { font-size:11px; color:#e0a33e; line-height:1.4; }
 .pix-lif-msg:empty { display:none; }
 .pix-lif-resize-slot { display:flex; flex-direction:column; gap:6px; }

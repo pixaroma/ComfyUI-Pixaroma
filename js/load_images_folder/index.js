@@ -135,10 +135,31 @@ function renderUI(node) {
   }
   const total = (node._pixLifFiles || []).length;
   const sel = (state.selected || []).length;
-  ui.pickBtn.textContent = `Pick images · ${sel} / ${total}`;
-  ui.pickBtn.classList.toggle("empty", sel === 0);
-  ui.msgEl.textContent = node._pixLifListError || "";
+  // A folder problem shows ON the Pick button (one line that never wraps), never as a
+  // message under it: the message arrives after a workflow opens, when the node may not
+  // resize (Vue Compat #18), so in Classic a long one spilled out of the node and over
+  // the nodes below (load-images-folder.md #15). Hover = the full text; a click opens
+  // the gallery, whose empty state shows the full text too.
+  const err = node._pixLifListError || "";
+  ui.pickBtn.classList.toggle("warn", !!err);
+  ui.pickBtn.classList.toggle("empty", !err && sel === 0);
+  if (err) {
+    ui.pickBtn.textContent = shortProblem(node, err);
+    ui.pickBtn.title = err;
+  } else {
+    ui.pickBtn.textContent = `Pick images · ${sel} / ${total}`;
+    ui.pickBtn.title = "Choose which images to load";
+  }
+  ui.msgEl.textContent = "";
   node.setDirtyCanvas?.(true, true);
+}
+
+// The one-line label for a folder problem; the full text stays in the button's title.
+function shortProblem(node, err) {
+  if (node._pixLifListDenied) return "Folder not approved on this PC: click Browse";
+  if (/^Folder not found/i.test(err)) return "Folder not found on this PC: click Browse";
+  if (/^Could not read/i.test(err)) return "Cannot read this folder (hover for why)";
+  return err.replace(/\.\s*$/, "");
 }
 
 // ── (re)list the chosen folder + reconcile selection ─────────────────────────
@@ -153,6 +174,7 @@ async function refreshListing(node, userAction = false) {
   if (!state.folder) {
     node._pixLifFiles = [];
     node._pixLifListError = "";
+    node._pixLifListDenied = false;
     renderUI(node);
     return;
   }
@@ -160,6 +182,7 @@ async function refreshListing(node, userAction = false) {
   // a newer refresh superseded this one (e.g. paste + blur), or the node was
   // removed while the fetch was in flight - drop this stale response.
   if (node._pixLifListReq !== myReq || !node._pixLifUI) return;
+  node._pixLifListDenied = !!(res && !res.ok && res.denied);
   if (res && res.ok) {
     node._pixLifFiles = res.files || [];
     node._pixLifListError = node._pixLifFiles.length
@@ -337,6 +360,7 @@ function setupNode(node) {
     if (!st.folder) {
       ui.folderInput.focus();
       node._pixLifListError = "Set a folder first (type, paste, or Browse).";
+      node._pixLifListDenied = false;
       renderUI(node);
       return;
     }
