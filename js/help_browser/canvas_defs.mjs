@@ -115,11 +115,15 @@ export const CANVAS_FEATURES = [
     key: "canvas:titles",
     title: "Adaptive node titles",
     tagline: "Title text picks white or dark by itself so it stays readable on any colour.",
-    keywords: "readable contrast title text white dark colour color legible",
+    keywords: "readable contrast title text white dark colour color legible advanced inputs footer tab grey gray",
     sections: [
       {
         heading: "What it does",
         body: "When you colour a node, the title text works out whether white or dark reads better against that colour and switches automatically. A pale yellow node gets dark text, a deep blue one gets white.",
+      },
+      {
+        heading: "Nodes 2.0",
+        body: "The tab under a coloured node (Show advanced inputs, or Enter on a subgraph) is painted in the node colour too, so its text follows the same rule. An uncoloured node keeps ComfyUI's own grey there.",
       },
       {
         heading: "Handy to know",

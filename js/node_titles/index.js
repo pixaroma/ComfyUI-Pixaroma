@@ -60,7 +60,7 @@ app.registerExtension({
       defaultValue: true,
       category: ["👑 Pixaroma", "Node titles"],
       tooltip:
-        "Make every node's title text auto-pick white or dark based on the node's title-bar color, so it stays readable on any color (like the group headers). Off = ComfyUI's default gray title text.",
+        "Make every node's title text auto-pick white or dark based on the node's title-bar color, so it stays readable on any color (like the group headers). In Nodes 2.0 the 'Show advanced inputs' tab under a colored node follows it too. Off = ComfyUI's default gray text.",
       onChange: (v) => {
         state.enabled = !!v;
         refreshVue();
@@ -120,18 +120,40 @@ function refreshVue() {
     if (id == null) continue;
     const n = byId.get(String(id));
     if (!n) continue;
-    const ink = state.enabled ? pickInk(barColor(n)) : null;
-    const val = ink || "";
-    if (h.__pixTitleInk === val) continue; // skip redundant writes
-    if (ink) {
-      h.style.setProperty("--pix-title-ink", ink);
-      h.setAttribute("data-pix-ink", "");
-    } else {
-      h.style.removeProperty("--pix-title-ink");
-      h.removeAttribute("data-pix-ink");
-    }
-    h.__pixTitleInk = val;
+    setInk(h, "--pix-title-ink", "data-pix-ink", "__pixTitleInk", state.enabled ? pickInk(barColor(n)) : null);
+    // The footer tab under the body ("Show advanced inputs", a subgraph's "Enter")
+    // is painted in the node colour like the header, with a fixed gray text
+    // (frontend 1.53, NodeFooter.vue): unreadable on orange.
+    const root = h.closest(".lg-node");
+    if (root) setInk(root, "--pix-foot-ink", "data-pix-foot-ink", "__pixFootInk", state.enabled ? footInk(root) : null);
   }
+}
+// The ink follows the colour the tab is PAINTED in, read from its inline style.
+// ComfyUI sets one only on a node with its own colour (an uncoloured node keeps
+// its surface + gray, left alone) and LIGHTENS it in the light palette
+// (applyLightThemeColor), so the raw node.color gave white text on a near-white
+// tab there.
+function footInk(root) {
+  const tab = root.querySelector('[data-testid="advanced-inputs-button"], [data-testid="subgraph-enter-button"]');
+  return tab ? pickInk(rgbToHex(tab.style.backgroundColor)) : null;
+}
+function rgbToHex(c) {
+  const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(c || "");
+  if (!m || (m[4] !== undefined && Number(m[4]) < 0.5)) return null;
+  return "#" + [m[1], m[2], m[3]].map((v) => Number(v).toString(16).padStart(2, "0")).join("");
+}
+function setInk(el, cssVar, marker, key, ink) {
+  const val = ink || "";
+  // skip redundant writes (and re-apply if a re-render dropped the var)
+  if (el[key] === val && el.style.getPropertyValue(cssVar) === val) return;
+  if (ink) {
+    el.style.setProperty(cssVar, ink);
+    el.setAttribute(marker, "");
+  } else {
+    el.style.removeProperty(cssVar);
+    el.removeAttribute(marker);
+  }
+  el[key] = val;
 }
 // CSS that forces the title text to our per-node ink, beating ComfyUI's title
 // color class (`.text-node-component-header` -> var(--fg-color), a light color)
@@ -145,7 +167,12 @@ function injectVueCSS() {
   el.textContent =
     '.lg-node-header[data-pix-ink] [data-testid="node-title"],' +
     '.lg-node-header[data-pix-ink] [data-testid="node-title"] *' +
-    "{color:var(--pix-title-ink)!important;}";
+    "{color:var(--pix-title-ink)!important;}" +
+    '.lg-node[data-pix-foot-ink] [data-testid="advanced-inputs-button"],' +
+    '.lg-node[data-pix-foot-ink] [data-testid="advanced-inputs-button"] *,' +
+    '.lg-node[data-pix-foot-ink] [data-testid="subgraph-enter-button"],' +
+    '.lg-node[data-pix-foot-ink] [data-testid="subgraph-enter-button"] *' +
+    "{color:var(--pix-foot-ink)!important;}";
   document.head.appendChild(el);
 }
 function installVuePoll() {
