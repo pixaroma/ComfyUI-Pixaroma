@@ -44,6 +44,22 @@ function pickInk(color) {
   const lum = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
   return lum > 150 ? "#1a1a1a" : "#ffffff";
 }
+// Any CSS colour (renderingColor is an hsla() string) -> "#rrggbb", through a
+// canvas's own colour parser; cached, since it runs for every title every frame.
+let _nctx = null;
+const _hexCache = new Map();
+function cssToHex(c) {
+  if (typeof c !== "string" || !c) return null;
+  if (_hexCache.has(c)) return _hexCache.get(c);
+  if (!_nctx) _nctx = document.createElement("canvas").getContext("2d");
+  _nctx.fillStyle = "#000000";
+  _nctx.fillStyle = c;
+  const v = _nctx.fillStyle;
+  const hex = v[0] === "#" ? v : rgbToHex(v);
+  if (_hexCache.size > 500) _hexCache.clear();
+  _hexCache.set(c, hex);
+  return hex;
+}
 // A node's effective title-bar color: its own color, else LiteGraph's dark
 // default (so an uncolored node gets a white title instead of gray).
 function barColor(node) {
@@ -93,7 +109,11 @@ function installClassic() {
   N.prototype.drawTitleText = function (ctx, opts) {
     if (state.enabled) {
       try {
-        const ink = pickInk(barColor(this));
+        // The light palette paints the bar LIGHTENED (renderingColor, by
+        // LiteGraph.nodeLightness): the ink must come from that colour, or an
+        // orange node got a white title on a white bar. Dark palette: unchanged.
+        const lit = window.LiteGraph?.nodeLightness ? cssToHex(this.renderingColor) : null;
+        const ink = pickInk(lit || barColor(this));
         if (ink) opts = Object.assign({}, opts, { default_title_color: ink });
       } catch (_e) { /* fall through to native */ }
     }
@@ -120,7 +140,7 @@ function refreshVue() {
     if (id == null) continue;
     const n = byId.get(String(id));
     if (!n) continue;
-    setInk(h, "--pix-title-ink", "data-pix-ink", "__pixTitleInk", state.enabled ? pickInk(barColor(n)) : null);
+    setInk(h, "--pix-title-ink", "data-pix-ink", "__pixTitleInk", state.enabled ? pickInk(paintedBar(h) || barColor(n)) : null);
     // The footer tab under the body ("Show advanced inputs", a subgraph's "Enter")
     // is painted in the node colour like the header, with a fixed gray text
     // (frontend 1.53, NodeFooter.vue): unreadable on orange.
@@ -136,6 +156,18 @@ function refreshVue() {
 function footInk(root) {
   const tab = root.querySelector('[data-testid="advanced-inputs-button"], [data-testid="subgraph-enter-button"]');
   return tab ? pickInk(rgbToHex(tab.style.backgroundColor)) : null;
+}
+// The header's PAINTED colour: Nodes 2.0 paints the card around the header with
+// applyLightThemeColor(node.color) as an inline background, lightened in the light
+// palette, where a white title worked out from the raw colour vanished (white on
+// white). An uncoloured node has none: null, and the caller keeps barColor.
+function paintedBar(h) {
+  for (let el = h; el; el = el.parentElement) {
+    const hex = rgbToHex(el.style.backgroundColor);
+    if (hex) return hex;
+    if (el.classList.contains("lg-node")) break;
+  }
+  return null;
 }
 function rgbToHex(c) {
   const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(c || "");
