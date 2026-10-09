@@ -410,6 +410,11 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 9, 2026 · v1.4.207**
+- **Help window: a Latest version button beside your version,** opening workflows.pixaroma.com/latest with the newest version and what is new.
+- **Node titles stay readable in the light theme,** and in Nodes 2.0 the Show advanced inputs text and nodes inside subgraphs follow the node colour too.
+- **Load Images from Folder: a folder problem shows on the Pick button,** and the folder not approved message reads as clear steps.
+
 ### **October 8, 2026 · v1.4.203-v1.4.206**
 - **AI Prompt and Music Prompt no longer crash ComfyUI on a list** (a folder or Prompt Each): each item gets its own text.
 - **Save Text: new "One file per entry" switch and name input,** so every picture gets its own .txt with the same name, ready as training captions.
