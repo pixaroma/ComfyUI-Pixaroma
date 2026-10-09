@@ -302,7 +302,14 @@ class PixaromaLoadImagesFolder:
         # an NTLM hash over SMB on Windows.
         if not _pix_prescreen(folder):
             raise ValueError(_pix_denied_message(str(folder)))
-        if not folder or not os.path.isdir(folder):
+        if not folder:
+            # shared workflows ship with NO folder so each person picks their own (2026-10-09):
+            # this is the first message they meet, so it says what to do, not "not found"
+            raise ValueError(
+                "Load Images from Folder: no folder picked yet. Click Browse on the node, "
+                "pick your folder, then click 'Pick images' and choose the images."
+            )
+        if not os.path.isdir(folder):
             raise ValueError(
                 "Load Images from Folder: folder not found. Pick a folder on the node "
                 "(type or paste a path, or use Browse)."
