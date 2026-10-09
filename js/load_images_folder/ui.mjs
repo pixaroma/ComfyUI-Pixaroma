@@ -66,6 +66,7 @@ export function injectCSS() {
 .pix-lif-thumb.sel .chk { display:flex; }
 .pix-lif-thumb .nm { position:absolute; bottom:0; left:0; right:0; padding:2px 4px; font-size:9px; color:#eee; background:linear-gradient(transparent, rgba(0,0,0,0.75)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .pix-lif-gal-empty { padding:30px; text-align:center; color:#888; font-size:12px; grid-column:1/-1; }
+.pix-lif-gal-empty.err { white-space:pre-line; text-align:left; color:#b8b8b8; line-height:1.6; max-width:680px; margin:0 auto; }
 .pix-lif-gal-foot { padding:9px 12px; border-top:1px solid #333; display:flex; gap:10px; align-items:center; }
 .pix-lif-subf { display:flex; align-items:center; gap:6px; font-size:11px; color:#bbb; cursor:pointer; user-select:none; }
 .pix-lif-subf .box { width:12px; height:12px; border:1px solid #555; border-radius:3px; }
@@ -273,7 +274,9 @@ export function openPickGallery(node, anchorEl, ctx) {
     const files = node._pixLifFiles || [];
     if (!files.length) {
       const empty = document.createElement("div");
-      empty.className = "pix-lif-gal-empty";
+      // a folder problem keeps its line breaks and reads left to right: one step per line (the
+      // server's message, _path_guard.denied_message); "No images" stays a centred one-liner
+      empty.className = "pix-lif-gal-empty" + (node._pixLifListError ? " err" : "");
       empty.textContent = node._pixLifListError || "No images in this folder.";
       grid.appendChild(empty);
       updateCounts();

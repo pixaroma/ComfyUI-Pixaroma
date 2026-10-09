@@ -502,21 +502,32 @@ def denied_message(path: str) -> str:
     dialog, so "click Browse" is impossible advice and telling someone that
     first is worse than useless - the config file is their only route
     (round-3 review finding 12).
+
+    2026-10-09 rewrite (the user: "it was hard for me to understand what it was
+    and the steps"): one step per line, and it speaks to BOTH people who meet
+    it - someone who downloaded a workflow whose folder is not on their PC (the
+    common case: pick a folder of your own) and someone whose own folder is not
+    approved yet (pick it once). The old text glued the headless sentence onto
+    the dialog one ("Headless install with no dialog? No folder dialog on this
+    machine...") and only ever said "approve THIS folder".
     """
-    browse = (
-        "  To approve it: click Browse on the node and pick this folder once - "
-        "choosing it in the system dialog approves it permanently.\n"
-    )
-    manual = (
-        "  No folder dialog on this machine (headless install), so approve it by "
-        "hand: add the folder to \"folders\", or set \"allow_any\": true, in\n"
-        "  {config}\n"
-    ).format(config=_config_path())
-    steps = (browse + "  Headless install with no dialog? " + manual.strip() + "\n") \
-        if dialog_available() else (manual + browse)
+    if dialog_available():
+        steps = (
+            "  - Workflow from someone else? Their folder is not on your PC: click Browse "
+            "on the node and pick a folder of your own.\n"
+            "  - Your own folder? Click Browse and pick it once. After that it always works.\n"
+        )
+    else:
+        steps = (
+            "  - Workflow from someone else? Their folder is not on your PC: type the path "
+            "of a folder of your own inside ComfyUI's input or output folder.\n"
+            "  - Your own folder somewhere else? This install has no folder dialog, so allow "
+            "it by hand: add it to \"folders\" (or set \"allow_any\": true) in\n"
+            "    {config}\n"
+        ).format(config=_config_path())
     return (
-        "[Pixaroma] That folder is not approved, so it was not used.\n"
-        "  Folder: {path}\n".format(path=path)
+        "[Pixaroma] This folder is not approved on this PC, so it was not used:\n"
+        "  {path}\n".format(path=path)
         + steps
         + "  ComfyUI's own input, output and temp folders always work."
     )
