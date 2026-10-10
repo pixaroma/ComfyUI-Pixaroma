@@ -410,6 +410,9 @@ Master the Pixaroma suite with our video guides and workflow deep-dives:
 
 ## 🛠 Changelog
 
+### **October 10, 2026 · v1.4.208**
+- **Load Images from Folder: when every picture is already done,** the Run now stops quietly with a short notice instead of a red error box.
+
 ### **October 9, 2026 · v1.4.207**
 - **Help window: a Latest version button beside your version,** opening workflows.pixaroma.com/latest with the newest version and what is new.
 - **Node titles stay readable in the light theme,** and in Nodes 2.0 the Show advanced inputs text and nodes inside subgraphs follow the node colour too.
