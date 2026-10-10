@@ -32,6 +32,32 @@ from ._text_folder_helpers import match_key as _match_key
 
 _DONE_SCAN_MAX = 50000   # files looked at in the done folder (a bound, not a feature)
 
+# "Skip pictures already done" with nothing left is a normal end, not a failure
+# (Ep38 8.5 bug-hunter report, 2026-10-10): the Run stops quietly (a silent
+# ExecutionBlocker on every output, so nothing downstream runs and no red error
+# dialog shows) and the reason goes to the browser as a notice. An older ComfyUI
+# without the blocker keeps the old error.
+try:
+    from comfy_execution.graph_utils import ExecutionBlocker as _ExecutionBlocker
+except Exception:
+    _ExecutionBlocker = None
+
+# IS_CHANGED keys of states that had nothing left. Such a state would come back
+# from the cache next time, with no notice at all, so IS_CHANGED answers NaN for
+# it and every press of Run says it again. Bounded, like the done scan.
+_NOTHING_LEFT = set()
+_NOTHING_LEFT_MAX = 64
+
+
+def _notice(message):
+    """Tell the browser that queued this Run (js/load_images_folder shows it as a notice)."""
+    try:
+        from server import PromptServer
+        srv = PromptServer.instance
+        srv.send_sync("pixaroma-lif-notice", {"message": message}, srv.client_id)
+    except Exception:
+        pass
+
 
 def _done_folder(state):
     """(real_done_folder or None, error). None + no error = nothing is done yet
@@ -394,11 +420,21 @@ class PixaromaLoadImagesFolder:
         if skipped_done:
             print(f"[PixaromaLoadImagesFolder] skipped {skipped_done} picture(s) already done in {done_dir}")
         if not images and skipped_done:
-            raise ValueError(
-                f"Load Images from Folder: all {skipped_done} selected pictures are already done "
+            msg = (
+                f"All {skipped_done} selected pictures are already done "
                 f"(a file with the same name is in {done_dir}). Nothing left to do. Turn off "
                 "'Skip pictures already done' to run them again."
             )
+            if _ExecutionBlocker is None:
+                raise ValueError("Load Images from Folder: " + msg)
+            print(f"[PixaromaLoadImagesFolder] {msg}")
+            _notice(msg)
+            key = type(self).IS_CHANGED(LoadImagesFolderState)
+            if isinstance(key, str):    # a repeat press answers NaN (nan != nan: it would pile up in the set)
+                if len(_NOTHING_LEFT) >= _NOTHING_LEFT_MAX:
+                    _NOTHING_LEFT.clear()
+                _NOTHING_LEFT.add(key)
+            return tuple(_ExecutionBlocker(None) for _ in self.RETURN_TYPES)
         if not images:
             raise ValueError(
                 "Load Images from Folder: none of the selected images could be loaded "
@@ -460,7 +496,9 @@ class PixaromaLoadImagesFolder:
                 parts.append("done:" + "|".join(sorted(_done_keys(done_dir, exclude, deep=deep))))
             else:
                 parts.append("done:none")
-        return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+        key = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+        # a state that had nothing left re-runs, so its notice shows on every Run
+        return float("nan") if key in _NOTHING_LEFT else key
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaLoadImagesFolder": PixaromaLoadImagesFolder}

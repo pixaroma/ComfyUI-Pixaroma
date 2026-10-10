@@ -3,6 +3,7 @@
 // injection, adapted for a folder + multi-select gallery + list output.
 
 import { app } from "../../../scripts/app.js";
+import { api } from "../../../scripts/api.js";
 import {
   applyAdaptiveCanvasOnly,
   isVueNodes,
@@ -510,3 +511,25 @@ app.registerExtension({
 // The colour option: a right-click "Load Images from Folder settings" entry, the gear in the
 // selection toolbar, and the shared colour panel behind both.
 registerNodeAccent("PixaromaLoadImagesFolder", { title: "Load Images from Folder" });
+
+// "Skip pictures already done" with nothing left: the node stops the Run without an error (a silent
+// ExecutionBlocker, nodes/node_load_images_folder.py) and the server says why here, as a notice
+// instead of ComfyUI's red error dialog (Ep38 8.5 bug-hunter report, 2026-10-10). Once per page.
+// The same text again within the toast's life is not shown twice: with Run (Instant) on, the Run
+// no longer stops on an error, so it repeats and the notices piled up (review round 1).
+if (!window.__pixLifNoticeOn) {
+  window.__pixLifNoticeOn = true;
+  let last = "", lastAt = 0;
+  api.addEventListener("pixaroma-lif-notice", (e) => {
+    const detail = String(e?.detail?.message || "Nothing left to do.");
+    if (detail === last && Date.now() - lastAt < 8000) return;
+    last = detail;
+    lastAt = Date.now();
+    try {
+      app.extensionManager?.toast?.add({ severity: "info", summary: "Load Images from Folder", detail, life: 8000 });
+    } catch {
+      /* no toast service on this frontend: the console line below still tells */
+    }
+    console.info(`[Pixaroma] Load Images from Folder: ${detail}`);
+  });
+}
