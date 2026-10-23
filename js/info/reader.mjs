@@ -519,6 +519,10 @@ export function openReader(node) {
     // Leave Esc to anything open on top of us (a ComfyUI dialog, a menu, Help,
     // the "Delete this Info button?" question, which Esc must cancel alone).
     if (document.querySelector(".p-dialog-mask, .litecontextmenu, .pix-info-start, .pix-help-backdrop, .pix-cfm-back")) return;
+    // ComfyUI's dialogs left PrimeVue (Settings already on frontend 1.55, all of them on 1.57): no .p-dialog-mask,
+    // only role="dialog", which this window carries too. Measured: Esc closed us under an open Settings dialog.
+    if ([...document.querySelectorAll('[role="dialog"]')].some((d) => d !== _win &&
+        d.getAttribute("data-state") !== "closed" && d.getBoundingClientRect().width > 0)) return;
     // The Help window sits above us (it is opened from our ? button), so Esc
     // closes it first, wherever the focus is. Its own Esc only works while the
     // focus is inside it, and a click on its text leaves the focus on the page,
