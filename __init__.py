@@ -130,6 +130,8 @@ from .nodes.node_sketch import NODE_CLASS_MAPPINGS as _MAPS_SKETCH
 from .nodes.node_sketch import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SKETCH
 from .nodes.node_layout_boxes import NODE_CLASS_MAPPINGS as _MAPS_LAYOUT_BOXES
 from .nodes.node_layout_boxes import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LAYOUT_BOXES
+from .nodes.node_ref_images import NODE_CLASS_MAPPINGS as _MAPS_REF_IMAGES
+from .nodes.node_ref_images import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_REF_IMAGES
 from .nodes.node_save_image import NODE_CLASS_MAPPINGS as _MAPS_SAVE_IMAGE
 from .nodes.node_save_image import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SAVE_IMAGE
 from .nodes.node_save_video import NODE_CLASS_MAPPINGS as _MAPS_SAVE_VIDEO
@@ -254,6 +256,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_FREE_VRAM,
     **_MAPS_SKETCH,
     **_MAPS_LAYOUT_BOXES,
+    **_MAPS_REF_IMAGES,
     **_MAPS_SAVE_IMAGE,
     **_MAPS_SAVE_VIDEO,
     **_MAPS_SAVE_TEXT,
@@ -347,6 +350,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_FREE_VRAM,
     **_NAMES_SKETCH,
     **_NAMES_LAYOUT_BOXES,
+    **_NAMES_REF_IMAGES,
     **_NAMES_SAVE_IMAGE,
     **_NAMES_SAVE_VIDEO,
     **_NAMES_SAVE_TEXT,

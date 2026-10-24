@@ -18,7 +18,7 @@ const TYPES = new Map([
   ["PixaromaPromptEach", true], ["PixaromaText", true], ["PixaromaTextJoinTwo", true], ["PixaromaTextJoinThree", true],
   ["PixaromaTextJoinFour", true], ["PixaromaFindReplace", true], ["PixaromaShowText", true], ["PixaromaSaveText", true],
   ["PixaromaAIPrompt", true], ["PixaromaMusicPrompt", true], ["PixaromaVideoPrompt", true], ["PixaromaPauseText", true],
-  ["PixaromaPromptReader", true], ["PixaromaTextMatch", false],
+  ["PixaromaPromptReader", true], ["PixaromaTextMatch", false], ["PixaromaReferenceImages", true],
 ]);
 
 // ComfyUI's slider is 8-24, default 10. One step = 20% of a box's normal size, for the setting and the node level alike.

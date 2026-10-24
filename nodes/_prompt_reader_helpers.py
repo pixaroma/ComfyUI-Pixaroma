@@ -222,6 +222,14 @@ _PAUSE_TEXT_CLASS = "PixaromaPauseText"
 _SKETCH_CLASS = "PixaromaSketch"
 _SKETCH_PROMPT_SLOT = 1
 
+# Reference Images Pixaroma: the same shape. Its `prompt` output (slot 0) is
+# built at run time from the hidden RefImagesState (your words + the picture
+# list, in the model's tags), and the model comes from where the prompt was
+# wired, which the saved prompt graph still shows. Rebuilt with the node's OWN
+# helpers. A wired `text` input is walked first and used in place of the box.
+_REF_IMAGES_CLASS = "PixaromaReferenceImages"
+_REF_IMAGES_PROMPT_SLOT = 0
+
 # NODES WHOSE TEXT OUTPUT IS WRITTEN BY A MODEL AT RUN TIME. Walking INTO one
 # can never find the prompt and can only ever find the INSTRUCTION, so they are
 # a dead end for this walker.
@@ -830,6 +838,46 @@ def _pix_sketch_prompt(inputs: dict) -> Optional[str]:
     return text.strip() or None
 
 
+_ref_images_mod = None
+
+
+def _load_ref_images_helpers():
+    """Reference Images' own helpers, imported on first use (see Sketch's)."""
+    global _ref_images_mod
+    if _ref_images_mod is None:
+        try:
+            from . import _ref_images_helpers as mod
+        except Exception:
+            try:
+                import _ref_images_helpers as mod
+            except Exception:
+                return None
+        _ref_images_mod = mod
+    return _ref_images_mod
+
+
+def _pix_ref_images_prompt(node_id, inputs: dict, nodes: dict, wired_text) -> Optional[str]:
+    """The prompt a PixaromaReferenceImages sent, rebuilt exactly as
+    nodes/node_ref_images.py run() builds it. None when it fails or is empty."""
+    raw = inputs.get("RefImagesState")
+    if not isinstance(raw, str) or not raw:
+        return None
+    ri = _load_ref_images_helpers()
+    if ri is None:
+        return None
+    try:
+        state = ri.parse_state(raw)
+        model = state["model"]
+        if model == "auto":
+            model = ri.detect_model(nodes, node_id)
+        text = ri.build_prompt(state, model, wired_text)
+    except Exception:
+        return None
+    if not isinstance(text, str):
+        return None
+    return text.strip() or None
+
+
 def _rgthree_any_switch_active_link(inputs: dict):
     """Return the active-input link tuple [upstream_id, upstream_output_slot]
     of rgthree's Any Switch.
@@ -1113,6 +1161,24 @@ def _walk_for_text(
     if cls == _SKETCH_CLASS:
         if origin_slot is None or origin_slot == _SKETCH_PROMPT_SLOT:
             text = _pix_sketch_prompt(inputs)
+            if text:
+                captured.append(text)
+        return
+
+    # Reference Images Pixaroma: rebuild the prompt - see _REF_IMAGES_CLASS.
+    # Arriving on a picture output (image_1..) carries no text.
+    if cls == _REF_IMAGES_CLASS:
+        if origin_slot is None or origin_slot == _REF_IMAGES_PROMPT_SLOT:
+            wired = None
+            link = inputs.get("text")
+            if isinstance(link, list) and len(link) >= 1:
+                sub = []
+                _walk_for_text(link[0], nodes, sub, visited, depth + 1, chase_depth,
+                               origin_slot=link[1] if len(link) >= 2 else None)
+                wired = " ".join(sub)
+            elif isinstance(link, str):
+                wired = link
+            text = _pix_ref_images_prompt(sid, inputs, nodes, wired)
             if text:
                 captured.append(text)
         return

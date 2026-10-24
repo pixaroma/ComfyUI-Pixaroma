@@ -33,6 +33,12 @@ export const KEYWORDS = {
     + "composition compose arrange arrangement placement place position where things go put object here obj_1 tag elements element "
     + "flux 3 flux3 flux.3 klein layout prompt ideogram json prompt draw boxes rectangle canvas text box sign title exact words "
     + "classic nodes 2.0 only works in classic",
+  PixaromaReferenceImages: "reference references reference image reference images reference pictures several pictures "
+    + "multiple images multi image multi-image many images more images image 1 image 2 picture 1 picture 2 "
+    + "<image1> image1 ref_image ref_image_0 <picture 1> tag tags character outfit clothes pose style background "
+    + "face product object roles role swap try on try-on virtual try on combine images mix images merge people "
+    + "qwen qwen image 2.1 qwen edit flux 3 flux3 klein flux 2 klein minimax h3 ref2v reference to video "
+    + "load several images load many images drop pictures paste prompt with tags",
   PixaromaUncrop: "paste back restore put back region",
   PixaromaInpaintCrop: "inpaint mask repair fix retouch face hands blemish",
   PixaromaInpaintStitch: "seam blend feather merge join invisible edge",
