@@ -13,7 +13,7 @@
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
-    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-122K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
+    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-123K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
     <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/Discord-98K%20members-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord members"></a>
   </p>
 </div>
@@ -247,6 +247,10 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **October 24, 2026 · v1.4.231**
+- **Load Image, Load Image Mini and Prompt Reader:** once you pick a picture, ComfyUI's "Missing Inputs" warning about the workflow's missing picture goes away.
+- **Info:** Esc closes a ComfyUI dialog opened over the Info window, not the Info window under it.
 
 ### **October 23, 2026 · v1.4.230**
 - **NEW: Krea2 Enhancer Pixaroma.** Makes a Krea 2 model follow your prompt more closely. It gives the same pictures as the Krea2T Enhancer, which its author removed, so our Krea 2 workflows work again.
