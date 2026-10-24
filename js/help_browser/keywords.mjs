@@ -39,6 +39,11 @@ export const KEYWORDS = {
     + "face product object roles role swap try on try-on virtual try on combine images mix images merge people "
     + "qwen qwen image 2.1 qwen edit flux 3 flux3 klein flux 2 klein minimax h3 ref2v reference to video "
     + "load several images load many images drop pictures paste prompt with tags",
+  PixaromaVideoTools: "video tools join videos join clips merge videos combine videos concatenate append stitch clips "
+    + "trim video cut video cut frames remove frames first frame skip frames reverse backwards rewind "
+    + "loop looping loop video ping pong pingpong boomerang seamless loop repeat crossfade cross fade dissolve "
+    + "transition fade to black fade in fade out dip to black color match colour match brightness match drift "
+    + "video editor edit video wan ltx h3 minimax long video extend video audio sound",
   PixaromaUncrop: "paste back restore put back region",
   PixaromaInpaintCrop: "inpaint mask repair fix retouch face hands blemish",
   PixaromaInpaintStitch: "seam blend feather merge join invisible edge",
