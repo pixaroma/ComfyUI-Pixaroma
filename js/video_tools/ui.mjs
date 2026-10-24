@@ -13,7 +13,8 @@
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { installNativeTextMenu } from "../shared/native_text_menu.mjs";
 import { installNodeAccent } from "../shared/node_settings.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { passComfyShortcut } from "../shared/text_shortcuts.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { MAX_CLIPS, MAX_SPAN, MAX_TIMES, fmtSecs, planVideo, readState, secs } from "./core.mjs";
@@ -22,7 +23,9 @@ import { setClip, setOption } from "./actions.mjs";
 
 export const WIDGET_NAME = "video_tools_ui";
 export const WIDGET_TYPE = "pixaroma_video_tools";
-export const FLOOR = 380;   // every row at its height + the picture at its 90 px minimum (24 px targets)
+// Every row at its height + the picture at its 90 px minimum, AND the two rows that wrap at MIN_W ("Match colors"
+// and "Blend" each move to a line of their own at 440 px): at 380 the Fade row was cut off (review round 2).
+export const FLOOR = 450;
 export const MIN_W = 440;
 
 // Clip 1 wears the node's accent, 2 and 3 two fixed colours (the timeline and the badges).
@@ -233,8 +236,13 @@ export function buildFace(node, { onGear }) {
   installCanvasZoomPassthrough(root);
   installNativeTextMenu(root);
   installNodeAccent(node, root);
+  // Nodes 2.0's corner drag measures the node collapsed, ignoring getMinHeight:
+  // pin the floor on the root while a resize handle is held (drag only, never a load).
+  const floorOff = installResizeFloor(root, () => FLOOR);
+  const widthOff = installWidthFloor(root);
 
   node._pixVdtFace = {
+    floorOff, widthOff,
     root, stage, img, empty, play, tl, info, rows, joinSec, joinSeg, jLen, jLenF, jSecs, match,
     loopSec, loopSeg, lTimes, lTimesF, lBlend, lBlendF, lSecs, fIn, fOut, fInS, fOutS, widget, tlSig: "",
   };
@@ -464,6 +472,40 @@ export function renderFace(node) {
   f.fOutS.textContent = fmtSecs(secs(st.fadeOut, fps));
 }
 
+// Nodes 2.0 has no width floor for this body: its corner drag clamps at the node
+// element's INLINE min-width, read on every move, so pin one only WHILE a resize
+// handle of this node is held (Layout Boxes' installWidthFloor, sketch.md #11):
+// it can never fight a saved size on a load. Found by CONTAINMENT at press time.
+function installWidthFloor(root) {
+  let pinned = null;
+  const clear = () => {
+    if (!pinned) return;
+    try { pinned.style.removeProperty("min-width"); } catch {}
+    pinned = null;
+  };
+  const onDown = (e) => {
+    if (!isVueNodes() || !root.isConnected) return;
+    if (e.target?.closest?.(".lg-node-widget")) return;
+    let cur = "";
+    try { cur = getComputedStyle(e.target).cursor || ""; } catch {}
+    if (!cur.includes("resize")) return;
+    const el = e.target.closest?.(".lg-node");
+    if (!el || !el.contains(root)) return;
+    try { el.style.setProperty("min-width", MIN_W + "px"); pinned = el; } catch {}
+  };
+  window.addEventListener("pointerdown", onDown, true);
+  window.addEventListener("pointerup", clear, true);
+  window.addEventListener("pointercancel", clear, true);
+  return () => {
+    window.removeEventListener("pointerdown", onDown, true);
+    window.removeEventListener("pointerup", clear, true);
+    window.removeEventListener("pointercancel", clear, true);
+    clear();
+  };
+}
+
 export function destroyFace(node) {
+  try { node._pixVdtFace?.floorOff?.(); } catch {}
+  try { node._pixVdtFace?.widthOff?.(); } catch {}
   node._pixVdtFace = null;
 }

@@ -10,7 +10,8 @@
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { installNativeTextMenu } from "../shared/native_text_menu.mjs";
 import { installNodeAccent } from "../shared/node_settings.mjs";
-import { applyAdaptiveCanvasOnly } from "../shared/nodes2.mjs";
+import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
+import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { followSpellcheck } from "../shared/spellcheck.mjs";
 import { passComfyShortcut } from "../shared/text_shortcuts.mjs";
 import {
@@ -22,7 +23,7 @@ import { closeMenu, openMenu } from "./popup.mjs";
 
 export const WIDGET_NAME = "reference_images_ui";
 export const WIDGET_TYPE = "pixaroma_reference_images";   // unique: a registered Vue type would swallow the DOM
-export const FLOOR = 360;   // bar + a grid of 120 + both text areas, at the smallest
+export const FLOOR = 370;   // bar + a grid of 120 + both text areas + the gaps (364 measured), at the smallest
 export const MIN_W = 340;
 
 const el = (tag_, cls, text) => {
@@ -183,8 +184,12 @@ export function buildFace(node, { onGear }) {
   installCanvasZoomPassthrough(root);
   installNativeTextMenu(root);
   installNodeAccent(node, root);
+  // Nodes 2.0's corner drag measures the node collapsed, ignoring getMinHeight:
+  // pin the floor on the root while a resize handle is held (drag only, never a load).
+  const floorOff = installResizeFloor(root, () => FLOOR);
+  const widthOff = installWidthFloor(root);
 
-  node._pixRfiFace = { root, inner, grid, modelBtn, mv, count, textBox, warn, sHint, sent, widget, sig: "" };
+  node._pixRfiFace = { floorOff, widthOff, root, inner, grid, modelBtn, mv, count, textBox, warn, sHint, sent, widget, sig: "" };
   return widget;
 }
 
@@ -355,7 +360,41 @@ export function renderFace(node, structural = true) {
   f.sHint.textContent = n ? `${tag(model, 1, st.custom)} = picture 1` : "";
 }
 
+// Nodes 2.0 has no width floor for this body: its corner drag clamps at the node
+// element's INLINE min-width, read on every move, so pin one only WHILE a resize
+// handle of this node is held (Layout Boxes' installWidthFloor, sketch.md #11):
+// it can never fight a saved size on a load. Found by CONTAINMENT at press time.
+function installWidthFloor(root) {
+  let pinned = null;
+  const clear = () => {
+    if (!pinned) return;
+    try { pinned.style.removeProperty("min-width"); } catch {}
+    pinned = null;
+  };
+  const onDown = (e) => {
+    if (!isVueNodes() || !root.isConnected) return;
+    if (e.target?.closest?.(".lg-node-widget")) return;
+    let cur = "";
+    try { cur = getComputedStyle(e.target).cursor || ""; } catch {}
+    if (!cur.includes("resize")) return;
+    const el = e.target.closest?.(".lg-node");
+    if (!el || !el.contains(root)) return;
+    try { el.style.setProperty("min-width", MIN_W + "px"); pinned = el; } catch {}
+  };
+  window.addEventListener("pointerdown", onDown, true);
+  window.addEventListener("pointerup", clear, true);
+  window.addEventListener("pointercancel", clear, true);
+  return () => {
+    window.removeEventListener("pointerdown", onDown, true);
+    window.removeEventListener("pointerup", clear, true);
+    window.removeEventListener("pointercancel", clear, true);
+    clear();
+  };
+}
+
 export function destroyFace(node) {
   closeMenu();
+  try { node._pixRfiFace?.floorOff?.(); } catch {}
+  try { node._pixRfiFace?.widthOff?.(); } catch {}
   node._pixRfiFace = null;
 }
