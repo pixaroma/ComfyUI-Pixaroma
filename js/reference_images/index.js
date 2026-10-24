@@ -75,8 +75,10 @@ function refreshLive(node) {
 function applyRun(node, message) {
   const entry = message?.pixaroma_ref_images?.[0];
   if (!entry) return;
-  // Runtime only, never serialized.
-  node._pixRfiRun = { model: entry.model, prompt: entry.prompt };
+  // Runtime only, never serialized. `liveAt` = what the face's own walk said
+  // when this run came back: while it still says that, the face shows the
+  // run's model (the run sees through subgraphs, the face's walk does not).
+  node._pixRfiRun = { model: entry.model, prompt: entry.prompt, liveAt: node._pixRfiLive };
   renderFace(node, false);
 }
 
@@ -275,7 +277,13 @@ app.graphToPrompt = async function (...args) {
         const node = findNode(index, id);
         if (!node) continue;
         entry.inputs = entry.inputs || {};
-        entry.inputs[HIDDEN_INPUT] = JSON.stringify(injectedState(node));
+        const st = injectedState(node);
+        // Auto: the model the prompt wire leads to, found in THIS prompt by the
+        // same walk Python does. ComfyUI's cache never looks downstream, so
+        // without it a rewire to another model re-used the cached prompt with the
+        // OLD model's tags (review 2026-10-25, reproduced). Python ignores the key.
+        if (st.model === "auto") st.auto = detectModel(out, id);
+        entry.inputs[HIDDEN_INPUT] = JSON.stringify(st);
       }
     }
   } catch (e) {

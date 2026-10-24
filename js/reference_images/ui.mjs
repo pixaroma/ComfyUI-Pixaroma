@@ -17,7 +17,7 @@ import {
   MAX_CARDS, MODEL_LABELS, ROLES, buildPrompt, defaultNoun, defaultPhrase, missingTags, readState, roleLabel, tag,
 } from "./core.mjs";
 import { injectCSS } from "./css.mjs";
-import { addFiles, moveCard, removeCard, setCardField, setOption, thumbUrl } from "./actions.mjs";
+import { addFiles, isPicture, moveCard, removeCard, setCardField, setOption, thumbUrl } from "./actions.mjs";
 import { closeMenu, openMenu } from "./popup.mjs";
 
 export const WIDGET_NAME = "reference_images_ui";
@@ -46,6 +46,8 @@ const MODEL_HINTS = {
 export function shownModel(node) {
   const st = readState(node);
   if (st.model !== "auto") return st.model;
+  const run = node._pixRfiRun;
+  if (run?.model && run.liveAt === node._pixRfiLive) return run.model;
   return node._pixRfiLive || "plain";
 }
 
@@ -136,6 +138,11 @@ export function buildFace(node, { onGear }) {
   });
   sHead.append(sTitle, sHint, el("span", "pix-rfi-grow"), copy);
   const sent = el("div", "pix-rfi-sent", "");
+  // A read-only text box for screen readers (axe: aria-label needs a role).
+  sent.setAttribute("role", "textbox");
+  sent.setAttribute("aria-readonly", "true");
+  sent.setAttribute("aria-multiline", "true");
+  sent.tabIndex = 0;
   sent.setAttribute("aria-label", "The prompt this node sends");
 
   inner.append(bar, grid, pHead, textBox, warn, sHead, sent);
@@ -154,6 +161,9 @@ export function buildFace(node, { onGear }) {
   root.addEventListener("drop", (e) => {
     grid.classList.remove("drop");
     if (!hasFiles(e)) return;
+    // Only pictures are ours: a workflow .json or a video dropped here goes on
+    // to ComfyUI's own drop handling (it opens the workflow).
+    if (![...(e.dataTransfer?.files || [])].some(isPicture)) return;
     e.preventDefault();
     e.stopPropagation();   // or ComfyUI ALSO makes a Load Image node of it
     const thumb = e.target?.closest?.(".pix-rfi-thumb");
