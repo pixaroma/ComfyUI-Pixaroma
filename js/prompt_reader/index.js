@@ -376,10 +376,12 @@ async function uploadImage(node, file, hintName = null) {
       values.sort();
       w.options.values = values;
     }
+    const oldValue = w.value;
     w.value = saved;
     // Defensive cache - issue #38 hardening. Same pattern used by every
     // other pick path (dropdown click, arrow nav, native drag-drop).
     node._pixPrSelectedFilename = saved;
+    notifyImagePicked(node, w, oldValue);
   }
   node.graph?.setDirtyCanvas?.(true, true);
   return saved;
@@ -518,6 +520,15 @@ function splitPath(path) {
   return { subfolder: norm.slice(0, idx), filename: norm.slice(idx + 1) };
 }
 
+// Tell core the picture changed, the way its own combo does (widget.setValue
+// calls node.onWidgetChanged). Core clears a "Missing Inputs" warning, raised
+// when a workflow opened with a picture that is not on disk, ONLY through that
+// hook, so without it the warning stayed after a real pick. Real picks only.
+function notifyImagePicked(node, w, oldValue) {
+  try { node.onWidgetChanged?.(w.name, w.value, oldValue, w); }
+  catch (e) { console.warn("[PromptReader] onWidgetChanged failed:", e); }
+}
+
 // Step the selected image by `offset` (+1 / -1), wrapping. Routes through
 // the same callback path as a manual pick so the extract refresh happens.
 function pickByOffset(node, offset) {
@@ -529,8 +540,10 @@ function pickByOffset(node, offset) {
   let next;
   if (cur < 0) next = offset > 0 ? 0 : values.length - 1;
   else next = ((cur + offset) % values.length + values.length) % values.length;
+  const oldValue = w.value;
   w.value = values[next];
   node._pixPrSelectedFilename = values[next];
+  notifyImagePicked(node, w, oldValue);
   // A manual step wins over any connected filename. If it severed a wire, the
   // disconnect's onConnectionsChange cascade already refreshed the readout, so
   // only extract here when nothing was severed (avoids a double fetch).
@@ -760,8 +773,10 @@ function openDropdown(node, anchorEl) {
         if (entry.full === w.value) scrollTarget = item;
         item.addEventListener("click", (e) => {
           e.stopPropagation();
+          const oldValue = w.value;
           w.value = entry.full;
           node._pixPrSelectedFilename = entry.full;
+          notifyImagePicked(node, w, oldValue);
           close();
           if (!takeOverFromWire(node)) onImageChanged(node);  // manual pick wins over a wire
         });

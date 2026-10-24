@@ -242,8 +242,16 @@ export function setSelectedImage(node, filename) {
     values.push(filename);
     values.sort();
   }
+  const oldValue = w.value;
   w.value = filename;
   node._pixLiSelectedFilename = filename;
+  // Tell core the value changed, the way its own combo does (widget.setValue
+  // calls node.onWidgetChanged). Core clears a "Missing Inputs" warning, raised
+  // when a workflow opened with a picture that is not on disk, ONLY through that
+  // hook, so without it the warning stayed after a real pick. Called even for the
+  // same name: uploading the missing file under its own name must clear it too.
+  try { node.onWidgetChanged?.(w.name, filename, oldValue, w); }
+  catch (e) { console.warn("[LoadImage] onWidgetChanged failed:", e); }
   // A picture taken from one of the user's folders records where it came from
   // (folders.mjs sets it just before calling here). Any OTHER pick means the
   // picture no longer comes from that folder, so the arrows go back to stepping
