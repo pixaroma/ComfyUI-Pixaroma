@@ -22,7 +22,7 @@ import { setClip, setOption } from "./actions.mjs";
 
 export const WIDGET_NAME = "video_tools_ui";
 export const WIDGET_TYPE = "pixaroma_video_tools";
-export const FLOOR = 360;
+export const FLOOR = 380;   // every row at its height + the picture at its 90 px minimum (24 px targets)
 export const MIN_W = 440;
 
 // Clip 1 wears the node's accent, 2 and 3 two fixed colours (the timeline and the badges).

@@ -83,7 +83,7 @@ export function planVideo(lengths, st) {
     if (n == null || n <= 0) return;
     const c = st.clips[slot];
     const [s, e] = keptRange(Math.trunc(n), c.cutStart, c.cutEnd);
-    clips.push({ slot, frames: Math.trunc(n), start: s, end: e, kept: e - s, reverse: c.reverse });
+    clips.push({ slot, frames: Math.trunc(n), start: s, end: e, kept: e - s, reverse: c.reverse, xin: 0 });
   });
   const joins = [];
   let pos = 0;
@@ -91,9 +91,11 @@ export function planVideo(lengths, st) {
     if (k === 0) { c.at = 0; pos = c.kept; return; }
     const prev = clips[k - 1];
     if (st.join === "crossfade") {
-      const n = Math.max(0, Math.min(st.joinFrames, prev.kept - 1, c.kept - 1));
+      // Never reach back into the crossfade that came INTO the previous clip.
+      const n = Math.max(0, Math.min(st.joinFrames, prev.kept - 1 - prev.xin, c.kept - 1));
       joins.push({ kind: n ? "crossfade" : "cut", frames: n, at: pos - n });
       c.at = pos - n;
+      c.xin = n;
       pos += c.kept - n;
     } else if (st.join === "black") {
       const nOut = Math.min(st.joinFrames, prev.kept);

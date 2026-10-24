@@ -39,9 +39,12 @@ function applyRun(node, message) {
 }
 
 // A new Run stops every moving preview, so nothing animates while it works.
+// app.graph is the ROOT graph; an opened subgraph is app.canvas.graph.
 api.addEventListener("execution_start", () => {
-  for (const n of app.graph?._nodes || []) {
-    if ((n.comfyClass === CLASS || n.type === CLASS) && n._pixVdtPlaying) setPlaying(n, false);
+  for (const g of new Set([app.graph, app.canvas?.graph])) {
+    for (const n of g?._nodes || []) {
+      if ((n.comfyClass === CLASS || n.type === CLASS) && n._pixVdtPlaying) setPlaying(n, false);
+    }
   }
 });
 

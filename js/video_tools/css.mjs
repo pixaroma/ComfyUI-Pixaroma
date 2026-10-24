@@ -66,25 +66,25 @@ export function injectCSS() {
 .pix-vdt-row-off .pix-vdt-badge,.pix-vdt-row-off .pix-vdt-step,.pix-vdt-row-off .pix-vdt-rev{opacity:.4;}
 
 /* a number with - and + (one sunken field, borderless cells inside) */
-.pix-vdt-step{display:inline-flex;align-items:stretch;height:22px;border-radius:4px;background:#1d1d1d;
+.pix-vdt-step{display:inline-flex;align-items:stretch;height:26px;border-radius:4px;background:#1d1d1d;
   border:1px solid #444;box-sizing:border-box;overflow:hidden;}
 .pix-vdt-step:focus-within{border-color:${ACC};}
-.pix-vdt-step button{width:19px;border:none;background:transparent;color:#aaa;cursor:pointer;padding:0;
+.pix-vdt-step button{width:24px;border:none;background:transparent;color:#aaa;cursor:pointer;padding:0;
   font:13px "Segoe UI",sans-serif;line-height:1;}
 .pix-vdt-step button:hover{background:rgba(255,255,255,.08);color:#fff;}
-.pix-vdt-step input{width:32px;border:none;outline:none;background:transparent;color:#e0e0e0;text-align:center;
+.pix-vdt-step input{width:30px;border:none;outline:none;background:transparent;color:#e0e0e0;text-align:center;
   font:11px "Segoe UI",sans-serif;padding:0;-moz-appearance:textfield;}
 .pix-vdt-step input::-webkit-outer-spin-button,.pix-vdt-step input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
-.pix-vdt-rev{width:28px;height:22px;border-radius:4px;background:#1d1d1d;border:1px solid #444;color:#aaa;cursor:pointer;
+.pix-vdt-rev{width:28px;height:26px;border-radius:4px;background:#1d1d1d;border:1px solid #444;color:#aaa;cursor:pointer;
   padding:0;font:13px "Segoe UI",sans-serif;box-sizing:border-box;}
 .pix-vdt-rev:hover{border-color:${ACC};color:#ddd;}
 .pix-vdt-rev.on{background:${ACC};border-color:${ACC};color:#fff;}
 
 /* Join / Loop / Fade rows */
-.pix-vdt-sec{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;min-height:24px;}
+.pix-vdt-sec{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;min-height:28px;}
 .pix-vdt-sec.dim > :not(.pix-vdt-lab){opacity:.4;}
 .pix-vdt-lab{width:34px;color:#bdbdbd;font-weight:600;user-select:none;flex:0 0 auto;}
-.pix-vdt-seg{display:inline-flex;height:22px;border-radius:4px;background:rgba(0,0,0,.25);padding:2px;gap:2px;
+.pix-vdt-seg{display:inline-flex;height:28px;border-radius:4px;background:rgba(0,0,0,.25);padding:2px;gap:2px;
   box-sizing:border-box;}
 .pix-vdt-seg button{border:none;background:transparent;color:#aaa;border-radius:3px;padding:0 7px;cursor:pointer;
   font:11px "Segoe UI",sans-serif;white-space:nowrap;}
@@ -95,7 +95,7 @@ export function injectCSS() {
    a dimmed one still took the room and wrapped the row */
 .pix-vdt-f.off{display:none;}
 .pix-vdt-f small{color:#7d7d7d;font-size:10px;}
-.pix-vdt-sw{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#bbb;user-select:none;white-space:nowrap;}
+.pix-vdt-sw{display:inline-flex;align-items:center;gap:6px;cursor:pointer;color:#bbb;user-select:none;white-space:nowrap;min-height:24px;}
 .pix-vdt-sw i{width:28px;height:16px;border-radius:8px;background:#555;position:relative;display:inline-block;
   transition:background .15s;}
 .pix-vdt-sw i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;

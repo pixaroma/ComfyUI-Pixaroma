@@ -98,7 +98,7 @@ def plan(lengths, st):
         c = st["clips"][slot]
         s, e = kept_range(int(n), c["cutStart"], c["cutEnd"])
         clips.append({"slot": slot, "frames": int(n), "start": s, "end": e, "kept": e - s,
-                      "reverse": c["reverse"]})
+                      "reverse": c["reverse"], "xin": 0})
     joins = []
     pos = 0
     for k, c in enumerate(clips):
@@ -108,10 +108,14 @@ def plan(lengths, st):
             continue
         prev = clips[k - 1]
         if st["join"] == "crossfade":
-            n = min(st["joinFrames"], prev["kept"] - 1, c["kept"] - 1)
+            # The crossfade OUT of a clip may not reach back into the crossfade
+            # that came INTO it: with a short middle clip the two overlapped and
+            # clip 1 showed through clip 3 (review 2026-10-25, reproduced).
+            n = min(st["joinFrames"], prev["kept"] - 1 - prev["xin"], c["kept"] - 1)
             n = max(0, n)
             joins.append({"kind": "crossfade" if n else "cut", "frames": n, "at": pos - n})
             c["at"] = pos - n
+            c["xin"] = n
             pos += c["kept"] - n
         elif st["join"] == "black":
             n_out = min(st["joinFrames"], prev["kept"])
@@ -303,7 +307,9 @@ def _wave(audio):
         wf = wf[0]
     elif wf.dim() == 1:
         wf = wf.unsqueeze(0)
-    return wf.float(), sr
+    # Sound can arrive on the graphics card (--gpu-only, some packs): all the
+    # work here is in normal memory, and torch refuses to mix the two.
+    return wf.float().cpu(), sr
 
 
 def _resample(wf, sr_from, sr_to):
@@ -414,7 +420,9 @@ def process(videos, audios, fps, st):
     target = None
     done = []
     for c in pl["clips"]:
-        x = as_rgb(videos[c["slot"]])[c["start"]:c["end"]]
+        # .cpu(): frames can arrive on the graphics card (--gpu-only) and every
+        # curve and buffer here is in normal memory (a no-op for CPU frames).
+        x = as_rgb(videos[c["slot"]])[c["start"]:c["end"]].cpu()
         if c["reverse"]:
             x = torch.flip(x, dims=[0])
         if target is None:
@@ -426,7 +434,7 @@ def process(videos, audios, fps, st):
     # assemble() always writes into a NEW tensor, so the fades below can never
     # touch the frames another node handed us.
     base = assemble(done, pl)
-    del done
+    del done, x     # x still held the last clip's copy
     frames = fade_frames(loop_frames(base, pl), pl)
     sound = build_sound([audios[c["slot"]] for c in pl["clips"]], pl, fps)
     return frames, sound, pl

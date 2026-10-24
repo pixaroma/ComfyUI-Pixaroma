@@ -20,7 +20,7 @@ import uuid
 
 import torch
 
-from ._video_tools_helpers import MAX_CLIPS, parse_state, process
+from ._video_tools_helpers import MAX_CLIPS, as_rgb, parse_state, process
 
 _PREVIEW_H = 240        # the moving preview on the node: small, it only has to show the joins
 _PREVIEW_FPS = 12
@@ -175,7 +175,8 @@ class PixaromaVideoTools:
         for c in pl["clips"]:
             v = videos[c["slot"]]
             a = audios[c["slot"]]
-            thumb = _save_thumb(v[c["start"] if not c["reverse"] else c["end"] - 1], unique_id)
+            # as_rgb: a grey (1-channel) clip made PIL refuse the thumb.
+            thumb = _save_thumb(as_rgb(v)[c["start"] if not c["reverse"] else c["end"] - 1], unique_id)
             info_clips.append({
                 "slot": c["slot"] + 1, "frames": c["frames"], "kept": c["kept"],
                 "width": int(v.shape[2]), "height": int(v.shape[1]),
