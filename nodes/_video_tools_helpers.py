@@ -398,10 +398,20 @@ def _fit_len(wf, n):
     return torch.cat([wf, torch.zeros((wf.shape[0], n - wf.shape[-1]), dtype=wf.dtype)], dim=-1)
 
 
-def _pow_ramp(n, rising):
-    """Equal-power curve over n samples (a crossfade keeps its loudness)."""
-    t = (torch.arange(n, dtype=torch.float32) + 0.5) / max(1, n)
-    return torch.sin(t * math.pi / 2) if rising else torch.cos(t * math.pi / 2)
+def _xfade(a, b):
+    """Crossfade sound a (fading out) into b (fading in), same shape [ch, m].
+    Equal power (cos / sin) keeps two UNRELATED sounds at their loudness, but
+    adds the SAME sound (two clips of one video, met at the same moment) up to
+    sqrt(2) times louder. So the gains are divided by sqrt(1 + corr * sin 2t):
+    corr 0 = equal power as before, corr 1 = the two gains sum to 1 and the
+    voice runs on at its level. corr below 0 counts as 0."""
+    m = a.shape[-1]
+    th = (torch.arange(m, dtype=torch.float32) + 0.5) / max(1, m) * (math.pi / 2)
+    na, nb = float(a.norm()), float(b.norm())
+    corr = float((a * b).sum()) / (na * nb) if na > 1e-9 and nb > 1e-9 else 0.0
+    corr = min(1.0, max(0.0, corr))
+    k = torch.rsqrt(1.0 + corr * torch.sin(2 * th))
+    return a * (torch.cos(th) * k) + b * (torch.sin(th) * k)
 
 
 def build_sound(audios, pl, fps):
@@ -434,7 +444,7 @@ def build_sound(audios, pl, fps):
         nxt = clips[k]
         if j["kind"] == "crossfade":
             m = min(_b(j["frames"], sr, fps), out.shape[-1], nxt.shape[-1])
-            mixed = out[..., out.shape[-1] - m:] * _pow_ramp(m, False) + nxt[..., :m] * _pow_ramp(m, True)
+            mixed = _xfade(out[..., out.shape[-1] - m:], nxt[..., :m])
             out = torch.cat([out[..., :out.shape[-1] - m], mixed, nxt[..., m:]], dim=-1)
         elif j["kind"] == "black":
             mo = min(_b(j["out"], sr, fps), out.shape[-1])
@@ -456,7 +466,7 @@ def build_sound(audios, pl, fps):
     elif loop == "seamless" and pl["blend"] > 0:
         m = _b(pl["blend"], sr, fps)
         s = out.shape[-1]
-        mixed = out[..., s - m:] * _pow_ramp(m, False) + out[..., :m] * _pow_ramp(m, True)
+        mixed = _xfade(out[..., s - m:], out[..., :m])
         cycle = torch.cat([out[..., m:s - m], mixed], dim=-1)
     else:
         cycle = out

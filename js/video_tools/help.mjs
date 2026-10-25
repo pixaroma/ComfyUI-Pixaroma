@@ -27,7 +27,7 @@ export const VIDEO_TOOLS_HELP = {
       heading: "Join",
       defs: [
         ["Cut", "One clip right after the other."],
-        ["Crossfade", "The end of one clip melts into the start of the next over `Length` frames. The two overlap, so the video gets that many frames shorter. The sound crossfades too."],
+        ["Crossfade", "The end of one clip melts into the start of the next over `Length` frames. The two overlap, so the video gets that many frames shorter. The sound crossfades too, and keeps its level: two clips that carry the same sound at the same moment (two versions of one video) let a voice run on with no bump."],
         ["Through black", "Fades to black at the end of one clip and back up at the start of the next. Nothing overlaps."],
         ["Match colors", "Shifts each clip's colour and brightness so it matches the end of the clip before it. A clip continued from another one often comes out a little darker or warmer, and this hides the jump. How far it goes is set in the gear."],
       ],
