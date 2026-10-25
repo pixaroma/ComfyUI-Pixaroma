@@ -94,7 +94,16 @@ export function removeCard(node, index) {
   if (!st.cards[index]) return;
   const before = sizeBefore(node);
   const slot = index + 1;
-  if (st.cards.length > 1 && node.outputs && slot < node.outputs.length) node.removeOutput(slot);
+  if (st.cards.length > 1 && node.outputs && slot < node.outputs.length) {
+    node.removeOutput(slot);
+    // The later outputs moved down one WITH their labels ("2" now sits on
+    // output 1): renumber our own labels, or syncOutputs takes "2" for a
+    // user's rename and keeps it, and it is saved (review 2026-10-25, reproduced).
+    for (let k = slot; k < node.outputs.length; k++) {
+      const o = node.outputs[k];
+      if (o && o.label === String(k + 1)) o.label = String(k);
+    }
+  }
   st.cards.splice(index, 1);
   commit(node, st, before);
 }

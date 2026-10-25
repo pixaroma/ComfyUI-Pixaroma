@@ -21,13 +21,12 @@ import { CLASS, HIDDEN_INPUT, detectModel, injectedState } from "./core.mjs";
 import { addFiles, isOurLabel, isPicture, syncOutputs } from "./actions.mjs";
 import { REFERENCE_IMAGES_HELP } from "./help.mjs";
 import {
-  FLOOR, liftClassic, nodeFloor, settleLift, unwatchLift, watchLift,
+  defaultHeight, liftClassic, nodeFloor, settleLift, unwatchLift, watchLift,
 } from "./layout.mjs";
 import { closeSettingsPanelFor, openSettingsPanel } from "./settings.mjs";
 import { MIN_W, buildFace, destroyFace, renderFace } from "./ui.mjs";
 
 const DEFAULT_W = 480;
-const DEFAULT_H = FLOOR + 42;   // an empty node's content + Classic's widget start and margins
 const POLL_MS = 800;
 
 registerNodeHelp(CLASS, REFERENCE_IMAGES_HELP);
@@ -147,9 +146,9 @@ app.registerExtension({
 
       // Fresh size, SYNCHRONOUSLY: configure() runs next and restores a saved
       // size, so a deferred write would clobber it on every reload (#9).
-      if (!Array.isArray(node.size)) node.size = [DEFAULT_W, DEFAULT_H];
+      if (!Array.isArray(node.size)) node.size = [DEFAULT_W, defaultHeight()];
       node.size[0] = DEFAULT_W;
-      node.size[1] = DEFAULT_H;
+      node.size[1] = defaultHeight();
 
       queueMicrotask(() => {
         // A fresh drop starts with prompt + image_1 instead of all 9 outputs.

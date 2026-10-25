@@ -38,7 +38,16 @@ const GRID_INSET = 16 + GUTTER;
 // frontend 1.55): Classic = widgets_start_y + the DOM widget's margins.
 const CLASSIC_START_Y = 22;
 const CLASSIC_MARGIN = 10;
-const SLOT_H = 20;
+// Nodes 2.0: node.size[1] minus the inner layer (the first slot row + the
+// widget area's paddings), measured 62 on frontend 1.55.18.
+const VUE_CHROME = 62;
+
+/** A fresh node's height: an empty node's content at its smallest, in the
+ *  renderer it is born in (Classic's 42 left a fresh Nodes 2.0 node 20 px
+ *  short: "Your prompt" 44 px, review 2026-10-25, measured). */
+export function defaultHeight() {
+  return FLOOR + (isVueNodes() ? VUE_CHROME : CLASSIC_START_Y + 2 * CLASSIC_MARGIN);
+}
 
 export function columnsFor(w) {
   return Math.max(1, Math.min(MAX_COLS, Math.floor((w + GAP) / (MIN_CARD + GAP))));
@@ -86,7 +95,7 @@ function chrome(node) {
   if (isVueNodes()) {
     const h = frameBodyHeight(node);
     if (h && f?.root?.offsetHeight > 0) return h - f.root.offsetHeight;
-    return 2 * SLOT_H;
+    return VUE_CHROME;
   }
   const w = f?.widget;
   const y = Number.isFinite(w?.y) && w.y > 0 ? w.y : CLASSIC_START_Y;
