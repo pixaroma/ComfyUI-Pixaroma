@@ -254,6 +254,10 @@ class PixaromaOutpaint:
     RETURN_TYPES = ("IMAGE", "INT", "INT", PIXAROMA_OUTPAINT_INFO)
     RETURN_NAMES = ("image", "width", "height", "outpaint_info")
     FUNCTION = "outpaint"
+    # The face shows the run's result: a Run with nothing changed is cached, runs
+    # no code, and re-sends that result only with this (ComfyUI 0.42 execution.py;
+    # measured 2026-10-25: after a reload the face stayed empty, video-tools.md #8).
+    HAS_INTERMEDIATE_OUTPUT = True
     CATEGORY = "👑 Pixaroma/✂️ Resize & Crop"
 
     def outpaint(self, image, OutpaintState=""):
