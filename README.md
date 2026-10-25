@@ -94,6 +94,8 @@ The groups are in order of how much they are used in real workflows, and inside 
 | [Load&nbsp;Video&nbsp;Frame&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/load-video-frame/) | Picks one exact frame from a video to use as an&nbsp;image. |
 | [First&nbsp;Last&nbsp;Frame&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/first-last-frame/) | Takes the first and the last frame of a video as two&nbsp;images. |
 | [Save&nbsp;Video&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/save-video/) | Saves an mp4 to any folder with your own file name, and plays it on the&nbsp;node. |
+| [Reference&nbsp;Images&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/reference-images/) | Up to 12 reference pictures, each with a job, and a prompt that names them the way your model&nbsp;expects. |
+| [Video&nbsp;Tools&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/video-tools/) | Joins, trims, loops and fades up to 8 video clips with their sound, and can put one song under&nbsp;them. |
 
 ### 💬 Prompt and Text
 
@@ -247,6 +249,10 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **October 25, 2026 · v1.4.232**
+- **NEW: Reference Images Pixaroma.** Up to 12 reference pictures, each with a job, and a prompt that names them the way your model expects (Qwen Image 2.1, FLUX 3, MiniMax H3).
+- **NEW: Video Tools Pixaroma.** Join, trim, reverse, loop and fade up to 8 video clips with their sound, with one song under the whole video if you like.
 
 ### **October 24, 2026 · v1.4.231**
 - **Load Image, Load Image Mini and Prompt Reader:** once you pick a picture, ComfyUI's "Missing Inputs" warning about the workflow's missing picture goes away.
