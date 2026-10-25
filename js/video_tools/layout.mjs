@@ -18,6 +18,7 @@
 import { app } from "../../../scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
+import { isWildcardType, slotTypeList } from "../shared/slot_types.mjs";
 import { MAX_CLIPS } from "./core.mjs";
 
 export const GUTTER_L = 34;       // left of the face: room for the dots' "fps", "v1", "a1"
@@ -68,6 +69,24 @@ export function shortLabel(name) {
 }
 export const isOurLabel = (inp) => inp.label == null || inp.label === "" || inp.label === shortLabel(inp.name)
   || (inp.name === "fps" && inp.label === "fps");
+
+/** Where a SOUND wire goes when it is dropped on the node's body instead of on
+ *  a dot, or wired from the search box: core takes the first free input of its
+ *  type, and that is `music` (listed second), so a clip's sound played from its
+ *  own start under the whole video (review of 6a1a19d8, reproduced). A clip's
+ *  free sound wins: the first one whose clip is wired, or a1 while no clip is
+ *  wired yet. -1 = let core pick (every clip's sound taken: the song). A wire
+ *  being dragged off its own dot counts as free, as in core. */
+export function clipSoundSlot(node, type) {
+  if (isWildcardType(type) || !slotTypeList(type).includes("AUDIO")) return -1;
+  const free = (k) => {
+    const i = findInput(node, NAME("a", k));
+    if (i < 0) return -1;
+    return node.inputs[i].link == null || node.getInputLink?.(i)?._dragging ? i : -1;
+  };
+  for (let k = 1; k <= MAX_CLIPS; k++) if (linked(node, NAME("v", k)) && free(k) >= 0) return free(k);
+  return lastWiredClip(node) === 0 ? free(1) : -1;
+}
 
 /** The pairs a SAVED node had (configure's info): on an open, a paste or a
  *  Ctrl+Z the node keeps exactly those. Its wires are restored only AFTER

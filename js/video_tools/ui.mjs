@@ -441,9 +441,11 @@ function drawTimeline(node, pl, missing, anyWired) {
       cyc.append(fwd, back);
     } else {
       const body = el("span", "cyc");
-      body.style.left = "0";
-      // A seamless loop drops `blend` frames: the base is drawn a little wider
-      // than the cycle and its end shades into clip 1's colour.
+      // A seamless loop's video starts `blend` frames into the clips and its
+      // last `blend` frames shade back into them: the base is drawn wider than
+      // the cycle, shifted left by `blend` (so a join sits where the video has
+      // it), and its end shades into clip 1's colour.
+      body.style.left = pl.loop === "seamless" && pl.blend ? `${(-100 * pl.blend) / pl.cycle}%` : "0";
       body.style.width = pct(pl.base, pl.cycle);
       baseInto(body, false);
       cyc.appendChild(body);

@@ -21,7 +21,7 @@ import uuid
 
 import torch
 
-from ._video_tools_helpers import MAX_CLIPS, as_rgb, parse_state, process
+from ._video_tools_helpers import MAX_CLIPS, as_rgb, parse_state, process, still_index
 
 _PREVIEW_H = 240        # the moving preview on the node: small, it only has to show the joins
 _PREVIEW_FPS = 12
@@ -90,25 +90,16 @@ def _save_thumb(frame, unique_id, height=_THUMB_H):
 
 
 def _still_index(pl, total):
-    """The frame the node shows while the preview is not playing: the middle of
-    clip 1's CLEAN part, after a fade-in and before the first transition. The
-    middle of the first crossfade was the pick until 2026-10-25: a ghosted
-    double picture that looked like a glitch (the user's first look). Play shows
-    the transitions; a dip to black or a fade never gives a black still."""
-    kept = pl["clips"][0]["kept"]
-    lo = min(pl["fadeIn"], kept)
-    hi = kept
-    if pl["joins"]:
-        j = pl["joins"][0]
-        hi = j["at"] - j["out"] if j["kind"] == "black" else j["at"]
-    elif pl["loop"] == "off":
-        hi = total - pl["fadeOut"]
-    hi = min(hi, kept)
-    i = (lo + hi) // 2 if hi > lo else kept // 2
-    # That is a place in the joined clips; a seamless loop starts `blend`
-    # frames later (repeat and ping-pong start with the clips as they are).
-    if pl["loop"] == "seamless":
-        i -= pl["blend"]
+    """The frame the node shows while the preview is not playing: clip 1 alone
+    at full light, never a fade, a dip or a blend (still_index). The middle of
+    the first crossfade was the pick until 2026-10-25: a ghosted double picture
+    that looked like a glitch (the user's first look). Play shows the
+    transitions. A still is only a picture: if the pick fails, the middle."""
+    try:
+        i = still_index(pl)
+    except Exception as e:
+        print(f"[PixaromaVideoTools] could not pick the still: {e}")
+        i = total // 2
     return max(0, min(total - 1, i))
 
 
@@ -130,6 +121,11 @@ class PixaromaVideoTools:
 
     CATEGORY = "👑 Pixaroma/🖼️ Image"
     FUNCTION = "run"
+    # The face shows the run's still and clip lengths. Without this, a Run that
+    # changed nothing used the cached result and never sent it back, so after a
+    # reload or a tab switch the node stayed empty after Run (measured
+    # 2026-10-25, ComfyUI 0.42; execution.py re-sends cached UI only for these).
+    HAS_INTERMEDIATE_OUTPUT = True
     RETURN_TYPES = ("IMAGE", "AUDIO", "INT", "FLOAT", "FLOAT")
     RETURN_NAMES = ("video_frames", "audio", "frame_count", "fps", "duration")
     OUTPUT_TOOLTIPS = (

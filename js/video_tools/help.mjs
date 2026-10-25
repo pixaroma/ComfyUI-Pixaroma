@@ -10,7 +10,7 @@ export const VIDEO_TOOLS_HELP = {
       bullets: [
         "Wire the frames of a clip into `v1` (from Load Video Pixaroma's `video_frames`, or a video model's VAE Decode), and its sound into `a1` if it has one.",
         "More clips go into `v2`, `v3`... A new free pair of inputs appears each time you wire one, up to eight clips. They play one after the other, in that order.",
-        "Wire `fps` from Load Video, or set `fps` on the node (the rate your model makes, MiniMax H3 makes 24).",
+        "Wire `fps` from Load Video, or set `fps` on the node (the rate your model makes, MiniMax H3 makes 24). The node takes whole numbers: for 23.976 or 29.97, wire `fps` from Load Video.",
         "Set what to do on the node, then wire `video_frames`, `audio` and `fps` into Save Video Pixaroma and Run.",
         "Clips straight from Load Video Pixaroma show their length and the timeline before you Run (marked ~). After a Run the node shows each clip, the exact timeline and a still of the result. `Play` plays a small moving preview right on the node.",
       ],
@@ -46,7 +46,7 @@ export const VIDEO_TOOLS_HELP = {
     },
     {
       heading: "Music",
-      body: "Wire a song (or any sound) into `music` and it plays under the WHOLE finished video, from its start, cut to the video's length, with the video's fades. A loop does not repeat it. `Only music` leaves the clips' own sound out (a music video), `Music + clip sound` keeps both. To start the song later, trim it in Load Audio Pixaroma. The Music row shows only while a song is wired.",
+      body: "Wire a song (or any sound) into `music` and it plays under the WHOLE finished video, from its start, cut to the video's length, with the video's fades. A loop does not repeat it. `Only music` leaves the clips' own sound out (a music video), `Music + clip sound` keeps both. To start the song later, trim it in Load Audio Pixaroma. The Music row shows only while a song is wired. Drop the song's wire on the `music` dot itself: a sound wire dropped anywhere else on the node goes to the first clip that has no sound yet.",
     },
     {
       heading: "The timeline",

@@ -63,7 +63,7 @@ def parse_state(raw):
     if isinstance(raw, str):
         try:
             raw = json.loads(raw) if raw.strip() else {}
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             raw = {}
     if not isinstance(raw, dict):
         raw = {}
@@ -298,6 +298,51 @@ def fade_frames(frames, pl):
         g = _ramp(pl["fadeOut"], False, torch.float32).view(-1, 1, 1, 1)
         frames[-pl["fadeOut"]:] = (frames[-pl["fadeOut"]:].float() * g).to(frames.dtype)
     return frames
+
+
+def _runs_middle(mask):
+    """The middle of the longest run of True (the first on a tie), or None."""
+    best, i, m = None, 0, mask.tolist()
+    while i < len(m):
+        if not m[i]:
+            i += 1
+            continue
+        j = i
+        while j < len(m) and m[j]:
+            j += 1
+        if best is None or j - i > best[1]:
+            best = (i, j - i)
+        i = j
+    return None if best is None else best[0] + best[1] // 2
+
+
+def still_index(pl):
+    """The frame the node shows while the preview is not playing: the middle of
+    the longest stretch where clip 1 shows ALONE at full light (no fade, dip,
+    crossfade or loop blend), else of the longest such stretch of any clip, else
+    the brightest frame. Exact by construction: the SAME assemble / loop / fade
+    steps run on a probe of 1 x 2 px frames carrying "clip 1", "light", the
+    frame's place and its square (a blend of two frames breaks the square).
+    Until 2026-10-25 the pick was read off the plan, and in 95 of 1500 random
+    settings it still landed in a fade-in, a loop blend or a dip (still_check.py)."""
+    probe = []
+    for k, c in enumerate(pl["clips"]):
+        pos = (torch.arange(c["kept"], dtype=torch.float64) + 1) / (c["kept"] + 1)
+        x = torch.zeros((c["kept"], 1, 2, 3), dtype=torch.float64)
+        x[:, 0, 0, 0] = 1.0 if k == 0 else 0.0
+        x[:, 0, 0, 1] = 1.0
+        x[:, 0, 1, 0] = pos
+        x[:, 0, 1, 1] = pos * pos
+        probe.append(x)
+    v = fade_frames(loop_frames(assemble(probe, pl), pl), pl)
+    first, light = v[:, 0, 0, 0], v[:, 0, 0, 1]
+    p, p2 = v[:, 0, 1, 0], v[:, 0, 1, 1]
+    whole = (light > 1 - 1e-9) & ((p * p - p2).abs() < 1e-9)
+    for mask in (whole & (first > 1 - 1e-9), whole & ((first > 1 - 1e-9) | (first < 1e-9))):
+        i = _runs_middle(mask)
+        if i is not None:
+            return i
+    return int(torch.argmax(light))
 
 
 # ── sound ───────────────────────────────────────────────────────────────────

@@ -18,13 +18,25 @@ import { runTab, eachRestoredOutput } from "../shared/run_tab.mjs";
 import { CLASS, HIDDEN_INPUT, injectedState } from "./core.mjs";
 import { VIDEO_TOOLS_HELP } from "./help.mjs";
 import {
-  defaultHeight, fitAfterPairs, growToFloor, isOurLabel, liftClassic, nodeFloor, savedPairs, settleLift, shortLabel,
-  sizeBefore, syncInputs, trimToSaved, unwatchLift, watchLift,
+  clipSoundSlot, defaultHeight, fitAfterPairs, growToFloor, isOurLabel, liftClassic, nodeFloor, savedPairs, settleLift,
+  shortLabel, sizeBefore, syncInputs, trimToSaved, unwatchLift, watchLift,
 } from "./layout.mjs";
 import { closeSettingsPanelFor, openSettingsPanel } from "./settings.mjs";
 import { MIN_W, buildFace, destroyFace, renderFace, setPlaying } from "./ui.mjs";
 
 const DEFAULT_W = 560;
+const COPY_CHECK_MS = 5000;
+
+// A throwaway COPY (Ctrl+C, Alt-drag, Clone and Convert to subgraph all build
+// a clone() that never joins a graph and never gets onRemoved, VC#8) lets go
+// of what its face holds outside itself: 6 window listeners and the renderer
+// signal per copy (measured: 30 listeners left after 5 copies, copyleak.sh).
+function releaseCopy(node) {
+  try { node._pixVdtRendererOff?.(); } catch {}
+  node._pixVdtRendererOff = null;
+  try { node._pixVdtFace?.floorOff?.(); } catch {}
+  try { node._pixVdtFace?.widthOff?.(); } catch {}
+}
 
 registerNodeHelp(CLASS, VIDEO_TOOLS_HELP);
 registerNodeSettings(CLASS, {
@@ -93,6 +105,9 @@ app.registerExtension({
         renderFace(node);
         settleLift(node);
       });
+      // A node joins its graph in the same task it is made (a drop, an open, a
+      // paste, an undo); one still out of every graph later is a throwaway copy.
+      setTimeout(() => { if (!node.graph) releaseCopy(node); }, COPY_CHECK_MS);
     };
 
     // The configure flag covers the link replay configure() does for every
@@ -149,6 +164,29 @@ app.registerExtension({
       }
       queueMicrotask(() => renderFace(this));
       return r;
+    };
+
+    // A sound wire dropped on the BODY (not on a dot) or wired from the search
+    // box goes to a clip's free sound before the song (clipSoundSlot). Core's
+    // three lookups: findInputByType (a drop on the node, both renderers, and
+    // its hover hint), findInputSlotByType and findSlotByType (connectByType).
+    const _byType = nodeType.prototype.findInputByType;
+    nodeType.prototype.findInputByType = function (type) {
+      const i = clipSoundSlot(this, type);
+      if (i >= 0) return { index: i, slot: this.inputs[i] };
+      return _byType?.apply(this, arguments);
+    };
+    const _slotByType = nodeType.prototype.findInputSlotByType;
+    nodeType.prototype.findInputSlotByType = function (type, returnObj) {
+      const i = clipSoundSlot(this, type);
+      if (i >= 0) return returnObj ? this.inputs[i] : i;
+      return _slotByType?.apply(this, arguments);
+    };
+    const _slotOfType = nodeType.prototype.findSlotByType;
+    nodeType.prototype.findSlotByType = function (input, type, returnObj) {
+      const i = input ? clipSoundSlot(this, type) : -1;
+      if (i >= 0) return returnObj ? this.inputs[i] : i;
+      return _slotOfType?.apply(this, arguments);
     };
 
     // The dots' short labels ("fps", "v1", "a1") are made at runtime: keep them
