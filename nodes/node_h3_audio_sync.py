@@ -102,6 +102,10 @@ class PixaromaH3AudioSync:
         "file has picture and sound the same length.",
     )
     FUNCTION = "run"
+    # The face shows the run's result: a Run with nothing changed is cached, runs
+    # no code, and re-sends that result only with this (ComfyUI 0.42 execution.py;
+    # measured 2026-10-25: after a reload the face stayed empty, video-tools.md #8).
+    HAS_INTERMEDIATE_OUTPUT = True
     CATEGORY = "👑 Pixaroma/🎵 Audio"
 
     def run(self, model, latent, audio_vae, track, **kwargs):
