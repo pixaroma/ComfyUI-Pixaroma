@@ -17,19 +17,75 @@ import { applyAdaptiveCanvasOnly, isVueNodes } from "../shared/nodes2.mjs";
 import { installResizeFloor } from "../shared/resize_floor.mjs";
 import { passComfyShortcut } from "../shared/text_shortcuts.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
-import { MAX_CLIPS, MAX_SPAN, MAX_TIMES, fmtSecs, planVideo, readState, secs } from "./core.mjs";
+import { api } from "../../../scripts/api.js";
+import { MAX_CLIPS, MAX_FPS, MAX_SPAN, MAX_TIMES, MIN_FPS, fmtSecs, planVideo, readState, secs } from "./core.mjs";
 import { injectCSS } from "./css.mjs";
 import { setClip, setOption } from "./actions.mjs";
+import { contentMin, growToFloor, pairsShown } from "./layout.mjs";
 
 export const WIDGET_NAME = "video_tools_ui";
 export const WIDGET_TYPE = "pixaroma_video_tools";
-// Every row at its height + the picture at its 90 px minimum, AND the two rows that wrap at MIN_W ("Match colors"
-// and "Blend" each move to a line of their own at 440 px): at 380 the Fade row was cut off (review round 2).
-export const FLOOR = 450;
-export const MIN_W = 440;
+// getMinHeight is a CONSTANT under any real content (#39 E: core grows a node to
+// computeSize on every open); the real floor is measured (layout.mjs nodeFloor:
+// the clip rows, the Join / Loop rows that wrap when narrow, the picture at 90).
+export const FLOOR = 300;
+export const MIN_W = 460;
 
-// Clip 1 wears the node's accent, 2 and 3 two fixed colours (the timeline and the badges).
-export const SLOT_COLORS = ["var(--pix-acc,#f66744)", "#4a90d9", "#3ec371"];
+// Clip 1 wears the node's accent, the others fixed colours (the timeline and the badges).
+export const SLOT_COLORS = ["var(--pix-acc,#f66744)", "#4a90d9", "#3ec371", "#b07ae8", "#e3b341", "#3fc1c9",
+  "#e86a8a", "#9aa7b4"];
+
+// ── before the first Run: a clip's length from Load Video Pixaroma's file ──
+// The frames only exist once a Run made them, but a clip wired straight from
+// Load Video Pixaroma can be counted from its file and settings (the existing
+// /pixaroma/api/load_video_frame/meta route, headers only): the node shows
+// "~124 frames" and the timeline before you run (the user's first look,
+// 2026-10-25). A clip from a model's VAE Decode still says "Run once".
+const _meta = new Map();   // file -> { done, meta } | { pending }
+function fileMeta(node, file) {
+  const m = _meta.get(file);
+  if (m) return m.done ? m.meta : null;
+  _meta.set(file, { pending: true });
+  api.fetchApi(`/pixaroma/api/load_video_frame/meta?video=${encodeURIComponent(file)}`)
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then((meta) => {
+      _meta.set(file, { done: true, meta: meta && meta.fps > 0 && meta.frame_count > 0 ? meta : null });
+      if (node.graph) renderFace(node);
+    });
+  return null;
+}
+
+function upstream(node, inputName) {
+  const inp = node.inputs?.find((x) => x && x.name === inputName);
+  if (inp?.link == null) return null;
+  const g = node.graph;
+  const l = g?.links?.get ? g.links.get(inp.link) : g?.links?.[inp.link];
+  const src = l ? g.getNodeById(l.origin_id) : null;
+  if (!src || (src.comfyClass || src.type) !== "PixaromaLoadVideo") return null;
+  return { src, out: src.outputs?.[l.origin_slot]?.name };
+}
+
+const wv = (n, name) => n.widgets?.find((x) => x.name === name)?.value;
+
+/** { frames, fps } Load Video will give for this clip, or null (not from Load
+ *  Video, not read yet). Mirrors _collect: resample, then the max_frames window,
+ *  then skip_first_frames. */
+function estimate(node, k) {
+  const u = upstream(node, `video_${k + 1}`);
+  if (!u || u.out !== "video_frames") return null;
+  const file = wv(u.src, "video");
+  if (!file || typeof file !== "string") return null;
+  const meta = fileMeta(node, file);
+  if (!meta) return null;
+  const force = Number(wv(u.src, "force_fps")) || 0;
+  const max = Math.max(0, Math.trunc(Number(wv(u.src, "max_frames")) || 0));
+  const skip = Math.max(0, Math.trunc(Number(wv(u.src, "skip_first_frames")) || 0));
+  let n = force > 0 ? Math.floor(((meta.frame_count - 1) * force) / meta.fps + 1e-9) + 1 : meta.frame_count;
+  if (max) n = Math.min(n, max);
+  n = Math.max(0, n - skip);
+  return n > 0 ? { frames: n, fps: force > 0 ? force : meta.fps } : null;
+}
 
 const el = (tag, cls, text) => {
   const e = document.createElement(tag);
@@ -50,13 +106,25 @@ export function wiredSlots(node) {
   });
 }
 
+export const fpsWired = (node) => node.inputs?.find((x) => x && x.name === "fps")?.link != null;
+export const musicWired = (node) => node.inputs?.find((x) => x && x.name === "music")?.link != null;
+
+/** The rate the seconds on the face use: the wire's (the last run's, or Load
+ *  Video's file before a run), else the fps set on the node. */
 export function faceFps(node) {
-  const w = node.widgets?.find((x) => x.name === "fps");
-  const wiredIn = node.inputs?.find((x) => x && x.name === "fps")?.link != null;
   const run = node._pixVdtRun;
-  if (wiredIn && run?.fps > 0) return run.fps;
-  const v = Number(w?.value);
-  return v > 0 ? v : (run?.fps > 0 ? run.fps : 24);
+  if (fpsWired(node)) {
+    if (run?.fps > 0) return run.fps;
+    const u = upstream(node, "fps");
+    if (u && u.out === "fps") {
+      const file = wv(u.src, "video");
+      const meta = typeof file === "string" ? fileMeta(node, file) : null;
+      const force = Number(wv(u.src, "force_fps")) || 0;
+      if (force > 0) return force;
+      if (meta?.fps > 0) return meta.fps;
+    }
+  }
+  return readState(node).fps;
 }
 
 /** A number with - and +. `onSet(v, commit)`: commit = a finished change (a
@@ -141,7 +209,7 @@ export function buildFace(node, { onGear }) {
   img.alt = "The finished video";
   img.draggable = false;
   img.style.display = "none";
-  const empty = el("div", "pix-vdt-empty", "Wire a video into video_1 (and more clips into video_2, video_3), then Run.\nThe finished video shows here.");
+  const empty = el("div", "pix-vdt-empty", "Wire a video into v1 (and more clips into v2, v3...), then Run.\nThe finished video shows here.");
   empty.style.whiteSpace = "pre-line";
   const play = el("button", "pix-vdt-play", "▶ Play");
   play.type = "button";
@@ -155,9 +223,17 @@ export function buildFace(node, { onGear }) {
   stage.append(img, empty, play, gear);
 
   const tl = el("div", "pix-vdt-tl");
+  // The line under the timeline: what comes out, and the frame rate. The fps
+  // stepper is the rate when nothing is wired into fps (a wire wins).
+  const infoRow = el("div", "pix-vdt-inforow");
   const info = el("div", "pix-vdt-info", "");
+  const fpsBox = stepper(MIN_FPS, MAX_FPS, "Frames per second of the clips (when nothing is wired into fps)",
+    (v, commit) => setOption(node, "fps", v, !commit));
+  const fpsF = el("span", "pix-vdt-f pix-vdt-fps");
+  fpsF.append(el("span", null, "fps"), fpsBox.el);
+  infoRow.append(info, fpsF);
 
-  // ── the clips ──
+  // ── the clips: one row per input pair the node shows (layout.mjs) ──
   const grid = el("div", "pix-vdt-clips");
   grid.append(el("span"), el("span"), el("span"), el("span", "hd", "Cut start"), el("span", "hd", "Cut end"),
     el("span", "hd", "Back"));
@@ -169,14 +245,21 @@ export function buildFace(node, { onGear }) {
     const cinfo = el("span", "pix-vdt-cinfo", "");
     const cs = stepper(0, 100000, `Clip ${i + 1}: frames cut from the start`, (v, commit) => setClip(node, i, "cutStart", v, !commit));
     const ce = stepper(0, 100000, `Clip ${i + 1}: frames cut from the end`, (v, commit) => setClip(node, i, "cutEnd", v, !commit));
+    // the cut in seconds under each number, like Join and Fade
+    const csS = el("small");
+    const ceS = el("small");
+    const csC = el("span", "pix-vdt-cut");
+    csC.append(cs.el, csS);
+    const ceC = el("span", "pix-vdt-cut");
+    ceC.append(ce.el, ceS);
     const rev = el("button", "pix-vdt-rev", "⟲");
     rev.type = "button";
     rev.title = "Play this clip backwards";
     rev.setAttribute("aria-label", `Play clip ${i + 1} backwards`);
     rev.addEventListener("click", (e) => { e.stopPropagation(); setClip(node, i, "reverse", !readState(node).clips[i].reverse); });
-    const cells = [badge, th, cinfo, cs.el, ce.el, rev];
+    const cells = [badge, th, cinfo, csC, ceC, rev];
     grid.append(...cells);
-    rows.push({ badge, th, cinfo, cs, ce, rev, cells });
+    rows.push({ badge, th, cinfo, cs, ce, csS, ceS, rev, cells });
   }
 
   // ── join ──
@@ -224,7 +307,15 @@ export function buildFace(node, { onGear }) {
   fOutF.append(el("span", null, "Out"), fOut.el, fOutS);
   fadeSec.append(el("span", "pix-vdt-lab", "Fade"), fInF, fOutF);
 
-  inner.append(stage, tl, info, grid, joinSec, loopSec, fadeSec);
+  // ── music: one song under the whole video (shown only while one is wired) ──
+  const musicSec = el("div", "pix-vdt-sec");
+  const musicSeg = segmented([
+    ["music", "Only music", "The song alone: the clips' own sound is left out (a music video)"],
+    ["mix", "Music + clip sound", "The song and the clips' own sound together"],
+  ], "What you hear with the song", (k) => setOption(node, "musicMix", k));
+  musicSec.append(el("span", "pix-vdt-lab", "Music"), musicSeg.el);
+
+  inner.append(stage, tl, infoRow, grid, joinSec, loopSec, fadeSec, musicSec);
 
   const widget = node.addDOMWidget(WIDGET_NAME, WIDGET_TYPE, root, {
     serialize: false,
@@ -237,14 +328,16 @@ export function buildFace(node, { onGear }) {
   installNativeTextMenu(root);
   installNodeAccent(node, root);
   // Nodes 2.0's corner drag measures the node collapsed, ignoring getMinHeight:
-  // pin the floor on the root while a resize handle is held (drag only, never a load).
-  const floorOff = installResizeFloor(root, () => FLOOR);
+  // pin the measured content on the root while a resize handle is held (drag
+  // only, never a load); a narrower node wraps rows, so grow to fit on release.
+  const floorOff = installResizeFloor(root, () => contentMin(node) || FLOOR, () => growToFloor(node));
   const widthOff = installWidthFloor(root);
 
   node._pixVdtFace = {
     floorOff, widthOff,
-    root, stage, img, empty, play, tl, info, rows, joinSec, joinSeg, jLen, jLenF, jSecs, match,
-    loopSec, loopSeg, lTimes, lTimesF, lBlend, lBlendF, lSecs, fIn, fOut, fInS, fOutS, widget, tlSig: "",
+    root, inner, stage, img, empty, play, tl, info, fpsBox, fpsF, rows, joinSec, joinSeg, jLen, jLenF, jSecs, match,
+    loopSec, loopSeg, lTimes, lTimesF, lBlend, lBlendF, lSecs, fIn, fOut, fInS, fOutS, musicSec, musicSeg, widget,
+    tlSig: "",
   };
   return widget;
 }
@@ -259,17 +352,23 @@ export function setPlaying(node, on) {
   f.play.textContent = node._pixVdtPlaying ? "■ Stop" : "▶ Play";
 }
 
+/** Each wired clip's length: the last run's, else Load Video's file (an
+ *  estimate, shown with "~"), else unknown (`missing`). */
 function lengthsFor(node, wired) {
   const run = node._pixVdtRun;
   const known = {};
   for (const c of run?.clips || []) known[c.slot - 1] = c.frames;
   let missing = false;
+  const guessed = new Set();
   const lengths = wired.map((w, i) => {
     if (!w) return null;
-    if (known[i] == null) { missing = true; return null; }
-    return known[i];
+    if (known[i] != null) return known[i];
+    const est = estimate(node, i);
+    if (est) { guessed.add(i); return est.frames; }
+    missing = true;
+    return null;
   });
-  return { lengths, missing };
+  return { lengths, missing, guessed };
 }
 
 function drawTimeline(node, pl, missing, anyWired) {
@@ -390,8 +489,9 @@ export function renderFace(node) {
   const wired = wiredSlots(node);
   const nWired = wired.filter(Boolean).length;
   const run = node._pixVdtRun;
-  const { lengths, missing } = lengthsFor(node, wired);
+  const { lengths, missing, guessed } = lengthsFor(node, wired);
   const pl = planVideo(lengths, st);
+  const approx = guessed.size ? "~" : "";
 
   // the result
   const has = !!run?.still || !!run?.preview;
@@ -399,32 +499,48 @@ export function renderFace(node) {
   f.empty.style.display = has ? "none" : "";
   f.empty.textContent = nWired
     ? (run && st.preview === "off" ? "The moving preview is off (gear).\nRun to make the video." : "Run, and the finished video shows here.")
-    : "Wire a video into video_1 (and more clips into video_2, video_3), then Run.\nThe finished video shows here.";
+    : "Wire a video into v1 (and more clips into v2, v3...), then Run.\nThe finished video shows here.";
   f.img.style.display = has ? "" : "none";
   if (has) setPlaying(node, node._pixVdtPlaying);
 
   drawTimeline(node, pl, missing, nWired > 0);
 
   // the line under the timeline: the live plan when every wired clip is known
+  // ("~" while a clip's length comes from its file, before the first Run)
   if (nWired && !missing && pl.total) {
     const sz = run?.width ? ` · ${run.width}×${run.height}` : "";
-    const snd = run ? (run.audio ? " · with sound" : " · no sound") : "";
+    const snd = musicWired(node) ? " · with music"
+      : (run && !approx ? (run.audio ? " · with sound" : " · no sound") : "");
     f.info.innerHTML = "";
-    const b = el("b", null, `${pl.total} frames`);
-    f.info.append(b, document.createTextNode(` · ${fmtSecs(secs(pl.total, fps))} at ${+fps.toFixed(3)} fps${sz}${snd}`));
+    const b = el("b", null, `${approx}${pl.total} frames`);
+    f.info.append(b, document.createTextNode(` · ${approx}${fmtSecs(secs(pl.total, fps))}${sz}${snd}`));
   } else {
     f.info.textContent = "";
   }
+  f.info.title = approx ? "Counted from the video files before the first Run; the Run gives the exact numbers." : "";
+  // the fps on the node: what the seconds use when nothing is wired into fps
+  const wiredFps = fpsWired(node);
+  f.fpsBox.set(wiredFps ? +faceFps(node).toFixed(3) : st.fps);
+  f.fpsF.classList.toggle("wired", wiredFps);
+  f.fpsF.title = wiredFps ? "The frame rate comes from the fps wire" : "Frames per second of the clips (no fps wire)";
+  for (const x of f.fpsF.querySelectorAll("button,input")) x.disabled = wiredFps;
 
   // the clip rows
   const runClips = {};
   for (const c of run?.clips || []) runClips[c.slot - 1] = c;
   const plBySlot = {};
   for (const c of pl.clips) plBySlot[c.slot] = c;
+  const shown = Math.max(1, pairsShown(node));
   f.rows.forEach((r, i) => {
+    // one row per input pair the node shows (the wired clips + one free pair)
+    const vis = i < shown;
+    for (const x of r.cells) x.style.display = vis ? "" : "none";
+    if (!vis) return;
     const c = st.clips[i];
     r.cs.set(c.cutStart);
     r.ce.set(c.cutEnd);
+    r.csS.textContent = fmtSecs(secs(c.cutStart, fps));
+    r.ceS.textContent = fmtSecs(secs(c.cutEnd, fps));
     r.rev.classList.toggle("on", c.reverse);
     r.rev.setAttribute("aria-pressed", String(c.reverse));
     const isWired = wired[i];
@@ -433,13 +549,16 @@ export function renderFace(node) {
     for (const x of [r.cs.el, r.ce.el, r.rev]) x.style.opacity = isWired ? "" : ".4";
     const rc = runClips[i];
     const pc = plBySlot[i];
-    if (!isWired) r.cinfo.textContent = "not wired";
-    else if (!rc || !pc) r.cinfo.textContent = "wired: Run once to read it";
+    const g = guessed.has(i) ? "~" : "";
+    if (!isWired) r.cinfo.textContent = `not wired (v${i + 1})`;
+    else if (!pc || (!rc && !g)) r.cinfo.textContent = "wired: Run once to read it";
     else {
-      const kept = pc.kept < pc.frames ? `${pc.kept} of ${pc.frames} frames` : `${pc.frames} frames`;
-      r.cinfo.textContent = `${kept} · ${fmtSecs(secs(pc.kept, fps))}${rc.audio ? " · sound" : ""}`;
+      const kept = pc.kept < pc.frames ? `${g}${pc.kept} of ${pc.frames} frames` : `${g}${pc.frames} frames`;
+      const tail = g ? "" : (rc.audio ? " · sound" : "");
+      r.cinfo.textContent = `${kept} · ${g}${fmtSecs(secs(pc.kept, fps))}${tail}`;
     }
-    r.cinfo.title = r.cinfo.textContent;
+    r.cinfo.title = r.cinfo.textContent
+      + (g ? "\nCounted from the video file before the first Run; the Run gives the exact numbers." : "");
     const src = isWired && rc?.thumb ? viewUrl(rc.thumb) : "";
     const img = r.th.querySelector("img");
     if (src && (!img || img.getAttribute("src") !== src)) {
@@ -466,6 +585,8 @@ export function renderFace(node) {
   f.lBlend.set(st.loopFrames);
   f.lSecs.textContent = fmtSecs(secs(st.loopFrames, fps));
   f.lBlendF.classList.toggle("off", st.loop !== "seamless");
+  f.musicSec.style.display = musicWired(node) ? "" : "none";
+  f.musicSeg.set(st.musicMix);
   f.fIn.set(st.fadeIn);
   f.fOut.set(st.fadeOut);
   f.fInS.textContent = fmtSecs(secs(st.fadeIn, fps));

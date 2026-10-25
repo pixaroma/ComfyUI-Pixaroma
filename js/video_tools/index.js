@@ -1,10 +1,11 @@
 // Video Tools Pixaroma - wiring.
 //
-// Join, trim, reverse, loop and fade up to three clips (frames + sound) from
+// Join, trim, reverse, loop and fade up to eight clips (frames + sound) from
 // any video model. Classic and Nodes 2.0 alike.
 //
-// core.mjs state + the plan (pure) | actions.mjs changes | ui.mjs the face |
-// settings.mjs the gear panel | css.mjs | help.mjs
+// core.mjs state + the plan (pure) | actions.mjs changes | layout.mjs the input
+// pairs, the dots, the size | ui.mjs the face | settings.mjs the gear panel |
+// css.mjs | help.mjs
 
 import { app } from "../../../scripts/app.js";
 import { api } from "../../../scripts/api.js";
@@ -16,11 +17,14 @@ import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { runTab, eachRestoredOutput } from "../shared/run_tab.mjs";
 import { CLASS, HIDDEN_INPUT, injectedState } from "./core.mjs";
 import { VIDEO_TOOLS_HELP } from "./help.mjs";
+import {
+  defaultHeight, fitAfterPairs, growToFloor, isOurLabel, liftClassic, nodeFloor, savedPairs, settleLift, shortLabel,
+  sizeBefore, syncInputs, trimToSaved, unwatchLift, watchLift,
+} from "./layout.mjs";
 import { closeSettingsPanelFor, openSettingsPanel } from "./settings.mjs";
-import { FLOOR, MIN_W, buildFace, destroyFace, renderFace, setPlaying } from "./ui.mjs";
+import { MIN_W, buildFace, destroyFace, renderFace, setPlaying } from "./ui.mjs";
 
 const DEFAULT_W = 560;
-const DEFAULT_H = 660;
 
 registerNodeHelp(CLASS, VIDEO_TOOLS_HELP);
 registerNodeSettings(CLASS, {
@@ -64,43 +68,98 @@ app.registerExtension({
     nodeType.prototype.onNodeCreated = function () {
       _created?.apply(this, arguments);
       const node = this;
+      // Read ONCE, here (Vue Compat #19): a deferred frame cannot tell.
+      const bornInLoad = isGraphLoading();
       buildFace(node, { onGear: () => openSettingsPanel(node) });
       node._pixVdtRefresh = () => renderFace(node);
-
-      // The seconds shown next to the frame counts follow the fps box.
-      const w = (node.widgets || []).find((x) => x.name === "fps");
-      if (w) {
-        const cb = w.callback;
-        w.callback = function () {
-          const r = cb?.apply(this, arguments);
-          queueMicrotask(() => renderFace(node));
-          return r;
-        };
-      }
+      // The face sits beside the input dots, under the outputs (layout.mjs).
+      liftClassic(node);
+      watchLift(node);
+      settleLift(node);
 
       // Fresh size, SYNCHRONOUSLY (configure() restores a saved one next, #9).
-      if (!Array.isArray(node.size)) node.size = [DEFAULT_W, DEFAULT_H];
+      if (!Array.isArray(node.size)) node.size = [DEFAULT_W, defaultHeight()];
       node.size[0] = DEFAULT_W;
-      node.size[1] = DEFAULT_H;
+      node.size[1] = defaultHeight();
 
-      queueMicrotask(() => renderFace(node));
-      node._pixVdtRendererOff = onRendererChange(() => renderFace(node));
+      queueMicrotask(() => {
+        // A fresh drop shows fps + two clip pairs instead of all eight. A loaded,
+        // pasted or undone node keeps what it was saved with (onConfigure).
+        if (!bornInLoad && node.graph && !node._pixVdtConfigured) syncInputs(node);
+        renderFace(node);
+      });
+      node._pixVdtRendererOff = onRendererChange(() => {
+        liftClassic(node);
+        renderFace(node);
+        settleLift(node);
+      });
+    };
+
+    // The configure flag covers the link replay configure() does for every
+    // input (VC#17): a replayed connection must not add or trim pairs.
+    const _configureFn = nodeType.prototype.configure;
+    nodeType.prototype.configure = function (info) {
+      this._pixVdtConfiguring = true;
+      // The pairs the node was SAVED with, read HERE: core's own configure
+      // (ComfyNode) adds every missing def input to `info` before onConfigure
+      // sees it (measured on an undo: 8 saved, 18 in onConfigure's info).
+      this._pixVdtSavedPairs = savedPairs(info);
+      try {
+        return _configureFn.apply(this, arguments);
+      } finally {
+        this._pixVdtConfiguring = false;
+      }
     };
 
     const _configure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function () {
       const r = _configure?.apply(this, arguments);
-      // DOM only: nothing here may write node.size, properties or slots (VC#18).
+      // Core puts back EVERY def input on configure (open and each Ctrl+Z,
+      // VC#32): trim to the pairs the node was SAVED with (counted in the
+      // configure wrapper above), which leaves it exactly as saved
+      // (diff-gated). Nothing else here may write size, properties or slots (VC#18).
+      this._pixVdtConfigured = true;
+      const saved = this._pixVdtSavedPairs;
+      if (saved) trimToSaved(this, saved);
+      liftClassic(this);
       delete this._pixVdtRun;
       this._pixVdtPlaying = false;
       renderFace(this);
+      settleLift(this);
       return r;
     };
 
+    // A clip wired into the last free pair adds a pair; unwiring the last clip
+    // takes the spare away. Deferred one tick: LiteGraph clears the link only
+    // AFTER this callback (sliders.md #13). Never during a load or a configure.
     const _conn = nodeType.prototype.onConnectionsChange;
-    nodeType.prototype.onConnectionsChange = function () {
+    nodeType.prototype.onConnectionsChange = function (type) {
       const r = _conn?.apply(this, arguments);
+      if (type === 1 /* INPUT */ && !this._pixVdtConfiguring && !isGraphLoading()) {
+        const self = this;
+        setTimeout(() => {
+          if (!self.graph || isGraphLoading() || !self._pixVdtFace) return;
+          const before = sizeBefore(self);
+          syncInputs(self);
+          fitAfterPairs(self, before);
+          renderFace(self);
+          growToFloor(self);   // the Music row appears when a song is wired
+          settleLift(self);
+        }, 0);
+      }
       queueMicrotask(() => renderFace(this));
+      return r;
+    };
+
+    // The dots' short labels ("fps", "v1", "a1") are made at runtime: keep them
+    // out of the file. Chained onSerialize, returning ITS result (VC#29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
+      for (const inp of o?.inputs || []) {
+        const short = inp?.name === "fps" ? "fps" : shortLabel(inp?.name);
+        if (inp && short && inp.label === short && isOurLabel(inp)) delete inp.label;
+      }
       return r;
     };
 
@@ -113,21 +172,22 @@ app.registerExtension({
       });
     };
 
-    // Classic-only clamps, never during a load (#7 + VC#18).
+    // Classic-only clamps, never during a load (#7 + VC#18). The floor is the
+    // measured content with the picture at its smallest (rows wrap when narrow;
+    // the next move re-measures).
     const _resize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes() && !isGraphLoading() && this._pixVdtFace) {
         if (size[0] < MIN_W) size[0] = MIN_W;
-        const w = this._pixVdtFace.widget;
-        const y = w && w.y > 0 ? w.y : 150;
-        const floor = y + FLOOR + 20;
-        if (size[1] < floor) size[1] = floor;
+        const floor = nodeFloor(this);
+        if (floor != null && size[1] < floor) size[1] = floor;
       }
       return _resize?.apply(this, arguments);
     };
 
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
+      unwatchLift(this);
       try { this._pixVdtRendererOff?.(); } catch {}
       this._pixVdtRendererOff = null;
       try { closeSettingsPanelFor(this); } catch {}

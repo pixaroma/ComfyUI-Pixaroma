@@ -43,7 +43,8 @@ export const KEYWORDS = {
     + "trim video cut video cut frames remove frames first frame skip frames reverse backwards rewind "
     + "loop looping loop video ping pong pingpong boomerang seamless loop repeat crossfade cross fade dissolve "
     + "transition fade to black fade in fade out dip to black color match colour match brightness match drift "
-    + "video editor edit video wan ltx h3 minimax long video extend video audio sound",
+    + "video editor edit video wan ltx h3 minimax long video extend video audio sound "
+    + "music video song soundtrack background music add music to video first last frame segments shots",
   PixaromaUncrop: "paste back restore put back region",
   PixaromaInpaintCrop: "inpaint mask repair fix retouch face hands blemish",
   PixaromaInpaintStitch: "seam blend feather merge join invisible edge",

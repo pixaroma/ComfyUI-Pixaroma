@@ -6,6 +6,7 @@
 
 import { pixAsset } from "../shared/api_url.mjs";
 import { ACC } from "../shared/node_settings.mjs";
+import { GUTTER_L } from "./layout.mjs";
 
 const CSS_ID = "pix-vdt-css";
 
@@ -15,14 +16,18 @@ export function injectCSS() {
   const s = document.createElement("style");
   s.id = CSS_ID;
   s.textContent = `
-.pix-vdt-root{position:relative;flex:1 1 0;min-height:0;box-sizing:border-box;}
-.pix-vdt-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:7px;padding:6px 8px 8px;
-  box-sizing:border-box;overflow:hidden;font:11px "Segoe UI",system-ui,sans-serif;color:#ddd;}
-.pix-vdt-inner > *{flex-shrink:0;}
+.pix-vdt-root{position:relative;flex:1 1 0;min-height:0;box-sizing:border-box;pointer-events:none;}
+/* the input dots (fps, v1, a1...) run down the left edge beside the face (layout.mjs): only the face's own
+   parts take the pointer, so a wire can start from a dot in the gutter */
+.dom-widget:has(> .pix-vdt-root){pointer-events:none !important;}
+.pix-vdt-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:7px;padding:6px 8px 8px ${GUTTER_L}px;
+  box-sizing:border-box;overflow:hidden;font:11px "Segoe UI",system-ui,sans-serif;color:#ddd;pointer-events:none;}
+.pix-vdt-inner > *{flex-shrink:0;pointer-events:auto;}
 
 /* the result: a still of the finished video, played on request */
-.pix-vdt-stage{position:relative;flex:1 1 0 !important;min-height:90px;border-radius:6px;overflow:hidden;
-  background:#151515;border:1px solid #2c2c2c;}
+/* a soft well, not a black box: a tall (phone) video leaves the sides calm */
+.pix-vdt-stage{position:relative;flex:1 1 0 !important;min-height:60px;border-radius:6px;overflow:hidden;
+  background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.08);}
 .pix-vdt-stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;
   user-select:none;pointer-events:none;}
 .pix-vdt-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;
@@ -48,13 +53,23 @@ export function injectCSS() {
 .pix-vdt-tl .sep{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.6);}
 .pix-vdt-tl .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#7d7d7d;
   font-size:10px;}
-.pix-vdt-info{height:14px;line-height:14px;color:#9a9a9a;font-size:10.5px;white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;user-select:none;}
+.pix-vdt-inforow{display:flex;align-items:center;gap:8px;height:26px;}
+.pix-vdt-info{flex:1 1 auto;min-width:0;height:14px;line-height:14px;color:#9a9a9a;font-size:10.5px;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;user-select:none;}
+.pix-vdt-fps{flex:0 0 auto;}
+.pix-vdt-fps.wired{opacity:.55;}
+.pix-vdt-fps.wired button{cursor:default;}
 .pix-vdt-info b{color:#d6d6d6;font-weight:600;}
 
 /* the clip rows */
 .pix-vdt-clips{display:grid;grid-template-columns:22px 46px minmax(0,1fr) auto auto 28px;column-gap:6px;row-gap:4px;
   align-items:center;}
+.pix-vdt-cut{display:inline-flex;align-items:center;gap:4px;}
+.pix-vdt-cut small{color:#7d7d7d;font-size:10px;min-width:30px;}
+/* a narrow node keeps the clip's own length readable: the cut seconds step aside
+   (the clip line already says the kept seconds) */
+.pix-vdt-clips{container-type:inline-size;}
+@container (max-width: 470px){.pix-vdt-cut small{display:none;}}
 .pix-vdt-clips .hd{color:#8a8a8a;font-size:10px;text-align:center;user-select:none;}
 .pix-vdt-badge{width:20px;height:20px;border-radius:50%;font:700 11px "Segoe UI",sans-serif;display:flex;
   align-items:center;justify-content:center;color:#fff;user-select:none;}

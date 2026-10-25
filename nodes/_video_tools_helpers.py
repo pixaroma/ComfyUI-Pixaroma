@@ -17,14 +17,16 @@ import math
 import torch
 import torch.nn.functional as F
 
-MAX_CLIPS = 3
+MAX_CLIPS = 8
 JOINS = ("cut", "crossfade", "black")
 LOOPS = ("off", "repeat", "pingpong", "seamless")
 SIZES = ("fill", "fit", "stretch")
 PREVIEWS = ("animated", "off")
+MUSIC_MIX = ("music", "mix")   # a song wired into music: alone, or with the clips' own sound
 MAX_FRAMES = 100000
 MAX_SPAN = 2000          # the longest crossfade / fade / loop blend, in frames
 MAX_TIMES = 100
+MIN_FPS, MAX_FPS = 1.0, 240.0
 _CHUNK = 8               # frames per resize / colour step (keeps the memory peak low)
 
 
@@ -38,6 +40,18 @@ def _int(v, lo, hi, dflt):
     if not math.isfinite(f):
         return dflt
     return max(lo, min(hi, int(f)))
+
+
+def _fps(v):
+    if isinstance(v, bool):
+        return 24.0
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return 24.0
+    if not math.isfinite(f):
+        return 24.0
+    return max(MIN_FPS, min(MAX_FPS, f))
 
 
 def _pick(v, allowed, dflt):
@@ -75,6 +89,9 @@ def parse_state(raw):
         "fadeOut": _int(raw.get("fadeOut"), 0, MAX_SPAN, 0),
         "size": _pick(raw.get("size"), SIZES, "fill"),
         "preview": _pick(raw.get("preview"), PREVIEWS, "animated"),
+        # the frame rate when nothing is wired into fps (the stepper on the face)
+        "fps": _fps(raw.get("fps")),
+        "musicMix": _pick(raw.get("musicMix"), MUSIC_MIX, "music"),
     }
 
 
@@ -410,13 +427,47 @@ def build_sound(audios, pl, fps):
 
 
 # ── the whole thing ─────────────────────────────────────────────────────────
-def process(videos, audios, fps, st):
-    """videos / audios: one per input slot (None when not wired).
-    Returns (frames, sound or None, plan)."""
+def _channels(wf, ch):
+    if wf.shape[0] == ch:
+        return wf
+    if wf.shape[0] == 1:
+        return wf.expand(ch, -1)
+    return torch.cat([wf, torch.zeros((ch - wf.shape[0], wf.shape[-1]))], dim=0)
+
+
+def add_music(music, sound, pl, fps, mode):
+    """One song under the whole finished video: from the song's start, cut (or
+    padded with silence) to exactly the video's length, with the video's fade in
+    and out. mode "music": the song alone; "mix": the song plus the clips' own
+    sound (already shaped by build_sound), limited to -1..1. Loops do not repeat
+    the song: it plays straight through. Returns `sound` when no song."""
+    wf, sr = _wave(music)
+    if wf is None:
+        return sound
+    n = _b(pl["total"], sr, fps)
+    out = _fit_len(wf, n).clone()
+    if pl["fadeIn"]:
+        m = min(_b(pl["fadeIn"], sr, fps), n)
+        out[..., :m] *= torch.linspace(0, 1, m)
+    if pl["fadeOut"]:
+        m = min(_b(pl["fadeOut"], sr, fps), n)
+        out[..., n - m:] *= torch.linspace(1, 0, m)
+    if mode == "mix" and sound is not None:
+        cw, csr = _wave(sound)
+        if cw is not None:
+            cw = _fit_len(_resample(cw, csr, sr), n)
+            ch = max(out.shape[0], cw.shape[0])
+            out = (_channels(out, ch) + _channels(cw, ch)).clamp(-1.0, 1.0)
+    return {"waveform": out.unsqueeze(0).contiguous(), "sample_rate": sr}
+
+
+def process(videos, audios, fps, st, music=None):
+    """videos / audios: one per input slot (None when not wired); music: one
+    AUDIO under the whole video, or None. Returns (frames, sound or None, plan)."""
     lengths = [None if v is None else int(as_rgb(v).shape[0]) for v in videos]
     pl = plan(lengths, st)
     if not pl["clips"]:
-        raise ValueError("Video Tools: wire a video into video_1 (or video_2, video_3).")
+        raise ValueError("Video Tools: wire a video into v1 (video_1) or another clip input.")
     target = None
     done = []
     for c in pl["clips"]:
@@ -437,4 +488,5 @@ def process(videos, audios, fps, st):
     del done, x     # x still held the last clip's copy
     frames = fade_frames(loop_frames(base, pl), pl)
     sound = build_sound([audios[c["slot"]] for c in pl["clips"]], pl, fps)
+    sound = add_music(music, sound, pl, fps, st["musicMix"])
     return frames, sound, pl

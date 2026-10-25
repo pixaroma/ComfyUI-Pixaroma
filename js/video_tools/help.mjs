@@ -3,16 +3,16 @@
 
 export const VIDEO_TOOLS_HELP = {
   title: "Video Tools Pixaroma",
-  tagline: "Join, trim, reverse, loop and fade video clips from any video model, with their sound, in one node. Crossfades, a dip to black, colour matching where clips meet, ping-pong and seamless loops.",
+  tagline: "Join, trim, reverse, loop and fade up to eight video clips from any video model, with their sound, in one node. Crossfades, a dip to black, colour matching where clips meet, ping-pong and seamless loops, and one song under the whole video for a music video.",
   sections: [
     {
       heading: "How to use it",
       bullets: [
-        "Wire the frames of a clip into `video_1` (from Load Video Pixaroma's `video_frames`, or a video model's VAE Decode), and its sound into `audio_1` if it has one.",
-        "More clips go into `video_2` and `video_3`. They play one after the other, in that order.",
-        "Wire `fps` from Load Video, or set the frame rate your model makes.",
+        "Wire the frames of a clip into `v1` (from Load Video Pixaroma's `video_frames`, or a video model's VAE Decode), and its sound into `a1` if it has one.",
+        "More clips go into `v2`, `v3`... A new free pair of inputs appears each time you wire one, up to eight clips. They play one after the other, in that order.",
+        "Wire `fps` from Load Video, or set `fps` on the node (the rate your model makes, MiniMax H3 makes 24).",
         "Set what to do on the node, then wire `video_frames`, `audio` and `fps` into Save Video Pixaroma and Run.",
-        "After a Run the node shows each clip, a timeline of the result and a still of it. `Play` plays a small moving preview right on the node.",
+        "Clips straight from Load Video Pixaroma show their length and the timeline before you Run (marked ~). After a Run the node shows each clip, the exact timeline and a still of the result. `Play` plays a small moving preview right on the node.",
       ],
     },
     {
@@ -45,8 +45,12 @@ export const VIDEO_TOOLS_HELP = {
       body: "`In` fades up from black over that many frames at the very start, `Out` fades down to black at the very end. The sound fades with the picture.",
     },
     {
+      heading: "Music",
+      body: "Wire a song (or any sound) into `music` and it plays under the WHOLE finished video, from its start, cut to the video's length, with the video's fades. A loop does not repeat it. `Only music` leaves the clips' own sound out (a music video), `Music + clip sound` keeps both. To start the song later, trim it in Load Audio Pixaroma. The Music row shows only while a song is wired.",
+    },
+    {
       heading: "The timeline",
-      body: "Each clip has its own colour (the numbers on the left use the same colours). A crossfade shows as one colour melting into the next, a dip to black as a dark shade, a loop as the same blocks repeated, and fades as dark ends. It follows your settings as you change them, and it knows how long each clip is after one Run.",
+      body: "Each clip has its own colour (the numbers on the left use the same colours). A crossfade shows as one colour melting into the next, a dip to black as a dark shade, a loop as the same blocks repeated, and fades as dark ends. It follows your settings as you change them, and it knows how long each clip is after one Run (or before it, from Load Video's file).",
     },
     {
       heading: "Settings (the gear)",
@@ -63,7 +67,7 @@ export const VIDEO_TOOLS_HELP = {
         "The sound always stays in step with the picture: every cut, join, loop and fade is done on the sound at the same moments.",
         "Clips should share one frame rate. A clip made at another rate plays faster or slower here.",
         "Long clips use a lot of memory: the finished video is made in one piece. Join long videos in a video editor.",
-        "More than three clips? Wire this node's `video_frames` and `audio` into `video_1` and `audio_1` of a second Video Tools.",
+        "More than eight clips? Wire this node's `video_frames` and `audio` into `v1` and `a1` of a second Video Tools.",
       ],
     },
   ],

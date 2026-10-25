@@ -10,20 +10,30 @@ export const CLASS = "PixaromaVideoTools";
 export const HIDDEN_INPUT = "VideoToolsState";
 export const PROP = "videoTools";
 
-export const MAX_CLIPS = 3;
+export const MAX_CLIPS = 8;
 export const JOINS = ["cut", "crossfade", "black"];
 export const LOOPS = ["off", "repeat", "pingpong", "seamless"];
 export const SIZES = ["fill", "fit", "stretch"];
 export const PREVIEWS = ["animated", "off"];
+export const MUSIC_MIX = ["music", "mix"];
 const MAX_FRAMES = 100000;
 export const MAX_SPAN = 2000;
 export const MAX_TIMES = 100;
+export const MIN_FPS = 1;
+export const MAX_FPS = 240;
 
 function int(v, lo, hi, dflt) {
   if (typeof v === "boolean" || v === null || v === undefined || v === "") return dflt;
   const f = Number(v);
   if (!Number.isFinite(f)) return dflt;
   return Math.max(lo, Math.min(hi, Math.trunc(f)));
+}
+/** Mirrors _fps: the rate when nothing is wired into fps. */
+export function fpsOf(v) {
+  if (typeof v === "boolean" || v === null || v === undefined || v === "") return 24;
+  const f = Number(v);
+  if (!Number.isFinite(f)) return 24;
+  return Math.max(MIN_FPS, Math.min(MAX_FPS, f));
 }
 const pick = (v, allowed, dflt) => (typeof v === "string" && allowed.includes(v) ? v : dflt);
 
@@ -56,6 +66,8 @@ export function parseState(raw) {
     fadeOut: int(raw.fadeOut, 0, MAX_SPAN, 0),
     size: pick(raw.size, SIZES, "fill"),
     preview: pick(raw.preview, PREVIEWS, "animated"),
+    fps: fpsOf(raw.fps),
+    musicMix: pick(raw.musicMix, MUSIC_MIX, "music"),
   };
 }
 

@@ -15,6 +15,7 @@ and NO subprocess: the node's moving preview is an animated WebP written by PIL
 into ComfyUI's temp folder, like core's Save Animated WEBP.
 """
 
+import math
 import os
 import uuid
 
@@ -90,13 +91,20 @@ def _save_thumb(frame, unique_id, height=_THUMB_H):
 
 def _still_index(pl, total):
     """The frame the node shows while the preview is not playing: the middle of
-    the first crossfade (what you most want to check), else the middle of the
-    first clip (a dip to black or a fade would show a black frame)."""
-    i = pl["clips"][0]["kept"] // 2
-    for j in pl["joins"]:
-        if j["kind"] == "crossfade" and j["frames"]:
-            i = j["at"] + j["frames"] // 2
-            break
+    clip 1's CLEAN part, after a fade-in and before the first transition. The
+    middle of the first crossfade was the pick until 2026-10-25: a ghosted
+    double picture that looked like a glitch (the user's first look). Play shows
+    the transitions; a dip to black or a fade never gives a black still."""
+    kept = pl["clips"][0]["kept"]
+    lo = min(pl["fadeIn"], kept)
+    hi = kept
+    if pl["joins"]:
+        j = pl["joins"][0]
+        hi = j["at"] - j["out"] if j["kind"] == "black" else j["at"]
+    elif pl["loop"] == "off":
+        hi = total - pl["fadeOut"]
+    hi = min(hi, kept)
+    i = (lo + hi) // 2 if hi > lo else kept // 2
     # That is a place in the joined clips; a seamless loop starts `blend`
     # frames later (repeat and ping-pong start with the clips as they are).
     if pl["loop"] == "seamless":
@@ -107,13 +115,14 @@ def _still_index(pl, total):
 class PixaromaVideoTools:
     DESCRIPTION = (
         "Join, trim, reverse, loop and fade video clips from any video model, together with "
-        "their sound. Wire up to three clips (the frames, and the sound if they have one) and "
+        "their sound. Wire up to eight clips (the frames, and the sound if they have one) and "
         "set what to do on the node: cut frames off the start or end of each clip, play one "
         "backwards, join them with a crossfade or a dip to black, match their colours where "
         "they meet, loop the result (repeat, ping-pong or a seamless loop) and fade in or out. "
         "The sound follows every step.\n\n"
-        "Wire video_frames from Load Video or a video model's VAE Decode into video_1, and fps "
-        "from Load Video. The result goes into Save Video. After a Run the node shows the "
+        "Wire video_frames from Load Video or a video model's VAE Decode into v1 (video_1), its "
+        "sound into a1, and fps from Load Video (or set fps on the node). A new pair of inputs "
+        "appears each time you wire a clip. The result goes into Save Video. After a Run the node shows the "
         "clips on a timeline and a small moving preview.\n\n"
         "Find it by searching for video, join, merge, combine, concatenate, trim, cut, reverse, "
         "loop, ping pong, boomerang, crossfade, transition, fade or colour match."
@@ -138,20 +147,30 @@ class PixaromaVideoTools:
             "Pixaroma or the frames out of a video model's VAE Decode."
         )
         sound_tip = "Optional. The sound of clip %d (AUDIO). Clips without sound are silent while they play."
-        opt = {}
+        # fps is a plain input, listed FIRST: the face shows only the clip
+        # inputs in use plus one free pair (js/video_tools/layout.mjs), and the
+        # rate when nothing is wired is the fps stepper on the face (the state).
+        opt = {
+            "fps": ("FLOAT", {
+                "forceInput": True,
+                "tooltip": (
+                    "Optional. The frames per second of the clips: wire fps from Load Video Pixaroma. "
+                    "Not wired, the fps set on the node is used (MiniMax H3 makes 24)."
+                ),
+            }),
+            "music": ("AUDIO", {
+                "tooltip": (
+                    "Optional. One song (or any sound) under the WHOLE finished video, from its start, "
+                    "cut to the video's length, with the fades. On the node: the song alone, or with the "
+                    "clips' own sound. Trim where the song starts with Load Audio Pixaroma."
+                ),
+            }),
+        }
         for i in range(1, MAX_CLIPS + 1):
             opt["video_%d" % i] = ("IMAGE", {"tooltip": clip_tip % i})
             opt["audio_%d" % i] = ("AUDIO", {"tooltip": sound_tip % i})
         return {
-            "required": {
-                "fps": ("FLOAT", {
-                    "default": 24.0, "min": 1.0, "max": 240.0, "step": 1.0,
-                    "tooltip": (
-                        "The frames per second of the clips. Wire fps from Load Video Pixaroma, or set "
-                        "the rate your video model makes (MiniMax H3 makes 24)."
-                    ),
-                }),
-            },
+            "required": {},
             "optional": opt,
             "hidden": {
                 "VideoToolsState": "STRING",
@@ -159,17 +178,17 @@ class PixaromaVideoTools:
             },
         }
 
-    def run(self, fps=24.0, VideoToolsState=None, unique_id=None, **clips):
+    def run(self, fps=None, music=None, VideoToolsState=None, unique_id=None, **clips):
         st = parse_state(VideoToolsState)
         try:
-            fps = float(fps)
+            fps = float(st["fps"] if fps is None else fps)
         except (TypeError, ValueError):
-            fps = 24.0
-        if not fps > 0:
-            fps = 24.0
+            fps = st["fps"]
+        if not (fps > 0 and math.isfinite(fps)):
+            fps = st["fps"]
         videos = [_frames_or_none(clips.get("video_%d" % i)) for i in range(1, MAX_CLIPS + 1)]
         audios = [clips.get("audio_%d" % i) for i in range(1, MAX_CLIPS + 1)]
-        frames, sound, pl = process(videos, audios, fps, st)
+        frames, sound, pl = process(videos, audios, fps, st, music)
 
         info_clips = []
         for c in pl["clips"]:
@@ -185,13 +204,14 @@ class PixaromaVideoTools:
             })
         total = int(frames.shape[0])
         entry = {
-            "clips": info_clips, "total": total, "fps": fps, "duration": total / fps,
+            "clips": info_clips, "total": total, "fps": fps, "duration": round(total / fps, 3),
             "width": int(frames.shape[2]), "height": int(frames.shape[1]), "audio": sound is not None,
+            "music": isinstance(music, dict),
             "preview": _save_preview(frames, fps, unique_id) if st["preview"] == "animated" else None,
             "still": _save_thumb(frames[_still_index(pl, total)], unique_id, _PREVIEW_H),
         }
         return {"ui": {"pixaroma_video_tools": [entry]},
-                "result": (frames, sound, total, fps, total / fps)}
+                "result": (frames, sound, total, fps, round(total / fps, 3))}
 
 
 NODE_CLASS_MAPPINGS = {"PixaromaVideoTools": PixaromaVideoTools}
