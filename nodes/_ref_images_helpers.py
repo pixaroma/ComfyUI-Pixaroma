@@ -109,12 +109,14 @@ def parse_state(raw):
     if isinstance(raw, str):
         try:
             raw = json.loads(raw) if raw.strip() else {}
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             raw = {}
     if not isinstance(raw, dict):
         raw = {}
     cards = []
-    for c in raw.get("cards") or []:
+    # A list only, like the JS Array.isArray ({"cards": 5} raised TypeError).
+    cards_in = raw.get("cards")
+    for c in cards_in if isinstance(cards_in, list) else []:
         if not isinstance(c, dict):
             continue
         cards.append({

@@ -29,6 +29,20 @@ import { MIN_W, buildFace, destroyFace, renderFace } from "./ui.mjs";
 const DEFAULT_W = 480;
 const POLL_MS = 800;
 
+// A throwaway COPY (Ctrl+C, Alt-drag, Clone and Convert to subgraph all build
+// a clone() that never joins a graph and never gets onRemoved, VC#8) lets go
+// of what its face holds outside itself: 6 window listeners and the renderer
+// signal per copy (measured: 30 listeners left after 5 copies, copyleak.sh).
+// Not destroyFace: its closeMenu() would close a dropdown open on a LIVE node.
+function releaseCopy(node) {
+  try { node._pixRfiRendererOff?.(); } catch {}
+  node._pixRfiRendererOff = null;
+  const f = node._pixRfiFace;
+  try { f?.floorOff?.(); } catch {}
+  try { f?.widthOff?.(); } catch {}
+  try { f?.ro?.disconnect(); } catch {}
+}
+
 registerNodeHelp(CLASS, REFERENCE_IMAGES_HELP);
 registerNodeSettings(CLASS, {
   title: "Reference Images",
@@ -164,7 +178,11 @@ app.registerExtension({
       node._pixRfiIdle = 0;
       node._pixRfiPoll = setInterval(() => {
         if (!node.graph) {
-          if (++node._pixRfiIdle > 6) { clearInterval(node._pixRfiPoll); node._pixRfiPoll = null; }
+          if (++node._pixRfiIdle > 6) {
+            clearInterval(node._pixRfiPoll);
+            node._pixRfiPoll = null;
+            releaseCopy(node);
+          }
           return;
         }
         node._pixRfiIdle = 0;

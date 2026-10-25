@@ -8,7 +8,7 @@
 
 import { notifyGraphChanged } from "../shared/graph_changed.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
-import { MAX_CARDS, readState, writeState } from "./core.mjs";
+import { MAX_CARDS, cardWords, mapTags, readState, writeState } from "./core.mjs";
 import { fitAfterCards, sizeBefore } from "./layout.mjs";
 
 const OUT_NAME = (k) => `image_${k}`;
@@ -88,10 +88,16 @@ export function replaceCard(node, index, u) {
 }
 
 /** Remove picture `index`. Its output goes WITH it (and its wire), so the
- *  wires on later pictures follow their picture (the Sliders rule). */
+ *  wires on later pictures follow their picture (the Sliders rule). So do the
+ *  user's own @N: the later ones move down one, and the removed picture's
+ *  becomes its words ("the outfit"), so no @N quietly points at another
+ *  picture (review 2026-10-25, reproduced: "@3" meant the next picture, no
+ *  warning). A wired text comes from another node: its numbers are left. */
 export function removeCard(node, index) {
   const st = readState(node);
   if (!st.cards[index]) return;
+  const k = index + 1, count = st.cards.length, words = cardWords(st.cards[index]);
+  st.text = mapTags(st.text, (n) => (n === k ? words : n > k && n <= count ? `@${n - 1}` : null));
   const before = sizeBefore(node);
   const slot = index + 1;
   if (st.cards.length > 1 && node.outputs && slot < node.outputs.length) {
@@ -109,12 +115,14 @@ export function removeCard(node, index) {
 }
 
 /** Swap two pictures. Wires stay on their NUMBER, so tag N and output N always
- *  mean the same picture. */
+ *  mean the same picture; the user's @N swap with their pictures. */
 export function moveCard(node, index, dir) {
   const st = readState(node);
   const j = index + dir;
   if (!st.cards[index] || !st.cards[j]) return;
   [st.cards[index], st.cards[j]] = [st.cards[j], st.cards[index]];
+  const a = index + 1, b = j + 1;
+  st.text = mapTags(st.text, (n) => (n === a ? `@${b}` : n === b ? `@${a}` : null));
   commit(node, st);
 }
 

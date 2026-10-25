@@ -344,11 +344,12 @@ export function renderFace(node, structural = true) {
   const n = st.cards.length;
 
   // A rebuild only when the cards really changed: re-creating the <img>s on
-  // every keystroke would flicker.
+  // every keystroke would flicker. The gear's role words are not on a card
+  // (the role menu reads them when it opens): they were in this key, and each
+  // keystroke there re-created every picture (review 2026-10-25, measured).
   // Not laid out yet (a load, a zoomed-out canvas): keep the last count.
   const cols = f.grid.clientWidth > 0 ? columnsFor(f.grid.clientWidth) : (f.cols || 4);
-  const sig = JSON.stringify([st.cards.map((c) => [c.file, c.sub, c.role]), wired, node._pixRfiBusy || 0,
-    st.phrases, cols]);
+  const sig = JSON.stringify([st.cards.map((c) => [c.file, c.sub, c.role]), wired, node._pixRfiBusy || 0, cols]);
   if (structural || sig !== f.sig) {
     f.sig = sig;
     f.cols = cols;

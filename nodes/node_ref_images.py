@@ -116,6 +116,9 @@ class PixaromaReferenceImages:
 
     CATEGORY = "👑 Pixaroma/🖼️ Image"
     FUNCTION = "run"
+    # The face shows the run's model and prompt: a Run that changed nothing
+    # re-sends the cached result only with this (ComfyUI 0.42 execution.py).
+    HAS_INTERMEDIATE_OUTPUT = True
     RETURN_TYPES = ("STRING",) + ("IMAGE",) * MAX_CARDS
     RETURN_NAMES = ("prompt",) + tuple("image_%d" % (i + 1) for i in range(MAX_CARDS))
     OUTPUT_TOOLTIPS = (

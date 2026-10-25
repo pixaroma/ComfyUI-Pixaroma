@@ -180,6 +180,18 @@ export function convertTags(s, model, count, custom = "") {
   });
 }
 
+/** Rewrite every @N in the user's text: `fn(n)` gives the new text, or null to
+ *  leave it (JS only: a remove or move keeps the words on their picture). */
+export function mapTags(s, fn) {
+  return String(s || "").replace(AT, (m, d) => fn(parseInt(d, 10)) ?? m);
+}
+
+/** The words a removed picture's @N becomes: its name, or its role's noun. */
+export function cardWords(card) {
+  const role = ROLE_KEYS.includes(card?.role) ? card.role : "other";
+  return strip(card?.name || "") || ROLE_NOUN[role] || "the picture";
+}
+
 export function missingTags(s, count) {
   const out = [];
   for (const m of String(s || "").matchAll(AT)) {
