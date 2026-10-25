@@ -250,9 +250,11 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 25, 2026 · v1.4.232**
+### **October 25, 2026 · v1.4.232-v1.4.233**
 - **NEW: Reference Images Pixaroma.** Up to 12 reference pictures, each with a job, and a prompt that names them the way your model expects (Qwen Image 2.1, FLUX 3, MiniMax H3).
 - **NEW: Video Tools Pixaroma.** Join, trim, reverse, loop and fade up to 8 video clips with their sound, with one song under the whole video if you like.
+- **Video Tools:** a crossfade between two versions of one video keeps the voice at its level, with no bump in the middle.
+- **Longest Side, Load Audio, Text Overlay, Outpaint, Sketch, Layout Boxes, H3 Audio Sync, H3 Timeline:** a Run with nothing changed shows the result on the node again.
 
 ### **October 24, 2026 · v1.4.231**
 - **Load Image, Load Image Mini and Prompt Reader:** once you pick a picture, ComfyUI's "Missing Inputs" warning about the workflow's missing picture goes away.
