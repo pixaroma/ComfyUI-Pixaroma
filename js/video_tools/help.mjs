@@ -68,6 +68,7 @@ export const VIDEO_TOOLS_HELP = {
         "Clips should share one frame rate. A clip made at another rate plays faster or slower here.",
         "Long clips use a lot of memory: the finished video is made in one piece. Join long videos in a video editor.",
         "More than eight clips? Wire this node's `video_frames` and `audio` into `v1` and `a1` of a second Video Tools.",
+        "Bypassed (Ctrl+B), the node passes clip 1's frames and sound straight through, or the song instead of the sound if one is wired.",
       ],
     },
   ],

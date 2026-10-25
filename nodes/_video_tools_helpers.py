@@ -338,10 +338,15 @@ def still_index(pl):
     first, light = v[:, 0, 0, 0], v[:, 0, 0, 1]
     p, p2 = v[:, 0, 1, 0], v[:, 0, 1, 1]
     whole = (light > 1 - 1e-9) & ((p * p - p2).abs() < 1e-9)
+    # The first pass of the clips first: a repeat or ping-pong loop runs clip 1's
+    # clean frames on across the cycles, and the middle of that long run was a
+    # cycle start, the clip's first frame (review round 2, reproduced).
+    first_pass = min(pl["base"], pl["cycle"])
     for mask in (whole & (first > 1 - 1e-9), whole & ((first > 1 - 1e-9) | (first < 1e-9))):
-        i = _runs_middle(mask)
-        if i is not None:
-            return i
+        for part in (mask[:first_pass], mask):
+            i = _runs_middle(part)
+            if i is not None:
+                return i
     return int(torch.argmax(light))
 
 

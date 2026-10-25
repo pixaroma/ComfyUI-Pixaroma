@@ -261,9 +261,43 @@ function findNode(index, id) {
   return tail && index.has(tail) ? index.get(tail) : null;
 }
 
+// A BYPASSED Video Tools (Ctrl+B): core passes each output on from the input at
+// the SAME place when the type fits, and place 1 is `music`, so the sound came
+// from the song or, with no song wired, was DROPPED (Save Video saved a silent
+// clip; a node that needs a sound failed the Run; measured 2026-10-25). A
+// dropped sound gets clip 1's sound back, the way the node itself would pass
+// it. Root graph only, only an input core left out; anything else stays as
+// core built it (the shape of js/shared/bypass_repair.mjs).
+function repairBypassedSound(out) {
+  const g = app.rootGraph || app.graph;
+  const linkOf = (id) => (g?.links?.get ? g.links.get(id) : g?.links?.[id]);
+  for (const n of g?._nodes || []) {
+    if ((n.comfyClass || n.type) !== CLASS || n.mode !== 4) continue;
+    const a1 = n.inputs?.find((i) => i?.name === "audio_1");
+    const src = a1?.link != null ? linkOf(a1.link) : null;
+    const origin = src ? g.getNodeById(src.origin_id) : null;
+    if (!origin || origin.mode !== 0 || !out[String(origin.id)]) continue;
+    const sound = n.outputs?.find((o) => o?.name === "audio");
+    for (const id of sound?.links || []) {
+      const l = linkOf(id);
+      const t = l ? g.getNodeById(l.target_id) : null;
+      const entry = t ? out[String(t.id)] : null;
+      const name = t?.inputs?.[l.target_slot]?.name;
+      if (!entry || !name || entry.inputs?.[name] !== undefined) continue;
+      entry.inputs = entry.inputs || {};
+      entry.inputs[name] = [String(origin.id), src.origin_slot];
+    }
+  }
+}
+
 const _origGraphToPrompt = app.graphToPrompt;
 app.graphToPrompt = async function (...args) {
   const result = await _origGraphToPrompt.apply(this, args);
+  try {
+    if (result?.output) repairBypassedSound(result.output);
+  } catch (e) {
+    console.error("[Pixaroma.VideoTools] could not pass the sound through a bypassed node", e);
+  }
   try {
     const out = result?.output;
     if (out) {
