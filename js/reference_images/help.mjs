@@ -39,8 +39,8 @@ export const REFERENCE_IMAGES_HELP = {
       defs: [
         ["The number", "Click it to write `@1` (or `@2`...) where the cursor is in your prompt."],
         ["Click the picture", "Use another picture in its place. Dropping a picture on it does the same."],
-        ["◀ ▶", "Move it left or right. Its number changes, and so does which output it comes out of. The `@` numbers in your prompt move with it."],
-        ["×", "Remove it. Its output goes with it, and the wires and the `@` numbers of the pictures after it stay with their pictures. Its own `@` number in your prompt becomes its words (like `the outfit`)."],
+        ["◀ ▶", "Move it left or right. Its number changes, and so does which output it comes out of. The `@` numbers in your prompt move with it (a prompt that comes over the `text` wire keeps its numbers: check them)."],
+        ["×", "Remove it. Its output goes with it, and the wires and the `@` numbers of the pictures after it stay with their pictures. Its own `@` number in your prompt becomes its words (like `the outfit`). A prompt that comes over the `text` wire keeps its numbers: check them."],
       ],
     },
     {

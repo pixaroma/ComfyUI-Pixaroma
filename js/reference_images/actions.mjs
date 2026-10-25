@@ -105,13 +105,14 @@ export function removeCard(node, index) {
     // The later outputs moved down one WITH their labels ("2" now sits on
     // output 1): renumber our own labels, or syncOutputs takes "2" for a
     // user's rename and keeps it, and it is saved (review 2026-10-25, reproduced).
-    for (let k = slot; k < node.outputs.length; k++) {
-      const o = node.outputs[k];
-      if (o && o.label === String(k + 1)) o.label = String(k);
+    for (let s = slot; s < node.outputs.length; s++) {
+      const o = node.outputs[s];
+      if (o && o.label === String(s + 1)) o.label = String(s);
     }
   }
   st.cards.splice(index, 1);
   commit(node, st, before);
+  if (count > 1) noteWiredText(node);
 }
 
 /** Swap two pictures. Wires stay on their NUMBER, so tag N and output N always
@@ -124,6 +125,7 @@ export function moveCard(node, index, dir) {
   const a = index + 1, b = j + 1;
   st.text = mapTags(st.text, (n) => (n === a ? `@${b}` : n === b ? `@${a}` : null));
   commit(node, st);
+  noteWiredText(node);
 }
 
 export function setCardField(node, index, key, value, { quiet = false } = {}) {
@@ -183,6 +185,14 @@ export async function addFiles(node, files, replaceIndex = -1) {
   } finally {
     node._pixRfiBusy = Math.max(0, (node._pixRfiBusy || 1) - 1);
     refresh(node);
+  }
+}
+
+// A prompt that comes over the `text` wire belongs to another node and keeps its
+// @ numbers, which now point at other pictures: say so (review round 2).
+function noteWiredText(node) {
+  if (node.inputs?.find((i) => i?.name === "text")?.link != null) {
+    flashNote(node, "The text wire keeps its @ numbers: check them.");
   }
 }
 
