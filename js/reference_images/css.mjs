@@ -9,6 +9,7 @@
 import { pixAsset } from "../shared/api_url.mjs";
 import { ACC, ACC_HOVER } from "../shared/node_settings.mjs";
 import { textSize } from "../shared/text_size.mjs";
+import { EMPTY_H, GAP, GUTTER, STRIP_H, TEXT_MIN } from "./layout.mjs";
 
 const CSS_ID = "pix-rfi-css";
 
@@ -19,12 +20,15 @@ export function injectCSS() {
   s.id = CSS_ID;
   s.textContent = `
 /* the DOM widget root fills its row and never sizes itself (nodes2-preview-fill #4) */
-.pix-rfi-root{position:relative;flex:1 1 0;min-height:0;box-sizing:border-box;}
+.pix-rfi-root{position:relative;flex:1 1 0;min-height:0;box-sizing:border-box;pointer-events:none;}
+/* the output dots sit in the gutter right of the bar and the pictures (layout.mjs):
+   only the face's own parts take the pointer, the gaps let a wire start from a dot */
+.dom-widget:has(> .pix-rfi-root){pointer-events:none !important;}
 /* the layout lives on an INNER layer: ComfyUI sets the root's display itself */
 .pix-rfi-inner{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;padding:6px 8px 8px;
-  box-sizing:border-box;overflow:hidden;font:11px "Segoe UI",system-ui,sans-serif;color:#ddd;}
-.pix-rfi-inner > *{flex-shrink:0;}
-.pix-rfi-bar{display:flex;align-items:center;gap:6px;min-width:0;height:26px;}
+  box-sizing:border-box;overflow:hidden;font:11px "Segoe UI",system-ui,sans-serif;color:#ddd;pointer-events:none;}
+.pix-rfi-inner > *{flex-shrink:0;pointer-events:auto;}
+.pix-rfi-bar{display:flex;align-items:center;gap:6px;min-width:0;height:26px;margin-right:${GUTTER}px;}
 .pix-rfi-grow{flex:1 1 auto;min-width:4px;}
 .pix-rfi-model{height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 8px;border-radius:4px;
   background:#1d1d1d;border:1px solid #444;color:#aaa;cursor:pointer;font:11px "Segoe UI",sans-serif;min-width:0;
@@ -40,9 +44,10 @@ export function injectCSS() {
 .pix-rfi-gear::before{content:"";display:block;width:15px;height:15px;background:currentColor;
   -webkit-mask:url("${gear}") center/contain no-repeat;mask:url("${gear}") center/contain no-repeat;}
 
-/* the picture grid: the one part that grows with the node, and scrolls */
-.pix-rfi-grid{flex:1 1 0 !important;min-height:120px;overflow-y:auto;overflow-x:hidden;display:grid;
-  grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px;align-content:start;padding:1px;}
+/* the picture grid: exactly its rows (layout.mjs gridHeight is the same sum), up to 4 a row,
+   the column count set from its width by ui.mjs */
+.pix-rfi-grid{flex:0 0 auto;overflow:hidden;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:${GAP}px;align-content:start;margin-right:${GUTTER}px;}
 .pix-rfi-grid.drop{outline:2px dashed ${ACC};outline-offset:-2px;border-radius:6px;}
 .pix-rfi-card{display:flex;flex-direction:column;gap:4px;min-width:0;}
 .pix-rfi-thumb{position:relative;width:100%;aspect-ratio:1/1;border-radius:6px;overflow:hidden;background:#151515;
@@ -86,15 +91,18 @@ export function injectCSS() {
 .pix-rfi-add:hover{border-color:${ACC};color:#ddd;background:rgba(255,255,255,.05);}
 .pix-rfi-add .plus{font-size:22px;line-height:1;color:${ACC};}
 .pix-rfi-add .sub{font-size:10px;color:#8a8a8a;line-height:1.35;}
-/* an empty node: the drop zone fills the whole grid */
-.pix-rfi-grid.empty{grid-auto-rows:minmax(100px,1fr);align-content:stretch;}
-.pix-rfi-add.wide{grid-column:1 / -1;aspect-ratio:auto;height:auto;min-height:100px;}
-.pix-rfi-busy{grid-column:1 / -1;color:#8f8f8f;font-size:11px;padding:2px 2px 0;}
+/* an empty node: one wide drop zone; under a full row: a slim strip (no empty row) */
+.pix-rfi-add.wide{grid-column:1 / -1;aspect-ratio:auto;height:${EMPTY_H}px;}
+.pix-rfi-add.strip{grid-column:1 / -1;aspect-ratio:auto;height:${STRIP_H}px;flex-direction:row;gap:6px;padding:0 8px;}
+.pix-rfi-add.strip .plus{font-size:16px;}
+.pix-rfi-add.busy{cursor:default;color:#8f8f8f;}
 
 .pix-rfi-head{display:flex;align-items:center;gap:6px;height:16px;color:#9a9a9a;font-size:11px;user-select:none;}
 .pix-rfi-head .t{color:#bdbdbd;font-weight:600;}
 .pix-rfi-head .h{color:#7d7d7d;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
-.pix-rfi-text{height:64px;flex:0 0 64px;resize:none;box-sizing:border-box;background:#1d1d1d;color:#e0e0e0;
+/* "Your prompt" takes the node's extra height, and gives up to 24 px when short: a node sized in Classic
+   opens in Nodes 2.0, whose frame needs 20 px more, without the bottom cut off */
+.pix-rfi-text{height:auto;min-height:40px;flex:1 1 ${TEXT_MIN}px !important;resize:none;box-sizing:border-box;background:#1d1d1d;color:#e0e0e0;
   border:1px solid #333;border-radius:4px;padding:6px 8px;font:12px monospace;font-size:${textSize(12)};
   line-height:1.35;outline:none;width:100%;}
 .pix-rfi-text:focus{border-color:${ACC};}

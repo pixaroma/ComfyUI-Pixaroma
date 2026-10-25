@@ -6,37 +6,41 @@
 // repaints the face. Undo is ComfyUI's own Ctrl+Z: it restores the whole node
 // (properties AND outputs), and onConfigure redraws the face from it.
 
-import { app } from "../../../scripts/app.js";
 import { notifyGraphChanged } from "../shared/graph_changed.mjs";
-import { isGraphLoading } from "../shared/graph_loading.mjs";
-import { isVueNodes } from "../shared/nodes2.mjs";
 import { pixApiUrl } from "../shared/api_url.mjs";
 import { MAX_CARDS, readState, writeState } from "./core.mjs";
+import { fitAfterCards, sizeBefore } from "./layout.mjs";
 
 const OUT_NAME = (k) => `image_${k}`;
-const SLOT_H = 20;   // LiteGraph.NODE_SLOT_HEIGHT
 
 export function refresh(node) {
   try { node._pixRfiRefresh?.(); } catch (e) { console.warn("[Reference Images] repaint failed", e); }
 }
 
-function commit(node, st) {
+function commit(node, st, before = sizeBefore(node)) {
   writeState(node, st);
   syncOutputs(node);
+  fitAfterCards(node, before);
   notifyGraphChanged();
   refresh(node);
+}
+
+/** The dot's label: the picture's number, like its badge (the user asked for
+ *  "1", "2" on the edge). Runtime only: index.js strips it from the saved file,
+ *  so a reopened node matches, and a label the user typed is left alone. */
+export function isOurLabel(o, i) {
+  return o.label == null || o.label === "" || o.label === String(i);
 }
 
 // One output per picture after `prompt`, named exactly like Python's
 // RETURN_NAMES so ComfyUI's node-def reconciliation never re-adds a phantom.
 // At least image_1 stays, so an empty node still shows where pictures come out.
 // Diff-gated: re-writing an identical value can count as a change (Vue Compat
-// #18). Never called on the load path (index.js gates it on bornInLoad).
+// #18). On the load path it only trims what core re-added (onConfigure).
 export function syncOutputs(node) {
   if (!node) return;
   if (!node.outputs) node.outputs = [];
   const want = 1 + Math.max(1, Math.min(MAX_CARDS, readState(node).cards.length));
-  const before = node.outputs.length;
   while (node.outputs.length > want) node.removeOutput(node.outputs.length - 1);
   // localized_name too: a reload fills it in from the def, and an output added
   // without it would differ from the reopened one (an undo jam, measured).
@@ -50,21 +54,11 @@ export function syncOutputs(node) {
     if (!o) continue;
     if (o.name !== OUT_NAME(i)) o.name = OUT_NAME(i);
     if (o.localized_name !== OUT_NAME(i)) o.localized_name = OUT_NAME(i);
+    if (isOurLabel(o, i) && o.label !== String(i)) o.label = String(i);
   }
-  const added = node.outputs.length - before;
-  // The body sits BELOW the output dots, so every new dot would take its 20px
-  // out of the picture grid. Grow with it (a user action, never a load). In
-  // Nodes 2.0 node.size is only a floor the frame keeps (N2), so grow from
-  // the frame's real height there.
-  if (added > 0 && !isGraphLoading() && node.size) {
-    let h = node.size[1];
-    if (isVueNodes()) {
-      const frame = document.querySelector(`.lg-node[data-node-id="${node.id}"]`);
-      const scale = Number(app.canvas?.ds?.scale) || 1;
-      if (frame && frame.contains(node._pixRfiFace?.root)) h = Math.max(h, frame.getBoundingClientRect().height / scale - 30);
-    }
-    node.setSize?.([node.size[0], Math.round(h + added * SLOT_H)]);
-  }
+  // The dots no longer push the face down (layout.mjs lifts the face beside
+  // them), so a new output needs no room; the pictures' own height is
+  // fitAfterCards' job.
   node.setDirtyCanvas?.(true, true);
 }
 
@@ -98,10 +92,11 @@ export function replaceCard(node, index, u) {
 export function removeCard(node, index) {
   const st = readState(node);
   if (!st.cards[index]) return;
+  const before = sizeBefore(node);
   const slot = index + 1;
   if (st.cards.length > 1 && node.outputs && slot < node.outputs.length) node.removeOutput(slot);
   st.cards.splice(index, 1);
-  commit(node, st);
+  commit(node, st, before);
 }
 
 /** Swap two pictures. Wires stay on their NUMBER, so tag N and output N always

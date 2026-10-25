@@ -3,7 +3,7 @@ a role, and a prompt that names every picture the way the model expects.
 
 Multi-picture edit models (Qwen Image 2.1, FLUX 3 Image Klein, MiniMax H3, Flux
 2 Klein) each name their reference pictures differently: <image1>,
-<ref_image_0>, <Picture 1>, "image 1". This node holds up to 8 pictures, gives
+<ref_image_0>, <Picture 1>, "image 1". This node holds up to 12 pictures, gives
 each one a role (character, outfit, pose, style...), and sends:
   - prompt     "Use the character from <image1>, the outfit from <image2> ..."
                plus your own words, where @1, @2 become the model's tags,
@@ -108,7 +108,7 @@ class PixaromaReferenceImages:
         "The prompt output names every picture the way the model expects it: <image1> for "
         "Qwen Image 2.1, <ref_image_0> for FLUX 3 Image Klein (it counts from 0), <Picture 1> "
         "for MiniMax H3, and image 1 for the rest. Auto finds the model by following the "
-        "prompt wire, or pick it on the node. Wire image_1, image_2... into the model's "
+        "prompt wire, or pick it on the node. Wire the outputs 1, 2... (image_1, image_2...) into the model's "
         "picture inputs in the same order.\n\n"
         "Find it by searching for reference, references, multi image, several pictures, "
         "character, outfit, style, qwen edit, flux 3, klein, h3 or ref2v."

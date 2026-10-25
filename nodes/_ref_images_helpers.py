@@ -18,7 +18,7 @@ workflows, 2026-10-24):
 import json
 import re
 
-MAX_CARDS = 8
+MAX_CARDS = 12
 MAX_NAME = 120
 MAX_TEXT = 20000
 MAX_PHRASE = 200
@@ -187,7 +187,7 @@ def list_sentence(state, model):
     return "Use " + _join(parts) + "."
 
 
-# @1 .. @8 in the user's text. Not inside a word (mail@1x) and not @12 read as @1.
+# @1 .. @12 in the user's text. Not inside a word (mail@1x) and not @12 read as @1.
 _AT = re.compile(r"(?<![A-Za-z0-9_@])@([0-9]{1,2})(?![0-9])")
 
 

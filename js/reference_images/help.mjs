@@ -3,7 +3,7 @@
 
 export const REFERENCE_IMAGES_HELP = {
   title: "Reference Images Pixaroma",
-  tagline: "Up to 8 reference pictures on one node, each with a role, and a prompt that names every picture the way your model expects. For Qwen Image 2.1, FLUX 3 Image Klein, MiniMax H3, Flux 2 Klein and other models that take several pictures.",
+  tagline: "Up to 12 reference pictures on one node, each with a role, and a prompt that names every picture the way your model expects. For Qwen Image 2.1, FLUX 3 Image Klein, MiniMax H3, Flux 2 Klein and other models that take several pictures.",
   sections: [
     {
       heading: "How to use it",
@@ -11,7 +11,7 @@ export const REFERENCE_IMAGES_HELP = {
         "Drop pictures on the node, click `Add`, or select the node and paste one with Ctrl+V.",
         "Under each picture, pick what it is for: `Character`, `Outfit`, `Pose`, `Style`, `Background` and more. The small box under it can name it, like `the woman in red`.",
         "Write what to make in `Your prompt`. Write `@1` for picture 1, `@2` for picture 2 (or click a picture's number to add it), like `Put @1 in the outfit from @2 on a sunny beach`.",
-        "Wire `prompt` into the prompt of your model's text encode, and `image_1`, `image_2`... into its picture inputs, in the same order.",
+        "Wire `prompt` into the prompt of your model's text encode, and the outputs `1`, `2`... on the right edge (picture 1, picture 2) into its picture inputs, in the same order. One output can feed several nodes.",
         "Run. `Prompt sent` shows the exact text the model gets.",
       ],
     },
@@ -47,7 +47,7 @@ export const REFERENCE_IMAGES_HELP = {
       heading: "What comes out",
       defs: [
         ["prompt", "Your words with every `@1`, `@2` turned into the model's tag, plus the picture list."],
-        ["image_1, image_2...", "The pictures, one output each, in the order shown. A new output appears for every picture you add."],
+        ["1, 2, 3...", "The pictures, one output each (image_1, image_2... in menus), in the order shown. A new dot appears on the right edge for every picture you add, up to 12."],
       ],
     },
     {
@@ -68,6 +68,8 @@ export const REFERENCE_IMAGES_HELP = {
         "With Qwen Image 2.1 and FLUX 3, the result takes the shape of picture 1. Put the picture whose shape you want first, or set the size with an Empty Latent.",
         "Want your prompt from another node? Wire it into `text`. The box on the node then shows it is wired, and `@1`, `@2` in the wired text still become the tags.",
         "The pictures are saved in ComfyUI's input folder. A workflow shared with someone else needs the pictures too.",
+        "Drag the node wider for bigger pictures (up to 4 a row), or taller for a bigger `Your prompt` box. It never gets small enough to hide a picture.",
+        "Only need pictures, no prompt? Leave `prompt` unwired and use the outputs alone, for example one picture per first and last frame of a video.",
       ],
     },
   ],

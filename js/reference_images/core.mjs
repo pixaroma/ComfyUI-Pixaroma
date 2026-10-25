@@ -14,7 +14,7 @@ export const CLASS = "PixaromaReferenceImages";
 export const HIDDEN_INPUT = "RefImagesState";
 export const PROP = "refImages";
 
-export const MAX_CARDS = 8;
+export const MAX_CARDS = 12;
 const MAX_NAME = 120;
 const MAX_TEXT = 20000;
 const MAX_PHRASE = 200;
@@ -170,7 +170,7 @@ export function listSentence(st, model) {
   return "Use " + join(parts) + ".";
 }
 
-// @1 .. @8 in the user's text; the same pattern as Python's _AT (ASCII only).
+// @1 .. @12 in the user's text; the same pattern as Python's _AT (ASCII only).
 const AT = /(?<![A-Za-z0-9_@])@([0-9]{1,2})(?![0-9])/g;
 
 export function convertTags(s, model, count, custom = "") {

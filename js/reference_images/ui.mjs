@@ -2,10 +2,12 @@
 //
 // ONE DOM widget in both renderers (the fill recipe of nodes2-preview-fill.md,
 // Layout Boxes' shape): the root fills its row, all layout lives on an inner
-// absolute layer, and the picture grid is the one part that grows with the
-// node (it scrolls when the node is small). Everything else has a FIXED
-// height, so a picture that loads late, a warning or a run's result can never
-// grow the body (convention #43). getMinHeight is a CONSTANT (#39 E).
+// absolute layer. The picture grid is exactly its rows (up to 4 a row, square
+// pictures as wide as the node allows) and "Your prompt" takes the height that
+// is left; layout.mjs holds the same sum for the node's size. Everything has a
+// height the pictures' count and the width decide, so a picture that loads
+// late, a warning or a run's result can never grow the body (convention #43).
+// getMinHeight is a CONSTANT (#39 E).
 
 import { installCanvasZoomPassthrough } from "../shared/canvas_zoom.mjs";
 import { installNativeTextMenu } from "../shared/native_text_menu.mjs";
@@ -20,10 +22,10 @@ import {
 import { injectCSS } from "./css.mjs";
 import { addFiles, isPicture, moveCard, removeCard, setCardField, setOption, thumbUrl } from "./actions.mjs";
 import { closeMenu, openMenu } from "./popup.mjs";
+import { FIXED_H, FLOOR, addMode, columnsFor, gridHeight, growToFloor } from "./layout.mjs";
 
 export const WIDGET_NAME = "reference_images_ui";
 export const WIDGET_TYPE = "pixaroma_reference_images";   // unique: a registered Vue type would swallow the DOM
-export const FLOOR = 370;   // bar + a grid of 120 + both text areas + the gaps (364 measured), at the smallest
 export const MIN_W = 340;
 
 const el = (tag_, cls, text) => {
@@ -185,11 +187,28 @@ export function buildFace(node, { onGear }) {
   installNativeTextMenu(root);
   installNodeAccent(node, root);
   // Nodes 2.0's corner drag measures the node collapsed, ignoring getMinHeight:
-  // pin the floor on the root while a resize handle is held (drag only, never a load).
-  const floorOff = installResizeFloor(root, () => FLOOR);
+  // pin the content's height on the root while a resize handle is held (drag
+  // only, never a load). A wider node has taller pictures, so on release the
+  // node grows to fit the width it ended at.
+  const contentH = () => Math.ceil(FIXED_H + gridHeight(grid.clientWidth, readState(node).cards.length));
+  const floorOff = installResizeFloor(root, contentH, () => growToFloor(node));
   const widthOff = installWidthFloor(root);
 
-  node._pixRfiFace = { floorOff, widthOff, root, inner, grid, modelBtn, mv, count, textBox, warn, sHint, sent, widget, sig: "" };
+  // The column count follows the grid's width (4 a row at most, never a
+  // picture under 84 px). A count change moves the Add button between the
+  // last row and its own strip, so the cards are rebuilt. DOM only.
+  let ro = null;
+  try {
+    ro = new ResizeObserver(() => {
+      const f = node._pixRfiFace;
+      if (!f || !grid.clientWidth) return;
+      if (columnsFor(grid.clientWidth) !== f.cols) renderFace(node, true);
+    });
+    ro.observe(grid);
+  } catch {}
+
+  node._pixRfiFace = { floorOff, widthOff, ro, root, inner, grid, modelBtn, mv, count, textBox, warn, sHint, sent, widget,
+    sig: "", cols: 0 };
   return widget;
 }
 
@@ -292,12 +311,21 @@ function insertTag(node, n) {
   setOption(node, "text", box.value);
 }
 
-function addTile(node, wide) {
-  const a = el("button", "pix-rfi-add" + (wide ? " wide" : ""));
+// mode (layout.mjs addMode): "wide" = the empty node's drop zone, "tile" = a
+// square in the last row's free place, "strip" = a slim row under a full row.
+// While pictures upload it says so IN PLACE, so the face keeps its height.
+function addTile(node, mode, busy) {
+  const a = el("button", `pix-rfi-add ${mode}` + (busy ? " busy" : ""));
   a.type = "button";
+  if (busy) {
+    a.disabled = true;
+    a.append(el("span", null, "Adding pictures..."));
+    return a;
+  }
   a.title = "Add pictures (or drop them on the node, or paste with Ctrl+V)";
-  a.append(el("span", "plus", "+"), el("span", null, wide ? "Add reference pictures" : "Add"),
-    el("span", "sub", wide ? `Click, drop or paste. Up to ${MAX_CARDS}.` : "or drop"));
+  const label = mode === "wide" ? "Add reference pictures" : mode === "strip" ? "Add pictures" : "Add";
+  const sub = mode === "wide" ? `Click, drop or paste. Up to ${MAX_CARDS}.` : mode === "strip" ? "or drop them here" : "or drop";
+  a.append(el("span", "plus", "+"), el("span", null, label), el("span", "sub", sub));
   a.addEventListener("click", (e) => {
     e.stopPropagation();
     pickFiles(true, (files) => addFiles(node, files));
@@ -317,16 +345,19 @@ export function renderFace(node, structural = true) {
 
   // A rebuild only when the cards really changed: re-creating the <img>s on
   // every keystroke would flicker.
+  // Not laid out yet (a load, a zoomed-out canvas): keep the last count.
+  const cols = f.grid.clientWidth > 0 ? columnsFor(f.grid.clientWidth) : (f.cols || 4);
   const sig = JSON.stringify([st.cards.map((c) => [c.file, c.sub, c.role]), wired, node._pixRfiBusy || 0,
-    st.phrases]);
+    st.phrases, cols]);
   if (structural || sig !== f.sig) {
     f.sig = sig;
+    f.cols = cols;
     closeMenu();
     f.grid.textContent = "";
-    f.grid.classList.toggle("empty", n === 0 && !node._pixRfiBusy);
+    f.grid.style.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`;
     st.cards.forEach((c, i) => f.grid.appendChild(cardEl(node, c, i, n, wired)));
-    if (node._pixRfiBusy) f.grid.appendChild(el("div", "pix-rfi-busy", "Adding pictures..."));
-    else if (n < MAX_CARDS) f.grid.appendChild(addTile(node, n === 0));
+    const mode = addMode(n, cols);
+    if (mode) f.grid.appendChild(addTile(node, mode, !!node._pixRfiBusy));
   }
 
   f.mv.textContent = st.model === "auto" ? `Auto: ${MODEL_LABELS[model]}` : MODEL_LABELS[model];
@@ -396,5 +427,6 @@ export function destroyFace(node) {
   closeMenu();
   try { node._pixRfiFace?.floorOff?.(); } catch {}
   try { node._pixRfiFace?.widthOff?.(); } catch {}
+  try { node._pixRfiFace?.ro?.disconnect(); } catch {}
   node._pixRfiFace = null;
 }

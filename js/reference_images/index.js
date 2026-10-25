@@ -1,6 +1,6 @@
 // Reference Images Pixaroma - wiring.
 //
-// Up to 8 reference pictures on one node, each with a role, and a prompt that
+// Up to 12 reference pictures on one node, each with a role, and a prompt that
 // names every picture the way the model expects it (<image1> for Qwen Image
 // 2.1, <ref_image_0> for FLUX 3 Image Klein, <Picture 1> for MiniMax H3,
 // "image 1" for the rest). Classic and Nodes 2.0 alike.
@@ -18,13 +18,16 @@ import { isVueNodes } from "../shared/nodes2.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { runTab, eachRestoredOutput } from "../shared/run_tab.mjs";
 import { CLASS, HIDDEN_INPUT, detectModel, injectedState } from "./core.mjs";
-import { addFiles, isPicture, syncOutputs } from "./actions.mjs";
+import { addFiles, isOurLabel, isPicture, syncOutputs } from "./actions.mjs";
 import { REFERENCE_IMAGES_HELP } from "./help.mjs";
+import {
+  FLOOR, liftClassic, nodeFloor, settleLift, unwatchLift, watchLift,
+} from "./layout.mjs";
 import { closeSettingsPanelFor, openSettingsPanel } from "./settings.mjs";
-import { FLOOR, MIN_W, buildFace, destroyFace, renderFace } from "./ui.mjs";
+import { MIN_W, buildFace, destroyFace, renderFace } from "./ui.mjs";
 
 const DEFAULT_W = 480;
-const DEFAULT_H = 640;
+const DEFAULT_H = FLOOR + 42;   // an empty node's content + Classic's widget start and margins
 const POLL_MS = 800;
 
 registerNodeHelp(CLASS, REFERENCE_IMAGES_HELP);
@@ -137,6 +140,10 @@ app.registerExtension({
       const bornInLoad = isGraphLoading();
       buildFace(node, { onGear: () => openSettingsPanel(node) });
       node._pixRfiRefresh = () => renderFace(node, false);
+      // The face sits beside the pictures' output dots, not under them (layout.mjs).
+      liftClassic(node);
+      watchLift(node);
+      settleLift(node);
 
       // Fresh size, SYNCHRONOUSLY: configure() runs next and restores a saved
       // size, so a deferred write would clobber it on every reload (#9).
@@ -165,7 +172,11 @@ app.registerExtension({
         if (isLiveNode(node)) refreshLive(node);
       }, POLL_MS);
 
-      node._pixRfiRendererOff = onRendererChange(() => renderFace(node, true));
+      node._pixRfiRendererOff = onRendererChange(() => {
+        liftClassic(node);
+        renderFace(node, true);
+        settleLift(node);
+      });
     };
 
     const _configure = nodeType.prototype.onConfigure;
@@ -179,8 +190,22 @@ app.registerExtension({
       // (the Sliders recipe). syncOutputs is diff-gated and never resizes during
       // a load. Nothing else here may write node.size, properties or slots (VC#18).
       syncOutputs(this);
+      liftClassic(this);
       delete this._pixRfiRun;
       renderFace(this, true);
+      settleLift(this);
+      return r;
+    };
+
+    // The dots' "1", "2"... labels are made at runtime (syncOutputs): keep them
+    // out of the file so a reopened node is byte-identical. Chained onSerialize,
+    // returning ITS result (VC#29).
+    const _onSerialize = nodeType.prototype.onSerialize;
+    nodeType.prototype.onSerialize = function (o) {
+      const r = _onSerialize?.apply(this, arguments);
+      (o?.outputs || []).forEach((out, i) => {
+        if (i > 0 && out && out.label === String(i) && isOurLabel(out, i)) delete out.label;
+      });
       return r;
     };
 
@@ -211,14 +236,13 @@ app.registerExtension({
       return true;
     };
 
-    // Classic-only clamps, never during a load (#7 + VC#18).
+    // Classic-only clamps, never during a load (#7 + VC#18). The floor is the
+    // content at the NEW width: a wider node has taller pictures.
     const _resize = nodeType.prototype.onResize;
     nodeType.prototype.onResize = function (size) {
       if (!isVueNodes() && !isGraphLoading() && this._pixRfiFace) {
         if (size[0] < MIN_W) size[0] = MIN_W;
-        const w = this._pixRfiFace.widget;
-        const y = w && w.y > 0 ? w.y : 70;
-        const floor = y + FLOOR + 20;
+        const floor = nodeFloor(this, size[0]);
         if (size[1] < floor) size[1] = floor;
       }
       return _resize?.apply(this, arguments);
@@ -227,6 +251,7 @@ app.registerExtension({
     const _removed = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
       if (this._pixRfiPoll) { clearInterval(this._pixRfiPoll); this._pixRfiPoll = null; }
+      unwatchLift(this);
       try { this._pixRfiRendererOff?.(); } catch {}
       this._pixRfiRendererOff = null;
       try { closeSettingsPanelFor(this); } catch {}
