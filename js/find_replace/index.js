@@ -55,24 +55,27 @@ function setNodeHeight(node, h) {
 // now (the root's natural min-content height; see render.mjs), so there is no
 // ResizeObserver / root.style.minHeight machinery to fight the layout or Align.
 // Re-fit the node height to its content. TWO-WAY: grows to fit, and shrinks
-// back to content when the user has NOT manually enlarged the node beyond the
-// last auto height (so someone who dragged it taller for a big preview keeps
-// their size, but clearing a multi-line field or deleting rows reclaims the
-// space instead of leaving dead area - the Nodes 2.0 "grows but never shrinks"
-// wart). Floors at DEFAULT_H. ONLY call from user-action handlers (add / delete
-// / edit / drop) - never on the load path, or it would rewrite node.size and
-// false-dirty the workflow (Vue Compat #18). Always includes CHROME so the
-// frame contains the widget in Nodes 2.0.
+// back to content ONLY while the node still has the height WE last set (so
+// someone who dragged it taller for a big preview keeps their size, but
+// clearing a multi-line field or deleting rows reclaims the space instead of
+// leaving dead area - the Nodes 2.0 "grows but never shrinks" wart). A height
+// we did not set is the USER'S: a loaded or fresh node, and any node after a
+// tab switch or Ctrl+Z (the node object is rebuilt, _pixFrAutoH is gone), never
+// shrinks (find-replace.md, "keeps the size you gave it"). Floors at DEFAULT_H.
+// ONLY call from user-action handlers (add / delete / edit / drop) - never on
+// the load path, or it would rewrite node.size and false-dirty the workflow
+// (Vue Compat #18). Always includes CHROME so the frame contains the widget in
+// Nodes 2.0.
 function refitNode(node) {
   const root = node._pixFrRoot;
   if (!root) return;
   const want = Math.max(measureMinHeight(root) + CHROME, DEFAULT_H);
   const cur = node.size[1];
   const autoH = node._pixFrAutoH;
-  const userEnlarged = autoH != null && cur > autoH + 4;
+  const ourHeight = autoH != null && Math.abs(cur - autoH) <= 4;
   let target = cur;
-  if (want > cur) target = want;                       // always grow to fit
-  else if (!userEnlarged && want < cur) target = want; // shrink to content if not user-enlarged
+  if (want > cur) target = want;                 // always grow to fit
+  else if (ourHeight && want < cur) target = want; // shrink to content only from a height we set
   if (target !== cur) setNodeHeight(node, target);
 }
 
