@@ -250,6 +250,10 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **October 26, 2026 · v1.4.234**
+- **Find and Replace:** the node keeps the size you drag it to when you edit a rule, run the workflow or switch tabs.
+- **Load Video:** a long or 4K video too big for your computer's memory no longer freezes the run. The node stops at once and tells you the Max frames that fits.
+
 ### **October 25, 2026 · v1.4.232-v1.4.233**
 - **NEW: Reference Images Pixaroma.** Up to 12 reference pictures, each with a job, and a prompt that names them the way your model expects (Qwen Image 2.1, FLUX 3, MiniMax H3).
 - **NEW: Video Tools Pixaroma.** Join, trim, reverse, loop and fade up to 8 video clips with their sound, with one song under the whole video if you like.
