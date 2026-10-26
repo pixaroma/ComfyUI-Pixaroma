@@ -155,19 +155,29 @@ def import_file(folder, rel):
     if not os.path.isdir(folder):
         return None, "Folder not found."
     real_folder = os.path.realpath(folder)
-    full = os.path.realpath(os.path.join(real_folder, rel))
-    if (not is_path_under(full, real_folder) or not os.path.isfile(full)
+    # Checked as the folder shows it, before resolving: a junction or symlink
+    # the user placed INSIDE the folder is followed (is_path_under follow_links).
+    joined = os.path.abspath(os.path.join(real_folder, rel))
+    full = os.path.realpath(joined)
+    # The picture test on BOTH names: the shown one names the copy, the real one
+    # is what gets copied (an 8.3 "SECRET~1.PNG" is really "secret notes.pngx").
+    if (not is_path_under(joined, real_folder, follow_links=True) or not os.path.isfile(full)
+            or not is_image_name(os.path.basename(joined))
             or not is_image_name(os.path.basename(full))):
         return None, "That picture is not inside the folder."
-    parent = os.path.dirname(full)
-    value = "{}/{}/{}".format(FOLDER_PREFIX, copy_dir_name(parent), os.path.basename(full))
+    # The copy folder is named after the REAL place (unchanged for every plain
+    # picture); the note keeps the path inside the approved folder, because
+    # that is what source_for's folder_allowed can approve when it is a link.
+    shown_parent = os.path.dirname(joined)
+    value = "{}/{}/{}".format(FOLDER_PREFIX, copy_dir_name(os.path.realpath(shown_parent)),
+                              os.path.basename(joined))
     input_dir = folder_paths.get_input_directory()
     dest = safe_join(input_dir, value)
     if not dest:
         return None, "Could not place the copy inside ComfyUI's input folder."
     try:
         os.makedirs(os.path.dirname(dest), exist_ok=True)
-        _write_note(os.path.dirname(dest), parent)
+        _write_note(os.path.dirname(dest), shown_parent)
         _copy_if_changed(full, dest)
     except Exception as e:
         return None, "Could not copy the picture: {}".format(e)
@@ -189,7 +199,13 @@ def source_for(image):
             src_dir = json.load(f).get("source")
         if not isinstance(src_dir, str) or not src_dir:
             return None
-        if not prescreen(src_dir) or not folder_allowed(src_dir):
+        if not prescreen(src_dir):
+            return None
+        # lexical first, so the string folder_allowed judges is the one realpath
+        # resolves (a note can be planted through core's /upload/image; on Linux /
+        # macOS a raw "pics/faces/../Documents" read outside, review round 1)
+        src_dir = os.path.abspath(src_dir)
+        if not folder_allowed(src_dir, follow_links=True):
             return None
         real_dir = os.path.realpath(src_dir)
         # The note must belong to the folder it sits in: its hash is part of
@@ -199,8 +215,9 @@ def source_for(image):
             return None
         if rel_is_rooted(file_name) or not is_image_name(file_name):
             return None
-        src = os.path.realpath(os.path.join(real_dir, file_name))
-        if not is_path_under(src, real_dir) or not os.path.isfile(src):
+        joined = os.path.join(real_dir, file_name)
+        src = os.path.realpath(joined)
+        if not is_path_under(joined, real_dir, follow_links=True) or not os.path.isfile(src):
             return None
         return src
     except Exception:

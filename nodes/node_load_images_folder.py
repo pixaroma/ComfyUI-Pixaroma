@@ -24,6 +24,7 @@ from ._path_guard import (
     prescreen as _pix_prescreen,
     denied_message as _pix_denied_message,
     rel_is_rooted as _pix_rel_is_rooted,
+    is_path_under as _pix_is_path_under,
 )
 from ._path_guard import prescreen_folder_field as _pix_prescreen_field
 from ._resize_helpers import _I16_MODES, _resize_frame
@@ -127,6 +128,23 @@ def _is_under(child, parent):
         return False
 
 
+def _picture_path(real_folder, rel):
+    """(real path, path for the name) of one selected picture, or None when it is
+    not inside the folder. `rel` must already have passed rel_is_rooted.
+
+    Checked as the folder shows it, so a junction or symlink the user placed
+    INSIDE the folder is followed (2026-10-26, face folders kept as junctions
+    loaded nothing); ".." cannot climb out (abspath collapses it). The name path
+    is the real one whenever that is inside the folder (every plain picture,
+    unchanged), else the shown one, so a linked picture's name never reads
+    "../elsewhere/cat"."""
+    shown = os.path.abspath(os.path.join(real_folder, rel))
+    if not _pix_is_path_under(shown, real_folder, follow_links=True):
+        return None
+    path = os.path.realpath(shown)
+    return path, (path if _pix_is_path_under(path, real_folder) else shown)
+
+
 def _selected_realpaths(folder, real_folder, selected):
     """normcase'd realpaths of the selected pictures that sit inside the folder
     (the same containment as load(): rooted entries and escapes are left out)."""
@@ -134,9 +152,9 @@ def _selected_realpaths(folder, real_folder, selected):
     for rel in selected:
         if not isinstance(rel, str) or not rel or _pix_rel_is_rooted(rel):
             continue
-        p = os.path.realpath(os.path.join(folder, rel))
-        if _is_under(p, real_folder):
-            out.add(os.path.normcase(p))
+        found = _picture_path(real_folder, rel)
+        if found:
+            out.add(os.path.normcase(found[0]))
     return out
 
 
@@ -361,8 +379,9 @@ class PixaromaLoadImagesFolder:
         recursive = bool(state.get("recursive", False))
         keep_folders = bool(state.get("keepFolders", False))
         images, masks, widths, heights, names, indices = [], [], [], [], [], []
-        # The REALPATH that passed the containment check above, so a node that
-        # opens it (Prompt Reader) gets a resolved, already-contained path.
+        # The REALPATH of each picture that passed the check in _picture_path, so a
+        # node that opens it (Prompt Reader) gets a resolved path. For a picture
+        # behind a junction it is the link's target, outside the folder.
         paths = []
         count = 0
         # "Skip pictures already done": the keys of what is already in the done
@@ -392,17 +411,15 @@ class PixaromaLoadImagesFolder:
             if _pix_rel_is_rooted(rel):
                 print(f"[PixaromaLoadImagesFolder] not a relative name, skipped: {rel}")
                 continue
-            path = os.path.realpath(os.path.join(folder, rel))
-            try:
-                if os.path.commonpath([path, real_folder]) != real_folder:
-                    print(f"[PixaromaLoadImagesFolder] outside folder, skipped: {rel}")
-                    continue
-            except ValueError:
-                continue  # different drive on Windows
+            found = _picture_path(real_folder, rel)
+            if not found:
+                print(f"[PixaromaLoadImagesFolder] outside folder, skipped: {rel}")
+                continue
+            path, name_path = found
             if not os.path.isfile(path):
                 print(f"[PixaromaLoadImagesFolder] missing, skipped: {rel}")
                 continue
-            name = _output_name(rel, path, real_folder, recursive, keep_folders)
+            name = _output_name(rel, name_path, real_folder, recursive, keep_folders)
             if done_keys is not None and _name_key(name) in done_keys:
                 skipped_done += 1
                 continue
@@ -472,14 +489,11 @@ class PixaromaLoadImagesFolder:
             if _pix_rel_is_rooted(rel):     # before realpath - see load()
                 parts.append(f"{rel}:outside")
                 continue
-            p = os.path.realpath(os.path.join(folder, rel))
-            try:
-                if os.path.commonpath([p, real_folder]) != real_folder:
-                    parts.append(f"{rel}:outside")
-                    continue
-            except ValueError:
-                parts.append(f"{rel}:outside")  # different drive on Windows
+            found = _picture_path(real_folder, rel)
+            if not found:
+                parts.append(f"{rel}:outside")
                 continue
+            p = found[0]
             try:
                 parts.append(f"{rel}:{os.stat(p).st_mtime_ns}")
             except OSError:

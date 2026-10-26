@@ -65,7 +65,7 @@ _CONFIG_NAME = "allowed_folders.json"
 # exactly one copy; server_routes now imports it. Behaviour is unchanged - the
 # cross-drive fallback below is load-bearing, read its comment before touching.
 # --------------------------------------------------------------------------
-def is_path_under(child: str, *parents: str) -> bool:
+def is_path_under(child: str, *parents: str, follow_links: bool = False) -> bool:
     """Return True iff `child` is inside ANY of the given parent directories.
 
     STRICT realpath-on-both-sides is the primary and usually the ONLY test, so
@@ -86,6 +86,18 @@ def is_path_under(child: str, *parents: str) -> bool:
     at another disk" - which is precisely the setup we must support. abspath
     collapses "..", so ../../ traversal can never escape either branch, and a
     remote caller only ever supplies the name, never the root.
+
+    `follow_links=True` (opt-in, the folder-picture feature only) runs the
+    lexical test on the same drive too, so a junction or symlink that sits
+    INSIDE the parent is followed wherever it points (2026-10-26: face folders
+    kept as junctions in an approved folder showed no pictures). Pass
+    `abspath(join(realpath(parent), rel))` and resolve THAT SAME string: POSIX
+    realpath follows a link BEFORE a "..", the lexical test collapses ".."
+    first, so a raw "faces/../Documents" would be judged as one place and read
+    from another (review round 1, simulated). For the same reason this branch
+    refuses any child with a ".." segment. A request cannot create a link, so
+    this only reaches places the owner of the disk linked in themselves; every
+    other caller is unchanged.
     """
     if not child or not isinstance(child, str):
         return False
@@ -110,8 +122,10 @@ def is_path_under(child: str, *parents: str) -> bool:
             cross_drive = True
         except (OSError, TypeError):
             continue
-        if not cross_drive:
+        if not cross_drive and not follow_links:
             continue
+        if not cross_drive and ".." in child.replace("\\", "/").split("/"):
+            continue    # follow_links never trusts a ".." (see the docstring)
         try:
             parent_abs = os.path.abspath(p)
             c = os.path.normcase(child_abs)
@@ -463,10 +477,11 @@ def prescreen_folder_field(raw) -> bool:
     return prescreen(expanded)
 
 
-def folder_allowed(path: str) -> bool:
+def folder_allowed(path: str, follow_links: bool = False) -> bool:
     """True when `path` is somewhere this pack may read or write.
 
     Order matters only for speed: ComfyUI's own roots are the common case.
+    `follow_links` is passed to is_path_under (read its docstring first).
     """
     if not path or not isinstance(path, str):
         return False
@@ -474,12 +489,12 @@ def folder_allowed(path: str) -> bool:
     if cfg["allow_any"]:          # of 200 thumbnails was doing ~600 file opens
         return True
     roots = comfy_roots()
-    if roots and is_path_under(path, *roots):
+    if roots and is_path_under(path, *roots, follow_links=follow_links):
         return True
     folders = cfg["folders"]
     if not folders:
         return False
-    if is_path_under(path, *folders):
+    if is_path_under(path, *folders, follow_links=follow_links):
         return True
     # ONE narrow extra case: the approved folder is a UNC SHARE ROOT, which
     # is_path_under structurally cannot match (commonpath raises on it - see

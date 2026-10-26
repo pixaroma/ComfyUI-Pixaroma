@@ -2129,9 +2129,16 @@ async def api_lif_thumb(request):
         return web.Response(status=403)
     if not folder or not rel or not os.path.isdir(folder):
         return web.Response(status=404)
-    full = os.path.realpath(os.path.join(folder, rel))
+    # Checked as the folder shows it, before resolving: a junction or symlink
+    # the user placed INSIDE the folder is followed (2026-10-26, face folders
+    # kept as junctions showed no thumbnails). The checked string and the
+    # resolved one must be the SAME abspath on the REAL folder, or on Linux /
+    # macOS "faces/../Documents" is judged inside and read outside (review).
+    real_folder = os.path.realpath(folder)
+    joined = os.path.abspath(os.path.join(real_folder, rel))
+    full = os.path.realpath(joined)
     if (
-        not _is_path_under(full, folder)
+        not _is_path_under(joined, real_folder, follow_links=True)
         or not os.path.isfile(full)
         or not _lif_is_image(os.path.basename(full))
     ):
