@@ -217,7 +217,10 @@ def source_for(image):
             return None
         joined = os.path.join(real_dir, file_name)
         src = os.path.realpath(joined)
-        if not is_path_under(joined, real_dir, follow_links=True) or not os.path.isfile(src):
+        # the REAL name must be a picture too: a crafted value's 8.3 "SECRET~1.PNG"
+        # is really "secret notes.pngx" (the same test import_file makes)
+        if (not is_path_under(joined, real_dir, follow_links=True) or not os.path.isfile(src)
+                or not is_image_name(os.path.basename(src))):
             return None
         return src
     except Exception:
