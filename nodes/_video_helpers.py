@@ -148,7 +148,8 @@ def _expected_out_frames(src_frames, native_fps, force_fps, skip_first, max_fram
     return max(0, n - skip_first)
 
 
-def _too_big(path, n_frames, frame, fps, budget, skip_first, at_least=False):
+def _too_big(path, n_frames, frame, fps, budget, skip_first, at_least=False,
+             force_fps=0.0, native_fps=0.0):
     """The refusal: what it would need, what is free, and what to set.
     at_least = the running check (the total is not known, only that more than
     n_frames do not fit)."""
@@ -163,11 +164,18 @@ def _too_big(path, n_frames, frame, fps, budget, skip_first, at_least=False):
     else:
         what = f"{n_frames} frames at {size} need about {gb(n_frames * per)} GB of memory"
     secs = f" (about {fit / fps:.1f} seconds)" if fps > 0 else ""
+    # Force FPS 0 (the default) has nothing to lower: say what to set instead.
+    if force_fps > 0:
+        rate = "lower Force FPS"
+    elif native_fps > 0:
+        rate = f"set Force FPS below the clip's {native_fps:.0f} fps"
+    else:
+        rate = "set Force FPS to a lower rate"
     return VideoTooBigError(
         f"[Pixaroma] Load Video - {os.path.basename(path)} is too big to load "
         f"whole: {what} while loading, more than this computer can spare (about "
         f"{gb(budget / _RAM_SHARE)} GB is free). Load part of it instead: set Max "
-        f"frames to {skip_first + fit} or less{secs}, or lower Force FPS, or set "
+        f"frames to {skip_first + fit} or less{secs}, or {rate}, or set "
         f"Custom width / height to a smaller size."
     )
 
@@ -293,9 +301,11 @@ def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
             if not out:
                 n = _expected_out_frames(src_frames, native_fps, force_fps, skip_first, max_frames)
                 if n * kept.nbytes * _PEAK_FACTOR > budget:
-                    raise _too_big(path, n, kept, base_fps, budget, skip_first)
+                    raise _too_big(path, n, kept, base_fps, budget, skip_first,
+                                   force_fps=force_fps, native_fps=native_fps)
             if held * _PEAK_FACTOR > budget:
-                raise _too_big(path, len(out), kept, base_fps, budget, skip_first, at_least=True)
+                raise _too_big(path, len(out), kept, base_fps, budget, skip_first, at_least=True,
+                               force_fps=force_fps, native_fps=native_fps)
         out.append(kept)
 
     out_fps = base_fps if base_fps > 0 else 0.0
