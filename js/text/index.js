@@ -410,7 +410,8 @@ function refreshTextLock(node) {
     ta.readOnly = true;
     ta.classList.add("pix-text-locked");
     const textIn = node.inputs?.find((i) => i && i.name === "text");
-    lockHint.textContent = isFedBySubgraphInput(node, textIn)
+    const fromSubgraph = isFedBySubgraphInput(node, textIn);
+    lockHint.textContent = fromSubgraph
       ? "Shown on the subgraph; type the text there"
       : "Wired from upstream; typing here is ignored";
     lockHint.style.display = "block";
@@ -419,8 +420,10 @@ function refreshTextLock(node) {
     replaceBtn.disabled = true;
     clearBtn.disabled = true;
     // The switch only affects TYPED text; when the input is wired the typed
-    // text is ignored, so the switch is moot - dim it for clarity.
-    if (dynSwitch) dynSwitch.disabled = true;
+    // text is ignored, so the switch is moot - dim it for clarity. Text typed
+    // on the SUBGRAPH arrives as typed text (a plain string in the prompt), so
+    // the switch still decides its {a|b}: it stays usable (text.md #7).
+    if (dynSwitch) dynSwitch.disabled = !fromSubgraph;
   } else {
     ta.readOnly = false;
     ta.classList.remove("pix-text-locked");

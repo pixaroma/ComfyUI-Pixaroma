@@ -1,9 +1,11 @@
 // A wire that starts at a subgraph's own INPUT node: how ComfyUI shows a widget
 // on the OUTSIDE of a subgraph (the eye in the side panel, "Promote Widget" on a
 // widget's right-click menu, and the automatic promotion when a selection is
-// turned into a subgraph). Nodes that refuse every incoming wire (Text, Load
-// Image, Info...) let this one through, or promoting their widget fails with no
-// way around it (Discord 2026-10-25, Text Pixaroma's "text").
+// turned into a subgraph). Text Pixaroma refuses every incoming wire but lets
+// this one through, or promoting its `text` fails with no way around it
+// (Discord 2026-10-25). Load Image / Mini, Load Images from Folder and Info keep
+// refusing it ON PURPOSE: their widgets are hidden state behind their own
+// picker / face, so a promoted copy outside would bypass it (subgraphs.md).
 //
 // Core (frontend 1.55.18, SubgraphInput.connect): onConnectInput(inputIndex,
 // type, subgraphInput, subgraphInputNode, -1). A normal wire comes from
