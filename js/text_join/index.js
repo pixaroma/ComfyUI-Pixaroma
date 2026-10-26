@@ -10,6 +10,7 @@ import {
 import { openTextJoinPanel, closeTextJoinPanelFor } from "./settings.mjs";
 import { onRendererChange, refreshVueNodeSlots } from "../shared/renderer_switch.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
+import { refuseRowPromotion } from "../shared/subgraph_wire.mjs";
 
 // Text Join Two / Three / Four Pixaroma - two to four multi-line text boxes, EACH
 // with a real input dot on its row (type OR wire), joined into one `text` output.
@@ -95,6 +96,10 @@ app.registerExtension({
     nodeType.prototype._pixTjPatched = true;
     const CLASS = nodeData.name;
     const FIELDS = CLASSES[CLASS];
+    // A Nodes 2.0 field row offered in a subgraph's widget list must not be
+    // promoted (the outside gets no box and the Run sent "" instead of the typed
+    // text); a dragged wire still works.
+    refuseRowPromotion(nodeType, "pixtj_row_");
 
     injectCSS();
 

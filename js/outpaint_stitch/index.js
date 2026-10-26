@@ -5,6 +5,7 @@ import { isQueueLoopActive } from "../shared/queue_drivers.mjs";
 import { registerNodeSettings } from "../shared/node_settings.mjs";
 import { onRendererChange, refreshVueNodeSlots } from "../shared/renderer_switch.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
+import { refuseRowPromotion } from "../shared/subgraph_wire.mjs";
 import { CLASS, BRAND, ACCENT_PROP, widgetOf } from "./core.mjs";
 import {
   injectCSS, installSliders, uninstallSliders, paintRows, bindInputDots,
@@ -86,6 +87,10 @@ app.registerExtension({
     if (nodeData.name !== CLASS) return;
     if (nodeType.prototype._pixOpsPatched) return;
     nodeType.prototype._pixOpsPatched = true;
+    // A Nodes 2.0 slider row offered in a subgraph's widget list must not be
+    // promoted (the outside gets no slider and the Run sent "" for feather /
+    // color_match); a dragged wire still works.
+    refuseRowPromotion(nodeType, "pixops_row_");
 
     injectCSS();
 

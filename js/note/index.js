@@ -7,6 +7,7 @@ import { NoteEditor } from "./core.mjs";
 import "./toolbar.mjs";
 import "./blocks.mjs";
 import { ensureIcons, injectIconCSS } from "./icons.mjs";
+import { refuseRowPromotion } from "../shared/subgraph_wire.mjs";
 
 // Preload the inline-icon CSS at extension setup so on-canvas note
 // rendering after a fresh page load (Ctrl+F5) shows icons correctly,
@@ -117,6 +118,9 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaNote") return;
+    // The hidden note_json state must not be promoted from a subgraph's widget
+    // list ("Show all", Classic): it put the note's raw JSON on the subgraph.
+    refuseRowPromotion(nodeType, "note_json");
 
     // Prototype-level: suppress double-click so only the hover-reveal Edit
     // button can open the editor. Applies to all instances of this type.

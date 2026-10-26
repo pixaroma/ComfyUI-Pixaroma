@@ -12,6 +12,7 @@ import { buildSwitchVueList, teardownSwitchVueList } from "./vue_list.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
 import { onRendererChange, refreshVueNodeSlots } from "../shared/renderer_switch.mjs";
 import { registerNodeAccent } from "../shared/node_settings.mjs";
+import { refuseRowPromotion } from "../shared/subgraph_wire.mjs";
 
 // Switch Pixaroma - dynamic N-to-1 switch with per-row toggles.
 // Rendering follows the Image Compare Pixaroma pattern: onDrawForeground
@@ -106,6 +107,9 @@ app.registerExtension({
 
   async beforeRegisterNodeDef(nodeType, nodeData) {
     if (nodeData.name !== "PixaromaSwitch") return;
+    // A Nodes 2.0 row offered in a subgraph's widget list must not be promoted
+    // (the outside gets no control and the Run gets ""); a dragged wire still works.
+    refuseRowPromotion(nodeType, "pixsw_row_");
 
     // ── Creation ─────────────────────────────────────────────────────────
     const _origCreated = nodeType.prototype.onNodeCreated;

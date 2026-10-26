@@ -17,6 +17,7 @@ import {
 import { openLabelEditor, cancelEditorForNode } from "./editor.mjs";
 import { buildMuteSwitchVueList, teardownMuteSwitchVueList } from "./vue_list.mjs";
 import { registerNodeAccent } from "../shared/node_settings.mjs";
+import { refuseRowPromotion } from "../shared/subgraph_wire.mjs";
 import { onRendererChange, refreshVueNodeSlots } from "../shared/renderer_switch.mjs";
 
 // Give the chain output a NEW slot object after a switch into Nodes 2.0, so its
@@ -121,6 +122,9 @@ app.registerExtension({
     if (nodeType.prototype._pixMsPatched) return;
     nodeType.prototype._pixMsPatched = true;
     capComputeSizeInNodes2(nodeType); // Nodes 2.0 Ctrl+Z grow on frontend 1.53 (mute-switch.md #22)
+    // A Nodes 2.0 row offered in a subgraph's widget list must not be promoted
+    // (the outside gets no control and the Run gets ""); a dragged wire still works.
+    refuseRowPromotion(nodeType, "pixms_row_");
 
     // Creation
     const _origCreated = nodeType.prototype.onNodeCreated;
