@@ -250,11 +250,12 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 26, 2026 · v1.4.234-v1.4.235**
+### **October 26, 2026 · v1.4.234-v1.4.236**
 - **Find and Replace:** the node keeps the size you drag it to when you edit a rule, run the workflow or switch tabs.
 - **Load Video:** a long or 4K video too big for your computer's memory no longer freezes the run. The node stops at once and tells you the Max frames that fits.
 - **Text in a subgraph:** the eye in the subgraph's widget list now shows the text box on the subgraph, so you can type the text there.
 - **Subgraphs:** "Show all" no longer empties the values of Text Join, Outpaint Stitch, Switch and Mute Switch, or puts a Note's raw data on the subgraph.
+- **Load Image, Load Image Mini, Load Images from Folder:** pictures in a junction or symlink subfolder of your folder now show, can be picked and load when you Run.
 
 ### **October 25, 2026 · v1.4.232-v1.4.233**
 - **NEW: Reference Images Pixaroma.** Up to 12 reference pictures, each with a job, and a prompt that names them the way your model expects (Qwen Image 2.1, FLUX 3, MiniMax H3).
