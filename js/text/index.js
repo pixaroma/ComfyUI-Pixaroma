@@ -6,6 +6,7 @@ import { resolveDynamicPrompt } from "./dynamic_prompts.mjs";
 import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 import { textSize } from "../shared/text_size.mjs";
 import { followSpellcheck } from "../shared/spellcheck.mjs";
+import { isSubgraphInputWire, isFedBySubgraphInput } from "../shared/subgraph_wire.mjs";
 
 // Text Pixaroma: multi-line text field with a STRING output. The native
 // ComfyUI multiline widget is HIDDEN; we render our own DOM widget so the
@@ -217,6 +218,11 @@ const TEXT_HELP = {
         "Tip: to RECEIVE text from another node instead of typing, use Show Text Pixaroma - this node is for typing.",
     },
     {
+      heading: "Inside a subgraph",
+      body:
+        "You can show the text box on the outside of a subgraph: select the subgraph, open its widget list, and click the eye next to `text`. Then you type the text on the subgraph itself, and the box inside says so. This works with the classic node look; with Nodes 2.0 on, ComfyUI's widget list does not offer the text box.",
+    },
+    {
       heading: "Buttons",
       defs: [
         ["Copy all", "Copy everything in the box to your clipboard."],
@@ -403,6 +409,10 @@ function refreshTextLock(node) {
   if (wired) {
     ta.readOnly = true;
     ta.classList.add("pix-text-locked");
+    const textIn = node.inputs?.find((i) => i && i.name === "text");
+    lockHint.textContent = isFedBySubgraphInput(node, textIn)
+      ? "Shown on the subgraph; type the text there"
+      : "Wired from upstream; typing here is ignored";
     lockHint.style.display = "block";
     // Disable destructive buttons; Copy all stays useful (the user might
     // still want to copy whatever they typed before wiring).
@@ -673,7 +683,10 @@ app.registerExtension({
     // as a fallback so legacy workflows that already have a wire saved
     // into Text Pixaroma keep working (and visibly flag the wired
     // state) - we just don't let users create NEW wires.
-    nodeType.prototype.onConnectInput = function () {
+    // EXCEPT the subgraph's own input wire: that is how ComfyUI shows the
+    // text box on the outside of a subgraph (text.md #7).
+    nodeType.prototype.onConnectInput = function (_inputIndex, _type, _outputSlot, outputNode, outputIndex) {
+      if (isSubgraphInputWire(outputNode, outputIndex)) return true;
       toast("warn", "Text Pixaroma is for typing. Use Show Text Pixaroma to receive text from another node.");
       return false;
     };
