@@ -11,7 +11,7 @@ import os
 
 import folder_paths
 
-from ._video_helpers import VIDEO_EXTS, decode, extract_audio, trim_audio
+from ._video_helpers import VIDEO_EXTS, VideoTooBigError, decode, extract_audio, trim_audio
 
 
 def _list_input_videos():
@@ -58,7 +58,7 @@ class PixaromaLoadVideo:
                 "video": (_list_input_videos(), {
                     "tooltip": "The video to load from ComfyUI's input folder. Use the 'choose video to upload' button, or pick one from the dropdown (and the arrows to flip through)."}),
                 "max_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
-                    "tooltip": "How many frames to load from the start of the video (the first N). 0 = load all of them. The safety valve for long clips: it never reads more than this many frames. Skip first frames then trims the front of these, so Max frames 100 with Skip 5 gives 95."}),
+                    "tooltip": "How many frames to load from the start of the video (the first N). 0 = load all of them. The safety valve for long clips: it never reads more than this many frames. Skip first frames then trims the front of these, so Max frames 100 with Skip 5 gives 95. A clip too big for your free memory stops with a message giving the Max frames that fits."}),
                 "force_fps": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 1.0,
                     "tooltip": "Force a steady frames-per-second by dropping or duplicating frames (e.g. a 60fps clip forced to 24). 0 = keep the video's original rate. AI video models usually expect a fixed rate like 24."}),
                 "skip_first_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
@@ -95,14 +95,19 @@ class PixaromaLoadVideo:
         if not path or not os.path.exists(path):
             raise ValueError(f"[Pixaroma] Load Video — file not found: {video}")
 
-        result = decode(
-            path,
-            max_frames=max_frames,
-            force_fps=force_fps,
-            skip_first=skip_first_frames,
-            custom_w=custom_width,
-            custom_h=custom_height,
-        )
+        try:
+            result = decode(
+                path,
+                max_frames=max_frames,
+                force_fps=force_fps,
+                skip_first=skip_first_frames,
+                custom_w=custom_width,
+                custom_h=custom_height,
+            )
+        except VideoTooBigError as e:
+            # A plain ValueError: ComfyUI titles the error with the class's full
+            # module path otherwise (load-video.md #18).
+            raise ValueError(str(e)) from None
         audio = extract_audio(path)
         # The sound follows the frames: Skip first frames moves its start and Max
         # frames its end, both counted at the output fps (load-video.md #14).
