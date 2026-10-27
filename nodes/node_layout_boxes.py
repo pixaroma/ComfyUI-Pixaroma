@@ -1,10 +1,10 @@
-"""Layout Boxes Pixaroma - draw where things go, for FLUX.3 layout prompts.
+"""Layout Boxes Pixaroma - draw where things go, for FLUX.3 and MOSS-Image layout prompts.
 
 Draw boxes on a canvas the shape of your picture, number them, and write what
 goes in each one (or the exact words, for a text box). The node sends:
   - elements  the boxes in the very form ComfyUI's own Create Bounding Boxes
-              node sends them, for FLUX.3 Layout Prompt (or Build JSON Prompt
-              for Ideogram),
+              node sends them, for FLUX.3 Layout Prompt, MOSS-Image Layout
+              Prompt (or Build JSON Prompt for Ideogram),
   - preview   a picture of the boxes, numbered like <obj_1>, <obj_2>...
 
 Why it exists: core's Create Bounding Boxes draws its canvas only in the
@@ -71,18 +71,20 @@ def _save_picture(arr, unique_id):
 
 class PixaromaLayoutBoxes:
     DESCRIPTION = (
-        "Draw where things go in your picture, for FLUX.3 layout prompts. Drag on the canvas "
-        "to draw a box, drag a box to move it, drag its corners to resize it. Every box gets a "
-        "number and a line where you write what goes there. Switch a box to Text when it "
-        "should hold exact words, like a sign or a title.\n\n"
-        "In your prompt, write <obj_1> for box 1, <obj_2> for box 2, and so on. Wire elements "
-        "into FLUX.3 Layout Prompt (element) together with your prompt. It works like ComfyUI's "
-        "Create Bounding Boxes node, in both the Classic and the Nodes 2.0 look.\n\n"
+        "Draw where things go in your picture, for FLUX.3 and MOSS-Image layout prompts. Drag "
+        "on the canvas to draw a box, drag a box to move it, drag its corners to resize it. "
+        "Every box gets a number and a line where you write what goes there. Switch a box to "
+        "Text when it should hold exact words, like a sign or a title.\n\n"
+        "FLUX.3: in your prompt, write <obj_1> for box 1, <obj_2> for box 2, and so on, and "
+        "wire elements into FLUX.3 Layout Prompt (element) together with your prompt. "
+        "MOSS-Image: write no tags; wire elements into MOSS-Image Layout Prompt, which adds the "
+        "boxes to your prompt itself. It works like ComfyUI's Create Bounding Boxes node, in "
+        "both the Classic and the Nodes 2.0 look.\n\n"
         "The canvas takes its shape from width and height (wire them from Sizes Pixaroma), or "
         "from the picture you wire into background. Boxes are kept as parts of the canvas, so "
         "changing the size keeps every box in its place. The expand button opens a big view "
         "for careful drawing.\n\n"
-        "Find it by searching for layout, boxes, bounding box, regions, composition or flux 3."
+        "Find it by searching for layout, boxes, bounding box, regions, composition, flux 3 or moss."
     )
 
     CATEGORY = "👑 Pixaroma/💬 Prompt & Text"
@@ -95,8 +97,8 @@ class PixaromaLayoutBoxes:
     RETURN_NAMES = ("elements", "preview")
     OUTPUT_TOOLTIPS = (
         "Your boxes as prompt elements: where each box is and what you wrote in it. Wire it "
-        "into FLUX.3 Layout Prompt (element), which adds them to your prompt as its layout "
-        "table. Build JSON Prompt (Ideogram) reads it too.",
+        "into FLUX.3 Layout Prompt or MOSS-Image Layout Prompt (element), which adds them to "
+        "your prompt as its layout. Build JSON Prompt (Ideogram) reads it too.",
         "A picture of your boxes with their numbers, over the background when one is wired. "
         "Handy to save beside the result or to show what you asked for.",
     )

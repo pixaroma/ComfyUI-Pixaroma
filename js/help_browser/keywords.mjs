@@ -32,6 +32,7 @@ export const KEYWORDS = {
   PixaromaLayoutBoxes: "layout boxes box bounding box bounding boxes bbox bboxes create bounding boxes region regions area areas "
     + "composition compose arrange arrangement placement place position where things go put object here obj_1 tag elements element "
     + "flux 3 flux3 flux.3 klein layout prompt ideogram json prompt draw boxes rectangle canvas text box sign title exact words "
+    + "moss moss-image moss image moss layout character boxes "
     + "classic nodes 2.0 only works in classic",
   PixaromaReferenceImages: "reference references reference image reference images reference pictures several pictures "
     + "multiple images multi image multi-image many images more images image 1 image 2 picture 1 picture 2 "

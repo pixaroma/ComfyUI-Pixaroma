@@ -151,7 +151,7 @@ export function renderList(node, host, { big = false } = {}) {
     badge.textContent = String(i + 1);
     badge.style.background = rgbaOf(i);
     badge.style.color = inkOn(i);
-    badge.title = `Box ${i + 1}: write ${objTag(i)} in your prompt to tie words to it`;
+    badge.title = `Box ${i + 1}: in a FLUX.3 prompt, write ${objTag(i)} to tie words to it (MOSS needs no tags)`;
 
     const kind = btn("pix-lyb-kind" + (b.type === "text" ? " text" : ""),
       b.type === "text"
@@ -189,7 +189,7 @@ export function renderList(node, host, { big = false } = {}) {
         const tag = document.createElement("span");
         tag.className = "pix-lyb-tag";
         tag.textContent = objTag(i);
-        tag.title = "Write this in your prompt to tie words to this box.";
+        tag.title = "FLUX.3: write this in your prompt to tie words to this box. MOSS needs no tags.";
         row.appendChild(tag);
       }
       const up = btn("pix-lyb-mini", "Move up: the box becomes one number lower (drawn further back)", ICON_UP);
@@ -251,12 +251,17 @@ export function focusRow(host, index, scroller = null) {
   try { inp?.focus({ preventScroll: true }); } catch {}
 }
 
-/** The one-line reminder of how boxes reach the prompt. */
+/** The one-line reminder of how boxes reach the prompt. The tags are FLUX.3's
+ *  only: MOSS-Image Layout Prompt adds the boxes itself, and a tag typed into a
+ *  MOSS prompt lands in its caption as junk (a Discord report, 2026-10-27).
+ *  Kept short on purpose: 250 px wide, the line has 280 at MIN_W (nowrap). */
 export function buildFooter(host) {
   const f = document.createElement("div");
   f.className = "pix-lyb-foot";
-  f.innerHTML = "In your prompt, write <b>&lt;obj_1&gt;</b> for box 1, <b>&lt;obj_2&gt;</b> for box 2…";
-  f.title = "FLUX.3 ties the words around each tag to its box. Wire elements into FLUX.3 Layout Prompt.";
+  f.innerHTML = "FLUX.3 prompt: <b>&lt;obj_1&gt;</b>, <b>&lt;obj_2&gt;</b>… MOSS: no tags.";
+  f.title = "FLUX.3 Layout Prompt ties the words around each tag to its box. "
+    + "MOSS-Image Layout Prompt adds the boxes to your prompt itself, so write no tags there: "
+    + "just describe the whole picture.";
   host.appendChild(f);
   return f;
 }

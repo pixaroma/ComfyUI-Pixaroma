@@ -3,15 +3,15 @@
 
 export const LAYOUT_BOXES_HELP = {
   title: "Layout Boxes Pixaroma",
-  tagline: "Draw where things go in your picture, write what goes in each box, and FLUX.3 places them there. Works in the Classic and the Nodes 2.0 look.",
+  tagline: "Draw where things go in your picture, write what goes in each box, and FLUX.3 or MOSS-Image places them there. Works in the Classic and the Nodes 2.0 look.",
   sections: [
     {
       heading: "How to use it",
       bullets: [
         "Set `width` and `height` to your picture size, or wire them from Sizes Pixaroma, so the canvas has the same shape as your latent.",
         "Drag on the canvas to draw a box. The cursor jumps to its row: write what goes there, like `a shiny red apple with a green leaf`.",
-        "In your prompt, write `<obj_1>` for box 1, `<obj_2>` for box 2, and so on, like `a still life with <obj_1> on the left and <obj_2> in the middle`.",
-        "Wire `elements` into FLUX.3 Layout Prompt (`element`), with your prompt in its `prompt`, and its output into the text encode. Run.",
+        "FLUX.3: in your prompt, write `<obj_1>` for box 1, `<obj_2>` for box 2, and so on, like `a still life with <obj_1> on the left and <obj_2> in the middle`. Wire `elements` into FLUX.3 Layout Prompt (`element`), with your prompt in its `prompt`, and its output into the text encode. Run.",
+        "MOSS-Image: write no tags. Your prompt just describes the whole picture, and MOSS-Image Layout Prompt adds the boxes to it. Wire `elements` into its `element`, with your prompt in its `prompt`, the same width and height as your latent into its `width` and `height`, and its output into the text encode. Run.",
       ],
     },
     {
@@ -34,7 +34,7 @@ export const LAYOUT_BOXES_HELP = {
     {
       heading: "What comes out",
       defs: [
-        ["elements", "Your boxes as prompt elements, the same form as ComfyUI's Create Bounding Boxes node. Wire it into FLUX.3 Layout Prompt. Build JSON Prompt (Ideogram) reads it too."],
+        ["elements", "Your boxes as prompt elements, the same form as ComfyUI's Create Bounding Boxes node. Wire it into FLUX.3 Layout Prompt or MOSS-Image Layout Prompt. Build JSON Prompt (Ideogram) reads it too."],
         ["preview", "A picture of your boxes with their numbers, over the background when one is wired."],
       ],
     },
@@ -51,10 +51,11 @@ export const LAYOUT_BOXES_HELP = {
     {
       heading: "Tips",
       bullets: [
-        "Give each box one rich sentence: what it is, its colour and material. The prompt describes the whole scene and names each box by its tag.",
+        "Give each box one rich sentence: what it is, its colour and material. The prompt describes the whole scene; with FLUX.3 it also names each box by its tag.",
         "Boxes may overlap. A later box (a higher number) is meant to be in front.",
         "Leave a little room around each box: a box drawn tight on the edge of the canvas can crop the thing it holds.",
-        "Replacing Create Bounding Boxes in an existing workflow? Wire this node's `elements` where its `elements` went. The result is the same for the same boxes.",
+        "MOSS-Image Layout Prompt's `character_boxes` uses the numbers shown here: `1, 3` marks box 1 and box 3 as characters instead of objects.",
+        "Replacing Create Bounding Boxes in an existing workflow? Wire this node's `elements` where its `elements` went. The result is the same for the same boxes. Create Bounding Boxes can also give a box a colour palette; here, write the colours in the description.",
       ],
     },
   ],
