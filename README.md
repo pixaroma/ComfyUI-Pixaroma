@@ -250,6 +250,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **October 27, 2026 · v1.4.237**
+- **Layout Boxes:** the hint on the node now says the `<obj_1>` tags are for FLUX.3 only. With MOSS-Image you write no tags: MOSS-Image Layout Prompt adds the boxes itself.
+
 ### **October 26, 2026 · v1.4.234-v1.4.236**
 - **Find and Replace:** the node keeps the size you drag it to when you edit a rule, run the workflow or switch tabs.
 - **Load Video:** a long or 4K video too big for your computer's memory no longer freezes the run. The node stops at once and tells you the Max frames that fits.
