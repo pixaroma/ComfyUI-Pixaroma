@@ -151,6 +151,7 @@ class PixaromaH3AudioSync:
 
         # ── fit the WAVEFORM to the clip, then encode ────────────────────────
         waveform = track["waveform"][:1]                 # H3 is batch size 1
+        original = waveform
         sample_rate = int(track["sample_rate"])
         vae_rate = int(getattr(audio_vae, "audio_sample_rate", 32000))
         if sample_rate != vae_rate:
@@ -198,7 +199,14 @@ class PixaromaH3AudioSync:
         # Hand back the track cut to the clip, so the save node gets sound the
         # same length as the picture. Returning the whole untrimmed recording
         # here is the one thing that would quietly ruin the finished file.
-        matched = {"waveform": fitted, "sample_rate": vae_rate}
+        # The same cut at the TRACK'S OWN rate (2026-10-28): only what H3 hears
+        # needs the VAE's 32 kHz, and handing that copy on saved every song at
+        # 32 kHz from a 44.1 / 48 kHz file.
+        if sample_rate != vae_rate and sample_rate > 0:
+            plan_out = plan_window(original.shape[-1], sample_rate, 0.0, want_samples / float(vae_rate or 1))
+            matched = {"waveform": apply_window(original, plan_out, when_short), "sample_rate": sample_rate}
+        else:
+            matched = {"waveform": fitted, "sample_rate": vae_rate}
 
         return {
             "ui": {"pixaroma_h3_sync": [dict(report, frames=info["frames"],
