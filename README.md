@@ -180,6 +180,7 @@ The groups are in order of how much they are used in real workflows, and inside 
 | [Outpaint&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/outpaint/) | Adds space around an image so a model can paint new scenery&nbsp;there. |
 | [Outpaint&nbsp;Stitch&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/outpaint-stitch/) | Puts your sharp original back onto the outpaint result, keeping only the new&nbsp;area. |
 | [Image&nbsp;Resize&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/image-resize/) | Resizes an image and its mask, with many modes including&nbsp;Pad. |
+| [H3&nbsp;Latent&nbsp;Upscale&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/h3-latent-upscale/) | Makes a MiniMax H3 video bigger inside H3's own format, ready for a 2K&nbsp;remake. |
 
 ### 🧰 Utility
 
@@ -250,7 +251,10 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 28, 2026 · v1.4.238**
+### **October 28, 2026 · v1.4.238-v1.4.239**
+- **NEW: H3 Latent Upscale Pixaroma.** Makes a MiniMax H3 video bigger inside H3's own format, the first half of a 2K remake. A port of LBH-123-AI's upscaler, so no extra node pack is needed.
+- **Load Video:** some phone videos (HEVC, like Samsung's) could freeze all of ComfyUI. They load now, a little slower.
+- **H3 Audio Sync:** the sound it hands to the save node now keeps your song's own quality instead of H3's 32 kHz.
 - **Number Pick and Group Switch:** in the classic node look they no longer keep the CPU busy while nothing runs. Both were resized on every redraw while on screen.
 
 ### **October 27, 2026 · v1.4.237**
