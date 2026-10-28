@@ -250,6 +250,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **October 28, 2026 · v1.4.238**
+- **Number Pick and Group Switch:** in the classic node look they no longer keep the CPU busy while nothing runs. Both were resized on every redraw while on screen.
+
 ### **October 27, 2026 · v1.4.237**
 - **Layout Boxes:** the hint on the node now says the `<obj_1>` tags are for FLUX.3 only. With MOSS-Image you write no tags: MOSS-Image Layout Prompt adds the boxes itself.
 
