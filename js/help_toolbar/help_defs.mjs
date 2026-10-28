@@ -2134,6 +2134,37 @@ const HELP = {
     ],
     footer: "This node only works with MiniMax H3. On any other model it changes nothing.",
   },
+  "PixaromaH3LatentUpscale": {
+    title: "H3 Latent Upscale Pixaroma",
+    tagline: "Makes a MiniMax H3 video bigger in latent form, so H3 can re-draw it in Full HD or 2K with real detail.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "A MiniMax H3 video made small (for example 480 x 864) is quick and keeps the person well, but it is soft. This node enlarges the video's latent with a trained upscaler. H3 then re-draws the bigger latent in a few steps, and that re-draw is what adds the detail: skin, hair, fabric, metal.\n\nThe node alone makes the video bigger, not sharper. Always follow it with the re-draw.",
+      },
+      {
+        heading: "Where it goes",
+        body: "Your video, then VAE Encode with the H3 video VAE, then H3 Latent Upscale Pixaroma, then H3 Audio Sync with your clip's own sound, then the sampler that re-draws it.\n\nIt also takes the latent straight out of an H3 sampler, so a first pass can be enlarged without decoding it.",
+      },
+      {
+        heading: "Width and height",
+        body: "The new size in picture pixels, rounded to a multiple of 32 (H3 needs that). Keep the shape of your video: 1088 x 1920 is Full HD portrait, 1440 x 2560 is 2K portrait, 2560 x 1440 is 2K landscape.\n\nIt only makes a latent bigger and keeps its shape. A size smaller than the video on either side, or a different shape (a portrait size for a landscape video), stops the run with a message that names a size that fits. The same size hands the picture back unchanged.",
+      },
+      {
+        heading: "Picture and sound",
+        body: "A latent that holds picture and sound keeps its sound exactly as it was. A latent with only a picture (from VAE Encode) gets a silent sound part of the right length, so it can go straight on to H3 Audio Sync or a sampler.\n\nLock your clip's real sound with H3 Audio Sync before the re-draw. In our test the mouth followed the speech much more closely than with silence.",
+      },
+      {
+        heading: "The model file",
+        body: "Needs an H3 latent upscaler file in ComfyUI/models/latent_upscale_models: minimax_h3_latent_upscaler_3d_conv_v1 (bf16 or fp16) from the LBH-123-AI page on Hugging Face. Press R in ComfyUI after adding it so the list shows it.\n\nThe enlarging itself takes a few seconds on a 24 GB card (about 4 seconds for 5 seconds of video to 1088 x 1920). The model is loaded onto the graphics card only for that and handed back right after.",
+      },
+      {
+        heading: "Where it comes from",
+        body: "It is the 3D latent upscaler node from Comfyui_Minimax_h3_latent_Upscaler by LBH-123-AI (MIT licence). The math is the same, so the result matches the original node exactly with the same model file and size. You do not need that pack installed for this node.",
+      },
+    ],
+    footer: "Works with MiniMax H3 latents only. Any other latent stops the run with a message.",
+  },
   "Krea2EnhancerPixaroma": {
     title: "Krea2 Enhancer Pixaroma",
     tagline: "Makes a Krea 2 model follow your prompt more closely.",

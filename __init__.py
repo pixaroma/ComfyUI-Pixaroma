@@ -160,6 +160,8 @@ from .nodes.node_h3_audio_sync import NODE_CLASS_MAPPINGS as _MAPS_H3_SYNC
 from .nodes.node_h3_audio_sync import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_H3_SYNC
 from .nodes.node_h3_long_video import NODE_CLASS_MAPPINGS as _MAPS_H3_LONG_VIDEO
 from .nodes.node_h3_long_video import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_H3_LONG_VIDEO
+from .nodes.node_h3_latent_upscale import NODE_CLASS_MAPPINGS as _MAPS_H3_LATENT_UPSCALE
+from .nodes.node_h3_latent_upscale import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_H3_LATENT_UPSCALE
 from .nodes.node_h3_timeline import NODE_CLASS_MAPPINGS as _MAPS_H3_TIMELINE
 from .nodes.node_h3_timeline import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_H3_TIMELINE
 from .nodes.node_video_prompt import NODE_CLASS_MAPPINGS as _MAPS_VIDEO_PROMPT
@@ -275,6 +277,7 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SAVE_3D,
     **_MAPS_H3_SYNC,
     **_MAPS_H3_LONG_VIDEO,
+    **_MAPS_H3_LATENT_UPSCALE,
     **_MAPS_H3_TIMELINE,
     **_MAPS_VIDEO_PROMPT,
     **_MAPS_AI_PROMPT,
@@ -370,6 +373,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SAVE_3D,
     **_NAMES_H3_SYNC,
     **_NAMES_H3_LONG_VIDEO,
+    **_NAMES_H3_LATENT_UPSCALE,
     **_NAMES_H3_TIMELINE,
     **_NAMES_VIDEO_PROMPT,
     **_NAMES_AI_PROMPT,
