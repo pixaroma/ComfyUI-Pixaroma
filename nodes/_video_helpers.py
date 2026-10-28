@@ -324,8 +324,14 @@ def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h, budg
                 f"{os.path.basename(path)}."
             )
         v = vstreams[0]
+        # SINGLE-THREADED on purpose (2026-10-28, load-video.md #19). With
+        # FFmpeg's frame threads ("AUTO") a phone HEVC clip FROZE the whole
+        # ComfyUI server: stopping at the max_frames window, the decoder is
+        # freed with the GIL held while a frame thread waits for the GIL in
+        # PyAV's log callback (torchvision turns that callback on). The same
+        # frames, about 2x slower on a 1440p 60 fps phone clip.
         try:
-            v.thread_type = "AUTO"
+            v.thread_type = "NONE"
         except Exception:
             pass
         rate = v.average_rate or v.guessed_rate or getattr(v, "base_rate", None)
@@ -583,8 +589,8 @@ def _decode_one_av(path, frame_index):
         # isolated process but hung for minutes in ComfyUI). Threading buys almost
         # nothing here — we only decode a handful of frames from the keyframe — so
         # we leave the stream single-threaded, which is deadlock-proof. (Load Video
-        # keeps AUTO because it streams hundreds of frames sequentially and never
-        # seeks.)
+        # is single-threaded too since 2026-10-28: the frame threads, most likely
+        # not the seek, were the cause; see _decode_av.)
         try:
             v.thread_type = "NONE"
         except Exception:
