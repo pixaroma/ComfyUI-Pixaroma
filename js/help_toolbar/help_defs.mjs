@@ -2136,7 +2136,7 @@ const HELP = {
   },
   "PixaromaH3LatentUpscale": {
     title: "H3 Latent Upscale Pixaroma",
-    tagline: "Makes a MiniMax H3 video bigger in latent form, so H3 can re-draw it in Full HD or 2K with real detail.",
+    tagline: "Makes a MiniMax H3 video bigger in latent form, so H3 can re-draw it in Full HD or 2K with new detail.",
     sections: [
       {
         heading: "What it does",
