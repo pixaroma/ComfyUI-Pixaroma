@@ -12,7 +12,7 @@ import { registerNodeHelp } from "../shared/help.mjs";
 import { registerNodeSettings, repaintAccent } from "../shared/node_settings.mjs";
 import { CLASS, HIDDEN_INPUT, MIN_W, DEFAULT_W, injectedState, readState } from "./core.mjs";
 import { buildFace, renderFace, destroyFace, bodyHeight, minWidthFor, injectCSS,
-  nudgeIntoSlots, trimToContent, settleNudge, watchNudge, unwatchNudge } from "./ui.mjs";
+  nudgeIntoSlots, trimToContent, settleNudge, watchNudge, unwatchNudge, CLASSIC_START_Y } from "./ui.mjs";
 import { openSettingsPanel, closeSettingsPanelFor } from "./settings.mjs";
 import { ensureSlotType, refreshOut } from "./adopt.mjs";
 import { NUMBER_PICK_HELP } from "./help.mjs";
@@ -32,7 +32,7 @@ registerNodeSettings(CLASS, {
 // litegraph's own field for custom slot layouts), Classic-only, and re-asserted
 // on configure because a saved node arrives without it.
 function liftOverSlots(node) {
-  if (!isVueNodes()) node.widgets_start_y = 2;
+  if (!isVueNodes()) node.widgets_start_y = CLASSIC_START_Y;
 }
 
 // The two layouts are NOT interchangeable - Classic lays the buttons into the

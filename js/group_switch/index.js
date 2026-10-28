@@ -234,6 +234,17 @@ function bodyHeight(node) {
   if (node) { node._pixGsRows = rows; node._pixGsHasBridge = hasBridge; }
   return heightForRows(rows, hasBridge);
 }
+// The DOM widget's own minimum: the body minus where core starts it.
+// ⚠️ Classic: core's _arrangeWidgets starts the widget 2px down (its `+ 2` on a
+// dot-less node) and GROWS the node on EVERY draw when 2 + widget > node height.
+// Asking for the whole body grew it 96 -> 98, onResize locked it back to 96, and
+// the setSize queued the next frame: a resize loop at the frame rate while the
+// node was on screen (found 2026-10-28 by the sweep for the Number Pick CPU
+// report). Nodes 2.0 skips that grow, so it keeps the whole body.
+const CLASSIC_START_Y = 2;
+function widgetMinHeight(node) {
+  return bodyHeight(node) - (isVueNodes() ? 0 : CLASSIC_START_Y);
+}
 // Snap the node to hug the body EXACTLY and SYNCHRONOUSLY (no rAF), in BOTH
 // renderers. Classic: node.computeSize is overridden in setupNode to return the
 // exact body height (the stock one reserves a phantom slot row + per-widget
@@ -734,12 +745,12 @@ function setupNode(node) {
   const widget = node.addDOMWidget("group_switch_ui", "pixaroma_group_switch", root, {
     getValue: () => readState(node),
     setValue: () => {},
-    getMinHeight: () => bodyHeight(node),
+    getMinHeight: () => widgetMinHeight(node),
     margin: 2,
     serialize: false, // state lives on node.properties
   });
   applyAdaptiveCanvasOnly(widget);
-  widget.computeLayoutSize = () => ({ minHeight: bodyHeight(node), minWidth: 1 });
+  widget.computeLayoutSize = () => ({ minHeight: widgetMinHeight(node), minWidth: 1 });
   node._pixGsRoot = root;
   node._pixGsFloorOff = installResizeFloor(root, () => bodyHeight(node));
   // Classic: hug the body. The stock node.computeSize reserves a phantom slot
@@ -811,7 +822,8 @@ app.registerExtension({
     // (resizing_node) only floored at the rows, so a taller drag is kept (since
     // 2026-10-20, see refreshNodeSize); any other resize is LOCKED, as it always
     // was, to the rows or the stored user height, so core's own small size
-    // nudges (a fresh drop settled at 98 for a 96 body) never change the node.
+    // nudges never change the node. (The 96 -> 98 one was core's per-frame
+    // widget grow, gone since widgetMinHeight.)
     // Both renderers: remember a height the user dragged. Vue's own floor is
     // computeLayoutSize / installResizeFloor.
     const _origResize = nodeType.prototype.onResize;

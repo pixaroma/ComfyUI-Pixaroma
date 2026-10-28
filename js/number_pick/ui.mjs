@@ -127,6 +127,24 @@ export function bodyHeight() {
   return ROW_H + 2;
 }
 
+// Classic's widgets_start_y (index.js liftOverSlots): the body starts 2px down.
+export const CLASSIC_START_Y = 2;
+
+/**
+ * The DOM widget's own height: the body minus where it starts.
+ *
+ * ⚠️ Classic: core's `_arrangeWidgets` runs on EVERY draw and GROWS the node
+ * when `widgets_start_y + widget height > node height`. At bodyHeight() that was
+ * 2 + 28 = 30 against the pinned 28, so core grew it to 30, onResize pinned it
+ * back to 28, and the setSize marked the canvas dirty for the next frame: a
+ * resize loop at the frame rate for as long as the node was on screen (Discord
+ * 2026-10-28: 1-3 CPU cores busy while idle, gone when the node was deleted).
+ * Nodes 2.0 skips that grow and reads this once at build, so it keeps 28 there.
+ */
+function widgetHeight() {
+  return isVueNodes() ? bodyHeight() : bodyHeight() - CLASSIC_START_Y;
+}
+
 export function injectCSS() {
   if (_cssDone) return;
   _cssDone = true;
@@ -216,9 +234,9 @@ export function buildFace(node, openPanel) {
     // min AND max the same: the body is one row and nothing in it fills spare
     // space, so letting the widget stretch just gives a big empty box. Both are
     // CONSTANTS, never a live measurement, so they cannot grow a node on load
-    // (convention #39 E).
-    getMinHeight: () => bodyHeight(),
-    getMaxHeight: () => bodyHeight(),
+    // (convention #39 E). widgetHeight, not bodyHeight: see there (Classic loop).
+    getMinHeight: () => widgetHeight(),
+    getMaxHeight: () => widgetHeight(),
   });
   // BOTH flags, they are not the same one: options.serialize keeps the widget
   // out of the PROMPT, widget.serialize (top level) keeps it out of the saved
