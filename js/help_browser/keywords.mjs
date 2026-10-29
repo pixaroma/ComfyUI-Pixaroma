@@ -102,7 +102,7 @@ export const KEYWORDS = {
   PixaromaSliders: "slider knob dashboard remote control panel dropdown checkpoint list filter refresh new model",
   PixaromaSeed: "random fixed number sampler noise",
   PixaromaNumber: "int float value amount",
-  PixaromaNumberPick: "number pick picker buttons chips presets preset whole number int integer decimal float value steps batch size cfg denoise strength fps frame rate quick set favourite numbers click instead of typing one number switch between values control knob",
+  PixaromaNumberPick: "number pick picker buttons chips presets preset whole number int integer decimal float value steps batch size cfg denoise strength fps frame rate quick set favourite numbers click instead of typing one number switch between values control knob set get reroute megapixels",
   PixaromaDuration: "duration seconds length how long video length frames frame count fps frame rate clip length 5 seconds 10 seconds convert seconds to frames how many frames minimax h3 wan hunyuan ltx 4n+1 8n+1 17n+5 multiple of 4 plus 1 length must be math expression formula video too short video too long sampler rejected frame count",
   // ── Sound ──
   PixaromaLoadAudio: "audio sound music song track wav mp3 flac ogg m4a load audio open audio import audio waveform wave shape see the sound trim cut clip chop shorten crop audio start at start time offset pick the chorus drag select selection window play preview listen upload voice speech dialogue voiceover narration soundtrack backing track how long silence pad loop repeat",

@@ -24,11 +24,27 @@
 // What IS adopted is only `out`, the type Python emits the number as. Nothing
 // about the canvas depends on it, so a wrong guess can never sever a wire.
 
-import { narrowSlotType } from "../shared/slot_types.mjs";
+import { narrowSlotType, slotTypeList } from "../shared/slot_types.mjs";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { OUT_AUTO, OUT_INT, OUT_FLOAT, readState, writeState } from "./core.mjs";
 
 export const SLOT_TYPE = "INT,FLOAT";
+
+const OWN_TYPES = slotTypeList(SLOT_TYPE).sort().join(",");
+
+/**
+ * True for an input that took OUR type: a pass-through such as Set Pixaroma
+ * copies "INT,FLOAT" from this node onto its input. Behind it a Get may feed a
+ * whole number AND a decimal, so it counts as wanting both kinds, never one.
+ * Read through narrowSlotType it was a FLOAT vote, and a Set fed by this node
+ * made it send 4.0 into a whole-number input further on (EmptyLatentImage
+ * batch_size crashed in a real Run, Discord 2026-10-29). Not a no-vote either:
+ * then a direct wire beside the Set wins alone (1.5 sent as 2 to a Get-fed
+ * megapixels). A core input typed exactly "FLOAT,INT" matches too, harmlessly.
+ */
+function mirrorsOurType(type) {
+  return slotTypeList(type).sort().join(",") === OWN_TYPES;
+}
 
 /** Resolve a link id to its link object; graph.links can be a Map (Vue #3). */
 function linkOf(graph, id) {
@@ -65,6 +81,7 @@ export function wantedOut(node) {
     const target = nodeById(graph, link.target_id);
     const input = target?.inputs?.[link.target_slot];
     if (!input) continue;
+    if (mirrorsOurType(input.type)) { sawInt = sawFloat = true; continue; }
     // Vue Compat #22: NEVER compare a slot type with ===. A V3 multi-type input
     // arrives as the comma-joined "FLOAT,INT,BOOLEAN", and narrowSlotType is
     // what turns that into the one type a single control should adopt.

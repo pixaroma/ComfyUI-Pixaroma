@@ -14,6 +14,7 @@
 import { app } from "../../../scripts/app.js";
 import { isGraphLoading } from "../shared/graph_loading.mjs";
 import { capComputeSizeInNodes2 } from "../shared/core_min_size.mjs";
+import { slotAccepts } from "../shared/slot_types.mjs";
 import {
   SET_TYPE,
   GET_TYPE,
@@ -185,7 +186,10 @@ export function registerPixaromaGetNode() {
         if (!link) continue;
         const target = this.graph.getNodeById(link.target_id);
         const tType = target?.inputs?.[link.target_slot]?.type;
-        if (tType && tType !== "*" && !String(tType).split(",").includes(out.type)) {
+        // Vue Compat #22: OUR type can be multi too. A Set fed by Number Pick
+        // carries "INT,FLOAT", and splitting only the target's side cut every
+        // wire from that Get to a FLOAT or INT input (Discord, 2026-10-29).
+        if (tType && !slotAccepts(tType, out.type)) {
           this.graph.removeLink(linkId);
         }
       }
