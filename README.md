@@ -251,8 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 29, 2026 · v1.4.240**
+### **October 29, 2026 · v1.4.240-v1.4.241**
 - **Set and Get with Number Pick:** a Get fed by Number Pick now connects to number inputs like megapixels, and whole numbers arrive whole, so the Run no longer fails.
+- **App mode:** Prompt Stack and Load Image Mini are named after the node's title, and Load Image Mini shows its whole face there, with the file picker and the preview. Needs Nodes 2.0.
 
 ### **October 28, 2026 · v1.4.238-v1.4.239**
 - **NEW: H3 Latent Upscale Pixaroma.** Makes a MiniMax H3 video bigger inside H3's own format, the first half of a 2K remake. A port of LBH-123-AI's upscaler, so no extra node pack is needed.
