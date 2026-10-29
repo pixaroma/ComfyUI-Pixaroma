@@ -22,6 +22,7 @@ import { attachCanvasSnapshot } from "../shared/canvas_snapshot.mjs";
 import { applyAdaptiveCanvasOnly, isVueNodes, canvasBackingScale, installZoomRepaint } from "../shared/nodes2.mjs";
 import { onRendererChange } from "../shared/renderer_switch.mjs";
 import { isLiveNode } from "../shared/live_node.mjs";
+import { labelFromNodeTitle } from "../shared/widget_label.mjs";
 import {
   setSelectedImage, updateNativePreview, previewMatches, pickAndUploadFile,
   pasteFromClipboard, installLoaderPaste, uploadImageToInput, splitFilenameSubfolder,
@@ -75,6 +76,11 @@ function injectCSS() {
       border-radius:4px; color:#ddd; font-family: ui-sans-serif, system-ui, sans-serif; font-size:11px; }
     .pix-lm-inner { position:absolute; inset:0; overflow:hidden; display:flex; flex-direction:column;
       gap:7px; padding:6px 8px 8px; box-sizing:border-box; }
+    /* ComfyUI's App mode moves this face into its side panel, outside any node.
+       There is no node height to fill there, so the face lays out in flow and
+       takes its own height (it showed as a 40px strip, Discord 2026-10-29). */
+    [data-testid="app-mode-widget-item"] .pix-lm-inner,
+    [data-testid="builder-widget-item"] .pix-lm-inner { position:static; }
 
     /* INPUT -> OUTPUT size cards. In Classic they are PAINTED in the slot
        dead-space (onDrawForeground); in Nodes 2.0 this canvas carries the same
@@ -650,6 +656,8 @@ function setupNode(node) {
     serialize: false,
   });
   applyAdaptiveCanvasOnly(widget);
+  // App mode names this field after the node's title, not the widget's name.
+  labelFromNodeTitle(node, widget);
   node._pixLmWidget = widget;
 
   node._pixLmFloorOff = installResizeFloor(root, measureFloorHeight);

@@ -54,7 +54,7 @@ export const KEYWORDS = {
 
   // ── Image ──
   PixaromaLoadImage: "open file input picker photo import folder folders directory browse my pictures outside",
-  PixaromaLoadImageMini: "small compact loader tidy folder folders directory browse my pictures",
+  PixaromaLoadImageMini: "small compact loader tidy folder folders directory browse my pictures app mode",
   PixaromaImageInfo: "width height mask filename size dimensions",
   PixaromaLoadImagesFolder: "batch folder directory many bulk each one by one subfolders recursive keep structure tree mirror flatten skip done resume continue already finished crash halfway in parts only new path",
   PixaromaPreview: "view result thumbnail show display civitai metadata parameters resources share",
@@ -74,7 +74,7 @@ export const KEYWORDS = {
   PixaromaPromptMulti: "batch queue many list prompts",
   PixaromaPromptEach: "list batch bulk many multiple prompts one per line each every all at once single run output_is_list brackets combinations variations expand queue several",
   PixaromaPromptPack: "batch paste queue block many prompts separator split blank line new line dashes --- paragraph reuse rerun run again txt file import load collected save text",
-  PixaromaPromptStack: "assemble parts toggle build pieces chunks",
+  PixaromaPromptStack: "assemble parts toggle build pieces chunks app mode",
   PixaromaPromptFromList: "index pick number choose",
   PixaromaFindReplace: "replace swap substitute rules change words",
   PixaromaText: "string write field type note textbox weight emphasis attention ctrl up down",

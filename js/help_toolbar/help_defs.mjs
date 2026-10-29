@@ -53,6 +53,10 @@ const HELP = {
           ["image_info", "A small bundle carrying the mask, width, height and filename. Wire it into Image Info Pixaroma only when you need those extras - that is what keeps this loader small."],
         ],
       },
+      {
+        heading: "In App mode",
+        body: "Add this loader to an app in ComfyUI's App mode and it is named after the node's title, so give it a title like `Face photo`. With Nodes 2.0 on, the app shows the whole face: the size cards, Upload, the file picker with its arrows, and the preview. In the classic node look, App mode shows it empty.",
+      },
     ],
     footer: "Need the mask, width, height or filename? Add an Image Info Pixaroma node and wire image_info into it.",
   },
@@ -745,6 +749,10 @@ const HELP = {
           ["Clear all", "Empties the text in every row but keeps the rows, their names and their on/off state."],
           ["Reset", "Puts the node back to a single empty row, as if it were new."],
         ],
+      },
+      {
+        heading: "In App mode",
+        body: "Add the stack to an app in ComfyUI's App mode and it is named after the node's title, so give each stack its own title, like `FACE PROMPT`, and two stacks in one app are easy to tell apart. The rows show there with Nodes 2.0 on. In the classic node look, App mode shows the stack empty.",
       },
     ],
     footer: "Trailing commas on each chunk are stripped automatically, so you can be loose with punctuation.",

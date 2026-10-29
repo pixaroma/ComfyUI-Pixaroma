@@ -14,6 +14,7 @@ import { applyAdaptiveCanvasOnly, installResizeFloor, isVueNodes,
   installCanvasZoomPassthrough, installNodeAccent, registerNodeAccent,
 } from "../shared/index.mjs";
 import { installNativeTextMenu } from "../shared/native_text_menu.mjs";
+import { labelFromNodeTitle } from "../shared/widget_label.mjs";
 import { pixConfirm, autoGrowTextareas } from "./interaction.mjs";
 import { onTextSizeChange } from "../shared/text_size.mjs";
 
@@ -247,6 +248,8 @@ app.registerExtension({
           getMinHeight: () => contentMinHeight(node, root),
         });
         applyAdaptiveCanvasOnly(_psWidget);
+        // App mode names this field after the node's title, not "promptstack".
+        labelFromNodeTitle(node, _psWidget);
         if (node._pixPsHeld) root.classList.add("is-held");
         // ... and grows to fit on the first press inside it while its rows do not fit: a user action, undoable like
         // typing. A node whose rows fit stays as it is (a click to read or copy must not change it).
