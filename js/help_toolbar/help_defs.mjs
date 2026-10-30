@@ -2119,7 +2119,7 @@ const HELP = {
       },
       {
         heading: "Where it goes",
-        body: "On the MODEL wire, after your LoRAs and BEFORE H3 Audio Sync: model, then H3 Long Video, then H3 Audio Sync, then the sampler. In that order Audio Sync can see the windows and skips its 15 second warning.\n\nThen simply make the video as long as you want: set the length on the latent node (or Duration Pixaroma) to the whole song, and cut the same length of song with Load Audio Pixaroma. Everything else in the workflow stays the same.",
+        body: "On the MODEL wire, after your LoRAs and BEFORE H3 Audio Sync: model, then H3 Long Video, then H3 Audio Sync, then the sampler. In that order Audio Sync can see the windows and skips its 15 second warning.\n\nThen make the video as long as you need: set the length on the latent node (or Duration Pixaroma) to the whole song, and cut the same length of song with Load Audio Pixaroma. Everything else in the workflow stays the same.\n\nOne run can be at most about 149 seconds: ComfyUI's own MiniMax H3 nodes stop at 3600 frames, which is 150 seconds at 24 fps, and refuse a longer length before the run starts. For a longer song, make it in parts (for example two of 88 seconds) and join them with Video Tools Pixaroma. The longest run we tested is one minute.",
       },
       {
         heading: "Example",

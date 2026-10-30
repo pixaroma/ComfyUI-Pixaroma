@@ -171,7 +171,8 @@ class PixaromaH3LongVideo:
     DESCRIPTION = (
         "For MiniMax H3 videos LONGER than about 15 seconds: 30 seconds, a minute or more, made in one run with "
         "no joins. For 15 seconds or less you do not need it (with it, nothing changes). Put it on the model wire "
-        "before H3 Audio Sync and the sampler, and set the video length as long as you want.\n\n"
+        "before H3 Audio Sync and the sampler, and set the video length you need, up to about 149 seconds "
+        "(ComfyUI's own MiniMax H3 nodes stop at 3600 frames).\n\n"
         "H3 was trained on clips of up to about 15 seconds. This node still makes the whole video as one piece, "
         "but on every step the model looks at it in overlapping windows of about 10 seconds, each with its own "
         "part of your song, and the windows are blended where they overlap. Because every window is worked on "
