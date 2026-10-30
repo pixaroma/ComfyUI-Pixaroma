@@ -115,12 +115,25 @@ export function injectCSS() {
   }
   .pix-dur-slabel{ color:rgba(255,255,255,0.75); }
 
-  .pix-dur-num{
+  /* Type it: the field is the BOX, the input inside it is borderless, so the
+     range can sit in the same field on the right (the Image Resize look). The
+     range is shown because a value outside it snaps back, and without it the
+     snap looked like a hard limit of 10 (Discord, 2026-10-30). */
+  .pix-dur-numbox{
     flex:1 1 auto; min-width:0; height:${ROW_H - 4}px; box-sizing:border-box;
+    display:flex; align-items:center; gap:6px; padding:0 7px; cursor:text;
     background:#1d1d1d; border:1px solid #444; border-radius:4px;
-    color:#ddd; font:12px 'Segoe UI',sans-serif; padding:0 7px; outline:none;
   }
-  .pix-dur-num:focus{ border-color:${ACC}; }
+  .pix-dur-numbox:focus-within{ border-color:${ACC}; }
+  .pix-dur-num{
+    flex:1 1 auto; min-width:0; height:100%; box-sizing:border-box;
+    background:transparent; border:none; padding:0; outline:none;
+    color:#ddd; font:12px 'Segoe UI',sans-serif;
+  }
+  .pix-dur-range{
+    flex:none; font-size:11px; color:#8c8c8c; white-space:nowrap;
+    pointer-events:none;
+  }
 
   /* The bundled gear SVG as a mask, never the emoji: an emoji is drawn by the
      OS, so it is a different shape and baseline on every platform. */
@@ -273,17 +286,36 @@ function renderSlider(node, st, pickRow) {
 }
 
 function renderNumber(node, st, pickRow) {
+  const lo = Math.min(st.min, st.max);
+  const hi = Math.max(st.min, st.max);
+  const box = document.createElement("div");
+  box.className = "pix-dur-numbox";
+  box.title = `Type the length in seconds, from ${fmt(lo)} to ${fmt(hi)}. Change the range with the gear.`;
   const input = document.createElement("input");
   input.className = "pix-dur-num";
   input.type = "text";
   input.value = fmt(st.seconds);
-  input.title = "Type the length in seconds";
-  input.addEventListener("pointerdown", (e) => e.stopPropagation());
+  input.setAttribute("aria-label", `Length in seconds, ${fmt(lo)} to ${fmt(hi)}`);
+  const range = document.createElement("span");
+  range.className = "pix-dur-range";
+  range.textContent = `${fmt(lo)} to ${fmt(hi)} s`;
+  box.append(input, range);
+  box.addEventListener("pointerdown", (e) => {
+    e.stopPropagation();
+    // A click on the range text still lands in the field.
+    if (e.target !== input) { e.preventDefault(); input.focus(); }
+  });
   const commit = () => {
     const parsed = parseFloat(input.value);
     const next = Number.isFinite(parsed) ? clampToPick(readState(node), parsed) : readState(node).seconds;
     writeState(node, { seconds: next });
     renderFace(node);
+    // Say WHY a value came back different, or it reads as a hard limit.
+    if (Number.isFinite(parsed) && Math.abs(next - parsed) > 1e-6) {
+      showNote(node, parsed > next
+        ? `Max is ${fmt(next)} s: raise MAX in the gear`
+        : `Min is ${fmt(next)} s: lower MIN in the gear`);
+    }
   };
   input.addEventListener("change", commit);
   input.addEventListener("blur", commit);
@@ -292,13 +324,44 @@ function renderNumber(node, st, pickRow) {
     e.stopPropagation();
     if (e.key === "Enter") { e.preventDefault(); input.blur(); }
   });
-  pickRow.appendChild(input);
+  pickRow.appendChild(box);
+}
+
+// How long the snap-back note replaces the readout. Any other change to the
+// node (the gear, a renderer flip) clears it sooner, through renderFace.
+const NOTE_MS = 5000;
+
+function showNote(node, text) {
+  const readout = node?._pixDurReadout;
+  if (!readout) return;
+  clearTimeout(node._pixDurNoteTimer);
+  node._pixDurNote = text;
+  applyNote(node, readout);
+  node._pixDurNoteTimer = setTimeout(() => {
+    node._pixDurNoteTimer = 0;
+    node._pixDurNote = null;
+    if (node._pixDurReadout === readout) paintReadout(node, null, readout);
+  }, NOTE_MS);
+}
+
+// DOM only, never node state: the note must not reach a saved workflow.
+function applyNote(node, readout) {
+  if (!node._pixDurNote) return;
+  readout.className = "pix-dur-readout bad";
+  readout.textContent = node._pixDurNote;
+}
+
+function clearNote(node) {
+  clearTimeout(node._pixDurNoteTimer);
+  node._pixDurNoteTimer = 0;
+  node._pixDurNote = null;
 }
 
 export function renderFace(node) {
   const pickRow = node?._pixDurPickRow;
   const readout = node?._pixDurReadout;
   if (!pickRow || !readout) return;
+  clearNote(node);
   // Re-asserted every render, not just at build: the renderer can be switched
   // while the node is on the canvas, and the two layouts are not interchangeable.
   node._pixDurRoot?.classList.toggle("classic", !isVueNodes());
@@ -363,6 +426,7 @@ export function paintReadout(node, st, readout) {
   if (!local.custom) {
     publishSeconds(node, local.actual);
     writeReadout(readout, state.seconds, local.frames, local.actual);
+    applyNote(node, readout);
     return;
   }
   // A custom formula is evaluated by PYTHON, never re-implemented here - a
@@ -376,14 +440,18 @@ export function paintReadout(node, st, readout) {
     if (!res || !res.ok) {
       readout.className = "pix-dur-readout bad";
       readout.textContent = `${fmt(state.seconds)} s → formula does not work, using ${res?.frames ?? local.frames} frames`;
+      applyNote(node, readout);
       return;
     }
     publishSeconds(node, res.actual);
     writeReadout(readout, state.seconds, res.frames, res.actual);
+    // The answer can arrive while a snap-back note is up: keep the note.
+    applyNote(node, readout);
   });
 }
 
 export function destroyFace(node) {
+  clearNote(node);
   try { node._pixDurFloorOff?.(); } catch {}
   node._pixDurFloorOff = null;
   node._pixDurRoot = null;

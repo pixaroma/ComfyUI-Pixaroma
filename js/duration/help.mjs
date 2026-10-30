@@ -32,7 +32,9 @@ export const DURATION_HELP = {
         "This is the part worth setting up once per workflow. Under How you pick, choose "
         + "Buttons and type the lengths you want, such as 3, 5, 10, and the node gives you one "
         + "button each. Choose Slider instead and set a smallest and largest length, and you can "
-        + "drag anywhere between them. Type it lets you enter any number inside the range.\n\n"
+        + "drag anywhere between them. Type it lets you enter any number inside the same range, "
+        + "which the box shows on its right (1 to 10 s at first). A number outside it snaps back "
+        + "to the nearest end and the line below says why: raise MAX in the gear for longer videos.\n\n"
         + "Buttons suit a workflow where you always use the same two or three lengths. A slider "
         + "suits one where you want to fine tune. Two Duration nodes on the same canvas can be "
         + "set up completely differently.",
