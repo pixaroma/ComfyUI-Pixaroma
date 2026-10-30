@@ -251,8 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 30, 2026 · v1.4.242**
+### **October 30, 2026 · v1.4.242-v1.4.243**
 - **H3 Long Video help:** says one run can be at most about 149 seconds (ComfyUI's own H3 limit) and how to do a longer song in parts joined with Video Tools.
+- **Duration Type it:** the box shows its range (1 to 10 s at first), and a number outside it now says why it snapped back: raise MAX in the gear.
 
 ### **October 29, 2026 · v1.4.240-v1.4.241**
 - **Set and Get with Number Pick:** a Get fed by Number Pick now connects to number inputs like megapixels, and whole numbers arrive whole, so the Run no longer fails.
