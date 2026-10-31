@@ -130,13 +130,23 @@ function toggleGroup(node, g) {
   if (st.restriction === "any") {
     b.setGroupSwitch(g.id, willOn, st.action);
   } else if (willOn) {
-    // one / always → turning one on turns every other controlled group off
-    for (const o of visibleGroups(node)) b.setGroupSwitch(o.id, o.id === g.id, st.action);
+    // one / always → turning one on turns every other controlled group off.
+    // The others go off FIRST and this one on LAST: a group nested inside this
+    // one holds some of its nodes, so it must come on with it (rgthree does the
+    // same). In list order the nested group was switched off after this one went
+    // on, and with the nested group listed first a click left it off.
+    for (const o of visibleGroups(node)) if (o.id !== g.id) b.setGroupSwitch(o.id, false, st.action);
+    b.setGroupSwitch(g.id, true, st.action);
+  } else if (st.restriction === "always") {
+    // Keep at least one on. A group nested inside this one reads "on" too but
+    // shares its nodes, so it goes off with it: if nothing else is on after
+    // this one goes off, put the others that were on back on (this one's own
+    // nodes stay off).
+    const others = visibleGroups(node).filter((o) => o.id !== g.id && isOn(node, o));
+    if (!others.length) return;
+    b.setGroupSwitch(g.id, false, st.action);
+    if (!others.some((o) => isOn(node, o))) for (const o of others) b.setGroupSwitch(o.id, true, st.action);
   } else {
-    if (st.restriction === "always") {
-      const onCount = visibleGroups(node).filter((o) => isOn(node, o)).length;
-      if (onCount <= 1) return; // keep at least one on
-    }
     b.setGroupSwitch(g.id, false, st.action);
   }
   renderNode(node);
@@ -185,7 +195,9 @@ function setAllGroups(node, on) {
   renderNode(node);
 }
 
-// When the rule changes to one/always, normalize the current on-set once.
+// When the rule changes to one/always, normalize the current on-set once:
+// the first group that is on stays on, switched on LAST like toggleGroup does,
+// so a group nested inside it (which reads "on" too) is not left half off.
 function enforceRestriction(node) {
   const st = readState(node);
   if (st.restriction === "any") return;
@@ -193,8 +205,10 @@ function enforceRestriction(node) {
   if (!b || typeof b.setGroupSwitch !== "function") return;
   const groups = visibleGroups(node);
   const onGroups = groups.filter((g) => isOn(node, g));
-  if (onGroups.length > 1) for (let i = 1; i < onGroups.length; i++) b.setGroupSwitch(onGroups[i].id, false, st.action);
-  else if (st.restriction === "always" && onGroups.length === 0 && groups.length) b.setGroupSwitch(groups[0].id, true, st.action);
+  if (onGroups.length > 1) {
+    for (let i = 1; i < onGroups.length; i++) b.setGroupSwitch(onGroups[i].id, false, st.action);
+    b.setGroupSwitch(onGroups[0].id, true, st.action);
+  } else if (st.restriction === "always" && onGroups.length === 0 && groups.length) b.setGroupSwitch(groups[0].id, true, st.action);
 }
 
 // ── node body render (just the switches) ───────────────────────────────────
@@ -430,19 +444,12 @@ function radio(label, on, onPick) {
   return r;
 }
 
-function buildPickArea(node, body) {
-  const wrap = el("div", "pix-gs-pickwrap");
+// The Sort chip. It orders the node's rows too, so it shows for All as well as
+// Pick (it used to live in the Pick area only: "you cannot order by alphabet",
+// YouTube 2026-10-31). `top` = the All layout, where it follows the hint.
+function buildSortRow(node, body, top) {
   const st = readState(node);
-
-  const search = el("div", "pix-gs-search");
-  const sicon = el("span", "pix-gs-sicon"); sicon.innerHTML = SEARCH_SVG; search.appendChild(sicon);
-  const inp = el("input"); inp.placeholder = "Search groups..."; inp.value = node._pixGsQuery || "";
-  // ComfyUI's save / run go on (UI#44); everything else stays in the search box
-  inp.addEventListener("keydown", (e) => { if (passComfyShortcut(e, inp)) return; e.stopPropagation(); });
-  search.appendChild(inp);
-  wrap.appendChild(search);
-
-  const sortRow = el("div", "pix-gs-sortrow");
+  const sortRow = el("div", "pix-gs-sortrow" + (top ? " pix-gs-sortrow-top" : ""));
   const lab = el("span", "pix-gs-sortlab"); lab.textContent = "Sort";
   const chip = el("button", "pix-gs-sortchip");
   const SORTLBL = { position: "Position", name: "Name", color: "Color" };
@@ -453,7 +460,21 @@ function buildPickArea(node, body) {
     renderNode(node); renderPanelBody(node, body);
   };
   sortRow.appendChild(lab); sortRow.appendChild(chip);
-  wrap.appendChild(sortRow);
+  return sortRow;
+}
+
+function buildPickArea(node, body) {
+  const wrap = el("div", "pix-gs-pickwrap");
+
+  const search = el("div", "pix-gs-search");
+  const sicon = el("span", "pix-gs-sicon"); sicon.innerHTML = SEARCH_SVG; search.appendChild(sicon);
+  const inp = el("input"); inp.placeholder = "Search groups..."; inp.value = node._pixGsQuery || "";
+  // ComfyUI's save / run go on (UI#44); everything else stays in the search box
+  inp.addEventListener("keydown", (e) => { if (passComfyShortcut(e, inp)) return; e.stopPropagation(); });
+  search.appendChild(inp);
+  wrap.appendChild(search);
+
+  wrap.appendChild(buildSortRow(node, body));
 
   const listEl = el("div", "pix-gs-picklist");
   wrap.appendChild(listEl);
@@ -517,6 +538,7 @@ function renderPanelBody(node, body) {
   } else {
     const hint = el("div", "pix-gs-phint"); hint.textContent = "Every Pixaroma group. New groups join automatically.";
     gSec.appendChild(hint);
+    gSec.appendChild(buildSortRow(node, body, true));
   }
   body.appendChild(gSec);
 
@@ -697,6 +719,7 @@ function injectCSS() {
     ".pix-gs-search input{flex:1;background:transparent;border:0;outline:0;color:#e6e6e6;font-size:12.5px;font-family:inherit;min-width:0;padding:0;}",
     ".pix-gs-search input::placeholder{color:rgba(255,255,255,0.32);}",
     ".pix-gs-sortrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;}",
+    ".pix-gs-sortrow.pix-gs-sortrow-top{margin:9px 0 0;}",
     ".pix-gs-sortlab{font-size:11px;color:rgba(255,255,255,0.4);}",
     ".pix-gs-sortchip{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);color:#dcdcdc;font-size:11.5px;padding:4px 10px;border-radius:6px;cursor:pointer;}",
     ".pix-gs-sortchip:hover{border-color:var(--pix-acc,#f66744);}",
@@ -784,8 +807,8 @@ const HELP = {
     { heading: "All on / All off", body: "The two buttons at the top flip every group in the list at once, so you can kill a whole set of sections (or bring them all back) in one click instead of clicking each switch. They only touch the groups this switch lists, so if you set it to a hand-picked set, the rest are left alone.\n\nIf you have chosen a switching rule that only allows one group on at a time, turning them all on is impossible, so that button is greyed out - and hovering it tells you why. The same goes for All off when the rule always keeps one group on." },
     { heading: "Settings (the gear, or right-click)", defs: [
       ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],
-      ["Groups", "Control all groups, or Pick a hand-picked set. Search and sort (by canvas position, name, or color) to find them. The locate icon flashes a group on the canvas."],
-      ["Switching", "Any number on, only one on at a time, or always keep one on."],
+      ["Groups", "Control all groups, or Pick a hand-picked set. Sort sets the order of the switches on the node: by canvas position, name, or color. With Pick you can also search, and the locate icon flashes a group on the canvas."],
+      ["Switching", "Any number on, only one on at a time, or always keep one on. Turning a group on also turns on any group inside it, since its nodes are part of the outer group too."],
     ]},
     { heading: "Stays in sync", body: "Switches read and set the live group state, so this node, a second copy, and the group's own header Mute/Bypass button always agree." },
   ],
