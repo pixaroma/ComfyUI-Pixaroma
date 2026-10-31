@@ -139,6 +139,34 @@ function normalizePackMetadata(workflow) {
   return fixed;
 }
 
+// Ctrl+C / Ctrl+V. From frontend 1.57 the KEYBOARD paste validates what it
+// pastes (`usePaste.ts`: zClipboardItems.safeParse), and the same illegal
+// aux_id makes it show the zod error and paste NOTHING (Discord, 2026-10-29).
+// The menu Paste and Ctrl+Shift+V read localStorage without validating, which
+// is why they still worked. Both copies (localStorage and the system clipboard)
+// come from `_serializeItems`, and its node entries are built with
+// `clone().serialize()`, whose `properties` is a CLONE, so repairing the copy
+// here never touches an existing node or a saved workflow. Clone, Alt-drag and
+// node templates go through it too: only their NEW node gets the legal value.
+// The nodes inside a copied subgraph are validated too. A private name, so a
+// frontend without it is left alone.
+function installClipboardRepair() {
+  const proto = window.LGraphCanvas && window.LGraphCanvas.prototype;
+  if (!proto || typeof proto._serializeItems !== "function" || proto._pixCompatClipWrapped) return;
+  proto._pixCompatClipWrapped = true;
+  const _origSerializeItems = proto._serializeItems;
+  proto._serializeItems = function (...args) {
+    const out = _origSerializeItems.apply(this, args);
+    try {
+      normalizePackMetadata(out);
+      for (const sg of out?.subgraphs || []) normalizePackMetadata(sg);
+    } catch (e) {
+      console.warn("[Pixaroma] workflow-compat clipboard repair failed (harmless):", e);
+    }
+    return out;
+  };
+}
+
 app.registerExtension({
   name: "Pixaroma.WorkflowCompat",
 
@@ -151,6 +179,7 @@ app.registerExtension({
   },
 
   async setup() {
+    installClipboardRepair();
     if (app._pixWorkflowCompatWrapped) return;
     app._pixWorkflowCompatWrapped = true;
 
