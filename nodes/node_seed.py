@@ -50,14 +50,18 @@ class PixaromaSeed:
     FUNCTION = "get_seed"
     CATEGORY = "👑 Pixaroma/🔢 Values"
 
+    # SeedState defaults to "{}" (seed 0) here and in get_seed: ComfyUI never
+    # fills a missing hidden input from INPUT_TYPES, so an API prompt built
+    # without the browser (curl, scripts, comfy-mcp) has no SeedState at all
+    # and a required parameter crashed the run with a TypeError.
     @classmethod
-    def IS_CHANGED(cls, SeedState: str):
+    def IS_CHANGED(cls, SeedState: str = "{}"):
         # Re-execute whenever the injected seed changes. In Random mode the JS
         # hook injects a fresh runSeed each run (string differs -> re-run); in
         # Fixed mode it stays constant (string identical -> cached / repeatable).
         return SeedState
 
-    def get_seed(self, SeedState: str):
+    def get_seed(self, SeedState: str = "{}"):
         try:
             state = json.loads(SeedState)
             s = int(state.get("runSeed", state.get("seed", 0)))

@@ -85,7 +85,11 @@ class PixaromaSizes:
     FUNCTION = "get_size"
     CATEGORY = "👑 Pixaroma/🔢 Values"
 
-    def get_size(self, SizesState: str):
+    # The default matters: ComfyUI never fills a missing hidden input from
+    # INPUT_TYPES, so an API prompt built without the browser (curl, scripts,
+    # comfy-mcp) has no SizesState and a required parameter crashed the run
+    # with a TypeError. Without it the node gives the default 1024 x 1024.
+    def get_size(self, SizesState: str = json.dumps(DEFAULT_STATE)):
         w, h = sizes_wh(SizesState)
         # Imported here, not at the top: the size maths (sizes_wh, below) stays
         # loadable as a plain file (the parity harness loads it outside the package).
