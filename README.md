@@ -251,9 +251,11 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **October 31, 2026 · v1.4.244**
+### **October 31, 2026 · v1.4.244-v1.4.245**
 - **Copy and paste:** Ctrl+V pastes Pixaroma nodes again when the pack was installed with git clone from GitLab. The newer ComfyUI refused them with an "aux_id" error.
 - **Open as workflow:** works again from the queue for such installs when a Pixaroma node sits inside a subgraph.
+- **Group Switch:** with "Only one on at a time" or "Always keep one on", turning a group on now also turns on the groups inside it, like rgthree's Fast Groups Muter.
+- **Group Switch Sort:** the Sort button (Position, Name, Color) now also shows when the switch controls all groups, not only Pick.
 
 ### **October 30, 2026 · v1.4.242-v1.4.243**
 - **H3 Long Video help:** says one run can be at most about 149 seconds (ComfyUI's own H3 limit) and how to do a longer song in parts joined with Video Tools.
