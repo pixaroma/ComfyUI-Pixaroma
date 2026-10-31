@@ -38,7 +38,9 @@ import { app } from "../../../scripts/app.js";
 // THE FIX: normalize those three fields on OUR nodes only, in the workflow
 // object `app.graphToPrompt()` returns. That object is what ComfyUI puts into
 // `extra_data.extra_pnginfo.workflow` (the thing the failing path validates)
-// and into the PNG `workflow` chunk, so fixing it there fixes both.
+// and into the PNG `workflow` chunk, so fixing it there fixes both. The nodes
+// inside subgraphs get the same repair, and so does a Ctrl+C copy
+// (`installClipboardRepair` below).
 //
 // SAFE BY CONSTRUCTION:
 //   - `graphToPrompt`'s node entries carry their OWN `properties` object, not a
@@ -189,7 +191,11 @@ app.registerExtension({
     app.graphToPrompt = async function (...args) {
       const result = await orig(...args);
       try {
-        const n = normalizePackMetadata(result?.workflow);
+        let n = normalizePackMetadata(result?.workflow);
+        // A node INSIDE a subgraph is saved in definitions.subgraphs[].nodes,
+        // which the same validator checks (2026-10-31: it still failed there).
+        // Those entries are fresh serializations too, never a live node.
+        for (const sg of result?.workflow?.definitions?.subgraphs || []) n += normalizePackMetadata(sg);
         if (n && !warned) {
           warned = true;
           console.log(
