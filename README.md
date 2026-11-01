@@ -251,6 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 1, 2026 · v1.4.247**
+- **Group Switch:** a new gear choice, "Keep their own on and off", lets groups inside a group keep their state when you switch the outer one. The default is unchanged.
+
 ### **October 31, 2026 · v1.4.244-v1.4.246**
 - **Copy and paste:** Ctrl+V pastes Pixaroma nodes again when the pack was installed with git clone from GitLab. The newer ComfyUI refused them with an "aux_id" error.
 - **Open as workflow:** works again from the queue for such installs when a Pixaroma node sits inside a subgraph.
