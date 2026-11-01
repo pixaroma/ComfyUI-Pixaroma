@@ -55,6 +55,7 @@ const DEFAULT_STATE = {
   picked: [],              // group ids (scope === "pick")
   sort: "position",        // "position" | "name" | "color"
   restriction: "any",      // "any" | "one" | "always"
+  nested: "follow",        // "follow" | "own" - groups inside a group switch with it, or keep their own on / off
 };
 
 // ── tiny inline icons (currentColor) ──────────────────────────────────────
@@ -112,11 +113,46 @@ function visibleGroups(node) {
   return all.filter((g) => set.has(g.id));
 }
 
+// ── groups inside groups ──────────────────────────────────────────────────
+// Membership is geometric, so a group drawn inside another one holds some of
+// the outer group's nodes. "follow" (the default) switches them with the outer
+// group, as rgthree does. "own" (Discord 2026-11-01, "I very hope that this is
+// an option toggle") leaves them to their own switch: each group then switches
+// only the nodes that are not in a group nested inside it. Nested = every one
+// of its nodes is also the outer group's and the outer has more (the nodes the
+// switch acts on, so a folded group, whose box is just the bar, still counts).
+// A group made only of nested groups has no nodes of its own and keeps
+// switching all of them. Every group on the canvas counts, listed here or not.
+// Built once per operation (membership does not depend on on / off) and null
+// in "follow", so that path calls the bridge exactly as before.
+function nestCtx(node) {
+  if (readState(node).nested !== "own") return null;
+  const b = bridge();
+  if (!b || typeof b.groupMemberIds !== "function" || typeof b.listGroups !== "function") return null;
+  const sets = new Map();
+  for (const g of b.listGroups() || []) sets.set(g.id, new Set(b.groupMemberIds(g.id) || []));
+  const skip = new Map();
+  for (const [id, mine] of sets) {
+    const out = new Set();
+    for (const [oid, theirs] of sets) {
+      if (oid === id || !theirs.size || theirs.size >= mine.size) continue;
+      let inside = true;
+      for (const n of theirs) if (!mine.has(n)) { inside = false; break; }
+      if (inside) for (const n of theirs) out.add(n);
+    }
+    if (out.size && out.size < mine.size) skip.set(id, out);
+  }
+  return skip;
+}
+// The nodes to leave alone when switching (or reading) group g; undefined = none.
+function skipOf(ctx, g) { return ctx ? ctx.get(g.id) : undefined; }
+function setGroup(b, st, ctx, g, on) { b.setGroupSwitch(g.id, on, st.action, skipOf(ctx, g)); }
+
 // Is a group "on" for this switch's action? (on = NOT muted, or NOT bypassed).
-function isOn(node, g) {
+function isOn(node, g, ctx = nestCtx(node)) {
   const st = readState(node);
   const b = bridge();
-  const state = b && typeof b.getGroupState === "function" ? b.getGroupState(g.id) : null;
+  const state = b && typeof b.getGroupState === "function" ? b.getGroupState(g.id, skipOf(ctx, g)) : null;
   if (!state) return true;
   return st.action === "bypass" ? !state.bypassed : !state.muted;
 }
@@ -126,28 +162,31 @@ function toggleGroup(node, g) {
   const b = bridge();
   if (!b || typeof b.setGroupSwitch !== "function") return;
   const st = readState(node);
-  const willOn = !isOn(node, g);
+  const ctx = nestCtx(node);
+  const willOn = !isOn(node, g, ctx);
   if (st.restriction === "any") {
-    b.setGroupSwitch(g.id, willOn, st.action);
+    setGroup(b, st, ctx, g, willOn);
   } else if (willOn) {
     // one / always → turning one on turns every other controlled group off.
-    // The others go off FIRST and this one on LAST: a group nested inside this
-    // one holds some of its nodes, so it must come on with it (rgthree does the
-    // same). In list order the nested group was switched off after this one went
-    // on, and with the nested group listed first a click left it off.
-    for (const o of visibleGroups(node)) if (o.id !== g.id) b.setGroupSwitch(o.id, false, st.action);
-    b.setGroupSwitch(g.id, true, st.action);
+    // The others go off FIRST and this one on LAST: in "follow" a group nested
+    // inside this one holds some of its nodes, so it must come on with it
+    // (rgthree does the same). In list order the nested group was switched off
+    // after this one went on, and with the nested group listed first a click
+    // left it off. Keep this order in "own" too: groups that partly overlap,
+    // and a group made only of nested groups, still share nodes there.
+    for (const o of visibleGroups(node)) if (o.id !== g.id) setGroup(b, st, ctx, o, false);
+    setGroup(b, st, ctx, g, true);
   } else if (st.restriction === "always") {
-    // Keep at least one on. A group nested inside this one reads "on" too but
-    // shares its nodes, so it goes off with it: if nothing else is on after
-    // this one goes off, put the others that were on back on (this one's own
-    // nodes stay off).
-    const others = visibleGroups(node).filter((o) => o.id !== g.id && isOn(node, o));
+    // Keep at least one on. In "follow" a group nested inside this one reads
+    // "on" too but shares its nodes, so it goes off with it: if nothing else is
+    // on after this one goes off, put the others that were on back on (this
+    // one's own nodes stay off).
+    const others = visibleGroups(node).filter((o) => o.id !== g.id && isOn(node, o, ctx));
     if (!others.length) return;
-    b.setGroupSwitch(g.id, false, st.action);
-    if (!others.some((o) => isOn(node, o))) for (const o of others) b.setGroupSwitch(o.id, true, st.action);
+    setGroup(b, st, ctx, g, false);
+    if (!others.some((o) => isOn(node, o, ctx))) for (const o of others) setGroup(b, st, ctx, o, true);
   } else {
-    b.setGroupSwitch(g.id, false, st.action);
+    setGroup(b, st, ctx, g, false);
   }
   renderNode(node);
 }
@@ -191,7 +230,8 @@ function setAllGroups(node, on) {
   if (!canSetAll(node, on)) return;
   const b = bridge();
   const st = readState(node);
-  for (const g of visibleGroups(node)) b.setGroupSwitch(g.id, on, st.action);
+  const ctx = nestCtx(node);
+  for (const g of visibleGroups(node)) setGroup(b, st, ctx, g, on);
   renderNode(node);
 }
 
@@ -203,12 +243,13 @@ function enforceRestriction(node) {
   if (st.restriction === "any") return;
   const b = bridge();
   if (!b || typeof b.setGroupSwitch !== "function") return;
+  const ctx = nestCtx(node);
   const groups = visibleGroups(node);
-  const onGroups = groups.filter((g) => isOn(node, g));
+  const onGroups = groups.filter((g) => isOn(node, g, ctx));
   if (onGroups.length > 1) {
-    for (let i = 1; i < onGroups.length; i++) b.setGroupSwitch(onGroups[i].id, false, st.action);
-    b.setGroupSwitch(onGroups[0].id, true, st.action);
-  } else if (st.restriction === "always" && onGroups.length === 0 && groups.length) b.setGroupSwitch(groups[0].id, true, st.action);
+    for (let i = 1; i < onGroups.length; i++) setGroup(b, st, ctx, onGroups[i], false);
+    setGroup(b, st, ctx, onGroups[0], true);
+  } else if (st.restriction === "always" && onGroups.length === 0 && groups.length) setGroup(b, st, ctx, groups[0], true);
 }
 
 // ── node body render (just the switches) ───────────────────────────────────
@@ -306,8 +347,8 @@ function noteUserHeight(node) {
   }
 }
 
-function rowEl(node, g) {
-  const on = isOn(node, g);
+function rowEl(node, g, ctx) {
+  const on = isOn(node, g, ctx);
   // The "on" class drives the name brightness (bright = enabled, dim = off) so the
   // state reads clearly without relying on the toggle colour alone (user feedback).
   const row = el("div", "pix-gs-row" + (on ? " on" : ""));
@@ -358,10 +399,11 @@ function renderNode(node) {
   node._pixGsHasBridge = hasBridge;
   // Skip a rebuild when nothing the body shows has changed — keeps the 350ms
   // sync poll from churning the DOM (flicker + lost hover) every tick.
+  const ctx = nestCtx(node);
   const sig = JSON.stringify({
-    a: st.action, sc: st.scope, so: st.sort, r: st.restriction,
+    a: st.action, sc: st.scope, so: st.sort, r: st.restriction, n: st.nested,
     has: hasBridge,
-    g: groups.map((g) => [g.id, g.label, g.color, isOn(node, g) ? 1 : 0]),
+    g: groups.map((g) => [g.id, g.label, g.color, isOn(node, g, ctx) ? 1 : 0]),
   });
   if (root._pixGsSig === sig) return;
   root._pixGsSig = sig;
@@ -406,7 +448,7 @@ function renderNode(node) {
     h.textContent = all.length ? "No groups picked. Open settings to choose." : "No Pixaroma groups yet. Add one on the canvas.";
     list.appendChild(h);
   } else {
-    for (const g of groups) list.appendChild(rowEl(node, g));
+    for (const g of groups) list.appendChild(rowEl(node, g, ctx));
   }
   root.appendChild(list);
   refreshNodeSize(node);
@@ -541,6 +583,32 @@ function renderPanelBody(node, body) {
     gSec.appendChild(buildSortRow(node, body, true));
   }
   body.appendChild(gSec);
+
+  // A group drawn inside another one: switched with it (default) or left alone.
+  // A click on the choice already made does nothing (an old workflow has no key
+  // and must not get one written). Going to "own" re-applies the rule like
+  // Action / Scope do (#8): in "follow" an outer and an inner group both read on,
+  // which "own" turns into two groups on. Going back to "follow" does NOT: a
+  // group on in "own" is on in "follow" too, so the rule still holds, and
+  // re-applying it switched an outer group's own nodes back on under "one".
+  const nSec = section("Groups inside a group");
+  for (const o of [
+    { v: "follow", label: "Switch with the outer group" },
+    { v: "own", label: "Keep their own on and off" },
+  ]) {
+    nSec.appendChild(radio(o.label, st.nested === o.v, () => {
+      if (readState(node).nested === o.v) return;
+      writeState(node, { nested: o.v });
+      if (o.v === "own") enforceRestriction(node);
+      renderNode(node); renderPanelBody(node, body);
+    }));
+  }
+  const nHint = el("div", "pix-gs-phint");
+  nHint.textContent = st.nested === "own"
+    ? "Each group switches only its own nodes. A group inside it stays as it is until you switch it."
+    : "Turning a group on or off also switches every group drawn inside it.";
+  nSec.appendChild(nHint);
+  body.appendChild(nSec);
 
   const sSec = section("Switching");
   const rules = [
@@ -808,9 +876,10 @@ const HELP = {
     { heading: "Settings (the gear, or right-click)", defs: [
       ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],
       ["Groups", "Control all groups, or Pick a hand-picked set. Sort sets the order of the switches on the node: by canvas position, name, or color. With Pick you can also search, and the locate icon flashes a group on the canvas."],
-      ["Switching", "Any number on, only one on at a time, or always keep one on. Turning a group on also turns on any group inside it, since its nodes are part of the outer group too."],
+      ["Groups inside a group", "For a group drawn inside another one. Switch with the outer group (the default): turning the outer group on or off does the same to the groups inside it, since their nodes are part of it too. Keep their own on and off: each group switches only its own nodes, so a group inside keeps its state until you switch it. A group made only of other groups still switches everything in it."],
+      ["Switching", "Any number on, only one on at a time, or always keep one on."],
     ]},
-    { heading: "Stays in sync", body: "Switches read and set the live group state, so this node, a second copy, and the group's own header Mute/Bypass button always agree." },
+    { heading: "Stays in sync", body: "Switches read and set the live group state, so this node, a second copy, and the group's own header Mute/Bypass button always agree. One exception: a switch set to \"Keep their own on and off\" reads only each group's own nodes, so an outer group can show off there and on in a switch set to \"Switch with the outer group\"." },
   ],
 };
 

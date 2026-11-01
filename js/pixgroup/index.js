@@ -1594,13 +1594,18 @@ function listSwitchGroups() {
   }
   return out;
 }
-function switchGroupState(id) {
-  const ns = switchMemberNodes(id);
+// `skip` (optional): a Set of node id strings to leave out. Group Switch passes
+// the nodes of the groups nested inside this one when it is set to let those
+// groups keep their own on / off. Without it, every member counts, as before.
+function switchGroupState(id, skip) {
+  let ns = switchMemberNodes(id);
+  if (skip && skip.size) ns = ns.filter((n) => !skip.has(String(n.id)));
   if (!ns.length) return { muted: false, bypassed: false, count: 0 };
   return { muted: ns.every((n) => n.mode === 2), bypassed: ns.every((n) => n.mode === 4), count: ns.length };
 }
-function setSwitchGroup(id, on, action) {
-  const ns = switchMemberNodes(id);
+function setSwitchGroup(id, on, action, skip) {
+  let ns = switchMemberNodes(id);
+  if (skip && skip.size) ns = ns.filter((n) => !skip.has(String(n.id)));
   if (!ns.length) return;
   const mode = on ? 0 : (action === "bypass" ? 4 : 2);
   for (const n of ns) applyModeDeep(n, mode);
@@ -2215,6 +2220,8 @@ app.registerExtension({
         getGroupState: switchGroupState,
         setGroupSwitch: setSwitchGroup,
         revealGroup: revealSwitchGroup,
+        // the member node ids (strings), so the switch can tell which groups sit inside which
+        groupMemberIds: (id) => switchMemberNodes(id).map((n) => String(n.id)),
       };
     } catch (_e) {}
   },
