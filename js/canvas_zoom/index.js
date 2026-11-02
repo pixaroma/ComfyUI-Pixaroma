@@ -31,9 +31,11 @@ app.registerExtension({
         "Choose what the mouse wheel does when the pointer is over a scrollable " +
         "text box or list inside a Pixaroma node. " +
         "\"Scroll the field\" scrolls the text, then zooms the canvas once the text " +
-        "has nothing left to scroll. " +
+        "has nothing left to scroll. Once you click into a text box, the wheel only " +
+        "scrolls that box and never zooms. " +
         "\"Zoom the canvas\" always zooms, and you move the text with its scrollbar. " +
-        "Anywhere else on a node the wheel always zooms the canvas.",
+        "Anywhere else on a node the wheel always zooms the canvas, and Ctrl + wheel " +
+        "always zooms it.",
       // Distinct leaf category: settings that share a leaf collapse into one row.
       category: ["👑 Pixaroma", "Canvas zoom"],
       // No onChange needed: the helper reads this setting live on each wheel tick,

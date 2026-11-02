@@ -76,6 +76,27 @@ function scrollRegionWantsWheel(target, root, deltaX, deltaY) {
   return false;
 }
 
+// True when the wheel is over a text box the user has CLICKED INTO (it holds focus):
+// that box keeps the wheel, scrolling while it can and then doing nothing, never
+// zooming - ComfyUI's own textarea does the same (core hands the wheel to a focused
+// data-capture-wheel field). Before this, a box at its top / bottom, or one whose
+// text all fits, zoomed the canvas under the user's caret (Discord, 2026-11-01: "it
+// zooms when I scroll up and scrolls when I scroll down"). Ctrl/Cmd+wheel and a
+// sideways wheel stay canvas gestures (core's isCanvasGestureWheel), and the pointer
+// must be over that box (or the element that scrolls it), not elsewhere on the node.
+function focusedBoxKeepsWheel(e, root) {
+  if (e.ctrlKey || e.metaKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return false;
+  const active = document.activeElement;
+  if (!active || !root.contains(active)) return false;
+  if (!(active instanceof HTMLTextAreaElement) && !active.isContentEditable) return false;
+  let box = active;
+  for (let el = active; el && el !== root.parentElement; el = el.parentElement) {
+    const oy = getComputedStyle(el).overflowY;
+    if (oy === "auto" || oy === "scroll") { box = el; break; }
+  }
+  return e.target instanceof Node && box.contains(e.target);
+}
+
 // ---- Nodes 2.0: let a scrollable field keep the wheel ------------------------
 // Core listens on the layer holding every node in the CAPTURE phase
 // (GraphCanvas.vue onWheelCapture -> useCanvasInteractions.forwardEventToCanvas)
@@ -90,9 +111,12 @@ function scrollRegionWantsWheel(target, root, deltaX, deltaY) {
 // any deeper. It does NOT preventDefault, so the browser scrolls the field
 // natively; other capture listeners on document (our popups closing on wheel)
 // still run, stopPropagation only stops nodes below document.
+// It also stops it over a text box the user has clicked into (focusedBoxKeepsWheel),
+// even at the end of its scroll, so that box never zooms the canvas.
 // Left to core, unchanged: Ctrl/Cmd+wheel (core's canvas gesture), anything inside
 // data-capture-wheel="true" (core's own opt-in, e.g. Load 3D's viewport), a field
-// at the end of its scroll, and every wheel when the setting is "Zoom the canvas".
+// not clicked into at the end of its scroll, and every wheel when the setting is
+// "Zoom the canvas".
 const _wheelRoots = new WeakSet();
 let _nodes2WheelInstalled = false;
 
@@ -108,7 +132,7 @@ function keepWheelForFieldsInNodes2(e) {
   const root = wheelRootOf(target);
   if (!root || wheelZoomsOverFields()) return;
   if (target.closest('[data-capture-wheel="true"]')) return;
-  if (!scrollRegionWantsWheel(target, root, e.deltaX, e.deltaY)) return;
+  if (!scrollRegionWantsWheel(target, root, e.deltaX, e.deltaY) && !focusedBoxKeepsWheel(e, root)) return;
   e.stopPropagation();
 }
 
@@ -153,7 +177,8 @@ function forwardPanToCanvas(e, matches) {
 
 // Install wheel passthrough on an in-node DOM widget `root` so the mouse wheel
 // zooms the ComfyUI canvas when the cursor is over the widget (Classic renderer),
-// except over a scrollable region that still has room to scroll - and the
+// except over a scrollable region that still has room to scroll or a text box the
+// user has clicked into - and the
 // middle-button pan passthrough above. In Nodes 2.0 both forwarders no-op and the
 // root is registered with keepWheelForFieldsInNodes2 instead, so its scrollable
 // fields scroll there too. Safe to call unconditionally. Returns an uninstall fn
@@ -170,7 +195,16 @@ export function installCanvasZoomPassthrough(root) {
     if (isVueNodes()) return;                  // Nodes 2.0 forwards to the canvas itself
     // "Zoom the canvas" makes the wheel zoom everywhere on the node, including
     // over a scrollable field (that field is then scrolled with its scrollbar).
-    if (!wheelZoomsOverFields() && scrollRegionWantsWheel(e.target, root, e.deltaX, e.deltaY)) return;
+    // Ctrl/Cmd+wheel always zooms, as it does in Nodes 2.0 (it used to scroll a field
+    // that still had room).
+    if (!e.ctrlKey && !e.metaKey && !wheelZoomsOverFields()) {
+      if (scrollRegionWantsWheel(e.target, root, e.deltaX, e.deltaY)) return;
+      if (focusedBoxKeepsWheel(e, root)) {    // clicked in and at its end: nothing moves
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+    }
     const canvasEl = app?.canvas?.canvas;      // read lazily; the canvas can be recreated
     if (!canvasEl) return;
     e.preventDefault();                        // needs a non-passive listener (below)
