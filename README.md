@@ -251,6 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 2, 2026 · v1.4.248**
+- **Text boxes and the mouse wheel:** once you click into a Pixaroma text box, the wheel only scrolls it and never zooms the canvas, like ComfyUI's own boxes. Ctrl + wheel always zooms the canvas.
+
 ### **November 1, 2026 · v1.4.247**
 - **Group Switch:** a new gear choice, "Keep their own on and off", lets groups inside a group keep their state when you switch the outer one. The default is unchanged.
 
