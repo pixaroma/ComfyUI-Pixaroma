@@ -63,6 +63,7 @@ const CLASS_MODEL = {
   TextEncodeQwenImage21: "qwen21",
   ReferenceMultiLatent: "flux3",
   Flux3LayoutPrompt: "flux3",
+  PH3ImageConditioning: "h3",
   ReferenceLatent: "plain",
   TextEncodeQwenImageEdit: "plain",
   TextEncodeQwenImageEditPlus: "plain",

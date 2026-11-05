@@ -28,7 +28,7 @@ export const REFERENCE_IMAGES_HELP = {
     },
     {
       heading: "Model: Auto",
-      body: "Auto follows the `prompt` wire to see where it goes: into Text Encode Qwen Image 2.1 it writes Qwen's tags, into a FLUX 3 reference node FLUX 3's, into a MiniMax H3 node H3's, and plain words otherwise. The button shows what it found. When the prompt goes through other nodes first (Prompt, Find and Replace, Text Join...), Auto still follows it. Pick the model yourself when it can't tell.",
+      body: "Auto follows the `prompt` wire to see where it goes: into Text Encode Qwen Image 2.1 it writes Qwen's tags, into a FLUX 3 reference node FLUX 3's, into a MiniMax H3 or P-H3 Image node H3's, and plain words otherwise. The button shows what it found. When the prompt goes through other nodes first (Prompt, Find and Replace, Text Join...), Auto still follows it. Pick the model yourself when it can't tell.",
     },
     {
       heading: "The picture list",

@@ -66,6 +66,8 @@ _CLASS_MODEL = {
     "TextEncodeQwenImage21": "qwen21",
     "ReferenceMultiLatent": "flux3",
     "Flux3LayoutPrompt": "flux3",
+    # P-H3-Image (Pruna, ComfyUI 0.44): H3 tags, but its class name has no MiniMaxH3 in it.
+    "PH3ImageConditioning": "h3",
     # Known plain-words readers: a hit here stops the search, so a Klein graph
     # that ALSO holds a FLUX 3 branch further away is not taken for FLUX 3.
     "ReferenceLatent": "plain",
