@@ -251,7 +251,10 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **November 5, 2026 · v1.4.249**
+### **November 5, 2026 · v1.4.249-v1.4.250**
+- **Sizes labels:** put a label (1K, HD, Full HD, 2K, 4K, 8K) on a size to find it faster. Pick it with the new Tag button in settings, it shows at the left of the row.
+- **Sizes:** marking a size, folding the list or changing the colour no longer makes the next Run re-render the whole workflow.
+- **Reference Images:** Auto now knows P-H3 Image.
 - **Save Video:** the gear settings can now encode on your NVIDIA card and aim at a set bitrate in Mbps. Without a card that can do it, it saves with the CPU and says so.
 - **Video colours:** Save Video and Save Mp4 now mark their files as HD colour, so reds and greens look right in players from 720 pixels up.
 - **LoRA Loader:** a missing LoRA now shows a small message while the Run goes on, and a file you add or replace is picked up on the next Run.
