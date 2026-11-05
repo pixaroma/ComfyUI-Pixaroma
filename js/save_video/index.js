@@ -379,6 +379,8 @@ function applyStatus(node, st) {
   node._pixSvFolderShown = st.folder || "";
   const bits = [`${st.w}x${st.h}`, `${st.frames} frames`, `${st.duration}s`];
   if (st.depth) bits.push(st.depth);
+  if (st.encoder) bits.push(st.encoder);
+  if (st.mbps) bits.push(`${st.mbps} Mbps`);
   bits.push(st.saved_to_disk ? "saved" : "preview only, not written to your folder");
   node._pixSvSummary = bits.join(" · ");
   if (st.note) node._pixSvSummary += ` · ${st.note}`;

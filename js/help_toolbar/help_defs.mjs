@@ -1342,6 +1342,8 @@ const HELP = {
         heading: "In the settings",
         defs: [
           ["Quality", "Shows a word beside the number: Small file, Medium, High or Maximum. It is NOT a percentage. High is the default and the point where you cannot see the difference; it is also exactly what Save Mp4 Pixaroma uses, so moving a workflow between the two changes nothing. Winding it to Maximum mostly just grows the file."],
+          ["By quality, by bitrate", "By quality lets the encoder give each moment what it needs, so the bitrate changes from clip to clip. By bitrate aims at a number you set, from 1 to 100 Mbps, so the file size is predictable: 20 Mbps is about 2.5 MB per second. A higher number is not always a better picture, because a simple clip has nothing to spend it on."],
+          ["Encoder", "CPU works on every PC and is the default. NVIDIA card uses the video chip on an NVIDIA graphics card, which is quicker on long videos. MP4 stays H.264 and MP4 HQ stays H.265 either way. If the card cannot do it (no NVIDIA card, an old driver, or a very small video), the video is saved with the CPU instead and the line under the player says so, so a long render is never lost."],
           ["Colour depth", "8 or 10 bit, for MP4 HQ only."],
           ["Trim to audio", "Ends the video exactly where the sound ends, for when the audio is the master. Off keeps every frame and the sound simply stops when it stops."],
           ["Audio fade-in", "Fades the sound in at the very start. AI video clips often begin with a click because the model starts the audio at full level in one step; about 120 ms removes it and is too short to hear as a fade. Leave it off when re-saving audio you do not want altered."],

@@ -46,6 +46,7 @@ from ._video_encode_helpers import (
     validate_rgb_frames,
     metadata_movflags,
     write_ffmetadata_tags,
+    _cleanup,
     _resolve_ffmpeg,
     _write_wav_pcm16,
 )
@@ -59,6 +60,9 @@ DEFAULT_STATE = {
     "pattern": "Video_%date:yyyy-MM-dd%_%counter%",
     "format": "mp4",            # "mp4" (H.264 8-bit) | "mp4hq" (H.265 10-bit)
     "quality": 75,              # 1-100, mapped to the encoder's CRF below
+    "rateMode": "quality",      # "quality" | "bitrate"
+    "bitrateMbps": 20,          # 1-100, only read when rateMode is "bitrate"
+    "encoder": "cpu",           # "cpu" | "nvidia" (falls back to the CPU, see save())
     "bitDepth": 10,             # 8 | 10 - only read for mp4hq
     "trimToAudio": False,
     "audioFadeMs": 0,           # ms of fade-in on the sound; 0 = off (see audio_fade_args)
@@ -93,6 +97,7 @@ FORMATS = {
     "mp4": {
         "ext": ".mp4",
         "vcodec": "libx264",
+        "nvenc": "h264_nvenc",
         "tag": None,
         "pix8": "yuv420p",
         "pix10": None,          # deliberately no 10-bit H.264 - see above
@@ -103,6 +108,7 @@ FORMATS = {
     "mp4hq": {
         "ext": ".mp4",
         "vcodec": "libx265",
+        "nvenc": "hevc_nvenc",
         # Without hvc1 the stream is tagged hev1, which Safari, QuickTime and
         # several players refuse outright. Measured: the file plays with it.
         "tag": "hvc1",
@@ -117,6 +123,19 @@ FORMATS = {
 }
 
 _DEFAULT_FORMAT = "mp4"
+
+# NVENC's quality number (CQ) sits 2 above CRF for the same picture and size:
+# measured against x264 and x265 on a real clip at 1088x1920, 2026-11-05.
+# JS mirror: js/save_video/state.mjs::NVENC_CQ_OFFSET.
+NVENC_CQ_OFFSET = 2
+# Without a maxrate NVENC's quality mode stops near 10 Mbps (H.265) or 16 Mbps
+# (H.264) whatever CQ asks for, so the top of the Quality slider did nothing.
+# Measured: CQ 1, 10 and 18 all gave 10.1 Mbps; CQ 18 with this gave 16.6.
+NVENC_MAXRATE = "200M"
+
+MIN_MBPS = 1
+MAX_MBPS = 100
+DEFAULT_MBPS = 20
 
 
 def format_def(fmt):
@@ -147,6 +166,38 @@ def quality_to_crf(quality, fmt):
     # rounding and JS's Math.round is not - the mirror would drift by one at
     # every .5 (the Longest Side parity trap).
     return int(f["crf_best"] + (100 - q) / 99.0 * span + 0.5)
+
+
+def clamp_mbps(value):
+    """A bitrate in whole Mbps from the state blob. Never raises: the blob can be
+    hand-edited, and json.loads accepts `Infinity`, on which int() raises
+    OverflowError rather than ValueError."""
+    try:
+        return max(MIN_MBPS, min(MAX_MBPS, int(float(value))))
+    except (TypeError, ValueError, OverflowError):
+        return DEFAULT_MBPS
+
+
+def video_args(fmt_id, pix_fmt, crf, mbps=None, nvidia=False):
+    """The encoder part of the ffmpeg command. `mbps` None = aim at a quality
+    (`crf`), a number = aim at that bitrate. With nvidia False and mbps None this
+    is the encode the node has always made, and Save Mp4 makes the same one."""
+    f = format_def(fmt_id)
+    if nvidia:
+        args = ["-c:v", f["nvenc"], "-preset", "p5", "-rc", "vbr"]
+        if mbps is None:
+            args += ["-cq", str(crf + NVENC_CQ_OFFSET), "-b:v", "0", "-maxrate", NVENC_MAXRATE]
+        else:
+            args += ["-b:v", f"{mbps}M"]
+        args += ["-pix_fmt", pix_fmt]
+    else:
+        args = ["-c:v", f["vcodec"], "-preset", "medium"]
+        args += ["-crf", str(crf)] if mbps is None else ["-b:v", f"{mbps}M"]
+        args += ["-pix_fmt", pix_fmt]
+        args += f["extra"]
+    if f["tag"]:
+        args += ["-tag:v", f["tag"]]
+    return args
 
 
 def format_duration(n_frames, fps):
@@ -242,9 +293,10 @@ class PixaromaSaveVideo:
         "default. MP4 HQ is H.265 at 10-bit: gradients like skies and fades stay smooth "
         "instead of banding, and the file is roughly half the size, but it needs a reasonably "
         "recent player. Open the settings with the gear on the node or by right-clicking it "
-        "for quality, colour depth, date style, counter digits, trim to audio, workflow "
-        "embedding, Civitai generation info (so Civitai shows the prompt, steps, seed and "
-        "sampler of videos you upload), and which buttons the node shows.\n\n"
+        "for quality or a set bitrate, the encoder (CPU or NVIDIA card), colour depth, date "
+        "style, counter digits, trim to audio, workflow embedding, Civitai generation info "
+        "(so Civitai shows the prompt, steps, seed and sampler of videos you upload), and "
+        "which buttons the node shows.\n\n"
         "The whole workflow is saved inside the mp4, so you can drag the video back onto "
         "the canvas later and get the graph back, exactly like dragging a PNG. It is "
         "stored the same way ComfyUI's own video saving stores it, so ComfyUI reads it "
@@ -320,6 +372,11 @@ class PixaromaSaveVideo:
         fmt = FORMATS[fmt_id]
         ext = fmt["ext"]
         crf = quality_to_crf(state.get("quality", 75), fmt_id)
+        # Compared against fixed words, so this hidden, unauthenticated state
+        # can only ever pick one of our own encoders.
+        nvidia = str(state.get("encoder", "cpu")).lower() == "nvidia"
+        by_bitrate = str(state.get("rateMode", "quality")).lower() == "bitrate"
+        mbps = clamp_mbps(state.get("bitrateMbps", DEFAULT_MBPS)) if by_bitrate else None
         # 10-bit only where the format actually supports it; MP4 (H.264) has no
         # pix10 entry, so it stays 8-bit whatever the setting says.
         # guarded like its neighbours below: a hand-edited state blob can hold a
@@ -507,7 +564,9 @@ class PixaromaSaveVideo:
                     metadata_path = None
 
         # ---- build the ffmpeg command ----
-        cmd = [
+        # Inputs and outputs are kept apart so the encoder part in the middle can
+        # be swapped when the NVIDIA encoder has to hand over to the CPU.
+        cmd_in = [
             ffmpeg_path, "-y",
             "-loglevel", "error",
             "-f", "rawvideo",
@@ -518,42 +577,75 @@ class PixaromaSaveVideo:
             "-i", "-",
         ]
         if temp_audio_path is not None:
-            cmd += ["-i", temp_audio_path]
+            cmd_in += ["-i", temp_audio_path]
         # The FFMETADATA input has no A/V streams, so it never disturbs ffmpeg's
         # stream auto-selection or -shortest; it goes last and is pulled in with
         # -map_metadata <its input index>.
         meta_input_index = None
         if metadata_path is not None:
             meta_input_index = 1 + (1 if temp_audio_path is not None else 0)
-            cmd += ["-i", metadata_path]
-        cmd += color_args()
-        cmd += ["-c:v", fmt["vcodec"], "-preset", "medium", "-crf", str(crf),
-                "-pix_fmt", pix_fmt]
-        cmd += fmt["extra"]
-        if fmt["tag"]:
-            cmd += ["-tag:v", fmt["tag"]]
+            cmd_in += ["-i", metadata_path]
+        cmd_in += color_args()
+        cmd_out = []
         if temp_audio_path is not None:
-            cmd += ["-c:a", "aac", "-b:a", "192k"]
+            cmd_out += ["-c:a", "aac", "-b:a", "192k"]
             # Only when there IS audio - an -af with no audio stream is an error.
-            cmd += audio_fade_args(state.get("audioFadeMs", 0))
+            cmd_out += audio_fade_args(state.get("audioFadeMs", 0))
             if trim_to_audio:
-                cmd += ["-shortest"]
+                cmd_out += ["-shortest"]
         if meta_input_index is not None:
-            cmd += ["-map_metadata", str(meta_input_index)]
+            cmd_out += ["-map_metadata", str(meta_input_index)]
             # Both flags are the read-back contract - see metadata_movflags().
-            cmd += metadata_movflags()
-        cmd += [out_path]
+            cmd_out += metadata_movflags()
 
         depth = "10-bit" if pix_fmt.endswith("10le") else "8-bit"
-        print(f"[Pixaroma] {LABEL} [{'preview' if not save_on else 'save'}] — "
-              f"{n_frames} frames @ {fps_int}fps ({W}x{H}, {fmt['vcodec']}, {depth}, "
-              f"crf={crf}{', +audio' if temp_audio_path else ''}) -> {out_filename}")
 
-        broke_pipe = encode_frames(
-            cmd, frames, out_path,
-            temp_paths=[temp_audio_path, metadata_path],
-            label=LABEL,
-        )
+        def _encode(path, filename, on_nvidia):
+            vcodec = fmt["nvenc"] if on_nvidia else fmt["vcodec"]
+            if mbps is not None:
+                rate = f"{mbps} Mbps"
+            elif on_nvidia:
+                rate = f"cq={crf + NVENC_CQ_OFFSET}"
+            else:
+                rate = f"crf={crf}"
+            print(f"[Pixaroma] {LABEL} [{'preview' if not save_on else 'save'}] — "
+                  f"{n_frames} frames @ {fps_int}fps ({W}x{H}, {vcodec}, {depth}, "
+                  f"{rate}{', +audio' if temp_audio_path else ''}) -> {filename}")
+            # The temp files stay until the finally below: the CPU encode after a
+            # failed NVIDIA one still needs them.
+            return encode_frames(
+                cmd_in + video_args(fmt_id, pix_fmt, crf, mbps, on_nvidia) + cmd_out + [path],
+                frames, path, temp_paths=(), label=LABEL,
+            )
+
+        try:
+            if nvidia:
+                # A render can take many minutes, so a card that cannot do this
+                # must never cost the video. There is no list of what fails to
+                # check first: no NVIDIA card, an old driver, no free encoder
+                # session, or a size NVENC refuses (128x128 is too small, and
+                # H.264 stops at 4096). ffmpeg simply exits, so the CPU takes
+                # over. Both refusals measured here end as RuntimeError; OSError
+                # is for Python's documented Windows case, where writing into a
+                # dead child is EINVAL rather than BrokenPipeError. Stop is a
+                # BaseException (save-mp4.md #1), so it is never caught here.
+                try:
+                    broke_pipe = _encode(out_path, out_filename, True)
+                except (RuntimeError, OSError) as e:
+                    nvidia = False
+                    why = str(e).encode("ascii", "replace").decode()[-300:]
+                    print(f"[Pixaroma] {LABEL}: the NVIDIA encoder did not start, "
+                          f"using the CPU instead. {why}")
+                    fell_back = "NVIDIA encoder not available, used the CPU"
+                    note = f"{note}, {fell_back}" if note else fell_back
+                    # encode_frames removed the claimed file, so claim again
+                    out_path, out_filename, _n = claim_counter_path(
+                        target_dir, _make_name, start=start, limit=99999999, label=LABEL,
+                    )
+            if not nvidia:
+                broke_pipe = _encode(out_path, out_filename, False)
+        finally:
+            _cleanup([temp_audio_path, metadata_path])
         if broke_pipe:
             print(f"[Pixaroma] {LABEL} — video trimmed to the audio length (trim to audio is on).")
         print(f"[Pixaroma] {LABEL} — saved {out_path}")
@@ -579,6 +671,10 @@ class PixaromaSaveVideo:
             "inside_output": inside_output,
             "saved_to_disk": bool(save_on),
         }
+        if nvidia:
+            status["encoder"] = "NVIDIA"
+        if mbps is not None:
+            status["mbps"] = mbps
         if note:
             status["note"] = note
         entry["_pixaroma_status"] = status

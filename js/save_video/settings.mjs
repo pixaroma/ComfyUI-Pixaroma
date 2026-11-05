@@ -6,7 +6,8 @@
 // two bug fixes they earned; this file owns only its singleton state and rows.
 
 import {
-  readState, writeState, FORMATS, formatDef, visibleFormats, qualityToCrf, qualityLabel,
+  readState, writeState, FORMATS, formatDef, visibleFormats, qualityLabel,
+  encoderQualityText, MIN_MBPS, MAX_MBPS,
 } from "./state.mjs";
 import { injectCSS, el } from "./ui.mjs";
 import { createAccentSection } from "../shared/node_settings.mjs";
@@ -212,17 +213,77 @@ export function openSettingsPanel(node, onChange) {
   afRow.appendChild(afVal);
   afWrap.appendChild(afRow);
 
+  // ── encoder ──
+  // Offered on every PC: finding out whether a card can do this needs a route
+  // and a test encode, and the Python already falls back to the CPU by itself.
+  const encWrap = section(body, "Encoder",
+    "CPU works on every PC. NVIDIA card is quicker on long videos. If the card " +
+    "cannot do it, the video is saved with the CPU and the line under the player " +
+    "says so.");
+  const encRow = el("div", "pix-sv-bgrid");
+  const encChips = {};
+  const paintEnc = () => {
+    const cur = readState(node).encoder === "nvidia" ? "nvidia" : "cpu";
+    for (const id of Object.keys(encChips)) encChips[id].classList.toggle("on", id === cur);
+  };
+  for (const [id, label, title] of [
+    ["cpu", "CPU", "The encoder on your processor. Works on every PC."],
+    ["nvidia", "NVIDIA card", "The video chip on an NVIDIA graphics card (NVENC)."],
+  ]) {
+    const b = el("button", "pix-sv-bchip", label);
+    b.type = "button";
+    b.title = title;
+    encChips[id] = b;
+    b.onclick = () => {
+      const st = readState(node);
+      st.encoder = id;
+      writeState(node, st);
+      paintEnc();
+      showQ(); // CRF or CQ in the hover text
+      _onChange?.();
+    };
+    encRow.appendChild(b);
+  }
+  paintEnc();
+  encWrap.appendChild(encRow);
+
   // ── quality ──
   // Shown as 1-100 because the encoder's own number (CRF) runs BACKWARDS, which
   // is a bad thing to put in front of anyone. The CRF is printed beside it so
   // someone who knows the term can still see what it maps to; qualityToCrf is a
   // mirror of the Python, so the number shown is the number used.
-  const qWrap = section(body, "Quality",
+  const QUALITY_HINT =
     "Not a percentage: video is always compressed, so there is no setting that " +
     "keeps the frames untouched. High is the point where you cannot see the " +
     "difference, and it is what Save Mp4 Pixaroma uses too. Going higher mostly " +
-    "grows the file.");
-  const qRow = el("div", "pix-sv-prow");
+    "grows the file.";
+  const BITRATE_HINT =
+    "How much data each second of video gets. The file size follows it: 20 Mbps " +
+    "is about 2.5 MB per second. More does not always look better, because a " +
+    "simple clip has nothing to spend it on.";
+  const qWrap = section(body, "Quality", QUALITY_HINT);
+  const qHint = qWrap.querySelector(".pix-sv-psub");
+  const modeRow = el("div", "pix-sv-bgrid");
+  const modeChips = {};
+  for (const [id, label, title] of [
+    ["quality", "By quality", "The encoder gives each moment what it needs, so the bitrate changes from clip to clip."],
+    ["bitrate", "By bitrate", "Aims at a number you set, so the file size is predictable."],
+  ]) {
+    const b = el("button", "pix-sv-bchip", label);
+    b.type = "button";
+    b.title = title;
+    modeChips[id] = b;
+    b.onclick = () => {
+      const st = readState(node);
+      st.rateMode = id;
+      writeState(node, st);
+      syncMode();
+      _onChange?.();
+    };
+    modeRow.appendChild(b);
+  }
+  qWrap.appendChild(modeRow);
+  const qRow = el("div", "pix-sv-prow pix-sv-rate");
   const qSl = el("input", "pix-sv-qsl");
   qSl.type = "range";
   qSl.min = "1";
@@ -235,7 +296,7 @@ export function openSettingsPanel(node, onChange) {
     // the WORD is the readout; the encoder's own number stays available on hover
     // for anyone who knows what CRF means, without teaching a backwards scale
     qVal.textContent = `${qSl.value} · ${qualityLabel(qSl.value)}`;
-    qVal.title = `Encoder setting: CRF ${qualityToCrf(qSl.value, st.format)} (lower is higher quality)`;
+    qVal.title = encoderQualityText(qSl.value, st.format, st.encoder);
     qSl.title = qVal.title;
   };
   showQ();
@@ -249,6 +310,40 @@ export function openSettingsPanel(node, onChange) {
   qRow.appendChild(qSl);
   qRow.appendChild(qVal);
   qWrap.appendChild(qRow);
+
+  const bRow = el("div", "pix-sv-prow pix-sv-rate");
+  const bSl = el("input", "pix-sv-qsl");
+  bSl.type = "range";
+  bSl.min = String(MIN_MBPS);
+  bSl.max = String(MAX_MBPS);
+  bSl.step = "1";
+  bSl.value = String(readState(node).bitrateMbps ?? 20);
+  bSl.title = "Target bitrate in megabits per second";
+  const bVal = el("span", "pix-sv-qval", "");
+  const showB = () => {
+    bVal.textContent = `${bSl.value} Mbps`;
+  };
+  showB();
+  bSl.oninput = () => {
+    const st = readState(node);
+    st.bitrateMbps = parseInt(bSl.value, 10);
+    writeState(node, st);
+    showB();
+    _onChange?.();
+  };
+  bRow.appendChild(bSl);
+  bRow.appendChild(bVal);
+  qWrap.appendChild(bRow);
+
+  const syncMode = () => {
+    const byRate = readState(node).rateMode === "bitrate";
+    modeChips.quality.classList.toggle("on", !byRate);
+    modeChips.bitrate.classList.toggle("on", byRate);
+    qRow.style.display = byRate ? "none" : "";
+    bRow.style.display = byRate ? "" : "none";
+    qHint.textContent = byRate ? BITRATE_HINT : QUALITY_HINT;
+  };
+  syncMode();
 
   // ── colour depth ──
   // Only MP4 HQ can do 10-bit. MP4 is H.264, and 10-bit H.264 (High 10) has no

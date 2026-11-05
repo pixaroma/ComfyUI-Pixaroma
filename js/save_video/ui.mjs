@@ -116,6 +116,7 @@ export function injectCSS() {
     ".pix-sv-qval{font-size:12px;color:var(--pix-acc,#f66744);min-width:92px;text-align:right;white-space:nowrap;}",
     ".pix-sv-qsl{flex:1;min-width:0;accent-color:var(--pix-acc,#f66744);}",
     ".pix-sv-bgrid{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}",
+    ".pix-sv-rate{margin-top:7px;}",
     ".pix-sv-bchip{flex:1 1 58px;background:#1d1d1d;border:1px solid #444;color:#aaa;border-radius:4px;padding:4px 8px;font-size:11px;cursor:pointer;font-family:inherit;user-select:none;}",
     ".pix-sv-bchip:hover{border-color:var(--pix-acc,#f66744);color:#ddd;}",
     ".pix-sv-bchip.on{background:var(--pix-acc,#f66744);border-color:var(--pix-acc,#f66744);color:#fff;}",

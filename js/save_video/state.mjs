@@ -14,6 +14,9 @@ export const DEFAULT_STATE = {
   pattern: "Video_%date:yyyy-MM-dd%_%counter%",
   format: "mp4",
   quality: 75,
+  rateMode: "quality", // "quality" | "bitrate"
+  bitrateMbps: 20, // 1-100, only read when rateMode is "bitrate"
+  encoder: "cpu", // "cpu" | "nvidia" (the Python falls back to the CPU by itself)
   bitDepth: 10,
   trimToAudio: false,
   // ms of fade-in on the sound; 0 = off. MIRRORS nodes/node_save_video.py
@@ -99,6 +102,20 @@ export function qualityToCrf(quality, fmtId) {
   q = Math.max(1, Math.min(100, q));
   const span = f.crfWorst - f.crfBest;
   return Math.floor(f.crfBest + ((100 - q) / 99) * span + 0.5);
+}
+
+// MIRRORS node_save_video.py. NVENC's quality number is called CQ and sits 2
+// above CRF for the same picture and size (measured against x264 and x265).
+export const NVENC_CQ_OFFSET = 2;
+export const MIN_MBPS = 1;
+export const MAX_MBPS = 100;
+
+// The hover text on the quality slider: the number the encoder really gets.
+export function encoderQualityText(quality, fmtId, encoder) {
+  const crf = qualityToCrf(quality, fmtId);
+  return encoder === "nvidia"
+    ? `Encoder setting: CQ ${crf + NVENC_CQ_OFFSET} (lower is higher quality)`
+    : `Encoder setting: CRF ${crf} (lower is higher quality)`;
 }
 
 // A WORD for the quality number, because "75" next to the word "Quality" reads
