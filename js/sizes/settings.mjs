@@ -403,7 +403,8 @@ export function openSizesPanel(node, onChange) {
         dragFrom = -1;
       });
 
-      row.append(grip, v, tag, star, del);
+      // The label on the left, the star on the right: the same sides as on the node.
+      row.append(grip, tag, v, star, del);
       list.appendChild(row);
     });
     body.appendChild(list);

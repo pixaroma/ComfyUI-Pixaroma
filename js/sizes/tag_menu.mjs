@@ -98,7 +98,7 @@ export function openTagMenu(anchor, current, accent, onPick) {
 
   const r = anchor.getBoundingClientRect();
   const pad = 8, gap = 4;
-  const left = Math.max(pad, Math.min(r.right - menu.offsetWidth, window.innerWidth - menu.offsetWidth - pad));
+  const left = Math.max(pad, Math.min(r.left, window.innerWidth - menu.offsetWidth - pad));
   let top = r.bottom + gap;
   if (top + menu.offsetHeight > window.innerHeight - pad) top = Math.max(pad, r.top - gap - menu.offsetHeight);
   menu.style.left = left + "px";
