@@ -18,6 +18,8 @@ What lives here:
   build_video_meta_json  the older single-blob form, kept only because it
                          documents the _json_safe NaN trap that both builders
                          depend on. NOTHING calls it; do not reach for it.
+  color_args             the bt709 conversion + the four colour tags, so a file
+                         shows the colours it was given in every player
   validate_rgb_frames    refuse a shape rgb24 cannot carry, BEFORE any file is
                          claimed
   claim_counter_path     atomic O_EXCL name claim with a re-claiming loop
@@ -278,6 +280,27 @@ def audio_fade_args(fade_ms):
     # anything audible here, and avoids a float like 0.12000000000000001 in the
     # command line.
     return ["-af", "afade=t=in:st=0:d=%.3f" % (ms / 1000.0)]
+
+
+def color_args():
+    """ffmpeg args that make a file show the colours it was given.
+
+    Left alone, ffmpeg turns our rgb24 frames into YUV with the old SD (bt601)
+    maths and writes NO colour tags. Chrome and other players then guess from the
+    height: under 720 they guess SD and it happens to match, from 720 up (H3's
+    480x864 too) they guess HD and every saturated colour moves. Measured in real
+    Chrome 2026-11-05: 220,30,30 came back 236,49,28, a max error of 20 values.
+    With this the max error is 2 at every size, on x264, x265 and both NVENCs, and
+    PyAV (Load Video) reads the tagged file back within 3.
+
+    setparams is what writes the tags. The -color_primaries / -color_trc output
+    options are NOT enough on this ffmpeg: it takes those two from the frame, so
+    the file ended up half tagged, and Chrome ignores a half-tagged file and goes
+    back to guessing (640x360 then came out 22 values wrong).
+    """
+    return ["-vf", "scale=out_color_matrix=bt709:out_range=tv,"
+                   "setparams=color_primaries=bt709:color_trc=bt709:"
+                   "colorspace=bt709:range=tv"]
 
 
 def validate_rgb_frames(frames, label="Save Mp4", pix_fmt="yuv420p"):

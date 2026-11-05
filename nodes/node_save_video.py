@@ -41,6 +41,7 @@ from ._video_encode_helpers import (
     build_video_meta_tags,
     civitai_video_prompt,
     claim_counter_path,
+    color_args,
     encode_frames,
     validate_rgb_frames,
     metadata_movflags,
@@ -525,6 +526,7 @@ class PixaromaSaveVideo:
         if metadata_path is not None:
             meta_input_index = 1 + (1 if temp_audio_path is not None else 0)
             cmd += ["-i", metadata_path]
+        cmd += color_args()
         cmd += ["-c:v", fmt["vcodec"], "-preset", "medium", "-crf", str(crf),
                 "-pix_fmt", pix_fmt]
         cmd += fmt["extra"]
