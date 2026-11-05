@@ -416,6 +416,18 @@ app.registerExtension({
   },
 });
 
+// What a Run gets. ComfyUI compares every input to decide what to re-run, so a
+// star, a label, the fold or the colour left in here re-ran everything after this
+// node on the next Run, for the same numbers. Python reads none of them.
+function promptState(raw) {
+  try {
+    const { starred, tags, collapsed, accent, ...rest } = JSON.parse(raw);
+    return JSON.stringify(rest);
+  } catch {
+    return raw;   // Python falls back on a damaged state by itself
+  }
+}
+
 // ── graphToPrompt: inject the per-node state ────────────────────────────────
 // INJECT ONLY - never prune here (Export (API) serialises this same output).
 function buildIndex() {
@@ -456,7 +468,7 @@ app.graphToPrompt = async function (...args) {
         const node = findNode(index, id);
         const state = node?.properties?.[STATE_PROP] || JSON.stringify(DEFAULT_STATE);
         entry.inputs = entry.inputs || {};
-        entry.inputs[HIDDEN_INPUT] = state;
+        entry.inputs[HIDDEN_INPUT] = promptState(state);
       }
     }
   } catch (e) {
