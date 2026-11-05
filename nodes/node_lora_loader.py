@@ -23,6 +23,19 @@ from . import _lora_helpers as H
 _NO_LORAS = "(put LoRAs in models/loras)"
 
 
+def _notify(notices):
+    """Tell the browser that queued this Run (js/lora_loader/index.js shows a toast)."""
+    if not notices:
+        return
+    try:
+        from server import PromptServer
+        srv = PromptServer.instance
+        for notice in notices:
+            srv.send_sync("pixaroma-lora-notice", notice, srv.client_id)
+    except Exception:
+        pass
+
+
 class PixaromaLoraLoader:
     DESCRIPTION = (
         "Stack as many LoRAs as you want in one node. Each LoRA has its own on/off "
@@ -33,7 +46,8 @@ class PixaromaLoraLoader:
         "works with no internet; an optional per-LoRA Civitai lookup can fetch the "
         "official words and a preview when you ask for it. Add LoRAs, all on/off, and "
         "the settings live in the middle of the node; right-click a row to move, "
-        "duplicate, or remove it."
+        "duplicate, or remove it. A LoRA whose file is missing shows in red and is "
+        "skipped: the Run goes on without it and a small message names it."
     )
 
     @classmethod
@@ -57,6 +71,18 @@ class PixaromaLoraLoader:
     )
     FUNCTION = "apply"
     CATEGORY = "👑 Pixaroma/🧰 Utility"
+
+    @classmethod
+    def IS_CHANGED(cls, LoraLoaderState="{}", **kwargs):
+        # A missing LoRA is skipped, not refused, so the Run works and ComfyUI caches
+        # it. Without this, adding the file and pressing Run again changed nothing:
+        # the same inputs came from the cache and the LoRA was never applied.
+        # A plain string, never NaN, or everything downstream re-runs every time.
+        try:
+            return H.missing_key(H.parse_state(LoraLoaderState),
+                                 folder_paths.get_filename_list("loras"))
+        except Exception:
+            return ""
 
     def __init__(self):
         # path -> (lora_state_dict, lora_metadata). What survives BETWEEN runs is the
@@ -103,6 +129,8 @@ class PixaromaLoraLoader:
         resolved = []
         used_paths = set()
         applied = 0
+        missing = []
+        failed = []
         for entry in state["loras"]:
             if not entry.get("on"):
                 continue
@@ -115,6 +143,7 @@ class PixaromaLoraLoader:
                 path = None
             if not path or not os.path.isfile(path):
                 print("[LoRA Loader Pixaroma] skipped (not found): {}".format(name))
+                missing.append(name)
                 continue
 
             sm = float(entry.get("sm", 0.0))
@@ -149,6 +178,9 @@ class PixaromaLoraLoader:
             except Exception as exc:
                 # Load failed -> NOT resolved, so its words don't reach the output.
                 print("[LoRA Loader Pixaroma] failed to apply {}: {}".format(name, exc))
+                failed.append(name)
+
+        _notify(H.skip_notices(missing, failed))
 
         # Triggers come only from resolved rows (collect_triggers gates on `on`; every
         # resolved row is on, so it dedups + joins their picked words).

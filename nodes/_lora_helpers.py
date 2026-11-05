@@ -305,6 +305,49 @@ def _clamp_strength(v):
     return max(-_STATE_MAX_STRENGTH, min(_STATE_MAX_STRENGTH, f))
 
 
+_NOTICE_NAMES = 5  # a toast is small: a long stack says "and N more" instead
+
+
+def _name_list(names):
+    # without the extension, as the rows show it: a toast is narrow and a long
+    # name broke inside ".safetensors"
+    shown = ", ".join(re.sub(r"\.(safetensors|ckpt|pt|pth|bin|sft)$", "", str(n), flags=re.I)
+                      for n in names[:_NOTICE_NAMES])
+    more = len(names) - _NOTICE_NAMES
+    return "{} and {} more".format(shown, more) if more > 0 else shown
+
+
+def skip_notices(missing, failed):
+    """The small messages for rows the Run went on without, as
+    [{'summary', 'detail'}]: one for files that are not there, one for files that
+    are there but would not load. Empty when every row applied."""
+    out = []
+    if missing:
+        n = len(missing)
+        out.append({
+            "summary": "LoRA not found" if n == 1 else "{} LoRAs not found".format(n),
+            "detail": "Skipped, so the Run goes on without {}: {}".format(
+                "it" if n == 1 else "them", _name_list(missing)),
+        })
+    if failed:
+        n = len(failed)
+        out.append({
+            "summary": "LoRA could not be loaded" if n == 1 else "{} LoRAs could not be loaded".format(n),
+            "detail": "Skipped, so the Run goes on without {}: {}. The file may be damaged.".format(
+                "it" if n == 1 else "them", _name_list(failed)),
+        })
+    return out
+
+
+def missing_key(state, available):
+    """Which switched-on rows have no file, as one string, for IS_CHANGED: it
+    changes when a missing LoRA arrives, and only then. `available` is ComfyUI's
+    own list of LoRA names, so no string from the prompt reaches the disk here."""
+    have = set(available)
+    return "|".join(sorted(e["name"] for e in state.get("loras", ())
+                           if e.get("on") and e["name"] not in have))
+
+
 def parse_state(state_str):
     """Normalize the hidden LoraLoaderState JSON into
     {'loras': [...], 'sep': str, 'cacheMode': 'last'|'all'|'none'}.

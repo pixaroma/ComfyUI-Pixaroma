@@ -7,6 +7,7 @@
 // (Vue Compat #9). Info panel, gear panel, dropdown, and row menu live in siblings.
 
 import { app } from "../../../scripts/app.js";
+import { api } from "../../../scripts/api.js";
 import { hideJsonWidget, applyAdaptiveCanvasOnly, installCanvasZoomPassthrough, onNodeDefsRefresh, installRefreshHook } from "../shared/index.mjs";
 import { listLoras, invalidateList, invalidateAllInfo } from "./api.mjs";
 import { isVueNodes } from "../shared/nodes2.mjs";
@@ -264,6 +265,27 @@ app.graphToPrompt = async function (...args) {
   return result;
 };
 
+// A row whose LoRA cannot be used is skipped and the Run goes on, which only the
+// console used to say. Sent by node_lora_loader.py. The same message again within a
+// few seconds is dropped, because an XY Plot sweep runs this node once per square.
+if (!window.__pixLoraNoticeOn) {
+  window.__pixLoraNoticeOn = true;
+  let last = "", lastAt = 0;
+  api.addEventListener("pixaroma-lora-notice", (e) => {
+    const summary = String(e?.detail?.summary || "LoRA Loader Pixaroma");
+    const detail = String(e?.detail?.detail || "");
+    if (summary + detail === last && Date.now() - lastAt < 8000) return;
+    last = summary + detail;
+    lastAt = Date.now();
+    try {
+      app.extensionManager?.toast?.add({ severity: "warn", summary, detail, life: 8000 });
+    } catch {
+      /* no toast service on this frontend: the console line below still tells */
+    }
+    console.warn(`[LoRA Loader Pixaroma] ${summary}. ${detail}`);
+  });
+}
+
 registerNodeHelp(CLASS, {
   title: "LoRA Loader Pixaroma",
   tagline: "Stack many LoRAs in one node, with trigger words read straight from each file.",
@@ -321,6 +343,14 @@ registerNodeHelp(CLASS, {
         "update and nothing is written into your models folder. Tap a word to send it to the triggers " +
         "output, the same as any other word: being remembered means it is offered again, not that it is " +
         "switched on for you. The small x on a word forgets it for that LoRA everywhere.",
+    },
+    {
+      heading: "If a LoRA is missing",
+      body:
+        "A row whose file is not there shows its name in red. The Run does not stop: that LoRA is " +
+        "skipped, its trigger words stay out of the prompt, and a small message at the top of the " +
+        "screen names it, so you know the result was made without it. Download the file or pick " +
+        "another one and press Run again: the node sees the new file by itself.",
     },
     {
       heading: "If you move a LoRA to another folder",
