@@ -30,9 +30,10 @@ function injectCSS() {
 
 function onOutside(e) {
   if (!_menu || _menu.contains(e.target)) return;
-  // Its own button: left to the click, which closes it. Closed here, that click
-  // would find nothing open and open the list straight back up.
-  if (_anchor?.contains(e.target)) return;
+  // A press on its own button: left to the click, which closes it. Closed here,
+  // that click would find nothing open and open the list straight back up. A wheel
+  // there scrolls the panel away from the list, so that one does close it.
+  if (e.type === "pointerdown" && _anchor?.contains(e.target)) return;
   closeTagMenu();
 }
 

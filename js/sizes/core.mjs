@@ -119,13 +119,18 @@ export function toggleStarAt(node, index) {
 // reordered and deleted, so a label follows the SIZE, never a row number, and a
 // deleted size that is added back keeps its label. A key with no row is inert.
 // Only known labels on well-formed keys survive, so a hand-edited file cannot
-// put anything else on the node. The cap keeps the NEWEST keys: a label is
-// always written last, so a pile of old unused keys can never swallow it.
+// put anything else on the node. Past the cap only keys with NO row go, oldest
+// first: a list holds MAX_SIZES rows at most, so a label on a real size can
+// never be pushed out by the keys of sizes deleted long ago.
 export function tagMap(state) {
   const raw = state?.tags;
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
   const good = Object.entries(raw).filter(([k, v]) => /^\d+x\d+$/.test(k) && SIZE_TAGS.includes(v));
-  return Object.fromEntries(good.slice(-MAX_SIZES));
+  const extra = good.length - MAX_SIZES;
+  if (extra <= 0) return Object.fromEntries(good);
+  const rows = new Set((state.sizes || []).map((p) => pairKey(p?.[0], p?.[1])));
+  const drop = new Set(good.filter(([k]) => !rows.has(k)).slice(0, extra).map(([k]) => k));
+  return Object.fromEntries(good.filter(([k]) => !drop.has(k)));
 }
 
 // The label on this [w, h] pair, "" when it has none.
@@ -143,8 +148,8 @@ export function setTagAt(node, index, tag) {
   const key = pairKey(pair[0], pair[1]);
   const tags = tagMap(st);
   if ((tags[key] || "") === tag) return false;
-  delete tags[key];              // re-added below, so it counts as the newest
   if (tag) tags[key] = tag;
+  else delete tags[key];
   st.tags = tags;
   writeState(node, st);
   return true;
