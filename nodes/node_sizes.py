@@ -54,7 +54,8 @@ class PixaromaSizes:
         "sizes are unaffected). A fresh node starts with just 1024 x 1024; open "
         "the settings (the gear) to add, remove, and reorder sizes, load a set "
         "of common sizes, or snap width and height to a multiple of 8, 16, 32, "
-        "or 64 for VAE-friendly dimensions.\n\n"
+        "or 64 for VAE-friendly dimensions. There you can also star a size or "
+        "give it a label like HD or 4K, to find it faster in the list.\n\n"
         "State saves and restores with the workflow."
     )
 

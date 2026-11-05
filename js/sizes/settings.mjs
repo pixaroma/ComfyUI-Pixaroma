@@ -11,9 +11,10 @@ import { pixAsset } from "../shared/api_url.mjs";
 import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 import {
   readState, writeState, addSize, removeSize, reorderSize, addCommonSizes,
-  accentOf, sanitizePair, isStarredPair, toggleStarAt,
+  accentOf, sanitizePair, isStarredPair, toggleStarAt, tagOfPair, setTagAt,
   BRAND, ACCENT_SETTING, SNAP_OPTIONS, MAX_SIZES,
 } from "./core.mjs";
+import { openTagMenu, closeTagMenu, tagMenuOpen } from "./tag_menu.mjs";
 
 let _panel = null;
 let _panelNode = null;
@@ -62,7 +63,7 @@ function injectCSS() {
     .pix-szp-row.flash { animation:pix-szp-flash .75s ease; }
 
     .pix-szp-list { background:rgba(0,0,0,0.28); border-radius:6px; padding:4px; display:flex; flex-direction:column; gap:2px; }
-    .pix-szp-row { display:flex; align-items:center; gap:8px; padding:7px 8px; border-radius:5px; color:#cfcfcf;
+    .pix-szp-row { display:flex; align-items:center; gap:8px; padding:3px 8px; border-radius:5px; color:#cfcfcf;
       background:rgba(255,255,255,0.02); }
     .pix-szp-row.drop-above { box-shadow:inset 0 2px 0 var(--acc,${BRAND}); }
     .pix-szp-row.drop-below { box-shadow:inset 0 -2px 0 var(--acc,${BRAND}); }
@@ -86,6 +87,16 @@ function injectCSS() {
     .pix-szp-row .star:hover { background:#8a8a8a; }
     .pix-szp-row .star.on { background:var(--acc,${BRAND}); }
     .pix-szp-row .star.on:hover { background:var(--acc,${BRAND}); opacity:.8; }
+    /* The label picker. One fixed width, so the column lines up down the list
+       whatever each row holds. */
+    .pix-szp-row .tag { flex:0 0 auto; box-sizing:border-box; width:66px; height:24px; padding:0 6px;
+      display:flex; align-items:center; justify-content:space-between; gap:4px;
+      background:#1d1d1d; border:1px solid #444; border-radius:4px; color:#9a9a9a;
+      font:11px 'Segoe UI',sans-serif; cursor:pointer; user-select:none; }
+    .pix-szp-row .tag.on { color:#e0e0e0; }
+    .pix-szp-row .tag:hover { border-color:var(--acc,${BRAND}); color:#ddd; }
+    .pix-szp-row .tag:focus-visible { outline:2px solid var(--acc,${BRAND}); outline-offset:1px; }
+    .pix-szp-row .tag .arrow { font-size:8px; line-height:1; color:#8a8a8a; }
 
     .pix-szp-field { display:flex; flex-direction:column; gap:5px; }
     .pix-szp-lab { font-size:12px; color:#9a9a9a; }
@@ -189,12 +200,13 @@ function makeDraggable(panel, handle) {
 function outsideClose(e) {
   if (!_panel) return;
   if (_panel.contains(e.target)) return;
-  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop")) return; // the colour picker
+  if (e.target.closest?.(".pix-cp-popup, .pix-cp-modal-backdrop, .pix-szp-tagmenu")) return; // its popups
   closeSizesPanel();
 }
 function escClose(e) {
   if (e.key === "Escape" && _panel) {
     if (document.querySelector(".pix-cp-popup, .pix-cp-modal-backdrop")) return;
+    if (tagMenuOpen()) return;   // Esc closes the tag list first, the panel stays
     e.stopPropagation();
     closeSizesPanel();
   }
@@ -203,6 +215,7 @@ function escClose(e) {
 export function closeSizesPanel() {
   try { _cpHandle?.close(); } catch {}
   _cpHandle = null;
+  closeTagMenu();
   if (_panel) { try { _panel.remove(); } catch {} }
   _panel = null;
   _panelNode = null;
@@ -348,6 +361,21 @@ export function openSizesPanel(node, onChange) {
         if (toggleStarAt(node, i)) { fire({ structural: false }); buildBody(); }
       });
 
+      // Cosmetic like the star: the node keeps its height and its output.
+      const tagNow = tagOfPair(st, pair);
+      const tag = el("button", "tag" + (tagNow ? " on" : ""));
+      tag.type = "button";
+      tag.title = "Add a label to this size, shown on the node";
+      tag.setAttribute("aria-label", tagNow ? `Label: ${tagNow}. Change it` : "Add a label to this size");
+      tag.setAttribute("aria-haspopup", "menu");
+      tag.append(el("span", null, tagNow || "Tag"), el("span", "arrow", "▼"));
+      tag.addEventListener("click", (e) => {
+        e.stopPropagation();
+        openTagMenu(tag, tagNow, accentOf(node), (t) => {
+          if (setTagAt(node, i, t)) { fire({ structural: false }); buildBody(); }
+        });
+      });
+
       const del = el("span", "del", "✕");
       del.title = st.sizes.length > 1 ? "Remove this size" : "Keep at least one size";
       del.addEventListener("click", (e) => {
@@ -375,7 +403,7 @@ export function openSizesPanel(node, onChange) {
         dragFrom = -1;
       });
 
-      row.append(grip, v, star, del);
+      row.append(grip, v, tag, star, del);
       list.appendChild(row);
     });
     body.appendChild(list);

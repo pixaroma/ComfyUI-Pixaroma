@@ -21,6 +21,9 @@ export const COMMON_SIZES = [
   [512, 512], [768, 768], [1024, 1024],
   [1280, 1280], [1536, 1536], [2048, 2048],
 ];
+// The labels a size can carry, in picker order. A closed list, so a label always
+// fits the space beside the numbers on the node.
+export const SIZE_TAGS = ["1K", "HD", "Full HD", "2K", "4K", "8K"];
 
 export const DEFAULT_STATE = {
   version: 1,
@@ -32,6 +35,8 @@ export const DEFAULT_STATE = {
   collapsed: false,        // folded down to show only the selected size
   // Sizes marked "recommended", stored as pairKey STRINGS (see starredKeys).
   starred: [],
+  // Labels (HD, 4K...) as { pairKey: label }, keyed like the stars (see tagMap).
+  tags: {},
   w: 1024,
   h: 1024,
 };
@@ -108,6 +113,43 @@ export function toggleStarAt(node, index) {
   return true;
 }
 
+// ── Labels ("tags") ──────────────────────────────────────────────────────────
+//
+// { pairKey: label }, for the same reasons as the stars above: rows can be
+// reordered and deleted, so a label follows the SIZE, never a row number, and a
+// deleted size that is added back keeps its label. A key with no row is inert.
+// Only known labels on well-formed keys survive, so a hand-edited file cannot
+// put anything else on the node. The cap keeps the NEWEST keys: a label is
+// always written last, so a pile of old unused keys can never swallow it.
+export function tagMap(state) {
+  const raw = state?.tags;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const good = Object.entries(raw).filter(([k, v]) => /^\d+x\d+$/.test(k) && SIZE_TAGS.includes(v));
+  return Object.fromEntries(good.slice(-MAX_SIZES));
+}
+
+// The label on this [w, h] pair, "" when it has none.
+export function tagOfPair(state, pair) {
+  if (!pair) return "";
+  return tagMap(state)[pairKey(pair[0], pair[1])] || "";
+}
+
+// Put `tag` on the size at `index`, or take the label off with "". Returns true
+// when something changed.
+export function setTagAt(node, index, tag) {
+  const st = readState(node);
+  const pair = st.sizes?.[index];
+  if (!pair) return false;
+  const key = pairKey(pair[0], pair[1]);
+  const tags = tagMap(st);
+  if ((tags[key] || "") === tag) return false;
+  delete tags[key];              // re-added below, so it counts as the newest
+  if (tag) tags[key] = tag;
+  st.tags = tags;
+  writeState(node, st);
+  return true;
+}
+
 // Index of an existing size matching w×h (unordered, sanitized), else -1.
 export function findSizeIndex(state, w, h) {
   const [pw, ph] = sanitizePair(w, h);
@@ -153,9 +195,10 @@ export function readState(node) {
       if (st.orientation !== "landscape") st.orientation = "portrait";
       if (!SNAP_OPTIONS.includes(st.snap)) st.snap = 0;
       st.collapsed = !!st.collapsed;
-      // Absent on every workflow saved before stars existed - reads as "none
-      // starred", so old files load unchanged with no migration.
+      // Absent on every workflow saved before stars / labels existed - reads as
+      // "none", so old files load unchanged with no migration.
       st.starred = starredKeys(st);
+      st.tags = tagMap(st);
       return st;
     } catch { /* fall through to default */ }
   }
@@ -174,6 +217,7 @@ export function writeState(node, state) {
   if (!SNAP_OPTIONS.includes(st.snap)) st.snap = 0;
   st.collapsed = !!st.collapsed;
   st.starred = starredKeys(st);
+  st.tags = tagMap(st);
   const [w, h] = finalWH(st);
   st.w = w; st.h = h;
   node.properties[STATE_PROP] = JSON.stringify(st);

@@ -16,7 +16,7 @@ import { pixAsset } from "../shared/api_url.mjs";
 import { installLatentBatch } from "../shared/latent_batch.mjs";
 import {
   BRAND, STATE_PROP, HIDDEN_INPUT, MAX_SIZES,
-  readState, writeState, fmtRow, accentOf, DEFAULT_STATE, isStarredPair,
+  readState, writeState, fmtRow, accentOf, DEFAULT_STATE, isStarredPair, tagOfPair,
 } from "./core.mjs";
 import { openSizesPanel, closeSizesPanelFor } from "./settings.mjs";
 
@@ -118,6 +118,13 @@ function injectCSS() {
       width:11px; height:11px; pointer-events:none; background:var(--acc,${BRAND});
       -webkit-mask:url("${pixAsset("icons/ui/star.svg")}") center/contain no-repeat;
       mask:url("${pixAsset("icons/ui/star.svg")}") center/contain no-repeat; }
+    /* A size's label, on the left where the star is on the right. ABSOLUTE for
+       the same reason: the numbers stay centred and the row height stays fixed. */
+    .pix-sz-tag { position:absolute; left:7px; top:50%; transform:translateY(-50%);
+      box-sizing:border-box; height:16px; padding:0 4px; border-radius:3px;
+      border:1px solid rgba(255,255,255,0.18); color:#bdbdbd; font-size:10px; line-height:14px;
+      font-weight:400; white-space:nowrap; pointer-events:none; }
+    .pix-sz-row.active .pix-sz-tag { border-color:var(--acc,${BRAND}); color:var(--acc,${BRAND}); }
     .pix-sz-hint { margin-top:${GAP}px; text-align:center; color:#6f6f6f; font-size:11px;
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
       display:flex; align-items:center; justify-content:center; gap:5px; }
@@ -202,6 +209,13 @@ function render(node) {
       star.className = "pix-sz-star";
       star.title = "Recommended";
       row.appendChild(star);
+    }
+    const tagText = tagOfPair(st, st.sizes[i]);
+    if (tagText) {
+      const tag = document.createElement("span");
+      tag.className = "pix-sz-tag";
+      tag.textContent = tagText;
+      row.appendChild(tag);
     }
     list.appendChild(row);
   }
@@ -499,6 +513,14 @@ registerNodeHelp(CLASS, {
         "landscape, or removing a size and adding it back all keep them.",
     },
     {
+      heading: "Labels: find a size faster",
+      body:
+        "In settings, click Tag beside a size and pick 1K, HD, Full HD, 2K, 4K or 8K. The label shows at the left of " +
+        "that size on the node, so you can spot it in a long list. Pick No tag to take it off.\n\n" +
+        "A label is a reminder only, like a star. You choose which size gets which label, it changes nothing about " +
+        "what the node sends out, and it follows the size when you reorder the list or flip the orientation.",
+    },
+    {
       heading: "The buttons on the node",
       defs: [
         ["The fold arrow", "Collapses the list down to just the chosen size, or opens it again."],
@@ -509,6 +531,7 @@ registerNodeHelp(CLASS, {
         ["Add, in settings", "Type a width and height, then add it to your list."],
         ["The drag handles, in settings", "Drag a size up or down to reorder the list."],
         ["The star, in settings", "Marks a size as recommended. It then shows a star on the node. Click again to unmark."],
+        ["Tag, in settings", "Puts a label like HD or 4K on a size, shown on the node. Pick No tag to take it off."],
         ["Snap, in settings", "Rounds every size to a multiple of 8, 16, 32 or 64."],
         ["Add common sizes, in settings", "Adds a set of popular square sizes from 512 up to 2048 in one click."],
       ],
