@@ -123,12 +123,10 @@ export function invalidateAllInfo() {
 // so callers can avoid false "missing" marks before the first load.
 export function hasLora(name) {
   if (!_listCache) return null;
-  if (_listCache.includes(name)) return true;
-  // A row saved on another system says flux/a where Windows lists flux\a. The node
-  // loads either, so a plain match showed a working row in red as "skipped".
-  const fold = (s) => String(s).replace(/\\/g, "/");
-  const want = fold(name);
-  return _listCache.some((n) => fold(n) === want);
+  // A row saved on another system says flux/a where Windows lists flux\a, and the
+  // node loads it, so a plain match showed a working row in red as "skipped". One
+  // way only: on Linux and Mac a backslash is part of a name and does NOT load.
+  return _listCache.includes(name) || _listCache.includes(String(name).replace(/\//g, "\\"));
 }
 
 // The last fetched list, or null when nothing has been fetched yet. A SYNC read for

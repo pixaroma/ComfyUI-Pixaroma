@@ -93,7 +93,7 @@ class PixaromaLoraLoader:
             return ""
 
     def __init__(self):
-        # path -> (lora_state_dict, lora_metadata). What survives BETWEEN runs is the
+        # path -> (lora_state_dict, lora_metadata, file stamp). What survives BETWEEN runs is the
         # user's choice (gear "LoRA memory use", carried in the state as cacheMode):
         #   "last" (default) = ComfyUI parity, keep only the most recently used file;
         #   "all"  = keep the whole current stack (fastest re-runs, gigabytes for a
@@ -106,9 +106,14 @@ class PixaromaLoraLoader:
         self._last_path = None
 
     def _get_lora(self, path):
+        # Reused only while the file is the same one: IS_CHANGED re-runs the node
+        # when a LoRA is replaced under its old name, and the old weights from here
+        # would then make a whole new render with nothing to show for it.
+        st = os.stat(path)
+        stamp = (st.st_size, st.st_mtime_ns)
         cached = self._cache.get(path)
-        if cached is not None:
-            return cached
+        if cached is not None and cached[2] == stamp:
+            return cached[0], cached[1]
         try:
             lora, meta = comfy.utils.load_torch_file(path, safe_load=True, return_metadata=True)
         except TypeError:
@@ -117,7 +122,7 @@ class PixaromaLoraLoader:
             # silently handed back the untouched model with no trigger words and no
             # visible error - the LoRA simply never applied.
             lora, meta = comfy.utils.load_torch_file(path, safe_load=True), None
-        self._cache[path] = (lora, meta)
+        self._cache[path] = (lora, meta, stamp)
         return (lora, meta)
 
     def apply(self, model, clip=None, LoraLoaderState="{}"):
