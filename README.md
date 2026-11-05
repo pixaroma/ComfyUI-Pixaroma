@@ -13,7 +13,7 @@
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
-    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-123K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
+    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-124K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
     <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/Discord-98K%20members-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord members"></a>
   </p>
 </div>
@@ -250,6 +250,11 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **November 5, 2026 · v1.4.249**
+- **Save Video:** the gear settings can now encode on your NVIDIA card and aim at a set bitrate in Mbps. Without a card that can do it, it saves with the CPU and says so.
+- **Video colours:** Save Video and Save Mp4 now mark their files as HD colour, so reds and greens look right in players from 720 pixels up.
+- **LoRA Loader:** a missing LoRA now shows a small message while the Run goes on, and a file you add or replace is picked up on the next Run.
 
 ### **November 2, 2026 · v1.4.248**
 - **Text boxes and the mouse wheel:** once you click into a Pixaroma text box, the wheel only scrolls it and never zooms the canvas, like ComfyUI's own boxes. Ctrl + wheel always zooms the canvas.
