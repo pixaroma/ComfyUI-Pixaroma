@@ -122,7 +122,13 @@ export function invalidateAllInfo() {
 // Is this name in the last fetched list? null = list not fetched yet (unknown),
 // so callers can avoid false "missing" marks before the first load.
 export function hasLora(name) {
-  return _listCache ? _listCache.includes(name) : null;
+  if (!_listCache) return null;
+  if (_listCache.includes(name)) return true;
+  // A row saved on another system says flux/a where Windows lists flux\a. The node
+  // loads either, so a plain match showed a working row in red as "skipped".
+  const fold = (s) => String(s).replace(/\\/g, "/");
+  const want = fold(name);
+  return _listCache.some((n) => fold(n) === want);
 }
 
 // The last fetched list, or null when nothing has been fetched yet. A SYNC read for

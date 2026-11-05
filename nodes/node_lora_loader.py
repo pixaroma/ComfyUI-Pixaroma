@@ -74,13 +74,21 @@ class PixaromaLoraLoader:
 
     @classmethod
     def IS_CHANGED(cls, LoraLoaderState="{}", **kwargs):
-        # A missing LoRA is skipped, not refused, so the Run works and ComfyUI caches
-        # it. Without this, adding the file and pressing Run again changed nothing:
-        # the same inputs came from the cache and the LoRA was never applied.
+        # A LoRA that cannot be used is skipped, not refused, so the Run works and
+        # ComfyUI caches it. Without this, fixing it and pressing Run again changed
+        # nothing: the same inputs came from the cache and it was never applied. So
+        # the answer holds which rows have no file, and the size and date of those
+        # that do: a damaged file replaced under the same name is still in the list.
+        # Unchanged files give the same answer, so a normal node caches as before.
         # A plain string, never NaN, or everything downstream re-runs every time.
         try:
-            return H.missing_key(H.parse_state(LoraLoaderState),
-                                 folder_paths.get_filename_list("loras"))
+            missing, present = H.split_by_list(H.parse_state(LoraLoaderState),
+                                                folder_paths.get_filename_list("loras"))
+            stamps = []
+            for name in present:
+                st = os.stat(folder_paths.get_full_path("loras", name))
+                stamps.append("{}:{}:{}".format(name, st.st_size, st.st_mtime_ns))
+            return "|".join(missing + stamps)
         except Exception:
             return ""
 

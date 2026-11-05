@@ -339,13 +339,27 @@ def skip_notices(missing, failed):
     return out
 
 
-def missing_key(state, available):
-    """Which switched-on rows have no file, as one string, for IS_CHANGED: it
-    changes when a missing LoRA arrives, and only then. `available` is ComfyUI's
-    own list of LoRA names, so no string from the prompt reaches the disk here."""
-    have = set(available)
-    return "|".join(sorted(e["name"] for e in state.get("loras", ())
-                           if e.get("on") and e["name"] not in have))
+def split_by_list(state, available):
+    """Sort the switched-on rows into (missing, present) against ComfyUI's own list
+    of LoRA names, for IS_CHANGED. `present` holds the LIST's spelling, so a name
+    from the prompt is never what reaches the disk. Compared the way the OS reads
+    a path: a row saved on another system says flux/a where Windows lists flux\\a,
+    and get_full_path loads either, so a plain == would call a working row missing
+    and never see its file arrive."""
+    have = {os.path.normcase(n): n for n in available}
+    missing, present = [], set()
+    for e in state.get("loras", ()):
+        if not e.get("on"):
+            continue
+        try:
+            hit = have.get(os.path.normcase(os.path.normpath(e["name"])))
+        except (TypeError, ValueError):  # a NUL in a hand-edited name
+            hit = None
+        if hit is None:
+            missing.append(e["name"])
+        else:
+            present.add(hit)
+    return sorted(missing), sorted(present)
 
 
 def parse_state(state_str):
