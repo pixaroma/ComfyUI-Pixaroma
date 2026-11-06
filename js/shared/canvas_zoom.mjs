@@ -46,6 +46,16 @@ function wheelZoomsOverFields() {
   } catch { return false; }
 }
 
+// True when this computed `overflow` value lets `el` scroll its content. A textarea
+// scrolls its own text unless it is `hidden`, but only Chrome reports that: Blink
+// turns `visible` into `auto`, while Firefox answers `visible` for any textarea with
+// no overflow rule of its own. Those boxes looked unscrollable there, so the wheel
+// zoomed, and did nothing once clicked in (Discord, 2026-11-04, Classic + Firefox).
+function overflowScrolls(el, overflow) {
+  return overflow === "auto" || overflow === "scroll"
+    || (overflow === "visible" && el instanceof HTMLTextAreaElement);
+}
+
 // True when an element between `target` and `root` (inclusive) is scrollable AND
 // still has room to scroll in the wheel's direction - i.e. the wheel should
 // scroll THAT element, not zoom the canvas.
@@ -56,15 +66,13 @@ function scrollRegionWantsWheel(target, root, deltaX, deltaY) {
     if (el.nodeType === 1) {
       const cs = getComputedStyle(el);
       if (vertical) {
-        const oy = cs.overflowY;
-        if ((oy === "auto" || oy === "scroll") && el.scrollHeight > el.clientHeight + 1) {
+        if (overflowScrolls(el, cs.overflowY) && el.scrollHeight > el.clientHeight + 1) {
           const atTop = el.scrollTop <= 0;
           const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1;
           if ((deltaY < 0 && !atTop) || (deltaY > 0 && !atBottom)) return true;
         }
       } else {
-        const ox = cs.overflowX;
-        if ((ox === "auto" || ox === "scroll") && el.scrollWidth > el.clientWidth + 1) {
+        if (overflowScrolls(el, cs.overflowX) && el.scrollWidth > el.clientWidth + 1) {
           const atLeft = el.scrollLeft <= 0;
           const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
           if ((deltaX < 0 && !atLeft) || (deltaX > 0 && !atRight)) return true;
@@ -91,8 +99,7 @@ function focusedBoxKeepsWheel(e, root) {
   if (!(active instanceof HTMLTextAreaElement) && !active.isContentEditable) return false;
   let box = active;
   for (let el = active; el && el !== root.parentElement; el = el.parentElement) {
-    const oy = getComputedStyle(el).overflowY;
-    if (oy === "auto" || oy === "scroll") { box = el; break; }
+    if (overflowScrolls(el, getComputedStyle(el).overflowY)) { box = el; break; }
   }
   return e.target instanceof Node && box.contains(e.target);
 }
