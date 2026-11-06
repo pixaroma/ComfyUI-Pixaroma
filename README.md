@@ -251,6 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 6, 2026 · v1.4.251**
+- **Firefox:** the mouse wheel now scrolls Pixaroma text boxes. It used to zoom the canvas, or do nothing once you clicked into the box.
+
 ### **November 5, 2026 · v1.4.249-v1.4.250**
 - **Sizes labels:** put a label (1K, HD, Full HD, 2K, 4K, 8K) on a size to find it faster. Pick it with the new Tag button in settings, it shows at the left of the row.
 - **Sizes:** marking a size, folding the list or changing the colour no longer makes the next Run re-render the whole workflow.
