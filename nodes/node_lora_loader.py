@@ -150,11 +150,10 @@ class PixaromaLoraLoader:
             name = entry["name"]
             if name == _NO_LORAS:
                 continue
-            try:
-                path = folder_paths.get_full_path("loras", name)
-            except Exception:
-                path = None
-            if not path or not os.path.isfile(path):
+            # A row saved on Windows says h3\x; on Linux / Mac that only loads
+            # as h3/x (find_lora_file tries the row's own spelling first).
+            path = H.find_lora_file(name, lambda n: folder_paths.get_full_path("loras", n))
+            if not path:
                 print("[LoRA Loader Pixaroma] skipped (not found): {}".format(name))
                 missing.append(name)
                 continue

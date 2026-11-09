@@ -123,10 +123,13 @@ export function invalidateAllInfo() {
 // so callers can avoid false "missing" marks before the first load.
 export function hasLora(name) {
   if (!_listCache) return null;
-  // A row saved on another system says flux/a where Windows lists flux\a, and the
-  // node loads it, so a plain match showed a working row in red as "skipped". One
-  // way only: on Linux and Mac a backslash is part of a name and does NOT load.
-  return _listCache.includes(name) || _listCache.includes(String(name).replace(/\//g, "\\"));
+  // A row saved on another system says flux/a where Windows lists flux\a, or h3\a
+  // where Linux and Mac list h3/a, and the node loads both (find_lora_file in
+  // _lora_helpers.py), so a plain match showed a working row in red as "skipped".
+  // The row's own spelling is checked first, like the node does.
+  const s = String(name);
+  return _listCache.includes(s) || _listCache.includes(s.replace(/\//g, "\\"))
+    || _listCache.includes(s.replace(/\\/g, "/"));
 }
 
 // The last fetched list, or null when nothing has been fetched yet. A SYNC read for

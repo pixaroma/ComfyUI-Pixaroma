@@ -211,8 +211,12 @@ export function attachInteractions(node, widgetEl, refresh) {
 // ernie\pixabunny26 and krea2\pixabunny26, two different LoRAs sharing a file name,
 // and swapping between those must still clear (patchLora's rule, pattern #12).
 // hasLora() is null while the list is unknown, which counts as "not a move".
+// The same name with the other system's separators (h3\a saved on Windows, h3/a
+// picked on Linux) IS the same file: a re-pick keeps the words too.
 function isMovedLora(oldName, newName) {
   if (!oldName || !newName || oldName === newName) return false;
+  const slashed = (n) => String(n).replace(/\\/g, "/");
+  if (slashed(oldName) === slashed(newName)) return true;
   const fileOf = (n) => String(n).replace(/\\/g, "/").split("/").pop().toLowerCase();
   if (fileOf(oldName) !== fileOf(newName)) return false;
   return hasLora(oldName) === false;

@@ -339,22 +339,54 @@ def skip_notices(missing, failed):
     return out
 
 
+def name_spellings(name):
+    """The spellings of a LoRA name to try, the row's own first. A workflow saved on
+    Windows stores h3\\a. Windows reads h3/a too, but on Linux and Mac a backslash
+    is a plain character in a file name, so such a row was skipped there as "not
+    found" (reported 2026-11-07: 25 of the 27 EP41 workflows). The slash spelling
+    comes second, so a Linux file really named with a backslash still wins."""
+    if not isinstance(name, str) or not name:
+        return []
+    out = [name]
+    if os.sep == "/" and "\\" in name:
+        out.append(name.replace("\\", "/"))
+    return out
+
+
+def find_lora_file(name, full_path):
+    """The first spelling of `name` that `full_path` (folder_paths.get_full_path for
+    "loras") turns into a real file, or None. Never raises."""
+    for n in name_spellings(name):
+        try:
+            p = full_path(n)
+            if p and os.path.isfile(p):
+                return p
+        except Exception:
+            continue
+    return None
+
+
 def split_by_list(state, available):
     """Sort the switched-on rows into (missing, present) against ComfyUI's own list
     of LoRA names, for IS_CHANGED. `present` holds the LIST's spelling, so a name
     from the prompt is never what reaches the disk. Compared the way the OS reads
     a path: a row saved on another system says flux/a where Windows lists flux\\a,
     and get_full_path loads either, so a plain == would call a working row missing
-    and never see its file arrive."""
+    and never see its file arrive. A Windows h3\\a on Linux goes through
+    name_spellings, the same way apply() finds it."""
     have = {os.path.normcase(n): n for n in available}
     missing, present = [], set()
     for e in state.get("loras", ()):
         if not e.get("on"):
             continue
-        try:
-            hit = have.get(os.path.normcase(os.path.normpath(e["name"])))
-        except (TypeError, ValueError):  # a NUL in a hand-edited name
-            hit = None
+        hit = None
+        for n in name_spellings(e["name"]):
+            try:
+                hit = have.get(os.path.normcase(os.path.normpath(n)))
+            except (TypeError, ValueError):  # a NUL in a hand-edited name
+                hit = None
+            if hit is not None:
+                break
         if hit is None:
             missing.append(e["name"])
         else:

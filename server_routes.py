@@ -124,6 +124,7 @@ from .nodes._lora_helpers import (
     custom_preview_version as _lora_custom_preview_version,
     write_custom_preview as _lora_write_custom_preview,
     delete_custom_preview as _lora_delete_custom_preview,
+    find_lora_file as _lora_find_file,
 )
 from .nodes._text_folder_helpers import (
     caption_index as _tfh_caption_index,
@@ -2864,11 +2865,10 @@ def _resolve_lora_path(name):
     is guaranteed to live inside a configured loras directory, or None."""
     if not name or not isinstance(name, str):
         return None
-    try:
-        p = folder_paths.get_full_path("loras", name)
-    except Exception:
-        p = None
-    if not p or not os.path.isfile(p):
+    # A row saved on Windows (h3\x) is found on Linux / Mac too, the same way the
+    # node loads it; the guard below still checks whichever spelling was found.
+    p = _lora_find_file(name, lambda n: folder_paths.get_full_path("loras", n))
+    if not p:
         return None
     # Fail CLOSED: if the loras dirs can't be determined (empty / folder_paths error),
     # refuse rather than serve an unverified path.
