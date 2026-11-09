@@ -21,7 +21,7 @@ import { runTab, eachRestoredOutput } from "../shared/run_tab.mjs";
 import { openUrlInNewTab } from "../shared/open_tab.mjs";
 import { registerNodeSettings, installNodeAccent } from "../shared/node_settings.mjs";
 import { applyFilenameTokenRefs } from "../shared/filename_tokens.mjs";
-import { resolveWiredName, setPreviewPath, WIRED_TIP } from "../shared/wired_name.mjs";
+import { resolveWiredName, setPreviewPath, previewTip, markRunTime } from "../shared/wired_name.mjs";
 import {
   COMFY_CLASS,
   HIDDEN_INPUT_NAME,
@@ -626,7 +626,7 @@ function updatePreview(node) {
   const display =
     (folder ? folder.replace(/\//g, "\\") : "…\\ComfyUI\\output") +
     "\\" +
-    rel.split("/").filter(Boolean).join("\\");
+    markRunTime(rel).split("/").filter(Boolean).join("\\"); // %run_time%: the name part only
   // Denial is keyed to the same cntKey as the resolved path, so a stale answer
   // for a folder the user has since edited can never colour the new one.
   if (
@@ -639,9 +639,11 @@ function updatePreview(node) {
       "Pixaroma only writes to ComfyUI's own folders and to folders you picked " +
       "with Browse. Picking this folder in the system dialog approves it for good.";
   } else {
-    const wiredUnknown = setPreviewPath(ui.prevPath, display, "pix-si-wired");
+    // a wired name or %run_time% (only known at run time) is drawn as a marked
+    // placeholder, and the tooltip says which and why
+    const placeholder = setPreviewPath(ui.prevPath, display, "pix-si-wired");
     ui.prevPath.style.color = "";
-    ui.prevPath.title = wiredUnknown ? WIRED_TIP : "";
+    ui.prevPath.title = placeholder ? previewTip(display) : "";
   }
   scheduleCounterFetch(node, st.folder || "", s + ext, digits);
 }

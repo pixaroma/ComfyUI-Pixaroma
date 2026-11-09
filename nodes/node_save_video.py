@@ -34,6 +34,9 @@ from ._save_helpers import (
     _next_counter,
     _resolve_save_folder,
     _safe_prefix,
+    fill_run_time,
+    note_run_start,
+    run_time_text,
     strip_stale_preview,
 )
 from ._video_encode_helpers import (
@@ -287,7 +290,8 @@ class PixaromaSaveVideo:
         "filename field supports tokens and shows a live 'Will save as' preview of the exact "
         "file that will be written. Tokens: %input% (the wired name input), %date:yyyy-MM-dd% "
         "(and any date or time format), %counter% (auto-incrementing, never overwrites), "
-        "%width%, %height%, %fps%, %frames%, %duration%, plus node references like "
+        "%width%, %height%, %fps%, %frames%, %duration%, %run_time% (how long the run took "
+        "until this node saved, e.g. 42s or 1m05s), plus node references like "
         "%Seed Pixaroma.seed%. Use / in the name to create subfolders.\n\n"
         "Two formats. MP4 is H.264 at 8-bit and plays everywhere, which is why it is the "
         "default. MP4 HQ is H.265 at 10-bit: gradients like skies and fades stay smooth "
@@ -350,6 +354,10 @@ class PixaromaSaveVideo:
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
+        # ComfyUI calls this once at the START of every run, before any node
+        # executes: that is the %run_time% clock (_save_helpers.note_run_start,
+        # which never raises).
+        note_run_start()
         # Always re-execute so every Run actually saves. Without this, deleting
         # the saved files and clicking Run again does NOTHING (ComfyUI's
         # input-hash cache skips the node) - a real day-one report on Save Image.
@@ -358,6 +366,9 @@ class PixaromaSaveVideo:
 
     def save(self, video_frames, fps, audio=None, name=None, SaveVideoState="",
              prompt=None, extra_pnginfo=None, unique_id=None):
+        # %run_time%: read FIRST, the moment this node starts on the run (the
+        # encode that follows is not part of it)
+        run_time = run_time_text()
         state = dict(DEFAULT_STATE)
         try:
             data = json.loads(SaveVideoState) if SaveVideoState else {}
@@ -467,16 +478,20 @@ class PixaromaSaveVideo:
         sub_dirs = parts[:-1]
         # %counter% in a FOLDER segment resolves against existing sibling dirs,
         # so take_%counter%/clip makes take_001, take_002 per run rather than a
-        # folder literally named take_%counter%.
+        # folder literally named take_%counter%. %run_time% is filled AFTER each
+        # %counter% scan, so the counter keeps counting across run times.
         if sub_dirs and any("%counter%" in d for d in sub_dirs):
             resolved_dirs = []
             parent = folder_abs
             for d in sub_dirs:
                 if "%counter%" in d:
                     d = d.replace("%counter%", f"{_next_counter(parent, d):0{digits}}")
+                d = fill_run_time(d, run_time)
                 resolved_dirs.append(d)
                 parent = os.path.join(parent, d)
             sub_dirs = resolved_dirs
+        else:
+            sub_dirs = [fill_run_time(d, run_time) for d in sub_dirs]
         target_dir = os.path.join(folder_abs, *sub_dirs) if sub_dirs else folder_abs
         try:
             os.makedirs(target_dir, exist_ok=True)
@@ -488,11 +503,12 @@ class PixaromaSaveVideo:
         has_counter = "%counter%" in base_tpl
         if has_counter:
             def _make_name(n):
-                return base_tpl.replace("%counter%", f"{n:0{digits}}") + ext
+                return fill_run_time(base_tpl.replace("%counter%", f"{n:0{digits}}"), run_time) + ext
             start = lambda: _next_counter(target_dir, base_tpl + ext)  # noqa: E731
         else:
             def _make_name(n):
-                return (base_tpl + ext) if n == 0 else f"{base_tpl}_{n:0{digits}}{ext}"
+                stem = fill_run_time(base_tpl, run_time)
+                return (stem + ext) if n == 0 else f"{stem}_{n:0{digits}}{ext}"
             start = 0
         out_path, out_filename, _n = claim_counter_path(
             target_dir, _make_name, start=start, limit=99999999, label=LABEL,

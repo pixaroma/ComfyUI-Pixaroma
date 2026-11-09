@@ -23,7 +23,14 @@ from ._video_encode_helpers import (
 # Expands %date:...% and sanitises the prefix. The SAME helper the three sibling
 # save nodes use (Save Image, Save Video, Preview Image), so the four cannot
 # drift on what a filename may contain. See the fix note in save().
-from ._save_helpers import _safe_prefix
+from ._save_helpers import (
+    RUN_TIME_TOKEN,
+    _next_counter,
+    _safe_prefix,
+    fill_run_time,
+    note_run_start,
+    run_time_text,
+)
 from ._video_input_helpers import resolve_sources
 
 # Honour ComfyUI's global --disable-metadata flag (same as SaveImage). Wrapped so
@@ -116,7 +123,7 @@ class PixaromaSaveMp4:
                 "fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0,
                     "tooltip": "Output frame rate for the video_frames input. Wire Audio React Pixaroma's fps output here so it always matches what produced the frames. A video wired into the video input brings its own frame rate and keeps it, so this is ignored for that input."}),
                 "filename_prefix": ("STRING", {"default": "Video",
-                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Use '/' for subfolders, date tokens like %date:yyyy-MM-dd%, and node references like %Seed Pixaroma.seed% that print another node's field value into the name."}),
+                    "tooltip": "Filename stem. The node appends a 5-digit counter and .mp4 (e.g. Video_00001.mp4). Use '/' for subfolders, date tokens like %date:yyyy-MM-dd%, %run_time% for how long the run took until this node saved (e.g. 1m05s), and node references like %Seed Pixaroma.seed% that print another node's field value into the name."}),
                 "save_mode": (["save", "preview"], {"default": "save",
                     "tooltip": "save: write to ComfyUI's output/ folder, kept across restarts. preview: write to ComfyUI's temp/ folder, auto-cleared on restart, so use it while iterating and you will not clutter output/. The in-node video preview works the same in both modes."}),
                 "trim_to_audio": ("BOOLEAN", {"default": False,
@@ -170,6 +177,19 @@ class PixaromaSaveMp4:
     OUTPUT_NODE = True
     CATEGORY = "👑 Pixaroma/🖼️ Image"
 
+    @classmethod
+    def IS_CHANGED(cls, **kwargs):
+        # ONLY the %run_time% clock: ComfyUI calls this once at the START of
+        # every run, before any node executes (_save_helpers.note_run_start,
+        # which never raises).
+        # ⚠️ The answer must stay a CONSTANT, never NaN (save-mp4.md #15): it
+        # is part of the node's cache key, and a constant keeps that key the
+        # same from run to run - so a Run with nothing changed still reuses
+        # the encoded video exactly as it did when this method did not exist.
+        # NaN would re-encode the whole video on every Run.
+        note_run_start()
+        return False
+
     # Every parameter carries a default, INCLUDING the ones that are still
     # `required` in INPUT_TYPES, purely so the positional order never changes:
     # video_frames has to be defaultable now that it is optional, and Python
@@ -181,6 +201,9 @@ class PixaromaSaveMp4:
              save_mode="save", trim_to_audio=False,
              audio_fade_ms=0, audio=None, video=None,
              prompt=None, extra_pnginfo=None, unique_id=None, CivitaiMeta=""):
+        # %run_time%: read FIRST, the moment this node starts on the run (the
+        # encode that follows is not part of it)
+        run_time = run_time_text()
         crf = self._CRF
         pix_fmt = self._PIX_FMT
         fps_int = max(1, int(round(float(fps))))
@@ -260,6 +283,14 @@ class PixaromaSaveMp4:
         # resolved in the browser at submit time by installFilenameTokenResolver
         # (js/save_mp4/index.js), so Python only ever sees the finished value.
         filename_prefix = _safe_prefix(filename_prefix) or "Video"
+        # %run_time% (the time from the run's start to this node): its FOLDER
+        # part is filled now, because core's get_save_image_path creates the
+        # folder; its FILE part stays a token through the counter scan below
+        # and is filled per name, so Clip_%run_time% goes Clip_42s_00001,
+        # Clip_47s_00002 instead of every run time restarting at 00001.
+        if RUN_TIME_TOKEN in filename_prefix:
+            head, sep, leaf = filename_prefix.rpartition("/")
+            filename_prefix = fill_run_time(head, run_time) + sep + leaf
         full_folder, fname, _ignored, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, out_dir, W, H,
         )
@@ -269,10 +300,15 @@ class PixaromaSaveMp4:
         # each other. Touch the file inside the lock to claim it - passing the
         # scan as a callable keeps it under the same lock, as the inline version
         # had it.
+        if RUN_TIME_TOKEN in fname:
+            # _next_counter reads %run_time% as "any run time"
+            scan = lambda: _next_counter(full_folder, fname + "_%counter%.mp4")  # noqa: E731
+        else:
+            scan = lambda: _next_mp4_counter(full_folder, fname)  # noqa: E731
         out_path, out_filename, counter = claim_counter_path(
             full_folder,
-            lambda n: f"{fname}_{n:05d}.mp4",
-            start=lambda: _next_mp4_counter(full_folder, fname),
+            lambda n: fill_run_time(f"{fname}_{n:05d}.mp4", run_time),
+            start=scan,
             label="Save Mp4",
         )
 

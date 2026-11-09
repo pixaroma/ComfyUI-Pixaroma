@@ -1084,6 +1084,7 @@ const HELP = {
           ["%year% %month% %day% %hour% %minute% %second%", "Native ComfyUI tokens, same values as the built-in Save Image node. %date:...% does the same thing in a shorter form."],
           ["%width% / %height%", "The image size in pixels."],
           ["%batch_num%", "The frame's position inside a batch (0, 1, 2 ...)."],
+          ["%run_time%", "How long the run took until this node saved, like 42s, 1m05s or 1h02m05s. The clock starts when ComfyUI starts the run, so time spent waiting in the queue does not count, and it stops when this node saves, so it can be a little under ComfyUI's own \"Prompt executed in\" time. The counter keeps counting whatever the time: `image_%counter%_%run_time%` gives image_001_42s.png, then image_002_47s.png. Keep a _ or - between %counter% and %run_time%, or the two numbers run together and the counter jumps. `Save now` after a Preview writes the time of the run that made the picture. The `Will save as` line shows it as ‹run time› until a run fills it in. If ComfyUI is started with --cache-none it cannot tell when a run began, and the name gets the word unknown instead."],
           ["%Seed Pixaroma.seed%", "A node reference: prints another node's value into the name, like the seed that made the image. The `+ Model` chip builds one automatically for your model loader, so the model's name lands in the filename."],
         ],
       },
@@ -1239,6 +1240,7 @@ const HELP = {
           "Set `save_mode` to `preview` (temp, auto-cleared on restart) or `save` (kept in output).",
           "The preview remembers the last clip, so it comes back when you switch workflows. If that file has since been deleted, moved, or cleared from temp by a restart, the node tells you instead of showing a black player: just run again.",
           "Set `filename_prefix` to name the file; a 5-digit counter is added automatically. You can print another node's value into the name with a token like `%Seed Pixaroma.seed%`.",
+          "Put `%run_time%` in `filename_prefix` to write how long the run took until this node saved, like 42s or 1m05s: `Clip_%run_time%` gives Clip_1m05s_00001.mp4. The clock starts when ComfyUI starts the run, so waiting in the queue does not count, and the counter keeps going up whatever the time. If ComfyUI is started with --cache-none it cannot tell when a run began, and the name gets the word unknown instead.",
           "Enable `trim_to_audio` to end the video at the audio length.",
           "Set `audio_fade_ms` to fade the sound in at the very start. AI video models often begin their audio at full level in a single step, which is heard as a click; about `120` removes it and is too short to notice as a fade. Leave it at `0` when you are re-saving a video whose sound you do not want changed.",
         ],
@@ -1314,6 +1316,7 @@ const HELP = {
             ["The frame rate in the name", "Video_%fps%fps_%counter%", "Video_24fps_001.mp4"],
             ["The length in the name", "Video_%duration%s_%counter%", "Video_3-4s_001.mp4"],
             ["The frame count in the name", "Video_%frames%f_%counter%", "Video_81f_001.mp4"],
+            ["How long the run took", "Video_%counter%_%run_time%", "Video_001_1m05s.mp4"],
             ["Keep the wired name", "%input%_%counter%", "bunny_001.mp4"],
             ["A folder named after the wired name", "%input%/Video_%counter%", "bunny\\Video_001.mp4"],
           ],
@@ -1321,7 +1324,7 @@ const HELP = {
       },
       {
         heading: "Why some tokens stay as words until you run",
-        body: "The preview line can only show what it already knows. The frame rate is on the node, so `%fps%` fills in straight away. But `%frames%`, `%duration%`, `%width%` and `%height%` come from the video itself, so they stay written out as `%frames%` and so on until the first run, then fill in from then on. `%Seed Pixaroma.seed%` is the same: it fills in once there is a Seed Pixaroma node in the workflow. Nothing is wrong when you see them spelled out, and the saved file always gets the real values.",
+        body: "The preview line can only show what it already knows. The frame rate is on the node, so `%fps%` fills in straight away. But `%frames%`, `%duration%`, `%width%` and `%height%` come from the video itself, so they stay written out as `%frames%` and so on until the first run, then fill in from then on. `%Seed Pixaroma.seed%` is the same: it fills in once there is a Seed Pixaroma node in the workflow. Nothing is wrong when you see them spelled out, and the saved file always gets the real values.\n\n`%run_time%` is how long the run took until this node saved, like 42s, 1m05s or 1h02m05s, timed from when ComfyUI starts the run (waiting in the queue does not count; the encoding that follows does not either). Only a run can know it, so the line always shows it as ‹run time›. The counter keeps counting whatever the time, so `Video_%counter%_%run_time%` goes Video_001_1m05s.mp4, then Video_002_58s.mp4. Keep a _ or - between %counter% and %run_time%, or the two numbers run together and the counter jumps. If ComfyUI is started with --cache-none it cannot tell when a run began, and the name gets the word unknown instead.",
       },
       {
         heading: "The buttons on the node",

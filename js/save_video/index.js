@@ -20,7 +20,7 @@ import { runTab, eachRestoredOutput } from "../shared/run_tab.mjs";
 import { openUrlInNewTab } from "../shared/open_tab.mjs";
 import { registerNodeSettings, installNodeAccent } from "../shared/node_settings.mjs";
 import { applyFilenameTokenRefs } from "../shared/filename_tokens.mjs";
-import { resolveWiredName, setPreviewPath, WIRED_TIP } from "../shared/wired_name.mjs";
+import { resolveWiredName, setPreviewPath, previewTip, markRunTime } from "../shared/wired_name.mjs";
 import {
   COMFY_CLASS,
   HIDDEN_INPUT_NAME,
@@ -207,7 +207,7 @@ function updatePreview(node) {
   const display =
     (folder ? folder.replace(/\//g, "\\") : "…\\ComfyUI\\output") +
     "\\" +
-    rel.split("/").filter(Boolean).join("\\");
+    markRunTime(rel).split("/").filter(Boolean).join("\\"); // %run_time%: the name part only
 
   if (node._pixSvCntDenied && node._pixSvCntResolvedFor === cntKey(st.folder || "", s + ext, digits)) {
     ui.prevPath.textContent = "This folder is not approved - click Browse and pick it once";
@@ -216,9 +216,11 @@ function updatePreview(node) {
       "Pixaroma only writes to ComfyUI's own folders and to folders you picked with " +
       "the Browse button. Pick this one once and it stays approved.";
   } else {
-    const wiredUnknown = setPreviewPath(ui.prevPath, display, "pix-sv-wired");
+    // a wired name or %run_time% (only known at run time) is drawn as a marked
+    // placeholder, and the tooltip says which and why
+    const placeholder = setPreviewPath(ui.prevPath, display, "pix-sv-wired");
     ui.prevPath.style.color = "";
-    ui.prevPath.title = wiredUnknown ? WIRED_TIP : display;
+    ui.prevPath.title = placeholder ? previewTip(display) : display;
   }
 }
 

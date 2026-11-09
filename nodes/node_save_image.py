@@ -34,6 +34,9 @@ from ._save_helpers import (
     _next_counter,
     _resolve_save_folder,
     _safe_prefix,
+    fill_run_time,
+    note_run_start,
+    run_time_text,
     strip_stale_preview,
 )
 
@@ -326,14 +329,15 @@ def _contain_folder(folder_raw):
 
 
 def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
-                  folder_abs, inside_output):
+                  folder_abs, inside_output, run_time=None):
     """Write `frames`, (batch index, PIL image) pairs, into the save folder
     -> (ui entries, status).
 
     The ONE write path: a Save run and Save now both come through here, so the
     naming, the counter, the formats and the metadata cannot drift apart.
     `frames` may be a generator, so a long batch is still converted one frame
-    at a time.
+    at a time. `run_time` is the %run_time% text of the RUN that made the
+    pictures (Save now passes the one stored with its Preview run).
     """
     raw_fmt = str(state.get("format", "png")).lower()
     if raw_fmt in ("jpg", "jpeg"):
@@ -440,6 +444,8 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
         # batch shares the folder), scanning existing sibling dirs so
         # e.g. take_%counter%/frame makes take_00001, take_00002, ...
         # per run instead of a folder literally named take_%counter%.
+        # %run_time% is filled AFTER each %counter% scan, so a folder like
+        # take_%counter%_%run_time% keeps counting across run times.
         if sub_dirs and any("%counter%" in d for d in sub_dirs):
             resolved_dirs = []
             parent = folder_abs
@@ -449,9 +455,12 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
                     if ck not in dir_counters:
                         dir_counters[ck] = _next_counter(parent, d)
                     d = d.replace("%counter%", f"{dir_counters[ck]:0{digits}}")
+                d = fill_run_time(d, run_time)
                 resolved_dirs.append(d)
                 parent = os.path.join(parent, d)
             sub_dirs = resolved_dirs
+        else:
+            sub_dirs = [fill_run_time(d, run_time) for d in sub_dirs]
         target_dir = os.path.join(folder_abs, *sub_dirs) if sub_dirs else folder_abs
         try:
             os.makedirs(target_dir, exist_ok=True)
@@ -475,11 +484,12 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
         path = fname = None
         while True:
             if has_counter:
-                fname = base_tpl.replace("%counter%", f"{counter:0{digits}}") + ext
+                fname = fill_run_time(
+                    base_tpl.replace("%counter%", f"{counter:0{digits}}"), run_time) + ext
             elif suffix == 0:
-                fname = base_tpl + ext
+                fname = fill_run_time(base_tpl, run_time) + ext
             else:
-                fname = f"{base_tpl}_{suffix:0{digits}}{ext}"
+                fname = f"{fill_run_time(base_tpl, run_time)}_{suffix:0{digits}}{ext}"
             cand = os.path.join(target_dir, fname)
             try:
                 fd = os.open(cand, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
@@ -672,6 +682,8 @@ def save_now(data):
         results, run_status = _write_frames(
             frames, run_state, run["name"], run["w"], run["h"], run["prompt"],
             run["extra_pnginfo"], run["unique_id"], folder_abs, inside_output,
+            # the run that MADE the pictures, not the click (it is long over)
+            run_time=run.get("run_time"),
         )
         if results:
             results[0].pop("_pixaroma_status", None)
@@ -693,7 +705,8 @@ class PixaromaSaveImage:
         "empty to use the output folder. The filename field supports tokens and shows a live 'Will save as' "
         "preview of the exact file that will be written. Tokens: %input% (the wired name input, e.g. the filename "
         "from Load Image Pixaroma), %date:yyyy-MM-dd% (and any date/time format), %counter% (auto-incrementing, "
-        "never overwrites), %width%, %height%, %batch_num%, plus node references like %Seed Pixaroma.seed%. "
+        "never overwrites), %width%, %height%, %batch_num%, %run_time% (how long the run took until "
+        "this node saved, e.g. 42s or 1m05s), plus node references like %Seed Pixaroma.seed%. "
         "Use / in the name to create subfolders. Three formats: PNG (lossless, keeps transparency, drags back "
         "into ComfyUI to reload the workflow), WebP (much smaller, keeps transparency, and it also drags back "
         "in to reload the workflow), or JPG (small and universal, no transparency, and ComfyUI cannot reload "
@@ -740,6 +753,10 @@ class PixaromaSaveImage:
 
     @classmethod
     def IS_CHANGED(cls, **kwargs):
+        # ComfyUI calls this once at the START of every run, before any node
+        # executes: that is the %run_time% clock (_save_helpers.note_run_start,
+        # which never raises).
+        note_run_start()
         # Always re-execute so every Run actually saves. Without this,
         # deleting the saved files and clicking Run again did NOTHING
         # (ComfyUI's input-hash cache skipped the node) - real user report
@@ -748,6 +765,8 @@ class PixaromaSaveImage:
 
     def save(self, images, name=None, SaveImageState="", prompt=None, extra_pnginfo=None,
              unique_id=None):
+        # %run_time%: read FIRST, the moment this node starts on the run
+        run_time = run_time_text()
         state = _parse_state(SaveImageState)
         save_on = bool(state.get("saveOnRun", True))
 
@@ -779,6 +798,9 @@ class PixaromaSaveImage:
                 "prompt": prompt,
                 "extra_pnginfo": extra_pnginfo,
                 "unique_id": unique_id,
+                # %run_time% belongs to the picture: a later Save now writes
+                # how long THIS run took, not how long ago it was
+                "run_time": run_time,
             }
             entries = []
             for i, tensor in enumerate(images):
@@ -804,7 +826,7 @@ class PixaromaSaveImage:
         frames = ((i, _tensor_to_pil(t)) for i, t in enumerate(images))
         results, _status = _write_frames(
             frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
-            folder_abs, inside_output,
+            folder_abs, inside_output, run_time=run_time,
         )
 
         # Inside output/: emit the standard ui.images key so the Media Assets

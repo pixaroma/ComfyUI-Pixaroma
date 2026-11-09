@@ -10,6 +10,7 @@ import math
 import os
 import re
 import time
+from collections import OrderedDict
 
 from PIL.PngImagePlugin import PngInfo
 
@@ -269,14 +270,117 @@ def _resolve_save_folder(raw):
 _COUNTER_TOKEN = "%counter%"
 
 
+# ---- %run_time%: how long the run has been going when the save node runs ----
+#
+# Asked for twice on 2026-11-05 (render tests, "the render time in the file
+# name"). ComfyUI gives Python no clean run start: main.py's start time is a
+# local, and extra_data's create_time is the QUEUE time, wrong whenever Runs
+# wait in the queue. What it does give: execution.py execute_async builds an
+# IsChangedCache right after the `execution_start` message, and cache.set_prompt
+# calls every node's IS_CHANGED once, BEFORE any node executes - inside
+# CurrentNodeContext(prompt_id), the same context the node's FUNCTION later runs
+# in. So IS_CHANGED stamps the clock for its prompt id, and the save reads it
+# back for the same prompt id. Keyed by prompt id with setdefault, so the first
+# stamp of a run wins: a second save node, or an IS_CHANGED reached later in
+# the run (graph expansion), cannot move the start, and a Run waiting in the
+# queue gets its own start only when ComfyUI starts executing it.
+#
+# Not available with --cache-none (ComfyUI's NullCache never calls IS_CHANGED),
+# or on a ComfyUI without comfy_execution.utils: the token then writes
+# RUN_TIME_UNKNOWN instead of a made-up number.
+RUN_TIME_TOKEN = "%run_time%"
+RUN_TIME_UNKNOWN = "unknown"
+# What fill_run_time can write, for _next_counter's scan. The literal token is
+# in it too, so a name that kept it (a node that does not fill it) still counts.
+_RUN_TIME_RX = r"(?:\d+h\d{2}m\d{2}s|\d+m\d{2}s|\d+s|unknown|%run_time%)"
+_RUN_STARTS = OrderedDict()  # prompt id -> time.monotonic() at its start
+_RUN_STARTS_CAP = 64
+
+
+def _current_prompt_id():
+    """The prompt id ComfyUI is executing on this thread, or None."""
+    try:
+        from comfy_execution.utils import get_executing_context
+        ctx = get_executing_context()
+        return getattr(ctx, "prompt_id", None) if ctx is not None else None
+    except Exception:
+        return None
+
+
+def note_run_start():
+    """Stamp the start of the current run. Call it from IS_CHANGED; never
+    raises (an IS_CHANGED that raises makes ComfyUI re-run the node)."""
+    try:
+        pid = _current_prompt_id()
+        if pid is None or pid in _RUN_STARTS:
+            return
+        _RUN_STARTS[pid] = time.monotonic()
+        while len(_RUN_STARTS) > _RUN_STARTS_CAP:
+            _RUN_STARTS.popitem(last=False)
+    except Exception:
+        pass
+
+
+def format_run_time(seconds):
+    """Seconds -> file-name safe text: 42s, 1m05s, 1h02m05s (no colon).
+    None -> RUN_TIME_UNKNOWN. Rounded half up, like a stopwatch reading."""
+    if seconds is None:
+        return RUN_TIME_UNKNOWN
+    try:
+        sec = float(seconds)
+        if not math.isfinite(sec):
+            return RUN_TIME_UNKNOWN
+        total = int(math.floor(max(0.0, sec) + 0.5))
+    except Exception:
+        return RUN_TIME_UNKNOWN
+    h, rest = divmod(total, 3600)
+    m, s = divmod(rest, 60)
+    if h:
+        return "%dh%02dm%02ds" % (h, m, s)
+    if m:
+        return "%dm%02ds" % (m, s)
+    return "%ds" % s
+
+
+def run_time_text():
+    """The %run_time% value for the save running now: the time since its run
+    started, formatted by format_run_time."""
+    try:
+        pid = _current_prompt_id()
+        start = _RUN_STARTS.get(pid) if pid is not None else None
+        return format_run_time(None if start is None else time.monotonic() - start)
+    except Exception:
+        return RUN_TIME_UNKNOWN
+
+
+def fill_run_time(s, text):
+    """Put the run time into a name or folder segment. `text` None -> the
+    unknown word. Done AFTER _safe_prefix and the %counter% scan (the
+    %batch_num% precedent), so the counter keeps counting across run times."""
+    if not isinstance(s, str) or RUN_TIME_TOKEN not in s:
+        return s
+    return s.replace(RUN_TIME_TOKEN, text if isinstance(text, str) and text else RUN_TIME_UNKNOWN)
+
+
+def _scan_rx(s):
+    """re.escape, with %run_time% matching any run time (see _next_counter)."""
+    esc = re.escape(s)
+    if RUN_TIME_TOKEN in s:
+        esc = esc.replace(re.escape(RUN_TIME_TOKEN), _RUN_TIME_RX)
+    return esc
+
+
 def _next_counter(dir_path, name_template):
     """Next %counter% value for name_template inside dir_path (max found + 1).
 
     name_template is a FINAL file name (extension included) with %counter%
-    still in it, everything else already resolved. Scan is case-insensitive
-    (Windows filesystems are). Missing/unreadable dir or no token -> 1.
-    Files are never overwritten: the caller claims the name with O_EXCL and
-    bumps on collision, so this is just the fast starting point.
+    still in it, everything else already resolved - except %run_time%, which
+    may still be in it and then matches ANY run time: `x_%counter%_%run_time%`
+    goes 001_42s, 002_47s, ... instead of every run starting its own count at
+    001 (each run time would otherwise be a new name family). Scan is
+    case-insensitive (Windows filesystems are). Missing/unreadable dir or no
+    token -> 1. Files are never overwritten: the caller claims the name with
+    O_EXCL and bumps on collision, so this is just the fast starting point.
     """
     if _COUNTER_TOKEN not in name_template:
         return 1
@@ -287,7 +391,7 @@ def _next_counter(dir_path, name_template):
     except OSError:
         return 1
     rx = re.compile(
-        "^" + re.escape(pre) + r"(\d+)" + re.escape(post) + "$", re.IGNORECASE
+        "^" + _scan_rx(pre) + r"(\d+)" + _scan_rx(post) + "$", re.IGNORECASE
     )
     mx = 0
     for n in names:
