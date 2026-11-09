@@ -29,6 +29,7 @@ from ._ai_prompt_helpers import (
     extra_image_keys,
     generate_kwargs,
     generate_with_fallback,
+    listed_name,
     parse_state,
     plan_prompt,
     reasoning_only,
@@ -208,7 +209,17 @@ def _load_clip(name, clip_type, label="AI Prompt", needed=None):
     # already normalises the name so a traversal cannot escape the folder, but
     # confirming the file is one this node offered keeps the error honest: the
     # user picked something specific and it is not there.
-    if name not in _available():
+    # A workflow saved on Windows names qwen\x, Linux and Mac list qwen/x (and
+    # the other way round): listed_name maps it to THIS list's spelling, so the
+    # same file is found and shares one cache entry.
+    listed = listed_name(name, _available())
+    if listed is not None and listed != name:
+        name = listed
+        key = (name, clip_type)
+        cached = _CLIP_CACHE.get(key)
+        if cached is not None:
+            return cached
+    if listed is None:
         have = _available()
         raise RuntimeError(
             "[Pixaroma] %s: the model \"%s\" is not in your "

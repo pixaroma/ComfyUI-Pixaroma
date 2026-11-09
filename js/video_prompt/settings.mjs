@@ -26,7 +26,7 @@ import { installGraphUndoGuard } from "../shared/graph_undo_guard.mjs";
 // prompt: a ComfyUI Desktop pane refuses them SILENTLY (confirm = false in 1 ms,
 // nothing shown), so Reset, Reset all and Import did nothing and an import error
 // said nothing (ai-prompt.md #19 / #19c, video-prompt.md #24).
-import { askConfirm, sayIt } from "../ai_prompt/settings.mjs";
+import { askConfirm, sayIt, hasModelFile } from "../ai_prompt/settings.mjs";
 // Duration Pixaroma's recipe list, shared rather than copied: it is pure data
 // with no imports and no side effects, and one list means the two nodes cannot
 // drift on what "Wan" means.
@@ -642,7 +642,7 @@ function renderPanel(node, body) {
       "A Load CLIP node is wired in, so that model is used and this setting is "
       + "ignored. It must be a vision language model, and Load CLIP's type does "
       + "not matter. Unplug the wire to choose here again."));
-  } else if (models.length && !models.includes(st.model)) {
+  } else if (models.length && !hasModelFile(models, st.model)) {
     body.appendChild(el("div", "pix-vpp-note",
       "\"" + st.model + "\" is not in your text_encoders folder, so the node "
       + "picks the best vision model it can find. Choose one here to be sure."));

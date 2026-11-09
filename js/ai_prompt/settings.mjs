@@ -791,6 +791,17 @@ let ON_CHANGE = null;
 let USER_MOVED = false;
 let CP_HANDLE = null;
 let MODELS = { ok: true, models: [], sizes: {}, error: null };
+
+// Is `name` one of the listed text encoder files? A workflow saved on Windows
+// names qwen\x where Linux and Mac list qwen/x (and the other way round), and
+// the node loads it either way (listed_name in _ai_prompt_helpers.py), so the
+// panel must not call it missing. Shared with Video Prompt's panel.
+export function hasModelFile(list, name) {
+  if (!Array.isArray(list) || typeof name !== "string" || !name) return false;
+  if (list.includes(name)) return true;
+  const want = name.replace(/\\/g, "/");
+  return list.some((n) => typeof n === "string" && n.replace(/\\/g, "/") === want);
+}
 // ok starts FALSE: it means "a read has succeeded at least once", not "this
 // object is fine".
 let PRESETS = { ok: false, shipped: [], user: [], userError: false };
@@ -1249,7 +1260,7 @@ function renderPanel(node, body) {
     body.appendChild(el("div", "pix-app-note",
       "Nothing chosen, so this node passes its text straight through. That is a "
       + "working state, not an error."));
-  } else if (!MODELS.models.includes(st.model)) {
+  } else if (!hasModelFile(MODELS.models, st.model)) {
     body.appendChild(el("div", "pix-app-note",
       "\"" + st.model + "\" is not in your text_encoders folder. The node will "
       + "stop with a message until you pick one that is."));

@@ -123,6 +123,14 @@ def pick_model(available, wanted):
     names = [n for n in (available or []) if isinstance(n, str)]
     if isinstance(wanted, str) and wanted in names:
         return wanted, False
+    # A workflow saved on Windows names qwen\x, Linux and Mac list qwen/x (and
+    # the other way round). The same file, so not a substitution: without this
+    # Linux silently picked whatever scored best instead.
+    if isinstance(wanted, str) and wanted:
+        want = wanted.replace("\\", "/")
+        for n in names:
+            if n.replace("\\", "/") == want:
+                return n, False
     scored = [(s, n) for s, n in ((_score_model(n), n) for n in names) if s > 0]
     if not scored:
         return None, False

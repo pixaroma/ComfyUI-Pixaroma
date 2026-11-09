@@ -111,6 +111,24 @@ def _clamp(value, fallback, lo, hi):
     return max(lo, min(hi, out))
 
 
+def listed_name(name, available):
+    """The entry of `available` (ComfyUI's own list of model names) that `name`
+    means, or None. A workflow saved on Windows names qwen\\x, Linux and Mac list
+    qwen/x, and the other way round: the folder separators are the only
+    difference allowed. The exact name wins. Used by AI / Music Prompt; Video
+    Prompt's pick_model folds the same way inline, so keep the two in step."""
+    if not isinstance(name, str) or not name:
+        return None
+    names = [n for n in (available or ()) if isinstance(n, str)]
+    if name in names:
+        return name
+    want = name.replace("\\", "/")
+    for n in names:
+        if n.replace("\\", "/") == want:
+            return n
+    return None
+
+
 def as_text(value):
     """A string, whatever arrived.
 
