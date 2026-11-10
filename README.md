@@ -251,6 +251,12 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 10, 2026 · v1.4.252**
+- **Save Image, Save Video, Save Mp4:** new `%run_time%` file-name token writes how long the run took, like 42s or 1m05s. The counter keeps counting.
+- **LoRA Loader on Linux and Mac:** LoRAs from a workflow saved on Windows are found again instead of shown red and skipped.
+- **AI Prompt, Music Prompt, Video Prompt:** a text encoder saved on Windows (or the other way round) is found on Linux and Mac.
+- **Inpaint Crop:** the mask editor's crop box and size now match what the node really cuts, and the picture on the node always shows the image you paint on.
+
 ### **November 6, 2026 · v1.4.251**
 - **Firefox:** the mouse wheel now scrolls Pixaroma text boxes. It used to zoom the canvas, or do nothing once you clicked into the box.
 
