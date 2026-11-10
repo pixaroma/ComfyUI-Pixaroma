@@ -452,11 +452,17 @@ app.registerExtension({
         try { app.ui.settings?.setSettingValueAsync?.("Pixaroma.Inpaint.PreviewColor", name); } catch {}
       };
 
-      editor.onSave = (jsonStr, extra, preview) => {
+      // The face shows the SOURCE picture on every path (Run, reopen, tab switch,
+      // wiring), so Save does too: the widget write below repaints it through
+      // setValue (refreshSourcePreview when `image` is wired, else the saved
+      // src_path; with neither it keeps the source drawn at open). It used to ALSO show the editor's crop
+      // here, and the two loads raced - 2 crop / 8 source over 10 Saves, then a Run
+      // put the source back ("the preview switches to the entire image", 2026-11-10).
+      // The crop itself is the `image` output; the editor's box shows it while painting.
+      editor.onSave = (jsonStr, extra) => {
         stateJson = jsonStr;
         if (widget) widget.value = { state_json: jsonStr };
         writeBackWidgets(node, extra);
-        if (preview) showNodePreview(parts, preview, null, node);
         if (app.graph) { app.graph.setDirtyCanvas(true, true); app.graph.change?.(); }
         captureBrush();
       };

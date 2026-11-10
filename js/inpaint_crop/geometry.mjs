@@ -2,9 +2,9 @@
 // Inpaint Crop Pixaroma — geometry (JS mirror of nodes/_inpaint_helpers.py)
 // Keep computeRegion() 1:1 with the Python compute_region so the editor's live
 // crop-rectangle preview matches what the node actually produces. Source of
-// truth: docs/inpaint-crop-math.md. The ONLY accepted drift is sub-pixel rect
-// placement (Python uses banker's rounding, JS uses round-half-up) - a +/-1px
-// preview offset, never a different output size.
+// truth: docs/inpaint-crop-math.md. Every rounding here is half-to-EVEN like
+// Python's round(): a half-UP Math.round changed the rect size at an exact .5 and
+// with it the output (904 in the editor, 896 from the node, 2026-11-10).
 // ============================================================
 
 export const GEO_DEFAULTS = {
@@ -28,7 +28,7 @@ const roundMult = (v, m) => {
   m = Math.max(1, Math.round(m));
   return Math.max(m, roundHalfEven(v / m) * m);
 };
-const clampi = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+const clampi = (v, lo, hi) => Math.max(lo, Math.min(hi, roundHalfEven(v)));
 
 export function computeRegion(bbox, W, H, params) {
   const p = { ...GEO_DEFAULTS, ...(params || {}) };
@@ -57,13 +57,13 @@ export function computeRegion(bbox, W, H, params) {
   }
 
   // place + clamp the SOURCE region inside the image
-  let rw_i = Math.max(1, Math.min(Math.round(rw), W));
-  let rh_i = Math.max(1, Math.min(Math.round(rh), H));
+  let rw_i = Math.max(1, Math.min(roundHalfEven(rw), W));
+  let rh_i = Math.max(1, Math.min(roundHalfEven(rh), H));
   if (mode === "force") {
     // keep source aspect == target aspect after the image-bound clamp (mirror).
     const aspect = tw / th;
-    if (rw_i > rh_i * aspect) rw_i = Math.max(1, Math.round(rh_i * aspect));
-    else rh_i = Math.max(1, Math.round(rw_i / aspect));
+    if (rw_i > rh_i * aspect) rw_i = Math.max(1, roundHalfEven(rh_i * aspect));
+    else rh_i = Math.max(1, roundHalfEven(rw_i / aspect));
   }
   const rx = clampi(cx - rw_i / 2, 0, W - rw_i);
   const ry = clampi(cy - rh_i / 2, 0, H - rh_i);
@@ -99,7 +99,10 @@ export function computeRegion(bbox, W, H, params) {
 
 // Bounding box of painted pixels from a mask canvas's alpha channel.
 // Returns [x0,y0,x1,y1] (x1/y1 exclusive) or null when nothing is painted.
-export function maskBBoxFromImageData(data, w, h, thresh = 8) {
+// thresh 127 = alpha >= 128, the node's `mask > 0.5` (preprocess_mask). It was 8,
+// which also counted the brush's faint anti-aliased rim: the editor box came out a
+// pixel wider each side and its crop size one `multiple` step off (728 vs 720).
+export function maskBBoxFromImageData(data, w, h, thresh = 127) {
   let x0 = w, y0 = h, x1 = 0, y1 = 0, found = false;
   for (let y = 0; y < h; y++) {
     let row = y * w * 4;

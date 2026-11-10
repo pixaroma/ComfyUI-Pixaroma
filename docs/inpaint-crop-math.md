@@ -13,7 +13,7 @@ Mirrored 1:1 by `js/inpaint_crop/geometry.mjs::computeRegion`. From the painted 
    - `force`: the fixed `target_w x target_h` (the source was already re-imposed to that aspect in step 2).
    - `free`: the cropped size rounded to `multiple`, capped at `max_size`.
 
-Only accepted drift: sub-pixel rect placement (Python banker's rounding vs JS round-half-up = +/-1 px on `rx`/`ry`).
+No accepted drift: the editor's box, rect and output size equal the node's exactly. Two rules make that true. Every rounding in the JS is half-to-even, like Python's `round()` (half-up once made the editor read 904 where the node made 896). And the editor's mask box counts only pixels at alpha >= 128, the node's `mask > 0.5`; counting the brush's faint anti-aliased rim made it 1 px wider each side (728 vs 720).
 
 ## 2. Conditioning mask (`apply_inpaint_crop`)
 
