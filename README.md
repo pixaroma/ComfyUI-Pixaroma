@@ -251,6 +251,11 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 11, 2026 · v1.4.253**
+- **Resolution, big sizes:** a new Normal / Big switch beside the width output. Big gives every ratio 8 sizes from about 4 to 17 MP, up to MiniMax H3 Image's 16 MP sizes.
+- **Resolution, custom sizes:** Custom Resolution and Custom Ratio now go up to 8192 per side (was 4096), so 5472 x 3072 fits.
+- **Resolution:** the ratio beside the snap buttons stays on one line; the megapixels now show under the preview.
+
 ### **November 10, 2026 · v1.4.252**
 - **Save Image, Save Video, Save Mp4:** new `%run_time%` file-name token writes how long the run took, like 42s or 1m05s. The counter keeps counting.
 - **LoRA Loader on Linux and Mac:** LoRAs from a workflow saved on Windows are found again instead of shown red and skipped.
