@@ -521,16 +521,18 @@ function megapixels(w, h) {
 
 function snapTo(n, step) { return Math.round(n / step) * step; }
 // The custom modes' size range. 64 is the node's real floor (Python clamps to
-// 64..16384); it was 256, which broke Custom Ratio's small sizes (#5). 4096 stays
-// as a typo guard. Both are multiples of every snap step (8 / 16 / 32 / 64).
+// 64..16384); it was 256, which broke Custom Ratio's small sizes (#5). 8192 stays
+// as a typo guard; it was 4096, which kept every 16 MP shape but the square out
+// (MiniMax H3 Image: 5472 x 3072, 3552 x 4736; #7). Both are multiples of every
+// snap step (8 / 16 / 32 / 64).
 const MIN_DIM = 64;
-const MAX_DIM = 4096;
+const MAX_DIM = 8192;
 function clampDim(n) { return Math.max(MIN_DIM, Math.min(MAX_DIM, n)); }
 
 // Custom Ratio: the DRIVING side (the one typed or clicked) snapped, the other
 // side from the ratio, and when either leaves MIN_DIM..MAX_DIM the PAIR is
 // scaled to fit, so the typed ratio always holds. Clamping one side alone gave
-// 512 x 256 for 21:9 + the 512 button and 4096 x 4096 for 16:9 + H 4096, both
+// 512 x 256 for 21:9 + the 512 button and (at the old 4096 cap) 4096 x 4096 for 16:9 + H 4096, both
 // under a "21:9" / "16:9" label (resolution.md #5). In range it is exactly the
 // old maths (snap the driver, derive and snap the other side).
 function ratioPair(raw, fromW, rW, rH, step) {
@@ -539,7 +541,7 @@ function ratioPair(raw, fromW, rW, rH, step) {
   let [w, h] = make(raw);
   if (Math.max(w, h) > MAX_DIM) [w, h] = make((raw * MAX_DIM) / Math.max(raw, other(raw)));
   else if (Math.min(w, h) < MIN_DIM) [w, h] = make((raw * MIN_DIM) / Math.min(raw, other(raw)));
-  // a ratio beyond 64:1 cannot fit both limits: the clamp is the last word
+  // a ratio beyond 128:1 (8192 / 64) cannot fit both limits: the clamp is the last word
   return [clampDim(w), clampDim(h)];
 }
 

@@ -97,7 +97,7 @@ export const KEYWORDS = {
   PixaromaTextWatermark: "signature logo copyright brand stamp font ttf otf typeface custom font own font install font fonts folder",
 
   // ── Values ──
-  PixaromaResolution: "size width height ratio dimensions aspect latent empty latent image batch batch size",
+  PixaromaResolution: "size width height ratio dimensions aspect latent empty latent image batch batch size megapixel mp 16mp large big",
   PixaromaSizes: "preset list dimensions size resolution star starred recommended favourite favorite mark best supported latent empty latent image batch batch size tag tags label labels hd full hd fullhd 720p 1080p 1k 2k 4k 8k uhd",
   PixaromaSliders: "slider knob dashboard remote control panel dropdown checkpoint list filter refresh new model",
   PixaromaSeed: "random fixed number sampler noise",

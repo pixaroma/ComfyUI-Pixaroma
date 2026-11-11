@@ -1884,8 +1884,8 @@ const HELP = {
         heading: "Modes",
         defs: [
           ["Preset", "Pick a ratio chip, then a preset size for that ratio. Covers SDXL, AI video, and social media sizes."],
-          ["Custom Ratio", "Type any W:H (such as 21:9) and get auto-computed AI-friendly sizes. Sizes stay between 64 and 4096: when one side would go past that, both sides shrink or grow together, so the ratio holds."],
-          ["Custom Resolution", "Type exact pixel dimensions, from 64 to 4096. Math expressions like `1024+128` or `512*2` work in the W and H fields."],
+          ["Custom Ratio", "Type any W:H (such as 21:9) and get auto-computed AI-friendly sizes. Sizes stay between 64 and 8192: when one side would go past that, both sides shrink or grow together, so the ratio holds."],
+          ["Custom Resolution", "Type exact pixel dimensions, from 64 to 8192 (16 MP pictures such as 5472 x 3072 fit). Math expressions like `1024+128` or `512*2` work in the W and H fields."],
         ],
       },
       {
