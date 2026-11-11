@@ -5,6 +5,7 @@ import { BRAND, hideJsonWidget, applyAdaptiveCanvasOnly,
 import { pixAsset } from "../shared/api_url.mjs";
 import { isComfyTextShortcut } from "../shared/text_shortcuts.mjs";
 import { installLatentBatch } from "../shared/latent_batch.mjs";
+import { installScaleSwitch } from "./scale_switch.mjs";
 
 // Node dimensions are LOCKED — width and height. The original "make it
 // resizable" attempt was a workaround for the default height being too small
@@ -499,6 +500,46 @@ const DEFAULT_PER_RATIO = {
   "4:5":  [1024, 1280], // SDXL-friendly portrait + Instagram-portrait equivalent
 };
 
+// The "Big" lists (the Normal | Big switch beside the width dot, resolution.md #8):
+// 8 sizes per ratio from about 4 to 17 MP, every side a multiple of 32 (MiniMax H3
+// Image's grid, so also fine for 8 / 16 / 64-grid models), exact ratios except
+// 3840 x 2176 (4K on the 32 grid) and the top 16:9 / 9:16 / 4:3 / 3:4 / 1:1 rows,
+// which are MiniMax H3 Image's own 16 MP sizes (4096 x 4096, 5472 x 3072, 4736 x 3552).
+const BIG_SIZES = {
+  "1:1":  [[2304,2304],[2560,2560],[2816,2816],[3072,3072],[3328,3328],[3584,3584],[3840,3840],[4096,4096]],
+  "16:9": [[2560,1440],[3072,1728],[3584,2016],[3840,2176],[4096,2304],[4608,2592],[5120,2880],[5472,3072]],
+  "9:16": [[1440,2560],[1728,3072],[2016,3584],[2176,3840],[2304,4096],[2592,4608],[2880,5120],[3072,5472]],
+  "2:1":  [[2816,1408],[3072,1536],[3584,1792],[4096,2048],[4608,2304],[5120,2560],[5376,2688],[5760,2880]],
+  "3:2":  [[2496,1664],[2880,1920],[3072,2048],[3456,2304],[3840,2560],[4224,2816],[4608,3072],[4992,3328]],
+  "2:3":  [[1664,2496],[1920,2880],[2048,3072],[2304,3456],[2560,3840],[2816,4224],[3072,4608],[3328,4992]],
+  "4:3":  [[2304,1728],[2560,1920],[2816,2112],[3328,2496],[3584,2688],[4096,3072],[4352,3264],[4736,3552]],
+  "3:4":  [[1728,2304],[1920,2560],[2112,2816],[2496,3328],[2688,3584],[3072,4096],[3264,4352],[3552,4736]],
+  "4:5":  [[1792,2240],[2048,2560],[2304,2880],[2560,3200],[2816,3520],[3072,3840],[3328,4160],[3584,4480]],
+};
+
+// The size a ratio chip picks in the Big list: about 8 MP (4K-class), the middle of
+// the range MiniMax H3 Image does best at for text to image (4 to 8 MP).
+const BIG_DEFAULT_PER_RATIO = {
+  "1:1":  [2816, 2816],
+  "16:9": [3840, 2176],
+  "9:16": [2176, 3840],
+  "2:1":  [4096, 2048],
+  "3:2":  [3456, 2304],
+  "2:3":  [2304, 3456],
+  "4:3":  [3328, 2496],
+  "3:4":  [2496, 3328],
+  "4:5":  [2560, 3200],
+};
+
+/** The list a ratio shows: Big when the state says so (`big: true`), else Normal. */
+function sizesFor(ratio, big) {
+  return (big ? BIG_SIZES : SIZES)[ratio] || [];
+}
+function defaultFor(ratio, big) {
+  const d = (big ? BIG_DEFAULT_PER_RATIO : DEFAULT_PER_RATIO)[ratio];
+  return d || sizesFor(ratio, big)[0] || [1024, 1024];
+}
+
 function gcd(a, b) {
   a = Math.abs(a); b = Math.abs(b);
   while (b) { const t = b; b = a % b; a = t; }
@@ -734,7 +775,7 @@ function renderSizeList(state) {
   // doesn't need this — its W/H inputs own keyboard input.
   wrap.tabIndex = 0;
   if (state.mode !== "preset") return wrap; // Custom mode handled in Task 5
-  const sizes = SIZES[state.ratio] || [];
+  const sizes = sizesFor(state.ratio, state.big);
   // Render 8 rows; pad with .empty rows if the ratio has fewer than 8
   for (let i = 0; i < 8; i++) {
     const row = document.createElement("div");
@@ -1300,8 +1341,10 @@ function renderUI(node) {
   } else {
     root.appendChild(renderSizeList(state));
   }
-  // The innerHTML wipe above took the Classic batch band with it: put it back.
+  // The innerHTML wipe above took the Classic batch band and the Normal | Big
+  // switch with it: put them back.
   node._pixLb?.mount();
+  node._pixScale?.mount();
 }
 
 function setupResolutionNode(node) {
@@ -1372,9 +1415,8 @@ function setupResolutionNode(node) {
         const [w, h] = ratioPair(cur.w >= 256 ? cur.w : 1024, true, rW, rH, step);
         writeState(node, { ...cur, mode: "custom_ratio", w, h });
       } else {
-        const sizes = SIZES[id];
-        if (!sizes) return;
-        const [w, h] = DEFAULT_PER_RATIO[id] || sizes[0];
+        if (!SIZES[id]) return;
+        const [w, h] = defaultFor(id, cur.big);
         writeState(node, { ...cur, mode: "preset", ratio: id, w, h });
       }
       renderUI(node);
@@ -1408,7 +1450,7 @@ function setupResolutionNode(node) {
     if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) return;
     const cur = readState(node);
     if (cur.mode !== "preset") return;
-    const sizes = SIZES[cur.ratio] || [];
+    const sizes = sizesFor(cur.ratio, cur.big);
     if (sizes.length === 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -1447,6 +1489,28 @@ function setupResolutionNode(node) {
     write: (n) => writeState(node, { ...readState(node), batch: n }),
   });
 
+  // Normal | Big: which list the ratio chips show, on the level of the `width`
+  // dot (output 0), one row above the batch stepper; the node size stays locked.
+  // Stored as state.big (absent = Normal). Picking a list shows it (preset mode,
+  // the same ratio) and selects that list's default size for the ratio.
+  node._pixScale = installScaleSwitch(node, {
+    outputIndex: 0,
+    getRoot: () => node._pixResRoot,
+    read: () => !!readState(node).big,
+    pick: (big) => {
+      const cur = readState(node);
+      if (cur.mode === "preset" && !!cur.big === big) return false;
+      const ratio = SIZES[cur.ratio] ? cur.ratio : "1:1";
+      const [w, h] = defaultFor(ratio, big);
+      const next = { ...cur, mode: "preset", ratio, w, h };
+      if (big) next.big = true;
+      else delete next.big;
+      writeState(node, next);
+      renderUI(node);
+      return true;
+    },
+  });
+
   // Deferred initial render. By the time the microtask fires, Vue will have
   // called configure() on this node (if it's being restored from a saved
   // workflow) so widget.value reflects the saved state and we render it
@@ -1463,6 +1527,7 @@ function setupResolutionNode(node) {
       root.appendChild(renderSizeList(state));
     }
     node._pixLb?.mount();
+    node._pixScale?.mount();
   });
 }
 
