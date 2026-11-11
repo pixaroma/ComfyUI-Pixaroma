@@ -235,8 +235,9 @@ function injectCSS() {
     .pix-res-readout {
       display: flex;
       align-items: center;
-      /* snap-group pinned left, ratio/MP pinned right — text length changes
-         on the right side then can't push the snap chips around. */
+      /* snap-group pinned left, the ratio pinned right: text length changes
+         on the right side then can't push the snap chips around. The MP is on
+         the size line under the preview (resolution.md #9). */
       justify-content: space-between;
       gap: 6px;
       padding: 0 2px;
@@ -709,9 +710,13 @@ function sizePreviewRect(el, pw, ph) {
 // w / h come from the saved state, which a shared workflow controls: written
 // into innerHTML, a w of "<img onerror=...>" ran as soon as the workflow opened
 // (resolution.md #3). textContent can never be markup.
+// The megapixels ride on this line too ("5472 × 3072 · 16.81 MP", resolution.md #9):
+// beside the snap buttons "~1.78:1 · 16.81 MP" did not fit and broke onto 2 lines.
 function setSizeLabel(el, w, h) {
   const part = (v) => { const s = document.createElement("span"); s.className = "accent"; s.textContent = String(v); return s; };
+  const mp = megapixels(Number(w), Number(h));   // a string like "16.81", or "NaN" for a garbage saved size
   el.replaceChildren(part(w), " × ", part(h));
+  if (Number(mp) > 0) el.append(` · ${mp} MP`);
 }
 
 // Ctrl/Cmd+S (save) and Ctrl/Cmd+Enter (run) are ComfyUI's own keys, and its
@@ -919,8 +924,9 @@ function renderCustomPanel(node, state) {
   refreshPreview(state.w, state.h);
 
   function refreshReadout(w, h) {
-    ratioMP.innerHTML =
-      `<span class="accent">${ratioLabel(w, h)}</span> · ${megapixels(w, h)} MP`;
+    // Only the ratio here: the megapixels are on the size line under the preview
+    // (with both, the readout broke onto 2 lines, resolution.md #9). Numbers only.
+    ratioMP.innerHTML = `<span class="accent">${ratioLabel(w, h)}</span>`;
     refreshPreview(w, h);
   }
   refreshReadout(state.w, state.h);
@@ -1161,8 +1167,8 @@ function renderCustomRatioPanel(node, state) {
     const cur = readState(node);
     const rW = safePositiveInt(cur.custom_ratio_w, 4);
     const rH = safePositiveInt(cur.custom_ratio_h, 3);
-    ratioMP.innerHTML =
-      `<span class="accent">${rW}:${rH}</span> · ${megapixels(w, h)} MP`;
+    // Only the ratio here, the megapixels are under the preview (resolution.md #9).
+    ratioMP.innerHTML = `<span class="accent">${rW}:${rH}</span>`;
     refreshPreview(w, h);
     // Reflect quick-pick "active" chip if W matches an exact preset.
     for (const b of quickBtnEls) {
