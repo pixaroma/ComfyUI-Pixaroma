@@ -231,6 +231,11 @@ async def _pixaroma_stamp_imports_mw(request, handler):
         request.method == "GET"
         and p.startswith(_PIX_PREFIX)
         and (p.endswith(".mjs") or p.endswith(".js"))
+        # A rooted name (//host/share/x.mjs, %5C%5Chost..., C:/x.js) makes the join below DISCARD our folder, and
+        # realpath on a UNC opens SMB to that host ON THE EVENT LOOP (one GET froze the whole server ~21 s,
+        # measured 2026-11-13). Never resolve it here; it goes on to core's static handler, as before.
+        # path-containment.md #13. Pure string test, never raises (an exception here would empty every node).
+        and not _pix_rel_is_rooted(p[len(_PIX_PREFIX):])
     ):
         try:
             rel = p[len(_PIX_PREFIX):]
@@ -290,7 +295,9 @@ _VENDOR_MIME = {
 @PromptServer.instance.routes.get("/pixaroma/vendor/{tail:.*}")
 async def serve_pixaroma_vendor(request):
     tail = request.match_info["tail"]
-    if not tail or ".." in tail.split("/") or not _VENDOR_PATH_RE.match(tail):
+    # _pix_rel_is_rooted BEFORE the realpath: "//host/share/x.js" passes the charset and the ".." test, and
+    # resolving it opens SMB to that host (path-containment.md #5, #13).
+    if not tail or ".." in tail.split("/") or not _VENDOR_PATH_RE.match(tail) or _pix_rel_is_rooted(tail):
         return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_VENDOR_DIR, tail))
     if not file_path.startswith(PIXAROMA_VENDOR_DIR + os.sep):
@@ -324,7 +331,8 @@ async def serve_pixaroma_vendor(request):
 @PromptServer.instance.routes.get("/pixaroma/api/asset")
 async def serve_pixaroma_asset_q(request):
     rel = request.query.get("path", "")
-    if not rel or ".." in rel.split("/") or not _VENDOR_PATH_RE.match(rel):
+    # Same screen as the vendor route, same reason: "//host/share/x.png" must never reach realpath (#13).
+    if not rel or ".." in rel.split("/") or not _VENDOR_PATH_RE.match(rel) or _pix_rel_is_rooted(rel):
         return web.Response(status=400)
     file_path = os.path.realpath(os.path.join(PIXAROMA_ASSETS_DIR, rel))
     if not file_path.startswith(PIXAROMA_ASSETS_DIR + os.sep):
