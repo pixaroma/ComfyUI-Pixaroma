@@ -2640,6 +2640,17 @@ async def api_save_image_next_counter(request):
         parts = [p for p in name.replace("\\", "/").split("/") if p]
         if not parts:
             return 1, "", False
+        # `name` is joined on segment by segment below: a ".." walks out of the
+        # approved folder and a "D:" switches drive (join drops the base), and
+        # _next_counter then LISTS that folder - the read-oracle the folder check
+        # above exists to stop (measured 2026-11-13: counter 43 for a file one
+        # level above output). Same constant answer. Every node builds `name`
+        # with the JS mirror of _safe_prefix, which drops ".." and turns ":" into
+        # "_", so a real preview never carries either. Do NOT send name through
+        # _safe_prefix itself: it truncates and re-cleans, and the preview would
+        # stop matching the Run. path-containment.md #14.
+        if any(p == ".." or ":" in p for p in parts):
+            return 1, "", False
         # Mirror the save-time order (node_save_image.py): %counter% in a
         # FOLDER segment resolves against existing sibling dirs FIRST, then
         # the FILE counter scans inside that resolved directory - so the
