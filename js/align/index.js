@@ -54,6 +54,14 @@ const state = {
   // did it reach the window? Both, or it is not a node drag (pattern #24).
   _pressInNode: false,
   _pressBubbled: false,
+  // Nodes 2.0: the node the press landed ON, with where it and the cursor were
+  // then (pattern #26). { node, el, x, y, left, top, cx, cy, at } or null.
+  // _vueMoving: core has really started moving it in this gesture.
+  _press: null,
+  _vueMoving: false,
+  // Nodes 2.0: the resize this press started, read off the handle that was pressed
+  // (pattern #25). { node, el, corner, cursorX, cursorY, start, late, started, stickyX, stickyY } or null.
+  vueResize: null,
 };
 
 const ICON_URL = "icons/ui/align-center-v.svg";
@@ -224,8 +232,12 @@ function installPointerHook() {
   // sequence with no intervening pointermove leaves stale dragInfo (with
   // its old lockType) attached to the next drag, breaking classification.
   // resetDrag also clears active guides so they vanish on release.
-  window.addEventListener("pointerup", resetDrag, false);
-  window.addEventListener("pointercancel", resetDrag, false);
+  // CAPTURE phase: the Classic canvas (and a Nodes 2.0 group drag, which is
+  // the canvas too) keeps the release to itself, so a bubble listener never
+  // ran and the guides stayed on screen until the mouse moved again (measured:
+  // 1-2 guides still drawn 0.7 s after the release).
+  window.addEventListener("pointerup", resetDrag, true);
+  window.addEventListener("pointercancel", resetDrag, true);
   _hookInstalled = true;
 }
 
@@ -544,10 +556,173 @@ function resetDrag() {
   state._prevNodeStates = null;
   state._vueResizing = false;
   state._gestureSizes = null;
+  endVueResize();
   if (state.activeGuides.length) {
     state.activeGuides = [];
     app.canvas?.setDirty?.(true, true);
   }
+}
+
+// ── Nodes 2.0 RESIZE snap (pattern #25) ──────────────────────────────────────
+// Nodes 2.0 resizes a node from its own code (useNodeResize.ts), not through
+// LiteGraph, so resizing_node / pointer.resizeDirection are never set. What it
+// does give is the DOM: every node element (.lg-node[data-node-id]) carries its
+// four resize handles as direct children with data-corner="SE|NE|SW|NW", and
+// core itself finds the node to resize from that same element. So the pressed
+// handle says exactly which node and which corner; no guessing from the
+// selection (that guess moved the wrong node, pattern #16).
+
+// Which resize does this press start? null = not a resize handle, or a frontend
+// without data-corner: Align then stays out of the resize, as it always did.
+function vueResizePress(e, c) {
+  if (!isVueNodes()) return null;
+  const t = e.target;
+  const h = t && typeof t.closest === "function" ? t.closest("[data-corner]") : null;
+  const el = h ? h.parentElement : null;
+  if (!el || !el.matches(".lg-node[data-node-id]")) return null;
+  const corner = h.dataset.corner;
+  if (corner !== "SE" && corner !== "NE" && corner !== "SW" && corner !== "NW") return null;
+  const id = el.dataset.nodeId;
+  const node = (c.graph?._nodes || []).find((n) => String(n.id) === id) || null;
+  if (!node || node.flags?.pinned || node.flags?.collapsed) return null;
+  return { node, el, corner, cursorX: e.clientX, cursorY: e.clientY, start: null, late: false, started: false, stickyX: null, stickyY: null };
+}
+
+function endVueResize() {
+  const s = state.vueResize;
+  if (!s) return;
+  if (s.late) window.removeEventListener("pointermove", onVueResizeLate, false);
+  state.vueResize = null;
+}
+
+// The box the node is DRAWN at, in graph units: x / y from the node, the size
+// from its element (core's resize works on that same element box; node.size can
+// be smaller than what is drawn). Nodes 2.0 puts every element at pos[1] - title.
+function vueResizeBox(s) {
+  if (!s.el.isConnected) return null;
+  const r = s.el.getBoundingClientRect();
+  const scale = app.canvas?.ds?.scale || 1;
+  const w = r.width / scale, h = r.height / scale;
+  if (!(w >= 2 && h >= 2)) return null;
+  return { x: s.node.pos[0], y: s.node.pos[1] - (window.LiteGraph?.NODE_TITLE_HEIGHT || 30), w, h };
+}
+
+// The lowest height the node's content allows at a given width, measured the
+// way core's own resize measures it on every tick (measureMinContentHeight in
+// useNodeResize.ts): the element's height with --node-height at 0. Both
+// variables are put back at once, before anything is painted.
+function vueMinHeight(el, width, scale) {
+  const sw = el.style.getPropertyValue("--node-width");
+  const sh = el.style.getPropertyValue("--node-height");
+  el.style.setProperty("--node-width", width + "px");
+  el.style.setProperty("--node-height", "0px");
+  const m = el.getBoundingClientRect().height;
+  el.style.setProperty("--node-height", sh || "");
+  el.style.setProperty("--node-width", sw || "");
+  return m / scale;
+}
+
+// Early half of a resize tick. The main pointermove listener was registered
+// long before the press, so it runs BEFORE core's own resize handler (a window
+// listener core adds at the press). On the first tick the node therefore still
+// has its press-time box, the one core measured: keep it. The snap itself must
+// run AFTER core's write of the tick, so the late half is added as a NEW window
+// listener here; listeners run in the order they were added.
+function vueResizeTick(e) {
+  const s = state.vueResize;
+  if (!(e.buttons & 1) || !app.canvas || !isVueNodes()) { resetDrag(); return; }
+  if (!s.start) {
+    s.start = vueResizeBox(s);
+    if (!s.start) { endVueResize(); return; }
+  }
+  if (!s.late) { window.addEventListener("pointermove", onVueResizeLate, false); s.late = true; }
+}
+
+// Late half: core has just written this tick's size. Snap the edges the corner
+// moves, exactly like the Classic resize branch, but only on an axis where
+// core's box is the plain "press-time box + cursor travel". Anything else
+// (core clamped at a minimum, core snapped to its grid, core refused the press,
+// another frontend ordering the listeners differently) means Align leaves that
+// axis alone. Only ever writes the node whose handle was pressed.
+function onVueResizeLate(e) {
+  const s = state.vueResize;
+  if (!s || !s.start || !state.enabled || !(e.buttons & 1)) return;
+  const c = app.canvas;
+  if (!c || !isVueNodes()) return;
+  const node = s.node;
+  const clear = () => {
+    s.stickyX = null; s.stickyY = null;
+    if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+  };
+  // Shift bypasses Align (core snaps the resize to its own grid then).
+  if (e.shiftKey) { clear(); return; }
+  if (node.graph !== c.graph || node.flags?.pinned || node.flags?.collapsed) { clear(); return; }
+  const cur = vueResizeBox(s);
+  if (!cur) { clear(); return; }
+
+  const scale = c.ds?.scale || 1;
+  const dx = (e.clientX - s.cursorX) / scale, dy = (e.clientY - s.cursorY) / scale;
+  const west = s.corner.includes("W"), north = s.corner.includes("N");
+  const st = s.start, EPS = 0.5;
+  const liveX = Math.abs(cur.x - (west ? st.x + dx : st.x)) < EPS && Math.abs(cur.w - (west ? st.w - dx : st.w + dx)) < EPS;
+  const liveY = Math.abs(cur.y - (north ? st.y + dy : st.y)) < EPS && Math.abs(cur.h - (north ? st.h - dy : st.h + dy)) < EPS;
+  // Nothing is snapped before core has FOLLOWED the cursor once, on an axis the
+  // cursor really travelled on. A press core refuses (canvas locked, Space
+  // held) leaves the box alone, and an axis with no travel then looks "live"
+  // (box == press box + 0): measured, a locked node grew 5 px onto a line.
+  if (!s.started) {
+    if ((Math.abs(dx) >= EPS && liveX) || (Math.abs(dy) >= EPS && liveY)) s.started = true;
+    else { clear(); return; }
+  }
+
+  const snapGraph = state.snapDistPx / scale, stickyG = snapGraph * 1.5;
+  const edgeX = west ? cur.x : cur.x + cur.w;
+  const edgeY = north ? cur.y : cur.y + cur.h;
+  const tryTarget = (best, t, value, sticky, rect) => {
+    const d = t - value;
+    const allowed = (sticky != null && Math.abs(t - sticky) < 0.01) ? stickyG : snapGraph;
+    return (Math.abs(d) <= allowed && (!best || Math.abs(d) < Math.abs(best.delta))) ? { delta: d, target: t, rect } : best;
+  };
+  let sx = null, sy = null;
+  if (liveX || liveY) {
+    for (const tg of alignTargets(c)) {
+      if (tg.ref === node) continue;
+      const oE = rectEdges(tg.rect);
+      if (liveX) for (const t of [oE.left, oE.right, oE.centerX]) sx = tryTarget(sx, t, edgeX, s.stickyX, tg.rect);
+      if (liveY) for (const t of [oE.top, oE.bottom, oE.centerY]) sy = tryTarget(sy, t, edgeY, s.stickyY, tg.rect);
+    }
+  }
+
+  let x = cur.x, y = cur.y, w = cur.w, h = cur.h;
+  if (sx) { if (west) { x = sx.target; w = cur.x + cur.w - x; } else w = sx.target - cur.x; }
+  if (sy) { if (north) { y = sy.target; h = cur.y + cur.h - y; } else h = sy.target - cur.y; }
+  // Never a size core itself would refuse: the element's own minimum width, and
+  // (when the snap makes the node smaller) the content's minimum height at the
+  // snapped width. A snap that breaks one is dropped; core's own box stands.
+  if (sx && w < (parseFloat(getComputedStyle(s.el).minWidth) || 0) - 0.01) { sx = null; x = cur.x; w = cur.w; }
+  if ((sx && w < cur.w) || (sy && h < cur.h)) {
+    const floor = vueMinHeight(s.el, w, scale);
+    if (sy && h < floor - 0.01) { sy = null; y = cur.y; h = cur.h; }
+    if (sx && h < floor - 0.01) { sx = null; x = cur.x; w = cur.w; }
+  }
+
+  if (sx || sy) {
+    // Drawn height minus stored height = the title strip (plus core's image
+    // preview reserve when it has one), read off this tick's own box.
+    const chrome = cur.h - node.size[1];
+    if ((west && sx) || (north && sy)) node.pos = [x, y + (window.LiteGraph?.NODE_TITLE_HEIGHT || 30)];
+    const size = [sx ? w : node.size[0], sy ? h - chrome : node.size[1]];
+    if (typeof node.setSize === "function") node.setSize(size);
+    else node.size = size;
+  }
+
+  s.stickyX = sx ? sx.target : null;
+  s.stickyY = sy ? sy.target : null;
+  const had = state.activeGuides.length;
+  state.activeGuides = [];
+  if (sx) pushGuide("X", sx.target, [Math.min(y, sx.rect.y), Math.max(y + h, sx.rect.y + sx.rect.h)]);
+  if (sy) pushGuide("Y", sy.target, [Math.min(x, sy.rect.x), Math.max(x + w, sy.rect.x + sy.rect.w)]);
+  if (had || state.activeGuides.length) c.setDirty?.(true, true);
 }
 
 // Capture every node's size at the START of a pointer gesture (capture phase, so
@@ -575,17 +750,58 @@ function onWindowPointerDownBubble(e) {
   if (e.button === 0) state._pressBubbled = true;
 }
 
+// NODES 2.0: the node this press is ON. A Nodes 2.0 drag starts only from the
+// pressed node's own element, so that node (alone, or with the selection it
+// belongs to) is the only thing the drag can move. The selection is NOT a
+// substitute: core switches it to the pressed node only when the drag starts,
+// so on the first ticks selected_nodes still names the node that was selected
+// BEFORE, and Align snapped that one (measured: resize A, then drag E, and A
+// moved 5 px). Where the node is at the press is kept too, to tell later
+// whether core has really started moving it.
+function vuePressedNode(e, c) {
+  if (!state._pressInNode || !isVueNodes()) return null;
+  const el = e.target.closest(".lg-node[data-node-id]");
+  if (!el) return null;
+  const id = el.dataset.nodeId;
+  const node = c.graph._nodes.find((n) => String(n.id) === id) || null;
+  if (!node) return null;
+  const r = el.getBoundingClientRect();
+  return { node, el, x: node.pos[0], y: node.pos[1], left: r.left, top: r.top, cx: e.clientX, cy: e.clientY };
+}
+
+// NODES 2.0: has core really started moving the pressed node? Its position, or
+// the place its element is drawn, is no longer what it was at the press. Until
+// then Align writes nothing and shows nothing: a click with a slightly unsteady
+// hand, an Alt-drag (core ignores it), anything core does not turn into a node
+// move must never move a node (measured: each of them did). Latched for the
+// gesture; Align's own writes come only after it, so they cannot set it.
+function vueMoveStarted() {
+  if (state._vueMoving) return true;
+  const p = state._press;
+  if (!p) return false;
+  if (p.node.pos[0] !== p.x || p.node.pos[1] !== p.y) state._vueMoving = true;
+  else if (p.el.isConnected) {
+    const r = p.el.getBoundingClientRect();
+    if (Math.abs(r.left - p.left) > 0.5 || Math.abs(r.top - p.top) > 0.5) state._vueMoving = true;
+  }
+  return state._vueMoving;
+}
+
 function onWindowPointerDown(e) {
   // Where the press began, for the Nodes 2.0 gate in onWindowPointerMove. Set on
   // EVERY press (before any early return) so a stale value never carries over.
   state._pressInNode = e.button === 0 && isVueNodePress(e.target);
   state._pressBubbled = false;
+  state._press = null;
+  state._vueMoving = false;
+  endVueResize();
   if (!state.enabled) return;
   if (e.button !== 0) return; // primary button only
   const c = app.canvas;
   if (!c?.graph?._nodes) return;
   const sizes = new Map();
-  for (const n of c.graph._nodes) sizes.set(n.id, [n.size[0], n.size[1]]);
+  // [w, h, x, y]: the position too, as the Nodes 2.0 move origin (pattern #26).
+  for (const n of c.graph._nodes) sizes.set(n.id, [n.size[0], n.size[1], n.pos[0], n.pos[1]]);
   state._gestureSizes = sizes;
   state._vueResizing = false;
   // Baseline every group's rect (capture phase, before any drag moves them) so
@@ -602,6 +818,14 @@ function onWindowPointerDown(e) {
     const cur = e.target && window.getComputedStyle(e.target).cursor;
     if (cur && cur.indexOf("resize") !== -1) state._vueResizing = true;
   } catch (_e) {}
+  // Nodes 2.0: a press on a node's resize handle starts a resize session.
+  state.vueResize = vueResizePress(e, c);
+  if (state.vueResize) state._vueResizing = true;
+  else state._press = vuePressedNode(e, c);
+  // The press-time positions stay with the press: resetDrag (a Shift bypass in
+  // the middle of a drag) drops _gestureSizes, and the origin must still be the
+  // press when the snap comes back.
+  if (state._press) state._press.at = sizes;
 }
 
 // Apply a snap correction to a node's position (and optionally size). LEGACY:
@@ -980,6 +1204,9 @@ function snapResizeCorner(x, y, opts) {
 
 function onWindowPointerMove(e) {
   if (!state.enabled) { resetDrag(); return; }
+  // A Nodes 2.0 resize owns its gesture (it handles Shift itself, so the snap
+  // comes back when Shift is let go).
+  if (state.vueResize) { vueResizeTick(e); return; }
   // Shift bypasses snap (Alt is taken by ComfyUI for "duplicate during drag").
   if (e.shiftKey) { resetDrag(); return; }
   if (!(e.buttons & 1)) { resetDrag(); return; }
@@ -1093,26 +1320,19 @@ function onWindowPointerMove(e) {
       if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
       return;
     }
-    // Use the existing session's node, but VALIDATE it's still the one being
-    // dragged: it must still be SELECTED. Otherwise the session is stale - a
-    // previous drag whose pointerup we missed (the Vue node's captured pointer
-    // can swallow the release) - and the by-id lookup would keep moving that OLD
-    // node while the user drags a new one (the "move one node, another moves
-    // too" leak). A stale session is dropped and we re-pick from the current
-    // selection.
-    if (state.dragInfo?.nodeId != null) {
-      const id = state.dragInfo.nodeId;
-      const node = c.graph?._nodes?.find((n) => n.id === id) || null;
-      const stillSelected = node && c.selected_nodes &&
-        Object.values(c.selected_nodes).some((s) => s && s.id === id);
-      if (stillSelected) draggedNode = node;
-      else state.dragInfo = null;
+    // The dragged node is the one the press landed ON (vuePressedNode, pattern
+    // #26), never "whatever is selected": the selection still names the
+    // PREVIOUS node on the first ticks, and a session that began on that one
+    // then restarted late on the real one, its origin a tick behind the cursor.
+    // A session left over from an earlier drag is for another node id, so the
+    // session check below replaces it.
+    const press = state._press;
+    if (!press || press.node.graph !== c.graph) {
+      state.dragInfo = null;
+      if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+      return;
     }
-    if (!draggedNode) {
-      const sel = c.selected_nodes;
-      const keys = sel ? Object.keys(sel) : [];
-      if (keys.length >= 1) draggedNode = sel[keys[0]];
-    }
+    draggedNode = press.node;
   } else if (state._prevNodeStates && c.graph?._nodes) {
     for (const n of c.graph._nodes) {
       const p = state._prevNodeStates.get(n.id);
@@ -1140,6 +1360,14 @@ function onWindowPointerMove(e) {
       draggedNode = c.graph.getNodeOnPos(c.graph_mouse[0], c.graph_mouse[1]);
     }
   }
+  // CLASSIC: while LiteGraph resizes a node (it sets resizing_node for the whole
+  // resize and clears it when the pointer gesture ends), THAT node is the
+  // gesture, whatever is selected. With two or more nodes selected, the
+  // multi-select branch below took the resize for a MOVE of the selection and
+  // dragged every selected node along with the corner (measured: both nodes
+  // moved 30 px while one of them was being resized). Pattern #27.
+  const resizing = !vue && c.resizing_node ? c.resizing_node : null;
+  if (resizing) draggedNode = resizing;
   // Refresh the per-node cache for next tick. Done on EVERY tick (even the
   // no-node ones below) so the next tick always has a fresh baseline to diff.
   if (c.graph?._nodes) {
@@ -1179,7 +1407,7 @@ function onWindowPointerMove(e) {
     const sel = c.selected_nodes;
     if (sel) {
       const selVals = Object.values(sel);
-      if (selVals.length > 1 && selVals.includes(draggedNode)) {
+      if (!resizing && selVals.length > 1 && selVals.includes(draggedNode)) {
         // Exclude PINNED nodes from the moving set - they stay locked even when an
         // unpinned sibling in the selection is dragged (native LiteGraph skips them).
         const live = selVals.filter((n) => n && !(n.flags && n.flags.pinned));
@@ -1210,21 +1438,40 @@ function onWindowPointerMove(e) {
     (!multiNodes && !state.dragInfo.multiSelect && state.dragInfo.nodeId === draggedNode.id)
   );
   if (!sessionMatches) {
+    // The origin. Classic: this tick (LiteGraph has moved the node by the same
+    // travel). NODES 2.0: the PRESS, because core places the node at "where it
+    // was at the press + the whole cursor travel since". An origin taken on a
+    // later tick (the first move; or a session restarted when Shift is let go,
+    // when the node has already moved) is behind by the travel before it, and
+    // then every axis that is NOT snapped trailed the cursor by that much while
+    // the other axis was snapped (pattern #26). Only when every node of the
+    // session has a press-time position; otherwise this tick, as before.
+    const members = multiNodes || [draggedNode];
+    const at = vue ? state._press.at : null;
+    const pressAt = at && members.every((n) => at.has(n.id)) ? at : null;
+    const originOf = (n) => {
+      const g = pressAt ? pressAt.get(n.id) : null;
+      return g ? { x: g[2], y: g[3] } : { x: n.pos[0], y: n.pos[1] };
+    };
+    const cursorX = pressAt ? state._press.cx : e.clientX;
+    const cursorY = pressAt ? state._press.cy : e.clientY;
     if (multiNodes) {
       const origPositions = new Map();
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       for (const n of multiNodes) {
-        origPositions.set(n.id, { x: n.pos[0], y: n.pos[1] });
+        const o = originOf(n);
+        origPositions.set(n.id, o);
         const r = nodeRect(n); // collapse-aware visual rect
-        minX = Math.min(minX, r.x);
-        minY = Math.min(minY, r.y);
-        maxX = Math.max(maxX, r.x + r.w);
-        maxY = Math.max(maxY, r.y + r.h);
+        const ox = o.x - n.pos[0], oy = o.y - n.pos[1];
+        minX = Math.min(minX, r.x + ox);
+        minY = Math.min(minY, r.y + oy);
+        maxX = Math.max(maxX, r.x + ox + r.w);
+        maxY = Math.max(maxY, r.y + oy + r.h);
       }
       state.dragInfo = {
         nodeId: draggedNode.id,
-        cursorX: e.clientX,
-        cursorY: e.clientY,
+        cursorX,
+        cursorY,
         lockType: "move",
         multiSelect: true,
         origPositions,
@@ -1233,12 +1480,13 @@ function onWindowPointerMove(e) {
         stickyMoveX: null, stickyMoveY: null,
       };
     } else {
+      const o = originOf(draggedNode);
       state.dragInfo = {
         nodeId: draggedNode.id,
-        posX: draggedNode.pos[0],
-        posY: draggedNode.pos[1],
-        cursorX: e.clientX,
-        cursorY: e.clientY,
+        posX: o.x,
+        posY: o.y,
+        cursorX,
+        cursorY,
         sizeW: draggedNode.size[0],
         sizeH: draggedNode.size[1],
         lockType: null,
@@ -1283,6 +1531,12 @@ function onWindowPointerMove(e) {
   }
 
   if (state.dragInfo.lockType === null) return;
+
+  // Nodes 2.0: nothing is shown or written until core itself moves the node.
+  if (vue && !vueMoveStarted()) {
+    if (state.activeGuides.length) { state.activeGuides = []; c.setDirty?.(true, true); }
+    return;
+  }
 
   if (state.dragInfo.lockType === "resize") {
     // All edges below are in VISUAL coords (top includes the title bar) so
@@ -1411,26 +1665,33 @@ function onWindowPointerMove(e) {
 
     // Push one guide per engaged edge. fLeft/fRight/fTop/fBot are visual
     // coords; matched rects (snapXxx.rect) are also visual via nodeRect().
+    // Only for an edge that really ended ON its target: the node's minimum (the
+    // clamps above, or its own onResize inside setSize) can hold an edge back
+    // from the line it was snapping to, and the guide was then drawn up to 12
+    // px away from the edge (measured at the minimum: guide 255, edge 266).
+    const onLine = (snap, edge) => !!(snap && snap.rect && Math.abs(edge - snap.target) < 0.5);
+    const aLeft = draggedNode.pos[0], aRight = aLeft + draggedNode.size[0];
+    const aTop = draggedNode.pos[1] - titleH, aBot = draggedNode.pos[1] + draggedNode.size[1];
     state.activeGuides = [];
-    if (snapLeft && snapLeft.rect) {
+    if (onLine(snapLeft, aLeft)) {
       pushGuide("X", snapLeft.target, [
         Math.min(fTop, snapLeft.rect.y),
         Math.max(fBot, snapLeft.rect.y + snapLeft.rect.h),
       ]);
     }
-    if (snapRight && snapRight.rect) {
+    if (onLine(snapRight, aRight)) {
       pushGuide("X", snapRight.target, [
         Math.min(fTop, snapRight.rect.y),
         Math.max(fBot, snapRight.rect.y + snapRight.rect.h),
       ]);
     }
-    if (snapTop && snapTop.rect) {
+    if (onLine(snapTop, aTop)) {
       pushGuide("Y", snapTop.target, [
         Math.min(fLeft, snapTop.rect.x),
         Math.max(fRight, snapTop.rect.x + snapTop.rect.w),
       ]);
     }
-    if (snapBot && snapBot.rect) {
+    if (onLine(snapBot, aBot)) {
       pushGuide("Y", snapBot.target, [
         Math.min(fLeft, snapBot.rect.x),
         Math.max(fRight, snapBot.rect.x + snapBot.rect.w),
