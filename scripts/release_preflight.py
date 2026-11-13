@@ -584,6 +584,35 @@ def check_registry_lint():
                                 "exec and eval." % (rel, node.lineno, node.func.id))
 
 
+# Registry step 1 (2026-11-13): the published Python says what the code GUARANTEES, never how it was
+# once attacked. The Comfy Registry's automatic reviewer reads text, and our comments used to tell attack
+# stories right above the folder-opening code. scripts/ and docs/ are not published (.comfyignore), so
+# they are not checked, and this list may live here.
+ALARM_WORDS = re.compile(
+    r"attacker|NTLM|unauthenticated|untrusted|exploit|malicious|hostile", re.I)
+
+
+def check_alarm_words():
+    """None of ALARM_WORDS in any published .py file (comments and docstrings included)."""
+    for rel in tracked_files():
+        if not rel.endswith(".py") or rel.startswith(("scripts/", "docs/")):
+            continue
+        try:
+            with io.open(os.path.join(REPO, rel), encoding="utf-8") as fh:
+                lines = fh.read().splitlines()
+        except (OSError, UnicodeDecodeError) as exc:
+            failures.append("%s could not be read for the word check: %s" % (rel, exc))
+            continue
+        for n, line in enumerate(lines, 1):
+            m = ALARM_WORDS.search(line)
+            if m:
+                failures.append(
+                    "%s:%d: says \"%s\". Published Python says what the code guarantees, "
+                    "not how it was once attacked (the Registry reviewer reads text). Reword "
+                    "it; a story goes in .claude/patterns/path-containment.md #15."
+                    % (rel, n, m.group(0)))
+
+
 def main():
     check_files()
     data = check_pyproject()
@@ -594,6 +623,7 @@ def main():
     check_css_prefix_collisions()
     check_prefix_safe_urls()
     check_registry_lint()
+    check_alarm_words()
 
     if failures:
         print("RELEASE PREFLIGHT FAILED (%d problem%s)\n"
