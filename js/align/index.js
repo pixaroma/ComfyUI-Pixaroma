@@ -321,25 +321,49 @@ function getTitleH(n) {
   return window.LiteGraph?.NODE_TITLE_HEIGHT || 30;
 }
 
-// NODES 2.0 ONLY, and only for the two kinds it draws differently from Classic
-// (pattern #24, measured 2026-10-03): it places EVERY node's element at
-// pos[1] - title height, title or not, so a title-less face (Label, Run Timer,
-// Monitor, Info) starts 30 px ABOVE pos[1]; and it draws a collapsed node as a
-// pill of its own size (225 x 28 here), not _collapsed_width x 30 (a Classic
-// draw-time value, absent or stale in Nodes 2.0). So for these two, read the
-// size the node is DRAWN at from its element (graph units, any zoom). null =
-// keep the Classic geometry (Classic, every other node, no single element).
+// NODES 2.0: the element a node is drawn as, and the size it measured in this
+// pass. One document query serves every node of a pass and each element is
+// measured once (alignTargets asks for every node on every mouse move, and a
+// group drag asks again for every other group: measured, 2212 box reads per
+// move with 10 groups and 200 nodes before the sizes were kept). The map is
+// dropped as soon as the current listener returns, and the page cannot lay
+// itself out again before that, so nothing in it is ever stale. An id drawn
+// twice (a preview of the same node somewhere) answers null.
+let _vueEls = null;
+function vueNodeEntry(n) {
+  if (!_vueEls) {
+    _vueEls = new Map();
+    for (const el of document.querySelectorAll(".lg-node[data-node-id]")) {
+      const id = el.dataset.nodeId;
+      _vueEls.set(id, _vueEls.has(id) ? null : { el, size: undefined });
+    }
+    queueMicrotask(() => { _vueEls = null; });
+  }
+  return _vueEls.get(String(n.id)) || null;
+}
+
+// NODES 2.0 ONLY: the size a node is DRAWN at, from its element (graph units,
+// any zoom). Nodes 2.0 places EVERY node's element at pos[1] - title height,
+// title or not, and node.size is not what it draws: a title-less face (Label,
+// Run Timer, Monitor, Info) starts 30 px ABOVE pos[1]; a collapsed node is a
+// pill of its own size (225 x 28 here), not _collapsed_width x 30 (pattern
+// #24); and a plain node at its DEFAULT size is drawn bigger than node.size
+// says (never narrower than 225, taller rows: VAE Decode is stored 140 x 46 and
+// drawn 225 x 84), so a rect built from node.size put the right and bottom
+// edges INSIDE the node and the guides with them (pattern #29, measured: 19 of
+// 22 node types). null = keep the Classic geometry (Classic, or no single
+// element on the page for this node).
 function vueDrawnSize(n) {
-  if (!(n.flags?.collapsed || n.flags?.no_title)) return null;
   if (!isVueNodes()) return null;
-  const id = window.CSS?.escape ? window.CSS.escape(String(n.id)) : String(n.id);
-  const els = document.querySelectorAll('.lg-node[data-node-id="' + id + '"]');
-  if (els.length !== 1) return null;
-  const r = els[0].getBoundingClientRect();
-  const s = app.canvas?.ds?.scale || 1;
-  const w = r.width / s, h = r.height / s;
-  if (!(w >= 2 && h >= 2)) return null;
-  return { w, h };
+  const en = vueNodeEntry(n);
+  if (!en) return null;
+  if (en.size === undefined) {
+    const r = en.el.getBoundingClientRect();
+    const s = app.canvas?.ds?.scale || 1;
+    const w = r.width / s, h = r.height / s;
+    en.size = w >= 2 && h >= 2 ? { w, h } : null;
+  }
+  return en.size;
 }
 
 function nodeRect(n) {
@@ -1795,7 +1819,7 @@ function onWindowPointerMove(e) {
   let titleH = collapsed ? TH : getTitleH(draggedNode);
   let w = collapsed ? (draggedNode._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 80) : draggedNode.size[0];
   let h = collapsed ? 0 : draggedNode.size[1];
-  // Nodes 2.0: a collapsed pill / title-less face at the size it is drawn, from pos[1] - TH.
+  // Nodes 2.0: the node at the size it is DRAWN (vueDrawnSize), from pos[1] - TH.
   const vd = vueDrawnSize(draggedNode);
   if (vd) { titleH = TH; w = vd.w; h = vd.h - TH; }
   const movingRect = { x: desiredX, y: desiredY - titleH, w, h: h + titleH };
