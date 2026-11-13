@@ -383,8 +383,8 @@ class PixaromaSaveVideo:
         fmt = FORMATS[fmt_id]
         ext = fmt["ext"]
         crf = quality_to_crf(state.get("quality", 75), fmt_id)
-        # Compared against fixed words, so this hidden, unauthenticated state
-        # can only ever pick one of our own encoders.
+        # Compared against fixed words, so this hidden state can only ever
+        # pick one of our own encoders.
         nvidia = str(state.get("encoder", "cpu")).lower() == "nvidia"
         by_bitrate = str(state.get("rateMode", "quality")).lower() == "bitrate"
         mbps = clamp_mbps(state.get("bitrateMbps", DEFAULT_MBPS)) if by_bitrate else None
@@ -414,11 +414,10 @@ class PixaromaSaveVideo:
         n_frames, H, W = validate_rgb_frames(frames, LABEL, pix_fmt)
 
         # CONTAINMENT (path-containment pattern). `folder` arrives in the hidden
-        # SaveVideoState blob and /prompt is unauthenticated, so this string is
-        # attacker-controlled. prescreen FIRST, on the raw string with no
-        # filesystem touch, because _resolve_save_folder calls realpath, which on
-        # Windows reaches out over SMB for a UNC path before we would otherwise
-        # get a look at it. It must be the _FIELD variant: _resolve_save_folder
+        # SaveVideoState blob, which /prompt takes as sent, so this string can be
+        # any text. prescreen FIRST, on the raw string with no filesystem touch,
+        # because _resolve_save_folder calls realpath, which on Windows contacts
+        # the host of a UNC path before we would otherwise get a look at it. It must be the _FIELD variant: _resolve_save_folder
         # expandvars() the string before resolving, so the plain prescreen would
         # screen a DIFFERENT value than the one that gets realpath'd.
         folder_raw = state.get("folder", "")

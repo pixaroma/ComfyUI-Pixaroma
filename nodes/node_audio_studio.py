@@ -41,25 +41,21 @@ PIXAROMA_INPUT_ROOT = Path(folder_paths.get_input_directory()) / "pixaroma"
 def _resolve_inline(rel_path, what: str) -> str:
     """Resolve an editor-supplied relative path INSIDE PIXAROMA_INPUT_ROOT.
 
-    SECURITY (fixed 2026-08-03, reported on ComfyUI-Manager PR #3118): these
-    paths arrive in the hidden `studio_json` widget, and /prompt is
-    unauthenticated, so the value is attacker-controlled. The old code did
-    `PIXAROMA_INPUT_ROOT / rel_path`, and BOTH pathlib's `/` and os.path.join
-    DISCARD the base when the right-hand side is absolute
-    (Path('/base')/'/etc/passwd' == Path('/etc/passwd')), so an absolute
-    rel_path read any file on the host and returned it as a tensor - which the
-    graph could then route to a Save or Preview node. '../' escaped too.
+    CONTAINMENT: these paths arrive in the hidden `studio_json` widget, which
+    /prompt takes as sent, so the value can be anything. BOTH pathlib's `/` and
+    os.path.join DISCARD the base when the right-hand side is absolute
+    (Path('/base')/'/etc/passwd' == Path('/etc/passwd')), and '../' walks out,
+    so the result must stay inside PIXAROMA_INPUT_ROOT (path-containment.md #1).
 
     Containment is the realpath check, not string inspection: rejecting '..'
     by hand misses symlinks and the absolute-path case above.
 
-    ORDERING (2026-08-04, follow-up review on the same PR): the first pass
-    kept its own join+realpath, which refused the read correctly but only AFTER
-    resolving. On Windows that is already the attack for a UNC rel_path -
-    realpath opens SMB and hands over an NTLM hash during the resolve itself.
-    safe_join() runs the lexical rel_is_rooted() screen FIRST, so a UNC value is
-    refused without ever being touched. Never hand-roll the join again; the
-    resolve is the thing that has to be prevented, not just the read.
+    ORDERING: a hand-rolled join+realpath refuses the read only AFTER
+    resolving, and on Windows the realpath of a UNC rel_path already contacts
+    that host. safe_join() runs the lexical rel_is_rooted() screen FIRST, so a
+    UNC value is refused without ever being touched. Never hand-roll the join
+    again; the resolve has to be prevented, not just the read
+    (path-containment.md #11b).
     """
     root = str(PIXAROMA_INPUT_ROOT)
     candidate = safe_join(root, rel_path)

@@ -27,8 +27,8 @@ MAX_DEPTH = 8
 MAX_FILES = 5000
 
 # A picture reference is EXACTLY what the browser's own upload produces and
-# nothing else. /prompt is unauthenticated, so this string is attacker-reachable;
-# a strict pattern refuses anything unexpected before a path is even built.
+# nothing else. /prompt takes any text as sent, so a strict pattern refuses
+# anything unexpected before a path is even built.
 _CAPTURE_RE = re.compile(r"^pixaroma_load3d/[A-Za-z0-9_-]{8,80}\.png \[temp\]$")
 
 _ANNOTATIONS = (" [input]", " [output]", " [temp]")

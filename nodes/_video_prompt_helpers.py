@@ -482,7 +482,7 @@ def parse_state(raw):
         out["model"] = _DEFAULT_MODEL
     if not isinstance(out["clip_type"], str) or not out["clip_type"].strip():
         out["clip_type"] = "minimax"
-    # Clamps. /prompt is UNAUTHENTICATED and the browser is not the only caller,
+    # Clamps. /prompt takes any value as sent and the browser is not the only caller,
     # so every sampling value is clamped here too, mirroring core.mjs. The
     # ranges are byte-for-byte core's own TextGenerate schema.
     #

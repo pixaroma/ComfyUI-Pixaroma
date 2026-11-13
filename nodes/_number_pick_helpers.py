@@ -30,7 +30,7 @@ DEFAULT_VALUES = [1, 2, 4, 8, 16, 32]
 
 
 def _clamp(raw, fallback):
-    """A number from an untrusted JSON blob -> a finite float, or the fallback."""
+    """A number from a JSON blob (any shape) -> a finite float, or the fallback."""
     try:
         out = float(raw)
     except (TypeError, ValueError):

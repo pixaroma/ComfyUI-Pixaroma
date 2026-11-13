@@ -34,7 +34,7 @@ _KEPT = re.compile("\ue000(\\d+)\ue001")
 def clean_name(raw):
     """A subfolder/prefix typed on the node -> a relative name with no way out.
 
-    /prompt is unauthenticated, so anything can arrive here. Core's
+    /prompt takes any value as sent, so anything can arrive here. Core's
     get_save_image_path refuses a folder outside output/ on its own, and the node
     runs the name through Save Image's _safe_prefix as well; this keeps the stored
     name tidy before it gets there: no drive letter, no leading slash, no '..'

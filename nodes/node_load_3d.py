@@ -69,11 +69,11 @@ def _model_roots():
 
 
 def _resolve_model(name):
-    """An untrusted combo value -> a real model file in input/ or output/, or None.
+    """A combo value (any text) -> a real model file in input/ or output/, or None.
 
-    Screened lexically FIRST: on Windows merely resolving \\\\host\\share opens
-    SMB and leaks an NTLM hash, and ComfyUI does not validate a combo value
-    against its list, so this is attacker-controlled like any other input
+    Screened lexically FIRST: on Windows merely resolving \\\\host\\share
+    contacts that host, and ComfyUI does not validate a combo value against
+    its list, so it can be any text like any other input
     (patterns/path-containment.md).
     """
     if not isinstance(name, str) or not name or name == NONE:

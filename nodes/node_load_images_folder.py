@@ -176,7 +176,7 @@ def _output_name(rel, path, real_folder, recursive, keep_folders):
             # traversal-SHAPED name "keep/../keep/cat" on an output whose
             # whole purpose is to be used as a path by another node.
             # Save Image refuses a ".." segment, and so does core's
-            # SaveImage, so nothing was exploitable - but this output is
+            # SaveImage, so nothing could go wrong - but this output is
             # meant for arbitrary consumers, so it should not hand out a
             # string shaped like an escape. relpath of an already
             # contained path can never contain "..", and is identical to
@@ -342,11 +342,10 @@ class PixaromaLoadImagesFolder:
         # CONTAINMENT (2026-08-03, ComfyUI-Manager PR #3118).
         # The per-file check further down is correct, but it only ever proved
         # each file sits inside `folder` - and `folder` itself comes from the
-        # hidden state blob, which an unauthenticated /prompt fully controls. So
-        # the node would happily read any PIL-decodable file on the host and
-        # hand it out on the `image` output. Root the FOLDER too.
-        # prescreen runs before isdir because isdir on a UNC path already leaks
-        # an NTLM hash over SMB on Windows.
+        # hidden state blob, which /prompt takes as sent. So the FOLDER is
+        # checked against the approved list too (path-containment.md #3).
+        # prescreen runs before isdir because isdir on a UNC path already
+        # contacts that host on Windows.
         if not _pix_prescreen(folder):
             raise ValueError(_pix_denied_message(str(folder)))
         if not folder:
@@ -406,8 +405,8 @@ class PixaromaLoadImagesFolder:
             # from the (frontend-supplied) hidden state, so a crafted "../../x"
             # must not let the loader open files outside the folder.
             # An absolute/UNC entry has to go BEFORE realpath: os.path.join drops
-            # `folder` entirely for one, and realpath on a UNC fires SMB and leaks
-            # an NTLM hash before the commonpath check below can refuse it.
+            # `folder` entirely for one, and realpath on a UNC contacts that host
+            # before the commonpath check below can refuse it.
             if _pix_rel_is_rooted(rel):
                 print(f"[PixaromaLoadImagesFolder] not a relative name, skipped: {rel}")
                 continue

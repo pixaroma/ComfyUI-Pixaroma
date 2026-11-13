@@ -6,9 +6,9 @@ exercised with a bare python and no model on disk
 
 Two jobs live here:
 
-1. Reading the state blob the browser injects. Every value in it is
-   attacker-controlled in the same sense every widget value is - /prompt is
-   unauthenticated - so nothing is trusted and everything is clamped.
+1. Reading the state blob the browser injects. Every value in it can be
+   anything, in the same sense every widget value can (/prompt takes any
+   value as sent), so nothing is assumed and everything is clamped.
 
 2. Deciding what string the model is asked, and what comes out when there is
    no model to ask. That second case is the whole reason this node can be
@@ -101,8 +101,8 @@ def _clamp(value, fallback, lo, hi):
     # a huge value actually raises: json.loads turns a 310-digit literal into an
     # arbitrary-precision int, and float() on that raises rather than returning
     # inf. (A huge STRING or "1e400" does return inf, which the check below
-    # already catches - so only the bare-int path was exposed.) /prompt is
-    # unauthenticated, so this reached both nodes' parse_state as a raw
+    # already catches - so only the bare-int path was exposed.) /prompt takes
+    # any value as sent, so this reached both nodes' parse_state as a raw
     # traceback instead of clamping like every other out-of-range value.
     except (TypeError, ValueError, OverflowError):
         return fallback
@@ -568,7 +568,7 @@ def extra_image_keys(values):
 
 
 def bytes_or_none(value):
-    """A recorded model size from an untrusted payload, or None.
+    """A recorded model size from a stored or sent payload (checked), or None.
 
     Shared by both preset stores rather than copied: the same concept living in
     two files is exactly how the vision heuristic drifted (js/shared/model_kinds

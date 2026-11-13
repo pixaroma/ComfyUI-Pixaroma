@@ -186,7 +186,7 @@ def _write_user(items):
             pass
         # The real error goes to the CONSOLE, not to the browser. `str(e)` on an
         # OSError embeds the full temp path, which carries the OS username and
-        # the install layout, and these routes are unauthenticated. The sibling
+        # the install layout, which the browser has no need for. The sibling
         # module made the same call deliberately - its callers say only "Could
         # not write the presets file." - and a maintainer looking at a "cannot
         # save" report reads the ComfyUI log anyway.

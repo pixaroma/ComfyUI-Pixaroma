@@ -59,7 +59,7 @@ UI_ONLY_KEYS = ("sizes", "ratios")
 # ArithmeticError and slips straight past a TypeError/ValueError handler - and
 # Python's json.loads accepts the bare literals `Infinity`, `-Infinity` and
 # `1e999` by default, so `{"size": Infinity}` reached int() and aborted the whole
-# run. Reachable from the unauthenticated /prompt endpoint. Reproduced before
+# run. Reachable from any /prompt request. Reproduced before
 # fixing; locked by the harness.
 _NUM_ERRORS = (TypeError, ValueError, OverflowError)
 
@@ -237,8 +237,8 @@ def compute(in_w, in_h, state):
 def normalize_state(raw):
     """Any dict -> a state with every key present and legal.
 
-    Defensive on purpose: /prompt is unauthenticated, so every value here is
-    attacker-controlled, and an unknown anchor or resample must degrade to the
+    Defensive on purpose: /prompt takes any value as sent, so every value here
+    can be anything, and an unknown anchor or resample must degrade to the
     default rather than raise inside a running workflow.
     """
     data = raw if isinstance(raw, dict) else {}

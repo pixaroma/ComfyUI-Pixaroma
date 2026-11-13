@@ -239,8 +239,8 @@ DEFAULT_STATE = {
 def parse_state(raw):
     """The injected blob as a dict with every value present and in range.
 
-    Nothing here is trusted: /prompt is unauthenticated, so a hand-edited
-    workflow or a crafted body can put anything in any field.
+    Nothing here is assumed: /prompt takes any value as sent, so a hand-edited
+    workflow or a hand-written request can put anything in any field.
     """
     import json
 

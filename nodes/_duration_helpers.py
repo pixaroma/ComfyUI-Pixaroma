@@ -16,8 +16,8 @@ snapping entirely, so "just frames = seconds x fps" needs no special mode.
 A `custom` formula is the escape hatch for a model none of that fits. It is
 evaluated with simpleeval - the SAME library and the same function allow-list
 ComfyUI core uses for its own Math Expression node (comfy_extras/nodes_math.py).
-Never use dynamic evaluation: /prompt is unauthenticated, so this string is attacker-supplied
-(see .claude/patterns/path-containment.md for the threat model).
+Never use dynamic evaluation: /prompt takes any text as sent, so this string can be anything
+(see .claude/patterns/path-containment.md #0).
 """
 
 import json

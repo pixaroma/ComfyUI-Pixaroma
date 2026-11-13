@@ -34,7 +34,7 @@ def separator_str(sep_id):
     """Resolve a separator id to the string that joins two entries.
 
     Unknown / non-string ids fall back to the default rather than raising: this
-    reads an attacker-controllable state blob (every hidden input is, see
+    reads a state blob that can hold any value (every hidden input can, see
     .claude/patterns/path-containment.md #0) and a bad id must not break a save.
     """
     if not isinstance(sep_id, str):
@@ -64,9 +64,9 @@ _KNOWN_EXT_RE = re.compile(r"\.(txt|text|md|log|csv|json)$", re.IGNORECASE)
 def normalize_txt_name(name):
     """Force a resolved file name to end in exactly one '.txt'.
 
-    The extension is NOT the caller's choice, on purpose. This route is
-    unauthenticated (path-containment #0) and it writes bytes the caller
-    supplies, so letting the name decide the extension would let a request drop
+    The extension is NOT the caller's choice, on purpose. This route writes
+    the bytes it is sent (path-containment #0), so letting the name decide the
+    extension would let a request drop
     a .bat / .ps1 / .lnk into any approved folder - and an approved folder is
     somewhere the user actually keeps things. Forcing .txt makes the worst case
     a stray text file.

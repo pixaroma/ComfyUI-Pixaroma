@@ -342,8 +342,8 @@ DEFAULT_STATE = {
 def parse_state(raw):
     """Read the hidden state blob, healing anything that is not the right shape.
 
-    Every field is type-checked because /prompt is unauthenticated and this
-    string is fully attacker-controlled: a wrong type here should produce the
+    Every field is type-checked because /prompt takes any value as sent and
+    this string can hold anything: a wrong type here should produce the
     default, never an exception out of the node.
     """
     state = dict(DEFAULT_STATE)
@@ -381,7 +381,7 @@ def parse_state(raw):
         pass  # bool is an int subclass in Python; a toggle is not a cap
     elif isinstance(cap, (int, float)) and math.isfinite(cap):
         # Clamp the SAME WAY THE BROWSER DOES (core.mjs MAX_CAP), because the
-        # browser's clamp protects nobody: /prompt is unauthenticated, so a
+        # browser's clamp is not enough: /prompt takes any value as sent, so a
         # hand-written API prompt reaches this function without ever passing
         # through readState. Without the ceiling a crafted blob could ask for
         # a cap of 999999999 and queue that many downstream graph runs from one

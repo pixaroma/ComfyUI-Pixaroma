@@ -49,7 +49,7 @@ SMOOTH_ITERS = 24        # Taubin passes that take the voxel stairs out first
 SNAP_STEPS = 3           # steps along the smooth normal toward the original
 LANDED = 0.1             # a point this close to the original is on it
 AGREE = 0.4              # a landed point this far from its landed neighbours landed wrongly
-FILL_ITERS = 60          # sweeps that fill the untrusted points in
+FILL_ITERS = 60          # sweeps that fill the uncertain points in
 
 
 # ── the grid ─────────────────────────────────────────────────────────────────

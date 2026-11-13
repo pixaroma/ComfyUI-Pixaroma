@@ -35,7 +35,7 @@ def _wired_path(wired):
 
     ORDER IS THE INVARIANT (path-containment #5): `isabs` is lexical; then the
     no-filesystem prescreen, because on Windows even a realpath of a UNC path
-    hands over an NTLM hash; then folder_allowed; only then any realpath / stat.
+    contacts that host; then folder_allowed; only then any realpath / stat.
     The refusal echoes the RAW string, never a resolved one.
     """
     if not isinstance(wired, str) or not os.path.isabs(wired):
@@ -177,7 +177,7 @@ class PixaromaPromptReader:
         # (path-containment #2) and must not stat what read() would refuse.
         # A LINKED filename arrives here as None (core's IS_CHANGED pass skips
         # linked inputs; the upstream node decides the re-run), so this branch
-        # serves a LITERAL path sent through /prompt: exactly the hostile case.
+        # serves a LITERAL path sent through /prompt: exactly the case to check.
         wired = filename.strip() if isinstance(filename, str) else ""
         path, err = _wired_path(wired)
         if path:

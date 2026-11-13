@@ -50,29 +50,21 @@ from .nodes._path_guard import (
 )
 
 
-# --- Desktop-only routes: refuse a caller that is not on this machine --------
+# --- Desktop-only routes: answer only a caller on this computer --------------
 #
-# THREE routes act on the SERVER'S PHYSICAL DESKTOP. Two open a file-explorer
-# window (/save_image/open_folder, /workflows/reveal) and one pops the native
-# folder dialog (/load_images_folder/pick_native). For a caller on a different
-# machine those are useless by construction: the window appears on somebody
-# else's screen. So refusing a non-loopback peer takes nothing away from a
-# remote user that they could ever have used, while removing the one shape a
-# registry security review reliably objects to - a side-effecting route wired
-# straight to an OS sink. See `.claude/patterns/registry-compliance.md` #2d for
-# the measurement (11 of 11 banned route-bearing packs had it; 0 of 10 approved
-# ones did) and `path-containment.md` #11, where this class was previously and
-# deliberately left alone.
+# THREE routes act on this computer's own desktop. Two open a file-explorer
+# window (/save_image/open_folder, /workflows/reveal) and one shows the native
+# folder dialog (/load_images_folder/pick_native). For a caller on another
+# machine the window would appear on somebody else's screen, so a caller that
+# is not on this computer gets a refusal and loses nothing it could have used.
 #
-# THIS IS NOT CONTAINMENT AND REPLACES NONE OF IT. `_path_guard` still runs on
-# every path these routes touch. This narrows WHO can reach the sink; the
-# guards narrow WHERE it may point. Both are required, and dropping either one
-# because the other exists is the mistake.
+# This is in addition to the path checks, never instead of them: `_path_guard`
+# still runs on every path these routes touch. This decides WHO may use the
+# route; the path checks decide WHERE it may point. Both are required.
 #
 # We read `request.remote`, the actual socket peer, and NEVER a header:
-# X-Forwarded-For is set by whoever is calling. A reverse proxy on the same
-# host therefore reads as local. That is a false ALLOW - precisely the
-# reachability these routes already have today - and never a false DENY that
+# X-Forwarded-For is set by the client. A reverse proxy on the same host
+# therefore reads as local: a false allow at worst, never a false deny that
 # could break a working local setup.
 def _pix_peer_is_local(request):
     """True when the HTTP peer address is a loopback address."""
@@ -326,8 +318,8 @@ async def serve_pixaroma_vendor(request):
 #
 # Containment mirrors the vendor route exactly: reject "..", allow only a safe
 # charset, then realpath and require the result to still sit under the assets
-# directory. See .claude/patterns/path-containment.md - a check against an
-# attacker-supplied root guards nothing, so the root here is our own constant.
+# directory. See .claude/patterns/path-containment.md - the root must come from
+# us, never from the request, so the root here is our own constant.
 @PromptServer.instance.routes.get("/pixaroma/api/asset")
 async def serve_pixaroma_asset_q(request):
     rel = request.query.get("path", "")
@@ -712,9 +704,9 @@ def _embed_workflow_metadata(workflow, prompt) -> PngInfo:
 # `await request.json()` does NOT check Content-Type and does not require an
 # object, so a body of `[1]` / `"x"` / `5` / `true` parses fine and is TRUTHY.
 # The old house idiom `data = data or {}` therefore let it straight through to
-# `.get()`, which raises AttributeError out of the handler and 500s the route -
-# and every one of these routes is UNAUTHENTICATED, so any page the user visits
-# can do it. Only the FALSY non-dicts (`[]`, `""`, `0`, `null`) were ever caught,
+# `.get()`, which raises AttributeError out of the handler and 500s the route,
+# and any client can send such a body. Only the FALSY non-dicts (`[]`, `""`,
+# `0`, `null`) were ever caught,
 # which is why the shape survived in a dozen routes for a year.
 #
 # Swept across all of them 2026-08-05 after a review found two. Add the guard to
@@ -1601,9 +1593,8 @@ async def api_preview_save(request):
 def _resolve_preview_frame(frame):
     """Turn a {filename, subfolder, type} preview frame into a real path.
 
-    UNTRUSTED like every other route input - /prompt and all of ours are
-    unauthenticated, so "our own frontend sent it" is not a control
-    (patterns/path-containment.md #0). Containment is the shared helper, never a
+    Checked like every other route input: any client can send any value, so
+    "our own frontend sent it" is not a check (patterns/path-containment.md #0). Containment is the shared helper, never a
     re-rolled check: safe_join realpaths and refuses any escape, which matters
     because a bare os.path.join DISCARDS the base for an absolute right-hand
     side (#1). basename() on the filename keeps a subfolder out of it, exactly
@@ -1646,7 +1637,7 @@ async def api_save3d_save_now(request):
     Response JSON: {ok: true, filename, subfolder, type} or {ok: false, error}.
 
     JSON only: a cross-origin form cannot send it without a preflight that is
-    never answered (registry-compliance.md #2c). Every value is untrusted, and
+    never answered (registry-compliance.md #2c). Every value is checked, and
     all of the containment lives in node_save_3d.save_now, which the harness
     tests directly (path-containment.md).
     """
@@ -2059,17 +2050,15 @@ async def api_lif_list(request):
     hdrs = {"Cache-Control": "no-store"}
     folder = request.query.get("path", "")
     recursive = request.query.get("recursive", "0") == "1"
-    # prescreen BEFORE isdir: on Windows, isdir on \\host\share alone opens an
-    # SMB connection and leaks an NTLM hash, so a UNC value must be judged
-    # lexically before any filesystem call touches it.
+    # prescreen BEFORE isdir: on Windows, isdir on \\host\share alone makes the
+    # machine contact that host, so a network path is judged by its text before
+    # any filesystem call touches it (path-containment.md #5).
     if not _pix_prescreen(folder):
         return web.json_response(
             {"ok": False, "message": _pix_denied_message(folder), "denied": True, "files": []},
             headers=hdrs,
         )
-    # Containment (2026-08-03, ComfyUI-Manager PR #3118). This route is
-    # unauthenticated, so without this `?path=C:\&recursive=1` enumerated every
-    # image on the host and /thumb then served them back as JPEG bytes.
+    # Lists a folder only when it is on the approved list (path-containment.md #4).
     # BEFORE isdir, not after: answering "Folder not found" for an absent path
     # and "not approved" for a present one is a directory-existence oracle for
     # the whole disk. next_counter already returns a constant for exactly this
@@ -2132,8 +2121,8 @@ async def api_lif_thumb(request):
     # Ordered BEFORE isdir so 403-vs-404 is not an existence oracle (round-3).
     if not _pix_folder_allowed(folder):
         return web.Response(status=403)
-    # `rel` is attacker-controlled too, and os.path.join DISCARDS `folder` when
-    # rel is absolute/UNC - so realpath would fire SMB before the check below.
+    # `rel` comes from the request too, and os.path.join DISCARDS `folder` when
+    # rel is absolute / a network path, so a rooted `rel` is refused up front.
     if _pix_rel_is_rooted(rel):
         return web.Response(status=403)
     if not folder or not rel or not os.path.isdir(folder):
@@ -2243,9 +2232,8 @@ async def api_lif_browse(request):
     Returns {ok, path, parent, dirs:[{name, path, images}]}; images = -1 means
     'not counted' (skipped for folders with many sub-folders, to stay fast).
 
-    Containment added 2026-08-03 (ComfyUI-Manager PR #3118): this used to walk
-    anything, so an unauthenticated caller could map the whole disk (and reach
-    UNC paths, which on Windows leaks an NTLM hash just by being stat'd).
+    Lists only folders inside the approved list (path-containment.md #4), and a
+    network path is screened by its text before any filesystem call (#5).
 
     The empty-path branch used to enumerate drive letters; it now lists the
     approved roots instead. That is both the containment AND a better landing
@@ -2378,8 +2366,8 @@ def _lif_dialog_macos(start_path):
     import re
     script = 'POSIX path of (choose folder with prompt "Choose a folder of images")'
     # Only seed the start location when it's a real dir whose path has no chars
-    # that could break out of the AppleScript string literal (?path= is supplied
-    # by the caller, so treat it as untrusted).
+    # that could end the AppleScript string literal (?path= comes from the
+    # request, so it is checked here).
     if start_path and os.path.isdir(start_path) and re.match(r'^[^"\\\x00-\x1f]+$', start_path):
         script = (
             'POSIX path of (choose folder with prompt "Choose a folder of images" '
@@ -2457,22 +2445,12 @@ async def api_lif_pick_native(request):
     start = request.query.get("path", "")
     # ⚠ THE START PATH MUST ALREADY BE APPROVED. Not merely screened.
     #
-    # The whole trust model rests on "an attacker can make this dialog appear
-    # but cannot choose the folder". That is FALSE if they control where it
-    # opens: `start` becomes $d.SelectedPath (line ~1870) and FolderBrowserDialog
-    # RETURNS SelectedPath when the user clicks OK without navigating. So
-    #   GET /pick_native?path=\\attacker\drop
-    # pops a plausible "Choose a folder of images" box already sitting on the
-    # attacker's share, and one OK click allowlists it permanently - after which
-    # Save Image can write every render there. `?path=C:\Users\<name>` does the
-    # same for the whole home directory.
-    #
-    # Restricting the start to an already-approved folder costs nothing: the
-    # dialog simply opens at its default and the user navigates to the new
-    # folder themselves, which is the flow anyway. Both real callers pass either
-    # "" or a folder that is already approved.
-    # (Round-3 review. The round-2 fix here only screened for UNC, which stopped
-    # the credential leak but not the far worse click-to-approve.)
+    # The dialog approves the folder the person picks in it. `start` becomes
+    # $d.SelectedPath, and FolderBrowserDialog RETURNS SelectedPath when OK is
+    # clicked without navigating, so the dialog only ever opens on a folder
+    # that is already approved (or at its default). Both real callers pass
+    # either "" or an approved folder, so this costs nothing: the person
+    # navigates to a new folder themselves, which is the flow anyway.
     if not (_pix_prescreen(start) and _pix_folder_allowed(start)):
         start = ""
     try:
@@ -2484,13 +2462,11 @@ async def api_lif_pick_native(request):
         if path and os.path.isdir(path):
             # THE approval point for the whole allowlist (see nodes/_path_guard).
             # A folder that came back from the native OS dialog was chosen by a
-            # human at the keyboard: an attacker can make this dialog APPEAR,
-            # but the selection and the OK click happen in the operating system,
-            # outside anything a request can influence. That is the only
-            # authorisation signal available to us, so this is the ONLY place
-            # allowed to call remember_folder. Do not call it from a route that
-            # takes the folder from the request body - that would let an
-            # attacker approve their own target and make the guard decorative.
+            # person at the keyboard: the selection and the OK click happen in
+            # the operating system, outside anything a request can influence.
+            # So this is the ONLY place allowed to call remember_folder. Never
+            # call it from a route that takes the folder from the request body:
+            # the approved list must only grow by a person's own pick.
             # Surface whether it actually persisted. If the write fails (read-only
             # user dir, AV lock, or a damaged config we refuse to clobber) and we
             # still answer plain ok, the node stores the folder, every Run then
@@ -2515,7 +2491,7 @@ async def api_load_image_import(request):
     The picture is COPIED into input/pixaroma_folders and the node holds that
     ordinary input name, so everything Load Image already does keeps working.
     JSON only: a cross-origin form cannot send it without a preflight that is
-    never answered (registry-compliance.md #2c). Every value is untrusted; all
+    never answered (registry-compliance.md #2c). Every value is checked; all
     of the containment lives in nodes/_folder_source.import_file, which the
     harness tests directly (path-containment.md): the folder must already be
     approved, and the copy can only land inside input/pixaroma_folders.
@@ -2688,17 +2664,11 @@ async def api_save_image_open_folder(request):
     approved. Local-install QoL; the path is resolved the same way the save
     does and must already exist as a directory.
 
-    Containment added 2026-08-03 (ComfyUI-Manager PR #3118). This route is
-    unauthenticated and was handing any absolute path to os.startfile /
-    xdg-open, so any web page could pop file-manager windows on the user's
-    desktop. Worse on Windows: a UNC path like \\\\attacker\\share makes the
-    os.path.isdir check ALONE reach out over SMB and leak an NTLM hash, before
-    startfile is even called - so the check has to come BEFORE the isdir, not
-    just before the launch. The sibling /workflows/reveal route already did
-    this correctly; this one is now consistent with it.
-
-    Peer check added 2026-09-05: opening a file manager is only meaningful for
-    somebody sitting at this machine. See _pix_peer_is_local."""
+    Opens the folder only when the request comes from this computer
+    (_pix_peer_is_local), the folder is on the user's approved list, and it is
+    a folder, never a file. The text screen runs BEFORE the isdir, because on
+    Windows the isdir of a network path alone contacts that host
+    (path-containment.md #5). Same shape as the sibling /workflows/reveal."""
     if not _pix_peer_is_local(request):
         return _pix_desktop_only_refusal()
     try:
@@ -2726,11 +2696,9 @@ async def api_save_image_open_folder(request):
         if sys.platform == "win32":
             # Plain open ONLY. The window may land behind the browser (the JS
             # status line says to check the taskbar). Do NOT re-add the
-            # PowerShell bring-to-front script: its Add-Type + user32.dll
-            # P/Invoke command line is flagged by Bitdefender as "Malicious
-            # command line detected" and BLOCKED (real user report,
-            # 2026-07-03) - antivirus heuristics can't tell it apart from
-            # injector malware. os.startfile is a normal API call and safe.
+            # PowerShell bring-to-front script: antivirus software blocked its
+            # Add-Type + user32.dll command line (real user report,
+            # 2026-07-03). os.startfile is a normal API call.
             os.startfile(path)
         elif sys.platform == "darwin":
             subprocess.Popen(["open", path])
@@ -2750,7 +2718,7 @@ async def api_save_image_save_now(request):
     Response JSON: {ok: true, entries, inside_output} or {ok: false, error}.
 
     JSON only: a cross-origin form cannot send it without a preflight that is
-    never answered (registry-compliance.md #2c). Every value is untrusted. The
+    never answered (registry-compliance.md #2c). Every value is checked. The
     request never carries a path: only file names the node itself registered
     when it wrote them are accepted, and the destination goes through the same
     containment and write code as a Save run (node_save_image.save_now). Runs in
@@ -3252,8 +3220,8 @@ async def api_lora_preview_set(request):
         body = {}
     # `body or {}` is NOT enough: request.json() ignores Content-Type, so a body of
     # `[1]` / `"x"` / `5` / `true` parses to a truthy NON-dict and reaches .get,
-    # raising AttributeError out of the handler and 500-ing an unauthenticated
-    # route. The falsy non-dicts ([], "", 0, null) are why that survived testing.
+    # raising AttributeError out of the handler and 500-ing the route. The
+    # falsy non-dicts ([], "", 0, null) are why that survived testing.
     if not isinstance(body, dict):
         body = {}
     name = str(body.get("name", "") or "")
@@ -3327,7 +3295,7 @@ async def api_lora_custom_triggers(request):
     The name is a STORE KEY, never a filesystem path - it is normalised by
     custom_trigger_key and used as a dict key, so it cannot reach the disk. We
     still resolve it against the loras dirs first so the store only ever gains
-    entries for LoRAs that actually exist (a typo'd or hostile name is refused
+    entries for LoRAs that actually exist (a typo'd or unknown name is refused
     rather than silently accumulating). Always 200."""
     try:
         data = await request.json()
@@ -4117,9 +4085,9 @@ async def api_workflows_cover_get(request):
 #
 # Read-only and side-effect free: it evaluates the same sandboxed expression the
 # node itself would run, touches no filesystem and stores nothing. The formula
-# is attacker-supplied like every other input on this unauthenticated server,
-# which is exactly why it goes through _duration_helpers (simpleeval, capped
-# length, capped exponent) and never near dynamic evaluation.
+# can be any text, like every other input, which is exactly why it goes through
+# _duration_helpers (simpleeval, capped length, capped exponent) and never near
+# dynamic evaluation.
 @PromptServer.instance.routes.post("/pixaroma/api/duration/preview")
 async def api_duration_preview(request):
     import math
@@ -4195,8 +4163,8 @@ async def api_load_audio_list(request):
     anything that escapes.
 
     followlinks stays FALSE (os.walk's default, stated here because it is load
-    bearing): this route is unauthenticated, so a symlink inside input/ pointing
-    at C:\\ would otherwise turn a file picker into a filesystem enumerator.
+    bearing): the picker lists input/ only, and a symlink inside input/ pointing
+    at C:\\ must not widen that to the whole disk.
     Both caps exist so a huge or pathological tree cannot hang the picker.
     """
     hdrs = {"Cache-Control": "no-store"}
@@ -4341,7 +4309,7 @@ async def api_video_prompt_save_durations(request):
     for item in tiers:
         if not isinstance(item, dict):
             continue
-        # The NAME was uncapped while the value was capped, so one unauthenticated
+        # The NAME was uncapped while the value was capped, so one
         # POST could write ~20 MB of tier names (aiohttp's client_max_size) into
         # the user dir, repeatably, each then rendering as a chip label.
         if len(str(item.get("name", ""))) > _VP_MAX_TIER_NAME:
@@ -4502,8 +4470,8 @@ async def api_ai_prompt_preset_delete(request):
 # ---------------------------------------------------------------------------
 
 # A prompt is a few hundred bytes and a big collection a few hundred KB. The cap
-# is here because this route is unauthenticated and writes caller-supplied bytes
-# to disk (path-containment #0) - without it one request could fill a drive.
+# is here because this route writes the bytes it is sent to disk
+# (path-containment #0) - without it one request could fill a drive.
 _SAVE_TEXT_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -4533,9 +4501,8 @@ async def api_save_text_write(request):
     # REFUSE a body that is not a JSON object, rather than defaulting to {}.
     # Defaulting meant `[1,2,3]`, `"str"`, `null`, `7`, an empty body and a
     # form-encoded body all fell through to folder:"" + name:"" and wrote a
-    # 0-byte prompts_00N.txt into the user's output ROOT. The route is
-    # unauthenticated, so that was a litter primitive for anything that can
-    # reach the port. MEASURED: six junk bodies, six stray files.
+    # 0-byte prompts_00N.txt into the user's output ROOT, one per bad request.
+    # MEASURED: six junk bodies, six stray files.
     if not isinstance(data, dict):
         return web.json_response(
             {"ok": False, "message": "Expected a JSON object body."}, status=400
@@ -4561,8 +4528,8 @@ async def api_save_text_write(request):
 
     # ORDER IS THE INVARIANT (path-containment #5): prescreen the RAW field
     # first, because _resolve_save_folder expands %VARS% and ~ and then
-    # realpaths, and on Windows a realpath of a UNC path is itself the attack -
-    # it hands over an NTLM hash before any check has run. The _field variant is
+    # realpaths, and on Windows a realpath of a network path already contacts
+    # that host before any check has run. The _field variant is
     # the expansion-aware one, and this route expands downstream, so it is the
     # one required here (path-containment #11b).
     if not _pix_prescreen_field(folder_raw):

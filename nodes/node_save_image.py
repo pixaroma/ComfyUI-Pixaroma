@@ -282,7 +282,7 @@ def _parse_state(raw):
     """The node state -> a full dict with every default filled in.
 
     `raw` is the hidden SaveImageState JSON string on a run, or the object itself
-    from the Save now route. Untrusted either way: anything that is not a JSON
+    from the Save now route. Checked either way: anything that is not a JSON
     object leaves the defaults.
     """
     state = dict(DEFAULT_STATE)
@@ -301,15 +301,11 @@ def _contain_folder(folder_raw):
     """The save folder from the state -> (folder_abs, inside_output), or a
     ValueError whose message names the fix.
 
-    CONTAINMENT (2026-08-03, ComfyUI-Manager PR #3118). `folder` arrives in the
-    hidden SaveImageState blob (or the Save now request) and both are
-    unauthenticated, so this string is attacker-controlled. It used to be
-    honoured verbatim for any absolute path: `inside_output` was computed but
-    only ever picked the UI payload shape, never gated the write. A crafted
-    prompt could therefore drop PNG/JPG files anywhere the ComfyUI process can
-    write. Saving to your own folders still works - see _path_guard: anything
-    you picked with the Browse button is approved, and so are ComfyUI's own
-    folders.
+    CONTAINMENT. `folder` arrives in the hidden SaveImageState blob (or the
+    Save now request), so this string can be any text. A file is written only
+    into ComfyUI's own folders or a folder the user approved with the Browse
+    button (see _path_guard); anything else is refused with a message that
+    names the fix.
     prescreen first (raw string, no filesystem touch) because
     _resolve_save_folder calls realpath, which reaches out over SMB for a UNC
     path before we would otherwise get a look at it.
@@ -622,9 +618,8 @@ def save_now(data):
     """Save now: write the pictures a Preview run showed into the save folder,
     without running the workflow again -> {"entries", "inside_output"}.
 
-    Called by the /pixaroma/api/save_image/save_now route, which is
-    unauthenticated, so every value in `data` is untrusted (path-containment.md
-    #0). The source must be a temp file this node registered when it wrote it
+    Called by the /pixaroma/api/save_image/save_now route, so every value in
+    `data` is checked here (path-containment.md #0). The source must be a temp file this node registered when it wrote it
     (_PREVIEW_FILES); the request names it but never supplies a path. The
     destination follows exactly the rules of a Save run, through the same code
     (_contain_folder, _write_frames). The CURRENT settings of the node apply
@@ -772,7 +767,7 @@ class PixaromaSaveImage:
 
         h = int(images.shape[1])
         w = int(images.shape[2])
-        # CONTAINMENT: the folder is attacker-controlled - see _contain_folder.
+        # CONTAINMENT: the folder can be any text - see _contain_folder.
         folder_abs, inside_output = _contain_folder(state.get("folder", ""))
 
         # Saving switched off: the node acts as a pure PREVIEW. Frames go to

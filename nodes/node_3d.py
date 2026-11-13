@@ -50,7 +50,7 @@ class Pixaroma3D:
             composite_path = meta.get("composite_path", "")
             if composite_path:
                 # safe_join, not os.path.join: composite_path comes from the
-                # hidden state blob and /prompt is unauthenticated, so an
+                # hidden state blob and /prompt takes it as sent, so an
                 # absolute value would discard input_dir entirely. See
                 # _path_guard.safe_join. (load_render below was already guarded;
                 # this IS_CHANGED twin was the one that got missed.)

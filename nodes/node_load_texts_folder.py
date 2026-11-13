@@ -12,8 +12,8 @@ Two ways to use it:
     an empty text (and a console note), so the two lists never drift apart.
     INPUT_IS_LIST is what lets the node see the whole name list in one call.
 
-CONTAINMENT: the folder string is attacker-controlled (/prompt is
-unauthenticated). All folder logic is in _text_folder_helpers.resolve_folder
+CONTAINMENT: the folder string can be any text (/prompt takes it as
+sent). All folder logic is in _text_folder_helpers.resolve_folder
 (prescreen BEFORE resolve, folder_allowed BEFORE isdir), shared with Caption
 Review's route. Only plain .txt files directly inside the folder are read, each
 capped at 1 MB. IS_CHANGED is the second entry point and runs the same guard

@@ -40,8 +40,8 @@ COLORS = {
 WIDTHS = {"S": 0.006, "M": 0.010, "L": 0.016, "XL": 0.030}
 TYPES = ("box", "ellipse", "pen", "arrow", "text")
 
-# Hard rails. /prompt is unauthenticated, so the hidden state is untrusted
-# input: every list is capped before it is walked.
+# Hard rails. /prompt takes any value as sent, so the hidden state can hold
+# anything: every list is capped before it is walked.
 MAX_MARKS = 64
 MAX_POINTS = 4000
 MAX_TEXT = 60

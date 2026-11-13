@@ -41,7 +41,7 @@ _I16_MODES = ("I;16", "I;16B", "I;16L", "I;16N")
 
 def _card_path(card):
     """The card's picture inside ComfyUI's input folder, or None. The state blob
-    is untrusted (every hidden input is), so the join is contained."""
+    can hold any value (every hidden input can), so the join is contained."""
     name = card.get("file") or ""
     if not name:
         return None

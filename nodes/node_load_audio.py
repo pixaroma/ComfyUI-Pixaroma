@@ -49,12 +49,12 @@ def _decode(path):
 
 
 def _resolve(name):
-    """Turn an untrusted filename into a real path inside ComfyUI's own folders.
+    """Turn a filename (any text) into a real path inside ComfyUI's own folders.
 
     Order matters. rel_is_rooted runs FIRST, before anything touches the
-    filesystem: on Windows merely resolving \\\\attacker\\share opens SMB and
-    leaks an NTLM hash, and /prompt is unauthenticated, so this value is
-    attacker-controlled like every other input (see patterns/path-containment.md).
+    filesystem: on Windows merely resolving \\\\host\\share contacts that
+    host, and /prompt takes any value as sent, like every other input
+    (see patterns/path-containment.md).
     """
     if not name or not isinstance(name, str):
         return None
@@ -198,7 +198,7 @@ class PixaromaLoadAudio:
         except (TypeError, ValueError):
             want = 0.0
 
-        # /prompt is unauthenticated, so `want` is attacker-controlled. Without a
+        # /prompt takes any value as sent, so `want` can be anything. Without a
         # cap, {"whenUnwired":"length","length":20000} asks for 960 million
         # samples - a 7.7 GB allocation, doubled transiently by the concat -
         # which OOM-kills the ComfyUI process. Measured.

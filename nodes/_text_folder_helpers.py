@@ -8,7 +8,7 @@ output, a full path = any folder the user approved with Browse.
 
 THE ORDER IS THE INVARIANT (path-containment #5): prescreen_folder_field on the
 RAW string first (the resolver expands %VARS% and realpaths, and on Windows a
-realpath of a UNC path already leaks an NTLM hash), then the shared resolver,
+realpath of a UNC path already contacts that host), then the shared resolver,
 then folder_allowed on the resolved path, and only then isdir. Answering "not
 found" only AFTER the allowed check keeps this from being a directory-existence
 oracle for the whole disk (the LIF list route's round-3 rule).

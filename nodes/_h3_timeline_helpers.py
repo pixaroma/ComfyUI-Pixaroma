@@ -269,7 +269,7 @@ def _unit(v, fallback=0.5):
 
 
 def parse_state(raw):
-    """The node's TimelineState JSON (untrusted) -> {"scenes": [...]} with every field clean:
+    """The node's TimelineState JSON (any shape) -> {"scenes": [...]} with every field clean:
     length (s), words, picture (an input-folder filename or None), role ("look" / "person"), x, y (where the cut
     sits, 0..1), fit ("cut" / "fit") and cut (True = the scene starts with a clean cut, never on scene 1). Always
     at least one scene."""

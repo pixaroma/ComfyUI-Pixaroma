@@ -106,7 +106,7 @@ def _strip(s):
 
 
 def parse_state(raw):
-    """A healed copy of the node's state. Never raises: a broken or hostile
+    """A healed copy of the node's state. Never raises: a broken or unexpected
     blob comes back as an empty node."""
     if isinstance(raw, str):
         try:

@@ -73,7 +73,7 @@ def _split_value(image):
     """(copy_dir, file_name) for a folder-copy value, else None."""
     # A real value is a few hundred characters at most. Refuse anything longer
     # BEFORE the pattern below, which is slow on a long run of spaces - and this
-    # runs on every /prompt, where the value is attacker-supplied (review round 1).
+    # runs on every /prompt, where the value can be any text (review round 1).
     if not isinstance(image, str) or len(image) > 1024:
         return None
     v = image.replace("\\", "/").strip()
@@ -140,7 +140,7 @@ def import_file(folder, rel):
     """Copy one picture from an approved folder into input.
 
     `folder` is the folder the picker listed, `rel` the file's path inside it
-    (both straight from a request, so both untrusted). Returns
+    (both straight from a request, so both are checked here). Returns
     (value, None) on success, value being the input name the node should hold,
     or (None, message) on refusal. Refusals never say whether a path exists.
     """

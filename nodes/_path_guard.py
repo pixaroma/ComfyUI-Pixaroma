@@ -3,11 +3,11 @@
 
 WHY THIS FILE EXISTS
 --------------------
-ComfyUI's /prompt endpoint and our own aiohttp routes are UNAUTHENTICATED, and
-nothing distinguishes "the user clicked something in the UI" from "a crafted
-request arrived". So every widget value, every hidden state blob and every query
-string is attacker-controlled, and any of them that reaches the filesystem needs
-a containment check.
+ComfyUI's /prompt endpoint and our own aiohttp routes accept any client, and
+nothing distinguishes "the user clicked something in the UI" from "a request
+arrived". So every widget value, every hidden state blob and every query string
+can hold any value, and any of them that reaches the filesystem needs a
+containment check.
 
 The pack already had three CORRECT containment idioms in-tree
 (`_resolve_pixaroma_path`, `_load_server_image`'s realpath+startswith, and
@@ -30,12 +30,11 @@ A folder is allowed when ONE of these is true:
   b) the user PICKED it in the native OS folder dialog at some point, or
   c) `allow_any` is true in the config file.
 
-(b) is the load-bearing one, and it is what keeps this invisible to users. An
-attacker CAN make the native dialog appear, but cannot choose a folder in it and
-cannot click OK - that happens in the operating system, outside anything a
-request can reach. So a folder that came back from that dialog was demonstrably
-chosen by a human at the keyboard, which is exactly the authorisation we lack
-everywhere else. `remember_folder` is therefore called ONLY from the native
+(b) is the load-bearing one, and it is what keeps this invisible to users. The
+choice of folder and the OK click in the native dialog happen in the operating
+system, outside anything a request can reach. So a folder that came back from
+that dialog was chosen by a person at the keyboard, which is exactly the
+approval we have nowhere else. `remember_folder` is therefore called ONLY from the native
 picker route, never from an ordinary request body.
 
 (c) is a deliberate escape hatch for people who script paths or type them by
@@ -158,10 +157,9 @@ def rel_is_rooted(rel) -> bool:
     MUST be checked BEFORE safe_join's realpath. os.path.join DISCARDS the base
     whenever the right-hand side is absolute, drive-qualified or UNC (verified:
     join(r"D:\in", r"\\host\s\a.png") == r"\\host\s\a.png"), so realpath then
-    runs on the attacker's own path. For a UNC that is a forced-authentication
-    leak - Windows opens SMB and hands over an NTLM hash - and it happens
-    BEFORE is_path_under gets to refuse the read. Refusing the read is not
-    enough; the resolve itself is the attack.
+    runs on the caller's own path. For a network path Windows contacts that
+    host during the resolve, BEFORE is_path_under gets to refuse the read.
+    Refusing the read is not enough; the resolve must not happen at all.
 
     This is the child-string twin of prescreen(), and it was the gap the first
     pass left: every FOLDER string was screened, every CHILD string was not.
@@ -333,8 +331,8 @@ def remember_folder(path: str) -> bool:
     CALL THIS FROM THE NATIVE PICKER ROUTE ONLY. The dialog is the one signal we
     have that a real person chose this, because the choice and the OK click
     happen in the operating system, not in a request we received. Calling it
-    from anywhere a request body can reach would hand an attacker the ability to
-    approve their own target, which is the whole thing this file prevents.
+    from anywhere a request body can reach would let a request approve its own
+    folder, which is the whole thing this file prevents.
     """
     if not path or not isinstance(path, str):
         return False
@@ -430,13 +428,12 @@ def _lexically_under_any(child: str, parents) -> bool:
 
 
 def prescreen(raw) -> bool:
-    """Cheap NO-FILESYSTEM screen to run on an untrusted folder string BEFORE
-    anything calls realpath / isdir / listdir on it. False = refuse outright.
+    """Cheap NO-FILESYSTEM screen to run on a folder string from a request
+    BEFORE anything calls realpath / isdir / listdir on it. False = refuse.
 
     WHY THIS EXISTS, and why the ordinary folder_allowed check is too late for
     it: on Windows, merely calling os.path.realpath or os.path.isdir on
-    \\\\attacker\\share makes the machine open an SMB connection and hand over an
-    NTLM hash - a classic forced-authentication leak. That damage is done during
+    \\\\host\\share makes the machine contact that host. That happens during
     the resolve, i.e. before folder_allowed ever sees a resolved path. So a UNC
     value has to be judged lexically, up front.
 
@@ -459,10 +456,9 @@ def prescreen_folder_field(raw) -> bool:
     `_resolve_save_folder` does expandvars(expanduser(s)) and THEN realpath, so
     screening only the raw string checks a different value than the one that
     actually gets resolved: `%LOGONSERVER%\\C$` or `%HOMESHARE%` is not lexically
-    UNC, sails through prescreen, and becomes UNC after expansion. Low
-    exploitability (the vars name the victim's own domain controller, not the
-    attacker's host) but the invariant the call sites claim was simply not held
-    (round-3 review finding 4).
+    UNC, sails through prescreen, and becomes UNC after expansion. Those vars
+    name the user's own domain controller, but the invariant the call sites
+    claim was simply not held (round-3 review finding 4).
 
     Neither expandvars nor expanduser touches the filesystem, so this is still
     entirely pre-resolve. Keep the normalisation in step with

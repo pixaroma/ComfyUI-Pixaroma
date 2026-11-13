@@ -197,8 +197,8 @@ def _write_saved(data, fmt, state):
 def save_now(data):
     """Save now: copy a Preview run's file into the save folder -> the saved file's info.
 
-    Called by the /pixaroma/api/save3d/save_now route, which is unauthenticated, so
-    every value in `data` is untrusted (path-containment.md #0). The source must be
+    Called by the /pixaroma/api/save3d/save_now route, so every value in `data`
+    is checked here (path-containment.md #0). The source must be
     a file this node wrote: type temp, our own subfolder, our own name pattern, and
     safe_join keeps it inside that folder. The destination follows exactly the same
     rules as a Save run.

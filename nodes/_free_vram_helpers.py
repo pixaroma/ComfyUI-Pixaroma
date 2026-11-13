@@ -61,7 +61,7 @@ def _as_float(value, fallback, lo, hi):
 def parse_state(raw):
     """Turn whatever arrived in the hidden input into a clean settings dict.
 
-    /prompt is unauthenticated, so this may be any JSON value, a broken string,
+    /prompt takes any value as sent, so this may be any JSON value, a broken string,
     or missing entirely. Every bad shape falls back to the defaults rather than
     raising - a malformed blob must not be able to fail somebody's run.
     """

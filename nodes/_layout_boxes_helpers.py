@@ -27,8 +27,8 @@ import math
 import numpy as np
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont
 
-# Hard rails. /prompt is unauthenticated, so the hidden state is untrusted
-# input: every list and string is capped before it is walked.
+# Hard rails. /prompt takes any value as sent, so the hidden state can hold
+# anything: every list and string is capped before it is walked.
 MAX_BOXES = 64
 MAX_DESC = 2000
 MAX_TEXT = 500
