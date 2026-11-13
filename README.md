@@ -251,7 +251,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **November 13, 2026 · v1.4.254**
+### **November 13, 2026 · v1.4.254-v1.4.255**
+- **Align in Nodes 2.0:** resizing a node now snaps to the nodes around it and shows the guide lines, on the edges you see. A click no longer nudges a node.
+- **Align in Classic:** resizing one of several selected nodes no longer moves the others with it.
 - **Group Switch:** collapsed nodes are switched with the group they sit in. A collapsed node could be counted in the group next to it, so the wrong nodes were bypassed.
 - **Pack files (icons, fonts, scripts):** a request that names a network path is refused at once, so ComfyUI no longer stalls on it.
 - **Save Image, Save Video, Save Text:** the "Will save as" counter only looks inside your save folder.
