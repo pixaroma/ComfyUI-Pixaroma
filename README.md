@@ -251,6 +251,11 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 13, 2026 · v1.4.254**
+- **Group Switch:** collapsed nodes are switched with the group they sit in. A collapsed node could be counted in the group next to it, so the wrong nodes were bypassed.
+- **Pack files (icons, fonts, scripts):** a request that names a network path is refused at once, so ComfyUI no longer stalls on it.
+- **Save Image, Save Video, Save Text:** the "Will save as" counter only looks inside your save folder.
+
 ### **November 11, 2026 · v1.4.253**
 - **Resolution, big sizes:** a new Normal / Big switch beside the width output. Big gives every ratio 8 sizes from about 4 to 17 MP, up to MiniMax H3 Image's 16 MP sizes.
 - **Resolution, custom sizes:** Custom Resolution and Custom Ratio now go up to 8192 per side (was 4096), so 5472 x 3072 fits.
