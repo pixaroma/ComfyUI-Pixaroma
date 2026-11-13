@@ -223,9 +223,19 @@ function groupAt(p) {
 function nodeVisualBounds(n) {
   const titleH = (window.LiteGraph?.NODE_TITLE_HEIGHT) || 30;
   const collapsed = !!n.flags?.collapsed;
-  const w = n.size?.[0] || 0;
+  const w = collapsed ? collapsedWidth(n) : (n.size?.[0] || 0);
   const bodyH = collapsed ? 0 : (n.size?.[1] || 0);
   return { x: n.pos[0], y: n.pos[1] - titleH, w, h: bodyH + titleH };
+}
+// A collapsed node keeps its OPEN width in size[0] but is drawn as a short title pill, so the open width put its
+// centre in the NEIGHBOUR group (Group Switch bypassed the wrong nodes, Discord 2026-11-12). Ask core for the drawn
+// width, the one its own group membership uses: renderingSize (Nodes 2.0: the measured DOM width; Classic: the
+// title-text width), then the same fallbacks core's measure() uses. Older frontends have no renderingSize.
+function collapsedWidth(n) {
+  let w = 0;
+  try { const rs = n.renderingSize; if (rs && rs[0] > 0) w = rs[0]; } catch (_e) {}
+  if (!(w > 0)) w = n._collapsed_width || window.LiteGraph?.NODE_COLLAPSED_WIDTH || 0;
+  return w > 0 ? w : (n.size?.[0] || 0);
 }
 // Nodes whose visual center sits inside the group (matches LiteGraph's own
 // "contains" rule used for group-drag).
