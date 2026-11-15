@@ -39,8 +39,11 @@ VAE_FACTOR = 8   # px per latent px when the model does not say (Krea 2, Z-Image
 _ROPE_FAMILIES = {
     ("comfy.ldm.krea2.model", "SingleStreamDiT"):
         dict(label="Krea 2", attr="pe_embedder", patch="patch", min_turns=0.5),
+    # NextDiT also serves Lumina 2 / NewBie (axes [32, 32, 32], theta 10000) and Ming-Image (Z-Image's position code,
+    # image_model "ming_image"): untested, so only Z-Image's exact code is taken (seamless.md #20)
     ("comfy.ldm.lumina.model", "NextDiT"):
-        dict(label="Z-Image", attr="rope_embedder", patch="patch_size", min_turns=1.0),
+        dict(label="Z-Image", attr="rope_embedder", patch="patch_size", min_turns=1.0,
+             axes_dim=[32, 48, 48], theta=256.0, skip_models=("ming_image",)),
     ("comfy.ldm.flux.model", "Flux"):
         dict(label="FLUX.2", attr="pe_embedder", patch="patch_size", min_turns=0.5, axes=4),
     ("comfy.ldm.flux3.model", "Flux3"):
@@ -50,12 +53,26 @@ _UNET = ("comfy.ldm.modules.diffusionmodules.openaimodel", "UNetModel")
 _KNOWN = "Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5"
 
 
-def _family(dm):
+def _image_model(model):
+    """The model config's image_model name ("lumina2", "ming_image", ...), or None."""
+    try:
+        return model.model.model_config.unet_config.get("image_model")
+    except Exception:
+        return None
+
+
+def _family(dm, image_model=None):
     """The _ROPE_FAMILIES entry of a diffusion model, or None."""
     entry = _ROPE_FAMILIES.get((type(dm).__module__, type(dm).__name__))
-    if entry and "axes" in entry:
+    if entry:
         emb = getattr(dm, entry["attr"], None)
-        if len(getattr(getattr(emb, "orig", emb), "axes_dim", ())) != entry["axes"]:
+        emb = getattr(emb, "orig", emb)
+        axes = list(getattr(emb, "axes_dim", ()))
+        if "axes" in entry and len(axes) != entry["axes"]:
+            return None
+        if "axes_dim" in entry and (axes != entry["axes_dim"] or getattr(emb, "theta", None) != entry["theta"]):
+            return None
+        if image_model in entry.get("skip_models", ()):
             return None
     return entry
 
@@ -63,7 +80,7 @@ def _family(dm):
 def detect_family(model):
     """('rope', label, embedder attr, patch) or ('conv', label, None, multiple), or a clear ValueError."""
     dm = model.get_model_object("diffusion_model")
-    entry = _family(dm)
+    entry = _family(dm, _image_model(model))
     if entry:
         label, attr = entry["label"], entry["attr"]
         emb = getattr(dm, attr, None)
@@ -278,7 +295,7 @@ class SeamlessTilePixaroma:
         to = patched.model_options.setdefault("transformer_options", {})
         to.get("wrappers", {}).get(pe.WrappersMP.DIFFUSION_MODEL, {}).pop(WRAPPER_KEY, None)
         if kind == "rope":
-            entry = _family(model.get_model_object("diffusion_model"))
+            entry = _family(model.get_model_object("diffusion_model"), _image_model(model))
             wrapper = make_rope_wrapper(attr, unit, wrap_h, wrap_w, label, entry["min_turns"], px_per_latent(model),
                                         entry.get("pos_scale"), entry.get("image_last", False))
         else:
