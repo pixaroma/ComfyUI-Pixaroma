@@ -144,6 +144,10 @@ from .nodes.node_krea_lora_convert import NODE_CLASS_MAPPINGS as _MAPS_KREA_LORA
 from .nodes.node_krea_lora_convert import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_KREA_LORA_CONVERT
 from .nodes.node_krea2_enhancer import NODE_CLASS_MAPPINGS as _MAPS_KREA2_ENHANCER
 from .nodes.node_krea2_enhancer import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_KREA2_ENHANCER
+from .nodes.node_seamless_tile import NODE_CLASS_MAPPINGS as _MAPS_SEAMLESS_TILE
+from .nodes.node_seamless_tile import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SEAMLESS_TILE
+from .nodes.node_seamless_preview import NODE_CLASS_MAPPINGS as _MAPS_SEAMLESS_PREVIEW
+from .nodes.node_seamless_preview import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_SEAMLESS_PREVIEW
 from .nodes.node_lora_loader import NODE_CLASS_MAPPINGS as _MAPS_LORA_LOADER
 from .nodes.node_lora_loader import NODE_DISPLAY_NAME_MAPPINGS as _NAMES_LORA_LOADER
 from .nodes.node_sizes import NODE_CLASS_MAPPINGS as _MAPS_SIZES
@@ -267,6 +271,8 @@ NODE_CLASS_MAPPINGS = {
     **_MAPS_SAVE_TEXT,
     **_MAPS_KREA_LORA_CONVERT,
     **_MAPS_KREA2_ENHANCER,
+    **_MAPS_SEAMLESS_TILE,
+    **_MAPS_SEAMLESS_PREVIEW,
     **_MAPS_LORA_LOADER,
     **_MAPS_SIZES,
     **_MAPS_TEXT_JOIN,
@@ -363,6 +369,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     **_NAMES_SAVE_TEXT,
     **_NAMES_KREA_LORA_CONVERT,
     **_NAMES_KREA2_ENHANCER,
+    **_NAMES_SEAMLESS_TILE,
+    **_NAMES_SEAMLESS_PREVIEW,
     **_NAMES_LORA_LOADER,
     **_NAMES_SIZES,
     **_NAMES_TEXT_JOIN,

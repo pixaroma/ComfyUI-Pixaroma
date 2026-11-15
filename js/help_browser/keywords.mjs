@@ -137,6 +137,11 @@ export const KEYWORDS = {
   PixaromaVersionCheck: "version diagnostic about update which version",
 
   // ── Utility and editors ──
+  SeamlessTilePixaroma: "seamless tileable tiling tile repeat repeating pattern surface pattern texture textures "
+    + "wallpaper fabric textile print on demand spoonflower etsy game texture material pbr wrap around circular "
+    + "torus no seam seams edge edges join make it tile tiles krea krea2 z-image zimage sdxl sd15 rope",
+  SeamlessPreviewPixaroma: "seamless preview tile check seam checker test repeat 2x2 3x3 offset half drop half-drop "
+    + "half brick half-brick mockup mock-up pattern repeat preview does it tile edge check pass fail",
   Krea2EnhancerPixaroma: "krea krea2 krea 2 turbo enhancer krea2t enhancer comfyui-krea2t-enhancer capitan01r prompt adherence follow the prompt ignores prompt missing details skips details stronger prompt better prompt following model patch missing node not found github 404 deleted",
   PixaromaLoraLoader: "lora stack weight trigger civitai xy plot compare grid sweep "
     + "moved move folder subfolder lost trigger words red name "

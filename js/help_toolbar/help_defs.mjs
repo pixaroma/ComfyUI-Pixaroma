@@ -2207,6 +2207,47 @@ const HELP = {
     ],
     footer: "Works with Krea 2 models only. Any other model passes through unchanged.",
   },
+
+  "SeamlessTilePixaroma": {
+    title: "Seamless Tile Pixaroma",
+    tagline: "Makes the picture repeat with no edge, every time.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "A seamless pattern or texture has to join on all four sides: its right edge continues into its left edge, its bottom edge into its top edge. Newer models never learned that, so you only get it on a lucky seed.\n\nThis node changes the model and the VAE so the picture they make has no edge at all. It joins on every seed, with any prompt. Same speed, nothing downloaded, and the loaded models are not changed: it works on a copy inside the run.",
+      },
+      {
+        heading: "Where it goes",
+        body: "Wire the model (after any LoRA loaders) and the VAE into it. Then use its model output in the KSampler and its vae output in VAE Decode. Both matter: the model makes a picture that joins, the VAE keeps the edge clean when it turns it into pixels. A normal VAE leaves a faint line. A node that rebuilds the VAE (VAE Compute Dtype, a MultiGPU VAE loader) goes before this node, never after it.\n\nAdd Seamless Preview Pixaroma after VAE Decode to see the repeat and get a PASS / FAIL check.",
+      },
+      {
+        heading: "Tile",
+        defs: [
+          ["Both", "Joins in every direction. For patterns and textures."],
+          ["Left and right", "Only the left and right edges join: a strip that repeats sideways, like a border or a panorama loop."],
+          ["Up and down", "Only the top and bottom edges join."],
+          ["Off", "The model and VAE pass through unchanged, to compare with and without."],
+        ],
+      },
+      {
+        heading: "Models and sizes",
+        body: "Works with Krea 2, Z-Image, SDXL and SD 1.5, text to picture. Any other model stops the Run with a message instead of silently making a picture that does not join.\n\nThe width and height must be multiples of 16 px (32 px for SDXL, 64 px for SD 1.5), or the Run stops and names a size that works. Krea 2 looks best at 1536 x 1536; at 1024 its motifs come out a little smaller and more regular. Z-Image is good at 1024.",
+      },
+      {
+        heading: "Prompts",
+        body: "The node makes the edges join, the prompt makes the picture worth repeating. Describe a flat, evenly spread pattern or a texture seen straight from above with flat light. Words like centered, vignette, depth of field or cinematic work against a repeat.",
+      },
+      {
+        heading: "Low memory",
+        body: "If the card has too little memory for one VAE decode, ComfyUI decodes in tiles. The edges are then wrapped around before decoding: very close to seamless but not exact. The console says so, and Seamless Preview's check shows the result.",
+      },
+      {
+        heading: "Licences and credit",
+        body: "The picture is yours, but the model's licence still applies: Krea 2 is free for companies under US$1M a year, Z-Image is Apache-2.0. The idea of snapping the position code to the tile follows the SpheRoPE paper (Hirschorn et al., 2026); the code is our own.",
+      },
+    ],
+    footer: "Text to picture only. A video model, a reference image, area prompts or a tiled upscaler (Ultimate SD Upscale) are not supported yet.",
+  },
 };
 
 for (const [cls, def] of Object.entries(HELP)) registerNodeHelp(cls, def);
