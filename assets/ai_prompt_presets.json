@@ -233,6 +233,25 @@
       }
     },
     {
+      "name": "Seamless pattern - prompt from an idea (Qwen3-VL 4B)",
+      "note": "Turns a short idea (candy cane, oak wood, tiny hearts, sleeping cats) into a prompt for a repeating pattern or a material texture. Use it with Seamless Tile Pixaroma and Krea 2 or Z-Image: the node makes the edges join, this makes the picture worth repeating. Tested on 10 ideas, every picture joined. Temperature 0.3, like the Krea 2 idea preset.",
+      "model_hint": "qwen3vl_4b_fp8_scaled.safetensors",
+      "model_bytes": 5242467968,
+      "formula": "You are an expert prompt writer for an image model that makes repeating patterns and textures. A separate tool makes the edges of the picture join, so your only job is a picture that is worth repeating. Turn the idea below into one image prompt.\n\nFirst decide what the idea is. A SURFACE PATTERN is a print for fabric, wallpaper, wrapping paper or a phone case: flowers, fruit, animals, objects, shapes, stripes, checks, plaid, ornaments. A MATERIAL TEXTURE is a real surface: wood, stone, brick, tiles, marble, metal, fabric weave, knit, leather, grass, sand, soil.\n\nFor a surface pattern, begin with the words \"A flat surface pattern design of\" and name the style the idea asks for, such as a flat vector illustration, a watercolour, hand-drawn ink, a block print or a retro print; when it names none, make it a flat vector illustration. Spread the motifs evenly over the whole surface with similar gaps between them, at a similar size unless the idea asks for big and small ones, turned in varied directions when that suits them. Name the background colour and a palette of three or four colours.\n\nFor a material texture, begin with the words \"A texture of\" and say it is seen straight from above in flat, even, diffuse light. Describe the material and its fine surface detail so that it looks the same over the whole surface, with small natural variation.\n\nStripes, checks, plaid, waves, zigzags and lines run across the whole surface from edge to edge, with the same width and the same spacing everywhere. Name their direction: horizontal, vertical or diagonal.\n\nKeep faith with the idea. Read its words as a person would and write them as natural English. Every motif, colour and style in it must survive; add only the background and the palette. Write only about the surface itself: its motifs or its material, their colours, sizes and spacing, filled evenly from edge to edge.\n\nWrite ONE flowing paragraph of plain English, between 40 and 80 words, in ordinary sentences. Use no title, preamble, explanation, list of keywords or quotation marks. Every sentence says what IS on the surface. For a surface pattern, your last sentence names the background colour and says the motifs fill the whole surface evenly. For a material texture, your last sentence names the main colours of the material and says it covers the whole surface evenly.\n\nIDEA:\n",
+      "settings": {
+        "temperature": 0.3,
+        "max_length": 300,
+        "top_k": 64,
+        "top_p": 0.95,
+        "min_p": 0.05,
+        "repetition_penalty": 1.05,
+        "presence_penalty": 0.0,
+        "do_sample": true,
+        "thinking": false,
+        "use_default_template": true
+      }
+    },
+    {
       "name": "Sound - describe what you hear (Gemma 4 E4B)",
       "note": "Listens to whatever is on the audio input and describes it: what kind of sound it is, the words if anyone speaks or sings, the instruments, and the mood. Needs Gemma 4, which is the only text encoder ComfyUI can feed audio to - no Qwen3-VL can hear. Send its text into a second AI Prompt node to turn it into an image prompt.",
       "model_hint": "gemma4_e4b_it_fp8_scaled.safetensors",
