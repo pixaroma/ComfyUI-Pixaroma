@@ -219,6 +219,15 @@ export function openSettingsPanel(node, onChange) {
   body.appendChild(
     switchRow(
       node,
+      "print300",
+      "Print resolution (300 ppi)",
+      "On: PNG and JPG files say 300 ppi, so a 3000 px picture opens as 10 inches wide for print. Off: the file carries no print size and apps read it as 72 ppi, for screens. The pixels are the same either way; WebP has no place for it"
+    )
+  );
+
+  body.appendChild(
+    switchRow(
+      node,
       "embedWorkflow",
       "Save workflow inside the image",
       "Drag the file back into ComfyUI to reload it. Works with PNG and WebP; a JPG cannot carry it back"

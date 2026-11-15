@@ -55,6 +55,9 @@ DEFAULT_STATE = {
     "folded": False,            # JS-only (node body collapsed on the canvas)
     "hideBarWhenFolded": False, # JS-only (also hide the toolbar when folded)
     "webpLossless": False,      # WebP written lossless (quality is ignored)
+    # PNG / JPG files say 300 ppi (print). Off = no ppi written, exactly as
+    # before, which apps read as 72 ppi (screen). Pixels are never changed.
+    "print300": False,
     # Let a WIRED name keep its folders instead of flattening them to '_'.
     # OFF by default: a wired value creating folders on its own would surprise
     # anyone whose workflow already relies on the flattened name. Containment
@@ -348,6 +351,9 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
     except Exception:
         quality = 100
     webp_lossless = bool(state.get("webpLossless", False))
+    # The print size a PNG (pHYs chunk) / JPG (JFIF density) carries. WebP has no
+    # such field in Pillow, so it is left alone there.
+    dpi_kw = {"dpi": (300, 300)} if bool(state.get("print300", False)) else {}
     embed = bool(state.get("embedWorkflow", True))
     civitai_on = bool(state.get("civitaiMeta", False))
     try:
@@ -514,7 +520,7 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
         try:
             if fmt == "png":
                 # RGBA is preserved - PNG keeps transparency.
-                pil.save(path, "PNG", pnginfo=pnginfo, compress_level=4)
+                pil.save(path, "PNG", pnginfo=pnginfo, compress_level=4, **dpi_kw)
             elif fmt == "webp":
                 # WebP keeps ALPHA, so unlike JPG there is nothing to
                 # flatten - only the odd channel counts _tensor_to_pil can
@@ -548,13 +554,13 @@ def _write_frames(frames, state, name, w, h, prompt, extra_pnginfo, unique_id,
                     rgb = pil.convert("RGB")
                 if exif_bytes:
                     try:
-                        rgb.save(path, "JPEG", quality=quality, exif=exif_bytes)
+                        rgb.save(path, "JPEG", quality=quality, exif=exif_bytes, **dpi_kw)
                     except ValueError:
                         # EXIF rejected by this Pillow build (size limit
                         # differences) - the image matters more, save plain
-                        rgb.save(path, "JPEG", quality=quality)
+                        rgb.save(path, "JPEG", quality=quality, **dpi_kw)
                 else:
-                    rgb.save(path, "JPEG", quality=quality)
+                    rgb.save(path, "JPEG", quality=quality, **dpi_kw)
             ok = True
         finally:
             if not ok:

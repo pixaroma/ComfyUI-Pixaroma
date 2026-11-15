@@ -20,6 +20,7 @@ export const DEFAULT_STATE = {
   folded: false, // JS-only: node body collapsed to the toolbar + preview
   hideBarWhenFolded: false, // JS-only: also tuck the toolbar away when folded
   webpLossless: false, // WebP written lossless (the quality slider is ignored)
+  print300: false, // PNG / JPG say 300 ppi (print); off = no ppi written (apps read 72)
   // Let a WIRED name keep its folders instead of flattening them to "_".
   // Off by default so an existing workflow's names never change shape.
   inputSubfolders: false,
