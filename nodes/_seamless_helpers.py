@@ -39,23 +39,27 @@ def mode_axes(mode):
 
 # ---------------------------------------------------------------- torus position code
 
-def snapped_omegas(dim, theta, period):
+def snapped_omegas(dim, theta, period, min_turns=0.5):
     """The frequencies of one RoPE axis (as ComfyUI's flux rope makes them), each moved to the nearest whole number
-    of turns per `period` tokens. A frequency that makes less than half a turn becomes 0 ("same place for all")."""
+    of turns per `period` tokens. A frequency that makes less than `min_turns` turns becomes 0 ("same place for
+    all"). 0.5 = plain rounding (Krea 2). Z-Image uses 1.0: rounding its channels of 0.5-1 turn UP to a full turn
+    made 57 of 100 pictures 4 copies of a half-size tile (seamless.md #17d)."""
     scale = torch.linspace(0, (dim - 2) / dim, steps=dim // 2, dtype=torch.float64)
     omega = 1.0 / (theta ** scale)
-    turns = torch.round(omega * period / (2 * math.pi))
+    raw = omega * period / (2 * math.pi)
+    turns = torch.round(raw)
+    turns[raw < min_turns] = 0
     return turns * (2 * math.pi / period)
 
 
-def torus_rope(pos, dim, theta, period):
+def torus_rope(pos, dim, theta, period, min_turns=0.5):
     """Same layout as comfy.ldm.flux.math.rope ([..., n, dim/2, 2, 2], float32), with snapped frequencies.
     Positions are taken modulo the period first, so the angle is exact for any whole-number position."""
     # float64 only where every backend has it (core's rope moves MPS, Intel XPU and DirectML to the CPU for the
     # same reason); ROCm reports "cuda". The tensor is tiny, so the CPU costs nothing elsewhere.
     work = pos.device if pos.device.type in ("cuda", "cpu") else torch.device("cpu")
     p = torch.remainder(pos.to(device=work, dtype=torch.float64), float(period))
-    ang = p[..., None] * snapped_omegas(dim, theta, period).to(work)
+    ang = p[..., None] * snapped_omegas(dim, theta, period, min_turns).to(work)
     c, s = torch.cos(ang), torch.sin(ang)
     out = torch.stack([c, -s, s, c], dim=-1)
     out = out.reshape(*out.shape[:-1], 2, 2)
@@ -67,11 +71,12 @@ class TorusEmbedND(torch.nn.Module):
     we do not touch stay byte-identical to ComfyUI's), then the height (axis 1) and width (axis 2) slices are
     replaced by the snapped ones. `calls` counts uses, so the node can prove it was really used."""
 
-    def __init__(self, orig, period_h=None, period_w=None):
+    def __init__(self, orig, period_h=None, period_w=None, min_turns=0.5):
         super().__init__()
         self.orig = orig
         self.period_h = period_h
         self.period_w = period_w
+        self.min_turns = min_turns
         self.calls = 0
 
     def forward(self, ids):
@@ -86,7 +91,7 @@ class TorusEmbedND(torch.nn.Module):
         for i, d in enumerate(axes):
             period = self.period_h if i == 1 else self.period_w if i == 2 else None
             if period:
-                snapped = torus_rope(ids[..., i], d, self.orig.theta, period).unsqueeze(1)
+                snapped = torus_rope(ids[..., i], d, self.orig.theta, period, self.min_turns).unsqueeze(1)
                 out[..., start:start + d // 2, :, :] = snapped.to(out.dtype)
             start += d // 2
         self.calls += 1

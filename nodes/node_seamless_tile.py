@@ -26,9 +26,12 @@ VAE_FACTOR = 8   # Krea 2, Z-Image and SDXL VAEs: 8 px per latent px
 # The model families this node knows. Anything else gets a clear error, never a silent no-op (a silent no-op is
 # exactly the "lucky seed" trap the node exists to remove).
 _ROPE_FAMILIES = {
-    # (module, class name): (family label, embedder attribute, patch size attribute)
-    ("comfy.ldm.krea2.model", "SingleStreamDiT"): ("Krea 2", "pe_embedder", "patch"),
-    ("comfy.ldm.lumina.model", "NextDiT"): ("Z-Image", "rope_embedder", "patch_size"),
+    # (module, class name): (family label, embedder attribute, patch size attribute, min_turns)
+    # min_turns: a position frequency under that many turns per tile is dropped (see snapped_omegas). Measured per
+    # family on 26 hard prompts (seamless.md #17d): Z-Image needs 1.0 (else most pictures repeat 4 times inside the
+    # tile); Krea 2 keeps plain rounding (1.0 there put fault lines into long stripes and it has no repeat problem).
+    ("comfy.ldm.krea2.model", "SingleStreamDiT"): ("Krea 2", "pe_embedder", "patch", 0.5),
+    ("comfy.ldm.lumina.model", "NextDiT"): ("Z-Image", "rope_embedder", "patch_size", 1.0),
 }
 _UNET = ("comfy.ldm.modules.diffusionmodules.openaimodel", "UNetModel")
 
@@ -38,7 +41,7 @@ def detect_family(model):
     dm = model.get_model_object("diffusion_model")
     key = (type(dm).__module__, type(dm).__name__)
     if key in _ROPE_FAMILIES:
-        label, attr, patch_attr = _ROPE_FAMILIES[key]
+        label, attr, patch_attr, _min_turns = _ROPE_FAMILIES[key]
         emb = getattr(dm, attr, None)
         emb = getattr(emb, "orig", emb)                 # our own stand-in left by an interrupted call
         patch = getattr(dm, patch_attr, None)
@@ -68,14 +71,22 @@ def _check_size(x, multiple, wrap_h, wrap_w, label):
                          f"can join. Change the {' and '.join(bad)}.")
 
 
-def make_rope_wrapper(attr, patch, wrap_h, wrap_w, label):
+def family_min_turns(model):
+    """The min_turns of a rope family (0.5 = plain rounding when the model is not in the table)."""
+    dm = model.get_model_object("diffusion_model")
+    entry = _ROPE_FAMILIES.get((type(dm).__module__, type(dm).__name__))
+    return entry[3] if entry else 0.5
+
+
+def make_rope_wrapper(attr, patch, wrap_h, wrap_w, label, min_turns=0.5):
     def seamless_rope_wrapper(executor, *args, **kwargs):
         x = args[0] if args else kwargs.get("x")
         _check_size(x, patch, wrap_h, wrap_w, label)
         dm = executor.class_obj
         orig = getattr(dm, attr)
         orig = getattr(orig, "orig", orig)              # never stack our stand-in on itself
-        torus = TorusEmbedND(orig, x.shape[-2] // patch if wrap_h else None, x.shape[-1] // patch if wrap_w else None)
+        torus = TorusEmbedND(orig, x.shape[-2] // patch if wrap_h else None, x.shape[-1] // patch if wrap_w else None,
+                             min_turns)
         setattr(dm, attr, torus)
         try:
             out = executor(*args, **kwargs)
@@ -208,7 +219,7 @@ class SeamlessTilePixaroma:
         to = patched.model_options.setdefault("transformer_options", {})
         to.get("wrappers", {}).get(pe.WrappersMP.DIFFUSION_MODEL, {}).pop(WRAPPER_KEY, None)
         if kind == "rope":
-            wrapper = make_rope_wrapper(attr, unit, wrap_h, wrap_w, label)
+            wrapper = make_rope_wrapper(attr, unit, wrap_h, wrap_w, label, family_min_turns(model))
         else:
             wrapper = make_conv_wrapper(unit, wrap_h, wrap_w, label)
         patched.add_wrapper_with_key(pe.WrappersMP.DIFFUSION_MODEL, WRAPPER_KEY, wrapper)
