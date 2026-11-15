@@ -96,7 +96,7 @@ The groups are in order of how much they are used in real workflows, and inside 
 | [Save&nbsp;Video&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/save-video/) | Saves an mp4 to any folder with your own file name, and plays it on the&nbsp;node. |
 | [Reference&nbsp;Images&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/reference-images/) | Up to 12 reference pictures, each with a job, and a prompt that names them the way your model&nbsp;expects. |
 | [Video&nbsp;Tools&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/video-tools/) | Joins, trims, loops and fades up to 8 video clips with their sound, and can put one song under&nbsp;them. |
-| [Seamless&nbsp;Tile&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-tile/) | Makes Krea 2, Z-Image or SDXL draw patterns and textures that repeat with no edge, every&nbsp;time. |
+| [Seamless&nbsp;Tile&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-tile/) | Makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL or SD 1.5 draw patterns and textures that repeat with no edge, every&nbsp;time. |
 | [Seamless&nbsp;Preview&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-preview/) | Shows a picture repeated (2x2, offset, half-drop) and checks that its edges really&nbsp;join. |
 
 ### 💬 Prompt and Text
