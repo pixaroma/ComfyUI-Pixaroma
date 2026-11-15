@@ -69,14 +69,17 @@ def torus_rope(pos, dim, theta, period, min_turns=0.5):
 class TorusEmbedND(torch.nn.Module):
     """Stands in for ComfyUI's EmbedND for one model call. The original makes the whole position code (so the axes
     we do not touch stay byte-identical to ComfyUI's), then the height (axis 1) and width (axis 2) slices are
-    replaced by the snapped ones. `calls` counts uses, so the node can prove it was really used."""
+    replaced by the snapped ones. `calls` counts uses, so the node can prove it was really used.
+    `tail` = snap only the LAST `tail` tokens (the picture), for a model whose text tokens also sit on the height /
+    width axes (Qwen Image 2.1): their code stays ComfyUI's own, so its cached text is the same with or without us."""
 
-    def __init__(self, orig, period_h=None, period_w=None, min_turns=0.5):
+    def __init__(self, orig, period_h=None, period_w=None, min_turns=0.5, tail=None):
         super().__init__()
         self.orig = orig
         self.period_h = period_h
         self.period_w = period_w
         self.min_turns = min_turns
+        self.tail = tail
         self.calls = 0
 
     def forward(self, ids):
@@ -86,13 +89,19 @@ class TorusEmbedND(torch.nn.Module):
         if out.shape[-1] != 2 or out.shape[-2] != 2 or out.shape[-3] != half or ids.shape[-1] != len(axes):
             raise RuntimeError("Seamless Tile: this model's position code has an unknown layout "
                                f"(shape {tuple(out.shape)}, axes {axes}). ComfyUI may have changed.")
+        t0 = 0
+        if self.tail is not None:
+            t0 = ids.shape[-2] - self.tail
+            if t0 < 0 or out.shape[-4] != ids.shape[-2]:
+                raise RuntimeError("Seamless Tile: the picture has more tokens than the model's position code "
+                                   f"({self.tail} vs {ids.shape[-2]}). ComfyUI may have changed.")
         out = out.clone()
         start = 0
         for i, d in enumerate(axes):
             period = self.period_h if i == 1 else self.period_w if i == 2 else None
             if period:
-                snapped = torus_rope(ids[..., i], d, self.orig.theta, period, self.min_turns).unsqueeze(1)
-                out[..., start:start + d // 2, :, :] = snapped.to(out.dtype)
+                snapped = torus_rope(ids[..., t0:, i], d, self.orig.theta, period, self.min_turns).unsqueeze(1)
+                out[..., t0:, start:start + d // 2, :, :] = snapped.to(out.dtype)
             start += d // 2
         self.calls += 1
         return out
@@ -112,16 +121,25 @@ def wrap_pad(x, ph, pw):
 class WrapPadding:
     """Context manager: every Conv2d / Conv3d inside `module` with zero padding on a wrapped axis pads that axis
     with the opposite edge instead. The other axis keeps its normal padding. `undo()` puts everything back
-    (safe to call twice); after it the module computes exactly what it did before."""
+    (safe to call twice); after it the module computes exactly what it did before.
+    A layer with a `fused_norm` fast path (ComfyUI's FLUX.2 VAE decoder) pads inside its own kernel and never calls
+    the conv layer, so the hooks would never run: that fast path is switched off while the wrap is on (same picture,
+    more memory). `fired` = the ids of the wrapped convs that really ran, so a caller can prove none was skipped."""
 
     def __init__(self, module, wrap_h, wrap_w):
         self.module, self.wrap_h, self.wrap_w = module, bool(wrap_h), bool(wrap_w)
-        self._saved, self._handles = [], []
+        self._saved, self._handles, self._fused = [], [], []
         self.count = 0
+        self.fired = set()
 
     def apply(self):
         if not (self.wrap_h or self.wrap_w):
             return self
+        self.fired = set()
+        for m in self.module.modules():
+            if getattr(m, "fused_norm", None) is True:
+                self._fused.append(m)
+                m.fused_norm = False
         for m in self.module.modules():
             if not isinstance(m, (torch.nn.Conv2d, torch.nn.Conv3d)):
                 continue
@@ -143,11 +161,17 @@ class WrapPadding:
             m.padding = tuple(new_pad)
             m._pix_seam_wrapped = True
 
-            def hook(_mod, args, ph=ph, pw=pw):
+            def hook(mod, args, ph=ph, pw=pw, fired=self.fired):
+                fired.add(id(mod))
                 return (wrap_pad(args[0], ph, pw),) + tuple(args[1:])
             self._handles.append(m.register_forward_pre_hook(hook))
         self.count = len(self._saved)
         return self
+
+    def skipped(self, inside):
+        """The wrapped convs under `inside` (a sub-module, e.g. a VAE's decoder) that never ran since apply()."""
+        ids = {id(m) for m in inside.modules()}
+        return [m for m, _ in self._saved if id(m) in ids and id(m) not in self.fired]
 
     def undo(self):
         for h in self._handles:
@@ -158,7 +182,9 @@ class WrapPadding:
                 del m._pix_seam_wrapped
             except AttributeError:
                 pass
-        self._handles, self._saved = [], []
+        for m in self._fused:
+            m.fused_norm = True
+        self._handles, self._saved, self._fused = [], [], []
 
     def __enter__(self):
         return self.apply()

@@ -3,7 +3,7 @@
 Changes a model and its VAE so the picture they make has no edge: it repeats on all four sides, every time, with
 the normal KSampler and the normal VAE Decode. The math is in _seamless_helpers; this file attaches it.
 
-- Krea 2 and Z-Image (transformers): for each model call, the position code is swapped for a "torus" one (every
+- Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein (transformers): for each model call, the position code is swapped for a "torus" one (every
   height / width frequency makes a whole number of turns per tile), so the last column is the first column's
   neighbour. Nothing is added to the weights, nothing is downloaded, the speed is the same.
 - SDXL / SD 1.5 (UNets): the model's convolutions wrap around the edges during each call.
@@ -16,77 +16,108 @@ Everything is put on a CLONE of the model and a COPY of the VAE, for the length 
 import copy
 import logging
 
+import torch
+
 from ._seamless_helpers import TILE_MODES, TorusEmbedND, WrapPadding, crop_decoded, mode_axes, size_hint, \
     wrap_pad_latent
 
 WRAPPER_KEY = "pixaroma_seamless_tile"
 LOG = "[Seamless Tile Pixaroma]"
-VAE_FACTOR = 8   # Krea 2, Z-Image and SDXL VAEs: 8 px per latent px
+VAE_FACTOR = 8   # px per latent px when the model does not say (Krea 2, Z-Image, SDXL); FLUX.2 / FLUX 3 / Qwen 2.1: 16
 
 # The model families this node knows. Anything else gets a clear error, never a silent no-op (a silent no-op is
 # exactly the "lucky seed" trap the node exists to remove).
+# label / attr (the position embedder) / patch (an attribute name, or the number itself) / min_turns: a position
+# frequency under that many turns per tile is dropped (see snapped_omegas). Measured per family on 26 hard prompts
+# (seamless.md #17d): Z-Image needs 1.0 (else most pictures repeat 4 times inside the tile); Krea 2 keeps plain
+# rounding (1.0 there put fault lines into long stripes and it has no repeat problem).
+# Optional: axes = the position code must have this many axes (FLUX.1 shares FLUX.2's class with 3, untested);
+# pos_scale = the attribute that scales the picture's positions (FLUX 3: 0.5 per token, so the period is too);
+# image_last = snap only the picture's tokens, the LAST in the sequence, for a model that puts its text on the height
+# and width axes too (no family uses it now: Qwen Image 2.1 joined with it but lost its big motifs, seamless.md #17e).
+# FLUX.2 / FLUX 3 decode with the FLUX.2 VAE, whose fused fast path WrapPadding switches off (seamless.md #17e).
 _ROPE_FAMILIES = {
-    # (module, class name): (family label, embedder attribute, patch size attribute, min_turns)
-    # min_turns: a position frequency under that many turns per tile is dropped (see snapped_omegas). Measured per
-    # family on 26 hard prompts (seamless.md #17d): Z-Image needs 1.0 (else most pictures repeat 4 times inside the
-    # tile); Krea 2 keeps plain rounding (1.0 there put fault lines into long stripes and it has no repeat problem).
-    ("comfy.ldm.krea2.model", "SingleStreamDiT"): ("Krea 2", "pe_embedder", "patch", 0.5),
-    ("comfy.ldm.lumina.model", "NextDiT"): ("Z-Image", "rope_embedder", "patch_size", 1.0),
+    ("comfy.ldm.krea2.model", "SingleStreamDiT"):
+        dict(label="Krea 2", attr="pe_embedder", patch="patch", min_turns=0.5),
+    ("comfy.ldm.lumina.model", "NextDiT"):
+        dict(label="Z-Image", attr="rope_embedder", patch="patch_size", min_turns=1.0),
+    ("comfy.ldm.flux.model", "Flux"):
+        dict(label="FLUX.2", attr="pe_embedder", patch="patch_size", min_turns=0.5, axes=4),
+    ("comfy.ldm.flux3.model", "Flux3"):
+        dict(label="FLUX 3", attr="pe_embedder", patch=1, min_turns=0.5, pos_scale="image_rope_scale"),
 }
 _UNET = ("comfy.ldm.modules.diffusionmodules.openaimodel", "UNetModel")
+_KNOWN = "Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5"
+
+
+def _family(dm):
+    """The _ROPE_FAMILIES entry of a diffusion model, or None."""
+    entry = _ROPE_FAMILIES.get((type(dm).__module__, type(dm).__name__))
+    if entry and "axes" in entry:
+        emb = getattr(dm, entry["attr"], None)
+        if len(getattr(getattr(emb, "orig", emb), "axes_dim", ())) != entry["axes"]:
+            return None
+    return entry
 
 
 def detect_family(model):
     """('rope', label, embedder attr, patch) or ('conv', label, None, multiple), or a clear ValueError."""
     dm = model.get_model_object("diffusion_model")
-    key = (type(dm).__module__, type(dm).__name__)
-    if key in _ROPE_FAMILIES:
-        label, attr, patch_attr, _min_turns = _ROPE_FAMILIES[key]
+    entry = _family(dm)
+    if entry:
+        label, attr = entry["label"], entry["attr"]
         emb = getattr(dm, attr, None)
         emb = getattr(emb, "orig", emb)                 # our own stand-in left by an interrupted call
-        patch = getattr(dm, patch_attr, None)
-        if emb is None or len(getattr(emb, "axes_dim", ())) != 3 or not isinstance(patch, int):
+        patch = entry["patch"] if isinstance(entry["patch"], int) else getattr(dm, entry["patch"], None)
+        scale = getattr(dm, entry["pos_scale"], None) if "pos_scale" in entry else 1
+        if emb is None or len(getattr(emb, "axes_dim", ())) < 3 or not isinstance(patch, int) or \
+                not isinstance(scale, (int, float)) or scale <= 0:
             raise ValueError(f"Seamless Tile: this {label} model is not built the way it expects "
                              "(ComfyUI may have changed). Nothing was changed.")
         return "rope", label, attr, patch
-    if key == _UNET:
+    if (type(dm).__module__, type(dm).__name__) == _UNET:
         downs = max(0, len(getattr(dm, "channel_mult", (1, 2, 4))) - 1)
         return "conv", "SDXL / SD 1.5", None, 2 ** downs
-    raise ValueError(f"Seamless Tile does not know this model yet ({type(dm).__name__}). It works with Krea 2, "
-                     "Z-Image, SDXL and SD 1.5. Nothing was changed.")
+    raise ValueError(f"Seamless Tile does not know this model yet ({type(dm).__name__}). It works with {_KNOWN}. "
+                     "Nothing was changed.")
 
 
-def _check_size(x, multiple, wrap_h, wrap_w, label):
+def px_per_latent(model):
+    """Picture px per latent px, from the model's latent format (8 for most, 16 for FLUX.2 / FLUX 3 / Qwen 2.1)."""
+    try:
+        r = model.get_model_object("latent_format").spacial_downscale_ratio
+        return r if isinstance(r, int) and r > 0 else VAE_FACTOR
+    except Exception:
+        return VAE_FACTOR
+
+
+def _check_size(x, multiple, wrap_h, wrap_w, label, factor=VAE_FACTOR):
     if x.ndim == 5 and x.shape[2] != 1:
         raise ValueError("Seamless Tile makes still pictures only, not videos.")
-    step = multiple * VAE_FACTOR
+    step = multiple * factor
     h, w = x.shape[-2], x.shape[-1]
     bad = []
     if wrap_h and h % multiple:
-        bad.append(f"height {h * VAE_FACTOR} (try {size_hint(h * VAE_FACTOR, step)})")
+        bad.append(f"height {h * factor} (try {size_hint(h * factor, step)})")
     if wrap_w and w % multiple:
-        bad.append(f"width {w * VAE_FACTOR} (try {size_hint(w * VAE_FACTOR, step)})")
+        bad.append(f"width {w * factor} (try {size_hint(w * factor, step)})")
     if bad:
         raise ValueError(f"Seamless Tile: with {label} the size must be a multiple of {step} px, so the pattern "
                          f"can join. Change the {' and '.join(bad)}.")
 
 
-def family_min_turns(model):
-    """The min_turns of a rope family (0.5 = plain rounding when the model is not in the table)."""
-    dm = model.get_model_object("diffusion_model")
-    entry = _ROPE_FAMILIES.get((type(dm).__module__, type(dm).__name__))
-    return entry[3] if entry else 0.5
-
-
-def make_rope_wrapper(attr, patch, wrap_h, wrap_w, label, min_turns=0.5):
+def make_rope_wrapper(attr, patch, wrap_h, wrap_w, label, min_turns=0.5, factor=VAE_FACTOR, pos_scale=None,
+                      image_last=False):
     def seamless_rope_wrapper(executor, *args, **kwargs):
         x = args[0] if args else kwargs.get("x")
-        _check_size(x, patch, wrap_h, wrap_w, label)
+        _check_size(x, patch, wrap_h, wrap_w, label, factor)
         dm = executor.class_obj
         orig = getattr(dm, attr)
         orig = getattr(orig, "orig", orig)              # never stack our stand-in on itself
-        torus = TorusEmbedND(orig, x.shape[-2] // patch if wrap_h else None, x.shape[-1] // patch if wrap_w else None,
-                             min_turns)
+        th, tw = x.shape[-2] // patch, x.shape[-1] // patch
+        scale = getattr(dm, pos_scale) if pos_scale else 1
+        torus = TorusEmbedND(orig, th * scale if wrap_h else None, tw * scale if wrap_w else None, min_turns,
+                             th * tw if image_last else None)
         setattr(dm, attr, torus)
         try:
             out = executor(*args, **kwargs)
@@ -124,6 +155,23 @@ def seamless_vae(vae, wrap_h, wrap_w):
     cls = type(base)
     new._pix_seam_base = base
     new._pix_seam_active = None
+    base_mem = getattr(new, "memory_used_decode", None)   # core's estimate (an instance lambda); None on an empty VAE
+
+    def memory_used_decode(shape, dtype):
+        # Core sizes the FLUX.2 VAE for its fused path (x1) whenever the GPU can run it, and x4 otherwise. Our wrap
+        # switches that path off (WrapPadding), so ask for the unfused amount while it is off, or a small card runs
+        # out of memory and falls back to the tiled decode (very close, not exact).
+        need = base_mem(shape, dtype)
+        wp = new._pix_seam_active
+        if wp is not None and wp._fused:
+            try:
+                from comfy.ldm.modules.diffusionmodules.model import fused_norm_served
+                served = fused_norm_served(new.device, dtype)
+            except Exception:
+                served = True
+            if served:
+                need *= 4
+        return need
 
     def decode(samples_in, *a, **k):
         if new.first_stage_model is None:                # a checkpoint with no VAE: core's own clear error
@@ -131,7 +179,15 @@ def seamless_vae(vae, wrap_h, wrap_w):
         wp = WrapPadding(new.first_stage_model, wrap_h, wrap_w).apply()
         new._pix_seam_active = wp
         try:
-            return cls.decode(new, samples_in, *a, **k)
+            out = cls.decode(new, samples_in, *a, **k)
+            dec = getattr(new.first_stage_model, "decoder", None)
+            if new._pix_seam_active is wp and isinstance(dec, torch.nn.Module):    # not the tiled fallback
+                missed = wp.skipped(dec)
+                if missed:
+                    logging.warning(f"{LOG} {len(missed)} layers of this VAE decoded without the wrap (ComfyUI may "
+                                    "have changed how this VAE runs): the edges may show a faint line. Please "
+                                    "report it.")
+            return out
         finally:
             new._pix_seam_active = None
             wp.undo()
@@ -159,6 +215,8 @@ def seamless_vae(vae, wrap_h, wrap_w):
 
     new.decode = decode
     new.decode_tiled = decode_tiled
+    if callable(base_mem):                # a VAE with no weights keeps core's own "VAE is invalid" path
+        new.memory_used_decode = memory_used_decode
     for name in _TILED_INNER:
         if hasattr(cls, name):
             setattr(new, name, inner_tiled(name))
@@ -169,11 +227,11 @@ class SeamlessTilePixaroma:
     DESCRIPTION = (
         "Makes the picture repeat with no edge: it joins on all four sides, every time, not only on a lucky seed. "
         "Put it between the model and VAE loaders and the sampler, then use the normal KSampler and the normal VAE "
-        "Decode with the model and VAE that come out of it. Works with Krea 2, Z-Image, SDXL and SD 1.5, text to "
-        "picture. Same speed, nothing downloaded, the loaded models are not changed. The size must be a multiple "
-        "of 16 px (32 px for SDXL, 64 px for SD 1.5). Licences: Krea 2 is free for companies under US$1M a year, "
-        "Z-Image is Apache-2.0. The idea of snapping the position code follows the SpheRoPE paper (Hirschorn et "
-        "al., 2026); the code is our own."
+        "Decode with the model and VAE that come out of it. Works with Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, "
+        "SDXL and SD 1.5, text to picture. Same speed, nothing downloaded, the loaded models are not changed. The "
+        "size must be a multiple of 16 px (32 px for SDXL, 64 px for SD 1.5). Licences: Krea 2 is free for "
+        "companies under US$1M a year, Z-Image is Apache-2.0, the FLUX models have their own. The idea of snapping "
+        "the position code follows the SpheRoPE paper (Hirschorn et al., 2026); the code is our own."
     )
 
     @classmethod
@@ -181,7 +239,8 @@ class SeamlessTilePixaroma:
         return {
             "required": {
                 "model": ("MODEL", {
-                    "tooltip": "The model, after any LoRA loaders. Krea 2, Z-Image, SDXL or SD 1.5.",
+                    "tooltip": "The model, after any LoRA loaders. Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL "
+                               "or SD 1.5.",
                 }),
                 "vae": ("VAE", {
                     "tooltip": "The VAE that decodes the picture. Use the vae output of this node in VAE Decode, "
@@ -219,7 +278,9 @@ class SeamlessTilePixaroma:
         to = patched.model_options.setdefault("transformer_options", {})
         to.get("wrappers", {}).get(pe.WrappersMP.DIFFUSION_MODEL, {}).pop(WRAPPER_KEY, None)
         if kind == "rope":
-            wrapper = make_rope_wrapper(attr, unit, wrap_h, wrap_w, label, family_min_turns(model))
+            entry = _family(model.get_model_object("diffusion_model"))
+            wrapper = make_rope_wrapper(attr, unit, wrap_h, wrap_w, label, entry["min_turns"], px_per_latent(model),
+                                        entry.get("pos_scale"), entry.get("image_last", False))
         else:
             wrapper = make_conv_wrapper(unit, wrap_h, wrap_w, label)
         patched.add_wrapper_with_key(pe.WrappersMP.DIFFUSION_MODEL, WRAPPER_KEY, wrapper)

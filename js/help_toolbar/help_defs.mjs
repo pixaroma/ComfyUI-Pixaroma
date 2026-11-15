@@ -2231,7 +2231,7 @@ const HELP = {
       },
       {
         heading: "Models and sizes",
-        body: "Works with Krea 2, Z-Image, SDXL and SD 1.5, text to picture. Any other model stops the Run with a message instead of silently making a picture that does not join.\n\nThe width and height must be multiples of 16 px (32 px for SDXL, 64 px for SD 1.5), or the Run stops and names a size that works. Krea 2 looks best at 1536 x 1536; at 1024 its motifs come out a little smaller and more regular. Z-Image is good at 1024.",
+        body: "Works with Krea 2, Z-Image, FLUX.2 Klein (4B and 9B), FLUX 3 Klein, SDXL and SD 1.5, text to picture. Any other model stops the Run with a message instead of silently making a picture that does not join. FLUX.2 [dev] shares Klein's design and runs too, but was not tested. Qwen Image 2.1 was tested and left out: its patterns joined but lost their big motifs.\n\nThe width and height must be multiples of 16 px (32 px for SDXL, 64 px for SD 1.5), or the Run stops and names a size that works. Krea 2 looks best at 1536 x 1536; at 1024 its motifs come out a little smaller and more regular. Z-Image, FLUX.2 Klein and FLUX 3 Klein are good at 1024.",
       },
       {
         heading: "Prompts",
@@ -2243,7 +2243,7 @@ const HELP = {
       },
       {
         heading: "Licences and credit",
-        body: "The picture is yours, but the model's licence still applies: Krea 2 is free for companies under US$1M a year, Z-Image is Apache-2.0. The idea of snapping the position code to the tile follows the SpheRoPE paper (Hirschorn et al., 2026); the code is our own.",
+        body: "The picture is yours, but the model's licence still applies: Krea 2 is free for companies under US$1M a year, Z-Image is Apache-2.0, and the FLUX models each have their own licence, so read it before you sell what you make. The idea of snapping the position code to the tile follows the SpheRoPE paper (Hirschorn et al., 2026); the code is our own.",
       },
     ],
     footer: "Text to picture only. A video model, a reference image, area prompts or a tiled upscaler (Ultimate SD Upscale) are not supported yet.",
