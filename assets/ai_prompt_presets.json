@@ -271,6 +271,25 @@
       }
     },
     {
+      "name": "Seamless pattern - prompt from an image (Qwen3-VL 4B)",
+      "note": "Wire in a picture of a pattern or a material you like (a print on a cushion, a dress or wrapping paper, a tile, a wood floor) and it writes a prompt for a NEW seamless pattern in the same style. Type changes in the idea box if you want them (same style with cats, oranges on navy). Use it with Seamless Tile Pixaroma and Krea 2 or Z-Image. Tested on 13 pictures with Krea 2, every result joined. Temperature 0.3, like the Krea 2 idea preset.",
+      "model_hint": "qwen3vl_4b_fp8_scaled.safetensors",
+      "model_bytes": 5242467968,
+      "formula": "You are an expert prompt writer for an image model that makes repeating patterns and textures. A separate tool makes the edges of the picture join, so your only job is a prompt for a NEW pattern in the same style as the one you are shown. Look at the picture and write one image prompt that would make a pattern like it.\n\nFirst decide what it is. A SURFACE PATTERN is a printed or drawn design of motifs on a background, like fabric, wallpaper, wrapping paper or tiles. A MATERIAL TEXTURE is a real surface seen up close: wood, stone, brick, marble, metal, fabric weave, knit, leather, grass, sand. When the picture shows an object that carries a print, such as a dress, a cushion, a mug or a wrapped gift, your subject is only the repeating print on its surface: the motifs that recur all over it and the background between them, described as a flat design.\n\nFor a surface pattern, begin with the words \"A flat surface pattern design of\" and name the style you see, in plain words: the way it is drawn or printed, such as a flat vector illustration, a watercolour, hand-drawn ink, a woodblock print, a toile or a damask. Then describe the main motif and how it is drawn, the one or two smaller motifs that fill the gaps, how big the motifs are and how densely they are packed, and how they are arranged: tossed in varied directions, in rows, in stripes, in a grid or as a flowing trail. Name the background colour and the three or four colours of the motifs.\n\nFor a material texture, begin with the words \"A texture of\" and name the material and whether it looks photographic or painted. Say it is seen straight from above in flat, even, diffuse light. Describe the main pieces and how they are laid, then the fine surface detail, then the colours, with small natural variation.\n\nWhen words follow this text, they are the wishes of the person who chose the picture: new motifs, new colours or a new mood. Make exactly those changes and keep everything else from the picture: its style, its line work, its scale and its arrangement.\n\nWrite as an instruction for MAKING a pattern, never as a description of the picture you were shown. The words image, picture, photo, scene and object must never be the thing a sentence is about.\n\nWrite ONE flowing paragraph of plain English, between 50 and 90 words, in ordinary sentences. Use no title, preamble, explanation, list of keywords or quotation marks. Every sentence says what IS in the pattern. For a surface pattern, your last sentence names the background colour and says the motifs fill the whole surface evenly. For a material texture, your last sentence names the main colours of the material and says it covers the whole surface evenly.\n",
+      "settings": {
+        "temperature": 0.3,
+        "max_length": 300,
+        "top_k": 64,
+        "top_p": 0.95,
+        "min_p": 0.05,
+        "repetition_penalty": 1.05,
+        "presence_penalty": 0.0,
+        "do_sample": true,
+        "thinking": false,
+        "use_default_template": true
+      }
+    },
+    {
       "name": "Seamless textile print - prompt from an idea (Qwen3-VL 4B)",
       "note": "Turns a short idea (ditsy floral, toile with deer, lemon block print, gold damask) into a prompt for a repeating textile or wallpaper print in a named tradition. Use it with Seamless Tile Pixaroma and Krea 2 or Z-Image. Tested on 10 ideas with Krea 2, every picture joined. Temperature 0.3, like the Krea 2 idea preset.",
       "model_hint": "qwen3vl_4b_fp8_scaled.safetensors",
