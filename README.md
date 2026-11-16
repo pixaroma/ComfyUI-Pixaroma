@@ -13,7 +13,7 @@
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
-    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-124K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
+    <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-125K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
     <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/Discord-98K%20members-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord members"></a>
   </p>
 </div>
@@ -252,6 +252,12 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **November 16, 2026 · v1.4.256**
+- **Seamless Tile (new):** makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5 draw patterns and textures that repeat with no edge, on every seed.
+- **Seamless Preview (new):** shows a picture repeated (2x2, offset, half-drop) and checks that its edges really join.
+- **AI Prompt:** four new presets write prompts for seamless patterns: from an idea, a textile print, a game texture, or a picture you like.
+- **Save Image:** a new Print resolution switch saves PNG and JPG at 300 ppi.
 
 ### **November 13, 2026 · v1.4.254-v1.4.255**
 - **Align in Nodes 2.0:** resizing a node now snaps to the nodes around it and shows the guide lines, on the edges you see. A click no longer nudges a node.
