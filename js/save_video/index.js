@@ -21,6 +21,7 @@ import { openUrlInNewTab } from "../shared/open_tab.mjs";
 import { registerNodeSettings, installNodeAccent } from "../shared/node_settings.mjs";
 import { applyFilenameTokenRefs } from "../shared/filename_tokens.mjs";
 import { resolveWiredName, setPreviewPath, previewTip, markRunTime } from "../shared/wired_name.mjs";
+import { outputFolderLabel, onOutputFolderLabel } from "../shared/output_folder.mjs";
 import {
   COMFY_CLASS,
   HIDDEN_INPUT_NAME,
@@ -162,6 +163,14 @@ function scheduleCounterFetch(node, folderRaw, nameWithExt, digits) {
   }, 350);
 }
 
+// A preview drawn before ComfyUI's real output folder was read says the
+// default; redraw every Save Video once it is known (DOM only, save-image.md #33)
+onOutputFolderLabel(() => {
+  const nodes = [];
+  collectNodes(app.graph, nodes);
+  for (const n of nodes) updatePreview(n);
+});
+
 function updatePreview(node) {
   const ui = node._pixSvUI;
   if (!ui) return;
@@ -204,8 +213,10 @@ function updatePreview(node) {
     rel = s.replace(/%counter%/g, padded) + ext;
   }
   const folder = st.folder ? normalizePath(st.folder) : "";
+  // an empty folder box = ComfyUI's output folder, which --output-directory /
+  // --base-directory can move (save-image.md #33)
   const display =
-    (folder ? folder.replace(/\//g, "\\") : "…\\ComfyUI\\output") +
+    (folder ? folder.replace(/\//g, "\\") : outputFolderLabel()) +
     "\\" +
     markRunTime(rel).split("/").filter(Boolean).join("\\"); // %run_time%: the name part only
 
