@@ -253,11 +253,12 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **November 16, 2026 · v1.4.256**
+### **November 16, 2026 · v1.4.256-v1.4.257**
 - **Seamless Tile (new):** makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5 draw patterns and textures that repeat with no edge, on every seed.
 - **Seamless Preview (new):** shows a picture repeated (2x2, offset, half-drop) and checks that its edges really join.
 - **AI Prompt:** four new presets write prompts for seamless patterns: from an idea, a textile print, a game texture, or a picture you like.
 - **Save Image:** a new Print resolution switch saves PNG and JPG at 300 ppi.
+- **Save Image and Save Video:** with the folder box empty, "Will save as" now shows the real output folder when ComfyUI is started with a different one (--output-directory).
 
 ### **November 13, 2026 · v1.4.254-v1.4.255**
 - **Align in Nodes 2.0:** resizing a node now snaps to the nodes around it and shows the guide lines, on the edges you see. A click no longer nudges a node.
