@@ -253,8 +253,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **November 17, 2026 · v1.4.258**
+### **November 17, 2026 · v1.4.258-v1.4.259**
 - **Save Image:** after a Run fed by a list (Prompt Each, Load Images from Folder), it now says how many pictures it really saved, not "saved 1 image".
+- **Load Audio:** Play now makes a sound in browsers that refuse the normal player (seen in Firefox on Linux). If it still cannot play, the line beside the button says why.
 
 ### **November 16, 2026 · v1.4.256-v1.4.257**
 - **Seamless Tile (new):** makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5 draw patterns and textures that repeat with no edge, on every seed.
