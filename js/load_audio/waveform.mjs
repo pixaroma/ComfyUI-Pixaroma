@@ -216,3 +216,164 @@ export function makePlayer(url) {
   el.src = url;
   return el;
 }
+
+// ── The fallback player: Web Audio ──────────────────────────────────────────
+// Firefox on Linux REFUSED the <audio> element's play() (Discord 2026-11-17:
+// the triangle flicked to a square and back, no sound), while the same browser
+// decoded the file for the waveform and played it in ComfyUI's own Load Audio.
+// So when play() is refused, the node plays the selection from a decoded copy
+// through the SAME AudioContext that draws the waveform. audio-nodes.md #13.
+
+// Fallback players that exist, from creation to dispose(). Counted from the
+// START, not from the first sound: one still decoding needs the context the
+// click woke, and another node's stop must not put it back to sleep.
+let _webAudioPlayers = 0;
+
+/**
+ * Wake the shared AudioContext from INSIDE the click. Browsers only let a page
+ * start sound in a user gesture, and the fallback starts after play() has been
+ * refused, which is later. Never rejects.
+ *
+ * Neither this nor sleepAudio gates on `state`: `state` changes only once a
+ * resume / suspend has FINISHED, a task later, so "suspended" can mean "a resume
+ * is on its way". resume() and suspend() are queued in call order, so always
+ * asking leaves the context in the state asked for LAST.
+ */
+export function wakeAudio() {
+  try {
+    const ctx = audioContext();
+    if (ctx && ctx.state !== "closed") ctx.resume().catch(() => {});
+  } catch (_e) { /* no Web Audio: the fallback reports it */ }
+}
+
+/**
+ * Let the context sleep again when nothing of ours is sounding through it, so a
+ * running context does not keep the audio device and its thread busy (UI#41).
+ */
+export function sleepAudio() {
+  if (_webAudioPlayers > 0) return;
+  const ctx = _ctx.value;
+  if (ctx && ctx.state !== "closed") ctx.suspend().catch(() => {});
+}
+
+/**
+ * The decoded file, for the fallback player. Not cached: a song is tens of MB
+ * as samples, and this only runs when the browser refused the normal player.
+ */
+async function decodeFile(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`the file could not be read (${res.status})`);
+  const bytes = await res.arrayBuffer();
+  const ctx = audioContext();
+  if (!ctx) throw new Error("this browser has no Web Audio");
+  return ctx.decodeAudioData(bytes);
+}
+
+/**
+ * Plays a file through Web Audio and looks like an <audio> element to the node:
+ * `currentTime` (read and seek), `play()`, `pause()`, an `ended` event, plus
+ * `dispose()`. `load()` fetches and decodes; until it lands, `currentTime` is
+ * the position it will start from.
+ */
+export class WebAudioPlayer {
+  constructor(url) {
+    this._url = url;
+    this._buffer = null;
+    this._src = null;
+    this._offset = 0;      // seconds into the file where the current source began
+    this._t0 = 0;          // context time when it began
+    this._ended = [];
+    this._live = true;     // counted in _webAudioPlayers until dispose()
+    _webAudioPlayers++;
+    this._disposed = false;
+    this.paused = true;
+  }
+
+  get duration() { return this._buffer ? this._buffer.duration : NaN; }
+
+  get currentTime() {
+    if (this.paused || !this._src) return this._offset;
+    const ctx = _ctx.value;
+    const t = this._offset + Math.max(0, (ctx ? ctx.currentTime : this._t0) - this._t0);
+    return Math.min(this._buffer.duration, t);
+  }
+
+  set currentTime(v) {
+    const playing = !this.paused;
+    this._stopSource();
+    const end = this._buffer ? this._buffer.duration : Infinity;
+    this._offset = Math.max(0, Math.min(end, Number(v) || 0));
+    if (playing) this._startSource();
+  }
+
+  async load() {
+    const buffer = await decodeFile(this._url);
+    if (!this._disposed) this._buffer = buffer;
+    return !this._disposed;
+  }
+
+  async play() {
+    if (this._disposed || !this._buffer) throw new Error("not loaded");
+    if (!this.paused) return;
+    const ctx = audioContext();
+    // Without permission Chrome leaves resume()'s promise PENDING instead of
+    // rejecting it, so wait a bounded time, then look at the state ourselves.
+    if (ctx.state !== "running") {
+      await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1500))]);
+    }
+    // Still asleep = not allowed: say so, rather than "playing" a clock that
+    // never moves.
+    if (ctx.state !== "running") {
+      throw new DOMException("the browser did not let the sound start", "NotAllowedError");
+    }
+    if (this._disposed || !this.paused) return;
+    this._startSource();
+  }
+
+  pause() { this._stopSource(); }
+
+  addEventListener(type, fn) { if (type === "ended") this._ended.push(fn); }
+
+  dispose() {
+    this._disposed = true;
+    this._stopSource();
+    this._ended = [];
+    this._buffer = null;
+    if (this._live) { this._live = false; _webAudioPlayers--; }
+    sleepAudio();
+  }
+
+  _startSource() {
+    const ctx = _ctx.value;
+    if (!ctx || !this._buffer) return;
+    if (this._offset >= this._buffer.duration) { this._fireEnded(); return; }
+    const src = ctx.createBufferSource();
+    src.buffer = this._buffer;
+    src.connect(ctx.destination);
+    src.onended = () => {
+      if (this._src !== src) return;               // stopped or replaced by a seek
+      this._offset = this._buffer ? this._buffer.duration : this._offset;
+      this._src = null;
+      this.paused = true;
+      this._fireEnded();
+    };
+    this._t0 = ctx.currentTime;
+    src.start(0, this._offset);
+    this._src = src;
+    this.paused = false;
+  }
+
+  _stopSource() {
+    if (!this.paused) this._offset = this.currentTime;
+    const src = this._src;
+    this._src = null;
+    this.paused = true;
+    if (src) {
+      src.onended = null;
+      try { src.stop(); } catch (_e) { /* already stopped */ }
+      try { src.disconnect(); } catch (_e) { /* already gone */ }
+    }
+  }
+
+  _fireEnded() { for (const fn of this._ended.slice()) { try { fn(); } catch (_e) { /* listener's own problem */ } } }
+}

@@ -48,7 +48,10 @@ export const LOAD_AUDIO_HELP = {
         ["Upload", "Copies a file from your computer into ComfyUI's input folder."],
         ["The waveform", "Drag anywhere on it to move your window."],
         ["Start at", "The same thing as dragging, typed exactly. The arrows step half a second."],
-        ["The triangle", "Plays your selection so you can hear it before you spend a render."],
+        ["The triangle", "Plays your selection so you can hear it before you spend a render. If "
+          + "the browser refuses its normal player, the node plays it another way on its own. If "
+          + "that fails too, the line beside the triangle says why, and holding the mouse over it "
+          + "shows the browser's own words."],
       ],
     },
     {

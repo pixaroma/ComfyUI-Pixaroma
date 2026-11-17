@@ -13,7 +13,7 @@ import { placeZoomedPopup } from "../shared/popup_zoom.mjs";
 import { attachCanvasSnapshot } from "../shared/canvas_snapshot.mjs";
 import { DEFAULT_STATE, WAVE_H, fmtTime, readState, writeState } from "./core.mjs";
 import { audioFileUrl, listAudioFiles, uploadAudio } from "./api.mjs";
-import { drawWave, forgetPeaks, loadPeaks, makePlayer } from "./waveform.mjs";
+import { drawWave, forgetPeaks, loadPeaks, makePlayer, sleepAudio, wakeAudio, WebAudioPlayer } from "./waveform.mjs";
 
 const ROOT = "pix-la-root";
 let _cssDone = false;
@@ -287,6 +287,7 @@ function selectFile(node, name) {
                      whenUnwired: "whole" });
   node._pixLaDur = 0;
   node._pixLaCue = null;
+  node._pixLaPlayError = null;     // a refusal belonged to the old file
   // The PER-NODE peaks copy, not just the shared module cache. Its freshness
   // test is `cached.file === state.file`, which still matches after a re-upload
   // under the SAME name - so the box kept drawing the old recording, and worse,
@@ -718,6 +719,10 @@ function togglePlay(node) {
   const st = readState(node);
   if (!els || !st.file) return;
   if (node._pixLaAudio) { stopPlay(node); return; }
+  node._pixLaPlayError = null;
+  // Inside the click, so the Web Audio fallback below is allowed to make sound
+  // when it starts later. Put back to sleep as soon as it is not needed.
+  wakeAudio();
   const el = makePlayer(audioFileUrl(st.file));
   node._pixLaAudio = el;
   const from = cueSeconds(node, st);
@@ -725,33 +730,110 @@ function togglePlay(node) {
   // Read on every tick rather than captured once, so clicking elsewhere while
   // it plays moves both the position AND the point it will stop at.
   node._pixLaStopAt = playStopAt(node);
-  el.addEventListener("ended", () => stopPlay(node));
-  el.play().catch(() => stopPlay(node));
+  el.addEventListener("ended", () => { if (node._pixLaAudio === el) stopPlay(node); });
+  el.play().then(
+    () => { if (node._pixLaAudio === el) sleepAudio(); },
+    (err) => {
+      // Stopped by the user or by picking another file: pause() / load()
+      // reject the pending play() with AbortError, and that is not a refusal.
+      if (node._pixLaAudio !== el) return;
+      playWithWebAudio(node, el, err);
+    },
+  );
   els.play.className = "stop";
   els.playBtn.title = "Stop";
+  startTick(node, el);
+}
 
-  // A rAF playhead rather than the `timeupdate` event: timeupdate fires about
-  // four times a second, which draws a visibly stepping line. This also does
-  // the stop check, so the boundary is honoured smoothly.
+/**
+ * A rAF playhead rather than the `timeupdate` event: timeupdate fires about
+ * four times a second, which draws a visibly stepping line. This also does the
+ * stop check, so the boundary is honoured smoothly. `p` is the <audio> element
+ * or the Web Audio fallback; both answer currentTime.
+ */
+function startTick(node, p) {
   const tick = () => {
-    if (node._pixLaAudio !== el) return;                 // stopped or replaced
-    if (el.currentTime >= node._pixLaStopAt) { stopPlay(node); return; }
-    node._pixLaPlayAt = el.currentTime;
+    if (node._pixLaAudio !== p) return;                  // stopped or replaced
+    if (p.currentTime >= node._pixLaStopAt) { stopPlay(node); return; }
+    node._pixLaPlayAt = p.currentTime;
     repaintWave(node);
     node._pixLaPlayRaf = requestAnimationFrame(tick);
   };
   node._pixLaPlayRaf = requestAnimationFrame(tick);
 }
 
+/**
+ * The browser refused the <audio> element's play() (Firefox on Linux did, every
+ * press, while the same browser decoded the file for the waveform and played it
+ * in ComfyUI's own Load Audio). Play the selection through Web Audio instead.
+ * Only reached on a refusal, so a browser that plays normally never gets here.
+ * audio-nodes.md #13.
+ */
+function playWithWebAudio(node, el, refusal) {
+  const st = readState(node);
+  try { el.pause(); el.removeAttribute("src"); el.load(); } catch (_e) { /* already torn down */ }
+  console.warn(`[Pixaroma] Load Audio: the browser refused to play the file (${errText(refusal)}). `
+    + "Playing it through Web Audio instead.");
+  const p = new WebAudioPlayer(audioFileUrl(st.file));
+  // Where it starts. A click on the waveform while it decodes moves this too:
+  // setCue writes currentTime on whatever is playing.
+  p.currentTime = cueSeconds(node, st);
+  node._pixLaAudio = p;
+  p.addEventListener("ended", () => { if (node._pixLaAudio === p) stopPlay(node); });
+  p.load()
+    .then((ok) => {
+      if (!ok || node._pixLaAudio !== p) return undefined;
+      const at = p.currentTime;
+      p.currentTime = at;                                // clamp to the decoded length
+      // FROM WHERE IT WILL PLAY: a drag during the decode nulled the cue, and
+      // cueSeconds would then answer with the new selection start (see the
+      // drag's re-arm, which measures the same way).
+      node._pixLaStopAt = playStopAt(node, p.currentTime);
+      return p.play().then(() => { if (node._pixLaAudio === p) startTick(node, p); });
+    })
+    .catch((err) => {
+      if (node._pixLaAudio !== p) return;
+      console.warn(`[Pixaroma] Load Audio: Web Audio could not play it either (${errText(err)}).`);
+      stopPlay(node);
+      // The browser's FIRST answer is the one worth reading; the second is
+      // in the tooltip and the console.
+      node._pixLaPlayError = { first: refusal, second: err };
+      repaintWave(node);
+    });
+}
+
+function errText(e) {
+  if (!e) return "no reason given";
+  return `${e.name || "Error"}: ${e.message || String(e)}`;
+}
+
+/**
+ * The status line when neither player could make a sound. SHORT on purpose:
+ * the line ends in an ellipsis, and at the default width the browser's error
+ * name is the part a bug report needs (the full text is in the tooltip).
+ */
+function playErrorLine(pe) {
+  const name = pe?.first?.name || "";
+  const why = name === "NotAllowedError" ? "sound blocked by the browser"
+    : name === "NotSupportedError" ? "browser cannot play this file"
+      : "could not play";
+  return `${why}${name ? ` (${name})` : ""}`;
+}
+
 export function stopPlay(node) {
   if (!node) return;
   const el = node._pixLaAudio;
   if (el) {
-    // NOT src = "": an empty src resolves against the document URL, so the
-    // browser re-requests the ComfyUI page as media and logs an error.
-    try { el.pause(); el.removeAttribute("src"); el.load(); } catch (_e) { /* already torn down */ }
+    if (typeof el.dispose === "function") {
+      el.dispose();                                      // the Web Audio fallback
+    } else {
+      // NOT src = "": an empty src resolves against the document URL, so the
+      // browser re-requests the ComfyUI page as media and logs an error.
+      try { el.pause(); el.removeAttribute("src"); el.load(); } catch (_e) { /* already torn down */ }
+    }
   }
   node._pixLaAudio = null;
+  sleepAudio();
   if (node._pixLaPlayRaf) {
     try { cancelAnimationFrame(node._pixLaPlayRaf); } catch (_e) { /* ignore */ }
     node._pixLaPlayRaf = null;
@@ -796,11 +878,20 @@ function paint(node, peaks, dur, error) {
 
   let text = "";
   let cls = "";
+  let tip = "";
   if (error) { text = "could not read that file"; cls = "bad"; }
   // Name the BUTTON, not the action. "Pick a file" left people hunting for
   // where, when Upload was sitting right there unread.
   else if (!st.file) text = "click Upload, or choose a file above";
-  else {
+  // Neither player could make a sound. Say so, with the browser's own words in
+  // the tooltip, until the next press of Play or another file: a refusal that
+  // leaves no trace is what made this impossible to diagnose from a report.
+  else if (node._pixLaPlayError) {
+    const pe = node._pixLaPlayError;
+    text = playErrorLine(pe);
+    cls = "bad";
+    tip = `Normal player: ${errText(pe.first)}\nWeb Audio: ${errText(pe.second)}`;
+  } else {
     // Name where the length came from. A number you did not work out yourself
     // should say so, and say when it is only a guess.
     let src;
@@ -819,6 +910,7 @@ function paint(node, peaks, dur, error) {
   }
   els.tx.textContent = text;
   els.tx.className = "tx " + cls;
+  els.tx.title = tip;
 }
 
 /**
@@ -874,5 +966,6 @@ export function destroyFace(node) {
     node._pixLaEls = null;
     node._pixLaPeaks = null;
     node._pixLaCue = null;
+    node._pixLaPlayError = null;
   }
 }
