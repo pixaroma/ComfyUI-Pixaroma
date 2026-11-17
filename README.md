@@ -253,6 +253,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 17, 2026 · v1.4.258**
+- **Save Image:** after a Run fed by a list (Prompt Each, Load Images from Folder), it now says how many pictures it really saved, not "saved 1 image".
+
 ### **November 16, 2026 · v1.4.256-v1.4.257**
 - **Seamless Tile (new):** makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL and SD 1.5 draw patterns and textures that repeat with no edge, on every seed.
 - **Seamless Preview (new):** shows a picture repeated (2x2, offset, half-drop) and checks that its edges really join.
