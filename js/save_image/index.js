@@ -1195,10 +1195,27 @@ function restoreSaveImageOutputs(nodeOutputs) {
   });
 }
 
+// One status per run of the node, on that run's first picture. A list upstream
+// (Prompt Each, Load Images from Folder, any OUTPUT_IS_LIST node) runs the node
+// once per item and ComfyUI joins their pictures into ONE executed event, so
+// the count is the sum over every run: the first alone said "saved 1 image"
+// after a list Run that saved 4 (2026-11-17, save-image.md #34). Save now
+// already sends one total on its first entry, so the sum is the same there.
+function runStatusOf(frames) {
+  let status = null;
+  for (const f of frames) {
+    const st = f && f._pixaroma_status;
+    if (!st) continue;
+    if (!status) status = { ...st };
+    else status.saved = (status.saved || 0) + (st.saved || 0);
+  }
+  return status;
+}
+
 // A run's ui entries (or Save now's answer, which has the same shape) -> the
 // viewer, the info line, Save now, and the light snapshot a tab switch restores.
 function applyRunFrames(node, frames) {
-  const status = frames[0]._pixaroma_status || null;
+  const status = runStatusOf(frames);
   node._pixSiRunSeq = (node._pixSiRunSeq || 0) + 1;
   // Preview frames are what Save now can still save; a real save leaves none.
   node._pixSiPreviewFiles = status && status.saved === 0 ? previewFilesOf(frames) : null;
