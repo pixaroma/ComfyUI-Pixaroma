@@ -106,7 +106,9 @@ def make_maps(image, strength=1.0, roughness_min=0.55, roughness_max=0.9, invert
     _, H, W, c = image.shape
     if H < MIN_SIDE or W < MIN_SIDE:
         raise ValueError(f"Seamless Material needs a picture at least {MIN_SIDE} px on each side (got {W}x{H}).")
-    x = image.float()
+    # one NaN pixel (an fp16 overflow upstream) would spread through the blurs and make the AO quantile NaN = a black
+    # AO map (review 2026-11-18, review\big.py). Per pixel, so the maps stay exactly shift-equivariant.
+    x = torch.nan_to_num(image.float(), nan=0.0, posinf=1.0, neginf=0.0)
     if c == 1:
         x = x.repeat(1, 1, 1, 3)
     rgb = x[..., :3].clamp(0.0, 1.0).permute(0, 3, 1, 2).contiguous()      # (B, 3, H, W)
@@ -177,13 +179,16 @@ def clean_save_to(text):
 
 def next_folder_name(existing_names, name):
     """The next free '<name>_001' style folder name, after the highest number already there (never fills a gap,
-    so the newest is always the highest number)."""
+    so the newest is always the highest number). Case-blind: on Windows and macOS 'Stone_001' IS 'stone_001', and a
+    case-sensitive match reused it and overwrote the earlier maps (review 2026-11-18, review\fs.py). isdecimal, not
+    isdigit: '²' is a digit that int() refuses."""
     best = 0
-    prefix = name + "_"
+    prefix = (name + "_").casefold()
     for e in existing_names:
-        if e.startswith(prefix):
-            tail = e[len(prefix):]
-            if tail.isdigit():
+        ec = e.casefold()                    # slice the casefolded name: casefold can change the length (ß -> ss)
+        if ec.startswith(prefix):
+            tail = ec[len(prefix):]
+            if tail.isdecimal():
                 best = max(best, int(tail))
     return f"{name}_{best + 1:03d}"
 

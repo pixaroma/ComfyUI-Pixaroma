@@ -2255,19 +2255,36 @@ const HELP = {
     sections: [
       {
         heading: "What it does",
-        body: "A 3D program needs more than a picture to make a surface look real: how rough it is, where it is high and low, which way each bump faces the light. This node makes those maps from your seamless tile: color, roughness, normal, height and AO. Every map is seamless too, because all the math wraps around the edges, so the material repeats on a floor or a wall with no line.\n\nNo model and no download: it is plain image math and takes about a second.",
+        body: "A 3D program needs more than a picture to make a surface look real. It needs to know how rough the surface is, where it is high and low, and which way each bump faces the light. This node makes those maps from your seamless tile: color, roughness, normal, height and AO.\n\nEvery map is seamless too, because all the math wraps around the edges. So the material repeats on a floor or a wall with no line. No model and no download: it is plain image math and takes about a second.",
       },
       {
         heading: "Where it goes",
-        body: "After VAE Decode of a seamless tile (Seamless Tile Pixaroma), or after Load Image with a tile you already have. Put Seamless Preview Pixaroma on any output to see that map repeat and get the PASS / FAIL edge check.\n\nWith save_files on, each Run saves the five maps in a new folder inside ComfyUI's output folder: materials/stone saves output/materials/stone_001/stone_color.png, stone_roughness.png, stone_normal.png, stone_height.png and stone_ao.png. The next Run makes stone_002, so the highest number is the newest.",
+        body: "Put it after VAE Decode of a seamless tile made with Seamless Tile Pixaroma. A tile you already have works too, from Load Image. Put Seamless Preview Pixaroma on any output to see that map repeated, with its PASS / WARN / FAIL edge check.\n\nWith save_files on, new maps are saved in a new folder inside ComfyUI's output folder. materials/stone saves output/materials/stone_001/stone_color.png, stone_roughness.png, stone_normal.png, stone_height.png and stone_ao.png. New maps go to the next number, so the highest number is the newest. A Run with nothing changed saves nothing new.",
       },
       {
         heading: "In Blender",
-        body: "Blender's Node Wrangler wires all five files in one step, because of how they are named. It comes with Blender but starts switched off: Edit > Preferences > Add-ons, search Node Wrangler and tick it once.\n\nThen add a plane, open the Shading tab, click New to give it a material, click the Principled BSDF node and press Ctrl+Shift+T. Go to the folder the node saved, press A to select all five files and click Add Principled Texture Setup. Color, roughness, the normal map and the height (as bump) are connected for you, and a Mapping node is added in front of them. Type 4 in its Scale to repeat the tile 4 times. The AO file is loaded but left unconnected: Blender makes its own shadows.\n\nTested in Blender 5.2.2 with Cycles and EEVEE.",
+        body: "Blender's Node Wrangler loads all five files in one step and connects four of them. It comes with Blender but starts switched off.",
+        defs: [
+          ["Once", "In Edit > Preferences > Add-ons, search Node Wrangler and tick it."],
+          ["Step 1", "Add a plane. Open the Shading tab and click New to give it a material."],
+          ["Step 2", "Click the Principled BSDF node and press Ctrl+Shift+T."],
+          ["Step 3", "Open the folder the node saved, press A to select all five files, and click Add Principled Texture Setup."],
+          ["Step 4", "In the Mapping node, set Scale X and Y to 4. The tile now repeats 4 times each way."],
+        ],
+      },
+      {
+        heading: "What Node Wrangler connects",
+        bullets: [
+          "Color goes to Base Color, roughness to Roughness.",
+          "The normal map goes through a Normal Map node.",
+          "The height goes through a Displacement node and works as bump, in Cycles and EEVEE.",
+          "The AO file is loaded but left unconnected: Blender makes its own shadows.",
+          "Tested in Blender 5.2.2.",
+        ],
       },
       {
         heading: "Good to know",
-        body: "The relief comes from the tile's brightness, so dark means deep. That is right for stone, bricks with dark gaps, wood planks, tiles and fabric weave, and wrong where a dark color is not deeper: a dark red flower on a pale print becomes a hole. So use it on materials, not on printed patterns.\n\nA tile that does not join gives maps that do not join either: check the tile first.",
+        body: "The relief comes from the tile's brightness, so dark means deep. That is right for stone, bricks with dark gaps, wood planks, tiles and woven fabric. It is wrong where a dark colour is not deeper: a dark red flower on a pale print becomes a hole. So use it on materials, not on printed patterns.\n\nA tile that does not join gives maps that do not join either: check the tile first.",
       },
     ],
     footer: "Height is saved as a 16-bit PNG, so a displacement shows no steps. The workflow is stored in the color file, so you can drag it back into ComfyUI.",

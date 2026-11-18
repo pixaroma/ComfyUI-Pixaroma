@@ -22,14 +22,13 @@ from ._seamless_material_helpers import (
 
 class SeamlessMaterialPixaroma:
     DESCRIPTION = (
-        "Turns a seamless tile into a material for Blender and other 3D programs: color, roughness, normal, height "
-        "and AO maps, and every map is seamless too (all the math wraps around the edges). No model and no "
-        "download. The relief comes from the tile's brightness, so dark means deep: right for stone, bricks with "
-        "dark gaps, wood planks, tiles and fabric weave, wrong where a dark colour is not deeper (a dark flower on "
-        "a pale print becomes a hole). If the light parts should be the deep ones (light mortar between darker "
-        "bricks), switch invert_height on. With save_files on, each Run saves the five maps in a new folder inside "
-        "ComfyUI's output folder, named so Blender's Node Wrangler (Shift+Ctrl+T on a Principled BSDF) wires them "
-        "all in one step."
+        "Turns a seamless tile into a material for Blender and other 3D programs. It makes five maps: color, "
+        "roughness, normal, height and AO. Every map is seamless too, because all the math wraps around the edges. "
+        "No model and no download. The relief comes from brightness, so dark means deep. That suits stone, bricks "
+        "with dark gaps, wood planks, tiles and woven fabric. It is wrong where a dark colour is not deeper, like a "
+        "dark flower on a pale print. For light mortar between darker bricks, switch invert_height on. With "
+        "save_files on, new maps are saved in a new numbered folder inside ComfyUI's output folder. Blender's Node "
+        "Wrangler (Ctrl+Shift+T on a Principled BSDF) loads all five files from there in one step."
     )
 
     @classmethod
@@ -42,8 +41,9 @@ class SeamlessMaterialPixaroma:
                 }),
                 "strength": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 10.0, "step": 0.05,
-                    "tooltip": "How deep the relief looks in the normal map. 1 suits most stone and wood; higher "
-                               "makes stains and small dark spots look like pits.",
+                    "tooltip": "How deep the relief looks in the normal map. 1 suits most stone and wood. Above "
+                               "2, stains and small dark spots start to look like pits. The height map does not "
+                               "change.",
                 }),
                 "roughness_min": ("FLOAT", {
                     "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01,
@@ -65,14 +65,16 @@ class SeamlessMaterialPixaroma:
                 }),
                 "save_files": ("BOOLEAN", {
                     "default": True,
-                    "tooltip": "On: each Run saves the five maps as PNG files in a new numbered folder inside "
-                               "ComfyUI's output folder. Off: only the outputs, nothing saved.",
+                    "tooltip": "On: new maps are saved as five PNG files in a new numbered folder inside "
+                               "ComfyUI's output folder. A Run with nothing changed saves nothing new. Off: "
+                               "nothing is saved.",
                 }),
                 "save_to": ("STRING", {
                     "default": "materials/stone",
                     "tooltip": "Folder and name inside ComfyUI's output folder. materials/stone saves "
                                "output/materials/stone_001/stone_color.png, stone_roughness.png, stone_normal.png, "
-                               "stone_height.png and stone_ao.png; the next Run makes stone_002.",
+                               "stone_height.png and stone_ao.png. New maps go to the next number: the highest "
+                               "number is the newest.",
                 }),
             },
             "hidden": {"prompt": "PROMPT", "extra_pnginfo": "EXTRA_PNGINFO"},
@@ -133,12 +135,21 @@ def _save_maps(maps, save_to, prompt=None, extra_pnginfo=None):
     names = file_names(name)
     count = maps["color"].shape[0]
     for i in range(count):
-        folder_name = next_folder_name(existing, name)
-        existing.append(folder_name)
-        folder = safe_join(parent, folder_name)
-        if not folder:
-            raise ValueError(f"Seamless Material: cannot save under {save_to!r}.")
-        os.makedirs(folder, exist_ok=True)
+        # never write into a folder that already exists (an earlier material would be overwritten): a name taken
+        # some other way (another program, a race) moves on to the next number
+        for _ in range(1000):
+            folder_name = next_folder_name(existing, name)
+            existing.append(folder_name)
+            folder = safe_join(parent, folder_name)
+            if not folder:
+                raise ValueError(f"Seamless Material: cannot save under {save_to!r}.")
+            try:
+                os.makedirs(folder, exist_ok=False)
+                break
+            except FileExistsError:
+                continue
+        else:
+            raise RuntimeError(f"Seamless Material: no free folder name for {name!r} in {parent}.")
 
         def u8(m, i=i):
             return (maps[m][i].detach().float().cpu().clamp(0, 1).numpy() * 255.0 + 0.5).astype(np.uint8)
