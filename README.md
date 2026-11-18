@@ -98,6 +98,7 @@ The groups are in order of how much they are used in real workflows, and inside 
 | [Video&nbsp;Tools&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/video-tools/) | Joins, trims, loops and fades up to 8 video clips with their sound, and can put one song under&nbsp;them. |
 | [Seamless&nbsp;Tile&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-tile/) | Makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL or SD 1.5 draw patterns and textures that repeat with no edge, every&nbsp;time. |
 | [Seamless&nbsp;Preview&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-preview/) | Shows a picture repeated (2x2, offset, half-drop) and checks that its edges really&nbsp;join. |
+| [Seamless&nbsp;Material&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-material/) | Turns a seamless tile into a 3D material for Blender (color, roughness, normal, height, AO), every map seamless,&nbsp;no&nbsp;model. |
 
 ### 💬 Prompt and Text
 

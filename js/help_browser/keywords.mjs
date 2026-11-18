@@ -143,6 +143,10 @@ export const KEYWORDS = {
     + "flux 2 klein flux3 flux 3",
   SeamlessPreviewPixaroma: "seamless preview tile check seam checker test repeat 2x2 3x3 offset half drop half-drop "
     + "half brick half-brick mockup mock-up pattern repeat preview does it tile edge check pass fail",
+  SeamlessMaterialPixaroma: "seamless material pbr 3d material blender texture maps normal map normalmap bump bump map "
+    + "height map heightmap displacement displace roughness rough map ao ambient occlusion albedo base color "
+    + "node wrangler principled bsdf shader game texture unreal unity godot opengl directx tileable texture "
+    + "stone brick wood planks floor wall make maps from image",
   Krea2EnhancerPixaroma: "krea krea2 krea 2 turbo enhancer krea2t enhancer comfyui-krea2t-enhancer capitan01r prompt adherence follow the prompt ignores prompt missing details skips details stronger prompt better prompt following model patch missing node not found github 404 deleted",
   PixaromaLoraLoader: "lora stack weight trigger civitai xy plot compare grid sweep "
     + "moved move folder subfolder lost trigger words red name "
