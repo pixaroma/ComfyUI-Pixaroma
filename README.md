@@ -253,6 +253,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 18, 2026 · v1.4.260**
+- **Load 3D, Save 3D and First Last Frame:** a future ComfyUI update that moves a part these nodes use will no longer break them, or stop the whole pack from loading.
+
 ### **November 17, 2026 · v1.4.258-v1.4.259**
 - **Save Image:** after a Run fed by a list (Prompt Each, Load Images from Folder), it now says how many pictures it really saved, not "saved 1 image".
 - **Load Audio:** Play now makes a sound in browsers that refuse the normal player (seen in Firefox on Linux). If it still cannot play, the line beside the button says why.
