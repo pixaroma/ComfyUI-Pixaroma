@@ -254,7 +254,8 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
-### **November 18, 2026 · v1.4.260**
+### **November 18, 2026 · v1.4.260-v1.4.261**
+- **Seamless Material (new):** turns a seamless tile into a 3D material for Blender: color, roughness, normal, height and AO maps that repeat with no edge. Node Wrangler loads all five in one step.
 - **Load 3D, Save 3D and First Last Frame:** a future ComfyUI update that moves a part these nodes use will no longer break them, or stop the whole pack from loading.
 
 ### **November 17, 2026 · v1.4.258-v1.4.259**
