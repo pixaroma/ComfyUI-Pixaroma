@@ -2285,7 +2285,7 @@ const HELP = {
       },
       {
         heading: "Good to know",
-        body: "The relief comes from the tile's brightness, so dark means deep. That is right for stone, bricks with dark gaps, wood planks, tiles and woven fabric. It is wrong where a dark colour is not deeper: a dark red flower on a pale print becomes a hole. So use it on materials, not on printed patterns.\n\nA tile that does not join gives maps that do not join either: check the tile first.",
+        body: "The relief comes from the tile's brightness, so dark means deep. That is right for stone, bricks with dark gaps, wood planks, tiles and woven fabric. It is wrong where a dark colour is not deeper: a dark red flower on a pale print becomes a hole. So use it on materials, not on printed patterns.\n\nA tile that does not join gives maps that do not join either: check the tile first.\n\nOther shapes in Blender: the default cube turns the pattern sideways on its side faces, so bricks and planks lie on their side. Fix it in Edit Mode: press A, then U and Cube Projection. On a UV Sphere set the Mapping Scale X to twice Y (8 and 4), because the picture goes all the way round but only from pole to pole. Its top and bottom squeeze together, as they do with any texture.",
       },
     ],
     footer: "Height is saved as a 16-bit PNG, so a displacement shows no steps. The workflow is stored in the color file, so you can drag it back into ComfyUI.",
