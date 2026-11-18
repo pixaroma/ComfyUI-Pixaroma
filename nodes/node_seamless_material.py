@@ -42,8 +42,8 @@ class SeamlessMaterialPixaroma:
                 "strength": ("FLOAT", {
                     "default": 1.0, "min": 0.0, "max": 10.0, "step": 0.05,
                     "tooltip": "How deep the relief looks in the normal map. 1 suits most stone and wood. Above "
-                               "2, stains and small dark spots start to look like pits. The height map does not "
-                               "change.",
+                               "2, stains and small dark spots start to look like pits. Only the normal map "
+                               "changes.",
                 }),
                 "roughness_min": ("FLOAT", {
                     "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01,

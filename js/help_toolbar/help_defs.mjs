@@ -2279,6 +2279,7 @@ const HELP = {
           "The normal map goes through a Normal Map node.",
           "The height goes through a Displacement node and works as bump, in Cycles and EEVEE.",
           "The AO file is loaded but left unconnected: Blender makes its own shadows.",
+          "A Mapping node is added in front of every texture. Its Scale sets how often the tile repeats.",
           "Tested in Blender 5.2.2.",
         ],
       },
