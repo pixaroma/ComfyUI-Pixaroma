@@ -21,6 +21,7 @@ from io import BytesIO
 import numpy as np
 
 from . import _mesh3d as m3
+from ._comfy_api_compat import api_attr
 
 # Load 3D Pixaroma sends FILE_3D; core's own 3D nodes send the per-format types.
 FILE_TYPES = "FILE_3D,FILE_3D_GLB,FILE_3D_GLTF,FILE_3D_OBJ,FILE_3D_STL"
@@ -204,11 +205,16 @@ def fix(model, turns, center, ground):
     return fixed, shift
 
 
-def to_mesh(model):
+def to_mesh(model, who="Save 3D Pixaroma"):
     """Model3D -> a one-model core MESH, polygons split into triangles. Uvs and
-    normals stay valid because the vertices do not change."""
+    normals stay valid because the vertices do not change. The MESH type comes
+    from a PINNED comfy_api version first, `latest` last (_comfy_api_compat.py)."""
     import torch
-    from comfy_api.latest import Types
+
+    mesh_type = api_attr("Types.MESH")
+    if mesh_type is None:
+        raise ValueError("{}: this ComfyUI has no 3D mesh type (comfy_api Types.MESH), so it cannot "
+                         "write GLB files. Update ComfyUI, or choose OBJ or STL.".format(who))
 
     V, F, C = m3.triangulate(model.poly)
 
@@ -227,7 +233,7 @@ def to_mesh(model):
     kw["occlusion_in_mr"] = model.occlusion_in_mr
     if model.material is not None:
         kw["material"] = model.material
-    return Types.MESH(**kw)
+    return mesh_type(**kw)
 
 
 def glb_bytes(model, who):
@@ -238,14 +244,20 @@ def glb_bytes(model, who):
     except Exception:
         raise ValueError("{}: this ComfyUI cannot write GLB files yet. Update ComfyUI, "
                          "or choose OBJ or STL.".format(who))
-    data = mesh_item_to_glb_bytes(to_mesh(model), 0)
+    data = mesh_item_to_glb_bytes(to_mesh(model, who), 0)
     if not data:
         raise ValueError("{}: the model is empty, so there is nothing to write.".format(who))
     return data
 
 
-def file3d(data, fmt):
-    """File bytes -> the File3D a model_3d output carries."""
-    from comfy_api.latest import Types
-
-    return Types.File3D(BytesIO(data), file_format=fmt)
+def file3d(data, fmt, who="Save 3D Pixaroma"):
+    """File bytes -> the File3D a model_3d output carries, its type from a PINNED
+    comfy_api version first, `latest` last (_comfy_api_compat.py). On a ComfyUI
+    with no File3D type the file is already saved by now, so only this output is
+    blocked, with the reason: failing the run would make a retry save a second
+    copy (the same rule as the view file, save-3d.md #10)."""
+    file_type = api_attr("Types.File3D")
+    if file_type is None:
+        return blocked("{}: this ComfyUI has no 3D file type (comfy_api Types.File3D), so the model_3d "
+                       "output cannot be used. The file itself was saved. Update ComfyUI.".format(who))
+    return file_type(BytesIO(data), file_format=fmt)

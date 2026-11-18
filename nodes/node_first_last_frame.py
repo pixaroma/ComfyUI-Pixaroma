@@ -31,6 +31,7 @@ import os
 import numpy as np
 import torch
 
+from ._comfy_api_compat import api_attrs
 from ._first_last_helpers import grab_first_last
 
 
@@ -82,6 +83,24 @@ def _first_last_from_images(images):
     return batch[0:1].clone(), batch[-1:].clone()
 
 
+# The two older routes to the same class (a backwards-compat module, then the
+# private one), tried after the pinned API and `latest`.
+_OLD_VIDEO_MODULES = ("comfy_api.input_impl", "comfy_api.latest._input_impl.video_types")
+
+
+def _video_from_file_classes():
+    """Every VideoFromFile class this ComfyUI has, as a tuple: the PINNED
+    comfy_api version first, then `latest` (documented as unstable,
+    _comfy_api_compat.py), then the two older routes. ALL of them are accepted,
+    because the video on the wire was made by whichever one core's Load Video
+    uses. Today they are one and the same class. Empty = none found."""
+    found = []
+    for cls in api_attrs("InputImpl.VideoFromFile") + api_attrs("VideoFromFile", _OLD_VIDEO_MODULES):
+        if isinstance(cls, type) and cls not in found:
+            found.append(cls)
+    return tuple(found)
+
+
 def _plain_file_path(video):
     """The video's own file on disk, but ONLY when reading it directly would
     give the same frames the wire is carrying. None otherwise, which sends the
@@ -97,15 +116,8 @@ def _plain_file_path(video):
       file, so the file's first and last frames are NOT the ones on the wire.
       Fall through and let get_components() apply the trim.
     """
-    try:
-        from comfy_api.input_impl import VideoFromFile
-    except Exception:
-        try:
-            from comfy_api.latest._input_impl.video_types import VideoFromFile
-        except Exception:
-            return None
-
-    if not isinstance(video, VideoFromFile):
+    classes = _video_from_file_classes()
+    if not classes or not isinstance(video, classes):
         return None
 
     # Discriminate on PRESENCE, never on exception type. An earlier version of

@@ -37,6 +37,7 @@ from ._load3d_helpers import (
     CAPTURE_SUBFOLDER, NONE, is_model_name, list_models, output_size, outputs_consumed,
     parse_state, size_mismatch_message, strip_annotation, unknown_size_read, wired_side,
 )
+from ._comfy_api_compat import api_attr
 from ._path_guard import is_path_under, rel_is_rooted
 
 CLASS = "PixaromaLoad3D"
@@ -107,14 +108,25 @@ def _resolve_capture(name):
     return path if os.path.isfile(path) else None
 
 
+_said_no_file3d = []
+
+
 def _file3d(path):
-    """ComfyUI's own 3D file object, so every core 3D node accepts the output."""
-    try:
-        from comfy_api.latest import Types
-        return Types.File3D(path)
-    except Exception:
+    """ComfyUI's own 3D file object, so every core 3D node accepts the output.
+    The type comes from a PINNED comfy_api version first, `latest` last
+    (_comfy_api_compat.py: `latest` is documented as unstable)."""
+    file3d = api_attr("Types.File3D")
+    if file3d is None:
         # An older ComfyUI without the 3D types has nothing that could take the
         # object anyway, and a path is what its older 3D nodes read.
+        if not _said_no_file3d:
+            _said_no_file3d.append(True)
+            print("[Pixaroma] Load 3D: this ComfyUI has no 3D file type (comfy_api Types.File3D), "
+                  "so model_3d carries the model's file path. Update ComfyUI if a 3D node refuses it.")
+        return path
+    try:
+        return file3d(path)
+    except Exception:
         return path
 
 

@@ -44,46 +44,60 @@ class PixaromaReferenceNode:
         return (str(text + " " + counter),)
 
 
-from comfy_api.latest import io
+# NOT dev-only at import: six editor nodes (3D Builder, Image Composer, Image
+# Crop, Inpaint Crop, Paint, Show Text) import any_type from this file at pack
+# load, so nothing below may raise, or the WHOLE pack fails to load. ComfyUI's
+# node API is taken from a pinned version first (`latest` is documented as
+# unstable, _comfy_api_compat.py), and without it only the developer-only Vue
+# reference node is left out. Guarded by D:\Claude Tests\_comfy_api_guard.
+from ._comfy_api_compat import api_attr
 
-PixaromaData = io.Custom("PIXAROMA_DATA")
+io = api_attr("io")
 
+try:
+    PixaromaData = io.Custom("PIXAROMA_DATA")
 
-class PixaromaVueReferenceNode(io.ComfyNode):
+    class PixaromaVueReferenceNode(io.ComfyNode):
 
-    @classmethod
-    def define_schema(cls) -> io.Schema:
-        return io.Schema(
-            node_id="Pixaroma_VueReferenceNode",  # unique, use a prefix!
-            display_name="Pixaroma Vue Reference Node",
-            category="Pixaroma",
-            description="new Pixaroma Vue Reference Node compatible with Nodes 2.0",
-            inputs=[
-                io.Image.Input("image"),
-                io.Int.Input("count", default=1, min=0, max=100),
-                io.String.Input("prompt", multiline=True),
-                io.Combo.Input("mode", options=["option1", "option2"]),
-                io.Mask.Input("mask", optional=True),
-                PixaromaData.Input("pixaroma_data", optional=True),
-            ],
-            outputs=[
-                io.Image.Output(display_name="result"),
-                PixaromaData.Output(display_name="pixaroma_data"),
-            ],
-        )
+        @classmethod
+        def define_schema(cls) -> io.Schema:
+            return io.Schema(
+                node_id="Pixaroma_VueReferenceNode",  # unique, use a prefix!
+                display_name="Pixaroma Vue Reference Node",
+                category="Pixaroma",
+                description="new Pixaroma Vue Reference Node compatible with Nodes 2.0",
+                inputs=[
+                    io.Image.Input("image"),
+                    io.Int.Input("count", default=1, min=0, max=100),
+                    io.String.Input("prompt", multiline=True),
+                    io.Combo.Input("mode", options=["option1", "option2"]),
+                    io.Mask.Input("mask", optional=True),
+                    PixaromaData.Input("pixaroma_data", optional=True),
+                ],
+                outputs=[
+                    io.Image.Output(display_name="result"),
+                    PixaromaData.Output(display_name="pixaroma_data"),
+                ],
+            )
 
-    @classmethod
-    def execute(cls, image, count, prompt, mode, mask=None) -> io.NodeOutput:
-        result = 1.0 - image  # example: invert
-        return io.NodeOutput(result)
+        @classmethod
+        def execute(cls, image, count, prompt, mode, mask=None) -> io.NodeOutput:
+            result = 1.0 - image  # example: invert
+            return io.NodeOutput(result)
+except Exception:
+    PixaromaVueReferenceNode = None
+    print("[Pixaroma] Reference node (developer only): ComfyUI's node API (comfy_api io) "
+          "was not found, so the Vue reference node is left out. No other node is affected.")
 
 
 NODE_CLASS_MAPPINGS = {
     "PixaromaReferenceNode": PixaromaReferenceNode,
-    "Pixaroma_VueReferenceNode": PixaromaVueReferenceNode,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "PixaromaReferenceNode": "Reference Node",
-    "Pixaroma_VueReferenceNode": "Pixaroma Vue Reference Node",
 }
+
+if PixaromaVueReferenceNode is not None:
+    NODE_CLASS_MAPPINGS["Pixaroma_VueReferenceNode"] = PixaromaVueReferenceNode
+    NODE_DISPLAY_NAME_MAPPINGS["Pixaroma_VueReferenceNode"] = "Pixaroma Vue Reference Node"
