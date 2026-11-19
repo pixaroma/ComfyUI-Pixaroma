@@ -264,7 +264,7 @@ def _resample_iter(raw_iter, native_fps, force_fps):
 
 
 def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
-             custom_w, custom_h, src_frames=0, budget=None, path=""):
+             custom_w, custom_h, src_frames=0, budget=None, path="", hint_skip=None):
     """Run the raw frame iterator through resample -> window -> skip, resizing
     each kept frame. Returns (list_of_uint8_frames, out_fps).
 
@@ -277,7 +277,10 @@ def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
     kept frame (its real output size, after the rotation and the resize) the
     header's frame count says whether the whole load fits, so a clip that
     cannot fit is refused in seconds; and every kept frame is counted, so a
-    header that under-counts (or has no count) is stopped before it pages."""
+    header that under-counts (or has no count) is stopped before it pages.
+    hint_skip = what the refusal adds to the Max frames that fits (None =
+    skip_first; 0 when Max frames counts after the skip, load-video.md #20)."""
+    hint = skip_first if hint_skip is None else hint_skip
     if force_fps > 0 and native_fps > 0:
         src = _resample_iter(raw_iter, native_fps, force_fps)
         base_fps = force_fps
@@ -301,10 +304,10 @@ def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
             if not out:
                 n = _expected_out_frames(src_frames, native_fps, force_fps, skip_first, max_frames)
                 if n * kept.nbytes * _PEAK_FACTOR > budget:
-                    raise _too_big(path, n, kept, base_fps, budget, skip_first,
+                    raise _too_big(path, n, kept, base_fps, budget, hint,
                                    force_fps=force_fps, native_fps=native_fps)
             if held * _PEAK_FACTOR > budget:
-                raise _too_big(path, len(out), kept, base_fps, budget, skip_first, at_least=True,
+                raise _too_big(path, len(out), kept, base_fps, budget, hint, at_least=True,
                                force_fps=force_fps, native_fps=native_fps)
         out.append(kept)
 
@@ -314,7 +317,8 @@ def _collect(raw_iter, native_fps, force_fps, skip_first, max_frames,
 
 # ── Backends ─────────────────────────────────────────────────────────────────
 
-def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h, budget=None):
+def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h, budget=None,
+               hint_skip=None):
     container = av.open(path)
     try:
         vstreams = container.streams.video
@@ -353,7 +357,7 @@ def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h, budg
         out, out_fps = _collect(
             raw(), native_fps, force_fps, skip_first,
             max_frames, custom_w, custom_h,
-            src_frames=src_frames, budget=budget, path=path,
+            src_frames=src_frames, budget=budget, path=path, hint_skip=hint_skip,
         )
     finally:
         container.close()
@@ -365,7 +369,8 @@ def _decode_av(path, force_fps, skip_first, max_frames, custom_w, custom_h, budg
     return out, out_fps, width, height
 
 
-def _decode_imageio(path, force_fps, skip_first, max_frames, custom_w, custom_h, budget=None):
+def _decode_imageio(path, force_fps, skip_first, max_frames, custom_w, custom_h, budget=None,
+                    hint_skip=None):
     reader = imageio.get_reader(path, "ffmpeg")
     try:
         meta = reader.get_meta_data() or {}
@@ -396,7 +401,7 @@ def _decode_imageio(path, force_fps, skip_first, max_frames, custom_w, custom_h,
         out, out_fps = _collect(
             raw(), native_fps, force_fps, skip_first,
             max_frames, custom_w, custom_h,
-            src_frames=src_frames, budget=budget, path=path,
+            src_frames=src_frames, budget=budget, path=path, hint_skip=hint_skip,
         )
     finally:
         reader.close()
@@ -411,8 +416,13 @@ def _decode_imageio(path, force_fps, skip_first, max_frames, custom_w, custom_h,
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
-           custom_w=0, custom_h=0) -> dict:
+           custom_w=0, custom_h=0, max_after_skip=False) -> dict:
     """Decode a video file to a frame batch + metadata.
+
+    max_after_skip (load-video.md #20): Max frames counts the frames that come
+    OUT, after the skip: the window grows to skip_first + max_frames, so the
+    result is exactly max_frames long (when the clip has them). Off = the old
+    window model (#2), max_frames - skip_first. max_frames 0 = all, either way.
 
     Returns {frames: IMAGE tensor [N,H,W,3] float32, fps, width, height,
     duration, frame_count}. Raises a clear error when no backend is available
@@ -421,13 +431,17 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
     _need_backend()
     skip_first = max(0, int(skip_first))
     max_frames = max(0, int(max_frames))
+    after = bool(max_after_skip) and max_frames > 0
+    if after:
+        max_frames += skip_first  # the window = the skipped frames + the kept ones
+    hint_skip = 0 if after else None
     force_fps = float(force_fps) if force_fps and force_fps > 0 else 0.0
     budget = _ram_budget()
 
     if _AV_OK:
         try:
             out, out_fps, width, height = _decode_av(
-                path, force_fps, skip_first, max_frames, custom_w, custom_h, budget,
+                path, force_fps, skip_first, max_frames, custom_w, custom_h, budget, hint_skip,
             )
         except VideoTooBigError:
             raise
@@ -436,16 +450,22 @@ def decode(path, *, max_frames=0, force_fps=0.0, skip_first=0,
                 print(f"[Pixaroma] Load Video — PyAV could not read this file "
                       f"({e}); falling back to imageio.")
                 out, out_fps, width, height = _decode_imageio(
-                    path, force_fps, skip_first, max_frames, custom_w, custom_h, budget,
+                    path, force_fps, skip_first, max_frames, custom_w, custom_h, budget, hint_skip,
                 )
             else:
                 raise
     else:
         out, out_fps, width, height = _decode_imageio(
-            path, force_fps, skip_first, max_frames, custom_w, custom_h, budget,
+            path, force_fps, skip_first, max_frames, custom_w, custom_h, budget, hint_skip,
         )
 
     if not out:
+        if skip_first > 0 and after:
+            raise ValueError(
+                f"[Pixaroma] Load Video - Skip first frames ({skip_first}) is "
+                f"more than {os.path.basename(path)} has, so no frames are "
+                f"left. Lower Skip first frames and try again."
+            )
         if skip_first > 0:
             raise ValueError(
                 f"[Pixaroma] Load Video — Skip first frames ({skip_first}) "

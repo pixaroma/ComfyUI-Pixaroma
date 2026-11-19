@@ -1390,9 +1390,10 @@ const HELP = {
       {
         heading: "Loading controls",
         defs: [
-          ["Max frames", "How many frames to load from the start of the video. 0 = all. The safety valve for long clips: it never reads more than this many. Works with Skip first frames, which trims frames off the front of that window (Max 100 with Skip 5 gives 95). A long or 4K clip loaded whole can need more memory than your computer has (2.5 minutes of 1080p phone video is about 140 GB while loading): the node then stops, usually within a second, and tells you the Max frames that fits, instead of freezing the run."],
+          ["Max frames", "How many frames to load. 0 = all. The safety valve for long clips. How it works with Skip first frames depends on `max_frames_after_skip` (below). A long or 4K clip loaded whole can need more memory than your computer has (2.5 minutes of 1080p phone video is about 140 GB while loading): the node then stops, usually within a second, and tells you the Max frames that fits, instead of freezing the run."],
           ["Force FPS", "Force a steady frames-per-second by dropping or duplicating frames (a 60fps clip forced to 24). 0 = keep the original rate. AI video models usually expect a fixed rate."],
-          ["Skip first frames", "Skip this many frames from the start, like trimming an intro. Trims the front of the loaded frames. The audio output is cut the same way (and to Max frames), so the sound stays in sync with the picture."],
+          ["Skip first frames", "Skip this many frames from the start, like trimming an intro. The audio output is cut the same way (and to Max frames), so the sound stays in sync with the picture."],
+          ["max_frames_after_skip", "On (the default for a new node): Max frames is how many frames you get after the skip. Max 100 with Skip 5 gives exactly 100. Use this when Max frames comes from a node that gives the exact frame count a video model needs, like Duration Pixaroma. Off: Max frames counts from the start of the video, so Max 100 with Skip 5 gives 95. Workflows saved before this switch existed open with it off, so they work as before. Max frames 0 loads the whole clip either way."],
           ["Custom width / height", "Resize each frame as it loads. 0 = keep original. Set one to scale proportionally; set both to crop-to-fill that exact size (keeps proportions and trims overflow, like Resize Crop). It never stretches."],
         ],
       },

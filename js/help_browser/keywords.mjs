@@ -61,7 +61,7 @@ export const KEYWORDS = {
   PixaromaSaveImage: "export write disk output filename png jpg jpeg webp lossless quality compression file size smaller folder subfolders tree mirror civitai metadata parameters resources share lora hash embed settings gear hide buttons save now keep preview later run time render time how long it took elapsed generation time timing benchmark speed test",
   PixaromaCompare: "before after slider difference ab side by side overlay opacity fade",
   PixaromaRemoveBackground: "cutout transparent alpha matte birefnet rembg erase background",
-  PixaromaLoadVideo: "mp4 movie frames clip import video size resolution dimensions phone iphone rotated sideways portrait drag drop",
+  PixaromaLoadVideo: "mp4 movie frames clip import video size resolution dimensions phone iphone rotated sideways portrait drag drop skip trim start max frames count after skip",
   PixaromaLoadVideoFrame: "still grab frame single picture screenshot",
   PixaromaFirstLastFrame: "first last frame start end continue continuation extend chain join carry on next video ending beginning still grab last frame from video",
   PixaromaSaveMp4: "export video render encode movie mp4 h264 civitai metadata generation info audio fade click tick pop start onset resave re-save size resolution dimensions length duration volume loud loudness sound level mute muted silence silent speaker too loud turn down run time render time how long it took elapsed generation time timing benchmark speed test",

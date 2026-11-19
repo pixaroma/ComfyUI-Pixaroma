@@ -290,6 +290,28 @@ function draggingVideo(e) {
     it.kind === "file" && (!it.type || it.type.startsWith("video/") || it.type === "image/gif"));
 }
 
+// "max_frames_after_skip" (2026-11-19, load-video.md #20) is ON for a new node
+// and OFF for a workflow saved before it existed, so an old workflow keeps
+// giving Max frames - Skip frames. ComfyUI restores widget values BY POSITION:
+// the switch sits at slot 6, where an old save holds the upload button's null
+// (and the button then gets the preview's ""). A real save holds a boolean
+// there; anything else = an old save. A named save (newer ComfyUI) is read by
+// name first.
+const AFTER_SKIP = "max_frames_after_skip";
+const AFTER_SKIP_SLOT = 6;
+function migrateAfterSkip(node, info) {
+  const sw = node.widgets?.find((w) => w.name === AFTER_SKIP);
+  if (!sw || !info) return;
+  const named = info.widgets_values_named;
+  if (named && typeof named === "object" && AFTER_SKIP in named) return;
+  const vals = info.widgets_values;
+  if (!Array.isArray(vals)) return;   // nothing saved: keep the default
+  if (typeof vals[AFTER_SKIP_SLOT] === "boolean") return;
+  sw.value = false;
+  const btn = node.widgets?.find((w) => w.type === "button");
+  if (btn) btn.value = null;          // the slot shift gave it the preview's ""
+}
+
 app.registerExtension({
   name: "Pixaroma.LoadVideo",
   async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -572,9 +594,10 @@ app.registerExtension({
     };
 
     const onConfigure = nodeType.prototype.onConfigure;
-    nodeType.prototype.onConfigure = function () {
+    nodeType.prototype.onConfigure = function (info) {
       const r = onConfigure?.apply(this, arguments);
       const node = this;
+      migrateAfterSkip(this, info);
       // The DOM widget + restored combo value are in place by the next tick.
       queueMicrotask(() => restorePreview(node));
       return r;

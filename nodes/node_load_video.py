@@ -42,9 +42,11 @@ class PixaromaLoadVideo:
         "frame_count, fps, width, height, and duration - so you usually do not "
         "need a separate video-info node. Pairs with Save Mp4 Pixaroma: wire "
         "video_frames and audio straight across.\n\n"
-        "Loading controls: Max frames sets how many frames to load from the "
-        "start (a safety valve for long clips), Skip first frames then trims the "
-        "front, Force FPS resamples to a steady frame rate, and Custom "
+        "Loading controls: Max frames sets how many frames to load (a safety "
+        "valve for long clips), Skip first frames trims the front, and "
+        "max_frames_after_skip says whether Max frames counts after the skip "
+        "(on: Max 100 + Skip 5 = 100 frames) or from the start (off: 95). "
+        "Force FPS resamples to a steady frame rate, and Custom "
         "width/height resize each frame (set both to crop-to-fill that size "
         "without stretching).\n\n"
         "Reads with PyAV when available, otherwise imageio; audio is pulled with "
@@ -58,15 +60,24 @@ class PixaromaLoadVideo:
                 "video": (_list_input_videos(), {
                     "tooltip": "The video to load from ComfyUI's input folder. Use the 'choose video to upload' button, or pick one from the dropdown (and the arrows to flip through)."}),
                 "max_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
-                    "tooltip": "How many frames to load from the start of the video (the first N). 0 = load all of them. The safety valve for long clips: it never reads more than this many frames. Skip first frames then trims the front of these, so Max frames 100 with Skip 5 gives 95. A clip too big for your free memory stops with a message giving the Max frames that fits."}),
+                    "tooltip": "How many frames to load. 0 = load all of them. With 'max_frames_after_skip' on, you get exactly this many frames after the skipped ones (Max 100 with Skip 5 gives 100). With it off, it counts from the start of the video, so Max 100 with Skip 5 gives 95. A clip too big for your free memory stops with a message giving the Max frames that fits."}),
                 "force_fps": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 240.0, "step": 1.0,
                     "tooltip": "Force a steady frames-per-second by dropping or duplicating frames (e.g. a 60fps clip forced to 24). 0 = keep the video's original rate. AI video models usually expect a fixed rate like 24."}),
                 "skip_first_frames": ("INT", {"default": 0, "min": 0, "max": 100000, "step": 1,
-                    "tooltip": "Skip this many frames from the start, like trimming an intro. 0 = start at the beginning. Trims the front of the loaded frames, and the sound is cut the same way, so it stays in sync."}),
+                    "tooltip": "Skip this many frames from the start, like trimming an intro. 0 = start at the beginning. The sound is cut the same way, so it stays in sync. See 'max_frames_after_skip' for how this works with Max frames."}),
                 "custom_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
                     "tooltip": "Resize frames as they load. 0 = keep the original. Set only width OR only height to scale proportionally. Set BOTH to crop-to-fill that exact size: it scales to fill the box, keeps the picture's proportions, and trims the overflow (like Resize Crop). It never stretches."}),
                 "custom_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 1,
                     "tooltip": "Resize frames as they load. 0 = keep the original. Set only width OR only height to scale proportionally. Set BOTH to crop-to-fill that exact size: it scales to fill the box, keeps the picture's proportions, and trims the overflow (like Resize Crop). It never stretches."}),
+            },
+            "optional": {
+                # Added 2026-11-19 (load-video.md #20). OPTIONAL so a saved API
+                # prompt without it still runs, with the old behaviour (False).
+                # A fresh node shows True; js/load_video turns it off for a
+                # workflow saved before it existed.
+                "max_frames_after_skip": ("BOOLEAN", {"default": True,
+                    "label_on": "on", "label_off": "off",
+                    "tooltip": "On: Max frames is how many frames you get AFTER the skip, so Max 100 with Skip 5 gives exactly 100 (handy when Max frames comes from a node that gives the frame count a video model needs). Off: Max frames counts from the start of the video, so Max 100 with Skip 5 gives 95 (how workflows saved before this switch keep working). Max frames 0 loads everything either way."}),
             },
         }
 
@@ -85,7 +96,7 @@ class PixaromaLoadVideo:
     FUNCTION = "load"
 
     def load(self, video, max_frames=0, force_fps=0.0, skip_first_frames=0,
-             custom_width=0, custom_height=0):
+             custom_width=0, custom_height=0, max_frames_after_skip=False):
         if not video:
             raise ValueError(
                 "[Pixaroma] Load Video — no video selected. Click 'choose video "
@@ -103,6 +114,7 @@ class PixaromaLoadVideo:
                 skip_first=skip_first_frames,
                 custom_w=custom_width,
                 custom_h=custom_height,
+                max_after_skip=bool(max_frames_after_skip),
             )
         except VideoTooBigError as e:
             # A plain ValueError: ComfyUI titles the error with the class's full
