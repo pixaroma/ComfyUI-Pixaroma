@@ -254,6 +254,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 19, 2026 · v1.4.262**
+- **Load Video:** a new switch makes Max frames count the frames you get after Skip first frames (Max 100 + Skip 5 = 100). On for new nodes; saved workflows work as before.
+
 ### **November 18, 2026 · v1.4.260-v1.4.261**
 - **Seamless Material (new):** turns a seamless tile into a 3D material for Blender: color, roughness, normal, height and AO maps that repeat with no edge. Node Wrangler loads all five in one step.
 - **Load 3D, Save 3D and First Last Frame:** a future ComfyUI update that moves a part these nodes use will no longer break them, or stop the whole pack from loading.
