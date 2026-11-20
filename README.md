@@ -14,7 +14,7 @@
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License: MIT"></a>
     <a href="https://www.youtube.com/@pixaroma"><img src="https://img.shields.io/badge/YouTube-125K%20subscribers-FF0000?style=flat-square&logo=youtube&logoColor=white" alt="YouTube subscribers"></a>
-    <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/Discord-98K%20members-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord members"></a>
+    <a href="https://discord.gg/gggpkVgBf3"><img src="https://img.shields.io/badge/Discord-97.9K%20members-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord members"></a>
   </p>
 </div>
 
@@ -253,6 +253,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **November 20, 2026 · v1.4.263**
+- **Group Switch:** a new Sort choice, Manual, lets you put the switches in your own order. Drag the groups, or use their arrows, in the settings panel.
 
 ### **November 19, 2026 · v1.4.262**
 - **Load Video:** a new switch makes Max frames count the frames you get after Skip first frames (Max 100 + Skip 5 = 100). On for new nodes; saved workflows work as before.
