@@ -53,10 +53,18 @@ const DEFAULT_STATE = {
   action: "bypass",        // "mute" | "bypass" — Bypass default (more common per user feedback)
   scope: "all",            // "all" | "pick"
   picked: [],              // group ids (scope === "pick")
-  sort: "position",        // "position" | "name" | "color"
+  sort: "position",        // "position" | "name" | "color" | "manual"
   restriction: "any",      // "any" | "one" | "always"
   nested: "follow",        // "follow" | "own" - groups inside a group switch with it, or keep their own on / off
+  // NOT a default key on purpose: `order` (group ids, the user's own row order for
+  // sort === "manual") is written only when Manual is picked or a row is moved, so
+  // a switch that never used Manual saves exactly what it saved before.
 };
+
+// ── tiny inline icons for the Manual order list (currentColor) ─────────────
+const GRIP_SVG = '<svg viewBox="0 0 10 14" width="10" height="14" fill="currentColor"><circle cx="3" cy="3" r="1.3"></circle><circle cx="7" cy="3" r="1.3"></circle><circle cx="3" cy="7" r="1.3"></circle><circle cx="7" cy="7" r="1.3"></circle><circle cx="3" cy="11" r="1.3"></circle><circle cx="7" cy="11" r="1.3"></circle></svg>';
+const UP_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15l6-6 6 6"></path></svg>';
+const DOWN_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>';
 
 // ── tiny inline icons (currentColor) ──────────────────────────────────────
 const GEAR_SVG = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>';
@@ -103,6 +111,15 @@ function decoratedGroups(node) {
   });
   if (st.sort === "name") groups.sort((a, b2) => a.label.localeCompare(b2.label));
   else if (st.sort === "color") groups.sort((a, b2) => (a.color || "").localeCompare(b2.color || "") || a.label.localeCompare(b2.label));
+  else if (st.sort === "manual") {
+    // The user's own order (Discord 2026-11-19). A group not in it yet (made
+    // later) goes after the ordered ones, in canvas position order: sort() is
+    // stable, so equal ranks keep the base order.
+    const rank = new Map();
+    (Array.isArray(st.order) ? st.order : []).forEach((id, i) => { if (!rank.has(id)) rank.set(id, i); });
+    const LAST = Number.MAX_SAFE_INTEGER;
+    groups.sort((a, b2) => (rank.has(a.id) ? rank.get(a.id) : LAST) - (rank.has(b2.id) ? rank.get(b2.id) : LAST));
+  }
   return groups;
 }
 function visibleGroups(node) {
@@ -494,15 +511,162 @@ function buildSortRow(node, body, top) {
   const sortRow = el("div", "pix-gs-sortrow" + (top ? " pix-gs-sortrow-top" : ""));
   const lab = el("span", "pix-gs-sortlab"); lab.textContent = "Sort";
   const chip = el("button", "pix-gs-sortchip");
-  const SORTLBL = { position: "Position", name: "Name", color: "Color" };
+  const SORTLBL = { position: "Position", name: "Name", color: "Color", manual: "Manual" };
   chip.textContent = SORTLBL[st.sort] || "Position";
+  chip.title = "The order of the switches on the node. Click for the next one: Position, Name, Color or Manual (your own order).";
   chip.onclick = () => {
-    const order = ["position", "name", "color"];
-    writeState(node, { sort: order[(order.indexOf(readState(node).sort) + 1) % order.length] });
+    const cycle = ["position", "name", "color", "manual"];
+    const cur = readState(node);
+    const patch = { sort: cycle[(cycle.indexOf(cur.sort) + 1) % cycle.length] };
+    // The first time on Manual it starts from the order shown right now, so no
+    // row jumps. A saved Manual order is kept when you cycle back to it.
+    if (patch.sort === "manual" && !(Array.isArray(cur.order) && cur.order.length)) {
+      patch.order = decoratedGroups(node).map((g) => g.id);
+    }
+    writeState(node, patch);
     renderNode(node); renderPanelBody(node, body);
   };
   sortRow.appendChild(lab); sortRow.appendChild(chip);
   return sortRow;
+}
+
+// ── Manual order (Sort = Manual; Discord, The Watcher 2026-11-19) ──────────
+// Move the LISTED group at place `from` to place `to` (places among the rows the
+// node shows: every group, or the picked ones). Only the listed groups' slots in
+// the full order are refilled, so a group that is not picked keeps its place for
+// when it is picked again; ids of groups not on this canvas are kept at the end.
+// Returns true when the order changed.
+function moveListed(node, from, to) {
+  const listed = visibleGroups(node).map((g) => g.id);
+  if (from === to || from < 0 || to < 0 || from >= listed.length || to >= listed.length) return false;
+  const full = decoratedGroups(node).map((g) => g.id);   // already in Manual order
+  const moved = listed.slice();
+  const [id] = moved.splice(from, 1);
+  moved.splice(to, 0, id);
+  const listedSet = new Set(listed);
+  let k = 0;
+  const next = full.map((x) => (listedSet.has(x) ? moved[k++] : x));
+  const live = new Set(full);
+  const saved = readState(node).order;
+  const rest = (Array.isArray(saved) ? saved : []).filter((x) => !live.has(x));
+  writeState(node, { order: [...next, ...rest] });
+  notifyGraphChanged();
+  return true;
+}
+
+// Drag a row to a new place. Pointer events with capture + the buttons guard
+// (convention #20); a press that never moves 4px is not a drag. The drop line
+// sits in the list's own coordinates (offsetTop), so it scrolls with it.
+function startOrderDrag(node, listEl, row, from, e, rerender) {
+  if (e.button !== 0 || (e.target.closest && e.target.closest(".pix-gs-ordbtn"))) return;
+  e.preventDefault();      // no text selection while dragging
+  e.stopPropagation();
+  const rows = [...listEl.querySelectorAll(".pix-gs-ord")];
+  if (rows.length < 2) return;
+  try { row.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
+  const startY = e.clientY;
+  let to = from, dragging = false, done = false, mark = null;
+  const slotAt = (y) => {
+    let t = 0;
+    for (const r of rows) { const b = r.getBoundingClientRect(); if (y > b.top + b.height / 2) t++; }
+    return t;
+  };
+  const move = (ev) => {
+    if (!row.isConnected || !(ev.buttons & 1)) return finish(false); // the release was missed
+    if (!dragging && Math.abs(ev.clientY - startY) < 4) return;
+    dragging = true;
+    row.classList.add("drag");
+    const lr = listEl.getBoundingClientRect();
+    if (ev.clientY < lr.top + 16) listEl.scrollTop -= 8;
+    else if (ev.clientY > lr.bottom - 16) listEl.scrollTop += 8;
+    const t = slotAt(ev.clientY);
+    to = t > from ? t - 1 : t;
+    if (!mark) { mark = el("div", "pix-gs-ordmark"); listEl.appendChild(mark); }
+    const last = rows[rows.length - 1];
+    mark.style.top = (t < rows.length ? rows[t].offsetTop : last.offsetTop + last.offsetHeight) + "px";
+    mark.style.display = to === from ? "none" : "";
+  };
+  const onUp = () => finish(true);
+  const onCancel = () => finish(false);
+  function finish(commit) {
+    if (done) return;
+    done = true;
+    try { row.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+    window.removeEventListener("pointermove", move, true);
+    window.removeEventListener("pointerup", onUp, true);
+    window.removeEventListener("pointercancel", onCancel, true);
+    row.removeEventListener("lostpointercapture", onCancel);
+    row.classList.remove("drag");
+    if (mark) mark.remove();
+    // row.isConnected: Esc (or anything else) closed the panel mid-drag; the
+    // release that follows must not move anything (pix-reviewer 2026-11-20).
+    if (commit && dragging && row.isConnected && to !== from && moveListed(node, from, to)) { renderNode(node); rerender(); }
+  }
+  window.addEventListener("pointermove", move, true);
+  window.addEventListener("pointerup", onUp, true);
+  window.addEventListener("pointercancel", onCancel, true);
+  // Capture is lost right AFTER a normal pointerup (already finished by then), or
+  // for some other reason mid-drag: then nothing moves.
+  row.addEventListener("lostpointercapture", onCancel);
+}
+
+function orderRow(node, g, i, n, listEl, rerender) {
+  const row = el("div", "pix-gs-ord");
+  const grip = el("span", "pix-gs-grip"); grip.innerHTML = GRIP_SVG; grip.title = "Drag to move";
+  const dot = el("span", "pix-gs-dot"); dot.style.background = g.color || "#888";
+  const nm = el("span", "pix-gs-cnm"); nm.textContent = g.title; nm.title = g.label;
+  row.appendChild(grip); row.appendChild(dot); row.appendChild(nm);
+  if (g.num) { const num = el("span", "pix-gs-num"); num.textContent = String(g.num); row.appendChild(num); }
+  const btn = (svg, label, cls, to) => {
+    const b = el("button", "pix-gs-ordbtn " + cls);
+    b.innerHTML = svg; b.title = label; b.setAttribute("aria-label", label);
+    b.disabled = to < 0 || to >= n;
+    b.onclick = (e) => {
+      e.stopPropagation();
+      if (!moveListed(node, i, to)) return;
+      renderNode(node); rerender();
+      // keep the keyboard on the row that moved (the list was rebuilt)
+      const again = listEl.querySelectorAll(".pix-gs-ord")[to];
+      const same = again && again.querySelector("." + cls);
+      if (same && !same.disabled) same.focus();
+    };
+    return b;
+  };
+  row.appendChild(btn(UP_SVG, "Move up", "up", i - 1));
+  row.appendChild(btn(DOWN_SVG, "Move down", "down", i + 1));
+  row.addEventListener("pointerdown", (e) => startOrderDrag(node, listEl, row, i, e, rerender));
+  return row;
+}
+
+function buildOrderList(node, body) {
+  const wrap = el("div", "pix-gs-ordwrap");
+  const listEl = el("div", "pix-gs-ordlist");
+  const hint = el("div", "pix-gs-phint");
+  wrap.appendChild(listEl); wrap.appendChild(hint);
+  const renderList = () => {
+    const keep = listEl.scrollTop;
+    listEl.innerHTML = "";
+    const groups = visibleGroups(node);
+    if (!groups.length) {
+      hint.textContent = readState(node).scope === "pick"
+        ? "Pick groups above, then set their order here."
+        : "No groups to put in order yet.";
+      return;
+    }
+    hint.textContent = "Drag a group or use the arrows. This is the order of the switches on the node; new groups join at the end.";
+    groups.forEach((g, i) => listEl.appendChild(orderRow(node, g, i, groups.length, listEl, afterMove)));
+    listEl.scrollTop = keep;
+  };
+  // After a move: this list, and the Pick checklist above it (sorted by the same
+  // Manual order), or its rows jump on the next tick or keystroke (pix-reviewer).
+  const afterMove = () => {
+    renderList();
+    if (typeof body._pixGsPickRefresh === "function") body._pixGsPickRefresh();
+  };
+  // the Pick list calls this when a group is picked or unpicked
+  body._pixGsOrderRefresh = renderList;
+  renderList();
+  return wrap;
 }
 
 function buildPickArea(node, body) {
@@ -548,17 +712,22 @@ function buildPickArea(node, body) {
         if (set.has(g.id)) set.delete(g.id); else set.add(g.id);
         writeState(node, { picked: [...set] });
         renderNode(node); renderList();
+        if (typeof body._pixGsOrderRefresh === "function") body._pixGsOrderRefresh();
       };
       listEl.appendChild(ck);
     }
   };
   inp.addEventListener("input", () => { node._pixGsQuery = inp.value; renderList(); });
   renderList();
+  // the Manual order list calls this after a move; keeps the checklist's scroll
+  body._pixGsPickRefresh = () => { const keep = listEl.scrollTop; renderList(); listEl.scrollTop = keep; };
   return wrap;
 }
 
 function renderPanelBody(node, body) {
   body.innerHTML = "";
+  body._pixGsOrderRefresh = null;
+  body._pixGsPickRefresh = null;
   const st = readState(node);
 
   const aSec = section("Action");
@@ -582,6 +751,7 @@ function renderPanelBody(node, body) {
     gSec.appendChild(hint);
     gSec.appendChild(buildSortRow(node, body, true));
   }
+  if (st.sort === "manual") gSec.appendChild(buildOrderList(node, body));
   body.appendChild(gSec);
 
   // A group drawn inside another one: switched with it (default) or left alone.
@@ -803,6 +973,21 @@ function injectCSS() {
     ".pix-gs-loc{color:rgba(255,255,255,0);cursor:pointer;display:flex;transition:color .12s;}",
     ".pix-gs-ck:hover .pix-gs-loc{color:rgba(255,255,255,0.4);}",
     ".pix-gs-loc:hover{color:var(--pix-acc,#f66744);}",
+    // Manual order list. Rows drag anywhere but the arrow buttons (24px targets,
+    // the click alternative to the drag). position:relative = the drop line's
+    // and the rows' offsetTop frame.
+    ".pix-gs-ordwrap{margin-top:9px;}",
+    ".pix-gs-ordlist{position:relative;max-height:216px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;}",
+    ".pix-gs-ord{display:flex;align-items:center;gap:8px;padding:3px 2px 3px 4px;font-size:12.5px;color:#d3d3d3;border-radius:5px;cursor:grab;user-select:none;touch-action:none;flex-shrink:0;}",
+    ".pix-gs-ord:hover{background:rgba(255,255,255,0.04);}",
+    ".pix-gs-ord.drag{background:rgba(255,255,255,0.09);cursor:grabbing;}",
+    ".pix-gs-grip{color:rgba(255,255,255,0.3);display:flex;flex:none;}",
+    ".pix-gs-ord:hover .pix-gs-grip,.pix-gs-ord.drag .pix-gs-grip{color:rgba(255,255,255,0.65);}",
+    ".pix-gs-ordbtn{width:24px;height:24px;display:flex;align-items:center;justify-content:center;border:1px solid transparent;background:transparent;color:#aaa;border-radius:4px;cursor:pointer;padding:0;flex:none;}",
+    ".pix-gs-ordbtn:hover{border-color:var(--pix-acc,#f66744);color:#ddd;}",
+    ".pix-gs-ordbtn:focus-visible{outline:2px solid var(--pix-acc,#f66744);outline-offset:-2px;}",
+    ".pix-gs-ordbtn:disabled,.pix-gs-ordbtn:disabled:hover{opacity:0.25;cursor:default;border-color:transparent;color:#aaa;}",
+    ".pix-gs-ordmark{position:absolute;left:2px;right:2px;height:2px;margin-top:-1.5px;border-radius:1px;background:var(--pix-acc,#f66744);pointer-events:none;}",
     ".pix-gs-radio{display:flex;align-items:center;gap:9px;padding:6px 2px;font-size:12.5px;color:#d5d5d5;cursor:pointer;user-select:none;}",
     ".pix-gs-rc{width:15px;height:15px;border-radius:50%;border:1px solid rgba(255,255,255,0.32);flex:none;display:flex;align-items:center;justify-content:center;}",
     ".pix-gs-rc .ri{width:7px;height:7px;border-radius:50%;background:var(--pix-acc,#f66744);display:none;}",
@@ -875,7 +1060,8 @@ const HELP = {
     { heading: "All on / All off", body: "The two buttons at the top flip every group in the list at once, so you can kill a whole set of sections (or bring them all back) in one click instead of clicking each switch. They only touch the groups this switch lists, so if you set it to a hand-picked set, the rest are left alone.\n\nIf you have chosen a switching rule that only allows one group on at a time, turning them all on is impossible, so that button is greyed out - and hovering it tells you why. The same goes for All off when the rule always keeps one group on." },
     { heading: "Settings (the gear, or right-click)", defs: [
       ["Action", "Make this switch a Mute or a Bypass. New switches default to Bypass. For both at once, drop two switches."],
-      ["Groups", "Control all groups, or Pick a hand-picked set. Sort sets the order of the switches on the node: by canvas position, name, or color. With Pick you can also search, and the locate icon flashes a group on the canvas."],
+      ["Groups", "Control all groups, or Pick a hand-picked set. Sort sets the order of the switches on the node: by canvas position, name, color, or Manual. With Pick you can also search, and the locate icon flashes a group on the canvas."],
+      ["Manual order", "Set Sort to Manual and a list of the groups shows under it. Drag a group up or down, or use its arrows, to put related switches next to each other on the node. Manual starts from the order you had, a group you add later joins at the end, and the order is saved with the workflow. Switching to another sort and back to Manual brings your order back."],
       ["Groups inside a group", "For a group drawn inside another one. Switch with the outer group (the default): turning the outer group on or off does the same to the groups inside it, since their nodes are part of it too. Keep their own on and off: each group switches only its own nodes, so a group inside keeps its state until you switch it. A group made only of other groups still switches everything in it."],
       ["Switching", "Any number on, only one on at a time, or always keep one on."],
     ]},
