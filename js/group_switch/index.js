@@ -944,7 +944,11 @@ function injectCSS() {
     ".pix-gs-phead{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid rgba(255,255,255,0.08);color:#fff;font-size:13px;font-weight:500;cursor:move;}",
     ".pix-gs-px{border:0;background:transparent;color:rgba(255,255,255,0.5);font-size:13px;cursor:pointer;padding:2px 7px;border-radius:5px;}",
     ".pix-gs-px:hover{color:#fff;background:rgba(255,255,255,0.08);}",
-    ".pix-gs-pbody{max-height:70vh;overflow-y:auto;}",
+    // The panel may use the whole window height (10px margins + the 44px head, as
+    // measured, + 2px border = 66), so the Manual order list does not push the
+    // settings below it out of sight (it did at 70vh, 2026-11-20). A thin visible
+    // scrollbar shows when a short window still needs one.
+    ".pix-gs-pbody{max-height:calc(100vh - 66px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,0.28) transparent;}",
     ".pix-gs-sect{padding:12px 13px;border-bottom:1px solid rgba(255,255,255,0.06);}",
     ".pix-gs-sect:last-child{border-bottom:0;}",
     ".pix-gs-sh{font-size:11px;color:rgba(255,255,255,0.42);margin-bottom:8px;}",
