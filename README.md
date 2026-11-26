@@ -254,6 +254,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 
 ## 🛠 Changelog
 
+### **November 26, 2026 · v1.4.264**
+- **Seamless Tile:** on Apple Silicon Macs the pattern now comes out right instead of as noise. Thanks to the Mac user who found the cause and sent the fix. Nothing changes on NVIDIA.
+
 ### **November 20, 2026 · v1.4.263**
 - **Group Switch:** a new Sort choice, Manual, lets you put the switches in your own order. Drag the groups, or use their arrows, in the settings panel.
 
