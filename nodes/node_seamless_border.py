@@ -113,10 +113,14 @@ class SeamlessBorderPrepPixaroma:
         band = band.roll(-start, dims=1)
         canvas, mask_img, size = build_canvas(band, bg, context, repaint, seam_width)
         t, w = band.shape[0], band.shape[1]
-        how = "set by hand" if band_top > 0 or band_bottom > 0 else "found"
+        how = ("set by hand" if band_bottom > 0 else "top row set by hand, bottom row found" if band_top > 0
+               else "found")
         report = (f"Band: rows {top} to {bottom - 1} of the strip ({how}), {t} px thick; one repeat is {w} px "
                   f"wide; the corner turns at column {start}.")
-        edges = [e for e, hit in (("top", found["touches_top"]), ("bottom", found["touches_bottom"])) if hit]
+        # no "cut off" warning for an edge row the user typed in themselves (reviewer A r2 #4)
+        top_by_hand, bottom_by_hand = band_bottom > 0 or band_top > 0, band_bottom > 0
+        edges = [e for e, hit in (("top", found["touches_top"] and not top_by_hand),
+                                  ("bottom", found["touches_bottom"] and not bottom_by_hand)) if hit]
         if edges:
             report += (f"\nWARNING: the band reaches the {' and '.join(edges)} edge of the strip, so it is probably "
                        "cut off there. Make the strip again with another seed, or set band_top and band_bottom.")

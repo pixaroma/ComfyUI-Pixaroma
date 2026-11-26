@@ -136,14 +136,25 @@ def locate_band(img, top=None, bottom=None, inner="bottom"):
     colours = img.median(dim=1).values
     n_top, run_top = _edge_background(colours.tolist(), plain, True)
     n_bot, run_bot = _edge_background(colours.tolist(), plain, False)
+    if top is not None and not 0 <= int(top) < h:
+        raise BorderError(f"Seamless Border: band_top ({int(top)}) must be a row of the strip, 0 to {h - 1}.")
+    if bottom is not None and not 0 < int(bottom) <= h:
+        raise BorderError(f"Seamless Border: band_bottom ({int(bottom) - 1}) must be a row of the strip, 0 to {h - 1}.")
     if n_top >= h:
-        raise BorderError("Seamless Border: no border band found, the strip looks plain all the way down. Set "
-                          "band_top and band_bottom to the band's first and last row, or make a strip with a band.")
+        if top is None or bottom is None:   # rows typed by hand still work on a faint band (reviewer A r2 #1)
+            raise BorderError("Seamless Border: no border band found, the strip looks plain all the way down. Set "
+                              "band_top and band_bottom to the band's first and last row, or make a strip with a band.")
+        n_top = run_top = n_bot = run_bot = 0
     c_top = _rows_colour(img, list(range(n_top - run_top, n_top)))
     c_bot = _rows_colour(img, list(range(h - n_bot, h - n_bot + run_bot)))
+    # ... and the other side's background NEXT TO THE BAND, which a thin run is compared with: a page shaded from top
+    # to bottom has another colour mid-page than beside the band (reviewer A r2 #2: a 40-row margin was swallowed)
+    k = max(1, round(MIN_BG * h))
+    near_top = _rows_colour(img, list(range(n_top - min(run_top, k), n_top)))
+    near_bot = _rows_colour(img, list(range(h - n_bot, h - n_bot + min(run_bot, k))))
     # a thin plain run at one edge in another colour than the other side's background = the band's own bar
     for side in ("top", "bottom"):
-        n, c, other = (run_top, c_top, c_bot) if side == "top" else (run_bot, c_bot, c_top)
+        n, c, other = (run_top, c_top, near_bot) if side == "top" else (run_bot, c_bot, near_top)
         thin = n < MIN_BG * h or (n < 2 * MIN_BG * h and c.mean().item() < DARK_GROUND)
         if 0 < n and thin and other is not None and (c - other).abs().max().item() > COLOUR_STEP:
             if side == "top":
@@ -151,9 +162,12 @@ def locate_band(img, top=None, bottom=None, inner="bottom"):
             else:
                 n_bot, c_bot = 0, None
     found_top, found_bot = n_top, h - n_bot
-    top = found_top if top is None else max(0, min(h, int(top)))
-    bottom = found_bot if bottom is None else max(0, min(h, int(bottom)))
+    top = found_top if top is None else int(top)
+    bottom = found_bot if bottom is None else int(bottom)
     if bottom - top < MIN_BAND:
+        if top != found_top or bottom != found_bot:
+            raise BorderError(f"Seamless Border: band_top ({top}) must be at least {MIN_BAND} rows above band_bottom "
+                              f"({bottom - 1}).")
         raise BorderError(
             f"Seamless Border: no border band found (found {max(0, bottom - top)} rows, need {MIN_BAND}). Set "
             "band_top and band_bottom to the band's first and last row, or check that the strip has a band across "
