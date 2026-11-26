@@ -37,10 +37,15 @@ PLAIN_LEVEL = 0.2        # a row is plain below lo + PLAIN_LEVEL x (hi - lo) of 
 PLAIN_FLOOR = 0.004      # ... and always below this (a picture with no band at all has no range to speak of)
 COLOUR_STEP = 0.06       # a row whose colour is this far (any channel, 0..1) from the background beside it ends it
 COLOUR_FOLLOW = 0.05     # the background colour follows a soft shading at this rate per row
+COLOUR_DRIFT = 0.25      # ... but never further than this from where it started (a shaded parchment drifts 0.18; a
+                         # band's black ground FADING into the paper must not be followed in: filigree_2)
 BG_GAP = 0.005           # stray rows (a crack, a stain) crossed inside a background, as a share of the height
 EDGE_SKIP = 0.06         # the background may start this far in (a stained paper edge, a stray line at the edge)
 MIN_BG = 0.04            # a plain run at an edge thinner than this share of the height, in another colour than the
                          # background on the other side, is the band's own bar (the band touches that edge)
+DARK_GROUND = 0.5        # ... and up to twice that thick when it is DARK (mean below this): a band's own dark ground
+                         # running off the edge (victorian_2, 68 rows of green), while real thin margins of another
+                         # colour are light paper or wall (baroque_2 85, greekkey_2 85, celtic_2 111 rows)
 
 
 class BorderError(ValueError):
@@ -69,11 +74,14 @@ def row_detail(img):
 def _walk_background(colours, plain, from_top, start, gap):
     """Rows from the edge to the end of the plain background that starts `start` rows in (0 = none found)."""
     h = len(colours)
-    ref, n, miss = None, 0, 0
+    ref, base, n, miss = None, None, 0, 0
     for i in range(start, h):
         r = i if from_top else h - 1 - i
         c = colours[r]
-        if plain[r] and (ref is None or max(abs(a - b) for a, b in zip(c, ref)) <= COLOUR_STEP):
+        if plain[r] and (ref is None or (max(abs(a - b) for a, b in zip(c, ref)) <= COLOUR_STEP
+                                         and max(abs(a - b) for a, b in zip(c, base)) <= COLOUR_DRIFT)):
+            if ref is None:
+                base = list(c)
             ref = list(c) if ref is None else [a + (b - a) * COLOUR_FOLLOW for a, b in zip(ref, c)]
             n, miss = i + 1, 0
         else:
@@ -95,12 +103,15 @@ def _edge_background(colours, plain, from_top):
     for start in range(min(skip, h - 1) + 1):
         r = start if from_top else h - 1 - start
         prev = r - 1 if from_top else r + 1
-        if not plain[r] or (start > 0 and plain[prev]
-                            and max(abs(a - b) for a, b in zip(colours[r], colours[prev])) <= COLOUR_STEP):
-            continue   # not a row a new background can start on (or the same run as the row before)
+        new_run = start == 0 or not plain[prev] or max(abs(a - b) for a, b in zip(colours[r], colours[prev])) > \
+            COLOUR_STEP
+        # a background may start where a new run starts (a stray line just ends: filigree_1 at row 92), or on every
+        # 3rd row (a dark photo edge FADING into the paper has no clean start: the "sheet of paper" strips)
+        if not plain[r] or not (new_run or start % 3 == 0):
+            continue
         n = _walk_background(colours, plain, from_top, start, gap)
-        if n > best[0]:
-            best = (n, n - start)
+        if n - start > best[1]:   # the LONGEST plain run, not the furthest reach: a start inside the band's own
+            best = (n, n - start)  # plain black ground, past a 73-row white margin, reached further (filigree_2)
     return best
 
 
@@ -133,7 +144,8 @@ def locate_band(img, top=None, bottom=None, inner="bottom"):
     # a thin plain run at one edge in another colour than the other side's background = the band's own bar
     for side in ("top", "bottom"):
         n, c, other = (run_top, c_top, c_bot) if side == "top" else (run_bot, c_bot, c_top)
-        if 0 < n < MIN_BG * h and other is not None and (c - other).abs().max().item() > COLOUR_STEP:
+        thin = n < MIN_BG * h or (n < 2 * MIN_BG * h and c.mean().item() < DARK_GROUND)
+        if 0 < n and thin and other is not None and (c - other).abs().max().item() > COLOUR_STEP:
             if side == "top":
                 n_top, c_top = 0, None
             else:

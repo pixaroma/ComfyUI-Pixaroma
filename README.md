@@ -257,7 +257,7 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ## 🛠 Changelog
 
 ### **Unreleased**
-- **Seamless Border Prep and Seamless Border Kit (new):** turn a border strip made with Seamless Tile into a whole frame. The model paints a corner piece that fits the strip, or you get a mitred corner with no model. Every join matches exactly. Outputs a 9-slice image and the CSS for website borders, plus the corner and strips for Photoshop and Illustrator. Corners turn where the pattern mirrors itself.
+- **Seamless Border Prep and Kit (new, sent by James):** turn a Seamless Tile border strip into a whole frame with matching corners, plus a 9-slice picture and CSS for websites.
 
 ### **November 26, 2026 · v1.4.264**
 - **Seamless Tile:** on Apple Silicon Macs the pattern now comes out right instead of as noise. Thanks to the Mac user who found the cause and sent the fix. Nothing changes on NVIDIA.

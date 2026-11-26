@@ -2265,7 +2265,8 @@ const HELP = {
       {
         heading: "Good to know",
         bullets: [
-          "The band is found by itself. If it picks the wrong rows, set band_top and band_bottom (its first and last row).",
+          "The band is found by itself, also on parchment, plaster or a wall that is a different colour above and below it. Wire report into Show Text: it says which rows became the band. If they are wrong, set band_top and band_bottom (its first and last row).",
+          "When the band runs off the top or bottom of the strip picture, the report says so: that edge of the border is cut off, so make the strip again with another seed.",
           "outer_edge says which edge of the band faces out of the frame. Bottom turns the band upside down.",
           "repaint: Seam (the default) masks only a band along the corner's diagonal, so every band of the strip carries on round the corner and the model only redraws where they turn. seam_width sets how wide that band is. Corner repaints the whole corner square, for a separate corner block.",
           "corner_at: Mirror line (the default) turns the corner where the pattern mirrors itself, such as a motif's centre or a tile edge, so both halves of the corner match and a motif sits on the turn. The mitre alone often looks like a designed corner. Strip edge turns it at the strip's own left edge. The strips Kit outputs start at the same point, so every join still matches.",
@@ -2287,13 +2288,13 @@ const HELP = {
         body: "Takes the inpainted canvas from Seamless Border Prep's setup, cuts out the corner and fades its last few pixels (blend) into both strips, so every join matches exactly whatever the model painted. The same corner is turned for all four corners, and the strip for all four sides, so the outer edge faces out all the way round.\n\nA batch of inpainted pictures gives one kit per picture, so you can paint several corners and keep the best.",
       },
       {
-        heading: "What you get",
+        heading: "Outputs",
         defs: [
           ["kit", "A 9-slice image: four corners and one repeat of each side. Save it as border.png."],
           ["css", "The CSS line for a box with this border, using border.png."],
           ["corner", "The top-left corner. Turn it 90 degrees clockwise for each next corner."],
           ["top_strip / side_strip", "One repeat of the top and the left side, for pattern brushes in Photoshop or Illustrator."],
-          ["frame_preview", "A whole frame, to check the joins by eye."],
+          ["frame_preview", "A whole frame, to check the joins by eye (made at most 4096 px wide; the kit and the pieces keep full size)."],
         ],
       },
     ],
