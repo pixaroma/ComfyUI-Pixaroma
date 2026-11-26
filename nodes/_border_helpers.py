@@ -157,17 +157,17 @@ def locate_band(img, top=None, bottom=None, inner="bottom"):
         n, c, other = (run_top, c_top, near_bot) if side == "top" else (run_bot, c_bot, near_top)
         thin = n < MIN_BG * h or (n < 2 * MIN_BG * h and c.mean().item() < DARK_GROUND)
         if 0 < n and thin and other is not None and (c - other).abs().max().item() > COLOUR_STEP:
-            if side == "top":
-                n_top, c_top = 0, None
+            if side == "top":   # reset the near-band colour too, or the bottom pass compares with the bar (r3)
+                n_top, c_top, near_top = 0, None, None
             else:
-                n_bot, c_bot = 0, None
+                n_bot, c_bot, near_bot = 0, None, None
     found_top, found_bot = n_top, h - n_bot
     top = found_top if top is None else int(top)
     bottom = found_bot if bottom is None else int(bottom)
     if bottom - top < MIN_BAND:
         if top != found_top or bottom != found_bot:
-            raise BorderError(f"Seamless Border: band_top ({top}) must be at least {MIN_BAND} rows above band_bottom "
-                              f"({bottom - 1}).")
+            last = f"band_bottom ({bottom - 1})" if bottom != found_bot else f"the band's last row ({bottom - 1}, found)"
+            raise BorderError(f"Seamless Border: band_top ({top}) must be at least {MIN_BAND} rows above {last}.")
         raise BorderError(
             f"Seamless Border: no border band found (found {max(0, bottom - top)} rows, need {MIN_BAND}). Set "
             "band_top and band_bottom to the band's first and last row, or check that the strip has a band across "
