@@ -147,6 +147,10 @@ export const KEYWORDS = {
     + "height map heightmap displacement displace roughness rough map ao ambient occlusion albedo base color "
     + "node wrangler principled bsdf shader game texture unreal unity godot opengl directx tileable texture "
     + "stone brick wood planks floor wall make maps from image",
+  SeamlessBorderPrepPixaroma: "seamless border prep frame corner corners corner piece border strip edge trim molding moulding "
+    + "inpaint corner mitre miter mitred mitered picture frame tile border wall border frieze band",
+  SeamlessBorderKitPixaroma: "seamless border kit frame corner corners 9-slice nine slice 9 slice border-image css web website "
+    + "table border box border photoshop illustrator pattern brush frame preview mitre miter picture frame",
   Krea2EnhancerPixaroma: "krea krea2 krea 2 turbo enhancer krea2t enhancer comfyui-krea2t-enhancer capitan01r prompt adherence follow the prompt ignores prompt missing details skips details stronger prompt better prompt following model patch missing node not found github 404 deleted",
   PixaromaLoraLoader: "lora stack weight trigger civitai xy plot compare grid sweep "
     + "moved move folder subfolder lost trigger words red name "

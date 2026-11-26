@@ -99,6 +99,8 @@ The groups are in order of how much they are used in real workflows, and inside 
 | [Seamless&nbsp;Tile&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-tile/) | Makes Krea 2, Z-Image, FLUX.2 Klein, FLUX 3 Klein, SDXL or SD 1.5 draw patterns and textures that repeat with no edge, every&nbsp;time. |
 | [Seamless&nbsp;Preview&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-preview/) | Shows a picture repeated (2x2, offset, half-drop) and checks that its edges really&nbsp;join. |
 | [Seamless&nbsp;Material&nbsp;Pixaroma](https://workflows.pixaroma.com/help/nodes/seamless-material/) | Turns a seamless tile into a 3D material for Blender (color, roughness, normal, height, AO), every map seamless,&nbsp;no&nbsp;model. |
+| Seamless&nbsp;Border&nbsp;Prep&nbsp;Pixaroma | Lays out a border strip for inpainting a matching corner piece: corner, strip, the strip turned down the side, and a&nbsp;mask. |
+| Seamless&nbsp;Border&nbsp;Kit&nbsp;Pixaroma | Builds a whole frame from the strip and the painted (or mitred) corner: a 9-slice image for CSS border-image, the pieces, a preview and the&nbsp;CSS. |
 
 ### 💬 Prompt and Text
 
@@ -253,6 +255,9 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ---
 
 ## 🛠 Changelog
+
+### **Unreleased**
+- **Seamless Border Prep and Seamless Border Kit (new):** turn a border strip made with Seamless Tile into a whole frame. The model paints a corner piece that fits the strip, or you get a mitred corner with no model. Every join matches exactly. Outputs a 9-slice image and the CSS for website borders, plus the corner and strips for Photoshop and Illustrator. Corners turn where the pattern mirrors itself.
 
 ### **November 26, 2026 · v1.4.264**
 - **Seamless Tile:** on Apple Silicon Macs the pattern now comes out right instead of as noise. Thanks to the Mac user who found the cause and sent the fix. Nothing changes on NVIDIA.

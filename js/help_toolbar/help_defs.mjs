@@ -2250,6 +2250,56 @@ const HELP = {
     footer: "Text to picture only. A video model, a reference image, area prompts or a tiled upscaler (Ultimate SD Upscale) are not supported yet.",
   },
 
+  "SeamlessBorderPrepPixaroma": {
+    title: "Seamless Border Prep Pixaroma",
+    tagline: "Gets a border strip ready for painting a matching corner.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Seamless Tile set to Left and right makes border strips that repeat sideways. A frame also needs corners, and a corner has to join two strips at once: the top one on its right, the side one below it. This node finds the band in your strip and lays out a canvas for painting that corner: the corner square top-left, the strip running right from it, the strip turned down the side, and a mask.\n\nThe corner starts as a mitred join (45 degrees, like a picture frame). Denoise 1.0 paints a new corner; lower keeps it closer to the mitre.",
+      },
+      {
+        heading: "Where it goes",
+        body: "Put it after VAE Decode of your strip. Inpaint its canvas and mask with your usual setup (VAE Encode, Set Latent Noise Mask or InpaintModelConditioning, KSampler, VAE Decode) and a prompt for the corner, such as \"ornate corner piece of the same border\". Use the model WITHOUT Seamless Tile here, or the corner tries to join the bottom of the canvas. Then give the result and border_info to Seamless Border Kit Pixaroma.\n\nFor a mitred frame with no model, wire canvas straight into Seamless Border Kit.",
+      },
+      {
+        heading: "Good to know",
+        bullets: [
+          "The band is found by itself. If it picks the wrong rows, set band_top and band_bottom (its first and last row).",
+          "outer_edge says which edge of the band faces out of the frame. Bottom turns the band upside down.",
+          "repaint: Seam (the default) masks only a band along the corner's diagonal, so every band of the strip carries on round the corner and the model only redraws where they turn. seam_width sets how wide that band is. Corner repaints the whole corner square, for a separate corner block.",
+          "corner_at: Mirror line (the default) turns the corner where the pattern mirrors itself, such as a motif's centre or a tile edge, so both halves of the corner match and a motif sits on the turn. The mitre alone often looks like a designed corner. Strip edge turns it at the strip's own left edge. The strips Kit outputs start at the same point, so every join still matches.",
+          "In the prompt, describe the border's style and the corner, not a plain background: the model fills the masked area with whatever the prompt asks for. Words like diagonal, tiled or meet make it draw a line along the join; \"the pattern turns the corner smoothly and continuously, one ornate symmetrical ornament on the corner\" works well.",
+          "Denoise about 0.8 paints an ornament on the turn. 0.9 and up can paint a bar along the diagonal; 0.7 stays close to the mitre.",
+          "Keep the strip's full width: the width is one repeat.",
+          "One strip at a time: pick one from a batch first.",
+        ],
+      },
+    ],
+  },
+
+  "SeamlessBorderKitPixaroma": {
+    title: "Seamless Border Kit Pixaroma",
+    tagline: "Builds a whole frame from a strip and its corner.",
+    sections: [
+      {
+        heading: "What it does",
+        body: "Takes the inpainted canvas from Seamless Border Prep's setup, cuts out the corner and fades its last few pixels (blend) into both strips, so every join matches exactly whatever the model painted. The same corner is turned for all four corners, and the strip for all four sides, so the outer edge faces out all the way round.\n\nA batch of inpainted pictures gives one kit per picture, so you can paint several corners and keep the best.",
+      },
+      {
+        heading: "What you get",
+        defs: [
+          ["kit", "A 9-slice image: four corners and one repeat of each side. Save it as border.png."],
+          ["css", "The CSS line for a box with this border, using border.png."],
+          ["corner", "The top-left corner. Turn it 90 degrees clockwise for each next corner."],
+          ["top_strip / side_strip", "One repeat of the top and the left side, for pattern brushes in Photoshop or Illustrator."],
+          ["frame_preview", "A whole frame, to check the joins by eye."],
+        ],
+      },
+    ],
+    footer: "A corner is only as good as the model's inpainting: try a few seeds, and a denoise between 0.7 and 1.0.",
+  },
+
   "SeamlessMaterialPixaroma": {
     title: "Seamless Material Pixaroma",
     tagline: "Turns a seamless tile into a 3D material for Blender.",
