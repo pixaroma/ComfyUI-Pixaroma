@@ -58,7 +58,9 @@ def torus_rope(pos, dim, theta, period, min_turns=0.5):
     # float64 only where every backend has it (core's rope moves MPS, Intel XPU and DirectML to the CPU for the
     # same reason); ROCm reports "cuda". The tensor is tiny, so the CPU costs nothing elsewhere.
     work = pos.device if pos.device.type in ("cuda", "cpu") else torch.device("cpu")
-    p = torch.remainder(pos.to(device=work, dtype=torch.float64), float(period))
+    # Move FIRST, cast after: on Apple Silicon one .to(device=cpu, dtype=float64) of this strided MPS slice returned
+    # wrong values (the picture came out as noise); two steps match the CPU (seamless.md #28). Same bytes on cuda / cpu.
+    p = torch.remainder(pos.to(device=work).to(dtype=torch.float64), float(period))
     ang = p[..., None] * snapped_omegas(dim, theta, period, min_turns).to(work)
     c, s = torch.cos(ang), torch.sin(ang)
     out = torch.stack([c, -s, s, c], dim=-1)
