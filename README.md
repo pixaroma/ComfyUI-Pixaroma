@@ -257,7 +257,7 @@ The two editors can also use **rembg** (`pip install rembg`, then restart ComfyU
 ## 🛠 Changelog
 
 ### **Unreleased**
-- **Seamless Border Prep and Kit (new, sent by James):** turn a Seamless Tile border strip into a whole frame with matching corners, plus a 9-slice picture and CSS for websites.
+- **Seamless Border Prep and Kit (new):** turn a Seamless Tile border strip into a whole frame with matching corners, plus a 9-slice picture and CSS for websites. Thanks to the Pixaroma user who built them and sent them to the pack.
 
 ### **November 26, 2026 · v1.4.264**
 - **Seamless Tile:** on Apple Silicon Macs the pattern now comes out right instead of as noise. Thanks to the Mac user who found the cause and sent the fix. Nothing changes on NVIDIA.
