@@ -16,8 +16,8 @@ import logging
 import torch
 import torch.nn.functional as F
 
-from ._border_helpers import MASK_MODES, BorderError, blend_corner, build_canvas, corner_mask, css_line, find_band, \
-    frame, keep_unmasked, mirror_column, side_from_band
+from ._border_helpers import MASK_MODES, BorderError, blend_corner, build_canvas, corner_mask, css_line, frame, \
+    keep_unmasked, locate_band, mirror_column, preview_frame, side_from_band
 
 # Wire type between the two nodes: a dict (band tensor, background colour, sizes). A plain duplicated string like
 # PIXAROMA_OUTPAINT_INFO.
@@ -43,11 +43,13 @@ class SeamlessBorderPrepPixaroma:
                 }),
                 "band_top": ("INT", {
                     "default": 0, "min": 0, "max": 16384,
-                    "tooltip": "First row of the band, in pixels from the top. 0 = find it automatically.",
+                    "tooltip": "First row of the band, in pixels from the top. Leave both rows at 0 to find the "
+                               "band automatically. With band_bottom set, 0 here means the very first row.",
                 }),
                 "band_bottom": ("INT", {
                     "default": 0, "min": 0, "max": 16384,
-                    "tooltip": "Last row of the band. 0 = find it automatically.",
+                    "tooltip": "Last row of the band. 0 = find it automatically. The report output says which rows "
+                               "were found.",
                 }),
                 "context": ("FLOAT", {
                     "default": 1.0, "min": 0.5, "max": 6.0, "step": 0.25,
@@ -79,13 +81,15 @@ class SeamlessBorderPrepPixaroma:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", PIXAROMA_BORDER_INFO)
-    RETURN_NAMES = ("canvas", "mask", "border_info")
+    RETURN_TYPES = ("IMAGE", "MASK", PIXAROMA_BORDER_INFO, "STRING")
+    RETURN_NAMES = ("canvas", "mask", "border_info", "report")
     OUTPUT_TOOLTIPS = (
         "The canvas to inpaint. The corner already holds a mitred join: denoise 1.0 paints a new corner, lower keeps "
         "it closer to the mitre. Wire it straight into Seamless Border Kit for a mitred frame with no model.",
         "White where the model should paint: along the corner's diagonal (Seam) or the whole corner (Corner).",
         "Wire into Seamless Border Kit.",
+        "Which rows of the strip became the band, and a warning when the band reaches the top or bottom edge of the "
+        "strip (it is probably cut off there: make the strip again with another seed). Wire it to Show Text.",
     )
     FUNCTION = "prep"
     CATEGORY = "👑 Pixaroma/🖼️ Image"
@@ -95,8 +99,13 @@ class SeamlessBorderPrepPixaroma:
         if strip.shape[0] != 1:
             raise BorderError(f"Seamless Border Prep takes one strip, got a batch of {strip.shape[0]}. Pick one "
                               "first (for example with an image-from-batch node).")
-        img = strip[0, ..., :3].float()
-        top, bottom, bg = find_band(img, band_top, band_bottom + 1 if band_bottom > 0 else 0)
+        # .cpu(): with --gpu-only VAE Decode hands the picture over on the GPU, and the helpers build CPU tensors
+        img = strip[0, ..., :3].float().cpu()
+        # both rows 0 = found; band_bottom set = both given (band_top 0 is then the first row); band_top alone = given
+        top = band_top if (band_bottom > 0 or band_top > 0) else None
+        bottom = band_bottom + 1 if band_bottom > 0 else None
+        found = locate_band(img, top, bottom, inner="bottom" if outer_edge == "Top" else "top")
+        top, bottom, bg = found["top"], found["bottom"], found["bg"]
         band = img[top:bottom].clone()
         if outer_edge == "Bottom":
             band = band.flip(0)
@@ -104,10 +113,18 @@ class SeamlessBorderPrepPixaroma:
         band = band.roll(-start, dims=1)
         canvas, mask_img, size = build_canvas(band, bg, context, repaint, seam_width)
         t, w = band.shape[0], band.shape[1]
+        how = "set by hand" if band_top > 0 or band_bottom > 0 else "found"
+        report = (f"Band: rows {top} to {bottom - 1} of the strip ({how}), {t} px thick; one repeat is {w} px "
+                  f"wide; the corner turns at column {start}.")
+        edges = [e for e, hit in (("top", found["touches_top"]), ("bottom", found["touches_bottom"])) if hit]
+        if edges:
+            report += (f"\nWARNING: the band reaches the {' and '.join(edges)} edge of the strip, so it is probably "
+                       "cut off there. Make the strip again with another seed, or set band_top and band_bottom.")
+            logging.warning(f"[Seamless Border Pixaroma] the band reaches the {' and '.join(edges)} edge of the strip")
         logging.info(f"[Seamless Border Pixaroma] band rows {top}-{bottom - 1} ({t} px thick, repeat {w} px), "
-              f"corner at column {start}, canvas {size} x {size}")
+                     f"corner at column {start}, canvas {size} x {size}")
         info = {"band": band, "bg": bg, "size": size, "mask": corner_mask(band.shape[0], repaint, seam_width)}
-        return (canvas.unsqueeze(0), mask_img.unsqueeze(0), info)
+        return (canvas.unsqueeze(0), mask_img.unsqueeze(0), info, report)
 
 
 class SeamlessBorderKitPixaroma:
@@ -133,7 +150,8 @@ class SeamlessBorderKitPixaroma:
                 }),
                 "preview_repeats": ("INT", {
                     "default": 3, "min": 1, "max": 12,
-                    "tooltip": "Strip repeats per side in the frame preview.",
+                    "tooltip": "Strip repeats per side in the frame preview. The preview is made at most 4096 px "
+                               "wide; the kit and the pieces always keep full size.",
                 }),
             },
         }
@@ -154,8 +172,12 @@ class SeamlessBorderKitPixaroma:
     def kit(self, image, border_info, blend=12, preview_repeats=3):
         band, bg, size = border_info["band"], border_info["bg"], border_info["size"]
         t = band.shape[0]
-        images = image[..., :3].float()
+        images = image[..., :3].float().cpu()   # .cpu(): see Prep (--gpu-only)
         if images.shape[1] != size or images.shape[2] != size:
+            if images.shape[1] != images.shape[2]:
+                logging.warning(f"[Seamless Border Pixaroma] Kit got a {images.shape[2]} x {images.shape[1]} picture, "
+                                f"not Prep's square canvas ({size} x {size}): it is stretched to fit, so the corner "
+                                "may look squashed. Wire in the inpainted canvas.")
             # an upscaled result, or a model that changed the size: back to the canvas Prep made
             images = F.interpolate(images.permute(0, 3, 1, 2), size=(size, size), mode="bilinear",
                                    align_corners=False, antialias=True).permute(0, 2, 3, 1)
@@ -168,7 +190,7 @@ class SeamlessBorderKitPixaroma:
             corner = blend_corner(corner, band, blend)
             corners.append(corner)
             kits.append(frame(corner, band, bg, 1))
-            previews.append(frame(corner, band, bg, preview_repeats))
+            previews.append(preview_frame(corner, band, bg, preview_repeats))
         n = len(corners)
         top = band.unsqueeze(0).repeat(n, 1, 1, 1)
         side = side_from_band(band).unsqueeze(0).repeat(n, 1, 1, 1)

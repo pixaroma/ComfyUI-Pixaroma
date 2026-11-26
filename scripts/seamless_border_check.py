@@ -146,14 +146,14 @@ def check_mirror(t, w, shift):
     eq(m, m.transpose(0, 1), "mitre on the mirror line is symmetric across its diagonal")
     img = BG.view(1, 1, 3).expand(3 * t, band.shape[1], 3).clone()
     img[t:2 * t] = band
-    _, _, info = nb.SeamlessBorderPrepPixaroma().prep(img.unsqueeze(0))
+    _, _, info, _ = nb.SeamlessBorderPrepPixaroma().prep(img.unsqueeze(0))
     eq(info["band"], band.roll(-s, dims=1), "Prep turns the corner on the mirror line", tol=0.0)
 
 
 def check_nodes():
     img, band = make_strip(96, 384, 768, 300)
     prep, kit = nb.SeamlessBorderPrepPixaroma(), nb.SeamlessBorderKitPixaroma()
-    canvas, mask, info = prep.prep(img.unsqueeze(0), 0, 0, 2.0, "Top", corner_at="Strip edge")
+    canvas, mask, info, report = prep.prep(img.unsqueeze(0), 0, 0, 2.0, "Top", corner_at="Strip edge")
     assert canvas.shape[1] % 64 == 0 and mask.shape == canvas.shape[:3]
     eq(info["band"], band, "Prep cuts the band", tol=0.0)
     outs = kit.kit(canvas, info, 12, 2)
@@ -178,7 +178,7 @@ def check_nodes():
     eq(outs[1][0, :t - 1, t - 1], band[:t - 1, w - 1], "resized result still joins exactly")
     # outer edge Bottom flips the band; RGBA strips use the first 3 channels
     rgba = torch.cat([img, torch.ones(*img.shape[:2], 1)], -1).unsqueeze(0)
-    _, _, info2 = prep.prep(rgba, 0, 0, 2.0, "Bottom", corner_at="Strip edge")
+    _, _, info2, _ = prep.prep(rgba, 0, 0, 2.0, "Bottom", corner_at="Strip edge")
     eq(info2["band"], band.flip(0), "outer edge Bottom", tol=0.0)
     try:
         prep.prep(torch.stack([img, img]), 0, 0, 2.0, "Top")

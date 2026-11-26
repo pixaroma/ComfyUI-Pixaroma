@@ -17,6 +17,7 @@ Images here are [H, W, 3] float tensors (one picture, no batch); the nodes add a
 import math
 
 import torch
+import torch.nn.functional as F
 
 CANVAS_MULTIPLE = 64     # every model's latent fits a canvas that is a multiple of 64 px
 MIN_BAND = 16            # thinner than this is not a border worth a corner
@@ -24,10 +25,22 @@ MIN_CANVAS = 1024        # smaller canvases are too small for today's models to 
 MASK_MODES = ("Seam", "Corner")
 MIRROR_ROWS = 128        # the mirror-line search samples about this many rows (and offsets) of the band
 SEAM_FEATHER = 0.5       # the seam mask fades out over this share of its half-width, past the solid part
-EDGE_FRACTION = 0.04     # rows at the top and at the bottom sampled for the background colour
-PIXEL_THRESHOLD = 0.1    # a pixel this far from the background (any channel, 0..1) is part of the drawing
-ROW_COVERAGE = 0.3       # a row with more than this share of drawn pixels belongs to the band
-GAP_FRACTION = 0.02      # background rows inside the band (thin white lines) bridged, as a fraction of the height
+EDGE_FRACTION = 0.04     # rows at the top and at the bottom sampled for the background colour (last resort)
+# Band detection (Pixaroma, 2026-11-26; measured on 41 real Krea 2 strips in 18 styles, D:\Claude Tests\_border_corners).
+# The band is what lies between the two plain backgrounds that touch the picture's top and bottom edges. "Plain" is
+# judged by horizontal DETAIL, not by colour: a mottled parchment or a two-tone wall (white above, beige below) has
+# almost none, a drawn border a lot. The old colour-only test took both of those for border.
+DETAIL_BLUR = 2          # px: box blur of 2k+1 before measuring detail, so paper grain and JPEG noise do not count
+                         # (no smoothing ACROSS rows: it moved the found edges out by its width; a crack is crossed
+                         # by the background walk instead, BG_GAP)
+PLAIN_LEVEL = 0.2        # a row is plain below lo + PLAIN_LEVEL x (hi - lo) of the picture's own detail range
+PLAIN_FLOOR = 0.004      # ... and always below this (a picture with no band at all has no range to speak of)
+COLOUR_STEP = 0.06       # a row whose colour is this far (any channel, 0..1) from the background beside it ends it
+COLOUR_FOLLOW = 0.05     # the background colour follows a soft shading at this rate per row
+BG_GAP = 0.005           # stray rows (a crack, a stain) crossed inside a background, as a share of the height
+EDGE_SKIP = 0.06         # the background may start this far in (a stained paper edge, a stray line at the edge)
+MIN_BG = 0.04            # a plain run at an edge thinner than this share of the height, in another colour than the
+                         # background on the other side, is the band's own bar (the band touches that edge)
 
 
 class BorderError(ValueError):
@@ -43,38 +56,112 @@ def background_colour(img):
     return best.median(dim=0).values
 
 
-def find_band(img, top=0, bottom=0):
-    """(top, bottom, bg) of the band in a strip picture [H, W, 3]; bottom is exclusive.
+def row_detail(img):
+    """[H]: the drawn detail in each row: mean |I(x+1) - I(x)| (the largest channel) on a copy blurred ALONG the row
+    only (a blur across rows moved the found edges), x wrapping (the strip repeats). Ink and motifs score high; a
+    plain, mottled or shaded background scores low, and a horizontal colour edge scores nothing."""
+    k = DETAIL_BLUR
+    x = F.pad(img.permute(2, 0, 1).unsqueeze(0), (k, k, 0, 0), mode="circular")
+    b = F.avg_pool2d(x, (1, 2 * k + 1), stride=1)[0]
+    return (b.roll(-1, dims=2) - b).abs().amax(0).mean(1)
 
-    top / bottom > 0 are taken as given (bottom exclusive here). A pixel is "drawn" when one of its channels is more
-    than PIXEL_THRESHOLD from the background colour; a row is a band row when over ROW_COVERAGE of it is drawn (so
-    paper texture and soft shading are not). The longest run of band rows wins, gaps of up to GAP_FRACTION of the
-    height bridged (thin white lines inside a border).
+
+def _walk_background(colours, plain, from_top, start, gap):
+    """Rows from the edge to the end of the plain background that starts `start` rows in (0 = none found)."""
+    h = len(colours)
+    ref, n, miss = None, 0, 0
+    for i in range(start, h):
+        r = i if from_top else h - 1 - i
+        c = colours[r]
+        if plain[r] and (ref is None or max(abs(a - b) for a, b in zip(c, ref)) <= COLOUR_STEP):
+            ref = list(c) if ref is None else [a + (b - a) * COLOUR_FOLLOW for a, b in zip(ref, c)]
+            n, miss = i + 1, 0
+        else:
+            miss += 1
+            if ref is None or miss > gap:
+                break
+    return n
+
+
+def _edge_background(colours, plain, from_top):
+    """How many rows from the top (or bottom) edge are plain background: walked inward while a row is plain and its
+    colour stays within COLOUR_STEP of the background beside it (which follows a soft shading); stray rows (a crack,
+    a stain) of up to BG_GAP of the height are crossed when the background carries on. The background may start
+    anywhere in the first EDGE_SKIP of the height (a stained paper edge, a stray line at the very edge: celtic_2,
+    victorian_1); the start that reaches furthest wins. Returns (rows from the edge, rows the background itself has)."""
+    h = len(colours)
+    gap, skip = max(1, round(BG_GAP * h)), max(1, round(EDGE_SKIP * h))
+    best = (0, 0)
+    for start in range(min(skip, h - 1) + 1):
+        r = start if from_top else h - 1 - start
+        prev = r - 1 if from_top else r + 1
+        if not plain[r] or (start > 0 and plain[prev]
+                            and max(abs(a - b) for a, b in zip(colours[r], colours[prev])) <= COLOUR_STEP):
+            continue   # not a row a new background can start on (or the same run as the row before)
+        n = _walk_background(colours, plain, from_top, start, gap)
+        if n > best[0]:
+            best = (n, n - start)
+    return best
+
+
+def _rows_colour(img, rows):
+    """The median colour of the given rows (a background), or None."""
+    return img[rows].reshape(-1, img.shape[-1]).median(dim=0).values if len(rows) else None
+
+
+def locate_band(img, top=None, bottom=None, inner="bottom"):
+    """Where the band is in a strip picture [H, W, 3], as a dict:
+    top, bottom (exclusive), bg (the background colour on the `inner` side, else the other side), touches_top,
+    touches_bottom (the band reaches that edge of the picture: it may be cut there).
+
+    top / bottom given (not None) are used as they are. Found ones: the band lies between the plain backgrounds
+    touching the top and bottom edges (_edge_background), so a plain bar or a thin rule at the band's edge stays in
+    the band, and a different background below than above (a two-tone wall) does not get in.
     """
     h = img.shape[0]
-    bg = background_colour(img)
-    if top <= 0 or bottom <= 0:
-        drawn = ((img - bg).abs().amax(dim=-1) > PIXEL_THRESHOLD).float().mean(dim=1)
-        rows = (drawn > ROW_COVERAGE).tolist()
-        gap = max(1, round(GAP_FRACTION * h))
-        best, start, last = (0, 0), None, None
-        for r, on in enumerate(rows):
-            if not on:
-                continue
-            if start is None or r - last > gap + 1:
-                start = r
-            last = r
-            if last + 1 - start > best[1] - best[0]:
-                best = (start, last + 1)
-        top = top if top > 0 else best[0]
-        bottom = bottom if bottom > 0 else best[1]
-    top, bottom = max(0, int(top)), min(h, int(bottom))
+    detail = row_detail(img)
+    lo, hi = torch.quantile(detail, 0.05).item(), torch.quantile(detail, 0.95).item()
+    plain = (detail < max(lo + PLAIN_LEVEL * (hi - lo), PLAIN_FLOOR)).tolist()
+    colours = img.median(dim=1).values
+    n_top, run_top = _edge_background(colours.tolist(), plain, True)
+    n_bot, run_bot = _edge_background(colours.tolist(), plain, False)
+    if n_top >= h:
+        raise BorderError("Seamless Border: no border band found, the strip looks plain all the way down. Set "
+                          "band_top and band_bottom to the band's first and last row, or make a strip with a band.")
+    c_top = _rows_colour(img, list(range(n_top - run_top, n_top)))
+    c_bot = _rows_colour(img, list(range(h - n_bot, h - n_bot + run_bot)))
+    # a thin plain run at one edge in another colour than the other side's background = the band's own bar
+    for side in ("top", "bottom"):
+        n, c, other = (run_top, c_top, c_bot) if side == "top" else (run_bot, c_bot, c_top)
+        if 0 < n < MIN_BG * h and other is not None and (c - other).abs().max().item() > COLOUR_STEP:
+            if side == "top":
+                n_top, c_top = 0, None
+            else:
+                n_bot, c_bot = 0, None
+    found_top, found_bot = n_top, h - n_bot
+    top = found_top if top is None else max(0, min(h, int(top)))
+    bottom = found_bot if bottom is None else max(0, min(h, int(bottom)))
     if bottom - top < MIN_BAND:
         raise BorderError(
             f"Seamless Border: no border band found (found {max(0, bottom - top)} rows, need {MIN_BAND}). Set "
             "band_top and band_bottom to the band's first and last row, or check that the strip has a band across "
             "a plain background.")
-    return top, bottom, bg
+    # the background colour: the plain rows outside the band on each side (manual rows may leave band rows outside)
+    above = [r for r in range(top) if plain[r]] or list(range(top))
+    below = [r for r in range(bottom, h) if plain[r]] or list(range(bottom, h))
+    sides = {"top": _rows_colour(img, above) if top >= MIN_BAND else None,
+             "bottom": _rows_colour(img, below) if h - bottom >= MIN_BAND else None}
+    other = "top" if inner == "bottom" else "bottom"
+    bg = sides[inner] if sides[inner] is not None else sides[other]
+    if bg is None:
+        bg = background_colour(img)
+    return {"top": top, "bottom": bottom, "bg": bg, "touches_top": top == 0, "touches_bottom": bottom == h}
+
+
+def find_band(img, top=0, bottom=0):
+    """(top, bottom, bg) of the band; bottom is exclusive. top / bottom > 0 are taken as given (locate_band)."""
+    b = locate_band(img, top if top > 0 else None, bottom if bottom > 0 else None)
+    return b["top"], b["bottom"], b["bg"]
 
 
 def mirror_error(band, s, step=1):
@@ -224,6 +311,27 @@ def frame(corner, band, bg, repeats=1):
     out[n - t:, n - t:] = torch.rot90(corner, 2, dims=(0, 1))
     out[n - t:, :t] = torch.rot90(corner, 1, dims=(0, 1))
     return out
+
+
+PREVIEW_MAX = 4096       # px: the frame preview is made at most this wide (12 repeats of a 2048 px strip with an
+                         # 890 px band were a 26 000 px square, about 8 GB, before this)
+
+
+def preview_frame(corner, band, bg, repeats=1):
+    """frame() for looking at: when it would be wider than PREVIEW_MAX, the corner and band are scaled down FIRST
+    (the same scale, the corner to the band's new thickness), so the big frame is never made at full size."""
+    t, w = band.shape[0], band.shape[1]
+    n = 2 * t + repeats * w
+    if n <= PREVIEW_MAX:
+        return frame(corner, band, bg, repeats)
+    s = PREVIEW_MAX / n
+    ts, ws = max(1, round(t * s)), max(1, round(w * s))
+
+    def fit(x, hh, ww):
+        return F.interpolate(x.permute(2, 0, 1).unsqueeze(0), size=(hh, ww), mode="bilinear", align_corners=False,
+                             antialias=True)[0].permute(1, 2, 0)
+
+    return frame(fit(corner, ts, ts), fit(band, ts, ws), bg, repeats)
 
 
 def css_line(t):
